@@ -10,7 +10,7 @@
 [![codecov](https://img.shields.io/codecov/c/github/huntridge-labs/argus?token=LG3BOJYDZY&style=flat-square)](https://codecov.io/gh/huntridge-labs/argus)
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg?style=flat-square)](https://www.gnu.org/licenses/agpl-3.0)
-[![AICaC](https://img.shields.io/badge/AICaC-Comprehensive-success.svg?style=flat-square)](https://github.com/eFAILution/AICaC)
+[![AICaC](https://img.shields.io/badge/AICaC-Comprehensive-success.svg)](https://github.com/eFAILution/AICaC)
 
 <br>
 
