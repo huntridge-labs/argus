@@ -1,0 +1,263 @@
+name: Security Scanning with Composite Actions
+
+# This example workflow demonstrates how to use the hardening-workflows composite actions
+# for comprehensive security scanning. Copy this to your repository and customize as needed.
+#
+# Available Composite Actions:
+# - scanner-bandit: Python security scanner
+# - scanner-codeql: GitHub CodeQL SAST scanner
+# - scanner-opengrep: Pattern-based SAST scanner
+# - scanner-gitleaks: Secrets detection
+# - scanner-zap: DAST/web application security
+# - scanner-clamav: Malware scanning
+# - scanner-trivy-iac: Infrastructure-as-code scanning
+# - scanner-container: Container image scanning
+#
+# Each scanner runs independently and generates reports that can be uploaded to GitHub Security.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+  actions: read
+  checks: write
+  id-token: write
+  packages: read
+
+env:
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  # Python Security Scanning
+  bandit-scan:
+    name: Bandit Python Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run Bandit Scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-bandit@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          post_pr_comment: true
+          enable_code_security: false
+          fail_on_severity: 'high'
+          python_version: ${{ env.PYTHON_VERSION }}
+
+  # Secrets Detection
+  gitleaks-scan:
+    name: Gitleaks Secrets Detection
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Full history for comprehensive secrets scanning
+
+      - name: Run Gitleaks Scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Optional: for org features
+        with:
+          post_pr_comment: true
+          enable_code_security: false
+          fail_on_severity: 'none'  # Gitleaks fails on any secret found
+          gitleaks_enable_comments: true
+
+  # CodeQL SAST
+  codeql-scan:
+    name: CodeQL SAST Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run CodeQL Scanner (Python)
+        uses: huntridge-labs/argus/.github/actions/scanner-codeql@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          language: 'python'
+          setup_python_version: ${{ env.PYTHON_VERSION }}
+          enable_code_security: false
+          fail_on_severity: 'high'
+
+  # OpenGrep SAST
+  opengrep-scan:
+    name: OpenGrep SAST Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run OpenGrep Scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-opengrep@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          config: 'auto'
+          paths: '.'
+          enable_code_security: false
+          fail_on_severity: 'high'
+
+  # Infrastructure-as-Code Security
+  trivy-iac-scan:
+    name: Trivy IaC Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run Trivy IaC Scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          iac_path: 'tests/infrastructure'  # Customize to your IaC directory
+          enable_code_security: false
+          post_pr_comment: true
+          fail_on_severity: 'high'
+
+  # Malware Scanning
+  clamav-scan:
+    name: ClamAV Malware Detection
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run ClamAV Scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-clamav@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          scan_path: '.'
+          post_pr_comment: true
+          enable_code_security: false
+          fail_on_severity: 'none'
+
+  # DAST / Web Application Security (requires running application)
+  zap-scan:
+    name: ZAP DAST Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    # Only run if you have a web application to test
+    if: false  # Change to true and provide target_url when ready
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      # Add steps here to start your application
+      # Example:
+      # - name: Start application
+      #   run: |
+      #     docker-compose up -d
+      #     sleep 10
+
+      - name: Run ZAP Scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-zap@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          target_url: 'http://localhost:8080'  # Customize to your app URL
+          scan_name: 'web-app'
+          post_pr_comment: true
+          enable_code_security: false
+          fail_on_severity: 'high'
+
+  # Container Image Scanning (requires built image)
+  container-scan:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    # Only run if you have container images to scan
+    if: false  # Change to true when you have images to scan
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      # Add steps here to build your container image
+      # Example:
+      # - name: Build Docker image
+      #   run: docker build -t myapp:test .
+
+      - name: Run Container Scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-container@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          image_ref: 'myapp:test'  # Customize to your image
+          scan_name: 'myapp'
+          enable_code_security: false
+          fail_on_severity: 'high'
+
+  # Summary Job - Collect all scanner results
+  security-summary:
+    name: Security Scan Summary
+    runs-on: ubuntu-latest
+    needs: [bandit-scan, gitleaks-scan, codeql-scan, opengrep-scan, trivy-iac-scan, clamav-scan]
+    if: always()
+
+    steps:
+      - name: Generate Combined Security Summary
+        uses: huntridge-labs/argus/.github/actions/security-summary@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          title: '🔒 Security Scan Summary'
+          show_metadata: true
+          show_stats: true
+          post_pr_comment: true
+
+      - name: Check job statuses
+        run: |
+          echo "Job Status Summary:"
+          echo "===================="
+          echo "Bandit: ${{ needs.bandit-scan.result }}"
+          echo "Gitleaks: ${{ needs.gitleaks-scan.result }}"
+          echo "CodeQL: ${{ needs.codeql-scan.result }}"
+          echo "OpenGrep: ${{ needs.opengrep-scan.result }}"
+          echo "Trivy IaC: ${{ needs.trivy-iac-scan.result }}"
+          echo "ClamAV: ${{ needs.clamav-scan.result }}"
+
+          # Optional: Fail if any critical scanners failed
+          # Uncomment the following if you want the summary job to fail
+          # if [[ "${{ needs.bandit-scan.result }}" == "failure" ]] || \
+          #    [[ "${{ needs.gitleaks-scan.result }}" == "failure" ]]; then
+          #   echo "❌ One or more critical security scanners failed"
+          #   exit 1
+          # fi
+
+          echo "✅ Security scan workflow completed"

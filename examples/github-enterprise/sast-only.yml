@@ -1,0 +1,68 @@
+# SAST-Only Security Scanning for GitHub Enterprise Server
+#
+# This workflow runs static analysis scanners only.
+# Best for: Code repositories without containers or infrastructure.
+#
+# Scanners included:
+# - Bandit (Python security linter)
+# - OpenGrep (Pattern-based static analysis)
+# - Gitleaks (Secrets detection)
+
+name: SAST Security Scan
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  sast-scanning:
+    name: Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # Full history for Gitleaks
+
+      # ----------------------------------------
+      # Bandit - Python Security Linter
+      # ----------------------------------------
+      - name: Run Bandit (Python)
+        uses: huntridge-labs/argus/.github/actions/scanner-bandit@v2.12.0
+        with:
+          post_pr_comment: 'true'
+          enable_code_security: 'true'
+          fail_on_severity: 'high'
+          # python_version: '3.12' # Optional: specify Python version
+
+      # ----------------------------------------
+      # OpenGrep - Multi-language Static Analysis
+      # ----------------------------------------
+      - name: Run OpenGrep
+        uses: huntridge-labs/argus/.github/actions/scanner-opengrep@v2.12.0
+        with:
+          enable_code_security: 'true'
+          fail_on_severity: 'high'
+          # paths: 'src/' # Optional: limit scan to specific paths
+          # config: '.opengrep.yml' # Optional: custom config file
+
+      # ----------------------------------------
+      # Gitleaks - Secrets Detection
+      # ----------------------------------------
+      - name: Run Gitleaks
+        uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@v2.12.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }} # Optional: for organizations
+        with:
+          post_pr_comment: 'true'
+          enable_code_security: 'true'
+          fail_on_severity: 'critical' # Secrets are critical!

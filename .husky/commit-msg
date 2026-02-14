@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+# Add common paths that VSCode might not have
+export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$PATH"
+
+# Check if npx is available
+if command -v npx &> /dev/null; then
+    npx --no -- commitlint --edit ${1}
+else
+    echo "Warning: npx not found, skipping commit message linting"
+    exit 0
+fi

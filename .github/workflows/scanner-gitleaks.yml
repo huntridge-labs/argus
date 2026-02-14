@@ -1,0 +1,89 @@
+# Gitleaks Secrets Scanner - Reusable Workflow
+#
+# THIN WRAPPER: This workflow delegates to the scanner-gitleaks composite action.
+# All scanning logic is in: .github/actions/scanner-gitleaks/action.yml
+#
+# Note: The action handles checkout with fetch-depth: 0 for full git history.
+#
+# For GHES users: Use the composite action directly instead of this workflow.
+# See: examples/github-enterprise/sast-only.yml
+
+name: Gitleaks Secrets Scanner
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      post_pr_comment:
+        description: 'Whether to post PR comments'
+        required: false
+        type: boolean
+        default: true
+      enable_code_security:
+        description: 'Whether GitHub Code Security is enabled for this repository'
+        required: false
+        type: boolean
+        default: false
+      fail_on_severity:
+        description: 'Fail the job if secrets are found. Gitleaks does not support severity-based filtering - any value other than "none" will fail if secrets are detected.'
+        required: false
+        type: string
+        default: 'none'
+      gitleaks_enable_comments:
+        description: 'Enable GitLeaks inline PR comments (requires GITLEAKS_LICENSE)'
+        required: false
+        type: boolean
+        default: true
+      gitleaks_notify_user_list:
+        description: 'Comma-separated list of GitHub usernames to notify on secret detection (e.g., "@user1,@user2")'
+        required: false
+        type: string
+        default: ''
+      gitleaks_enable_summary:
+        description: 'Enable GitLeaks job summary'
+        required: false
+        type: boolean
+        default: true
+      gitleaks_enable_upload_artifact:
+        description: 'Enable uploading SARIF artifact when secrets are detected'
+        required: false
+        type: boolean
+        default: true
+      gitleaks_config:
+        description: 'Path to a gitleaks configuration file (e.g., "path/to/gitleaks.toml")'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      GITLEAKS_LICENSE:
+        description: 'License key for GitLeaks scans within a Github Organization. Obtain from https://gitleaks.io'
+        required: false
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  pull-requests: write
+
+jobs:
+  secrets-detection:
+    name: Secrets Detection - Gitleaks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+
+    steps:
+      - name: Run Gitleaks Scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+        with:
+          post_pr_comment: ${{ inputs.post_pr_comment }}
+          enable_code_security: ${{ inputs.enable_code_security }}
+          fail_on_severity: ${{ inputs.fail_on_severity }}
+          gitleaks_enable_comments: ${{ inputs.gitleaks_enable_comments }}
+          gitleaks_notify_user_list: ${{ inputs.gitleaks_notify_user_list }}
+          gitleaks_enable_summary: ${{ inputs.gitleaks_enable_summary }}
+          gitleaks_enable_upload_artifact: ${{ inputs.gitleaks_enable_upload_artifact }}
+          gitleaks_config: ${{ inputs.gitleaks_config }}

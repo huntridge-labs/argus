@@ -1,0 +1,42 @@
+---
+# Test container configuration for scanner testing
+# This configuration exercises all features of the container-config schema
+
+containers:
+  - name: "test-python-app"
+    image: "test-python-app:latest"
+    scanners:
+      - trivy
+      - grype
+    fail_on_severity: "high"
+    allow_failure: false
+
+  - name: "test-node-app"
+    image: "test-node-app:latest"
+    scanners:
+      - trivy
+    fail_on_severity: "critical"
+    allow_failure: false
+
+  - name: "alpine-base"
+    image: "alpine:latest"
+    scanners:
+      - trivy
+      - grype
+    fail_on_severity: "medium"
+    allow_failure: true
+
+  - name: "private-registry-image"
+    image:
+      repository: "huntridge-labs"
+      name: "test-image"
+      tag: "latest"
+    registry:
+      host: "ghcr.io"
+      username: "${GITHUB_ACTOR}"
+      auth_secret: "GHCR_TOKEN"
+    scanners:
+      - trivy
+    fail_on_severity: "high"
+    enable_code_security: true
+    post_pr_comment: true

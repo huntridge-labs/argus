@@ -1,0 +1,203 @@
+name: 'Gitleaks Secrets Scanner'
+description: |
+  Run Gitleaks secrets detection and generate reports.
+
+  **Required Environment Variables:**
+  - GITHUB_TOKEN: GitHub token for API access (set automatically in workflows)
+  - GITLEAKS_LICENSE: (Optional) License key for GitLeaks scans within a GitHub Organization. Obtain from https://gitleaks.io
+
+  **Usage Example:**
+  ```yaml
+  - uses: ./.github/actions/scanner-gitleaks
+    env:
+      GITHUB_TOKEN: (secrets.GITHUB_TOKEN)
+      GITLEAKS_LICENSE: (secrets.GITLEAKS_LICENSE)
+    with:
+      fail_on_severity: 'high'
+      gitleaks_enable_comments: true
+  ```
+
+inputs:
+  post_pr_comment:
+    description: 'Whether to post PR comments'
+    required: false
+    default: 'true'
+  enable_code_security:
+    description: 'Whether GitHub Code Security is enabled for this repository'
+    required: false
+    default: 'false'
+  fail_on_severity:
+    description: 'Fail the job if secrets are found. Gitleaks does not support severity-based filtering - any value other than "none" will fail if secrets are detected.'
+    required: false
+    default: 'none'
+  gitleaks_enable_comments:
+    description: 'Enable GitLeaks inline PR comments (requires GITLEAKS_LICENSE)'
+    required: false
+    default: 'true'
+  gitleaks_notify_user_list:
+    description: 'Comma-separated list of GitHub usernames to notify on secret detection (e.g., "@user1,@user2")'
+    required: false
+    default: ''
+  gitleaks_enable_summary:
+    description: 'Enable GitLeaks job summary'
+    required: false
+    default: 'true'
+  gitleaks_enable_upload_artifact:
+    description: 'Enable uploading SARIF artifact when secrets are detected'
+    required: false
+    default: 'true'
+  gitleaks_config:
+    description: 'Path to a gitleaks configuration file (e.g., "path/to/gitleaks.toml")'
+    required: false
+    default: ''
+
+outputs:
+  secrets_count:
+    description: 'Number of secrets detected'
+    value: ${{ steps.analyze-findings.outputs.secrets_count }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - name: Run Gitleaks Secrets Detection
+      id: gitleaks-scan
+      uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
+        GITLEAKS_LICENSE: ${{ env.GITLEAKS_LICENSE }}
+        GITLEAKS_ENABLE_COMMENTS: ${{ inputs.gitleaks_enable_comments }}
+        GITLEAKS_NOTIFY_USER_LIST: ${{ inputs.gitleaks_notify_user_list }}
+        GITLEAKS_ENABLE_SUMMARY: ${{ inputs.gitleaks_enable_summary }}
+        GITLEAKS_ENABLE_UPLOAD_ARTIFACT: ${{ inputs.gitleaks_enable_upload_artifact }}
+        GITLEAKS_CONFIG: ${{ inputs.gitleaks_config }}
+      continue-on-error: true
+
+    - name: Organize Gitleaks results
+      shell: bash
+      run: |
+        echo "📦 Organizing Gitleaks results into directory..."
+        mkdir -p gitleaks-reports
+        if [ -f results.json ]; then
+          mv results.json gitleaks-reports/
+        fi
+        if [ -f results.sarif ]; then
+          mv results.sarif gitleaks-reports/
+        fi
+        echo "Generated Gitleaks files:"
+        ls -la gitleaks-reports/ || echo "No files generated"
+
+    - name: Upload Gitleaks artifacts
+      uses: actions/upload-artifact@v6
+      with:
+        name: gitleaks-reports
+        path: gitleaks-reports/
+        retention-days: 30
+      if: always()
+
+    - name: Upload SARIF to GitHub Code Scanning
+      uses: github/codeql-action/upload-sarif@v4
+      if: inputs.enable_code_security == 'true' && always() && github.actor != 'nektos/act' && hashFiles('gitleaks-reports/results.sarif') != ''
+      with:
+        sarif_file: gitleaks-reports/results.sarif
+        category: secrets-gitleaks
+      continue-on-error: true
+
+    - name: Generate GitLeaks summary section
+      if: always()
+      shell: bash
+      run: |
+        mkdir -p scanner-summaries
+
+        echo "<details>" > scanner-summaries/gitleaks.md
+        echo "<summary>🔍 GitLeaks</summary>" >> scanner-summaries/gitleaks.md
+        echo "" >> scanner-summaries/gitleaks.md
+
+        if [ -d "gitleaks-reports" ] && [ "$(ls -A gitleaks-reports)" ]; then
+          echo "**Status:** ✅ Completed" >> scanner-summaries/gitleaks.md
+          echo "" >> scanner-summaries/gitleaks.md
+
+          # Count secrets from SARIF files
+          SECRET_COUNT=0
+
+          for sarif_file in $(find ./gitleaks-reports -name "*.sarif" -type f 2>/dev/null); do
+            if [ -f "$sarif_file" ] && [ -s "$sarif_file" ] && command -v jq >/dev/null 2>&1; then
+              secrets=$(jq -r '.runs[]?.results[]? | .ruleId' "$sarif_file" 2>/dev/null | wc -l | tr -d ' ')
+              SECRET_COUNT=$((SECRET_COUNT + secrets))
+            fi
+          done
+
+          echo "**Secrets Found:** $SECRET_COUNT" >> scanner-summaries/gitleaks.md
+          echo "" >> scanner-summaries/gitleaks.md
+
+          if [ $SECRET_COUNT -gt 0 ]; then
+            echo "⚠️ **WARNING:** Potential secrets detected in your repository!" >> scanner-summaries/gitleaks.md
+            echo "" >> scanner-summaries/gitleaks.md
+          fi
+
+          echo "**📁 Artifacts:** [GitLeaks Reports](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts)" >> scanner-summaries/gitleaks.md
+        else
+          echo "**Status:** ⏭️ Skipped" >> scanner-summaries/gitleaks.md
+        fi
+
+        echo "" >> scanner-summaries/gitleaks.md
+        echo "</details>" >> scanner-summaries/gitleaks.md
+        echo "" >> scanner-summaries/gitleaks.md
+      continue-on-error: true
+
+    - name: Upload GitLeaks summary section
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: scanner-summary-gitleaks
+        path: scanner-summaries/gitleaks.md
+        retention-days: 7
+      continue-on-error: true
+
+    - name: Comment PR with Gitleaks results
+      if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
+      uses: huntridge-labs/argus/.github/actions/comment-pr@main
+      with:
+        summary_file: scanner-summaries/gitleaks.md
+        comment_marker: gitleaks-scanner-comment-marker
+        title: '🔑 Gitleaks Secrets Detection Results'
+        fallback_message: 'No Gitleaks results available'
+
+    - name: Analyze Gitleaks findings
+      id: analyze-findings
+      shell: bash
+      if: always()
+      run: |
+        echo "📊 Analyzing Gitleaks scan results..."
+
+        SECRET_COUNT=0
+
+        # Count secrets from results files
+        if [ -f "gitleaks-reports/results.json" ]; then
+          SECRET_COUNT=$(jq 'length' gitleaks-reports/results.json 2>/dev/null || echo "0")
+        elif [ -f "gitleaks-reports/results.sarif" ]; then
+          SECRET_COUNT=$(jq '[.runs[]?.results[]?] | length' gitleaks-reports/results.sarif 2>/dev/null || echo "0")
+        fi
+
+        echo "Secrets detected: $SECRET_COUNT"
+        echo "secrets_count=$SECRET_COUNT" >> $GITHUB_OUTPUT
+
+        if [ "$SECRET_COUNT" -gt 0 ]; then
+          echo "⚠️ WARNING: $SECRET_COUNT potential secret(s) detected!"
+          echo "::warning title=Secrets Detected::Gitleaks found $SECRET_COUNT potential secret(s) in the repository"
+
+          # Fail based on fail_on_severity input
+          if [ "${{ inputs.fail_on_severity }}" != "none" ] && [ -n "${{ inputs.fail_on_severity }}" ]; then
+            exit 1
+          fi
+        else
+          echo "✅ No secrets detected"
+        fi
+
+branding:
+  icon: 'shield'
+  color: 'red'

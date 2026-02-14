@@ -1,0 +1,108 @@
+name: 'Get Job ID'
+description: 'Get the current GitHub Actions job ID for unique artifact naming. Supports literal string or regex matching.'
+inputs:
+  job-name-string:
+    description: 'Literal string to match in the job name (exact, suffix, or substring). Mutually exclusive with job-name-pattern.'
+    required: false
+    default: ''
+  job-name-pattern:
+    description: 'Regex pattern to match against job names. Mutually exclusive with job-name-string.'
+    required: false
+    default: ''
+  fallback-suffix:
+    description: 'Suffix to use in fallback naming if job ID cannot be determined'
+    required: true
+outputs:
+  job-id:
+    description: 'The job ID or fallback identifier'
+    value: ${{ steps.get_id.outputs.job-id }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Get job ID with robust matching
+      id: get_id
+      uses: actions/github-script@v8
+      with:
+        result-encoding: string
+        script: |
+          const { owner, repo } = context.repo;
+          const runId = context.runId;
+          const attempt = context.runAttempt ?? 1;
+          const jobNameString = `${{ inputs.job-name-string }}`;
+          const jobNamePattern = `${{ inputs.job-name-pattern }}`;
+          const fallbackSuffix = '${{ inputs.fallback-suffix }}';
+
+          // Validate: exactly one of job-name-string or job-name-pattern must be provided
+          if (jobNameString && jobNamePattern) {
+            core.setFailed('Both job-name-string and job-name-pattern were provided. Use only one.');
+            return;
+          }
+          if (!jobNameString && !jobNamePattern) {
+            core.setFailed('Either job-name-string or job-name-pattern must be provided.');
+            return;
+          }
+
+          const useRegex = !!jobNamePattern;
+          const matchValue = jobNameString || jobNamePattern;
+
+          const { data } = await github.rest.actions.listJobsForWorkflowRunAttempt({
+            owner,
+            repo,
+            run_id: runId,
+            attempt_number: attempt,
+            per_page: 100,
+          });
+
+          core.info(`Found ${data.jobs.length} jobs (match: ${useRegex ? 'regex' : 'string'}):`);
+          data.jobs.forEach(job => {
+            core.info(`  - "${job.name}" (ID: ${job.id}, Status: ${job.status})`);
+          });
+
+          // Find candidates
+          let candidates;
+          if (useRegex) {
+            const regex = new RegExp(matchValue);
+            candidates = data.jobs.filter(job => regex.test(job.name ?? ''));
+            core.info(`Regex /${matchValue}/: ${candidates.length} candidates`);
+          } else {
+            candidates = data.jobs.filter(job => {
+              const name = job.name ?? '';
+              return name === matchValue
+                || name.endsWith('/ ' + matchValue)
+                || name.includes(matchValue);
+            });
+            core.info(`String '${matchValue}': ${candidates.length} candidates`);
+          }
+
+          // Select best candidate: prefer in_progress/queued, then most recent
+          let targetJob;
+          if (candidates.length > 0) {
+            const inProgress = candidates.filter(job =>
+              ['in_progress', 'queued'].includes((job.status || '').toLowerCase())
+            );
+
+            if (inProgress.length > 0) {
+              targetJob = inProgress[0];
+            } else {
+              const sorted = [...candidates].sort((a, b) => {
+                const aTime = a.started_at ? new Date(a.started_at).getTime() : 0;
+                const bTime = b.started_at ? new Date(b.started_at).getTime() : 0;
+                if (aTime !== bTime) return bTime - aTime;
+                return (typeof b.id === 'number' ? b.id : 0) - (typeof a.id === 'number' ? a.id : 0);
+              });
+              targetJob = sorted[0];
+            }
+          }
+
+          let jobId;
+          if (targetJob) {
+            core.info(`Resolved: "${targetJob.name}" (ID: ${targetJob.id})`);
+            jobId = targetJob.id.toString();
+          } else {
+            core.info(`No match found; using run-based fallback.`);
+            jobId = `${runId}-${fallbackSuffix}`;
+          }
+
+          core.setOutput('job-id', jobId);
+          return jobId;

@@ -1,0 +1,220 @@
+{
+  "$schema": "https://unpkg.com/release-it/schema/release-it.json",
+  "git": {
+    "commitMessage": "chore(release): ${version}",
+    "tagName": "${version}",
+    "requireCleanWorkingDir": false,
+    "requireUpstream": true,
+    "addUntrackedFiles": false,
+    "addFiles": [
+      "CHANGELOG.md"
+    ]
+  },
+  "github": {
+    "release": true,
+    "releaseName": "Release ${version}",
+    "releaseNotes": null,
+    "autoGenerate": false,
+    "draft": false,
+    "preRelease": false,
+    "assets": []
+  },
+  "npm": {
+    "publish": false,
+    "ignoreVersion": false
+  },
+  "hooks": {
+    "before:init": [
+      "npm test"
+    ],
+    "before:release": [
+      "echo 'before:release hook executed'",
+      "node scripts/release-it-process-changelog.js",
+      "git add ."
+    ],
+    "after:git:release": "echo 'Git tag ${tagName} created'",
+    "after:github:release": "echo 'GitHub release ${version} published'",
+    "after:release": "echo 'Release ${version} completed successfully!'"
+  },
+  "plugins": {
+    "@release-it/conventional-changelog": {
+      "preset": {
+        "name": "conventionalcommits",
+        "types": [
+          {
+            "type": "feat",
+            "section": "Features"
+          },
+          {
+            "type": "fix",
+            "section": "Bug Fixes"
+          },
+          {
+            "type": "chore",
+            "section": "Maintenance",
+            "hidden": false
+          },
+          {
+            "type": "docs",
+            "section": "Documentation"
+          },
+          {
+            "type": "style",
+            "section": "Styles"
+          },
+          {
+            "type": "refactor",
+            "section": "Code Refactoring"
+          },
+          {
+            "type": "perf",
+            "section": "Performance Improvements"
+          },
+          {
+            "type": "test",
+            "section": "Tests"
+          },
+          {
+            "type": "build",
+            "section": "Build System"
+          },
+          {
+            "type": "ci",
+            "section": "Continuous Integration"
+          }
+        ]
+      },
+      "infile": "CHANGELOG.md",
+      "header": "# Changelog\n\nAll notable changes to this project will be documented in this file.\n\nThe format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),\nand this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).\n\n",
+      "ignoreRecommendedBump": false,
+      "strictSemVer": true
+    },
+    "@j-ulrich/release-it-regex-bumper": {
+      "in": "version.yaml",
+      "out": [
+        "version.yaml",
+        {
+          "files": [
+            "CONTRIBUTING.md",
+            "QUICK-START.md",
+            "examples/workflows/scanner-list-examples.yml",
+            "examples/workflows/use-reusable-workflow.yml"
+          ],
+          "search": {
+            "pattern": "reusable-security-hardening.yml@\\d+\\.\\d+\\.\\d+",
+            "flags": "g"
+          },
+          "replace": "reusable-security-hardening.yml@{{version}}"
+        },
+        {
+          "files": [
+            "QUICK-START.md",
+            "README.md",
+            "docs/container-scanning.md",
+            "docs/failure-control.md",
+            "examples/README.md"
+          ],
+          "search": {
+            "pattern": "argus/\\.github/workflows/([\\w-]+)\\.yml@[^\\s]+",
+            "flags": "g"
+          },
+          "replace": "argus/.github/workflows/$1.yml@{{version}}"
+        },
+        {
+          "files": [
+            ".github/workflows/reusable-security-hardening.yml",
+            ".github/workflows/container-scan-from-config.yml",
+            "examples/workflows/scanner-zap-podinfo.yml"
+          ],
+          "search": {
+            "pattern": "\\.yml@[^\\s]+",
+            "flags": "g"
+          },
+          "replace": ".yml@{{version}}"
+        },
+        {
+          "files": [
+            ".github/workflows/scanner-zap.yml",
+            ".github/workflows/linting.yml",
+            ".github/workflows/container-scan.yml",
+            ".github/workflows/container-scan-from-config.yml",
+            ".github/workflows/reusable-security-hardening.yml",
+            ".github/workflows/scanner-clamav.yml"
+          ],
+          "search": {
+            "pattern": "(HRL_REF:.*\\|\\| ')[^']+('.*}})",
+            "flags": "g"
+          },
+          "replace": "${1}{{version}}${2}"
+        },
+        {
+          "files": [
+            ".github/schemas/container-config.schema.json",
+            ".github/schemas/zap-config.schema.json"
+          ],
+          "search": {
+            "pattern": "(\"\\$id\": \"https://raw\\.githubusercontent\\.com/huntridge-labs/argus)([^/]+)(/.github/schemas/[\\w-]+\\.schema\\.json\")"
+          },
+          "replace": "${1}{{version}}${3}"
+        },
+        {
+          "files": [
+            ".github/actions/**/*.{yml,yaml,md}"
+          ],
+          "search": {
+            "pattern": "(huntridge-labs/argus/.github/actions/[^@]+)@[^\\s]+",
+            "flags": "g"
+          },
+          "replace": "${1}@{{version}}"
+        },
+        {
+          "files": [
+            "CONTRIBUTING.md",
+            "examples/README.md"
+          ],
+          "search": {
+            "pattern": "(huntridge-labs/argus/.github/actions/[^@]+)@[^\\s]+",
+            "flags": "g"
+          },
+          "replace": "${1}@{{version}}"
+        },
+        {
+          "files": [
+            ".github/workflows/scanner-*.yml",
+            ".github/workflows/linting.yml",
+            ".github/workflows/infrastructure-scan.yml",
+            ".github/workflows/container-scan.yml",
+            ".github/workflows/reusable-security-hardening.yml"
+          ],
+          "search": {
+            "pattern": "(huntridge-labs/argus/.github/actions/[^@]+)@[^\\s]+",
+            "flags": "g"
+          },
+          "replace": "${1}@{{version}}"
+        },
+        {
+          "files": [
+            "examples/github-enterprise/**/*.yml",
+            "examples/github-enterprise/**/*.yaml"
+          ],
+          "search": {
+            "pattern": "(huntridge-labs/argus/.github/actions/[^@]+)@[^\\s]+",
+            "flags": "g"
+          },
+          "replace": "${1}@{{version}}"
+        },
+        {
+          "files": [
+            "examples/workflows/**/*.yml",
+            "examples/workflows/**/*.yaml"
+          ],
+          "search": {
+            "pattern": "(huntridge-labs/argus/.github/actions/[^@]+)@[^\\s]+",
+            "flags": "g"
+          },
+          "replace": "${1}@{{version}}"
+        }
+      ]
+    }
+  }
+}

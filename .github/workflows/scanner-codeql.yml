@@ -1,0 +1,194 @@
+# CodeQL SAST Scanner - Reusable Workflow
+#
+# THIN WRAPPER: This workflow delegates to the scanner-codeql composite action.
+# All scanning logic is in: .github/actions/scanner-codeql/action.yml
+#
+# Note: This workflow retains the language auto-detection and matrix generation
+# since the composite action handles one language at a time.
+#
+# For GHES users: Use the composite action directly with a matrix strategy.
+# See: examples/github-enterprise/sast-only.yml
+
+name: CodeQL Scanner
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      codeql_languages:
+        description: 'Comma-separated list of languages for CodeQL analysis (e.g., "python,javascript"). Leave empty for auto-detection.'
+        required: false
+        type: string
+        default: ''
+      config_file:
+        description: 'Path to CodeQL config file. Leave empty to auto-detect project config or use defaults.'
+        required: false
+        type: string
+        default: ''
+      post_pr_comment:
+        description: 'Whether to post PR comments'
+        required: false
+        type: boolean
+        default: true
+      enable_code_security:
+        description: 'Whether GitHub Code Security is enabled for this repository'
+        required: false
+        type: boolean
+        default: false
+      fail_on_severity:
+        description: 'Fail the job if vulnerabilities at or above this severity are found. Options: none, low, medium, high, critical. Set to "none" to never fail.'
+        required: false
+        type: string
+        default: 'none'
+      setup_python_version:
+        description: 'Python version to set up (only used when language is python)'
+        required: false
+        type: string
+        default: '3.12'
+      setup_node_version:
+        description: 'Node.js version to set up (only used when language is javascript)'
+        required: false
+        type: string
+        default: '22'
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  pull-requests: write
+
+jobs:
+  generate-codeql-matrix:
+    name: Generate CodeQL Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      detected_languages: ${{ steps.set-matrix.outputs.detected_languages }}
+    steps:
+      - name: Checkout for language detection
+        if: inputs.codeql_languages == ''
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Generate matrix
+        id: set-matrix
+        env:
+          INPUT_LANGUAGES: ${{ inputs.codeql_languages }}
+        run: |
+          LANGUAGES="$INPUT_LANGUAGES"
+
+          # Auto-detect languages if not specified
+          if [ -z "$LANGUAGES" ]; then
+            echo "🔍 Auto-detecting languages..."
+            DETECTED=""
+
+            # Check for Python files
+            if find . -name "*.py" -type f | head -1 | grep -q .; then
+              DETECTED="${DETECTED}python,"
+              echo "  ✅ Python detected"
+            fi
+
+            # Check for JavaScript/TypeScript files
+            if find . \( -name "*.js" -o -name "*.ts" -o -name "*.jsx" -o -name "*.tsx" \) -type f -not -path "*/node_modules/*" | head -1 | grep -q .; then
+              DETECTED="${DETECTED}javascript,"
+              echo "  ✅ JavaScript/TypeScript detected"
+            fi
+
+            # Check for Go files
+            if find . -name "*.go" -type f | head -1 | grep -q .; then
+              DETECTED="${DETECTED}go,"
+              echo "  ✅ Go detected"
+            fi
+
+            # Check for Java files
+            if find . -name "*.java" -type f | head -1 | grep -q .; then
+              DETECTED="${DETECTED}java,"
+              echo "  ✅ Java detected"
+            fi
+
+            # Check for C/C++ files
+            if find . \( -name "*.c" -o -name "*.cpp" -o -name "*.cc" -o -name "*.h" -o -name "*.hpp" \) -type f | head -1 | grep -q .; then
+              DETECTED="${DETECTED}cpp,"
+              echo "  ✅ C/C++ detected"
+            fi
+
+            # Check for C# files
+            if find . -name "*.cs" -type f | head -1 | grep -q .; then
+              DETECTED="${DETECTED}csharp,"
+              echo "  ✅ C# detected"
+            fi
+
+            # Check for Ruby files
+            if find . -name "*.rb" -type f | head -1 | grep -q .; then
+              DETECTED="${DETECTED}ruby,"
+              echo "  ✅ Ruby detected"
+            fi
+
+            # Check for Swift files
+            if find . -name "*.swift" -type f | head -1 | grep -q .; then
+              DETECTED="${DETECTED}swift,"
+              echo "  ✅ Swift detected"
+            fi
+
+            # Check for Kotlin files
+            if find . -name "*.kt" -type f | head -1 | grep -q .; then
+              DETECTED="${DETECTED}kotlin,"
+              echo "  ✅ Kotlin detected"
+            fi
+
+            # Remove trailing comma
+            LANGUAGES=$(echo "$DETECTED" | sed 's/,$//')
+
+            if [ -z "$LANGUAGES" ]; then
+              echo "⚠️ No supported languages detected, defaulting to python,javascript"
+              LANGUAGES="python,javascript"
+            fi
+
+            echo "detected_languages=$LANGUAGES" >> $GITHUB_OUTPUT
+          fi
+
+          echo "Languages to analyze: $LANGUAGES"
+
+          # Validate languages and remove spaces
+          LANGUAGES=$(echo "$LANGUAGES" | tr -d ' ')
+
+          # Convert comma-separated string to JSON array
+          MATRIX_JSON=$(echo "$LANGUAGES" | sed 's/,/","/g' | sed 's/^/["/' | sed 's/$/"]/')
+          echo "Generated matrix: $MATRIX_JSON"
+
+          # Validate JSON syntax
+          if ! echo "$MATRIX_JSON" | python3 -m json.tool > /dev/null 2>&1; then
+            echo "Error: Invalid JSON generated: $MATRIX_JSON"
+            echo "Falling back to default languages"
+            MATRIX_JSON='["python","javascript"]'
+          fi
+
+          echo "matrix={\"language\":$MATRIX_JSON}" >> $GITHUB_OUTPUT
+
+  codeql-analysis:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    needs: generate-codeql-matrix
+    timeout-minutes: 45
+    continue-on-error: true
+    if: github.actor != 'nektos/act'
+
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.generate-codeql-matrix.outputs.matrix) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run CodeQL Scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-codeql@main
+        with:
+          language: ${{ matrix.language }}
+          config_file: ${{ inputs.config_file }}
+          post_pr_comment: ${{ inputs.post_pr_comment }}
+          enable_code_security: ${{ inputs.enable_code_security }}
+          fail_on_severity: ${{ inputs.fail_on_severity }}
+          setup_python_version: ${{ inputs.setup_python_version }}
+          setup_node_version: ${{ inputs.setup_node_version }}

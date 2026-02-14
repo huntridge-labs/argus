@@ -1,0 +1,34 @@
+#!/bin/sh
+echo "Running .husky pre-push hook"
+
+# Check if we have the necessary dependencies to run tests
+# (node, python, pytest). If not, skip tests with a warning.
+if ! command -v node >/dev/null 2>&1; then
+  echo "⚠️  Node.js not found. Skipping local tests (CI will run them)."
+  exit 0
+fi
+
+# Activate virtual environment if it exists (support both .venv and .dev.venv)
+if [ -f ".dev.venv/bin/activate" ]; then
+  . .dev.venv/bin/activate
+elif [ -f ".venv/bin/activate" ]; then
+  . .venv/bin/activate
+fi
+
+# Check if pytest is available (needed for npm test)
+if ! command -v pytest >/dev/null 2>&1 && [ ! -f ".dev.venv/bin/pytest" ]; then
+  echo "⚠️  Python test dependencies not installed. Skipping local tests."
+  echo "💡 To run tests locally, use the devcontainer or run: bash .devcontainer/setup.sh"
+  echo "✅ CI will run all tests on push."
+  exit 0
+fi
+
+echo "⏳ Running full test suite (bash, javascript, python, action validation)..."
+npm test
+
+if [ $? -ne 0 ]; then
+  echo "❌ Tests failed. Fix issues before pushing."
+  exit 1
+fi
+
+echo "✅ All tests passed! Safe to push."

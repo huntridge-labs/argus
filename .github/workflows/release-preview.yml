@@ -1,0 +1,216 @@
+name: Release Preview
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+    types: [opened, synchronize, reopened]
+
+jobs:
+  release-preview:
+    name: Release Preview
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-tags: true
+
+      - name: Fetch base branch for comparison
+        run: |
+          git fetch origin ${{ github.event.pull_request.base.ref }}:refs/remotes/origin/${{ github.event.pull_request.base.ref }}
+          git fetch --tags
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Release Preview
+        id: preview
+        run: |
+          # Run release-it dry run to get actual release information
+          echo "Running release-it dry run to generate preview..."
+          npm run release:dry > release_output.txt 2>&1 || echo "Release dry run completed"
+
+          # Extract version information from the "Let's release" line
+          RELEASE_LINE=$(grep "Let's release" release_output.txt || echo "")
+          if [ -n "$RELEASE_LINE" ]; then
+            # Extract versions using more reliable pattern matching
+            CURRENT_VERSION=$(echo "$RELEASE_LINE" | grep -o '([0-9]\+\.[0-9]\+\.[0-9]\+' | tr -d '(' || echo "0.0.0")
+            NEW_VERSION=$(echo "$RELEASE_LINE" | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+)' | sed 's/)//' | tail -1 || echo "unknown")
+          else
+            CURRENT_VERSION="0.0.0"
+            NEW_VERSION="unknown"
+          fi
+
+          # Check if release-it found any conventional commits that would trigger a release
+          RELEASE_WILL_HAPPEN=$(grep -c "Let's release" release_output.txt || echo "0")
+
+          # Debug output
+          echo "DEBUG: Current version: $CURRENT_VERSION"
+          echo "DEBUG: New version: $NEW_VERSION"
+          echo "DEBUG: Release will happen: $RELEASE_WILL_HAPPEN"
+          echo "DEBUG: Condition check: NEW_VERSION='$NEW_VERSION' != 'unknown' && NEW_VERSION='$NEW_VERSION' != CURRENT_VERSION='$CURRENT_VERSION' && RELEASE_WILL_HAPPEN='$RELEASE_WILL_HAPPEN' > 0"
+
+          echo "## 🚀 Release Preview" > preview.md
+          echo "" >> preview.md
+
+          if [ "$NEW_VERSION" != "unknown" ] && [ "$NEW_VERSION" != "$CURRENT_VERSION" ] && [ "$RELEASE_WILL_HAPPEN" -gt 0 ]; then
+            # Version will be bumped
+            echo "### 📦 Version Update" >> preview.md
+            echo "**Current:** \`$CURRENT_VERSION\` → **New:** \`$NEW_VERSION\`" >> preview.md
+            echo "" >> preview.md
+
+            # Extract and format changelog
+            echo "### 📋 Changelog" >> preview.md
+            echo "" >> preview.md
+
+            # Extract changelog section from release output (between "Changelog:" and first "Updating version")
+            sed -n '/^Changelog:/,/^Updating version/p' release_output.txt | sed '1d;$d' | sed 's/^//' > changelog_raw.md
+
+            # Process the changelog to filter/categorize deps commits
+            # Create a temporary changelog file with just the extracted section
+            echo "# Temp Changelog" > temp_changelog.md
+            echo "" >> temp_changelog.md
+            cat changelog_raw.md >> temp_changelog.md
+
+            # Run the post-processing script on the temp changelog
+            node scripts/release-it-process-changelog.js temp_changelog.md
+
+            # Extract the processed changelog (skip the temp header)
+            tail -n +3 temp_changelog.md >> preview.md
+            echo "" >> preview.md
+
+            # Extract file changes that would be made
+            echo "### 📁 Files that would be modified" >> preview.md
+            echo "" >> preview.md
+
+            # Extract list of files being updated from the release output
+            echo "\`\`\`" >> preview.md
+            grep "^Updating version in" release_output.txt | sed 's/Updating version in //' | sed 's/^/- /' >> preview.md
+            echo "\`\`\`" >> preview.md
+
+            # Extract changeset information
+            if grep -q "Changeset:" release_output.txt; then
+              echo "\`\`\`" >> preview.md
+              sed -n '/^Changeset:/,/^🔗/p' release_output.txt | sed '1d;$d' | grep -E "^\s*[MAD]\s" >> preview.md || echo "No file changes detected" >> preview.md
+              echo "\`\`\`" >> preview.md
+            fi
+
+            echo "" >> preview.md
+            echo "### ✅ Actions that would be performed" >> preview.md
+            echo "- 📝 Update CHANGELOG.md with new entries" >> preview.md
+            echo "- 🏷️ Create git tag \`$NEW_VERSION\`" >> preview.md
+            echo "- 📤 Push changes and tag to repository" >> preview.md
+            echo "- 📦 Create GitHub release" >> preview.md
+
+          else
+            # No version bump
+            echo "### ℹ️ No Release Required" >> preview.md
+            echo "" >> preview.md
+            echo "This PR does not contain any conventional commits that would trigger a release." >> preview.md
+            echo "" >> preview.md
+            echo "**Conventional commit types that trigger releases:**" >> preview.md
+            echo "- \`feat:\` → minor version bump" >> preview.md
+            echo "- \`fix:\` → patch version bump" >> preview.md
+            echo "- \`BREAKING CHANGE:\` → major version bump" >> preview.md
+            echo "" >> preview.md
+            echo "**Types that don't trigger releases:** \`docs:\`, \`chore:\`, \`style:\`, \`test:\`, \`ci:\`, \`build:\`, \`refactor:\`, \`perf:\`" >> preview.md
+          fi
+
+          echo "" >> preview.md
+          echo "---" >> preview.md
+          echo "*This preview is generated by running \`release-it --dry-run\`*" >> preview.md
+
+      - name: Upload debug artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-preview-debug
+          path: release_output.txt
+          retention-days: 7
+
+      - name: Comment PR
+        if: success() && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v8
+        continue-on-error: true
+        with:
+          script: |
+            const fs = require('fs');
+
+            console.log('Repository:', context.repo.owner + '/' + context.repo.repo);
+            console.log('Event name:', context.eventName);
+            console.log('PR number:', context.issue?.number);
+
+            try {
+              const previewContent = fs.readFileSync('preview.md', 'utf8');
+
+              // Add hidden marker for identifying our comments
+              const commentBody = `<!-- release-preview-comment-marker -->\n\n${previewContent}`;
+
+              // Check for existing release preview comments to update instead of creating new ones
+              const comments = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number
+              });
+
+              console.log('🔍 Found', comments.data.length, 'existing comments');
+
+              const existingComment = comments.data.find(comment => {
+                const hasMarker = comment.body.includes('release-preview-comment-marker');
+                const isGitHubActions = comment.user.login === 'github-actions[bot]' || comment.user.type === 'Bot';
+                console.log('Comment from', comment.user.login, 'type:', comment.user.type, 'has marker:', hasMarker);
+                return hasMarker && isGitHubActions;
+              });
+
+              if (existingComment) {
+                // Update existing comment with latest information
+                console.log('🔄 Updating existing release preview comment');
+                const timestamp = new Date().toLocaleString();
+                const commitSha = context.sha.substring(0, 8);
+                const updatedBody = commentBody + `\n\n---\n*Last updated: ${timestamp} | Commit: ${commitSha} | [View Run](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})*`;
+
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existingComment.id,
+                  body: updatedBody
+                });
+              } else {
+                // Create new comment
+                console.log('📝 Creating new release preview comment');
+                await github.rest.issues.createComment({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body: commentBody
+                });
+              }
+
+              console.log('✅ Successfully posted/updated release preview comment');
+            } catch (error) {
+              console.log('❌ Failed to post release preview comment:', error.message);
+              console.log('Error status:', error.status);
+
+              if (error.status === 403) {
+                console.log('🔒 Permission denied - check workflow permissions');
+              }
+
+              throw error;
+            }

@@ -1,0 +1,4 @@
+# Gitleaks ignore file - add fingerprints of known false positives here
+# See: https://github.com/gitleaks/gitleaks#gitleaksignore
+#
+# For path-based exclusions, use .gitleaks.toml instead

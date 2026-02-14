@@ -1,0 +1,982 @@
+name: Reusable Security Hardening Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      scanners:
+        description: 'Comma-separated list of scanners to run (codeql, opengrep, bandit, gitleaks, container, infrastructure, trivy-iac, checkov, trivy-container, grype, lint, clamav, sbom, zap, all, sast, secrets, etc.). Note: zap (DAST) is opt-in and is not included in "all" by default.'
+        required: false
+        default: 'all'
+        type: string
+      scan_type:
+        description: '(Deprecated) Legacy scan type selector. Prefer the scanners input.'
+        required: false
+        default: ''
+        type: string
+      python_version:
+        description: 'Python version to use'
+        required: false
+        default: '3.12'
+        type: string
+      aws_region:
+        description: 'AWS region for infrastructure scans'
+        required: false
+        default: 'us-east-1'
+        type: string
+      iac_path:
+        description: 'Directory that contains infrastructure-as-code (Terraform) files'
+        required: false
+        default: 'infrastructure'
+        type: string
+      post_pr_comment:
+        description: 'Whether to post PR comments'
+        required: false
+        default: true
+        type: boolean
+      codeql_languages:
+        description: 'Comma-separated list of languages for CodeQL analysis (e.g., "python,javascript"). Leave empty for auto-detection.'
+        required: false
+        default: ''
+        type: string
+      codeql_config_file:
+        description: 'Path to CodeQL config file. Leave empty to auto-detect project config or generate one.'
+        required: false
+        default: ''
+        type: string
+      codeql_query_suite:
+        description: 'CodeQL query suite to use (security-extended, security-and-quality, or default). Ignored if codeql_config_file is set.'
+        required: false
+        default: 'security-extended,security-and-quality'
+        type: string
+      codeql_scan_paths:
+        description: 'Comma-separated list of paths to scan (empty = scan everything). Ignored if codeql_config_file is set.'
+        required: false
+        default: ''
+        type: string
+      codeql_ignore_paths:
+        description: 'Comma-separated list of paths to ignore. Ignored if codeql_config_file is set.'
+        required: false
+        default: '**/node_modules/**,**/venv/**,**/__pycache__/**'
+        type: string
+      enable_code_security:
+        description: 'Whether GitHub Code Security is enabled for this repository (required for CodeQL scanning)'
+        required: false
+        default: false
+        type: boolean
+      clamav_scan_path:
+        description: 'Path for ClamAV to scan (file, directory, or archive). Defaults to repository root.'
+        required: false
+        default: '.'
+        type: string
+      allow_failure:
+        description: 'Whether to allow the workflow to continue when vulnerabilities are found above the severity threshold. When false, scanners will fail the job if vulnerabilities at or above severity_threshold are detected.'
+        required: false
+        default: true
+        type: boolean
+      severity_threshold:
+        description: 'Minimum severity level that will cause job failure when allow_failure is false. Options: low, medium, high, critical'
+        required: false
+        default: 'high'
+        type: string
+      gitleaks_enable_comments:
+        description: 'Enable GitLeaks inline PR comments (requires GITLEAKS_LICENSE)'
+        required: false
+        default: true
+        type: boolean
+      gitleaks_notify_user_list:
+        description: 'Comma-separated list of GitHub usernames to notify on secret detection (e.g., "@user1,@user2")'
+        required: false
+        default: ''
+        type: string
+      gitleaks_enable_summary:
+        description: 'Enable GitLeaks job summary'
+        required: false
+        default: true
+        type: boolean
+      gitleaks_enable_upload_artifact:
+        description: 'Enable uploading SARIF artifact when secrets are detected'
+        required: false
+        default: true
+        type: boolean
+      gitleaks_config:
+        description: 'Path to a gitleaks configuration file (e.g., "path/to/gitleaks.toml")'
+        required: false
+        default: ''
+        type: string
+
+      zap_scan_mode:
+        description: 'ZAP: how to obtain a running target: url (already running), docker-run (run a single container), compose (run docker compose)'
+        required: false
+        default: 'url'
+        type: string
+      zap_config_file:
+        description: 'ZAP: optional config file (YAML or JSON) to define targets, scan type, and options. When provided, it takes precedence over the other zap_* inputs.'
+        required: false
+        default: ''
+        type: string
+      zap_target_urls:
+        description: 'ZAP: comma-separated list of target URLs (required for baseline/full)'
+        required: false
+        default: ''
+        type: string
+      zap_healthcheck_url:
+        description: 'ZAP: optional URL to poll until ready (defaults to first target URL)'
+        required: false
+        default: ''
+        type: string
+      zap_app_image_ref:
+        description: 'ZAP: when scan_mode=docker-run, container image to start'
+        required: false
+        default: ''
+        type: string
+      zap_app_ports:
+        description: 'ZAP: when scan_mode=docker-run, comma-separated port mappings (e.g., 8080:8080,3000:3000)'
+        required: false
+        default: '8080:8080'
+        type: string
+      zap_compose_file:
+        description: 'ZAP: when scan_mode=compose, path to docker compose file'
+        required: false
+        default: 'docker-compose.yml'
+        type: string
+      zap_scan_type:
+        description: 'ZAP: scan type: baseline (passive), full (active), api (OpenAPI/Swagger)'
+        required: false
+        default: 'baseline'
+        type: string
+      zap_api_spec:
+        description: 'ZAP: when scan_type=api, URL or file path to OpenAPI/Swagger spec'
+        required: false
+        default: ''
+        type: string
+      zap_max_duration_minutes:
+        description: 'ZAP: max minutes per target for ZAP to run'
+        required: false
+        default: 10
+        type: number
+    secrets:
+      AWS_ACCOUNT_ID:
+        description: 'AWS Account ID for infrastructure scans'
+        required: false
+      HARDENING_WORKFLOWS_CHECKOUT_TOKEN:
+        description: 'Token for checking out hardening-workflows repo (required for private GHE servers)'
+        required: false
+      GITLEAKS_LICENSE:
+        description: 'License key for GitLeaks scans within a Github Organization. Obtain from https://gitleaks.io'
+        required: false
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  pull-requests: write
+  checks: write
+  id-token: write
+
+env:
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  AWS_REGION: ${{ inputs.aws_region }}
+  PYTHON_VERSION: ${{ inputs.python_version }}
+
+jobs:
+  scan-coordinator:
+    name: Scan Coordinator
+    runs-on: ubuntu-latest
+    if: ${{ !cancelled() }}
+    outputs:
+      selected_scanners: ${{ steps.resolve.outputs.selected_scanners }}
+      selected_scanners_json: ${{ steps.resolve.outputs.selected_scanners_json }}
+      run_codeql: ${{ steps.resolve.outputs.run_codeql }}
+      run_opengrep: ${{ steps.resolve.outputs.run_opengrep }}
+      run_bandit: ${{ steps.resolve.outputs.run_bandit }}
+      run_gitleaks: ${{ steps.resolve.outputs.run_gitleaks }}
+      run_container: ${{ steps.resolve.outputs.run_container }}
+      run_infrastructure: ${{ steps.resolve.outputs.run_infrastructure }}
+      run_sbom: ${{ steps.resolve.outputs.run_sbom }}
+      run_trivy_iac: ${{ steps.resolve.outputs.run_trivy_iac }}
+      run_checkov: ${{ steps.resolve.outputs.run_checkov }}
+      run_trivy_container: ${{ steps.resolve.outputs.run_trivy_container }}
+      run_grype: ${{ steps.resolve.outputs.run_grype }}
+      run_lint: ${{ steps.resolve.outputs.run_lint }}
+      run_clamav: ${{ steps.resolve.outputs.run_clamav }}
+      run_zap: ${{ steps.resolve.outputs.run_zap }}
+      run_any: ${{ steps.resolve.outputs.run_any }}
+
+    steps:
+    - name: Resolve scanner selection
+      id: resolve
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        declare -A RUN=(
+          [codeql]=false
+          [opengrep]=false
+          [bandit]=false
+          [gitleaks]=false
+          [container]=false
+          [infrastructure]=false
+          [trivy-iac]=false
+          [checkov]=false
+          [trivy-container]=false
+          [grype]=false
+          [lint]=false
+          [clamav]=false
+          [sbom]=false
+          [zap]=false
+        )
+
+        DEFAULT_SCANNERS=(codeql opengrep bandit gitleaks container infrastructure sbom)
+        SELECTED=()
+
+        normalize() {
+          echo "$1" | tr '[:upper:]' '[:lower:]' | tr -d ' \t' | tr '_' '-'
+        }
+
+        add_scanner() {
+          local key="$1"
+          if [[ -z "${RUN[$key]+_}" ]]; then
+            echo "::notice title=Unknown scanner token::Scanner '$key' is not recognized and will be ignored."
+            return
+          fi
+          if [[ "${RUN[$key]}" != "true" ]]; then
+            RUN[$key]=true
+            SELECTED+=("$key")
+          fi
+        }
+
+        reset_selection() {
+          SELECTED=()
+          for key in "${!RUN[@]}"; do
+            RUN[$key]=false
+          done
+        }
+
+        apply_token() {
+          local token="$1"
+          case "$token" in
+            '' ) ;;
+            all|full)
+              # Enable all scanners EXCEPT standalone IaC/container scanners
+              # since they duplicate what the aggregate scanners already run:
+              # - container auto-discovers Dockerfiles and scans them
+              # - infrastructure runs trivy-iac + checkov together
+              # - zap is opt-in since it requires an application target
+              local -a exclude=(trivy-iac checkov sbom trivy-container grype zap)
+              for key in "${!RUN[@]}"; do
+                if [[ ! " ${exclude[*]} " =~ " ${key} " ]]; then
+                  add_scanner "$key"
+                fi
+              done
+              ;;
+            sast|sast-only)
+              for key in codeql opengrep bandit gitleaks; do add_scanner "$key"; done
+              ;;
+            secrets|secrets-only)
+              add_scanner gitleaks
+              ;;
+            codeql|code-ql)
+              add_scanner codeql
+              ;;
+            semgrep|opengrep|open-grep)
+              add_scanner opengrep
+              ;;
+            bandit)
+              add_scanner bandit
+              ;;
+            gitleaks|git-leaks)
+              add_scanner gitleaks
+              ;;
+            container|containers|container-scan|docker)
+              add_scanner container
+              ;;
+            infrastructure|infra|iac|terraform)
+              add_scanner infrastructure
+              ;;
+            sbom)
+              add_scanner sbom
+              ;;
+            trivy-iac|trivyiac)
+              add_scanner trivy-iac
+              ;;
+            checkov)
+              add_scanner checkov
+              ;;
+            trivy-container|trivycontainer)
+              add_scanner trivy-container
+              ;;
+            grype)
+              add_scanner grype
+              ;;
+            lint|linting|code-quality)
+              add_scanner lint
+              ;;
+            clamav|malware|antivirus)
+              add_scanner clamav
+              ;;
+            zap|dast)
+              add_scanner zap
+              ;;
+            none|off)
+              reset_selection
+              ;;
+            *)
+              echo "::notice title=Unknown scanner token::Value '$token' is not recognized and will be ignored."
+              ;;
+          esac
+        }
+
+        SCANNERS_RAW="${{ inputs.scanners }}"
+        SCAN_TYPE_RAW="$(normalize "${{ inputs.scan_type }}")"
+
+        if [[ -z "$SCANNERS_RAW" || "$SCANNERS_RAW" == "default" ]]; then
+          case "$SCAN_TYPE_RAW" in
+            codeql-only)
+              SCANNERS_RAW='codeql'
+              ;;
+            sast-only)
+              SCANNERS_RAW='sast'
+              ;;
+            container-only)
+              SCANNERS_RAW='container'
+              ;;
+            infrastructure-only)
+              SCANNERS_RAW='infrastructure'
+              ;;
+            full|'')
+              SCANNERS_RAW='all'
+              ;;
+            *)
+              echo "::notice title=Unknown legacy scan type::Scan type '$SCAN_TYPE_RAW' not recognized. Falling back to 'all'."
+              SCANNERS_RAW='all'
+              ;;
+          esac
+        fi
+
+        IFS=',' read -ra TOKENS <<< "$SCANNERS_RAW"
+        for raw in "${TOKENS[@]}"; do
+          apply_token "$(normalize "$raw")"
+        done
+
+        if [[ ${#SELECTED[@]} -eq 0 ]]; then
+          for key in "${DEFAULT_SCANNERS[@]}"; do add_scanner "$key"; done
+        fi
+
+        RUN_ANY=false
+        for key in "${!RUN[@]}"; do
+          if [[ "${RUN[$key]}" == "true" ]]; then
+            RUN_ANY=true
+          fi
+          # Convert hyphens to underscores for output variable names (e.g., trivy-iac -> trivy_iac)
+          output_key="${key//-/_}"
+          echo "run_${output_key}=${RUN[$key]}" >> "$GITHUB_OUTPUT"
+        done
+
+        if [[ "$RUN_ANY" == "false" ]]; then
+          echo "::warning title=No scanners selected::No scanners were selected. The workflow will execute the summary only."
+        fi
+
+        # Check GitHub Code Security integration
+        ENABLE_CODE_SECURITY="${{ inputs.enable_code_security }}"
+        if [[ "${RUN[codeql]}" == "true" && "$ENABLE_CODE_SECURITY" != "true" ]]; then
+          echo "::warning title=CodeQL Disabled::GitHub Code Security is not enabled for this repository. CodeQL scanning will be skipped."
+          RUN[codeql]=false
+          # Remove codeql from SELECTED array
+          SELECTED=("${SELECTED[@]/codeql}")
+        fi
+
+        echo "run_any=$RUN_ANY" >> "$GITHUB_OUTPUT"
+
+        SELECTED_STR=$(IFS=','; echo "${SELECTED[*]}")
+        if [[ -z "$SELECTED_STR" ]]; then
+          SELECTED_STR=""
+        fi
+
+        if [[ ${#SELECTED[@]} -eq 0 ]]; then
+          SELECTED_JSON='[]'
+        else
+          SELECTED_JSON='['
+          for item in "${SELECTED[@]}"; do
+            SELECTED_JSON+="\"$item\","
+          done
+          SELECTED_JSON="${SELECTED_JSON%,}]"
+        fi
+
+        echo "selected_scanners=$SELECTED_STR" >> "$GITHUB_OUTPUT"
+        echo "selected_scanners_json=$SELECTED_JSON" >> "$GITHUB_OUTPUT"
+
+        echo ""
+        echo "� Resolved scanners: ${SELECTED_STR:-none}"
+        echo "📌 Legacy scan_type input: ${SCAN_TYPE_RAW:-'<not provided>'}"
+
+  code-quality-linting:
+    name: Code Quality & Linting
+    needs: scan-coordinator
+    if: needs.scan-coordinator.outputs.run_lint == 'true'
+    uses: huntridge-labs/argus/.github/workflows/linting.yml@main
+    with:
+      post_pr_comment: false
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+      checks: write
+    secrets: inherit
+
+  scanner-codeql:
+    name: CodeQL Scanner
+    needs: scan-coordinator
+    if: needs.scan-coordinator.outputs.run_codeql == 'true'
+    uses: huntridge-labs/argus/.github/workflows/scanner-codeql.yml@main
+    with:
+      codeql_languages: ${{ inputs.codeql_languages }}
+      config_file: ${{ inputs.codeql_config_file }}
+      post_pr_comment: false
+      enable_code_security: ${{ inputs.enable_code_security }}
+      fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+    secrets: inherit
+
+  scanner-opengrep:
+    name: OpenGrep Scanner
+    needs: scan-coordinator
+    if: needs.scan-coordinator.outputs.run_opengrep == 'true'
+    uses: huntridge-labs/argus/.github/workflows/scanner-opengrep.yml@main
+    with:
+      post_pr_comment: false
+      enable_code_security: ${{ inputs.enable_code_security }}
+      fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+    secrets: inherit
+
+  scanner-bandit:
+    name: Bandit Scanner
+    needs: scan-coordinator
+    if: needs.scan-coordinator.outputs.run_bandit == 'true'
+    uses: huntridge-labs/argus/.github/workflows/scanner-bandit.yml@main
+    with:
+      post_pr_comment: false
+      enable_code_security: ${{ inputs.enable_code_security }}
+      fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+    secrets: inherit
+
+  scanner-gitleaks:
+    name: Gitleaks Scanner
+    needs: scan-coordinator
+    if: needs.scan-coordinator.outputs.run_gitleaks == 'true'
+    uses: huntridge-labs/argus/.github/workflows/scanner-gitleaks.yml@main
+    with:
+      post_pr_comment: false
+      enable_code_security: ${{ inputs.enable_code_security }}
+      fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
+      gitleaks_enable_comments: ${{ inputs.gitleaks_enable_comments }}
+      gitleaks_notify_user_list: ${{ inputs.gitleaks_notify_user_list }}
+      gitleaks_enable_summary: ${{ inputs.gitleaks_enable_summary }}
+      gitleaks_enable_upload_artifact: ${{ inputs.gitleaks_enable_upload_artifact }}
+      gitleaks_config: ${{ inputs.gitleaks_config }}
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+    secrets:
+      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  scanner-clamav:
+    name: ClamAV Scanner
+    needs: scan-coordinator
+    if: needs.scan-coordinator.outputs.run_clamav == 'true'
+    uses: huntridge-labs/argus/.github/workflows/scanner-clamav.yml@main
+    with:
+      post_pr_comment: false
+      enable_code_security: ${{ inputs.enable_code_security }}
+      scan_path: ${{ inputs.clamav_scan_path }}
+      fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+    secrets: inherit
+
+  scanner-container:
+    name: Container Scanner
+    needs: scan-coordinator
+    if: needs.scan-coordinator.outputs.run_container == 'true'
+    uses: huntridge-labs/argus/.github/workflows/container-scan.yml@main
+    with:
+      # Disable individual container PR comments - security-summary job provides comprehensive reporting
+      post_pr_comment: false
+      enable_code_security: ${{ inputs.enable_code_security }}
+      fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      packages: read
+      pull-requests: write
+    secrets: inherit
+
+  scanner-infrastructure:
+    name: Infrastructure Scanner
+    needs: scan-coordinator
+    if: needs.scan-coordinator.outputs.run_infrastructure == 'true'
+    uses: huntridge-labs/argus/.github/workflows/infrastructure-scan.yml@main
+    with:
+      iac_path: ${{ inputs.iac_path }}
+      post_pr_comment: false
+      enable_code_security: ${{ inputs.enable_code_security }}
+      fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+    secrets: inherit
+
+  scanner-sbom:
+    name: SBOM Generator
+    needs: scan-coordinator
+    if: needs.scan-coordinator.outputs.run_sbom == 'true'
+    uses: huntridge-labs/argus/.github/workflows/scanner-syft.yml@main
+    with:
+      enable_code_security: ${{ inputs.enable_code_security }}
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      packages: read
+      pull-requests: write
+    secrets: inherit
+
+  scanner-trivy-iac:
+    name: Trivy IaC Scanner
+    needs: scan-coordinator
+    if: needs.scan-coordinator.outputs.run_trivy_iac == 'true'
+    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-iac.yml@main
+    with:
+      iac_path: ${{ inputs.iac_path }}
+      post_pr_comment: false
+      enable_code_security: ${{ inputs.enable_code_security }}
+      fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+    secrets: inherit
+
+  scanner-checkov:
+    name: Checkov Scanner
+    needs: scan-coordinator
+    if: needs.scan-coordinator.outputs.run_checkov == 'true'
+    uses: huntridge-labs/argus/.github/workflows/scanner-checkov.yml@main
+    with:
+      iac_path: ${{ inputs.iac_path }}
+      post_pr_comment: false
+      enable_code_security: ${{ inputs.enable_code_security }}
+      fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+    secrets: inherit
+
+  scanner-trivy-container:
+    name: Trivy Container Scanner
+    needs: scan-coordinator
+    if: needs.scan-coordinator.outputs.run_trivy_container == 'true'
+    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-container.yml@main
+    with:
+      image_ref: 'nginx:latest'
+      post_pr_comment: false
+      enable_code_security: ${{ inputs.enable_code_security }}
+      fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      packages: read
+      pull-requests: write
+    secrets: inherit
+
+  scanner-grype:
+    name: Grype Scanner
+    needs: scan-coordinator
+    if: needs.scan-coordinator.outputs.run_grype == 'true'
+    uses: huntridge-labs/argus/.github/workflows/scanner-grype.yml@main
+    with:
+      image_ref: 'nginx:latest'
+      post_pr_comment: false
+      enable_code_security: ${{ inputs.enable_code_security }}
+      fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      packages: read
+      pull-requests: write
+    secrets: inherit
+
+  scanner-zap:
+    name: ZAP (DAST) Scanner
+    needs: scan-coordinator
+    if: needs.scan-coordinator.outputs.run_zap == 'true'
+    uses: huntridge-labs/argus/.github/workflows/scanner-zap.yml@main
+    with:
+      scan_mode: ${{ inputs.zap_scan_mode }}
+      scan_type: ${{ inputs.zap_scan_type }}
+      target_url: ${{ inputs.zap_target_urls }}
+      api_spec: ${{ inputs.zap_api_spec }}
+      healthcheck_url: ${{ inputs.zap_healthcheck_url }}
+      app_image_ref: ${{ inputs.zap_app_image_ref }}
+      app_ports: ${{ inputs.zap_app_ports }}
+      compose_file: ${{ inputs.zap_compose_file }}
+      max_duration_minutes: ${{ inputs.zap_max_duration_minutes }}
+      fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
+      post_pr_comment: false
+    permissions:
+      contents: read
+      actions: read
+      packages: read
+      pull-requests: write
+    secrets: inherit
+
+  security-summary:
+    name: Security Hardening Summary
+    runs-on: ubuntu-latest
+    needs:
+      - scan-coordinator
+      - code-quality-linting
+      - scanner-codeql
+      - scanner-opengrep
+      - scanner-bandit
+      - scanner-gitleaks
+      - scanner-clamav
+      - scanner-container
+      - scanner-infrastructure
+      - scanner-sbom
+      - scanner-trivy-iac
+      - scanner-checkov
+      - scanner-trivy-container
+      - scanner-grype
+      - scanner-zap
+    if: always()
+
+    steps:
+    - name: Download CodeQL artifacts
+      if: needs.scan-coordinator.outputs.run_codeql == 'true'
+      uses: actions/download-artifact@v7
+      with:
+        pattern: codeql-*
+      continue-on-error: true
+
+    - name: Download OpenGrep artifacts
+      if: needs.scan-coordinator.outputs.run_opengrep == 'true'
+      uses: actions/download-artifact@v7
+      with:
+        pattern: opengrep-*
+      continue-on-error: true
+
+    - name: Download Bandit artifacts
+      if: needs.scan-coordinator.outputs.run_bandit == 'true'
+      uses: actions/download-artifact@v7
+      with:
+        pattern: bandit-*
+      continue-on-error: true
+
+    - name: Download GitLeaks artifacts
+      if: needs.scan-coordinator.outputs.run_gitleaks == 'true'
+      uses: actions/download-artifact@v7
+      with:
+        pattern: gitleaks-*
+      continue-on-error: true
+
+    - name: Download ClamAV artifacts
+      if: needs.scan-coordinator.outputs.run_clamav == 'true'
+      uses: actions/download-artifact@v7
+      with:
+        pattern: clamav-*
+      continue-on-error: true
+
+    - name: Download Container artifacts
+      if: needs.scan-coordinator.outputs.run_container == 'true'
+      uses: actions/download-artifact@v7
+      with:
+        pattern: container-*
+      continue-on-error: true
+
+    - name: Download Infrastructure artifacts
+      if: needs.scan-coordinator.outputs.run_infrastructure == 'true'
+      uses: actions/download-artifact@v7
+      with:
+        pattern: infrastructure-*
+      continue-on-error: true
+
+    - name: Download Trivy IaC artifacts
+      if: needs.scan-coordinator.outputs.run_trivy_iac == 'true'
+      uses: actions/download-artifact@v7
+      with:
+        pattern: trivy-iac-*
+      continue-on-error: true
+
+    - name: Download Checkov artifacts
+      if: needs.scan-coordinator.outputs.run_checkov == 'true'
+      uses: actions/download-artifact@v7
+      with:
+        pattern: checkov-*
+      continue-on-error: true
+
+    - name: Download Trivy Container artifacts
+      if: needs.scan-coordinator.outputs.run_trivy_container == 'true'
+      uses: actions/download-artifact@v7
+      with:
+        pattern: trivy-container-*
+      continue-on-error: true
+
+    - name: Download Grype artifacts
+      if: needs.scan-coordinator.outputs.run_grype == 'true'
+      uses: actions/download-artifact@v7
+      with:
+        pattern: grype-*
+      continue-on-error: true
+
+    - name: Download ZAP artifacts
+      if: needs.scan-coordinator.outputs.run_zap == 'true'
+      uses: actions/download-artifact@v7
+      with:
+        pattern: zap-reports-*
+      continue-on-error: true
+
+    - name: Download Linting artifacts
+      if: needs.scan-coordinator.outputs.run_lint == 'true'
+      uses: actions/download-artifact@v7
+      with:
+        pattern: '*lint*'
+      continue-on-error: true
+
+    - name: Download SBOM artifacts
+      if: needs.scan-coordinator.outputs.run_sbom == 'true'
+      uses: actions/download-artifact@v7
+      with:
+        pattern: sbom-*
+      continue-on-error: true
+
+    - name: Download all scanner summaries
+      uses: actions/download-artifact@v7
+      with:
+        pattern: scanner-summary-*
+        merge-multiple: true
+      continue-on-error: true
+
+    - name: Copy scanner summaries to expected locations
+      shell: bash
+      run: |
+        echo "📁 Copying scanner summaries to root level..."
+
+        # Check all possible locations where summaries might be
+        # Includes scanner-summary-* (most scanners) and container-scan-summary (container scanner)
+        for dir in scanner-summaries scanner-summary-* container-scan-summary; do
+          if [ -d "$dir" ]; then
+            echo "  Found directory: $dir"
+            # Handle nested scanner-summaries directory
+            if [ -d "$dir/scanner-summaries" ]; then
+              for md_file in "$dir/scanner-summaries"/*.md; do
+                if [ -f "$md_file" ]; then
+                  filename=$(basename "$md_file")
+                  cp "$md_file" "./$filename"
+                  echo "    ✅ Copied $md_file -> ./$filename"
+                fi
+              done
+            fi
+            # Handle direct md files
+            for md_file in "$dir"/*.md; do
+              if [ -f "$md_file" ]; then
+                filename=$(basename "$md_file")
+                cp "$md_file" "./$filename"
+                echo "    ✅ Copied $md_file -> ./$filename"
+              fi
+            done
+          fi
+        done
+
+        echo ""
+        echo "📄 Scanner summaries at root level:"
+        ls -la *.md 2>/dev/null || echo "  (none found)"
+      continue-on-error: true
+
+    - name: Combine scanner summaries into security report
+      run: |
+        echo "**Repository:** ${{ github.repository }}" >> security-hardening-report.md
+        echo "**Branch:** ${{ github.ref_name }}" >> security-hardening-report.md
+        echo "**Generated:** $(date)" >> security-hardening-report.md
+        echo "" >> security-hardening-report.md
+
+        echo "📦 Checking for scanner summaries..."
+        ls -la . 2>/dev/null || true
+        echo ""
+        echo "📄 Looking for scanner summary files..."
+        find . -name "*.md" -type f 2>/dev/null || true
+        echo ""
+
+        # Combine all scanner summaries in a specific order
+        for scanner in codeql opengrep bandit gitleaks clamav container infrastructure zap sbom trivy-iac checkov trivy-container grype; do
+          if [ -f "${scanner}.md" ]; then
+            echo "✅ Adding ${scanner} summary..."
+            cat "${scanner}.md" >> security-hardening-report.md
+          else
+            echo "⏭️  No ${scanner}.md summary found"
+          fi
+        done
+      continue-on-error: true
+
+    - name: Generate overall summary
+      run: |
+        echo "## 📊 Overall Security Score" >> security-hardening-report.md
+        echo "" >> security-hardening-report.md
+
+        # Calculate total issues across all scanners
+        TOTAL_ISSUES=0
+        if command -v jq >/dev/null 2>&1; then
+          # Count SARIF issues
+          for sarif_file in $(find . -name "*.sarif" -type f 2>/dev/null); do
+            if [ -f "$sarif_file" ] && [ -s "$sarif_file" ]; then
+              issues=$(jq -r '.runs[]?.results[]? | .ruleId' "$sarif_file" 2>/dev/null | wc -l | tr -d ' ')
+              TOTAL_ISSUES=$((TOTAL_ISSUES + issues))
+            fi
+          done
+
+          # Count OpenGrep JSON issues
+          for json_file in $(find ./opengrep-reports -name "*.json" -type f 2>/dev/null); do
+            if [ -f "$json_file" ] && [ -s "$json_file" ]; then
+              issues=$(jq -r '.results[]? | .check_id' "$json_file" 2>/dev/null | wc -l | tr -d ' ')
+              TOTAL_ISSUES=$((TOTAL_ISSUES + issues))
+            fi
+          done
+        fi
+
+        echo "**Total Issues Found:** $TOTAL_ISSUES" >> security-hardening-report.md
+        echo "" >> security-hardening-report.md
+
+        if [ "$TOTAL_ISSUES" -eq 0 ]; then
+          echo "✅ **Excellent!** No security issues detected." >> security-hardening-report.md
+        elif [ "$TOTAL_ISSUES" -lt 5 ]; then
+          echo "🟡 **Good** - Few issues found, review recommended." >> security-hardening-report.md
+        else
+          echo "🔴 **Attention Required** - Multiple security issues found." >> security-hardening-report.md
+        fi
+
+        echo "" >> security-hardening-report.md
+        echo "## 📋 Next Steps" >> security-hardening-report.md
+        echo "1. Review the detailed scanner results in the collapsible sections above" >> security-hardening-report.md
+        echo "2. Download and review security reports from workflow artifacts" >> security-hardening-report.md
+        echo "3. Address any critical or high-severity findings" >> security-hardening-report.md
+        echo "4. Consider enabling automated dependency updates" >> security-hardening-report.md
+
+    - name: Get job ID
+      id: job_id
+      uses: huntridge-labs/argus/.github/actions/get-job-id@main
+      with:
+        job-name-string: 'Security Hardening Summary'
+        fallback-suffix: 'security-hardening-report'
+
+    - name: Upload comprehensive security report
+      uses: actions/upload-artifact@v6
+      with:
+        name: security-hardening-report-${{ steps.job_id.outputs.job-id }}
+        path: security-hardening-report.md
+        retention-days: 30
+
+    - name: Comment PR with security summary
+      if: github.event_name == 'pull_request' && (inputs.post_pr_comment == true || inputs.post_pr_comment == null)
+      uses: actions/github-script@v8
+      continue-on-error: true
+      with:
+        script: |
+          const fs = require('fs');
+
+          console.log('Repository:', context.repo.owner + '/' + context.repo.repo);
+          console.log('Event name:', context.eventName);
+          console.log('PR number:', context.issue?.number);
+
+          try {
+            const report = fs.readFileSync('security-hardening-report.md', 'utf8');
+            console.log('security-hardening-report.md read successfully, length:', report.length);
+            // GitHub PR comment limit is 262,144 bytes (65,536 4-byte unicode chars)
+            const MAX_COMMENT_LENGTH = 262000;
+            const summary = report.length > MAX_COMMENT_LENGTH ?
+              report.substring(0, MAX_COMMENT_LENGTH) + '\n\n... (report truncated, download full report from artifacts)' :
+              report;
+
+            const commentBody = `## 🛡️ Security Hardening Pipeline Results\n\n<!-- security-hardening-comment-marker -->\n\n${summary}`;
+
+            // Check for existing security hardening comments to update instead of creating new ones
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+
+            console.log('🔍 Found', comments.data.length, 'existing comments');
+
+            const existingComment = comments.data.find(comment => {
+              const hasMarker = comment.body.includes('security-hardening-comment-marker');
+              const isGitHubActions = comment.user.login === 'github-actions[bot]' || comment.user.type === 'Bot';
+              console.log('Comment from', comment.user.login, 'type:', comment.user.type, 'has marker:', hasMarker);
+              return hasMarker && isGitHubActions;
+            });
+
+            if (existingComment) {
+              // Update existing comment with latest information
+              console.log('🔄 Updating existing security hardening comment');
+              const timestamp = new Date().toLocaleString();
+              const commitSha = context.sha.substring(0, 8);
+              const updatedBody = commentBody + `\n\n---\n*Last updated: ${timestamp} | Commit: ${commitSha} | [View Run](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})*`;
+
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: updatedBody
+              });
+            } else {
+              // Create new comment
+              console.log('📝 Creating new security hardening comment');
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: commentBody
+              });
+            }
+
+            console.log('✅ Successfully posted/updated security hardening summary comment');
+          } catch (error) {
+            console.log('❌ Failed to post security summary comment:', error.message);
+            console.log('Error status:', error.status);
+
+            if (error.status === 403) {
+              console.log('🔒 Permission denied - this can happen when:');
+              console.log('   • Running on a fork (security restriction)');
+              console.log('   • Missing pull-requests: write permission');
+              console.log('   • Repository settings restrict PR comments');
+            } else if (error.status === 404) {
+              console.log('🔍 Resource not found - check if PR exists');
+            }
+
+            console.log('📋 Security hardening report is still available in workflow artifacts');
+          }

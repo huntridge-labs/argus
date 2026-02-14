@@ -1,0 +1,146 @@
+# Complete Security Scanning for GitHub Enterprise Server
+#
+# This workflow runs all available security scanners using composite actions.
+# Copy this file to your repository's .github/workflows/ directory.
+#
+# For air-gapped GHES instances, update action references to your internal mirror:
+#   huntridge-labs/hardening-workflows -> your-org/hardening-workflows
+
+name: Security Scan (All Scanners)
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+  schedule:
+    - cron: '0 6 * * 1' # Weekly Monday 6 AM UTC
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  # ============================================
+  # SAST Scanners (Static Application Security Testing)
+  # ============================================
+  sast-scanning:
+    name: SAST Scanners
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run Bandit (Python)
+        uses: huntridge-labs/argus/.github/actions/scanner-bandit@v2.12.0
+        with:
+          post_pr_comment: 'true'
+          enable_code_security: 'true'
+          fail_on_severity: 'high'
+
+      - name: Run OpenGrep
+        uses: huntridge-labs/argus/.github/actions/scanner-opengrep@v2.12.0
+        with:
+          enable_code_security: 'true'
+          fail_on_severity: 'high'
+
+      - name: Run Gitleaks (Secrets Detection)
+        uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@v2.12.0
+        env:
+          # Optional: For organizations, add your license
+          # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          post_pr_comment: 'true'
+          enable_code_security: 'true'
+          fail_on_severity: 'high'
+
+  # ============================================
+  # Infrastructure as Code Scanning
+  # ============================================
+  infrastructure-scanning:
+    name: Infrastructure Scanners
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run Trivy IaC
+        uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@v2.12.0
+        with:
+          iac_path: 'infrastructure' # Adjust to your IaC directory
+          post_pr_comment: 'true'
+          enable_code_security: 'true'
+          fail_on_severity: 'high'
+
+      - name: Run Checkov
+        uses: huntridge-labs/argus/.github/actions/scanner-checkov@v2.12.0
+        with:
+          iac_path: 'infrastructure' # Adjust to your IaC directory
+          framework: 'terraform'     # Options: terraform, cloudformation, kubernetes, etc.
+          enable_code_security: 'true'
+          fail_on_severity: 'high'
+
+  # ============================================
+  # Malware Detection
+  # ============================================
+  malware-scanning:
+    name: Malware Scanner
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run ClamAV
+        uses: huntridge-labs/argus/.github/actions/scanner-clamav@v2.12.0
+        with:
+          scan_path: '.'
+          fail_on_severity: 'high' # Fail if malware detected
+
+  # ============================================
+  # SBOM Generation
+  # ============================================
+  sbom-generation:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Generate SBOM
+        uses: huntridge-labs/argus/.github/actions/scanner-syft@v2.12.0
+        with:
+          scan_path: '.'
+          output_format: 'cyclonedx-json'
+          enable_code_security: 'true'
+
+  # ============================================
+  # Security Summary
+  # ============================================
+  security-summary:
+    name: Security Summary
+    runs-on: ubuntu-latest
+    needs:
+      - sast-scanning
+      - infrastructure-scanning
+      - malware-scanning
+      - sbom-generation
+    if: always()
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Download all scanner summaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: scanner-summary-*
+          path: scanner-summaries/
+        continue-on-error: true
+
+      - name: Generate combined summary
+        uses: huntridge-labs/argus/.github/actions/security-summary@v2.12.0
+        with:
+          post_pr_comment: 'true'
+        continue-on-error: true

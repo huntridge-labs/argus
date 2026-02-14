@@ -1,0 +1,128 @@
+name: 'Parse ZAP Config'
+description: |
+  Parses a ZAP DAST config file (YAML/JSON/JS) and outputs a GitHub Actions matrix.
+  Use this action to drive multi-scan workflows with scan-mode and scan-type support.
+
+  The output matrix can be used with strategy.matrix in a subsequent job.
+  Each matrix entry includes registry_auth_secret and auth_header_secret fields which
+  are secret NAMES to be resolved by the caller workflow.
+
+  Example usage:
+    jobs:
+      parse:
+        runs-on: ubuntu-latest
+        outputs:
+          matrix: (( steps.parse.outputs.matrix ))
+          has_scans: (( steps.parse.outputs.has_scans ))
+        steps:
+          - uses: actions/checkout@v6
+          - uses: huntridge-labs/argus/.github/actions/parse-zap-config@v3
+            id: parse
+            with:
+              config_file: .zap/config.yml
+
+      zap:
+        needs: parse
+        if: needs.parse.outputs.has_scans == 'true'
+        strategy:
+          matrix: (( fromJson(needs.parse.outputs.matrix) ))
+        runs-on: ubuntu-latest
+        steps:
+          - uses: huntridge-labs/argus/.github/actions/scanner-zap@v3
+            with:
+              scan_name: (( matrix.name ))
+              scan_type: (( matrix.scan_type ))
+              scan_mode: (( matrix.mode ))
+              target_url: (( matrix.target_url ))
+              api_spec: (( matrix.api_spec ))
+              registry_username: (( matrix.registry_username ))
+              registry_password: (( secrets[matrix.registry_auth_secret] ))
+
+  Note: (( )) shown above represents template syntax - use actual GitHub expressions in your workflow.
+
+inputs:
+  config_file:
+    description: 'Path to the ZAP config file (YAML, JSON, or JS)'
+    required: true
+    default: '.zap/config.yml'
+
+outputs:
+  matrix:
+    description: 'JSON matrix for use with strategy.matrix (scan entries)'
+    value: ${{ steps.parse.outputs.matrix }}
+  groups:
+    description: 'JSON list of groups with name/description/mode'
+    value: ${{ steps.parse.outputs.groups }}
+  group_count:
+    description: 'Number of scan groups'
+    value: ${{ steps.parse.outputs.group_count }}
+  has_scans:
+    description: 'Whether any scans were found in the config (true/false)'
+    value: ${{ steps.parse.outputs.has_scans }}
+  scan_count:
+    description: 'Total number of scans in the config'
+    value: ${{ steps.parse.outputs.total_scan_count }}
+  post_pr_comment:
+    description: 'Whether any scan has post_pr_comment enabled'
+    value: ${{ steps.parse.outputs.post_pr_comment }}
+  enable_code_security:
+    description: 'Whether to upload SARIF to GitHub Security tab'
+    value: ${{ steps.parse.outputs.enable_code_security }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.13'
+
+    - name: Install dependencies
+      shell: bash
+      run: pip install -q pyyaml
+
+    - name: Parse ZAP config
+      id: parse
+      shell: bash
+      env:
+        CONFIG_FILE: ${{ inputs.config_file }}
+        SCHEMA_FILE: ${{ github.action_path }}/schemas/zap-config.schema.json
+      run: |
+        set -euo pipefail
+
+        echo "::group::Parsing ZAP config"
+        echo "Config file: $CONFIG_FILE"
+        echo "Schema file: $SCHEMA_FILE"
+
+        if [ ! -f "$CONFIG_FILE" ]; then
+          echo "::error::Config file not found: $CONFIG_FILE"
+          exit 1
+        fi
+
+        if [ ! -f "$SCHEMA_FILE" ]; then
+          echo "::error::Schema file not found: $SCHEMA_FILE"
+          exit 1
+        fi
+
+        python3 "${{ github.action_path }}/scripts/parse_zap_config.py"
+        PARSE_EXIT_CODE=$?
+
+        echo "::endgroup::"
+
+        if [ $PARSE_EXIT_CODE -ne 0 ]; then
+          echo "::error::Failed to parse ZAP config"
+          exit $PARSE_EXIT_CODE
+        fi
+
+        # Ensure has_scans + total_scan_count outputs exist
+        MATRIX=$(grep "^matrix=" "$GITHUB_OUTPUT" | cut -d= -f2- || true)
+        if [ -n "$MATRIX" ] && [ "$MATRIX" != "{}" ] && [ "$MATRIX" != '{"include":[]}' ]; then
+          COUNT=$(python3 -c "import json; print(len(json.loads('$MATRIX')['include']))")
+          echo "has_scans=true" >> "$GITHUB_OUTPUT"
+          echo "total_scan_count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "✅ Found $COUNT scan(s) to run"
+        else
+          echo "has_scans=false" >> "$GITHUB_OUTPUT"
+          echo "total_scan_count=0" >> "$GITHUB_OUTPUT"
+          echo "⚠️ No scans found in config"
+        fi

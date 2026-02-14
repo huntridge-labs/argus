@@ -1,0 +1,22 @@
+---
+# Invalid ZAP configuration for negative testing
+
+target:
+  # ERROR: Missing required name field
+  base_url: "http://localhost:3000"
+
+scans:
+  - name: "invalid-scan"
+    # ERROR: Missing required type field
+    mode: "url"
+    url: "http://localhost:3000"
+
+  - name: "invalid-mode"
+    type: "baseline"
+    mode: "invalid-mode"  # ERROR: invalid mode value
+
+  - name: "missing-docker-config"
+    type: "api"
+    mode: "docker-run"
+    # ERROR: docker config required for docker-run mode
+    url: "http://localhost:3000"

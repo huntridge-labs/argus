@@ -1,0 +1,59 @@
+# Trivy IaC Scanner - Reusable Workflow
+#
+# THIN WRAPPER: This workflow delegates to the scanner-trivy-iac composite action.
+# All scanning logic is in: .github/actions/scanner-trivy-iac/action.yml
+#
+# For GHES users: Use the composite action directly instead of this workflow.
+# See: examples/github-enterprise/infrastructure-scanning.yml
+
+name: Trivy IaC Scanner
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      iac_path:
+        description: 'Relative path to the infrastructure-as-code directory to scan'
+        required: false
+        type: string
+        default: 'infrastructure'
+      enable_code_security:
+        description: 'Whether GitHub Code Security is enabled for this repository'
+        required: false
+        type: boolean
+        default: false
+      post_pr_comment:
+        description: 'Whether to post PR comments'
+        required: false
+        type: boolean
+        default: false
+      fail_on_severity:
+        description: 'Fail the job if vulnerabilities at or above this severity are found. Options: none, low, medium, high, critical. Set to "none" to never fail.'
+        required: false
+        type: string
+        default: 'none'
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  pull-requests: write
+
+jobs:
+  trivy-iac-scan:
+    name: Trivy IaC Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run Trivy IaC Scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@main
+        with:
+          iac_path: ${{ inputs.iac_path }}
+          enable_code_security: ${{ inputs.enable_code_security }}
+          post_pr_comment: ${{ inputs.post_pr_comment }}
+          fail_on_severity: ${{ inputs.fail_on_severity }}

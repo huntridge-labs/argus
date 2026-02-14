@@ -1,0 +1,154 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      releaseType:
+        description: 'Type of release (patch, minor, major, prerelease)'
+        required: false
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - patch
+          - minor
+          - major
+          - prerelease
+      dryRun:
+        description: 'Dry run (preview only, no actual release)'
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    environment:
+      name: prod
+      url: https://github.com/${{ github.repository }}/releases/latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    if: (github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(release):')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.dryRun != 'true')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: npm test
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Release (Auto)
+        if: github.event_name == 'push' || github.event.inputs.releaseType == 'auto'
+        run: npm run release:ci
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          HUSKY: 0
+
+      - name: Release (Specific Type)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.releaseType != 'auto'
+        run: npm run release:ci -- ${{ github.event.inputs.releaseType }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          HUSKY: 0
+
+  dry-run:
+    name: Release Preview (Dry Run)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    if: (github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(release):')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.dryRun == 'true')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: npm test
+
+      - name: Release Preview
+        run: |
+          # Run release-it dry run to see what would be released
+          echo "Running release-it dry run..."
+          echo "Note: A post-processed changelog with categorization will be shown after the dry run output."
+          echo ""
+          npm run release:dry 2>&1 | tee release_dry_output.txt
+
+          # Extract and process the changelog section to show categorized version
+          if grep -q "Changelog:" release_dry_output.txt; then
+            echo ""
+            echo "============================================"
+            echo "📋 PROCESSED CHANGELOG (with categorization)"
+            echo "============================================"
+            echo "The actual CHANGELOG.md will be modified using scripts/release-it-process-changelog.js as shown below:"
+            echo ""
+
+            # Extract raw changelog
+            sed -n '/^Changelog:/,/^Updating version/p' release_dry_output.txt | sed '1d;$d' | sed 's/^//' > changelog_preview.md
+
+            # Create temp file for processing
+            echo "# Temp Changelog" > temp_preview.md
+            echo "" >> temp_preview.md
+            cat changelog_preview.md >> temp_preview.md
+
+            # Process with our script
+            node scripts/release-it-process-changelog.js temp_preview.md
+
+            # Show processed changelog
+            tail -n +3 temp_preview.md
+            echo "============================================"
+          fi
+        env:
+          HUSKY: 0

@@ -1,0 +1,232 @@
+name: 'Dockerfile Linter'
+description: |
+  Run Dockerfile linting using Hadolint.
+
+  This action validates Dockerfiles for best practices, security issues,
+  and common mistakes using Hadolint. Results are uploaded as artifacts
+  and can be aggregated by the linting-summary action.
+
+  **Usage Example:**
+  ```yaml
+  - uses: actions/checkout@v6
+  - uses: huntridge-labs/argus/.github/actions/linter-dockerfile@main
+    with:
+      fail_on_issues: false
+  ```
+
+inputs:
+  fail_on_issues:
+    description: 'Fail the job if linting issues are found'
+    required: false
+    default: 'false'
+  paths:
+    description: 'Paths to search for Dockerfiles (space-separated). Defaults to entire repository.'
+    required: false
+    default: '.'
+  config_file:
+    description: 'Path to hadolint configuration file (optional)'
+    required: false
+    default: ''
+  ignore_rules:
+    description: 'Hadolint rules to ignore (comma-separated, e.g., DL3008,DL3009)'
+    required: false
+    default: ''
+  post_pr_comment:
+    description: 'Whether to post PR comments'
+    required: false
+    default: 'false'
+
+outputs:
+  issues_count:
+    description: 'Number of linting issues found'
+    value: ${{ steps.dockerfile-lint.outputs.issues }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Hadolint
+      shell: bash
+      run: |
+        wget -q -O /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
+        chmod +x /usr/local/bin/hadolint
+        hadolint --version
+
+    - name: Run Dockerfile linting
+      id: dockerfile-lint
+      shell: bash
+      continue-on-error: true
+      run: |
+        echo "::group::Dockerfile Linting"
+        echo "Searching for Dockerfiles in: ${{ inputs.paths }}"
+
+        ISSUES_FILE="/tmp/dockerfile_issues.txt"
+        TOTAL_ISSUES=0
+
+        # Find Dockerfiles
+        DOCKERFILES=$(find ${{ inputs.paths }} -name "Dockerfile*" \
+          -not -path "*/.git/*" \
+          -type f 2>/dev/null || true)
+
+        if [ -z "$DOCKERFILES" ]; then
+          echo "No Dockerfiles found to lint"
+          echo "issues=0" >> $GITHUB_OUTPUT
+          echo "::endgroup::"
+          exit 0
+        fi
+
+        echo "Found Dockerfiles to check:"
+        echo "$DOCKERFILES"
+
+        # Build hadolint arguments
+        HADOLINT_ARGS=""
+
+        # Add config file if specified
+        if [ -n "${{ inputs.config_file }}" ] && [ -f "${{ inputs.config_file }}" ]; then
+          HADOLINT_ARGS="$HADOLINT_ARGS --config ${{ inputs.config_file }}"
+          echo "Using config file: ${{ inputs.config_file }}"
+        fi
+
+        # Add ignore rules if specified
+        if [ -n "${{ inputs.ignore_rules }}" ]; then
+          for rule in $(echo "${{ inputs.ignore_rules }}" | tr ',' ' '); do
+            HADOLINT_ARGS="$HADOLINT_ARGS --ignore $rule"
+          done
+          echo "Ignoring rules: ${{ inputs.ignore_rules }}"
+        fi
+
+        # Run Hadolint on each Dockerfile
+        for dockerfile in $DOCKERFILES; do
+          echo ""
+          echo "=== Checking: $dockerfile ===" | tee -a "$ISSUES_FILE"
+          if hadolint $HADOLINT_ARGS "$dockerfile" > /tmp/hadolint_single.out 2>&1; then
+            echo "No issues found in $dockerfile" | tee -a "$ISSUES_FILE"
+          else
+            SINGLE_ISSUES=$(wc -l < /tmp/hadolint_single.out 2>/dev/null || echo "0")
+            echo "Found $SINGLE_ISSUES issues in $dockerfile:" | tee -a "$ISSUES_FILE"
+            cat /tmp/hadolint_single.out | tee -a "$ISSUES_FILE"
+            TOTAL_ISSUES=$((TOTAL_ISSUES + SINGLE_ISSUES))
+          fi
+        done
+
+        echo "issues=$TOTAL_ISSUES" >> $GITHUB_OUTPUT
+
+        if [ "$TOTAL_ISSUES" -gt 0 ]; then
+          echo ""
+          echo "Total Dockerfile issues found: $TOTAL_ISSUES"
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            echo "::warning title=Dockerfile Linting Issues::Found $TOTAL_ISSUES Dockerfile best practice violations. See job logs for details."
+          fi
+        else
+          echo "No Dockerfile linting issues found"
+        fi
+
+        echo "::endgroup::"
+
+        # Fail if requested and issues found
+        if [ "${{ inputs.fail_on_issues }}" = "true" ] && [ "$TOTAL_ISSUES" -gt 0 ]; then
+          echo "::error::Dockerfile linting failed with $TOTAL_ISSUES issues"
+          exit 1
+        fi
+
+    - name: Generate linter summary
+      if: always()
+      shell: bash
+      run: |
+        mkdir -p linter-summaries
+        ISSUES="${{ steps.dockerfile-lint.outputs.issues }}"
+
+        # Generate PR comment artifact (with <details> wrapper)
+        echo "<details>" > linter-summaries/dockerfile.md
+        echo "<summary>Dockerfile Linting</summary>" >> linter-summaries/dockerfile.md
+        echo "" >> linter-summaries/dockerfile.md
+
+        if [ "$ISSUES" -eq 0 ]; then
+          echo "**Status:** Passed" >> linter-summaries/dockerfile.md
+          echo "" >> linter-summaries/dockerfile.md
+          echo "No Dockerfile linting issues found." >> linter-summaries/dockerfile.md
+        else
+          echo "**Status:** Issues Found" >> linter-summaries/dockerfile.md
+          echo "" >> linter-summaries/dockerfile.md
+          echo "**Issues Found:** $ISSUES" >> linter-summaries/dockerfile.md
+          echo "" >> linter-summaries/dockerfile.md
+
+          if [ -f "/tmp/dockerfile_issues.txt" ]; then
+            echo "<details>" >> linter-summaries/dockerfile.md
+            echo "<summary>View Issues</summary>" >> linter-summaries/dockerfile.md
+            echo "" >> linter-summaries/dockerfile.md
+            echo '```' >> linter-summaries/dockerfile.md
+            head -50 /tmp/dockerfile_issues.txt >> linter-summaries/dockerfile.md
+            if [ $(wc -l < /tmp/dockerfile_issues.txt) -gt 50 ]; then
+              echo "... (truncated, see artifacts for full list)" >> linter-summaries/dockerfile.md
+            fi
+            echo '```' >> linter-summaries/dockerfile.md
+            echo "" >> linter-summaries/dockerfile.md
+            echo "</details>" >> linter-summaries/dockerfile.md
+          fi
+        fi
+
+        echo "" >> linter-summaries/dockerfile.md
+        echo "</details>" >> linter-summaries/dockerfile.md
+        echo "" >> linter-summaries/dockerfile.md
+
+        # Generate job summary (with ## headers, no <details>)
+        echo "## Dockerfile Linting" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        if [ "$ISSUES" -eq 0 ]; then
+          echo "**Status:** ✅ Passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "No Dockerfile linting issues found." >> $GITHUB_STEP_SUMMARY
+        else
+          echo "**Status:** ⚠️ Issues Found" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Issues Found:** $ISSUES" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f "/tmp/dockerfile_issues.txt" ]; then
+            echo "<details>" >> $GITHUB_STEP_SUMMARY
+            echo "<summary>View Issues</summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            head -50 /tmp/dockerfile_issues.txt >> $GITHUB_STEP_SUMMARY
+            if [ $(wc -l < /tmp/dockerfile_issues.txt) -gt 50 ]; then
+              echo "... (truncated, see artifacts for full list)" >> $GITHUB_STEP_SUMMARY
+            fi
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+    - name: Upload linter summary
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: linter-summary-dockerfile
+        path: linter-summaries/dockerfile.md
+        retention-days: 7
+      continue-on-error: true
+
+    - name: Comment PR with Dockerfile lint results
+      if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
+      uses: huntridge-labs/argus/.github/actions/comment-pr@main
+      with:
+        summary_file: linter-summaries/dockerfile.md
+        comment_marker: dockerfile-linter-comment-marker
+        title: '📦 Dockerfile Linting Results'
+        fallback_message: 'No Dockerfile linting results available'
+
+    - name: Upload raw lint results
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: dockerfile-lint-results
+        path: /tmp/dockerfile_issues.txt
+        retention-days: 7
+        if-no-files-found: ignore
+      continue-on-error: true
+
+branding:
+  icon: 'box'
+  color: 'blue'

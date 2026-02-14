@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "passed": 12,
+    "failed": 0,
+    "skipped": 0,
+    "parsing_errors": 0,
+    "resource_count": 8,
+    "checkov_version": "3.1.25"
+  },
+  "results": {
+    "passed_checks": [
+      {
+        "check_id": "CKV_AWS_79",
+        "bc_check_id": "BC_AWS_GENERAL_31",
+        "check_name": "Ensure Instance Metadata Service Version 1 is not enabled",
+        "check_result": {
+          "result": "passed"
+        },
+        "code_block": [
+          [
+            1,
+            "resource \"aws_instance\" \"web\" {\n"
+          ],
+          [
+            2,
+            "  ami           = var.ami_id\n"
+          ],
+          [
+            3,
+            "  instance_type = \"t3.micro\"\n"
+          ],
+          [
+            4,
+            "\n"
+          ],
+          [
+            5,
+            "  metadata_options {\n"
+          ],
+          [
+            6,
+            "    http_tokens = \"required\"\n"
+          ],
+          [
+            7,
+            "  }\n"
+          ],
+          [
+            8,
+            "}\n"
+          ]
+        ],
+        "file_path": "/tests/fixtures/test-apps/terraform/main.tf",
+        "file_line_range": [
+          1,
+          8
+        ],
+        "resource": "aws_instance.web",
+        "evaluations": null,
+        "check_class": "checkov.terraform.checks.resource.aws.IMDSv1Disabled",
+        "file_abs_path": "/workspace/tests/fixtures/test-apps/terraform/main.tf",
+        "entity_tags": null
+      }
+    ],
+    "failed_checks": [],
+    "skipped_checks": [],
+    "parsing_errors": []
+  }
+}

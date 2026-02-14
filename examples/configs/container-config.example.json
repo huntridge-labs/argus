@@ -1,0 +1,53 @@
+{
+  "$schema": "https://raw.githubusercontent.com/huntridge-labs/argusmain/.github/schemas/container-config.schema.json",
+  "_comment": "For Dependabot automated updates, use simple string format for 'image' field. Dependabot cannot parse structured object format. See examples/dependabot.example.yml",
+  "containers": [
+    {
+      "name": "busybox-latest",
+      "image": "busybox:latest",
+      "scanners": [
+        "trivy",
+        "grype",
+        "syft"
+      ],
+      "allow_failure": true,
+      "fail_on_severity": "medium"
+    },
+    {
+      "name": "alpine-pinned",
+      "registry": {
+        "host": "docker.io"
+      },
+      "image": {
+        "repository": "library",
+        "name": "alpine",
+        "tag": "3.263.2",
+        "digest": "sha256:865b95f46d98cf867a156fe4a135ad3fe50d2056aa3f25ed31662dff6da4eb62"
+      },
+      "scanners": [
+        "trivy",
+        "grype"
+      ],
+      "allow_failure": true,
+      "fail_on_severity": "high"
+    },
+    {
+      "name": "ghcr-runner",
+      "registry": {
+        "host": "ghcr.io",
+        "username": "${GITHUB_TRIGGERING_ACTOR}",
+        "auth_secret": "GITHUB_TOKEN"
+      },
+      "image": {
+        "repository": "actions",
+        "name": "actions-runner",
+        "tag": "latest"
+      },
+      "scanners": [
+        "trivy"
+      ],
+      "allow_failure": true,
+      "fail_on_severity": "high"
+    }
+  ]
+}

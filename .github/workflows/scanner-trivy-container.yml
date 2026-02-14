@@ -1,0 +1,97 @@
+# Trivy Container Scanner - Reusable Workflow
+#
+# THIN WRAPPER: This workflow delegates to the scanner-container composite action.
+# All scanning logic is in: .github/actions/scanner-container/action.yml
+#
+# For GHES users: Use the composite action directly instead of this workflow.
+# See: examples/github-enterprise/container-scanning.yml
+
+name: Trivy Container Scanner
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_ref:
+        description: 'Container image reference to scan (e.g., nginx:latest, ghcr.io/owner/image:tag)'
+        required: true
+        type: string
+      registry_username:
+        description: 'Username for registry authentication (leave empty for public images)'
+        required: false
+        type: string
+        default: ''
+      enable_code_security:
+        description: 'Whether to upload SARIF to GitHub Security'
+        required: false
+        type: boolean
+        default: false
+      fail_on_severity:
+        description: 'Fail the job if vulnerabilities at or above this severity are found. Options: none, low, medium, high, critical.'
+        required: false
+        type: string
+        default: 'none'
+  workflow_call:
+    inputs:
+      image_ref:
+        description: 'Container image reference to scan (e.g., nginx:latest, ghcr.io/owner/image:tag)'
+        required: true
+        type: string
+      scan_name:
+        description: 'Name for the scan artifacts'
+        required: false
+        type: string
+        default: 'container'
+      registry_username:
+        description: 'Username for registry authentication (leave empty for public images)'
+        required: false
+        type: string
+        default: ''
+      enable_code_security:
+        description: 'Whether to upload SARIF to GitHub Security'
+        required: false
+        type: boolean
+        default: false
+      post_pr_comment:
+        description: 'Whether to post PR comments'
+        required: false
+        type: boolean
+        default: false
+      fail_on_severity:
+        description: 'Fail the job if vulnerabilities at or above this severity are found. Options: none, low, medium, high, critical. Set to "none" to never fail.'
+        required: false
+        type: string
+        default: 'none'
+    secrets:
+      registry_password:
+        description: 'Password/token for registry authentication'
+        required: false
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  pull-requests: write
+  packages: read
+
+jobs:
+  trivy-container-scan:
+    name: Trivy Container Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run Trivy Scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-container@main
+        with:
+          image_ref: ${{ inputs.image_ref }}
+          container_name: ${{ inputs.scan_name || 'trivy-scan' }}
+          scanners: 'trivy'
+          post_pr_comment: ${{ inputs.post_pr_comment }}
+          fail_on_severity: ${{ inputs.fail_on_severity }}
+          enable_code_security: ${{ inputs.enable_code_security }}
+          registry_username: ${{ inputs.registry_username }}
+          registry_password: ${{ secrets.registry_password }}

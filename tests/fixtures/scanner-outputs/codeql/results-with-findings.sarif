@@ -1,0 +1,197 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "CodeQL",
+          "version": "2.15.4",
+          "semanticVersion": "2.15.4",
+          "informationUri": "https://codeql.github.com",
+          "rules": [
+            {
+              "id": "py/sql-injection",
+              "name": "py/sql-injection",
+              "shortDescription": {
+                "text": "SQL query built from user-controlled sources"
+              },
+              "fullDescription": {
+                "text": "Building a SQL query from user-controlled sources is vulnerable to insertion of malicious SQL code."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "tags": ["security", "external/cwe/cwe-089"],
+                "kind": "path-problem",
+                "precision": "high",
+                "security-severity": "8.8"
+              }
+            },
+            {
+              "id": "py/path-injection",
+              "name": "py/path-injection",
+              "shortDescription": {
+                "text": "Uncontrolled data used in path expression"
+              },
+              "fullDescription": {
+                "text": "Accessing paths influenced by users can allow an attacker to access unexpected resources."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "tags": ["security", "external/cwe/cwe-022"],
+                "kind": "path-problem",
+                "precision": "high",
+                "security-severity": "7.5"
+              }
+            },
+            {
+              "id": "py/clear-text-logging-sensitive-data",
+              "name": "py/clear-text-logging-sensitive-data",
+              "shortDescription": {
+                "text": "Clear-text logging of sensitive information"
+              },
+              "fullDescription": {
+                "text": "Logging sensitive information without encryption or hashing can expose it to an attacker."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": ["security", "external/cwe/cwe-312", "external/cwe/cwe-315", "external/cwe/cwe-359"],
+                "kind": "path-problem",
+                "precision": "medium",
+                "security-severity": "5.0"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "py/sql-injection",
+          "ruleIndex": 0,
+          "rule": {
+            "id": "py/sql-injection",
+            "index": 0
+          },
+          "message": {
+            "text": "This SQL query depends on a user-provided value."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/test-apps/python-app/database.py",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 25,
+                  "startColumn": 12,
+                  "endLine": 25,
+                  "endColumn": 50
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "abc123:1"
+          },
+          "codeFlows": [
+            {
+              "threadFlows": [
+                {
+                  "locations": [
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "tests/fixtures/test-apps/python-app/database.py"
+                          },
+                          "region": {
+                            "startLine": 20,
+                            "startColumn": 15
+                          }
+                        },
+                        "message": {
+                          "text": "user_id"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "ruleId": "py/path-injection",
+          "ruleIndex": 1,
+          "rule": {
+            "id": "py/path-injection",
+            "index": 1
+          },
+          "message": {
+            "text": "This path depends on a user-provided value."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/test-apps/python-app/file_handler.py",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 15,
+                  "startColumn": 10,
+                  "endLine": 15,
+                  "endColumn": 35
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "def456:1"
+          }
+        },
+        {
+          "ruleId": "py/clear-text-logging-sensitive-data",
+          "ruleIndex": 2,
+          "rule": {
+            "id": "py/clear-text-logging-sensitive-data",
+            "index": 2
+          },
+          "message": {
+            "text": "This expression logs sensitive data (password) as clear text."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/test-apps/python-app/auth.py",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 42,
+                  "startColumn": 5,
+                  "endLine": 42,
+                  "endColumn": 45
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "ghi789:1"
+          }
+        }
+      ],
+      "columnKind": "utf16CodeUnits",
+      "properties": {
+        "semmle.formatSpecifier": "2.1.0"
+      }
+    }
+  ]
+}

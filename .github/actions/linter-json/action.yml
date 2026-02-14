@@ -1,0 +1,169 @@
+name: 'JSON Linter'
+description: |
+  Run JSON validation and syntax checking.
+
+  This action validates JSON files for syntax errors using jsonlint.
+  Results are uploaded as artifacts and can be aggregated by the
+  linting-summary action.
+
+  **Usage Example:**
+  ```yaml
+  - uses: actions/checkout@v6
+  - uses: huntridge-labs/argus/.github/actions/linter-json@main
+    with:
+      fail_on_issues: false
+  ```
+
+inputs:
+  fail_on_issues:
+    description: 'Fail the job if validation issues are found'
+    required: false
+    default: 'false'
+  paths:
+    description: 'Paths to search for JSON files (space-separated). Defaults to entire repository.'
+    required: false
+    default: '.'
+  node_version:
+    description: 'Node.js version to use'
+    required: false
+    default: '20'
+
+outputs:
+  issues_count:
+    description: 'Number of validation issues found'
+    value: ${{ steps.json-lint.outputs.issues }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.node_version }}
+
+    - name: Install jsonlint
+      shell: bash
+      run: npm install -g jsonlint
+
+    - name: Run JSON validation
+      id: json-lint
+      shell: bash
+      continue-on-error: true
+      run: |
+        echo "::group::JSON Validation"
+        echo "Searching for JSON files in: ${{ inputs.paths }}"
+
+        ISSUES_FILE="/tmp/json_issues.txt"
+        ISSUE_COUNT=0
+
+        # Find all JSON files, excluding common directories
+        JSON_FILES=$(find ${{ inputs.paths }} -name "*.json" \
+          -not -path "*/node_modules/*" \
+          -not -path "*/.git/*" \
+          -not -path "*/vendor/*" \
+          -type f 2>/dev/null || true)
+
+        if [ -z "$JSON_FILES" ]; then
+          echo "No JSON files found to validate"
+          echo "issues=0" >> $GITHUB_OUTPUT
+          echo "::endgroup::"
+          exit 0
+        fi
+
+        echo "Found JSON files to check:"
+        echo "$JSON_FILES" | head -20
+        FILE_COUNT=$(echo "$JSON_FILES" | wc -l)
+        if [ "$FILE_COUNT" -gt 20 ]; then
+          echo "... and $((FILE_COUNT - 20)) more files"
+        fi
+
+        # Validate each JSON file
+        for file in $JSON_FILES; do
+          if ! jsonlint -q "$file" 2>/dev/null; then
+            echo "JSON syntax error in: $file" | tee -a "$ISSUES_FILE"
+            jsonlint "$file" 2>&1 | sed "s/^/  /" | tee -a "$ISSUES_FILE" || true
+            ISSUE_COUNT=$((ISSUE_COUNT + 1))
+          fi
+        done
+
+        echo "issues=$ISSUE_COUNT" >> $GITHUB_OUTPUT
+
+        if [ "$ISSUE_COUNT" -gt 0 ]; then
+          echo "Found $ISSUE_COUNT JSON validation issues"
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            echo "::warning title=JSON Validation Issues::Found $ISSUE_COUNT JSON syntax/formatting issues. See job logs for details."
+          fi
+        else
+          echo "No JSON validation issues found"
+        fi
+
+        echo "::endgroup::"
+
+        # Fail if requested and issues found
+        if [ "${{ inputs.fail_on_issues }}" = "true" ] && [ "$ISSUE_COUNT" -gt 0 ]; then
+          echo "::error::JSON validation failed with $ISSUE_COUNT issues"
+          exit 1
+        fi
+
+    - name: Generate linter summary
+      if: always()
+      shell: bash
+      run: |
+        mkdir -p linter-summaries
+        ISSUES="${{ steps.json-lint.outputs.issues }}"
+
+        echo "<details>" > linter-summaries/json.md
+        echo "<summary>JSON Validation</summary>" >> linter-summaries/json.md
+        echo "" >> linter-summaries/json.md
+
+        if [ "$ISSUES" -eq 0 ]; then
+          echo "**Status:** Passed" >> linter-summaries/json.md
+          echo "" >> linter-summaries/json.md
+          echo "No JSON validation issues found." >> linter-summaries/json.md
+        else
+          echo "**Status:** Issues Found" >> linter-summaries/json.md
+          echo "" >> linter-summaries/json.md
+          echo "**Issues Found:** $ISSUES" >> linter-summaries/json.md
+          echo "" >> linter-summaries/json.md
+
+          if [ -f "/tmp/json_issues.txt" ]; then
+            echo "<details>" >> linter-summaries/json.md
+            echo "<summary>View Issues</summary>" >> linter-summaries/json.md
+            echo "" >> linter-summaries/json.md
+            echo '```' >> linter-summaries/json.md
+            head -50 /tmp/json_issues.txt >> linter-summaries/json.md
+            if [ $(wc -l < /tmp/json_issues.txt) -gt 50 ]; then
+              echo "... (truncated, see artifacts for full list)" >> linter-summaries/json.md
+            fi
+            echo '```' >> linter-summaries/json.md
+            echo "" >> linter-summaries/json.md
+            echo "</details>" >> linter-summaries/json.md
+          fi
+        fi
+
+        echo "" >> linter-summaries/json.md
+        echo "</details>" >> linter-summaries/json.md
+        echo "" >> linter-summaries/json.md
+
+    - name: Upload linter summary
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: linter-summary-json
+        path: linter-summaries/json.md
+        retention-days: 7
+      continue-on-error: true
+
+    - name: Upload raw lint results
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: json-lint-results
+        path: /tmp/json_issues.txt
+        retention-days: 7
+        if-no-files-found: ignore
+      continue-on-error: true
+
+branding:
+  icon: 'file-text'
+  color: 'green'

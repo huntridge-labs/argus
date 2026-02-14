@@ -1,0 +1,142 @@
+name: Security Hardening Pipeline - Scanner List Examples
+# from huntridge-labs/hardening-workflows
+# This example demonstrates the new scanner list approach for granular control
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      scanners:
+        description: 'Comma-separated list of scanners to run'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - codeql,gitleaks
+          - sast
+          - secrets
+          - container
+          - infrastructure
+          - codeql,bandit,gitleaks,container
+
+jobs:
+  # Example 1: Fast feedback with CodeQL only
+  fast-feedback:
+    name: Fast Feedback (CodeQL Only)
+    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@main
+    with:
+      scanners: 'codeql'
+      codeql_languages: 'python,javascript'
+      enable_code_security: true
+      post_pr_comment: true
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+      checks: write
+      id-token: write
+    secrets:
+      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Required for org repos
+
+  # Example 2: Python-focused security
+  python-security:
+    name: Python Security Focus
+    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@main
+    with:
+      scanners: 'codeql,bandit,gitleaks'
+      codeql_languages: 'python'
+      enable_code_security: true
+      python_version: '3.12'
+      post_pr_comment: true
+      allow_failure: false         # Enforce security gate
+      severity_threshold: high     # Fail on high or critical
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+      checks: write
+      id-token: write
+    secrets:
+      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Required for org repos
+
+  # Example 3: Infrastructure as Code focus
+  infrastructure-focus:
+    name: Infrastructure Security
+    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@main
+    with:
+      scanners: 'infrastructure'
+      iac_path: 'infrastructure'
+      python_version: '3.12'
+      aws_region: 'us-east-1'
+      post_pr_comment: true
+      allow_failure: false         # Enforce IaC security
+      severity_threshold: medium   # Stricter for infrastructure
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+      checks: write
+      id-token: write
+    secrets: inherit
+
+  # Example 4: Container security only
+  container-only:
+    name: Container Security Only
+    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@main
+    with:
+      scanners: 'container'
+      post_pr_comment: true
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+      checks: write
+      id-token: write
+    secrets: inherit
+
+  # Example 5: Secrets scanning only
+  secrets-only:
+    name: Secrets Detection Only
+    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@main
+    with:
+      scanners: 'secrets'
+      post_pr_comment: true
+      allow_failure: false         # Never allow secrets to pass
+      severity_threshold: critical # Any secret is critical
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+      checks: write
+      id-token: write
+    secrets: inherit
+
+  # Example 6: Custom scanner selection via workflow dispatch
+  custom-selection:
+    name: Custom Scanner Selection
+    if: github.event_name == 'workflow_dispatch'
+    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@main
+    with:
+      scanners: ${{ github.event.inputs.scanners }}
+      codeql_languages: 'python,javascript'
+      enable_code_security: true
+      python_version: '3.12'
+      aws_region: 'us-east-1'
+      post_pr_comment: true
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+      checks: write
+      id-token: write
+    secrets: inherit

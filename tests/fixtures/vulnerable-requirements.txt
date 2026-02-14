@@ -1,0 +1,12 @@
+# Test requirements file for Safety vulnerability scanning
+# These packages have known vulnerabilities for testing purposes
+# WARNING: DO NOT USE IN PRODUCTION!
+
+# Vulnerable package with known CVEs for testing
+django==2.0.1  # Has multiple security vulnerabilities
+requests==2.8.0  # Older version with known issues
+urllib3==1.21.1  # Contains security vulnerabilities
+Pillow==5.0.0  # Has image processing vulnerabilities
+flask==0.12  # Older version with security issues
+jinja2==2.8  # Template injection vulnerabilities
+sqlalchemy==1.0.0  # SQL injection possibilities

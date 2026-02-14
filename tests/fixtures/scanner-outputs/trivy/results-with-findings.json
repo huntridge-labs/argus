@@ -1,0 +1,164 @@
+{
+  "SchemaVersion": 2,
+  "CreatedAt": "2026-01-26T12:00:00.000000000Z",
+  "ArtifactName": "vulnerableapp:latest",
+  "ArtifactType": "container_image",
+  "Metadata": {
+    "OS": {
+      "Family": "debian",
+      "Name": "11.6"
+    },
+    "ImageID": "sha256:abcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab",
+    "DiffIDs": [
+      "sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+    ],
+    "RepoTags": [
+      "vulnerableapp:latest"
+    ],
+    "RepoDigests": [
+      "vulnerableapp@sha256:fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321"
+    ]
+  },
+  "Results": [
+    {
+      "Target": "vulnerableapp:latest (debian 11.6)",
+      "Class": "os-pkgs",
+      "Type": "debian",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2023-1234",
+          "PkgName": "libssl1.1",
+          "InstalledVersion": "1.1.1n-0+deb11u3",
+          "FixedVersion": "1.1.1n-0+deb11u4",
+          "Layer": {
+            "DiffID": "sha256:1234567890abcdef"
+          },
+          "SeveritySource": "nvd",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2023-1234",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Title": "OpenSSL: Memory corruption in RSA implementation",
+          "Description": "A flaw was found in the OpenSSL RSA implementation allowing memory corruption.",
+          "Severity": "CRITICAL",
+          "CweIDs": [
+            "CWE-787"
+          ],
+          "CVSS": {
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+              "V3Score": 9.8
+            }
+          },
+          "References": [
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-1234",
+            "https://nvd.nist.gov/vuln/detail/CVE-2023-1234"
+          ],
+          "PublishedDate": "2023-03-15T10:15:00Z",
+          "LastModifiedDate": "2023-03-20T14:30:00Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2023-5678",
+          "PkgName": "curl",
+          "InstalledVersion": "7.74.0-1.3+deb11u3",
+          "FixedVersion": "7.74.0-1.3+deb11u5",
+          "Layer": {
+            "DiffID": "sha256:abcdef1234567890"
+          },
+          "SeveritySource": "nvd",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2023-5678",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Title": "curl: Buffer overflow in URL parsing",
+          "Description": "A buffer overflow vulnerability exists in libcurl's URL parser.",
+          "Severity": "HIGH",
+          "CweIDs": [
+            "CWE-120"
+          ],
+          "CVSS": {
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H",
+              "V3Score": 8.8
+            }
+          },
+          "References": [
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-5678"
+          ],
+          "PublishedDate": "2023-08-10T08:15:00Z",
+          "LastModifiedDate": "2023-08-25T12:00:00Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2023-9012",
+          "PkgName": "libc6",
+          "InstalledVersion": "2.31-13+deb11u4",
+          "FixedVersion": "2.31-13+deb11u5",
+          "Layer": {
+            "DiffID": "sha256:fedcba0987654321"
+          },
+          "SeveritySource": "debian",
+          "PrimaryURL": "https://security-tracker.debian.org/tracker/CVE-2023-9012",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Title": "glibc: Integer overflow in printf functions",
+          "Description": "An integer overflow in certain printf functions could lead to heap corruption.",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-190"
+          ],
+          "CVSS": {
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:U/C:N/I:L/A:L",
+              "V3Score": 4.0
+            }
+          },
+          "References": [
+            "https://security-tracker.debian.org/tracker/CVE-2023-9012"
+          ],
+          "PublishedDate": "2023-10-05T14:00:00Z",
+          "LastModifiedDate": "2023-10-12T09:30:00Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2024-0001",
+          "PkgName": "bash",
+          "InstalledVersion": "5.1-2+deb11u1",
+          "FixedVersion": "",
+          "Layer": {
+            "DiffID": "sha256:1111222233334444"
+          },
+          "SeveritySource": "debian",
+          "PrimaryURL": "https://security-tracker.debian.org/tracker/CVE-2024-0001",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Title": "bash: Minor information disclosure in debug mode",
+          "Description": "Debug mode may leak environment information.",
+          "Severity": "LOW",
+          "CweIDs": [
+            "CWE-200"
+          ],
+          "CVSS": {
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:H/PR:H/UI:R/S:U/C:L/I:N/A:N",
+              "V3Score": 2.0
+            }
+          },
+          "References": [
+            "https://security-tracker.debian.org/tracker/CVE-2024-0001"
+          ],
+          "PublishedDate": "2024-01-10T11:00:00Z",
+          "LastModifiedDate": "2024-01-15T16:00:00Z"
+        }
+      ]
+    }
+  ]
+}

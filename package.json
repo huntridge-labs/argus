@@ -1,0 +1,43 @@
+{
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^20.4.1",
+    "@commitlint/config-conventional": "^20.4.1",
+    "@j-ulrich/release-it-regex-bumper": "^5.3.1",
+    "@release-it/conventional-changelog": "^10.0.5",
+    "commitizen": "^4.3.1",
+    "cz-conventional-changelog": "^3.3.0",
+    "husky": "^9.1.7",
+    "is-ci": "^4.1.0",
+    "release-it": "^19.2.4"
+  },
+  "dependencies": {
+    "@digitalroute/cz-conventional-changelog-for-jira": "^8.0.1",
+    "@octokit/plugin-paginate-rest": "^14.0.0",
+    "conventional-changelog-conventionalcommits": "^9.1.0",
+    "cz-emoji-conventional": "^1.2.1",
+    "dateformat": "^5.0.3",
+    "husky": "^9.1.7"
+  },
+  "scripts": {
+    "prepare": "husky",
+    "test": "pytest --no-cov -q",
+    "test:coverage": "pytest",
+    "test:actions": "python tests/unit/actions/validate-action-schemas.py",
+    "validate": "python tests/unit/actions/validate-action-schemas.py",
+    "commitizen": "commitizen init cz-conventional-changelog --save-dev --save-exact --force",
+    "release": "release-it",
+    "release:dry": "release-it --dry-run",
+    "release:ci": "release-it --ci",
+    "release:preview": "release-it --dry-run --ci",
+    "release:changelog": "release-it --changelog --dry-run"
+  },
+  "config": {
+    "commitizen": {
+      "path": "./node_modules/cz-conventional-changelog"
+    }
+  },
+  "version": "2.12.0"
+}

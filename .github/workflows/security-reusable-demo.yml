@@ -1,0 +1,61 @@
+name: Security Hardening (Reusable Demo)
+
+# This workflow demonstrates using our own reusable security workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      scan_type:
+        description: 'Type of security scan to run'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - sast-only
+          - container-only
+          - infrastructure-only
+
+jobs:
+  # Use our own reusable workflow to demonstrate it works
+  security-reusable:
+    name: Security via Reusable Workflow
+    uses: ./.github/workflows/reusable-security-hardening.yml
+    with:
+      scan_type: ${{ github.event.inputs.scan_type || 'full' }}
+      python_version: '3.12'
+      aws_region: 'us-east-1'
+      post_pr_comment: false  # Avoid duplicate comments
+    secrets:
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+      checks: write
+      id-token: write
+
+  # Compare results with main workflow (optional manual comparison)
+  comparison-note:
+    name: Reusable Workflow Demo
+    runs-on: ubuntu-latest
+    needs: security-reusable
+    if: always()
+
+    steps:
+    - name: Demo Summary
+      run: |
+        echo "🎉 Reusable Workflow Demo Complete!"
+        echo ""
+        echo "This workflow demonstrates that our reusable security pipeline works correctly."
+        echo ""
+        echo "✅ If you can see this message, the reusable workflow executed successfully!"
+        echo ""
+        echo "🔗 Reusable workflow: .github/workflows/reusable-security-hardening.yml"
+        echo "🔗 Individual scanners: .github/workflows/scanner-*.yml"
+        echo ""
+        echo "📦 Available scanners:"
+        echo "  • SAST: codeql, opengrep, bandit, gitleaks"
+        echo "  • Container: trivy-container, grype"
+        echo "  • Infrastructure: trivy-iac, checkov"

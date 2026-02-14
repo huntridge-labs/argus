@@ -1,0 +1,47 @@
+---
+# Test ZAP configuration for scanner testing
+# This configuration demonstrates all scan modes and types
+
+target:
+  mode: docker-run
+  image: "test-node-app:latest"
+  ports: "3000:3000"
+  healthcheck_url: "http://127.0.0.1:3000/health"
+
+scans:
+  # URL mode - baseline scan
+  - name: "baseline-scan"
+    type: "baseline"
+    target_url: "http://127.0.0.1:3000"
+    max_duration_minutes: 5
+    fail_on_severity: "none"
+
+  # Full scan
+  - name: "full-scan"
+    type: "full"
+    target_url: "http://127.0.0.1:3000"
+    max_duration_minutes: 10
+    fail_on_severity: "medium"
+
+  # API scan
+  - name: "api-scan"
+    type: "api"
+    api_spec: "tests/fixtures/configs/openapi.yaml"
+    max_duration_minutes: 10
+    fail_on_severity: "high"
+
+  # Authenticated scan
+  - name: "auth-scan"
+    type: "baseline"
+    target_url: "http://127.0.0.1:3000"
+    auth:
+      header_name: "Authorization"
+      header_secret: "API_TOKEN"
+    max_duration_minutes: 5
+    fail_on_severity: "none"
+    allow_failure: true
+
+defaults:
+  max_duration_minutes: 10
+  fail_on_severity: "none"
+  allow_failure: false

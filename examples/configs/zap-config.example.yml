@@ -1,0 +1,104 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argusmain/.github/schemas/zap-config.schema.json
+#
+# ZAP DAST Scanner Configuration
+# This file defines target application and scans to run
+#
+# Usage with scanner-zap-from-config.yml:
+#   jobs:
+#     zap:
+#       uses: huntridge-labs/argus/.github/workflows/scanner-zap-from-config.yml@main
+#       with:
+#         config_file: '.zap/config.yml'
+#       secrets: inherit  # Required for authentication
+
+# Target application configuration - shared across all scans
+target:
+  # How to obtain a running target:
+  # - url: Target is already running (external URL)
+  # - docker-run: Run a container image
+  # - compose: Run docker compose stack
+  mode: docker-run
+
+  # Container image to run (for docker-run mode)
+  # Simple string format (Dependabot compatible):
+  image: 'ghcr.io/stefanprodan/podinfo:latest'
+
+  # Or structured format for more control:
+  # image:
+  #   registry: ghcr.io
+  #   repository: stefanprodan
+  #   name: podinfo
+  #   tag: latest
+  #   digest: sha256:abc123...  # Optional pinned digest
+
+  # Port mappings (host:container)
+  ports: '9898:9898'
+
+  # Health check URL to poll until target is ready
+  healthcheck_url: 'http://127.0.0.1:9898/healthz'
+
+  # Registry authentication for private images
+  # registry:
+  #   host: ghcr.io
+  #   username: ${GITHUB_ACTOR}  # Supports env var expansion
+  #   auth_secret: GITHUB_TOKEN  # Name of GitHub secret (not the value)
+
+  # For local builds instead of pulling an image:
+  # build:
+  #   context: '.'
+  #   dockerfile: './Dockerfile'
+  #   tag: 'my-app:test'
+
+  # For docker compose mode:
+  # compose_file: 'docker-compose.yml'
+  # compose_build: true
+
+# Scans to run - each becomes a parallel matrix job
+scans:
+  # Baseline scan - passive scanning, fast and safe
+  - name: baseline
+    type: baseline
+    target_url: 'http://127.0.0.1:9898'
+    max_duration_minutes: 5
+    fail_on_severity: none
+
+  # Full scan - active scanning, more thorough but slower
+  - name: full
+    type: full
+    target_url: 'http://127.0.0.1:9898'
+    max_duration_minutes: 15
+    fail_on_severity: none  # options: info, low, medium, high, critical, none
+
+  # API scan - OpenAPI/Swagger-driven scanning
+  - name: api
+    type: api
+    api_spec: 'http://127.0.0.1:9898/swagger.json'
+    max_duration_minutes: 10
+    fail_on_severity: none  # options: info, low, medium, high, critical, none
+
+  # Example: API scan with authentication
+  # Uncomment to scan endpoints that require auth
+  # - name: api-authenticated
+  #   type: api
+  #   api_spec: 'http://127.0.0.1:9898/swagger.json'
+  #   max_duration_minutes: 10
+  #   auth:
+  #     # Header-based authentication (Bearer token, API key, etc.)
+  #     # ZAP will include this header in all requests to the target
+  #     header_name: Authorization           # HTTP header name
+  #     header_secret: API_AUTH_TOKEN        # Name of GitHub secret containing the value
+  #     # Or use header_value for non-secret values:
+  #     # header_value: 'Bearer ${MY_TOKEN}'
+  #     # site: 'api.example.com'            # Optional: restrict auth to specific host
+
+# Default settings applied to all scans (can be overridden per-scan)
+defaults:
+  max_duration_minutes: 10
+  fail_on_severity: none # options: info, low, medium, high, critical, none
+  allow_failure: false
+
+# Post results as PR comment
+post_pr_comment: false
+
+# Upload SARIF to GitHub Security tab (reserved for future use)
+enable_code_security: false

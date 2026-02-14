@@ -1,0 +1,55 @@
+name: Feature Request
+description: Suggest a new feature or enhancement for the Argus
+title: "[FEATURE] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    attributes:
+      label: Summary
+      description: A brief summary of the feature request.
+      placeholder: What would you like to see added or changed?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Problem/Use Case
+      description: Describe the problem this feature would solve or the use case it addresses.
+      placeholder: Is there a specific issue or limitation you're facing?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Proposed Solution
+      description: Describe your proposed solution or implementation.
+      placeholder: How do you envision this feature working?
+    validations:
+      required: true
+  - type: dropdown
+    attributes:
+      label: Feature Category
+      description: What type of feature is this?
+      options:
+        - New Scanner Integration
+        - Workflow Enhancement
+        - Reporting/Output Improvement
+        - Configuration Option
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Related Scanners/Tools
+      description: If this involves specific scanners or tools, list them.
+      placeholder: e.g., CodeQL, Trivy, Bandit
+  - type: textarea
+    attributes:
+      label: Alternatives Considered
+      description: Have you considered any alternative solutions or workarounds?
+  - type: checkboxes
+    attributes:
+      label: Additional Context
+      options:
+        - label: I have checked existing issues and pull requests for similar requests
+        - label: I am willing to contribute to implementing this feature
+        - label: This feature would benefit the broader security community

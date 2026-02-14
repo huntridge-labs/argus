@@ -1,0 +1,29 @@
+{
+  "SchemaVersion": 2,
+  "CreatedAt": "2026-01-26T12:00:00.000000000Z",
+  "ArtifactName": "alpine:latest",
+  "ArtifactType": "container_image",
+  "Metadata": {
+    "OS": {
+      "Family": "alpine",
+      "Name": "3.19.0"
+    },
+    "ImageID": "sha256:05455a08881ea9cf0e752bc48e61bbd71a34c029bb13df01e40e3e70e0d007bd",
+    "DiffIDs": [
+      "sha256:4abcf20661432fb2d719aaf90656f55c287f8ca915dc1c92ec14ff61e67fbaf8"
+    ],
+    "RepoTags": [
+      "alpine:latest"
+    ],
+    "RepoDigests": [
+      "alpine@sha256:c5b1261d6d3e43071626931fc004f70149baeba2c8ec672bd4f27761f8e1ad6b"
+    ],
+    "ImageConfig": {
+      "architecture": "amd64",
+      "container": "a6d9e6b1e7c6",
+      "created": "2026-01-15T04:20:35.123456789Z",
+      "os": "linux"
+    }
+  },
+  "Results": []
+}

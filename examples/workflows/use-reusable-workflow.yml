@@ -1,0 +1,65 @@
+# Example: How to use the reusable security hardening workflow in another project
+
+# yamllint disable rule:brackets
+name: Security Pipeline
+
+on:  # yamllint disable-line rule:truthy
+  # Trigger on push to main branch
+  push:
+    branches: [ main ]
+
+  # Trigger on pull requests to main
+  pull_request:
+    branches: [ main ]
+
+  # Optional: Run weekly full scans on Mondays at 2 AM UTC
+  schedule:
+    - cron: '0 2 * * 1'
+
+  # Allow manual workflow runs for on-demand full scans
+  workflow_dispatch:
+    inputs:
+      scanners:
+        description: 'Comma-separated list of scanners to run (codeql, opengrep, bandit, gitleaks, container, infrastructure, trivy-iac, checkov, trivy-container, grype, lint, clamav, sbom, all, sast, secrets, etc.). Use "all" to run ALL available scanners.'
+        required: false
+        default: 'all'
+        type: string
+      allow_failure:
+        description: 'Allow workflow to continue on security findings'
+        required: false
+        default: true
+        type: boolean
+      severity_threshold:
+        description: 'Minimum severity to fail on (when allow_failure is false)'
+        required: false
+        default: 'high'
+        type: choice
+        options:
+          - none
+          - low
+          - medium
+          - high
+          - critical
+
+jobs:
+  security-hardening:
+    name: Security Hardening
+    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@main
+    with:
+      scanners: ${{ github.event.inputs.scanners || 'all' }}
+      python_version: '3.11'
+      aws_region: 'us-west-2'
+      post_pr_comment: true
+      codeql_languages: 'python'  # Only analyze Python, skip JavaScript
+      allow_failure: ${{ github.event.inputs.allow_failure == 'true' || github.event.inputs.allow_failure == '' }}
+      severity_threshold: ${{ github.event.inputs.severity_threshold || 'high' }}
+    secrets:
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Required for org repos
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+      checks: write
+      id-token: write

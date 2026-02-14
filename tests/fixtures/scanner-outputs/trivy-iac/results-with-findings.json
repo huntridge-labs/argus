@@ -1,0 +1,130 @@
+{
+  "SchemaVersion": 2,
+  "CreatedAt": "2026-01-26T12:00:00.000000000Z",
+  "ArtifactName": "infrastructure",
+  "ArtifactType": "filesystem",
+  "Results": [
+    {
+      "Target": "main.tf",
+      "Class": "config",
+      "Type": "terraform",
+      "Misconfigurations": [
+        {
+          "Type": "Terraform Security Check",
+          "ID": "AVD-AWS-0086",
+          "AVDID": "AVD-AWS-0086",
+          "Title": "S3 Bucket does not have encryption enabled",
+          "Description": "Unencrypted S3 buckets may lead to data exposure.",
+          "Message": "Bucket does not have encryption enabled",
+          "Namespace": "builtin.aws.s3",
+          "Query": "deny[res]",
+          "Resolution": "Configure server-side encryption for S3 bucket",
+          "Severity": "HIGH",
+          "PrimaryURL": "https://avd.aquasec.com/misconfig/avd-aws-0086",
+          "References": [
+            "https://docs.aws.amazon.com/AmazonS3/latest/dev/bucket-encryption.html"
+          ],
+          "Status": "FAIL",
+          "Layer": {},
+          "CauseMetadata": {
+            "Resource": "aws_s3_bucket.data",
+            "Provider": "aws",
+            "Service": "s3",
+            "StartLine": 15,
+            "EndLine": 18,
+            "Code": {
+              "Lines": [
+                {
+                  "Number": 15,
+                  "Content": "resource \"aws_s3_bucket\" \"data\" {"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "Type": "Terraform Security Check",
+          "ID": "AVD-AWS-0089",
+          "AVDID": "AVD-AWS-0089",
+          "Title": "S3 Bucket does not have logging enabled",
+          "Description": "S3 buckets without access logging make it difficult to track access patterns.",
+          "Message": "Bucket does not have logging enabled",
+          "Namespace": "builtin.aws.s3",
+          "Query": "deny[res]",
+          "Resolution": "Enable access logging for the S3 bucket",
+          "Severity": "MEDIUM",
+          "PrimaryURL": "https://avd.aquasec.com/misconfig/avd-aws-0089",
+          "References": [
+            "https://docs.aws.amazon.com/AmazonS3/latest/dev/ServerLogs.html"
+          ],
+          "Status": "FAIL",
+          "Layer": {},
+          "CauseMetadata": {
+            "Resource": "aws_s3_bucket.data",
+            "Provider": "aws",
+            "Service": "s3",
+            "StartLine": 15,
+            "EndLine": 18
+          }
+        },
+        {
+          "Type": "Terraform Security Check",
+          "ID": "AVD-AWS-0088",
+          "AVDID": "AVD-AWS-0088",
+          "Title": "S3 Bucket does not have versioning enabled",
+          "Description": "Versioning in S3 buckets allows for object recovery.",
+          "Message": "Bucket does not have versioning enabled",
+          "Namespace": "builtin.aws.s3",
+          "Query": "deny[res]",
+          "Resolution": "Enable versioning for the S3 bucket",
+          "Severity": "LOW",
+          "PrimaryURL": "https://avd.aquasec.com/misconfig/avd-aws-0088",
+          "References": [
+            "https://docs.aws.amazon.com/AmazonS3/latest/dev/Versioning.html"
+          ],
+          "Status": "FAIL",
+          "Layer": {},
+          "CauseMetadata": {
+            "Resource": "aws_s3_bucket.data",
+            "Provider": "aws",
+            "Service": "s3",
+            "StartLine": 15,
+            "EndLine": 18
+          }
+        }
+      ]
+    },
+    {
+      "Target": "ec2.tf",
+      "Class": "config",
+      "Type": "terraform",
+      "Misconfigurations": [
+        {
+          "Type": "Terraform Security Check",
+          "ID": "AVD-AWS-0028",
+          "AVDID": "AVD-AWS-0028",
+          "Title": "Instance Metadata Service Version 1 is enabled",
+          "Description": "IMDSv1 is less secure than IMDSv2.",
+          "Message": "Instance has IMDSv1 enabled",
+          "Namespace": "builtin.aws.ec2",
+          "Query": "deny[res]",
+          "Resolution": "Require IMDSv2 for the instance",
+          "Severity": "CRITICAL",
+          "PrimaryURL": "https://avd.aquasec.com/misconfig/avd-aws-0028",
+          "References": [
+            "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html"
+          ],
+          "Status": "FAIL",
+          "Layer": {},
+          "CauseMetadata": {
+            "Resource": "aws_instance.web",
+            "Provider": "aws",
+            "Service": "ec2",
+            "StartLine": 1,
+            "EndLine": 4
+          }
+        }
+      ]
+    }
+  ]
+}

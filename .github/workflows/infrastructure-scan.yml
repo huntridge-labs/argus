@@ -1,0 +1,95 @@
+# Infrastructure Security Scanner - Reusable Workflow
+#
+# THIN WRAPPER: This workflow delegates to scanner-trivy-iac and scanner-checkov actions.
+# All scanning logic is in:
+#   - .github/actions/scanner-trivy-iac/action.yml
+#   - .github/actions/scanner-checkov/action.yml
+#
+# For GHES users: Use the composite actions directly instead of this workflow.
+# See: examples/github-enterprise/infrastructure-scanning.yml
+
+name: Infrastructure Security Scanner
+
+on:
+  workflow_dispatch:
+    inputs:
+      iac_path:
+        description: 'Relative path to the infrastructure-as-code directory to scan'
+        required: false
+        type: string
+        default: '.'
+      fail_on_severity:
+        description: 'Fail the job if vulnerabilities at or above this severity are found'
+        required: false
+        type: string
+        default: 'none'
+
+  workflow_call:
+    inputs:
+      iac_path:
+        description: 'Relative path to the infrastructure-as-code directory to scan'
+        required: false
+        type: string
+        default: '.'
+      enable_code_security:
+        description: 'Whether GitHub Code Security is enabled for this repository'
+        required: false
+        type: boolean
+        default: false
+      fail_on_severity:
+        description: 'Fail the job if vulnerabilities at or above this severity are found'
+        required: false
+        type: string
+        default: 'none'
+      post_pr_comment:
+        description: 'Post results as PR comment'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  pull-requests: write
+
+jobs:
+  trivy-iac:
+    name: Trivy IaC Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run Trivy IaC Scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          iac_path: ${{ inputs.iac_path }}
+          post_pr_comment: ${{ inputs.post_pr_comment }}
+          enable_code_security: ${{ inputs.enable_code_security }}
+          fail_on_severity: ${{ inputs.fail_on_severity }}
+
+  checkov:
+    name: Checkov Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run Checkov Scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-checkov@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          iac_path: ${{ inputs.iac_path }}
+          post_pr_comment: ${{ inputs.post_pr_comment }}
+          enable_code_security: ${{ inputs.enable_code_security }}
+          fail_on_severity: ${{ inputs.fail_on_severity }}

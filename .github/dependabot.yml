@@ -1,0 +1,123 @@
+# Dependabot configuration for automated dependency updates
+# Groups updates by semantic version level (major, minor, patch) to reduce PR noise
+# See: https://docs.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
+
+version: 2
+updates:
+  # GitHub Actions - grouped by semantic version level
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+
+    # Group updates by semantic version level
+    groups:
+      # Major version updates (e.g., v1 -> v2)
+      # These require careful review as they may contain breaking changes
+      github-actions-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+
+      # Minor and patch version updates (e.g., v1.2 -> v1.3, v1.2.3 -> v1.2.4)
+      # New features and bug fixes, generally safe to update together
+      github-actions-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+    # Commit message configuration
+    commit-message:
+      prefix: "chore(deps)"
+
+    # PR configuration
+    open-pull-requests-limit: 10
+
+    # Labels for PRs
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "automated"
+
+    # Allow Dependabot to rebase PRs
+    rebase-strategy: "auto"
+
+  # Docker Dockerfile.secure - Update base images in secure Dockerfile only
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+
+    # Only monitor Dockerfile.secure, ignore vulnerable test file
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+
+    # Dependabot doesn't support file-level filtering, but we can use labels to identify
+    # Manual review required: Only apply updates to Dockerfile.secure
+    groups:
+      docker-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+      docker-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+    commit-message:
+      prefix: "chore(deps)"
+
+    labels:
+      - "dependencies"
+      - "docker"
+      - "automated"
+      - "dockerfile-secure-only"
+
+    open-pull-requests-limit: 10
+    rebase-strategy: "auto"
+
+  # NPM dependencies - grouped by semantic version level
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+
+    groups:
+      npm-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+      npm-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+    commit-message:
+      prefix: "chore(deps)"
+
+    labels:
+      - "dependencies"
+      - "npm"
+      - "automated"
+
+    open-pull-requests-limit: 10
+    rebase-strategy: "auto"

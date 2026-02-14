@@ -1,0 +1,124 @@
+name: 'Container Scanner Summary'
+description: |
+  Combines results from parallel container scans (matrixed by container+scanner) into a unified summary.
+  Use this action after a matrix job that runs scanner-container with one scanner per job.
+
+  This action:
+  - Downloads scan artifacts from the matrix jobs
+  - Deduplicates vulnerabilities across scanners
+  - Generates a rich job summary with collapsible details
+  - Uploads a combined summary artifact
+
+  Example usage (parallel scanning):
+    jobs:
+      setup:
+        runs-on: ubuntu-latest
+        outputs:
+          scan_matrix: (( steps.parse.outputs.scan_matrix ))
+        steps:
+          - uses: actions/checkout@v6
+          - uses: huntridge-labs/argus/.github/actions/parse-container-config@v3
+            id: parse
+            with:
+              config_file: container-config.yml
+
+      scan:
+        needs: setup
+        runs-on: ubuntu-latest
+        strategy:
+          fail-fast: false
+          matrix: (( fromJson(needs.setup.outputs.scan_matrix) ))
+        steps:
+          - uses: huntridge-labs/argus/.github/actions/scanner-container@v3
+            with:
+              image_ref: (( matrix.image ))
+              container_name: (( matrix.name ))
+              scanners: (( matrix.scanner ))
+              registry_username: (( matrix.registry_username ))
+              registry_password: (( secrets[matrix.registry_auth_secret] ))
+              skip_summary: 'true'
+
+      summary:
+        needs: scan
+        if: always()
+        runs-on: ubuntu-latest
+        steps:
+          - uses: huntridge-labs/argus/.github/actions/scanner-container-summary@v3
+
+  Note: (( )) shown above represents template syntax - use actual GitHub expressions in your workflow.
+
+branding:
+  icon: 'file-text'
+  color: 'blue'
+
+inputs:
+  artifact_pattern:
+    description: 'Pattern to match scan artifacts (default: container-scan-results-*)'
+    required: false
+    default: 'container-scan-results-*'
+  post_pr_comment:
+    description: 'Post results as PR comment'
+    required: false
+    default: 'true'
+
+outputs:
+  total_vulnerabilities:
+    description: 'Total unique vulnerabilities found across all containers'
+    value: ${{ steps.summarize.outputs.total_vulns }}
+  critical_count:
+    description: 'Number of critical vulnerabilities'
+    value: ${{ steps.summarize.outputs.critical }}
+  high_count:
+    description: 'Number of high vulnerabilities'
+    value: ${{ steps.summarize.outputs.high }}
+  containers_scanned:
+    description: 'Number of containers scanned'
+    value: ${{ steps.summarize.outputs.containers_scanned }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Download scan artifacts
+      uses: actions/download-artifact@v4
+      with:
+        pattern: ${{ inputs.artifact_pattern }}
+        merge-multiple: false
+      continue-on-error: true
+
+    - name: List downloaded artifacts
+      shell: bash
+      run: |
+        echo "📥 Downloaded artifacts:"
+        ls -la
+        for dir in container-scan-results-*/; do
+          [ -d "$dir" ] && echo "  📁 $dir" && ls -la "$dir" 2>/dev/null || true
+        done
+
+    - name: Generate combined summary
+      id: summarize
+      shell: bash
+      env:
+        TRIVY_PARSER: ${{ github.action_path }}/../scanner-container/scripts/parse_trivy_results.py
+        GRYPE_PARSER: ${{ github.action_path }}/../scanner-container/scripts/parse_grype_results.py
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
+      run: |
+        python3 "${{ github.action_path }}/../scanner-container/scripts/generate_container_summary.py" --combined
+
+    - name: Upload combined summary artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: container-scan-summary
+        path: scanner-summaries/
+        retention-days: 30
+      continue-on-error: true
+
+    - name: Post PR comment
+      if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
+      uses: huntridge-labs/argus/.github/actions/comment-pr@main
+      with:
+        summary_file: scanner-summaries/container.md
+        comment_marker: container-scan-parallel-comment
+        title: '🐳 Container Security Scan Results'
+        fallback_message: 'No container scan results available'

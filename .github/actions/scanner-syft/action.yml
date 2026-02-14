@@ -1,0 +1,326 @@
+name: 'Syft SBOM Generator'
+description: |
+  Generate Software Bill of Materials (SBOM) using Syft.
+  Supports scanning source code directories and container images.
+
+  Results integrate with security-summary for aggregated reporting.
+
+  **Usage Example:**
+  ```yaml
+  - uses: actions/checkout@v6
+  - uses: huntridge-labs/argus/.github/actions/scanner-syft@v2.12.0
+    with:
+      scan_path: '.'
+      output_format: 'cyclonedx-json'
+  ```
+
+author: 'Argus'
+
+branding:
+  icon: 'package'
+  color: 'purple'
+
+inputs:
+  scan_path:
+    description: 'Directory or file path to scan for SBOM generation'
+    required: false
+    default: '.'
+  scan_image:
+    description: 'Container image to scan (e.g., nginx:latest, ghcr.io/owner/image:tag). If provided, takes precedence over scan_path.'
+    required: false
+    default: ''
+  output_format:
+    description: 'SBOM output format: cyclonedx-json, spdx-json, syft-json, or table'
+    required: false
+    default: 'cyclonedx-json'
+  registry_username:
+    description: 'Username for container registry authentication (for image scanning)'
+    required: false
+    default: ''
+  registry_password:
+    description: 'Password/token for container registry authentication'
+    required: false
+    default: ''
+  post_pr_comment:
+    description: 'Whether to post PR comments'
+    required: false
+    default: 'true'
+  enable_code_security:
+    description: 'Upload SBOM to GitHub Dependency Graph (requires contents: write permission)'
+    required: false
+    default: 'false'
+  artifact_name_suffix:
+    description: 'Suffix for artifact naming (useful for matrix builds)'
+    required: false
+    default: ''
+
+outputs:
+  sbom_file:
+    description: 'Path to the generated SBOM file'
+    value: ${{ steps.generate.outputs.sbom_file }}
+  component_count:
+    description: 'Number of components/packages found'
+    value: ${{ steps.parse.outputs.component_count }}
+  scan_target:
+    description: 'What was scanned (path or image reference)'
+    value: ${{ steps.setup.outputs.target }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup scan parameters
+      id: setup
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.scan_image }}" ]; then
+          TARGET="${{ inputs.scan_image }}"
+          TYPE="image"
+          # Create safe prefix from image name
+          PREFIX=$(echo "$TARGET" | sed 's/:/-/g' | sed 's/\//-/g')
+        else
+          TARGET="${{ inputs.scan_path }}"
+          TYPE="path"
+          # Create safe prefix from path
+          if [ "$TARGET" = "." ]; then
+            PREFIX="source"
+          else
+            PREFIX=$(basename "$TARGET" | sed 's/[^a-zA-Z0-9]/-/g')
+          fi
+        fi
+
+        # Add suffix if provided
+        if [ -n "${{ inputs.artifact_name_suffix }}" ]; then
+          PREFIX="${PREFIX}-${{ inputs.artifact_name_suffix }}"
+        fi
+
+        mkdir -p syft-reports
+
+        echo "target=$TARGET" >> $GITHUB_OUTPUT
+        echo "type=$TYPE" >> $GITHUB_OUTPUT
+        echo "prefix=$PREFIX" >> $GITHUB_OUTPUT
+        echo "output_dir=syft-reports" >> $GITHUB_OUTPUT
+
+        echo "Scan target: $TARGET ($TYPE)"
+        echo "Output prefix: $PREFIX"
+
+    # Authenticate to registry for image scanning
+    - name: Authenticate to container registry
+      if: inputs.scan_image != '' && inputs.registry_username != '' && inputs.registry_password != ''
+      shell: bash
+      run: |
+        echo "Authenticating to container registry..."
+        REGISTRY=$(echo "${{ inputs.scan_image }}" | cut -d'/' -f1)
+
+        # Handle Docker Hub (no registry prefix)
+        if [[ "$REGISTRY" != *"."* ]] && [[ "$REGISTRY" != *":"* ]]; then
+          REGISTRY="docker.io"
+        fi
+
+        echo "${{ inputs.registry_password }}" | docker login "$REGISTRY" -u "${{ inputs.registry_username }}" --password-stdin
+        echo "Successfully authenticated to $REGISTRY"
+
+    # Generate SBOM for source path
+    - name: Generate SBOM (Path)
+      id: sbom-path
+      if: steps.setup.outputs.type == 'path'
+      uses: anchore/sbom-action@v0.22.1
+      with:
+        path: ${{ steps.setup.outputs.target }}
+        format: ${{ inputs.output_format }}
+        output-file: ${{ steps.setup.outputs.output_dir }}/sbom-${{ steps.setup.outputs.prefix }}.${{ inputs.output_format == 'cyclonedx-json' && 'cdx.json' || inputs.output_format == 'spdx-json' && 'spdx.json' || 'json' }}
+        upload-artifact: false
+        upload-release-assets: false
+
+    # Generate SBOM for container image
+    - name: Generate SBOM (Image)
+      id: sbom-image
+      if: steps.setup.outputs.type == 'image'
+      uses: anchore/sbom-action@v0.22.1
+      with:
+        image: ${{ steps.setup.outputs.target }}
+        format: ${{ inputs.output_format }}
+        output-file: ${{ steps.setup.outputs.output_dir }}/sbom-${{ steps.setup.outputs.prefix }}.${{ inputs.output_format == 'cyclonedx-json' && 'cdx.json' || inputs.output_format == 'spdx-json' && 'spdx.json' || 'json' }}
+        upload-artifact: false
+        upload-release-assets: false
+      env:
+        SYFT_REGISTRY_AUTH_USERNAME: ${{ inputs.registry_username }}
+        SYFT_REGISTRY_AUTH_PASSWORD: ${{ inputs.registry_password }}
+
+    # Generate human-readable table format
+    - name: Generate table format
+      shell: bash
+      run: |
+        PREFIX="${{ steps.setup.outputs.prefix }}"
+        TARGET="${{ steps.setup.outputs.target }}"
+        OUTPUT_DIR="${{ steps.setup.outputs.output_dir }}"
+
+        echo "Generating human-readable SBOM table..."
+
+        # Install syft if not available (GHES compatibility)
+        if ! command -v syft &> /dev/null; then
+          echo "Installing Syft..."
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+        fi
+
+        syft "$TARGET" -o table > "$OUTPUT_DIR/sbom-${PREFIX}.txt" 2>/dev/null || echo "Table generation failed" > "$OUTPUT_DIR/sbom-${PREFIX}.txt"
+
+        echo "Generated table output"
+
+    - name: Set output file path
+      id: generate
+      shell: bash
+      run: |
+        PREFIX="${{ steps.setup.outputs.prefix }}"
+        OUTPUT_DIR="${{ steps.setup.outputs.output_dir }}"
+        FORMAT="${{ inputs.output_format }}"
+
+        # Determine extension based on format
+        case "$FORMAT" in
+          cyclonedx-json) EXT="cdx.json" ;;
+          spdx-json) EXT="spdx.json" ;;
+          *) EXT="json" ;;
+        esac
+
+        SBOM_FILE="$OUTPUT_DIR/sbom-${PREFIX}.${EXT}"
+        echo "sbom_file=$SBOM_FILE" >> $GITHUB_OUTPUT
+
+    - name: Parse SBOM results
+      id: parse
+      shell: bash
+      run: |
+        SBOM_FILE="${{ steps.generate.outputs.sbom_file }}"
+
+        COMPONENT_COUNT=0
+        if [ -f "$SBOM_FILE" ]; then
+          # Try CycloneDX format first
+          COMPONENT_COUNT=$(jq -r '.components | length // 0' "$SBOM_FILE" 2>/dev/null || echo "0")
+
+          # Try SPDX format if CycloneDX failed
+          if [ "$COMPONENT_COUNT" = "0" ] || [ "$COMPONENT_COUNT" = "null" ]; then
+            COMPONENT_COUNT=$(jq -r '.packages | length // 0' "$SBOM_FILE" 2>/dev/null || echo "0")
+          fi
+
+          # Try Syft native format
+          if [ "$COMPONENT_COUNT" = "0" ] || [ "$COMPONENT_COUNT" = "null" ]; then
+            COMPONENT_COUNT=$(jq -r '.artifacts | length // 0' "$SBOM_FILE" 2>/dev/null || echo "0")
+          fi
+        fi
+
+        echo "component_count=$COMPONENT_COUNT" >> $GITHUB_OUTPUT
+        echo "Found $COMPONENT_COUNT components/packages"
+
+    - name: Upload SBOM artifacts
+      uses: actions/upload-artifact@v6
+      with:
+        name: sbom-${{ steps.setup.outputs.prefix }}
+        path: ${{ steps.setup.outputs.output_dir }}/
+        retention-days: 30
+      if: always()
+
+    - name: Upload to GitHub Dependency Graph
+      if: inputs.enable_code_security == 'true' && steps.setup.outputs.type == 'path'
+      uses: anchore/sbom-action/publish-sbom@v0.21.0
+      with:
+        sbom-artifact-match: sbom-${{ steps.setup.outputs.prefix }}
+      continue-on-error: true
+
+    - name: Generate summary
+      if: always()
+      shell: bash
+      env:
+        HEAD_REF: ${{ github.head_ref || github.ref_name }}
+      run: |
+        mkdir -p scanner-summaries
+
+        PREFIX="${{ steps.setup.outputs.prefix }}"
+        TARGET="${{ steps.setup.outputs.target }}"
+        TYPE="${{ steps.setup.outputs.type }}"
+        COMPONENT_COUNT="${{ steps.parse.outputs.component_count }}"
+        SBOM_FILE="${{ steps.generate.outputs.sbom_file }}"
+        OUTPUT_DIR="${{ steps.setup.outputs.output_dir }}"
+
+        # Get Syft version
+        SYFT_VERSION=$(syft version 2>/dev/null | grep "^Version:" | awk '{print $2}' || echo "unknown")
+
+        # Generate PR comment format
+        generate_summary() {
+          local output="$1"
+          local is_pr_comment="$2"
+
+          if [ "$is_pr_comment" = "true" ]; then
+            echo "<details>" >> "$output"
+            echo "<summary>📦 SBOM - Syft</summary>" >> "$output"
+          else
+            echo "## 📦 SBOM Generation Summary (Syft)" >> "$output"
+          fi
+          echo "" >> "$output"
+
+          if [ -f "$SBOM_FILE" ]; then
+            if [ "$is_pr_comment" = "true" ]; then
+              echo "**Status:** ✅ Completed" >> "$output"
+              echo "" >> "$output"
+            fi
+
+            echo "### 📊 SBOM Summary" >> "$output"
+            echo "" >> "$output"
+            echo "| Metric | Value |" >> "$output"
+            echo "|--------|-------|" >> "$output"
+            echo "| **Target** | \`$TARGET\` |" >> "$output"
+            echo "| **Type** | $TYPE |" >> "$output"
+            echo "| **Components** | $COMPONENT_COUNT |" >> "$output"
+            echo "| **Format** | ${{ inputs.output_format }} |" >> "$output"
+            echo "| **Generator** | Syft v$SYFT_VERSION |" >> "$output"
+            echo "" >> "$output"
+
+            # Show top packages if available
+            if [ -f "$OUTPUT_DIR/sbom-${PREFIX}.txt" ]; then
+              echo "<details>" >> "$output"
+              echo "<summary>📋 Package List (first 20)</summary>" >> "$output"
+              echo "" >> "$output"
+              echo '```' >> "$output"
+              head -25 "$OUTPUT_DIR/sbom-${PREFIX}.txt" >> "$output"
+              echo '```' >> "$output"
+              echo "</details>" >> "$output"
+              echo "" >> "$output"
+            fi
+
+            echo "**📁 Artifacts:** [SBOM Reports](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts)" >> "$output"
+          else
+            if [ "$is_pr_comment" = "true" ]; then
+              echo "**Status:** ⚠️ Failed to generate SBOM" >> "$output"
+            else
+              echo "**Status:** ⚠️ SBOM generation failed" >> "$output"
+            fi
+          fi
+
+          if [ "$is_pr_comment" = "true" ]; then
+            echo "" >> "$output"
+            echo "</details>" >> "$output"
+          fi
+          echo "" >> "$output"
+        }
+
+        # Generate PR comment artifact
+        generate_summary "scanner-summaries/syft.md" "true"
+
+        # Generate job summary
+        generate_summary "$GITHUB_STEP_SUMMARY" "false"
+      continue-on-error: true
+
+    - name: Upload summary artifact
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: scanner-summary-syft-${{ steps.setup.outputs.prefix }}
+        path: scanner-summaries/syft.md
+        retention-days: 7
+      continue-on-error: true
+
+    - name: Comment PR with Syft SBOM results
+      if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
+      uses: huntridge-labs/argus/.github/actions/comment-pr@main
+      with:
+        summary_file: scanner-summaries/syft.md
+        comment_marker: syft-scanner-comment-marker
+        title: '📦 Syft SBOM Results'
+        fallback_message: 'No Syft SBOM results available'

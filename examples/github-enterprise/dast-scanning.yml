@@ -1,0 +1,149 @@
+# DAST (Dynamic Application Security Testing) for GitHub Enterprise Server
+#
+# This workflow runs ZAP security scans against running web applications.
+# ZAP can scan web applications and APIs for vulnerabilities.
+#
+# IMPORTANT: ZAP needs a running target to scan. Options:
+# 1. Start your app as part of the workflow
+# 2. Scan a deployed staging/development environment
+# 3. Use a container-based approach
+
+name: DAST Security Scan (ZAP)
+
+on:
+  # Run after deployments to staging
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: 'URL to scan (e.g., https://staging.example.com)'
+        required: true
+        type: string
+      scan_type:
+        description: 'Type of scan to run'
+        required: false
+        type: choice
+        options:
+          - baseline
+          - full
+          - api
+        default: 'baseline'
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+  actions: read
+  packages: read # For pulling container images from GHCR
+
+jobs:
+  # ============================================
+  # Option 1: Scan an external URL
+  # ============================================
+  scan-external-target:
+    name: ZAP Scan - External Target
+    runs-on: ubuntu-latest
+    if: github.event.inputs.target_url != ''
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run ZAP Scan
+        uses: huntridge-labs/argus/.github/actions/scanner-zap@v2.12.0
+        with:
+          target_url: ${{ github.event.inputs.target_url }}
+          scan_type: ${{ github.event.inputs.scan_type }}
+          post_pr_comment: 'true'
+          enable_code_security: 'true'
+          fail_on_severity: 'high'
+
+  # ============================================
+  # Option 2: Start app and scan (container-based)
+  # ============================================
+  scan-containerized-app:
+    name: ZAP Scan - Container App
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch'
+    services:
+      # Example: Start your app as a service container
+      # Replace with your actual container image
+      app:
+        image: ghcr.io/${{ github.repository }}:latest
+        ports:
+          - 8080:8080
+        # env:
+        #   DATABASE_URL: ...
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Wait for app to be ready
+        run: |
+          echo "Waiting for application to start..."
+          timeout 60 bash -c 'until curl -sf http://localhost:8080/health; do sleep 2; done' || {
+            echo "Application failed to start"
+            exit 1
+          }
+          echo "Application is ready"
+
+      - name: Run ZAP Baseline Scan
+        uses: huntridge-labs/argus/.github/actions/scanner-zap@v2.12.0
+        with:
+          target_url: 'http://localhost:8080'
+          scan_type: 'baseline'
+          post_pr_comment: 'true'
+          enable_code_security: 'true'
+          fail_on_severity: 'high'
+
+  # ============================================
+  # Option 3: API scanning with OpenAPI spec
+  # ============================================
+  scan-api:
+    name: ZAP API Scan
+    runs-on: ubuntu-latest
+    if: false # Enable this job by changing to 'true' or removing the condition
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      # Start your API (example using docker-compose)
+      - name: Start API
+        run: |
+          docker-compose up -d
+          sleep 10
+
+      - name: Run ZAP API Scan
+        uses: huntridge-labs/argus/.github/actions/scanner-zap@v2.12.0
+        with:
+          target_url: 'http://localhost:8080'
+          scan_type: 'api'
+          # api_spec_url: 'http://localhost:8080/openapi.json'
+          post_pr_comment: 'true'
+          enable_code_security: 'true'
+          fail_on_severity: 'medium'
+
+      - name: Stop API
+        if: always()
+        run: docker-compose down
+
+# ============================================
+# Notes on ZAP Scanning
+# ============================================
+#
+# Scan Types:
+# - baseline: Quick passive scan, good for CI/CD
+# - full: Comprehensive active scan, takes longer
+# - api: Specialized for REST/GraphQL APIs
+#
+# Best Practices:
+# 1. Start with baseline scans in CI/CD
+# 2. Run full scans on schedule (nightly/weekly)
+# 3. Use API scans for backend services
+# 4. Always scan staging, not production
+#
+# Configuration:
+# - Use zap-config.yml for scan customization
+# - Define scan rules and exclusions
+# - Set authentication if needed
+#
+# See: ../../docs/scanners.md#zap for full documentation

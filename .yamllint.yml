@@ -1,0 +1,47 @@
+---
+# See https://yamllint.readthedocs.io/en/stable/configuration.html#extending-the-default-configuration
+# for configuration documentation
+extends: default
+
+yaml-files:
+  - "*.yaml"
+  - "*.yml"
+  - ".yamllint"
+
+ignore:
+  - "node_modules/**"
+  - ".git/**"
+  - ".github/**"
+  - ".vscode/**"
+  - "dist/**"
+  - "build/**"
+  - "coverage/**"
+  - "logs/**"
+  - "*.log"
+  - "examples/**"
+
+rules:
+  anchors: enable
+  braces: enable
+  brackets: enable
+  colons: enable
+  commas: enable
+  comments: disable
+  comments-indentation: disable
+  document-end: disable
+  document-start: disable
+  empty-lines: enable
+  empty-values: enable
+  float-values: disable
+  hyphens: enable
+  indentation: disable
+  key-duplicates: enable
+  key-ordering: disable
+  line-length: disable
+  new-line-at-end-of-file: disable
+  new-lines: enable
+  octal-values: disable
+  quoted-strings: disable
+  trailing-spaces: disable
+  truthy:
+    level: warning

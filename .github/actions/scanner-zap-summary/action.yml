@@ -1,0 +1,177 @@
+name: 'ZAP Summary Generator'
+description: 'Generates combined summary from ZAP DAST scan results'
+author: 'Huntridge Labs'
+
+inputs:
+  artifact_pattern:
+    description: 'Pattern to match ZAP report artifacts'
+    required: false
+    default: 'zap-reports-*'
+  summary_pattern:
+    description: 'Pattern to match scanner summary artifacts'
+    required: false
+    default: 'scanner-summary-zap-*'
+  output_name:
+    description: 'Name for the combined summary artifact'
+    required: false
+    default: 'zap-combined-summary'
+  retention_days:
+    description: 'Number of days to retain the summary artifact'
+    required: false
+    default: '30'
+  write_step_summary:
+    description: 'Write summary to GITHUB_STEP_SUMMARY'
+    required: false
+    default: 'true'
+  post_pr_comment:
+    description: 'Post results as PR comment'
+    required: false
+    default: 'true'
+
+outputs:
+  summary_path:
+    description: 'Path to the generated summary file'
+    value: ${{ steps.generate.outputs.summary_path }}
+  total_critical:
+    description: 'Total critical findings across all scans'
+    value: ${{ steps.generate.outputs.total_critical }}
+  total_high:
+    description: 'Total high findings across all scans'
+    value: ${{ steps.generate.outputs.total_high }}
+  total_medium:
+    description: 'Total medium findings across all scans'
+    value: ${{ steps.generate.outputs.total_medium }}
+  total_low:
+    description: 'Total low findings across all scans'
+    value: ${{ steps.generate.outputs.total_low }}
+  total_info:
+    description: 'Total informational findings across all scans'
+    value: ${{ steps.generate.outputs.total_info }}
+  scan_count:
+    description: 'Number of scans processed'
+    value: ${{ steps.generate.outputs.scan_count }}
+  has_findings:
+    description: 'Whether any findings were detected'
+    value: ${{ steps.generate.outputs.has_findings }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Download ZAP report artifacts
+      uses: actions/download-artifact@v4
+      with:
+        pattern: ${{ inputs.artifact_pattern }}
+        path: zap-downloads
+        merge-multiple: false
+      continue-on-error: true
+
+    - name: Download summary artifacts
+      uses: actions/download-artifact@v4
+      with:
+        pattern: ${{ inputs.summary_pattern }}
+        path: scanner-summaries
+        merge-multiple: true
+      continue-on-error: true
+
+    - name: Generate combined summary
+      id: generate
+      shell: bash
+      env:
+        ARTIFACT_PATTERN: ${{ inputs.artifact_pattern }}
+        SUMMARY_PATTERN: ${{ inputs.summary_pattern }}
+      run: |
+        # Reference Python scripts from scanner-zap action
+        SCANNER_ZAP_SCRIPTS="${{ github.action_path }}/../scanner-zap/scripts"
+        PARSER="$SCANNER_ZAP_SCRIPTS/parse_zap_results.py"
+        GENERATOR="$SCANNER_ZAP_SCRIPTS/generate_zap_summary.py"
+
+        chmod +x "$PARSER" "$GENERATOR"
+
+        # Export parser path for generator script
+        export ZAP_PARSER="$PARSER"
+
+        # Create output directory
+        mkdir -p scanner-summaries
+
+        # Run the summary generator
+        python3 "$GENERATOR"
+
+        # Set outputs
+        SUMMARY_FILE="scanner-summaries/zap.md"
+        if [[ -f "$SUMMARY_FILE" ]]; then
+          echo "summary_path=$SUMMARY_FILE" >> "$GITHUB_OUTPUT"
+          echo "has_findings=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "summary_path=" >> "$GITHUB_OUTPUT"
+          echo "has_findings=false" >> "$GITHUB_OUTPUT"
+        fi
+
+        # Calculate totals from all reports
+        TOTAL_CRIT=0
+        TOTAL_HIGH=0
+        TOTAL_MED=0
+        TOTAL_LOW=0
+        TOTAL_INFO=0
+        SCAN_COUNT=0
+
+        for dir in zap-downloads/*/; do
+          if [[ -d "$dir" ]]; then
+            for report in "$dir"*.json; do
+              if [[ -f "$report" ]]; then
+                COUNTS=$(python3 "$PARSER" counts-with-info "$report" 2>/dev/null || echo "0 0 0 0 0")
+                read -r C H M L I <<< "$COUNTS"
+                TOTAL_CRIT=$((TOTAL_CRIT + C))
+                TOTAL_HIGH=$((TOTAL_HIGH + H))
+                TOTAL_MED=$((TOTAL_MED + M))
+                TOTAL_LOW=$((TOTAL_LOW + L))
+                TOTAL_INFO=$((TOTAL_INFO + I))
+                SCAN_COUNT=$((SCAN_COUNT + 1))
+              fi
+            done
+          fi
+        done
+
+        echo "total_critical=$TOTAL_CRIT" >> "$GITHUB_OUTPUT"
+        echo "total_high=$TOTAL_HIGH" >> "$GITHUB_OUTPUT"
+        echo "total_medium=$TOTAL_MED" >> "$GITHUB_OUTPUT"
+        echo "total_low=$TOTAL_LOW" >> "$GITHUB_OUTPUT"
+        echo "total_info=$TOTAL_INFO" >> "$GITHUB_OUTPUT"
+        echo "scan_count=$SCAN_COUNT" >> "$GITHUB_OUTPUT"
+
+        # Update has_findings based on actual counts
+        if [[ $((TOTAL_CRIT + TOTAL_HIGH + TOTAL_MED + TOTAL_LOW + TOTAL_INFO)) -gt 0 ]]; then
+          echo "has_findings=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Upload combined summary
+      if: steps.generate.outputs.summary_path != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.output_name }}
+        path: ${{ steps.generate.outputs.summary_path }}
+        retention-days: ${{ inputs.retention_days }}
+
+    - name: Write to step summary
+      if: inputs.write_step_summary == 'true'
+      shell: bash
+      run: |
+        echo "## ZAP DAST Summary" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+
+        SUMMARY_FILE="${{ steps.generate.outputs.summary_path }}"
+        if [[ -n "$SUMMARY_FILE" && -f "$SUMMARY_FILE" ]]; then
+          cat "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo "No ZAP findings to report" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Scans processed:** ${{ steps.generate.outputs.scan_count }}" >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    - name: Post PR comment
+      if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
+      uses: huntridge-labs/argus/.github/actions/comment-pr@main
+      with:
+        summary_file: scanner-summaries/zap.md
+        comment_marker: zap-scan-summary-comment
+        title: '🕷️ ZAP DAST Scan Results'
+        fallback_message: 'No ZAP scan results available'

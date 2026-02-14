@@ -1,0 +1,32 @@
+name: "Security Configuration"
+
+disable-default-queries: false
+
+queries:
+  - name: security-and-quality
+    uses: security-and-quality
+
+paths-ignore:
+  - "**/*.md"
+  - "**/*.txt"
+  - "**/node_modules/**"
+  - "**/venv/**"
+  - "**/__pycache__/**"
+  - "**/tests/**/*.json"
+  - "**/test_*.py"
+  - "**/*_test.py"
+  - "**/conftest.py"
+  # Exclude internal tooling directories (not customer-facing)
+  - ".husky/**"
+  - ".github/**"
+
+paths:
+  - "src/"
+  - "infrastructure/"
+
+# Simplified packs configuration - use built-in query suites
+packs:
+  javascript:
+    - codeql/javascript-queries
+  python:
+    - codeql/python-queries

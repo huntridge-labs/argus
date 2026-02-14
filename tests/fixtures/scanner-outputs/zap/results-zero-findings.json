@@ -1,0 +1,13 @@
+{
+  "@version": "2.14.0",
+  "@generated": "2026-01-26T12:00:00",
+  "site": [
+    {
+      "@name": "http://localhost:3000",
+      "@host": "localhost",
+      "@port": "3000",
+      "@ssl": "false",
+      "alerts": []
+    }
+  ]
+}

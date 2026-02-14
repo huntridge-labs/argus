@@ -1,0 +1,21 @@
+echo "Running .husky pre-commit hook (fast checks only)"
+
+# Activate virtual environment if it exists (support both .venv and .dev.venv)
+if [ -f ".dev.venv/bin/activate" ]; then
+  . .dev.venv/bin/activate
+elif [ -f ".venv/bin/activate" ]; then
+  . .venv/bin/activate
+fi
+
+# Run only pre-commit stage hooks (formatting, linting, syntax checks)
+# Tests run in pre-push hook instead
+if command -v pre-commit >/dev/null 2>&1; then
+  echo "Running formatting and linting checks..."
+  pre-commit run --all-files --show-diff-on-failure
+else
+  echo "⚠️  pre-commit not found, skipping hooks"
+  echo "💡 To run hooks locally, use the devcontainer or run: bash .devcontainer/setup.sh"
+  exit 0  # Don't fail if pre-commit is not installed
+fi
+
+echo "✅ Fast checks passed! (Full tests will run on push)"

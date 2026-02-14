@@ -1,0 +1,26 @@
+# Exclude internal tooling directories from security scans
+# These are not customer-facing products and contain development/CI tooling
+
+# Husky pre-commit hooks and scripts
+.husky/
+
+# GitHub Actions workflows and configurations
+.github/
+
+# Standard exclusions
+node_modules/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+*.tmp
+dist/
+build/
+
+# Test files and documentation
+tests/
+docs/
+**/*.md
+**/*.txt
+**/*.json

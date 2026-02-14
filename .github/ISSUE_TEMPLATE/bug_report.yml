@@ -1,0 +1,77 @@
+name: Bug Report
+description: Report a bug in the Argus
+title: "[BUG] "
+labels: ["bug"]
+body:
+  - type: textarea
+    attributes:
+      label: Description
+      description: A clear and concise description of the bug.
+      placeholder: What went wrong?
+    validations:
+      required: true
+  - type: dropdown
+    attributes:
+      label: Workflow Type
+      description: Which workflow are you using?
+      options:
+        - Reusable Security Hardening Workflow
+        - Linting Workflow
+        - Individual Scanner Workflow (specify below)
+        - Other
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Specific Workflow/Scanner
+      description: If using an individual scanner or other workflow, specify which one (e.g., scanner-codeql.yml, trivy-container).
+      placeholder: e.g., scanner-gitleaks.yml
+  - type: input
+    attributes:
+      label: Scanners Enabled
+      description: Comma-separated list of scanners used (if applicable).
+      placeholder: e.g., codeql,opengrep,bandit
+  - type: textarea
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. Go to '...'
+        2. Click on '....'
+        3. Scroll down to '....'
+        4. See error
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Expected Behavior
+      description: What you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Actual Behavior
+      description: What actually happened.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Logs/Output
+      description: Paste any relevant logs, error messages, or workflow run output.
+      render: shell
+  - type: input
+    attributes:
+      label: GitHub Actions Runner Environment
+      description: e.g., ubuntu-latest, self-hosted
+      placeholder: ubuntu-latest
+  - type: input
+    attributes:
+      label: Repository/Branch Details
+      description: Any specific repository or branch details that might be relevant.
+  - type: checkboxes
+    attributes:
+      label: Additional Context
+      options:
+        - label: This is a regression (worked in a previous version)
+        - label: I have checked the documentation and existing issues
+        - label: I am willing to provide a minimal reproduction repository if requested

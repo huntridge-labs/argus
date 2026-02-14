@@ -1,0 +1,25 @@
+coverage:
+  precision: 2
+  round: down
+  range: "70...100"
+
+  status:
+    project:
+      default:
+        target: 80%
+        threshold: 3%
+
+    patch:
+      default:
+        target: 80%
+
+  ignore:
+    - "tests/**/*"
+    - "examples/**/*"
+    - "docs/**/*"
+    - "*.md"
+
+comment:
+  layout: "reach,diff,flags,tree"
+  behavior: default
+  require_changes: false

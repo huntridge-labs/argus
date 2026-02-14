@@ -1,0 +1,93 @@
+# Syft SBOM Generator - Reusable Workflow
+#
+# THIN WRAPPER: This workflow delegates to the scanner-syft composite action.
+# All SBOM generation logic is in: .github/actions/scanner-syft/action.yml
+#
+# For GHES users: Use the composite action directly instead of this workflow.
+# See: examples/github-enterprise/container-scanning.yml
+
+name: Generate SBOM
+
+on:
+  workflow_dispatch:
+    inputs:
+      scan_path:
+        description: 'Directory or file path to scan'
+        required: false
+        type: string
+        default: '.'
+      scan_image:
+        description: 'Container image to scan (e.g., nginx:latest, ghcr.io/owner/image:tag)'
+        required: false
+        type: string
+        default: ''
+      registry_username:
+        description: 'Username for registry authentication (leave empty for public images)'
+        required: false
+        type: string
+        default: ''
+      output_format:
+        description: 'SBOM output format: cyclonedx-json, spdx-json, syft-json, or table'
+        required: false
+        type: string
+        default: 'cyclonedx-json'
+  workflow_call:
+    inputs:
+      enable_code_security:
+        description: 'Whether GitHub Code Security is enabled for this repository'
+        required: false
+        type: boolean
+        default: false
+      scan_path:
+        description: 'Directory or file path to scan'
+        required: false
+        type: string
+        default: '.'
+      scan_image:
+        description: 'Container image to scan (e.g., nginx:latest, ghcr.io/owner/image:tag)'
+        required: false
+        type: string
+        default: ''
+      registry_username:
+        description: 'Username for registry authentication (leave empty for public images)'
+        required: false
+        type: string
+        default: ''
+      output_format:
+        description: 'SBOM output format: cyclonedx-json, spdx-json, syft-json, or table'
+        required: false
+        type: string
+        default: 'cyclonedx-json'
+    secrets:
+      registry_password:
+        description: 'Password/token for registry authentication'
+        required: false
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  pull-requests: write
+  packages: read
+
+jobs:
+  generate-sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run Syft SBOM Generator
+        uses: huntridge-labs/argus/.github/actions/scanner-syft@main
+        with:
+          scan_path: ${{ inputs.scan_path }}
+          scan_image: ${{ inputs.scan_image }}
+          output_format: ${{ inputs.output_format }}
+          registry_username: ${{ inputs.registry_username }}
+          registry_password: ${{ secrets.registry_password }}
+          post_pr_comment: false
+          enable_code_security: ${{ inputs.enable_code_security }}

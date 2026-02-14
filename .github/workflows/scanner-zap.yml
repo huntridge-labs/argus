@@ -1,0 +1,217 @@
+# ZAP DAST Scanner - Reusable Workflow
+#
+# THIN WRAPPER: This workflow delegates to the scanner-zap composite action.
+# All scanning logic is in: .github/actions/scanner-zap/action.yml
+#
+# For GHES users: Use the composite action directly instead of this workflow.
+# See: examples/github-enterprise/dast-scanning.yml
+
+name: ZAP DAST Scanner
+
+on:
+  workflow_dispatch:
+    inputs:
+      scan_mode:
+        description: 'Target mode: url (already running), docker-run (run container), compose'
+        required: false
+        type: choice
+        options:
+          - url
+          - docker-run
+          - compose
+        default: url
+      scan_type:
+        description: 'ZAP scan type: baseline, full, or api'
+        required: false
+        type: choice
+        options:
+          - baseline
+          - full
+          - api
+        default: baseline
+      target_url:
+        description: 'Target URL for baseline/full scans'
+        required: false
+        type: string
+        default: ''
+      api_spec:
+        description: 'OpenAPI/Swagger spec URL (for api scans)'
+        required: false
+        type: string
+        default: ''
+      app_image_ref:
+        description: 'Container image (for docker-run mode)'
+        required: false
+        type: string
+        default: ''
+      app_ports:
+        description: 'Port mappings (e.g., 8080:8080)'
+        required: false
+        type: string
+        default: '8080:8080'
+      max_duration_minutes:
+        description: 'Max scan duration in minutes'
+        required: false
+        type: number
+        default: 10
+      fail_on_severity:
+        description: 'Fail threshold: none, low, medium, high, critical'
+        required: false
+        type: string
+        default: 'none'
+
+  workflow_call:
+    inputs:
+      scan_name:
+        description: 'Unique scan identifier (for artifact naming)'
+        required: false
+        type: string
+        default: 'zap-scan'
+      scan_mode:
+        description: 'Target mode: url, docker-run, or compose'
+        required: false
+        type: string
+        default: url
+      scan_type:
+        description: 'ZAP scan type: baseline, full, or api'
+        required: false
+        type: string
+        default: baseline
+      target_url:
+        description: 'Target URL for baseline/full scans'
+        required: false
+        type: string
+        default: ''
+      api_spec:
+        description: 'OpenAPI/Swagger spec URL (for api scans)'
+        required: false
+        type: string
+        default: ''
+      healthcheck_url:
+        description: 'URL to poll until target is ready'
+        required: false
+        type: string
+        default: ''
+      app_image_ref:
+        description: 'Container image (for docker-run mode)'
+        required: false
+        type: string
+        default: ''
+      app_build_context:
+        description: 'Docker build context (for local builds)'
+        required: false
+        type: string
+        default: ''
+      app_dockerfile:
+        description: 'Dockerfile path (for local builds)'
+        required: false
+        type: string
+        default: ''
+      app_image_tag:
+        description: 'Tag for locally built image'
+        required: false
+        type: string
+        default: ''
+      app_ports:
+        description: 'Port mappings (e.g., 8080:8080)'
+        required: false
+        type: string
+        default: '8080:8080'
+      compose_file:
+        description: 'Docker compose file path'
+        required: false
+        type: string
+        default: 'docker-compose.yml'
+      compose_build:
+        description: 'Run docker compose with --build'
+        required: false
+        type: boolean
+        default: true
+      max_duration_minutes:
+        description: 'Max scan duration in minutes'
+        required: false
+        type: number
+        default: 10
+      rules_file_name:
+        description: 'ZAP rules file to ignore alerts (.tsv)'
+        required: false
+        type: string
+        default: ''
+      cmd_options:
+        description: 'Additional ZAP command-line options'
+        required: false
+        type: string
+        default: ''
+      fail_on_severity:
+        description: 'Fail threshold: none, low, medium, high, critical'
+        required: false
+        type: string
+        default: 'none'
+      allow_failure:
+        description: 'Continue workflow on scan failure'
+        required: false
+        type: boolean
+        default: false
+      post_pr_comment:
+        description: 'Post results as PR comment'
+        required: false
+        type: boolean
+        default: false
+      allow_issue_writing:
+        description: 'Enable ZAP native GitHub Issue creation'
+        required: false
+        type: boolean
+        default: false
+      registry_username:
+        description: 'Registry username (for private images)'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      registry_password:
+        description: 'Registry password/token for private images'
+        required: false
+
+permissions:
+  contents: read
+  actions: read
+  packages: read
+  pull-requests: write
+
+jobs:
+  zap-scan:
+    name: ZAP ${{ inputs.scan_type }} scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    continue-on-error: ${{ inputs.allow_failure == true }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run ZAP Scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-zap@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          scan_name: ${{ inputs.scan_name }}
+          scan_mode: ${{ inputs.scan_mode }}
+          scan_type: ${{ inputs.scan_type }}
+          target_url: ${{ inputs.target_url }}
+          api_spec: ${{ inputs.api_spec }}
+          healthcheck_url: ${{ inputs.healthcheck_url }}
+          app_image_ref: ${{ inputs.app_image_ref }}
+          app_build_context: ${{ inputs.app_build_context }}
+          app_dockerfile: ${{ inputs.app_dockerfile }}
+          app_image_tag: ${{ inputs.app_image_tag }}
+          app_ports: ${{ inputs.app_ports }}
+          compose_file: ${{ inputs.compose_file }}
+          compose_build: ${{ inputs.compose_build }}
+          registry_username: ${{ inputs.registry_username }}
+          registry_password: ${{ secrets.registry_password }}
+          max_duration_minutes: ${{ inputs.max_duration_minutes }}
+          rules_file_name: ${{ inputs.rules_file_name }}
+          cmd_options: ${{ inputs.cmd_options }}
+          fail_on_severity: ${{ inputs.fail_on_severity }}
+          post_pr_comment: ${{ inputs.post_pr_comment }}
+          allow_issue_writing: ${{ inputs.allow_issue_writing }}

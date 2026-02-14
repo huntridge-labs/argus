@@ -1,0 +1,136 @@
+name: Example - Individual Scanner Workflows
+
+on:  # yamllint disable-line rule:truthy
+  workflow_dispatch:
+    inputs:
+      scanner_type:
+        description: 'Choose scanner to run'
+        required: true
+        type: choice
+        options:
+          - 'Trivy IaC'
+          - 'Checkov'
+          - 'Trivy Container'
+          - 'Grype'
+          - 'All Infrastructure'
+          - 'All Container'
+        default: 'Trivy IaC'
+
+jobs:
+  # Example 1: Trivy Infrastructure-as-Code scanning
+  trivy-iac-scan:
+    if: github.event.inputs.scanner_type == 'Trivy IaC' || github.event.inputs.scanner_type == 'All Infrastructure'
+    uses: ./.github/workflows/scanner-trivy-iac.yml
+    with:
+      iac_path: 'infrastructure'
+      post_pr_comment: true
+      enable_code_security: true
+      fail_on_severity: high  # Fail on high or critical findings
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+
+  # Example 2: Checkov Terraform/IaC scanning
+  checkov-scan:
+    if: github.event.inputs.scanner_type == 'Checkov' || github.event.inputs.scanner_type == 'All Infrastructure'
+    uses: ./.github/workflows/scanner-checkov.yml
+    with:
+      iac_path: 'infrastructure'
+      framework: 'terraform'
+      post_pr_comment: true
+      enable_code_security: true
+      fail_on_severity: medium  # Stricter: fail on medium or higher
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+
+  # Example 3: Trivy container vulnerability scanning
+  trivy-container-scan:
+    if: github.event.inputs.scanner_type == 'Trivy Container' || github.event.inputs.scanner_type == 'All Container'
+    uses: ./.github/workflows/scanner-trivy-container.yml
+    with:
+      image_ref: 'nginx:latest'
+      scan_name: 'nginx'
+      post_pr_comment: true
+      enable_code_security: true
+      fail_on_severity: critical  # Only fail on critical vulnerabilities
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+
+  # Example 4: Grype container vulnerability scanning
+  grype-scan:
+    if: github.event.inputs.scanner_type == 'Grype' || github.event.inputs.scanner_type == 'All Container'
+    uses: ./.github/workflows/scanner-grype.yml
+    with:
+      image_ref: 'nginx:latest'
+      scan_name: 'nginx'
+      post_pr_comment: true
+      enable_code_security: true
+      fail_on_severity: high  # Fail on high or critical
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+
+  # Example 5: Parallel infrastructure scanning (both Trivy IaC and Checkov)
+  parallel-infrastructure:
+    if: false  # Disabled - shows parallel execution pattern
+    strategy:
+      matrix:
+        scanner: [trivy-iac, checkov]
+    uses: ./.github/workflows/scanner-${{ matrix.scanner }}.yml
+    with:
+      iac_path: 'infrastructure'
+      enable_code_security: true
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+
+  # Example 6: Matrix container scanning (multiple images with both scanners)
+  matrix-container:
+    if: false  # Disabled - shows matrix pattern for multiple images
+    strategy:
+      matrix:
+        image:
+          - nginx:latest
+          - python:3.12
+          - node:20
+        scanner: [trivy-container, grype]
+    uses: ./.github/workflows/scanner-${{ matrix.scanner }}.yml
+    with:
+      image_ref: ${{ matrix.image }}
+      scan_name: ${{ matrix.image }}
+      enable_code_security: true
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+
+  # Example 7: Using new scanners in the reusable workflow
+  reusable-with-new-scanners:
+    if: false  # Disabled - shows integration with main workflow
+    uses: ./.github/workflows/reusable-security-hardening.yml
+    with:
+      # Use new individual scanners instead of orchestrators
+      scanners: trivy-iac,checkov,trivy-container,grype
+      iac_path: 'infrastructure'
+      post_pr_comment: true
+      enable_code_security: true
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+      checks: write
+      id-token: write

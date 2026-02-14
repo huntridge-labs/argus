@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "CodeQL",
+          "version": "2.15.4",
+          "semanticVersion": "2.15.4",
+          "informationUri": "https://codeql.github.com",
+          "rules": []
+        }
+      },
+      "results": [],
+      "columnKind": "utf16CodeUnits",
+      "properties": {
+        "semmle.formatSpecifier": "2.1.0"
+      }
+    }
+  ]
+}

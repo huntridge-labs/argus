@@ -1,0 +1,75 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argusmain/.github/schemas/container-config.schema.json
+# Container Registry Configuration
+# This file defines containers to scan across multiple registries
+# Use real, publicly available images for testing
+
+# DEPENDABOT MAINTENANCE:
+# For automated image updates with Dependabot, use simple string format for 'image' field.
+# Dependabot can update: image: "alpine:3.23.2@sha256:abc123..."
+# Dependabot CANNOT update structured format: image: { name: alpine, tag: "3.23.2" }
+# See examples/dependabot.example.yml for configuration.
+
+containers:
+  # Public images - no authentication needed
+  # Simple string format (backward compatible + Dependabot compatible)
+  - name: busybox-latest
+    image: busybox:latest
+    scanners: [trivy, grype, syft]
+    allow_failure: true
+    fail_on_severity: critical
+    enable_code_security: false
+
+  # Structured format with breakdown fields
+  # Useful when you need to pin digests or control individual components
+  # NOTE: Dependabot cannot update this format - use simple string if you need Dependabot
+  - name: alpine-pinned
+    registry:
+      host: docker.io
+    image:
+      repository: library
+      name: alpine
+      tag: "3.23.2"
+      digest: sha256:865b95f46d98cf867a156fe4a135ad3fe50d2056aa3f25ed31662dff6da4eb62
+    scanners: [trivy, grype]
+    allow_failure: true
+    fail_on_severity: none
+    enable_code_security: false
+
+  # Private registry examples (uncomment to use)
+  # Use ${VAR_NAME} syntax to reference environment variables/secrets
+
+  # GitHub Container Registry (GHCR) - structured format
+  - name: ghcr-runner
+    registry:
+      host: ghcr.io
+      username: ${GITHUB_TRIGGERING_ACTOR}
+      auth_secret: GITHUB_TOKEN
+    image:
+      repository: actions
+      name: actions-runner
+      tag: latest
+    scanners: [trivy, grype]
+    allow_failure: false
+    fail_on_severity: none
+    enable_code_security: false
+
+  # AWS ECR - can use simple or structured format
+  # - name: my-ecr-app
+  #   image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:latest
+  #   registry:
+  #     username: AWS
+  #     auth_secret: ECR_PASSWORD
+  #   scanners: [trivy, grype]
+  #   fail_on_severity: critical
+
+  # Minimal image with pinned digest
+  # - name: alpine-app-pinned
+  #   registry:
+  #     host: docker.io
+  #   image:
+  #     repository: library
+  #     name: alpine
+  #     tag: "3.18"
+  #     digest: sha256:ACTUAL_ALPINE_DIGEST_HERE
+  #   scanners: [trivy, grype]
+  #   fail_on_severity: critical

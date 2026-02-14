@@ -1,0 +1,11 @@
+----------- SCAN SUMMARY -----------
+Known viruses: 8642408
+Engine version: 1.3.0
+Scanned directories: 12
+Scanned files: 245
+Infected files: 0
+Data scanned: 15.23 MB
+Data read: 12.45 MB (ratio 1.22:1)
+Time: 3.421 sec (0 m 3 s)
+Start Date: 2026:01:26 12:00:00
+End Date:   2026:01:26 12:00:03

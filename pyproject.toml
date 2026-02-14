@@ -1,0 +1,20 @@
+[tool.bandit]
+# Bandit security scanning configuration
+# Exclude internal tooling directories that are not customer-facing products
+
+exclude_dirs = [
+    ".husky",
+    ".github",
+    "tests",
+    "docs",
+    "__pycache__",
+    "venv",
+    "node_modules"
+]
+
+# Skip certain checks in test environments
+skips = ["B101", "B601"]
+
+# Set confidence level for reporting
+assert_used = "low"
+hardcoded_tmp_directory = "medium"

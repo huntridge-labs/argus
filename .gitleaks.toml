@@ -1,0 +1,11 @@
+# Gitleaks configuration
+# https://github.com/gitleaks/gitleaks
+
+title = "Gitleaks Config"
+
+# Allowlist paths that contain mock/test data with fake secrets
+[allowlist]
+description = "Allow test fixtures containing mock secrets for testing"
+paths = [
+  '''tests/fixtures/scanner-outputs/''',
+]

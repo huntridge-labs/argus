@@ -1,0 +1,130 @@
+# Infrastructure as Code Scanning for GitHub Enterprise Server
+#
+# This workflow scans infrastructure configurations for security issues.
+# Supports Terraform, CloudFormation, Kubernetes manifests, and more.
+#
+# Scanners included:
+# - Trivy IaC (Multi-framework IaC scanner)
+# - Checkov (Policy as Code scanner)
+
+name: Infrastructure Security Scan
+
+on:
+  push:
+    branches: [main, master, develop]
+    paths:
+      - 'terraform/**'
+      - 'infrastructure/**'
+      - 'cloudformation/**'
+      - 'k8s/**'
+      - 'kubernetes/**'
+      - 'helm/**'
+      - '**/*.tf'
+      - '**/*.yaml'
+      - '**/*.yml'
+  pull_request:
+    branches: [main, master, develop]
+    paths:
+      - 'terraform/**'
+      - 'infrastructure/**'
+      - 'cloudformation/**'
+      - 'k8s/**'
+      - 'kubernetes/**'
+      - 'helm/**'
+      - '**/*.tf'
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  infrastructure-scanning:
+    name: IaC Security Analysis
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Scan multiple IaC directories if present
+        include:
+          - path: 'infrastructure'
+            framework: 'terraform'
+          - path: 'terraform'
+            framework: 'terraform'
+          # Add more paths/frameworks as needed:
+          # - path: 'k8s'
+          #   framework: 'kubernetes'
+          # - path: 'cloudformation'
+          #   framework: 'cloudformation'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Check if IaC path exists
+        id: check-path
+        run: |
+          if [ -d "${{ matrix.path }}" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Found IaC directory: ${{ matrix.path }}"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "IaC directory not found: ${{ matrix.path }}"
+          fi
+
+      # ----------------------------------------
+      # Trivy IaC Scanner
+      # ----------------------------------------
+      - name: Run Trivy IaC
+        if: steps.check-path.outputs.exists == 'true'
+        uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@v2.12.0
+        with:
+          iac_path: ${{ matrix.path }}
+          post_pr_comment: 'true'
+          enable_code_security: 'true'
+          fail_on_severity: 'high'
+
+      # ----------------------------------------
+      # Checkov Scanner
+      # ----------------------------------------
+      - name: Run Checkov
+        if: steps.check-path.outputs.exists == 'true'
+        uses: huntridge-labs/argus/.github/actions/scanner-checkov@v2.12.0
+        with:
+          iac_path: ${{ matrix.path }}
+          framework: ${{ matrix.framework }}
+          post_pr_comment: 'true'
+          enable_code_security: 'true'
+          fail_on_severity: 'high'
+          # api_key: ${{ secrets.BC_API_KEY }} # Optional: Prisma Cloud API key
+
+  # ============================================
+  # Alternative: Scan all IaC in one job
+  # ============================================
+  # Uncomment this job and comment out the matrix job above
+  # if you prefer scanning everything in a single job
+  #
+  # scan-all-iac:
+  #   name: Scan All Infrastructure
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v6
+  #
+  #     - name: Run Trivy IaC (full repo)
+  #       uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@v2.12.0
+  #       with:
+  #         iac_path: '.'  # Scan entire repository
+  #         post_pr_comment: 'true'
+  #         enable_code_security: 'true'
+  #         fail_on_severity: 'high'
+  #
+  #     - name: Run Checkov (auto-detect frameworks)
+  #       uses: huntridge-labs/argus/.github/actions/scanner-checkov@v2.12.0
+  #       with:
+  #         iac_path: '.'
+  #         framework: 'all'  # Auto-detect all frameworks
+  #         post_pr_comment: 'true'
+  #         enable_code_security: 'true'
+  #         fail_on_severity: 'high'

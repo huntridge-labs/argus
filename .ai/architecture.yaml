@@ -1,0 +1,270 @@
+# .ai/architecture.yaml
+# Component relationships, dependencies, and system structure
+# AICaC Specification v1.0
+
+version: "1.0"
+
+# CRITICAL: Two parallel implementations exist
+dual_implementation:
+  description: "This project maintains two parallel implementations"
+  default_assumption: "v2_production"
+
+  v2_production:
+    location: ".github/workflows/"
+    pattern: "Reusable workflows"
+    tag: "@v2.12.0"
+    status: production
+    limitation: "Requires github.com (cross-repo calls)"
+    when_to_use: "Default for github.com users"
+
+  v3_development:
+    location: ".github/actions/"
+    pattern: "Composite actions"
+    tag: "@v3 (future)"
+    status: in-development
+    advantage: "GHES compatible, self-contained"
+    when_to_use: "GHES without github.com access"
+
+components:
+  - name: main-orchestrator
+    location: ".github/workflows/reusable-security-hardening.yml"
+    purpose: "Single entry point that dispatches to individual scanners"
+    type: entrypoint
+    accepts: "scanners parameter (comma-separated list or 'all')"
+    returns: "Aggregated SARIF, PR comments, job summaries"
+    calls: [scanner-workflows]
+
+  - name: scanner-workflows
+    location: ".github/workflows/scanner-*.yml"
+    purpose: "Individual scanner wrappers with consistent interface"
+    type: workflow
+    pattern: "Run scanner → Parse output → Generate summary → Upload SARIF"
+    instances:
+      - scanner-codeql.yml
+      - scanner-bandit.yml
+      - scanner-gitleaks.yml
+      - scanner-opengrep.yml
+      - scanner-trivy.yml
+      - scanner-grype.yml
+      - scanner-syft.yml
+      - scanner-checkov.yml
+      - scanner-clamav.yml
+      - scanner-zap.yml
+
+  - name: composite-actions
+    location: ".github/actions/scanner-*/"
+    purpose: "Self-contained scanner actions (v3.0)"
+    type: action
+    structure:
+      action.yml: "Inputs, outputs, steps"
+      scripts/parse-results.py: "Scanner output → JSON"
+      scripts/generate-summary.py: "JSON → Markdown"
+      tests/: "Co-located pytest tests"
+    pr_commenting:
+      has_step: true
+      default: false
+      condition: "github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'"
+      uses: ".github/actions/comment-pr/action.yml"
+      purpose: "Allows standalone scanner usage with individual PR comments"
+
+  - name: config-parsers
+    location: ".github/actions/parse-*/"
+    purpose: "Convert YAML/JSON configs to GitHub Actions matrix"
+    type: utility
+    outputs: "JSON array for matrix strategy"
+    instances:
+      - parse-container-config
+      - parse-zap-config
+
+  - name: summary-generators
+    location: ".github/actions/*-summary/"
+    purpose: "Aggregate results into unified summaries"
+    type: utility
+    instances:
+      - security-summary
+      - linting-summary
+
+scanners:
+  sast:
+    - name: codeql
+      purpose: "Multi-language semantic code analysis"
+      languages: [python, javascript, typescript, go, java, cpp, ruby, csharp, swift, kotlin]
+    - name: bandit
+      purpose: "Python-specific security linter"
+      languages: [python]
+    - name: opengrep
+      purpose: "Pattern-based multi-language scanning"
+      languages: [multi]
+
+  secrets:
+    - name: gitleaks
+      purpose: "Git history and file secrets detection"
+      output: SARIF
+
+  container:
+    - name: trivy
+      purpose: "Container vulnerability scanning"
+      output: SARIF
+    - name: grype
+      purpose: "Container vulnerability scanning (alternative)"
+      output: SARIF
+    - name: syft
+      purpose: "SBOM generation"
+      output: SPDX/CycloneDX
+
+  infrastructure:
+    - name: trivy-iac
+      purpose: "Terraform, Kubernetes, CloudFormation scanning"
+      output: SARIF
+    - name: checkov
+      purpose: "IaC policy-as-code scanning"
+      output: SARIF
+
+  malware:
+    - name: clamav
+      purpose: "File-based malware detection"
+      output: text
+
+  dast:
+    - name: zap
+      purpose: "Dynamic web application testing"
+      output: SARIF
+
+dependencies:
+  external:
+    trivy:
+      purpose: "CVE scanning for OS packages and containers"
+      why_chosen: "Better GHES integration, SBOM support, active maintenance"
+      alternatives_considered: [grype, clair]
+      critical: true
+
+    gitleaks:
+      purpose: "Secrets detection in git history"
+      why_chosen: "Fast, accurate, configurable rules"
+      alternatives_considered: [trufflehog, detect-secrets]
+      critical: true
+
+    codeql:
+      purpose: "Semantic code analysis"
+      why_chosen: "GitHub native, deep analysis, free for public repos"
+      limitation: "Requires GitHub Advanced Security for private repos"
+
+  internal:
+    pyyaml:
+      purpose: "YAML parsing in Python scripts"
+      required_by: [config parsers]
+
+    jsonschema:
+      purpose: "JSON schema validation in Python scripts"
+      required_by: [config validators]
+
+    pytest:
+      purpose: "Testing framework"
+      required_by: [all test suites]
+
+    pytest-cov:
+      purpose: "Code coverage measurement"
+      required_by: [coverage reporting]
+
+data_flow:
+  diagram: |
+    User workflow
+      → reusable-security-hardening.yml (dispatcher)
+        → scanner-{name}.yml (parallel matrix)
+          → Run scanner binary
+          → Parse output (→ JSON)
+          → Generate summary (→ Markdown)
+          → Upload SARIF (→ GitHub Security tab)
+          → [Optional] Post individual PR comment (if post_pr_comment: true)
+        → Aggregate results in security-summary
+      → Single comprehensive PR comment (in reusable workflows)
+
+  pr_commenting_strategy:
+    description: "Flexible PR commenting architecture supporting both standalone and aggregated usage"
+
+    standalone_scanner:
+      when: "Individual scanner action/workflow used directly"
+      behavior: "Each scanner can post its own PR comment"
+      control: "Set post_pr_comment: true in action inputs"
+      use_case: "Single scanner workflows, focused scanning"
+      example: |
+        - uses: huntridge-labs/argus/.github/actions/scanner-bandit@v3
+          with:
+            post_pr_comment: true  # Posts individual Bandit PR comment
+
+    reusable_workflow:
+      when: "Using reusable-security-hardening.yml with multiple scanners"
+      behavior: "All individual scanners have post_pr_comment: false, only security-summary posts"
+      control: "post_pr_comment: false set in reusable-security-hardening.yml for all scanner jobs"
+      use_case: "Multiple scanners, unified reporting"
+      benefit: "Single comprehensive PR comment instead of spam from each scanner"
+      mechanism: |
+        1. All scanner actions generate markdown summaries
+        2. security-summary job downloads all summaries
+        3. Combines into security-hardening-report.md
+        4. Posts single PR comment with all results
+      example: |
+        uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@v2
+        with:
+          scanners: all
+          post_pr_comment: true  # Only security-summary posts, not individual scanners
+
+    implementation:
+      comment_action: ".github/actions/comment-pr/action.yml"
+      deduplication: "Uses HTML comment markers (e.g., opengrep-comment-marker)"
+      update_behavior: "Updates existing comment if marker found, creates new otherwise"
+      default: "post_pr_comment defaults to 'false' in all scanner actions"
+
+  stages:
+    - name: dispatch
+      from: user-workflow
+      to: main-orchestrator
+      data: "scanners list, configuration"
+
+    - name: parallel-scan
+      from: main-orchestrator
+      to: scanner-workflows
+      data: "individual scanner config"
+      parallel: true
+
+    - name: parse
+      from: scanner-binary
+      to: parse-script
+      data: "raw scanner output"
+
+    - name: summarize
+      from: parse-script
+      to: summary-script
+      data: "structured JSON"
+
+    - name: upload
+      from: scanner-workflow
+      to: github-security-tab
+      data: "SARIF file"
+
+    - name: aggregate
+      from: all-scanners
+      to: security-summary
+      data: "all findings"
+
+directory_structure:
+  ".github/actions/": "v3.0 composite actions"
+  ".github/workflows/": "v2.x reusable workflows"
+  ".github/schemas/": "JSON schemas for config validation"
+  "examples/workflows/": "User-facing workflow examples"
+  "examples/configs/": "Configuration file examples"
+  "tests/": "Test infrastructure"
+  "tests/fixtures/": "Shared test data"
+  "docs/": "Detailed documentation"
+  "hardening-dagger/": "Python reporting utility (separate module)"
+
+constraints:
+  technical:
+    - "SARIF files must be < 10MB for GitHub upload"
+    - "Matrix jobs limited to 256 per workflow"
+    - "Composite actions can't use services: or container:"
+    - "GHES versions vary - can't assume latest features"
+
+  organizational:
+    - "Must support air-gapped environments (no external API calls)"
+    - "License: AGPL-3.0 (copyleft implications)"

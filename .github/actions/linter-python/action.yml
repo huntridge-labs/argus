@@ -1,0 +1,275 @@
+name: 'Python Linter'
+description: |
+  Run Python code quality checks using flake8 and bandit.
+
+  This action checks Python code for style violations (flake8) and
+  security issues (bandit). Results are uploaded as artifacts and
+  can be aggregated by the linting-summary action.
+
+  **Usage Example:**
+  ```yaml
+  - uses: actions/checkout@v6
+  - uses: huntridge-labs/argus/.github/actions/linter-python@main
+    with:
+      fail_on_issues: false
+      max_line_length: '120'
+  ```
+
+inputs:
+  fail_on_issues:
+    description: 'Fail the job if linting issues are found'
+    required: false
+    default: 'false'
+  paths:
+    description: 'Paths to lint (space-separated). Defaults to entire repository.'
+    required: false
+    default: '.'
+  python_version:
+    description: 'Python version to use'
+    required: false
+    default: '3.12'
+  max_line_length:
+    description: 'Maximum line length for flake8'
+    required: false
+    default: '120'
+  flake8_ignore:
+    description: 'Flake8 error codes to ignore (comma-separated)'
+    required: false
+    default: 'E203,W503'
+  post_pr_comment:
+    description: 'Whether to post PR comments'
+    required: false
+    default: 'false'
+
+outputs:
+  issues_count:
+    description: 'Total number of linting issues found'
+    value: ${{ steps.python-lint.outputs.issues }}
+  flake8_issues:
+    description: 'Number of flake8 style issues'
+    value: ${{ steps.python-lint.outputs.flake8_issues }}
+  bandit_issues:
+    description: 'Number of bandit security issues'
+    value: ${{ steps.python-lint.outputs.bandit_issues }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ inputs.python_version }}
+
+    - name: Install Python linting tools
+      shell: bash
+      run: |
+        pip install --upgrade pip
+        pip install flake8 bandit
+
+    - name: Run Python linting
+      id: python-lint
+      shell: bash
+      continue-on-error: true
+      run: |
+        echo "::group::Python Code Quality Checks"
+        echo "Searching for Python files in: ${{ inputs.paths }}"
+
+        ISSUES_FILE="/tmp/python_issues.txt"
+        TOTAL_ISSUES=0
+        FLAKE8_ISSUES=0
+        BANDIT_ISSUES=0
+
+        # Find Python files
+        PYTHON_FILES=$(find ${{ inputs.paths }} -name "*.py" \
+          -not -path "*/node_modules/*" \
+          -not -path "*/.git/*" \
+          -not -path "*/.venv/*" \
+          -not -path "*/venv/*" \
+          -not -path "*/__pycache__/*" \
+          -type f 2>/dev/null || true)
+
+        if [ -z "$PYTHON_FILES" ]; then
+          echo "No Python files found to lint"
+          echo "issues=0" >> $GITHUB_OUTPUT
+          echo "flake8_issues=0" >> $GITHUB_OUTPUT
+          echo "bandit_issues=0" >> $GITHUB_OUTPUT
+          echo "::endgroup::"
+          exit 0
+        fi
+
+        echo "Found Python files to check:"
+        echo "$PYTHON_FILES" | head -20
+        FILE_COUNT=$(echo "$PYTHON_FILES" | wc -l)
+        if [ "$FILE_COUNT" -gt 20 ]; then
+          echo "... and $((FILE_COUNT - 20)) more files"
+        fi
+
+        # Flake8 for style and syntax
+        echo ""
+        echo "=== Running Flake8 (style/syntax) ===" | tee -a "$ISSUES_FILE"
+        if flake8 $PYTHON_FILES \
+          --max-line-length=${{ inputs.max_line_length }} \
+          --extend-ignore=${{ inputs.flake8_ignore }} \
+          --statistics > /tmp/flake8.out 2>&1; then
+          echo "No flake8 issues found" | tee -a "$ISSUES_FILE"
+        else
+          FLAKE8_ISSUES=$(grep -c ": " /tmp/flake8.out 2>/dev/null || echo "0")
+          echo "Flake8 found $FLAKE8_ISSUES style/syntax issues:" | tee -a "$ISSUES_FILE"
+          cat /tmp/flake8.out | tee -a "$ISSUES_FILE"
+          TOTAL_ISSUES=$((TOTAL_ISSUES + FLAKE8_ISSUES))
+        fi
+
+        # Bandit for security issues
+        echo ""
+        echo "=== Running Bandit (security) ===" | tee -a "$ISSUES_FILE"
+        if bandit -r ${{ inputs.paths }} -f txt -o /tmp/bandit.out \
+          -x "./.venv/*,./venv/*,./node_modules/*,./.git/*" 2>/dev/null; then
+          echo "No bandit security issues found" | tee -a "$ISSUES_FILE"
+        else
+          if [ -f /tmp/bandit.out ]; then
+            BANDIT_ISSUES=$(grep -c "Issue:" /tmp/bandit.out 2>/dev/null || echo "0")
+            if [ "$BANDIT_ISSUES" -gt 0 ]; then
+              echo "Bandit found $BANDIT_ISSUES potential security issues:" | tee -a "$ISSUES_FILE"
+              cat /tmp/bandit.out | tee -a "$ISSUES_FILE"
+              TOTAL_ISSUES=$((TOTAL_ISSUES + BANDIT_ISSUES))
+            fi
+          fi
+        fi
+
+        echo "issues=$TOTAL_ISSUES" >> $GITHUB_OUTPUT
+        echo "flake8_issues=$FLAKE8_ISSUES" >> $GITHUB_OUTPUT
+        echo "bandit_issues=$BANDIT_ISSUES" >> $GITHUB_OUTPUT
+
+        if [ "$TOTAL_ISSUES" -gt 0 ]; then
+          echo ""
+          echo "Total Python issues found: $TOTAL_ISSUES"
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            echo "::warning title=Python Code Quality Issues::Found $TOTAL_ISSUES Python linting/security issues. See job logs for details."
+          fi
+        else
+          echo "No Python code quality issues found"
+        fi
+
+        echo "::endgroup::"
+
+        # Fail if requested and issues found
+        if [ "${{ inputs.fail_on_issues }}" = "true" ] && [ "$TOTAL_ISSUES" -gt 0 ]; then
+          echo "::error::Python linting failed with $TOTAL_ISSUES issues"
+          exit 1
+        fi
+
+    - name: Generate linter summary
+      if: always()
+      shell: bash
+      run: |
+        mkdir -p linter-summaries
+        ISSUES="${{ steps.python-lint.outputs.issues }}"
+        FLAKE8="${{ steps.python-lint.outputs.flake8_issues }}"
+        BANDIT="${{ steps.python-lint.outputs.bandit_issues }}"
+
+        # Generate PR comment artifact (with <details> wrapper)
+        echo "<details>" > linter-summaries/python.md
+        echo "<summary>Python Code Quality</summary>" >> linter-summaries/python.md
+        echo "" >> linter-summaries/python.md
+
+        if [ "$ISSUES" -eq 0 ]; then
+          echo "**Status:** Passed" >> linter-summaries/python.md
+          echo "" >> linter-summaries/python.md
+          echo "No Python code quality issues found." >> linter-summaries/python.md
+        else
+          echo "**Status:** Issues Found" >> linter-summaries/python.md
+          echo "" >> linter-summaries/python.md
+          echo "| Check | Issues |" >> linter-summaries/python.md
+          echo "|-------|--------|" >> linter-summaries/python.md
+          echo "| Flake8 (style) | $FLAKE8 |" >> linter-summaries/python.md
+          echo "| Bandit (security) | $BANDIT |" >> linter-summaries/python.md
+          echo "| **Total** | **$ISSUES** |" >> linter-summaries/python.md
+          echo "" >> linter-summaries/python.md
+
+          if [ -f "/tmp/python_issues.txt" ]; then
+            echo "<details>" >> linter-summaries/python.md
+            echo "<summary>View Issues</summary>" >> linter-summaries/python.md
+            echo "" >> linter-summaries/python.md
+            echo '```' >> linter-summaries/python.md
+            head -50 /tmp/python_issues.txt >> linter-summaries/python.md
+            if [ $(wc -l < /tmp/python_issues.txt) -gt 50 ]; then
+              echo "... (truncated, see artifacts for full list)" >> linter-summaries/python.md
+            fi
+            echo '```' >> linter-summaries/python.md
+            echo "" >> linter-summaries/python.md
+            echo "</details>" >> linter-summaries/python.md
+          fi
+        fi
+
+        echo "" >> linter-summaries/python.md
+        echo "</details>" >> linter-summaries/python.md
+        echo "" >> linter-summaries/python.md
+
+        # Generate job summary (with ## headers, no <details>)
+        echo "## Python Code Quality" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        if [ "$ISSUES" -eq 0 ]; then
+          echo "**Status:** ✅ Passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "No Python code quality issues found." >> $GITHUB_STEP_SUMMARY
+        else
+          echo "**Status:** ⚠️ Issues Found" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Issues |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Flake8 (style) | $FLAKE8 |" >> $GITHUB_STEP_SUMMARY
+          echo "| Bandit (security) | $BANDIT |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Total** | **$ISSUES** |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f "/tmp/python_issues.txt" ]; then
+            echo "<details>" >> $GITHUB_STEP_SUMMARY
+            echo "<summary>View Issues</summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            head -50 /tmp/python_issues.txt >> $GITHUB_STEP_SUMMARY
+            if [ $(wc -l < /tmp/python_issues.txt) -gt 50 ]; then
+              echo "... (truncated, see artifacts for full list)" >> $GITHUB_STEP_SUMMARY
+            fi
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+    - name: Upload linter summary
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: linter-summary-python
+        path: linter-summaries/python.md
+        retention-days: 7
+      continue-on-error: true
+
+    - name: Comment PR with Python lint results
+      if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
+      uses: huntridge-labs/argus/.github/actions/comment-pr@main
+      with:
+        summary_file: linter-summaries/python.md
+        comment_marker: python-linter-comment-marker
+        title: '🐍 Python Code Quality Results'
+        fallback_message: 'No Python linting results available'
+
+    - name: Upload raw lint results
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: python-lint-results
+        path: |
+          /tmp/python_issues.txt
+          /tmp/flake8.out
+          /tmp/bandit.out
+        retention-days: 7
+        if-no-files-found: ignore
+      continue-on-error: true
+
+branding:
+  icon: 'code'
+  color: 'blue'

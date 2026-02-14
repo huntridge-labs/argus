@@ -1,0 +1,301 @@
+# .ai/errors.yaml
+# Error patterns mapped to solutions
+# AICaC Specification v1.0
+
+version: "1.0"
+
+error_patterns:
+
+  # ==============================================================================
+  # PERMISSIONS ERRORS
+  # ==============================================================================
+
+  - pattern: "Resource not accessible by integration"
+    category: permissions
+    context: "SARIF upload or PR comment fails"
+
+    root_cause: |
+      The GITHUB_TOKEN doesn't have sufficient permissions for the
+      requested operation (security-events: write or pull-requests: write).
+
+    solution:
+      steps:
+        - "Ensure github_token is passed to the workflow"
+        - "Add permissions block to workflow or job"
+      code: |
+        permissions:
+          security-events: write   # For SARIF upload
+          pull-requests: write     # For PR comments
+          contents: read           # For checkout
+      verification: "Check Actions log for successful SARIF upload step"
+
+    reference: "docs/failure-control.md"
+
+  - pattern: "token doesn't have packages:write"
+    category: permissions
+    context: "Dependabot on GitHub Enterprise Server"
+
+    root_cause: |
+      GITHUB_TOKEN has different scopes than Personal Access Token.
+      Dependabot on GHES requires packages:write for private registries.
+
+    solution:
+      steps:
+        - "Create PAT with packages:write scope"
+        - "Add to repository secrets as PACKAGES_TOKEN"
+        - "Update workflow to use PACKAGES_TOKEN"
+
+    reference: "docs/ghes-setup.md#dependabot"
+
+  # ==============================================================================
+  # SCANNER ERRORS
+  # ==============================================================================
+
+  - pattern: "Scanner X not found in matrix"
+    category: configuration
+    context: "Workflow fails with unknown scanner"
+
+    root_cause: "Typo in scanner name or scanner not implemented"
+
+    solution:
+      valid_values:
+        - codeql
+        - bandit
+        - gitleaks
+        - opengrep
+        - trivy
+        - grype
+        - syft
+        - checkov
+        - trivy-iac
+        - clamav
+        - zap
+      verification: "Check spelling against valid scanner names"
+
+  - pattern: "CodeQL.*unsupported language"
+    category: scanner
+    context: "CodeQL fails to analyze repository"
+
+    root_cause: "Repository contains no supported languages for CodeQL"
+
+    solution:
+      supported_languages:
+        - python
+        - javascript
+        - typescript
+        - go
+        - java
+        - cpp
+        - csharp
+        - ruby
+        - swift
+        - kotlin
+      recommendation: "Use bandit (Python) or opengrep (multi-language) instead"
+
+  # ==============================================================================
+  # SARIF ERRORS
+  # ==============================================================================
+
+  - pattern: "SARIF upload failed"
+    category: sarif
+    context: "enable_code_security: true but upload fails"
+
+    root_cause: "GitHub Advanced Security not enabled on repository"
+
+    solution:
+      steps:
+        - "Go to repo Settings → Security → Code security and analysis"
+        - "Enable 'GitHub Advanced Security'"
+        - "For private repos, requires GitHub Enterprise license"
+      alternative: "Set enable_code_security: false to skip SARIF upload"
+
+  - pattern: "SARIF.*exceeds.*size limit"
+    category: sarif
+    context: "SARIF file too large for GitHub"
+
+    root_cause: "SARIF files must be < 10MB for GitHub upload"
+
+    solution:
+      options:
+        - description: "Reduce scan scope"
+          how: "Use 'path' input to scan only changed directories"
+        - description: "Split into multiple workflows"
+          how: "Run different scanners in separate jobs"
+        - description: "Increase severity threshold"
+          how: "fail_on_severity: critical reduces findings count"
+
+  # ==============================================================================
+  # CONTAINER SCANNING ERRORS
+  # ==============================================================================
+
+  - pattern: "Container scan found no images"
+    category: configuration
+    context: "container-scan-from-config returns empty matrix"
+
+    root_cause: "Config file path wrong or YAML syntax error"
+
+    solution:
+      steps:
+        - "Verify config file path is relative to repo root"
+        - "Validate against schema: .github/schemas/container-config.schema.json"
+        - "Use examples/configs/container-config.example.yml as reference"
+      common_issues:
+        - "Path starts with / (should be relative)"
+        - "YAML indentation incorrect"
+        - "Missing 'containers' key"
+
+  - pattern: "registry.*authentication.*failed"
+    category: container
+    context: "Cannot pull container image for scanning"
+
+    root_cause: "Registry credentials not provided or invalid"
+
+    solution:
+      steps:
+        - "Add registry credentials to GitHub Secrets"
+        - "Pass credentials to workflow"
+      code: |
+        with:
+          registry_username: ${{ secrets.REGISTRY_USER }}
+          registry_password: ${{ secrets.REGISTRY_TOKEN }}
+      warning: "Never put credentials in config file"
+
+  # ==============================================================================
+  # PR COMMENT ERRORS
+  # ==============================================================================
+
+  - pattern: "PR comment not appearing"
+    category: pr
+    context: "enable_pr_comment: true but no comment"
+
+    root_cause: "Token lacks PR write permission or not a PR event"
+
+    solution:
+      checklist:
+        - "Add permission: pull-requests: write"
+        - "Ensure workflow runs on pull_request event (not push)"
+        - "Check Actions log for 'PR comment' step output"
+        - "Verify github_token is passed to workflow"
+
+  - pattern: "Could not create comment.*Not Found"
+    category: pr
+    context: "PR comment step fails with 404"
+
+    root_cause: "Workflow running on push event, not pull_request"
+
+    solution:
+      explanation: "PR comments can only be created from pull_request events"
+      fix: |
+        on:
+          pull_request:
+            types: [opened, synchronize, reopened]
+
+  # ==============================================================================
+  # WORKFLOW ERRORS
+  # ==============================================================================
+
+  - pattern: "workflow_call.*not found"
+    category: workflow
+    context: "Cannot call reusable workflow"
+
+    root_cause: "Version tag doesn't exist or typo in workflow path"
+
+    solution:
+      verification:
+        - "Check tag exists: git ls-remote --tags origin"
+        - "Verify workflow path matches exactly"
+      example: |
+        # Correct
+        uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@main
+
+        # Wrong - missing .github prefix
+        uses: huntridge-labs/argusworkflows/reusable-security-hardening.yml@main
+
+  - pattern: "Maximum.*matrix.*exceeded"
+    category: workflow
+    context: "Too many matrix combinations"
+
+    root_cause: "GitHub Actions limits matrix to 256 jobs"
+
+    solution:
+      options:
+        - "Reduce number of containers in config"
+        - "Split into multiple workflows"
+        - "Use job groups with different configs"
+
+  # ==============================================================================
+  # LOCAL DEVELOPMENT ERRORS
+  # ==============================================================================
+
+  - pattern: "pytest.*command not found"
+    category: development
+    context: "Running tests locally"
+
+    root_cause: "pytest not installed or Python not in PATH"
+
+    solution:
+      steps:
+        - "Install Python 3.11+: https://python.org/ or 'brew install python'"
+        - "Install dependencies: pip install -r requirements.txt"
+        - "Run tests: pytest"
+      alternative: "Use Dev Container (recommended)"
+
+  - pattern: "ModuleNotFoundError.*pytest"
+    category: development
+    context: "pytest import fails"
+
+    root_cause: "pytest or dependencies not installed"
+
+    solution:
+      steps:
+        - "Install: pip install -r requirements.txt"
+        - "Or: pip install pytest pytest-cov pyyaml jsonschema"
+
+  # ==============================================================================
+  # GHES-SPECIFIC ERRORS
+  # ==============================================================================
+
+  - pattern: "workflow_call.*not supported"
+    category: ghes
+    context: "Running v2.x workflows on GHES"
+
+    root_cause: "GHES version doesn't support cross-repository workflow_call"
+
+    solution:
+      explanation: "v2.x reusable workflows require github.com access"
+      alternatives:
+        - description: "Use v3.0 composite actions"
+          how: "Switch to .github/actions/ based implementation"
+        - description: "Enable github.com access"
+          how: "Configure GHES to allow github.com workflow calls"
+      reference: "See ADR-001 in .ai/decisions.yaml"
+
+# ==============================================================================
+# DEBUGGING GUIDE
+# ==============================================================================
+
+debugging:
+  enable_debug_logging:
+    description: "Get verbose output from GitHub Actions"
+    steps:
+      - "Go to repo Settings → Secrets and variables → Actions"
+      - "Add secret: ACTIONS_STEP_DEBUG = true"
+      - "Re-run workflow"
+    note: "Remember to remove after debugging (verbose logs are noisy)"
+
+  common_debug_steps:
+    - "Check Actions log for error step"
+    - "Look for parse.sh output (shows JSON conversion)"
+    - "Verify SARIF file size in artifacts"
+    - "Check permissions block in workflow"
+
+  local_testing:
+    description: "Test scripts locally before pushing"
+    steps:
+      - "Run scanner manually on test fixtures"
+      - "Pipe output through parse script"
+      - "Verify JSON structure"
+    example: |
+      bandit -r tests/fixtures/test-apps/python-app -f json | \
+        python .github/actions/scanner-bandit/scripts/parse-results.py counts - | \
+        python -m json.tool

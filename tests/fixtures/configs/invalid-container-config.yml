@@ -1,0 +1,21 @@
+---
+# Invalid container configuration for negative testing
+# Missing required fields and invalid structure
+
+images:
+  - name: "missing-dockerfile"
+    # ERROR: dockerfile or image required
+    tags:
+      - "invalid:latest"
+
+  - name: "invalid-scanner"
+    image: "alpine:latest"
+    scanners:
+      - "nonexistent-scanner"  # ERROR: invalid scanner
+
+  # ERROR: missing name field
+  - dockerfile: "test/Dockerfile"
+    context: "."
+
+# ERROR: Invalid global config structure
+scanner_config: "not-an-object"

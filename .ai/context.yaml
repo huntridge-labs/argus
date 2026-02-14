@@ -1,0 +1,75 @@
+# .ai/context.yaml
+# Project metadata and high-level overview
+# AICaC Specification v1.0
+
+version: "1.0"
+schema: "https://aicac.dev/schema/v1"
+
+project:
+  name: hardening-workflows
+  type: security-pipeline
+  purpose: "Automated security scanning orchestration for GitHub Actions"
+  primary_language: yaml  # GitHub Actions workflows
+  secondary_languages: [python]
+  version: "2.12.0"
+  license: "AGPL-3.0"
+  repository: "huntridge-labs/hardening-workflows"
+
+  one_liner: >
+    Reusable GitHub Actions workflows + composite actions that orchestrate
+    14 security scanners with unified interface, SARIF upload, PR comments.
+
+  solves:
+    - Running multiple security scanners from single workflow call
+    - Unified severity thresholds across different scanner outputs
+    - GitHub Enterprise Server compatibility for security scanning
+    - PR feedback with inline code annotations
+
+  does_not_solve:
+    - Remediation of found vulnerabilities (reporting only)
+    - Custom scanner development (uses existing tools)
+    - Security policy enforcement (provides data, not gates)
+
+entrypoints:
+  v2_main: ".github/workflows/reusable-security-hardening.yml"
+  v3_actions: ".github/actions/"
+  examples: "examples/workflows/"
+  documentation: "docs/"
+
+common_tasks:
+  run_all_scanners: "Call the reusable workflow to run the default scanner suite."
+  run_subset: "Enable a subset of scanners via workflow inputs or config."
+  view_reports: "Review SARIF uploads, PR comments, and summary reports."
+  update_versions: "Bump scanner or action versions and validate outputs."
+  troubleshoot_failures: "Inspect workflow logs and scanner outputs to resolve errors."
+
+primary_users:
+  - DevSecOps engineers setting up CI/CD pipelines
+  - Security teams wanting automated scanning
+  - Platform teams supporting multiple repositories
+
+platforms:
+  supported:
+    - github-actions
+    - github-enterprise-server
+  constraints:
+    - "v2.x requires github.com or GHES with github.com access"
+    - "v3.0 works on isolated GHES"
+    - "Must support air-gapped environments"
+
+context_modules:
+  architecture: "architecture.yaml"
+  workflows: "workflows.yaml"
+  decisions: "decisions.yaml"
+  errors: "errors.yaml"
+
+glossary:
+  SARIF: "Static Analysis Results Interchange Format - JSON standard for findings"
+  SAST: "Static Application Security Testing - analyze code without running it"
+  DAST: "Dynamic Application Security Testing - test running application"
+  IaC: "Infrastructure as Code - Terraform, Kubernetes, CloudFormation"
+  SBOM: "Software Bill of Materials - inventory of dependencies"
+  GHES: "GitHub Enterprise Server - self-hosted GitHub"
+  Composite Action: "GitHub Action that runs steps directly (vs calling another workflow)"
+  Reusable Workflow: "GitHub workflow that can be called from other workflows"
+  Matrix: "GitHub Actions feature to run job with different parameter combinations"

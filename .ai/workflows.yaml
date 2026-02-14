@@ -1,0 +1,243 @@
+# .ai/workflows.yaml
+# Common tasks with exact commands and step-by-step instructions
+# AICaC Specification v1.0
+
+version: "1.0"
+
+# ==============================================================================
+# USER WORKFLOWS - For consumers of this project
+# ==============================================================================
+
+user_workflows:
+
+  basic_security_scan:
+    description: "Run all security scanners on a repository"
+    category: scanning
+    code: |
+      # .github/workflows/security.yml
+      name: Security Scan
+      on: [push, pull_request]
+
+      jobs:
+        security:
+          uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@main
+          with:
+            scanners: all
+            enable_code_security: true
+            fail_on_severity: high
+          secrets:
+            github_token: ${{ secrets.GITHUB_TOKEN }}
+    requirements:
+      - "GitHub Advanced Security enabled (for SARIF upload)"
+    permissions_needed:
+      - "security-events: write"
+      - "contents: read"
+
+  fast_sast_only:
+    description: "Quick SAST scan for rapid feedback on push events"
+    category: scanning
+    when_to_use: "Push events, rapid iteration, development branches"
+    code: |
+      uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@main
+      with:
+        scanners: codeql,bandit,gitleaks,opengrep
+        fail_on_severity: high
+        enable_code_security: true
+      secrets:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+
+  container_scanning:
+    description: "Scan container images defined in config file"
+    category: scanning
+    code: |
+      uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@main
+      with:
+        config_file: .github/container-config.yml
+      secrets:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+    requires_config: ".github/container-config.yml"
+    config_example: |
+      version: "1.0"
+      containers:
+        - name: app-frontend
+          registry: ghcr.io
+          image: org/frontend
+          tag: latest
+          scanners: [trivy, grype]
+        - name: app-backend
+          registry: docker.io
+          image: org/backend
+          tag: v1.2.3
+          scanners: [trivy, syft]
+
+  individual_scanner_v3:
+    description: "Use single scanner via composite action (v3.0)"
+    category: scanning
+    code: |
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@v3
+        with:
+          path: src/
+          fail_on_severity: high
+          enable_sarif_upload: true
+    note: "v3.0 - currently on feature branch, not yet released to main"
+
+  infrastructure_scanning:
+    description: "Scan Terraform, Kubernetes, CloudFormation"
+    category: scanning
+    code: |
+      uses: huntridge-labs/argus/.github/workflows/infrastructure-scan.yml@main
+      with:
+        path: terraform/
+        scanners: trivy-iac,checkov
+        fail_on_severity: high
+
+  scheduled_full_scan:
+    description: "Nightly comprehensive security scan"
+    category: scanning
+    code: |
+      name: Nightly Security Scan
+      on:
+        schedule:
+          - cron: '0 2 * * *'  # 2 AM UTC daily
+
+      jobs:
+        security:
+          uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@main
+          with:
+            scanners: all
+            fail_on_severity: none  # Report only, don't fail
+            enable_code_security: true
+
+# ==============================================================================
+# CONTRIBUTOR WORKFLOWS - For developers of this project
+# ==============================================================================
+
+contributor_workflows:
+
+  run_tests:
+    description: "Execute the full test suite"
+    command: "pytest"
+    breakdown:
+      all: "pytest"
+      fast: "pytest --no-cov -q"
+      coverage: "pytest --cov"
+    coverage_targets:
+      overall: "80%"
+
+  local_development:
+    description: "Set up local development environment"
+    steps:
+      - action: "Clone repository"
+        command: "git clone <repo-url> && cd hardening-workflows"
+
+      - action: "Install Python dependencies"
+        command: "pip install -r requirements.txt"
+
+      - action: "Run tests to verify setup"
+        command: "pytest"
+    alternative: "Use Dev Container (recommended)"
+    devcontainer_steps:
+      - "Open in VS Code"
+      - "Command Palette → 'Reopen in Container'"
+      - "Wait for container build"
+      - "Run: pytest"
+
+  add_new_scanner:
+    description: "Add support for a new security scanner"
+    steps:
+      - action: "Create action directory"
+        command: "mkdir -p .github/actions/scanner-{name}"
+
+      - action: "Create action.yml"
+        location: ".github/actions/scanner-{name}/action.yml"
+        template: ".github/actions/scanner-bandit/action.yml"
+
+      - action: "Create parse script"
+        location: ".github/actions/scanner-{name}/scripts/parse-results.py"
+        purpose: "Convert scanner output → JSON"
+
+      - action: "Create summary script"
+        location: ".github/actions/scanner-{name}/scripts/generate-summary.py"
+        purpose: "Convert JSON → Markdown summary"
+
+      - action: "Add tests"
+        location: ".github/actions/scanner-{name}/tests/"
+        required_files:
+          - "test_parse_results.py"
+          - "test_generate_summary.py"
+
+      - action: "Update orchestrator"
+        file: ".github/workflows/reusable-security-hardening.yml"
+        pattern: "Add to scanner matrix"
+
+      - action: "Document"
+        file: "docs/scanners.md"
+        pattern: "Add scanner reference"
+
+    reference_implementation: ".github/actions/scanner-bandit/"
+    contributing_guide: "CONTRIBUTING.md"
+
+  create_release:
+    description: "Release a new version"
+    command: "npm run release"
+    options:
+      patch: "npm run release:patch"
+      minor: "npm run release:minor"
+      major: "npm run release:major"
+    prerequisites:
+      - "All tests passing"
+      - "On main branch"
+      - "Clean working directory"
+    what_happens:
+      - "Bumps version in version.yaml"
+      - "Updates version in all docs and examples"
+      - "Generates CHANGELOG entry"
+      - "Creates git tag"
+      - "Pushes to remote"
+      - "Creates GitHub release"
+
+  run_single_action_test:
+    description: "Test a specific action locally"
+    command: "cd .github/actions/scanner-{name} && ./tests/test-parse.sh"
+
+  validate_schemas:
+    description: "Validate config files against JSON schemas"
+    command: "npm run test:unit"
+
+# ==============================================================================
+# TESTING - Test execution patterns
+# ==============================================================================
+
+testing:
+
+  unit_tests:
+    command: "pytest"
+    coverage_requirement: "80%"
+    what_it_tests: "Parser and summary script behavior, JSON schema validation"
+
+  integration_tests:
+    location: ".github/workflows/test-actions.yml"
+    trigger: "Push to PR branch"
+    what_it_tests: "Full action execution in GitHub Actions environment"
+
+  local_scanner_test:
+    description: "Test scanner locally before pushing"
+    steps:
+      - "Install scanner binary (e.g., trivy, bandit)"
+      - "Run scanner on test fixtures"
+      - "Pipe output through parse script"
+      - "Verify JSON structure"
+    example: |
+      bandit -r tests/fixtures/test-apps/python-app -f json | python .github/actions/scanner-bandit/scripts/parse-results.py counts -
+
+# ==============================================================================
+# QUICK REFERENCE - Most common commands
+# ==============================================================================
+
+quick_reference:
+  test_all: "pytest"
+  test_fast: "pytest --no-cov -q"
+  test_with_coverage: "pytest --cov"
+  lint: "npm run lint"
+  release: "npm run release"
+  format: "npm run format"

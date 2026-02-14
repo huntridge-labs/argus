@@ -1,0 +1,122 @@
+name: 'Parse Container Config'
+description: |
+  Parses a container-config YAML/JSON file and outputs a GitHub Actions matrix.
+  Use this action to scan multiple containers with dynamic registry authentication.
+
+  The output matrix can be used with strategy.matrix in a subsequent job.
+  Each matrix entry includes 'registry_auth_secret' which is the NAME of the secret
+  to use - the caller workflow resolves it via: secrets[matrix.registry_auth_secret]
+
+  Example usage:
+    jobs:
+      parse:
+        runs-on: ubuntu-latest
+        outputs:
+          matrix: (( steps.parse.outputs.matrix ))
+          has_containers: (( steps.parse.outputs.has_containers ))
+        steps:
+          - uses: actions/checkout@v6
+          - uses: huntridge-labs/argus/.github/actions/parse-container-config@v3
+            id: parse
+            with:
+              config_file: container-config.yml
+
+      scan:
+        needs: parse
+        if: needs.parse.outputs.has_containers == 'true'
+        strategy:
+          matrix: (( fromJson(needs.parse.outputs.matrix) ))
+        runs-on: ubuntu-latest
+        steps:
+          - uses: huntridge-labs/argus/.github/actions/scanner-container@v3
+            with:
+              image_ref: (( matrix.image ))
+              container_name: (( matrix.name ))
+              registry_username: (( matrix.registry_username ))
+              registry_password: (( secrets[matrix.registry_auth_secret] ))
+              scanners: (( matrix.scanners ))
+
+  Note: (( )) shown above represents template syntax - use actual GitHub expressions in your workflow.
+
+inputs:
+  config_file:
+    description: 'Path to the container config file (YAML, JSON, or JS)'
+    required: true
+    default: 'container-config.yml'
+
+outputs:
+  matrix:
+    description: 'JSON matrix for use with strategy.matrix - one entry per container (sequential scanners)'
+    value: ${{ steps.parse.outputs.matrix }}
+  scan_matrix:
+    description: 'JSON matrix for parallel scanning - one entry per container+scanner combination'
+    value: ${{ steps.parse.outputs.scan_matrix }}
+  has_containers:
+    description: 'Whether any containers were found in the config (true/false)'
+    value: ${{ steps.parse.outputs.has_containers }}
+  container_count:
+    description: 'Number of containers in the config'
+    value: ${{ steps.parse.outputs.container_count }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.13'
+
+    - name: Install dependencies
+      shell: bash
+      run: pip install -q pyyaml
+
+    - name: Parse container config
+      id: parse
+      shell: bash
+      env:
+        CONFIG_FILE: ${{ inputs.config_file }}
+        SCHEMA_FILE: ${{ github.action_path }}/schemas/container-config.schema.json
+      run: |
+        set -euo pipefail
+
+        echo "::group::Parsing container config"
+        echo "Config file: $CONFIG_FILE"
+        echo "Schema file: $SCHEMA_FILE"
+
+        # Verify files exist
+        if [ ! -f "$CONFIG_FILE" ]; then
+          echo "::error::Config file not found: $CONFIG_FILE"
+          exit 1
+        fi
+
+        if [ ! -f "$SCHEMA_FILE" ]; then
+          echo "::error::Schema file not found: $SCHEMA_FILE"
+          exit 1
+        fi
+
+        # Run the parser
+        python3 "${{ github.action_path }}/scripts/parse_container_config.py"
+        PARSE_EXIT_CODE=$?
+
+        echo "::endgroup::"
+
+        if [ $PARSE_EXIT_CODE -ne 0 ]; then
+          echo "::error::Failed to parse container config"
+          exit $PARSE_EXIT_CODE
+        fi
+
+        # The parser writes to GITHUB_OUTPUT directly
+        # Add has_containers and container_count outputs
+        MATRIX=$(grep "^matrix=" "$GITHUB_OUTPUT" | cut -d= -f2-)
+
+        if [ -n "$MATRIX" ] && [ "$MATRIX" != "{}" ] && [ "$MATRIX" != '{"include":[]}' ]; then
+          echo "has_containers=true" >> $GITHUB_OUTPUT
+          # Count containers using python
+          COUNT=$(python3 -c "import json; print(len(json.loads('$MATRIX')['include']))")
+          echo "container_count=$COUNT" >> $GITHUB_OUTPUT
+          echo "✅ Found $COUNT container(s) to scan"
+        else
+          echo "has_containers=false" >> $GITHUB_OUTPUT
+          echo "container_count=0" >> $GITHUB_OUTPUT
+          echo "⚠️ No containers found in config"
+        fi

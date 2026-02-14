@@ -1,0 +1,89 @@
+{
+  "@version": "2.14.0",
+  "@generated": "2026-01-26T12:00:00",
+  "site": [
+    {
+      "@name": "http://localhost:3000",
+      "@host": "localhost",
+      "@port": "3000",
+      "@ssl": "false",
+      "alerts": [
+        {
+          "pluginid": "10021",
+          "alertRef": "10021",
+          "alert": "X-Content-Type-Options Header Missing",
+          "name": "X-Content-Type-Options Header Missing",
+          "riskcode": "1",
+          "confidence": "2",
+          "riskdesc": "Low (Medium)",
+          "desc": "<p>The Anti-MIME-Sniffing header X-Content-Type-Options was not set to 'nosniff'.</p>",
+          "instances": [
+            {
+              "uri": "http://localhost:3000/",
+              "method": "GET",
+              "param": "",
+              "attack": "",
+              "evidence": ""
+            }
+          ],
+          "count": "1",
+          "solution": "<p>Ensure that the application/web server sets the Content-Type header appropriately, and that it sets the X-Content-Type-Options header to 'nosniff' for all web pages.</p>",
+          "reference": "<p>http://msdn.microsoft.com/en-us/library/ie/gg622941%28v=vs.85%29.aspx</p>",
+          "cweid": "693",
+          "wascid": "15",
+          "sourceid": "1"
+        },
+        {
+          "pluginid": "10054",
+          "alertRef": "10054",
+          "alert": "Cookie without SameSite Attribute",
+          "name": "Cookie without SameSite Attribute",
+          "riskcode": "1",
+          "confidence": "2",
+          "riskdesc": "Low (Medium)",
+          "desc": "<p>A cookie has been set without the SameSite attribute.</p>",
+          "instances": [
+            {
+              "uri": "http://localhost:3000/login",
+              "method": "POST",
+              "param": "session_id",
+              "attack": "",
+              "evidence": "Set-Cookie: session_id"
+            }
+          ],
+          "count": "1",
+          "solution": "<p>Ensure that the SameSite attribute is set to either 'lax' or ideally 'strict' for all cookies.</p>",
+          "reference": "<p>https://tools.ietf.org/html/draft-ietf-httpbis-cookie-same-site</p>",
+          "cweid": "1275",
+          "wascid": "13",
+          "sourceid": "1"
+        },
+        {
+          "pluginid": "10098",
+          "alertRef": "10098",
+          "alert": "Cross-Domain Misconfiguration",
+          "name": "Cross-Domain Misconfiguration",
+          "riskcode": "2",
+          "confidence": "2",
+          "riskdesc": "Medium (Medium)",
+          "desc": "<p>Web browser data loading may be possible, due to a Cross Origin Resource Sharing (CORS) misconfiguration on the web server</p>",
+          "instances": [
+            {
+              "uri": "http://localhost:3000/api/data",
+              "method": "GET",
+              "param": "",
+              "attack": "",
+              "evidence": "Access-Control-Allow-Origin: *"
+            }
+          ],
+          "count": "1",
+          "solution": "<p>Ensure that sensitive data is not available in an unauthenticated manner. Configure the 'Access-Control-Allow-Origin' HTTP header to a more restrictive set of domains.</p>",
+          "reference": "<p>https://vulncat.fortify.com/en/detail?id=desc.config.dotnet.html5_overly_permissive_cors_policy</p>",
+          "cweid": "264",
+          "wascid": "14",
+          "sourceid": "1"
+        }
+      ]
+    }
+  ]
+}

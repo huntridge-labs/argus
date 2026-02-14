@@ -1,0 +1,65 @@
+# OpenGrep SAST Scanner - Reusable Workflow
+#
+# THIN WRAPPER: This workflow delegates to the scanner-opengrep composite action.
+# All scanning logic is in: .github/actions/scanner-opengrep/action.yml
+#
+# For GHES users: Use the composite action directly instead of this workflow.
+# See: examples/github-enterprise/sast-only.yml
+
+name: OpenGrep Scanner
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      post_pr_comment:
+        description: 'Whether to post PR comments'
+        required: false
+        type: boolean
+        default: true
+      enable_code_security:
+        description: 'Whether GitHub Code Security is enabled for this repository'
+        required: false
+        type: boolean
+        default: false
+      fail_on_severity:
+        description: 'Fail the job if vulnerabilities at or above this severity are found. Options: none, low, medium, high. Set to "none" to never fail.'
+        required: false
+        type: string
+        default: 'none'
+      opengrep_config:
+        description: 'OpenGrep config (e.g., auto, p/default, p/security-audit, or path to custom rules)'
+        required: false
+        type: string
+        default: 'auto'
+      opengrep_paths:
+        description: 'Paths to scan (space-separated)'
+        required: false
+        type: string
+        default: '.'
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  pull-requests: write
+
+jobs:
+  opengrep-analysis:
+    name: OpenGrep SAST
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run OpenGrep Scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-opengrep@main
+        with:
+          config: ${{ inputs.opengrep_config }}
+          paths: ${{ inputs.opengrep_paths }}
+          post_pr_comment: ${{ inputs.post_pr_comment }}
+          enable_code_security: ${{ inputs.enable_code_security }}
+          fail_on_severity: ${{ inputs.fail_on_severity }}

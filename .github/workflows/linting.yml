@@ -1,0 +1,161 @@
+# Code Quality and Linting Pipeline - Reusable Workflow
+#
+# THIN WRAPPER: This workflow delegates to individual linter composite actions.
+# All linting logic is in:
+#   - .github/actions/linter-yaml/action.yml
+#   - .github/actions/linter-json/action.yml
+#   - .github/actions/linter-python/action.yml
+#   - .github/actions/linter-javascript/action.yml
+#   - .github/actions/linter-dockerfile/action.yml
+#   - .github/actions/linter-terraform/action.yml
+#   - .github/actions/linting-summary/action.yml
+#
+# For GHES users: Use the composite actions directly instead of this workflow.
+# See: examples/github-enterprise/
+
+name: Code Quality and Linting Pipeline
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      fail_on_issues:
+        description: 'Fail the workflow if linting issues are found'
+        required: false
+        type: boolean
+        default: false
+      post_pr_comment:
+        description: 'Post linting summary as PR comment'
+        required: false
+        type: boolean
+        default: true
+    outputs:
+      linting_status:
+        description: "Overall linting status"
+        value: ${{ jobs.linting-summary.outputs.status }}
+      issues_found:
+        description: "Number of issues found"
+        value: ${{ jobs.linting-summary.outputs.issues_found }}
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+
+jobs:
+  yaml-lint:
+    name: YAML Linting
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    outputs:
+      yaml_issues: ${{ steps.lint.outputs.issues_count }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run YAML Linter
+        id: lint
+        uses: huntridge-labs/argus/.github/actions/linter-yaml@main
+
+  json-lint:
+    name: JSON Validation
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    outputs:
+      json_issues: ${{ steps.lint.outputs.issues_count }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run JSON Linter
+        id: lint
+        uses: huntridge-labs/argus/.github/actions/linter-json@main
+
+  python-lint:
+    name: Python Code Quality
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    outputs:
+      python_issues: ${{ steps.lint.outputs.issues_count }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run Python Linter
+        id: lint
+        uses: huntridge-labs/argus/.github/actions/linter-python@main
+
+  javascript-lint:
+    name: JavaScript Code Quality
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    outputs:
+      js_issues: ${{ steps.lint.outputs.issues_count }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run JavaScript Linter
+        id: lint
+        uses: huntridge-labs/argus/.github/actions/linter-javascript@main
+
+  dockerfile-lint:
+    name: Dockerfile Linting
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    outputs:
+      docker_issues: ${{ steps.lint.outputs.issues_count }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run Dockerfile Linter
+        id: lint
+        uses: huntridge-labs/argus/.github/actions/linter-dockerfile@main
+
+  terraform-lint:
+    name: Terraform Linting
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    outputs:
+      terraform_issues: ${{ steps.lint.outputs.issues_count }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run Terraform Linter
+        id: lint
+        uses: huntridge-labs/argus/.github/actions/linter-terraform@main
+
+  linting-summary:
+    name: Linting Summary
+    runs-on: ubuntu-latest
+    needs: [yaml-lint, json-lint, python-lint, javascript-lint, dockerfile-lint, terraform-lint]
+    if: always()
+    outputs:
+      status: ${{ steps.summary.outputs.status }}
+      issues_found: ${{ steps.summary.outputs.total_issues }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Generate Linting Summary
+        id: summary
+        uses: huntridge-labs/argus/.github/actions/linting-summary@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          post_pr_comment: ${{ inputs.post_pr_comment }}
+
+      - name: Fail if issues found
+        if: inputs.fail_on_issues == true && steps.summary.outputs.total_issues != '0'
+        run: |
+          echo "::error::Found ${{ steps.summary.outputs.total_issues }} linting issues"
+          exit 1

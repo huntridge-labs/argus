@@ -1,0 +1,59 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argusmain/.github/schemas/zap-config.schema.json
+#
+# ZAP DAST Scanner Configuration - Combined Example
+#
+# This config uses scan_groups to define parallel pipelines:
+# - url-scans: Tests against already-running external targets
+# - docker-scans: Spins up a container and scans it
+
+defaults:
+  max_duration_minutes: 10
+  fail_on_severity: none
+  allow_failure: true
+  post_pr_comment: true
+
+scan_groups:
+  # Group 1: URL-based scans (target already running)
+  - name: url-scans
+    description: URL Scans (Baseline/Full/API)
+    target:
+      mode: url
+    scans:
+      - name: url-baseline
+        type: baseline
+        target_url: http://testphp.vulnweb.com
+        post_pr_comment: false
+
+      - name: url-full
+        type: full
+        target_url: http://demo.testfire.net
+
+      - name: url-baseline-2
+        type: baseline
+        target_url: http://demo.testfire.net
+        max_duration_minutes: 5
+
+      - name: threshold-none
+        type: baseline
+        target_url: http://zero.webappsecurity.com
+        fail_on_severity: none
+
+      - name: threshold-high
+        type: baseline
+        target_url: http://testphp.vulnweb.com
+        fail_on_severity: high
+        allow_failure: false
+
+  # Group 2: Docker-based scans (container scanning)
+  - name: docker-scans
+    description: Docker Scan (Container Mode)
+    target:
+      mode: docker-run
+      image: bkimminich/juice-shop:latest
+      ports: "3000:3000"
+    defaults:
+      target_url: http://localhost:3000
+    scans:
+      - name: docker-baseline
+        type: baseline
+        target_url: http://localhost:3000

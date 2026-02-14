@@ -1,0 +1,299 @@
+name: 'Checkov Scanner'
+description: |
+  Run Checkov infrastructure-as-code scanning and generate reports.
+
+  This action analyzes IaC for security misconfigurations using Checkov,
+  supporting multiple frameworks including Terraform, CloudFormation,
+  Kubernetes, and more.
+
+  Results integrate with security-summary for aggregated reporting.
+
+  **Required Environment Variables:**
+  - GITHUB_TOKEN: GitHub token for API access (set automatically in workflows)
+
+  **Optional Environment Variables:**
+  - BC_API_KEY: Prisma Cloud API key for enhanced severity scoring and features
+
+  **Usage Example:**
+  ```yaml
+  - uses: actions/checkout@v6
+  - uses: huntridge-labs/argus/.github/actions/scanner-checkov@main
+    env:
+      GITHUB_TOKEN: (secrets.GITHUB_TOKEN)
+      BC_API_KEY: (secrets.BC_API_KEY)  # Optional: for severity info
+    with:
+      iac_path: 'infrastructure'
+      framework: 'terraform'
+      fail_on_severity: 'high'
+  ```
+
+author: 'Argus'
+
+branding:
+  icon: 'check-square'
+  color: 'green'
+
+inputs:
+  iac_path:
+    description: 'Relative path to the infrastructure-as-code directory to scan'
+    required: false
+    default: 'infrastructure'
+  framework:
+    description: 'IaC framework to scan (terraform, cloudformation, kubernetes, etc.)'
+    required: false
+    default: 'terraform'
+  enable_code_security:
+    description: 'Whether GitHub Code Security is enabled for this repository (uploads SARIF to Security tab)'
+    required: false
+    default: 'false'
+  post_pr_comment:
+    description: 'Whether to post PR comments'
+    required: false
+    default: 'true'
+  fail_on_severity:
+    description: 'Fail if findings at or above this severity. Options: none, low, medium, high, critical. Note: Checkov does not natively support severity-based filtering; any value other than "none" will fail on any failed check.'
+    required: false
+    default: 'none'
+  api_key:
+    description: 'Prisma Cloud API key for enhanced features (severity scoring, advanced reporting). Optional - works without it but with reduced functionality.'
+    required: false
+    default: ''
+
+outputs:
+  critical_count:
+    description: 'Number of critical severity findings'
+    value: ${{ steps.parse-results.outputs.critical_count }}
+  high_count:
+    description: 'Number of high severity findings'
+    value: ${{ steps.parse-results.outputs.high_count }}
+  medium_count:
+    description: 'Number of medium severity findings'
+    value: ${{ steps.parse-results.outputs.medium_count }}
+  low_count:
+    description: 'Number of low severity findings'
+    value: ${{ steps.parse-results.outputs.low_count }}
+  total_count:
+    description: 'Total number of findings'
+    value: ${{ steps.parse-results.outputs.total_count }}
+  passed_count:
+    description: 'Number of passed checks'
+    value: ${{ steps.parse-results.outputs.passed_count }}
+  has_iac:
+    description: 'Whether IaC directory was found and scanned'
+    value: ${{ steps.validate.outputs.has_iac }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate scan directory
+      id: validate
+      shell: bash
+      run: |
+        IAC_PATH="${{ inputs.iac_path }}"
+        if [ -z "$IAC_PATH" ]; then
+          IAC_PATH='infrastructure'
+        fi
+
+        if [ ! -d "$IAC_PATH" ]; then
+          echo "⚠️  Directory '$IAC_PATH' not found. Skipping Checkov scan."
+          echo "has_iac=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        echo "has_iac=true" >> $GITHUB_OUTPUT
+        echo "iac_path=$IAC_PATH" >> $GITHUB_OUTPUT
+        echo "✅ Found IaC directory: $IAC_PATH"
+
+        mkdir -p checkov-reports
+        echo "📁 Created checkov reports directory"
+
+    - name: Run Checkov Infrastructure Scan
+      if: steps.validate.outputs.has_iac == 'true'
+      uses: bridgecrewio/checkov-action@v12.3080.0
+      with:
+        directory: ${{ steps.validate.outputs.iac_path }}
+        framework: ${{ inputs.framework }}
+        output_format: sarif,json,cli
+        output_file_path: checkov-reports/checkov-results.sarif,checkov-reports/checkov-results.json,checkov-reports/checkov-results.txt
+        soft_fail: true
+        api-key: ${{ inputs.api_key }}
+      continue-on-error: true
+
+    - name: Parse results
+      id: parse-results
+      if: steps.validate.outputs.has_iac == 'true'
+      shell: bash
+      run: |
+        echo "::group::Parsing Checkov results"
+
+        JSON_FILE="checkov-reports/checkov-results.json"
+
+        CRITICAL=0
+        HIGH=0
+        MEDIUM=0
+        LOW=0
+        PASSED=0
+        TOTAL=0
+
+        if [ -f "$JSON_FILE" ]; then
+          # Checkov JSON format has different structure
+          CRITICAL=$(jq '[.results.failed_checks[]? | select(.severity == "CRITICAL")] | length' "$JSON_FILE" 2>/dev/null || echo "0")
+          HIGH=$(jq '[.results.failed_checks[]? | select(.severity == "HIGH")] | length' "$JSON_FILE" 2>/dev/null || echo "0")
+          MEDIUM=$(jq '[.results.failed_checks[]? | select(.severity == "MEDIUM")] | length' "$JSON_FILE" 2>/dev/null || echo "0")
+          LOW=$(jq '[.results.failed_checks[]? | select(.severity == "LOW")] | length' "$JSON_FILE" 2>/dev/null || echo "0")
+          PASSED=$(jq '.results.passed_checks | length' "$JSON_FILE" 2>/dev/null || echo "0")
+
+          # If severity not available, count all failed checks as HIGH
+          if [ "$CRITICAL" == "0" ] && [ "$HIGH" == "0" ] && [ "$MEDIUM" == "0" ] && [ "$LOW" == "0" ]; then
+            FAILED_TOTAL=$(jq '.results.failed_checks | length' "$JSON_FILE" 2>/dev/null || echo "0")
+            HIGH=$FAILED_TOTAL
+          fi
+
+          TOTAL=$((CRITICAL + HIGH + MEDIUM + LOW))
+        fi
+
+        echo "Results:"
+        echo "  Critical: $CRITICAL"
+        echo "  High: $HIGH"
+        echo "  Medium: $MEDIUM"
+        echo "  Low: $LOW"
+        echo "  Passed: $PASSED"
+        echo "  Total Failed: $TOTAL"
+
+        echo "critical_count=$CRITICAL" >> $GITHUB_OUTPUT
+        echo "high_count=$HIGH" >> $GITHUB_OUTPUT
+        echo "medium_count=$MEDIUM" >> $GITHUB_OUTPUT
+        echo "low_count=$LOW" >> $GITHUB_OUTPUT
+        echo "total_count=$TOTAL" >> $GITHUB_OUTPUT
+        echo "passed_count=$PASSED" >> $GITHUB_OUTPUT
+
+        if [ "$TOTAL" -gt 0 ]; then
+          echo "⚠️  Found $TOTAL failed checks"
+          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+            echo "::warning title=High Severity Issues::Found $CRITICAL critical and $HIGH high severity issues in IaC"
+          fi
+        else
+          echo "✅ All checks passed"
+        fi
+
+        echo "::endgroup::"
+
+    - name: Upload Checkov reports
+      if: steps.validate.outputs.has_iac == 'true' && always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: checkov-reports
+        path: checkov-reports/
+        retention-days: 30
+      continue-on-error: true
+
+    - name: Upload SARIF to GitHub Security
+      if: inputs.enable_code_security == 'true' && steps.validate.outputs.has_iac == 'true' && hashFiles('checkov-reports/checkov-results.sarif') != ''
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: checkov-reports/checkov-results.sarif
+        category: checkov
+      continue-on-error: true
+
+    - name: Generate scanner summary
+      if: always()
+      shell: bash
+      env:
+        HEAD_REF: ${{ github.head_ref || github.ref_name }}
+        HAS_IAC: ${{ steps.validate.outputs.has_iac }}
+        IAC_PATH: ${{ steps.validate.outputs.iac_path }}
+        CRITICAL: ${{ steps.parse-results.outputs.critical_count }}
+        HIGH: ${{ steps.parse-results.outputs.high_count }}
+        MEDIUM: ${{ steps.parse-results.outputs.medium_count }}
+        LOW: ${{ steps.parse-results.outputs.low_count }}
+        PASSED: ${{ steps.parse-results.outputs.passed_count }}
+        TOTAL: ${{ steps.parse-results.outputs.total_count }}
+      run: |
+        mkdir -p scanner-summaries
+
+        SCRIPT_DIR="${{ github.action_path }}"
+        REPO_URL="${{ github.server_url }}/${{ github.repository }}/blob/${HEAD_REF}"
+
+        python3 "$SCRIPT_DIR/scripts/generate_summary.py" \
+          "scanner-summaries/checkov.md" \
+          --is-pr-comment "true" \
+          --has-iac "$HAS_IAC" \
+          --iac-path "$IAC_PATH" \
+          --critical "$CRITICAL" \
+          --high "$HIGH" \
+          --medium "$MEDIUM" \
+          --low "$LOW" \
+          --passed "$PASSED" \
+          --total "$TOTAL" \
+          --repo-url "$REPO_URL" \
+          --github-server-url "${{ github.server_url }}" \
+          --github-repo "${{ github.repository }}" \
+          --github-run-id "${{ github.run_id }}"
+
+        python3 "$SCRIPT_DIR/scripts/generate_summary.py" \
+          "$GITHUB_STEP_SUMMARY" \
+          --is-pr-comment "false" \
+          --has-iac "$HAS_IAC" \
+          --iac-path "$IAC_PATH" \
+          --critical "$CRITICAL" \
+          --high "$HIGH" \
+          --medium "$MEDIUM" \
+          --low "$LOW" \
+          --passed "$PASSED" \
+          --total "$TOTAL" \
+          --repo-url "$REPO_URL" \
+          --github-server-url "${{ github.server_url }}" \
+          --github-repo "${{ github.repository }}" \
+          --github-run-id "${{ github.run_id }}"
+      continue-on-error: true
+
+    - name: Upload scanner summary
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: scanner-summary-checkov
+        path: scanner-summaries/checkov.md
+        retention-days: 7
+      continue-on-error: true
+
+    - name: Comment PR with Checkov results
+      if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
+      uses: huntridge-labs/argus/.github/actions/comment-pr@main
+      with:
+        summary_file: scanner-summaries/checkov.md
+        comment_marker: checkov-scanner-comment-marker
+        title: '✅ Checkov IaC Security Results'
+        fallback_message: 'No Checkov results available'
+
+    - name: Check severity threshold
+      if: steps.validate.outputs.has_iac == 'true' && inputs.fail_on_severity != 'none' && inputs.fail_on_severity != ''
+      shell: bash
+      run: |
+        CRITICAL=${{ steps.parse-results.outputs.critical_count }}
+        HIGH=${{ steps.parse-results.outputs.high_count }}
+        MEDIUM=${{ steps.parse-results.outputs.medium_count }}
+        LOW=${{ steps.parse-results.outputs.low_count }}
+        THRESHOLD="${{ inputs.fail_on_severity }}"
+
+        SHOULD_FAIL=false
+        case "$THRESHOLD" in
+          critical)
+            [ "$CRITICAL" -gt 0 ] && SHOULD_FAIL=true
+            ;;
+          high)
+            [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ] && SHOULD_FAIL=true
+            ;;
+          medium)
+            [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ] || [ "$MEDIUM" -gt 0 ] && SHOULD_FAIL=true
+            ;;
+          low)
+            [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ] || [ "$MEDIUM" -gt 0 ] || [ "$LOW" -gt 0 ] && SHOULD_FAIL=true
+            ;;
+        esac
+
+        if [ "$SHOULD_FAIL" = true ]; then
+          echo "❌ Found findings at or above severity threshold: $THRESHOLD"
+          exit 1
+        else
+          echo "✅ No findings at or above severity threshold: $THRESHOLD"
+        fi

@@ -1,0 +1,146 @@
+# Container Security Scan - Parallel Matrix Example
+#
+# This workflow demonstrates parallel container scanning using matrixed jobs.
+# Each container+scanner combination runs as a separate job, providing:
+# - Maximum parallelism and faster scan times
+# - Per-container, per-scanner configuration from config file
+# - Unified summary with deduplicated vulnerabilities
+#
+# GHES Compatible: Uses only composite actions (no reusable workflows)
+#
+# Usage:
+# 1. Copy this file to .github/workflows/container-scan.yml in your repo
+# 2. Create a container-config.yml file (see example below)
+# 3. Configure secrets as needed for private registries
+
+name: Container Security Scan (Parallel)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'container-config.yml'
+      - '**/Dockerfile*'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'container-config.yml'
+      - '**/Dockerfile*'
+  workflow_dispatch:
+  schedule:
+    # Scan weekly on Mondays at 6am UTC
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+  actions: read
+  checks: write
+  id-token: write
+  packages: read
+
+jobs:
+  # ============================================
+  # Parse config and generate scan matrix
+  # ============================================
+  setup:
+    name: Parse Config
+    runs-on: ubuntu-latest
+    outputs:
+      scan_matrix: ${{ steps.parse.outputs.scan_matrix }}
+      has_containers: ${{ steps.parse.outputs.has_containers }}
+      container_count: ${{ steps.parse.outputs.container_count }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Parse container config
+        id: parse
+        uses: huntridge-labs/argus/.github/actions/parse-container-config@main
+        with:
+          config_file: container-config.yml
+
+      - name: Display scan matrix
+        run: |
+          echo "📦 Containers to scan: ${{ steps.parse.outputs.container_count }}"
+          echo "🔍 Scan matrix:"
+          echo '${{ steps.parse.outputs.scan_matrix }}' | jq '.'
+
+  # ============================================
+  # Parallel container scanning
+  # Each container+scanner combo runs as separate job
+  # ============================================
+  scan:
+    name: Scan ${{ matrix.name }} (${{ matrix.scanner }})
+    needs: setup
+    if: needs.setup.outputs.has_containers == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.setup.outputs.scan_matrix) }}
+    steps:
+      - name: Run ${{ matrix.scanner }} scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-container@main
+        with:
+          image_ref: ${{ matrix.image }}
+          container_name: ${{ matrix.name }}
+          scanners: ${{ matrix.scanner }}
+          fail_on_severity: ${{ matrix.fail_on_severity }}
+          allow_failure: ${{ matrix.allow_failure }}
+          enable_code_security: ${{ matrix.enable_code_security }}
+          registry_username: ${{ matrix.registry_username }}
+          registry_password: ${{ secrets[matrix.registry_auth_secret] }}
+          skip_summary: 'true'  # Summary generated in combine job
+
+  # ============================================
+  # Combine results and generate summary
+  # ============================================
+  summary:
+    name: Scan Summary
+    needs: [setup, scan]
+    if: always() && needs.setup.outputs.has_containers == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate combined summary
+        uses: huntridge-labs/argus/.github/actions/scanner-container-summary@main
+        with:
+          post_pr_comment: 'true'
+
+# ============================================
+# Example container-config.yml
+# ============================================
+# Place this file in your repository root:
+#
+# containers:
+#   - name: my-app
+#     image: ghcr.io/myorg/my-app:latest
+#     scanners:
+#       - trivy
+#       - grype
+#       - syft
+#     fail_on_severity: high
+#     registry:
+#       username: ${{ github.actor }}
+#       auth_secret: GITHUB_TOKEN
+#
+#   - name: database
+#     image:
+#       repository: myorg
+#       name: postgres-custom
+#       tag: "15"
+#     registry:
+#       host: ghcr.io
+#       username: ${{ github.actor }}
+#       auth_secret: GITHUB_TOKEN
+#     scanners:
+#       - trivy
+#     fail_on_severity: critical
+#     allow_failure: true
+#
+#   - name: third-party
+#     image: nginx:alpine
+#     scanners:
+#       - trivy
+#       - grype
+#     fail_on_severity: none  # Don't fail, just report

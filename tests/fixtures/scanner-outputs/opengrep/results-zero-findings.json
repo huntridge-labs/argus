@@ -1,0 +1,16 @@
+{
+  "version": "1.0.0",
+  "results": [],
+  "errors": [],
+  "paths": {
+    "scanned": [
+      "src/"
+    ],
+    "skipped": []
+  },
+  "stats": {
+    "files_scanned": 15,
+    "rules_run": 125,
+    "findings_total": 0
+  }
+}

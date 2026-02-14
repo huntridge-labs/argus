@@ -1,0 +1,15 @@
+# Development and Testing Requirements
+# Install with: pip install -r .devcontainer/requirements.txt
+
+# Testing framework
+pytest>=8.0.0
+pytest-cov>=4.1.0
+pytest-asyncio>=0.23.0
+
+# YAML parsing for action schema validation
+pyyaml>=6.0.0
+
+# Code quality tools (optional but recommended)
+# black>=24.0.0
+# flake8>=7.0.0
+# mypy>=1.8.0

@@ -1,0 +1,336 @@
+name: 'CodeQL Scanner'
+description: |
+  Run CodeQL SAST analysis for a single language and generate reports.
+
+  This action analyzes code for security vulnerabilities using GitHub CodeQL.
+  It should be called once per language (use matrix strategy for multiple languages).
+  Results integrate with security-summary for aggregated reporting.
+
+  **Required Environment Variables:**
+  - GITHUB_TOKEN: GitHub token for API access (set automatically in workflows)
+
+  **Usage Example (single language):**
+  ```yaml
+  - uses: actions/checkout@v6
+  - uses: huntridge-labs/argus/.github/actions/scanner-codeql@main
+    with:
+      language: 'python'
+      fail_on_severity: 'high'
+  ```
+
+  **Usage Example (matrix for multiple languages):**
+  ```yaml
+  strategy:
+    matrix:
+      language: [python, javascript]
+  steps:
+    - uses: actions/checkout@v6
+    - uses: huntridge-labs/argus/.github/actions/scanner-codeql@main
+      with:
+        language: (use matrix.language)
+  ```
+
+author: 'Argus'
+
+branding:
+  icon: 'shield'
+  color: 'purple'
+
+inputs:
+  language:
+    description: 'Language to analyze (e.g., python, javascript, go, java, csharp, cpp, ruby, swift)'
+    required: true
+  config_file:
+    description: 'Path to CodeQL configuration file'
+    required: false
+    default: ''
+  post_pr_comment:
+    description: 'Whether to post PR comments'
+    required: false
+    default: 'false'
+  enable_code_security:
+    description: 'Whether GitHub Code Security is enabled for this repository (uploads SARIF to Security tab)'
+    required: false
+    default: 'false'
+  fail_on_severity:
+    description: 'Fail if findings at or above this severity. Options: none, low, medium, high, critical'
+    required: false
+    default: 'none'
+  setup_python_version:
+    description: 'Python version to set up (only used when language is python)'
+    required: false
+    default: '3.12'
+  setup_node_version:
+    description: 'Node.js version to set up (only used when language is javascript)'
+    required: false
+    default: '22'
+
+outputs:
+  critical_count:
+    description: 'Number of critical severity findings (CVSS >= 9.0)'
+    value: ${{ steps.parse-results.outputs.critical_count }}
+  high_count:
+    description: 'Number of high severity findings (CVSS 7.0-8.9)'
+    value: ${{ steps.parse-results.outputs.high_count }}
+  medium_count:
+    description: 'Number of medium severity findings (CVSS 4.0-6.9)'
+    value: ${{ steps.parse-results.outputs.medium_count }}
+  low_count:
+    description: 'Number of low severity findings (CVSS < 4.0)'
+    value: ${{ steps.parse-results.outputs.low_count }}
+  total_count:
+    description: 'Total number of findings'
+    value: ${{ steps.parse-results.outputs.total_count }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v4
+      with:
+        languages: ${{ inputs.language }}
+        config-file: ${{ inputs.config_file || '' }}
+        tools: latest
+
+    - name: Set up Python
+      if: inputs.language == 'python'
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ inputs.setup_python_version }}
+
+    - name: Set up Node.js
+      if: inputs.language == 'javascript'
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.setup_node_version }}
+
+    - name: Install Python dependencies
+      if: inputs.language == 'python'
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then
+          pip install -r requirements.txt || true
+        fi
+      continue-on-error: true
+
+    - name: Install Node.js dependencies
+      if: inputs.language == 'javascript'
+      shell: bash
+      run: |
+        find . -name "package.json" -not -path "*/node_modules/*" | while read package; do
+          dir=$(dirname "$package")
+          echo "Installing dependencies in $dir"
+          cd "$dir" && npm install || true
+          cd - > /dev/null
+        done
+      continue-on-error: true
+
+    - name: Autobuild
+      uses: github/codeql-action/autobuild@v4
+
+    - name: Perform CodeQL Analysis
+      id: analyze
+      uses: github/codeql-action/analyze@v4
+      with:
+        category: "/language:${{ inputs.language }}"
+        output: sarif-results
+        upload: ${{ inputs.enable_code_security == 'true' && 'always' || 'never' }}
+      continue-on-error: true
+
+    - name: Organize CodeQL results
+      id: organize
+      shell: bash
+      run: |
+        echo "::group::Organizing CodeQL results"
+        mkdir -p codeql-reports/sarif
+
+        if [ -d "sarif-results" ]; then
+          find sarif-results -name "*.sarif" -exec cp {} codeql-reports/sarif/ \;
+          echo "SARIF files copied to codeql-reports/sarif/"
+          ls -la codeql-reports/sarif/
+        else
+          echo "No SARIF results directory found"
+        fi
+
+        echo "::endgroup::"
+      continue-on-error: true
+
+    - name: Parse results
+      id: parse-results
+      shell: bash
+      run: |
+        echo "::group::Parsing CodeQL results"
+
+        CRITICAL=0
+        HIGH=0
+        MEDIUM=0
+        LOW=0
+        TOTAL=0
+
+        for sarif_file in codeql-reports/sarif/*.sarif; do
+          if [ -f "$sarif_file" ]; then
+            echo "Parsing: $sarif_file"
+
+            # Count total issues
+            issues=$(jq -r '[.runs[]?.results[]?] | length' "$sarif_file" 2>/dev/null || echo "0")
+            TOTAL=$((TOTAL + issues))
+
+            # Count by security-severity (CVSS score)
+            critical=$(jq -r '
+              [.runs[]? | {rules: (.tool.driver.rules // []), results: .results} |
+               .rules as $rules |
+               .results[]? |
+               . as $result |
+               ($rules[] | select(.id == $result.ruleId) | .properties["security-severity"] // "0" | tonumber) as $severity |
+               select($severity >= 9.0)] | length' "$sarif_file" 2>/dev/null || echo "0")
+            CRITICAL=$((CRITICAL + critical))
+
+            high=$(jq -r '
+              [.runs[]? | {rules: (.tool.driver.rules // []), results: .results} |
+               .rules as $rules |
+               .results[]? |
+               . as $result |
+               ($rules[] | select(.id == $result.ruleId) | .properties["security-severity"] // "0" | tonumber) as $severity |
+               select($severity >= 7.0 and $severity < 9.0)] | length' "$sarif_file" 2>/dev/null || echo "0")
+            HIGH=$((HIGH + high))
+
+            medium=$(jq -r '
+              [.runs[]? | {rules: (.tool.driver.rules // []), results: .results} |
+               .rules as $rules |
+               .results[]? |
+               . as $result |
+               ($rules[] | select(.id == $result.ruleId) | .properties["security-severity"] // "0" | tonumber) as $severity |
+               select($severity >= 4.0 and $severity < 7.0)] | length' "$sarif_file" 2>/dev/null || echo "0")
+            MEDIUM=$((MEDIUM + medium))
+
+            low=$(jq -r '
+              [.runs[]? | {rules: (.tool.driver.rules // []), results: .results} |
+               .rules as $rules |
+               .results[]? |
+               . as $result |
+               ($rules[] | select(.id == $result.ruleId) | .properties["security-severity"] // "0" | tonumber) as $severity |
+               select($severity > 0 and $severity < 4.0)] | length' "$sarif_file" 2>/dev/null || echo "0")
+            LOW=$((LOW + low))
+          fi
+        done
+
+        echo "Results for ${{ inputs.language }}:"
+        echo "  Critical: $CRITICAL"
+        echo "  High: $HIGH"
+        echo "  Medium: $MEDIUM"
+        echo "  Low: $LOW"
+        echo "  Total: $TOTAL"
+
+        echo "critical_count=$CRITICAL" >> $GITHUB_OUTPUT
+        echo "high_count=$HIGH" >> $GITHUB_OUTPUT
+        echo "medium_count=$MEDIUM" >> $GITHUB_OUTPUT
+        echo "low_count=$LOW" >> $GITHUB_OUTPUT
+        echo "total_count=$TOTAL" >> $GITHUB_OUTPUT
+
+        echo "::endgroup::"
+
+    - name: Upload CodeQL reports
+      uses: actions/upload-artifact@v6
+      with:
+        name: codeql-reports-${{ inputs.language }}
+        path: codeql-reports/
+        retention-days: 30
+      if: always()
+      continue-on-error: true
+
+    - name: Generate scanner summary
+      if: always()
+      shell: bash
+      env:
+        HEAD_REF: ${{ github.head_ref || github.ref_name }}
+        LANGUAGE: ${{ inputs.language }}
+        CRITICAL: ${{ steps.parse-results.outputs.critical_count }}
+        HIGH: ${{ steps.parse-results.outputs.high_count }}
+        MEDIUM: ${{ steps.parse-results.outputs.medium_count }}
+        LOW: ${{ steps.parse-results.outputs.low_count }}
+        TOTAL: ${{ steps.parse-results.outputs.total_count }}
+      run: |
+        mkdir -p scanner-summaries
+
+        SCRIPT_DIR="${{ github.action_path }}"
+        REPO_URL="${{ github.server_url }}/${{ github.repository }}/blob/${HEAD_REF}"
+
+        python3 "$SCRIPT_DIR/scripts/generate_summary.py" \
+          "scanner-summaries/codeql-${LANGUAGE}.md" \
+          --is-pr-comment "true" \
+          --language "$LANGUAGE" \
+          --critical "$CRITICAL" \
+          --high "$HIGH" \
+          --medium "$MEDIUM" \
+          --low "$LOW" \
+          --total "$TOTAL" \
+          --repo-url "$REPO_URL" \
+          --server-url "${{ github.server_url }}" \
+          --repository "${{ github.repository }}" \
+          --run-id "${{ github.run_id }}"
+
+        python3 "$SCRIPT_DIR/scripts/generate_summary.py" \
+          "$GITHUB_STEP_SUMMARY" \
+          --is-pr-comment "false" \
+          --language "$LANGUAGE" \
+          --critical "$CRITICAL" \
+          --high "$HIGH" \
+          --medium "$MEDIUM" \
+          --low "$LOW" \
+          --total "$TOTAL" \
+          --repo-url "$REPO_URL" \
+          --server-url "${{ github.server_url }}" \
+          --repository "${{ github.repository }}" \
+          --run-id "${{ github.run_id }}"
+      continue-on-error: true
+
+    - name: Upload scanner summary
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: scanner-summary-codeql-${{ inputs.language }}
+        path: scanner-summaries/codeql-${{ inputs.language }}.md
+        retention-days: 7
+      continue-on-error: true
+
+    - name: Comment PR with CodeQL results
+      if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
+      uses: huntridge-labs/argus/.github/actions/comment-pr@main
+      with:
+        summary_file: scanner-summaries/codeql-${{ inputs.language }}.md
+        comment_marker: codeql-${{ inputs.language }}-comment-marker
+        title: '🔒 CodeQL ${{ inputs.language }} Results'
+        fallback_message: 'No CodeQL ${{ inputs.language }} results available'
+
+    - name: Check severity threshold
+      if: inputs.fail_on_severity != 'none' && inputs.fail_on_severity != ''
+      shell: bash
+      run: |
+        CRITICAL=${{ steps.parse-results.outputs.critical_count }}
+        HIGH=${{ steps.parse-results.outputs.high_count }}
+        MEDIUM=${{ steps.parse-results.outputs.medium_count }}
+        LOW=${{ steps.parse-results.outputs.low_count }}
+        THRESHOLD="${{ inputs.fail_on_severity }}"
+
+        SHOULD_FAIL=false
+        case "$THRESHOLD" in
+          critical)
+            [ "$CRITICAL" -gt 0 ] && SHOULD_FAIL=true
+            ;;
+          high)
+            [ $((CRITICAL + HIGH)) -gt 0 ] && SHOULD_FAIL=true
+            ;;
+          medium)
+            [ $((CRITICAL + HIGH + MEDIUM)) -gt 0 ] && SHOULD_FAIL=true
+            ;;
+          low)
+            [ $((CRITICAL + HIGH + MEDIUM + LOW)) -gt 0 ] && SHOULD_FAIL=true
+            ;;
+        esac
+
+        if [ "$SHOULD_FAIL" = "true" ]; then
+          echo "::error::CodeQL found findings at or above '$THRESHOLD' severity"
+          echo "Critical: $CRITICAL, High: $HIGH, Medium: $MEDIUM, Low: $LOW"
+          exit 1
+        fi

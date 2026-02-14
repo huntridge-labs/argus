@@ -1,0 +1,122 @@
+name: Example - Using Granular Scanner Controls
+
+on:  # yamllint disable-line rule:truthy
+  workflow_dispatch:
+    inputs:
+      scan_mode:
+        description: 'Choose scanning mode'
+        required: true
+        type: choice
+        options:
+          - 'Quick CodeQL Check'
+          - 'Full SAST Scan'
+          - 'Python Security Only'
+          - 'Secrets Detection Only'
+          - 'Custom Mix'
+        default: 'Quick CodeQL Check'
+
+jobs:
+  # Example 1: Quick CodeQL-only scan for rapid feedback
+  quick-codeql:
+    if: github.event.inputs.scan_mode == 'Quick CodeQL Check'
+    uses: ./.github/workflows/reusable-security-hardening.yml
+    with:
+      scanners: codeql
+      codeql_languages: 'python,javascript'
+      post_pr_comment: true
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+      checks: write
+      id-token: write
+    secrets:
+      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Required for org repos
+
+  # Example 2: Full SAST scan with all static analysis tools
+  full-sast:
+    if: github.event.inputs.scan_mode == 'Full SAST Scan'
+    uses: ./.github/workflows/reusable-security-hardening.yml
+    with:
+      scanners: sast
+      post_pr_comment: true
+      allow_failure: false         # Enforce security gate
+      severity_threshold: high     # Fail on high or critical findings
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+      checks: write
+      id-token: write
+    secrets:
+      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Required for org repos
+
+  # Example 3: Python-focused security (Bandit only, no CodeQL or OpenGrep)
+  python-only:
+    if: github.event.inputs.scan_mode == 'Python Security Only'
+    uses: ./.github/workflows/reusable-security-hardening.yml
+    with:
+      scanners: bandit
+      post_pr_comment: true
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+      checks: write
+      id-token: write
+
+  # Example 4: Only scan for secrets (useful for credential audits)
+  secrets-only:
+    if: github.event.inputs.scan_mode == 'Secrets Detection Only'
+    uses: ./.github/workflows/reusable-security-hardening.yml
+    with:
+      scanners: secrets
+      post_pr_comment: true
+      allow_failure: false         # Always fail on secrets
+      severity_threshold: critical # Any secret is critical
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+      checks: write
+      id-token: write
+    secrets:
+      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Required for org repos
+
+  # Example 5: Custom mix - CodeQL + Gitleaks only
+  custom-mix:
+    if: github.event.inputs.scan_mode == 'Custom Mix'
+    uses: ./.github/workflows/reusable-security-hardening.yml
+    with:
+      scanners: codeql,gitleaks
+      post_pr_comment: true
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+      checks: write
+      id-token: write
+    secrets:
+      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Required for org repos
+
+  # Example 6: Using individual scanner workflows directly
+  direct-codeql-call:
+    if: false  # Disabled by default - enable as needed
+    uses: ./.github/workflows/scanners/sast/codeql.yml
+    with:
+      codeql_languages: 'python'  # Only scan Python
+      post_pr_comment: false
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+
+  direct-opengrep-call:
+    if: false
+    uses: ./.github/workflows/scanner-opengrep.yml

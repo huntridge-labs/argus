@@ -1,0 +1,206 @@
+{
+  "matches": [
+    {
+      "vulnerability": {
+        "id": "CVE-2023-1234",
+        "dataSource": "https://nvd.nist.gov/vuln/detail/CVE-2023-1234",
+        "namespace": "nvd:cpe",
+        "severity": "Critical",
+        "urls": [
+          "https://nvd.nist.gov/vuln/detail/CVE-2023-1234"
+        ],
+        "description": "OpenSSL RSA memory corruption vulnerability",
+        "cvss": [
+          {
+            "version": "3.1",
+            "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+            "metrics": {
+              "baseScore": 9.8,
+              "exploitabilityScore": 3.9,
+              "impactScore": 5.9
+            }
+          }
+        ],
+        "fix": {
+          "versions": [
+            "1.1.1n-0+deb11u4"
+          ],
+          "state": "fixed"
+        }
+      },
+      "relatedVulnerabilities": [],
+      "matchDetails": [
+        {
+          "type": "exact-direct-match",
+          "matcher": "dpkg-matcher",
+          "searchedBy": {
+            "distro": {
+              "type": "debian",
+              "version": "11"
+            },
+            "namespace": "debian:distro:debian:11",
+            "package": {
+              "name": "libssl1.1",
+              "version": "1.1.1n-0+deb11u3"
+            }
+          },
+          "found": {
+            "versionConstraint": "< 1.1.1n-0+deb11u4 (deb)"
+          }
+        }
+      ],
+      "artifact": {
+        "name": "libssl1.1",
+        "version": "1.1.1n-0+deb11u3",
+        "type": "deb",
+        "locations": [
+          {
+            "path": "/var/lib/dpkg/status",
+            "layerID": "sha256:1234567890ab"
+          }
+        ],
+        "language": "",
+        "licenses": [],
+        "cpes": [
+          "cpe:2.3:a:openssl:openssl:1.1.1n:*:*:*:*:*:*:*"
+        ],
+        "purl": "pkg:deb/debian/libssl1.1@1.1.1n-0+deb11u3?arch=amd64&distro=debian-11",
+        "upstreams": []
+      }
+    },
+    {
+      "vulnerability": {
+        "id": "CVE-2023-5678",
+        "dataSource": "https://nvd.nist.gov/vuln/detail/CVE-2023-5678",
+        "namespace": "nvd:cpe",
+        "severity": "High",
+        "urls": [
+          "https://nvd.nist.gov/vuln/detail/CVE-2023-5678"
+        ],
+        "description": "curl buffer overflow in URL parsing",
+        "cvss": [
+          {
+            "version": "3.1",
+            "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H",
+            "metrics": {
+              "baseScore": 8.8
+            }
+          }
+        ],
+        "fix": {
+          "versions": [
+            "7.74.0-1.3+deb11u5"
+          ],
+          "state": "fixed"
+        }
+      },
+      "relatedVulnerabilities": [],
+      "matchDetails": [
+        {
+          "type": "exact-direct-match",
+          "matcher": "dpkg-matcher"
+        }
+      ],
+      "artifact": {
+        "name": "curl",
+        "version": "7.74.0-1.3+deb11u3",
+        "type": "deb",
+        "purl": "pkg:deb/debian/curl@7.74.0-1.3+deb11u3?arch=amd64&distro=debian-11"
+      }
+    },
+    {
+      "vulnerability": {
+        "id": "CVE-2023-9012",
+        "dataSource": "https://security-tracker.debian.org/tracker/CVE-2023-9012",
+        "namespace": "debian:distro:debian:11",
+        "severity": "Medium",
+        "urls": [
+          "https://security-tracker.debian.org/tracker/CVE-2023-9012"
+        ],
+        "description": "glibc integer overflow in printf functions",
+        "cvss": [
+          {
+            "version": "3.1",
+            "vector": "CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:U/C:N/I:L/A:L",
+            "metrics": {
+              "baseScore": 4.0
+            }
+          }
+        ],
+        "fix": {
+          "versions": [
+            "2.31-13+deb11u5"
+          ],
+          "state": "fixed"
+        }
+      },
+      "relatedVulnerabilities": [],
+      "matchDetails": [
+        {
+          "type": "exact-direct-match",
+          "matcher": "dpkg-matcher"
+        }
+      ],
+      "artifact": {
+        "name": "libc6",
+        "version": "2.31-13+deb11u4",
+        "type": "deb",
+        "purl": "pkg:deb/debian/libc6@2.31-13+deb11u4?arch=amd64&distro=debian-11"
+      }
+    },
+    {
+      "vulnerability": {
+        "id": "CVE-2024-0001",
+        "dataSource": "https://security-tracker.debian.org/tracker/CVE-2024-0001",
+        "namespace": "debian:distro:debian:11",
+        "severity": "Low",
+        "urls": [
+          "https://security-tracker.debian.org/tracker/CVE-2024-0001"
+        ],
+        "description": "bash minor information disclosure in debug mode",
+        "cvss": [
+          {
+            "version": "3.1",
+            "vector": "CVSS:3.1/AV:L/AC:H/PR:H/UI:R/S:U/C:L/I:N/A:N",
+            "metrics": {
+              "baseScore": 2.0
+            }
+          }
+        ],
+        "fix": {
+          "versions": [],
+          "state": "not-fixed"
+        }
+      },
+      "relatedVulnerabilities": [],
+      "matchDetails": [
+        {
+          "type": "exact-direct-match",
+          "matcher": "dpkg-matcher"
+        }
+      ],
+      "artifact": {
+        "name": "bash",
+        "version": "5.1-2+deb11u1",
+        "type": "deb",
+        "purl": "pkg:deb/debian/bash@5.1-2+deb11u1?arch=amd64&distro=debian-11"
+      }
+    }
+  ],
+  "source": {
+    "type": "image",
+    "target": {
+      "userInput": "vulnerableapp:latest",
+      "imageID": "sha256:abcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab",
+      "manifestDigest": "sha256:fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321",
+      "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+      "tags": [
+        "vulnerableapp:latest"
+      ]
+    }
+  },
+  "descriptor": {
+    "name": "grype",
+    "version": "0.74.0"
+  }
+}

@@ -1,0 +1,85 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+---
+# Use exclude to exclude specific files
+exclude: '^backend/notebooks/images/'
+repos:
+  # renovate: datasource=github-tags depName=pre-commit/pre-commit-hooks versioning=semver
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^(docs)
+      - id: end-of-file-fixer
+        exclude: ^(docs)
+      - id: check-ast
+        exclude: ^(docs)
+      - id: check-case-conflict
+      - id: check-json
+        exclude: ^(tests/invalid\.json)$
+      - id: detect-private-key
+        exclude: ^(tests/secrets_test\.py)$
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+        exclude: \.md$
+      # - id: no-commit-to-branch
+      #   args: [--branch, main]
+      - id: pretty-format-json
+        args: [--autofix, --no-sort-keys]
+        exclude: ^(docs|tests/invalid\.json)$
+  # renovate: datasource=github-tags depName=pre-commit/pygrep-hooks versioning=semver
+  - repo: https://github.com/pre-commit/pygrep-hooks
+    rev: v1.10.0  # Use the ref you want to point at
+    hooks:
+      - id: python-check-blanket-noqa
+      - id: python-check-blanket-type-ignore
+      - id: python-check-mock-methods
+      - id: python-no-eval
+        exclude: ^(tests)|vulnerable_code\.py
+      - id: python-use-type-annotations
+        exclude: ^(docs|tests)
+  # renovate: datasource=github-tags depName=compilerla/conventional-pre-commit versioning=semver
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.0.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+  # renovate: datasource=github-tags depName=codespell-project/codespell versioning=semver
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+        args: [
+          --skip=docs/public/*.*,
+          --skip=package-lock.json,
+          --skip=**/package-lock.json,
+          --ignore-words-list=assertIn,
+          -w
+        ]
+  # renovate: datasource=github-tags depName=adrienverge/yamllint versioning=semver
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.37.0
+    hooks:
+      - id: yamllint
+        args: [-c=.yamllint.yml]
+        exclude: ^(config/invalid-config\.yml|examples/use-reusable-workflow\.yml)$
+  # renovate: datasource=github-tags depName=gitleaks/gitleaks versioning=semver
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.2
+    hooks:
+      - id: gitleaks
+  - repo: https://github.com/jorisroovers/gitlint
+    rev: v0.19.1
+    hooks:
+      - id: gitlint
+  - repo: https://github.com/editorconfig-checker/editorconfig-checker.python
+    rev: '2.7.3'
+    hooks:
+      - id: editorconfig-checker
+        alias: ec
+  # renovate: datasource=github-tags depName=rhysd/actionlint versioning=semver
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.8
+    hooks:
+      - id: actionlint
+        args: [-shellcheck=, --config-file=.github/actionlint.yaml]  # Disable shellcheck to avoid false positives in GitHub Actions context

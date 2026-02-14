@@ -1,0 +1,364 @@
+# .ai/decisions.yaml
+# Architectural Decision Records (ADRs) in queryable format
+# AICaC Specification v1.0
+
+version: "1.0"
+
+decisions:
+
+  - id: ADR-001
+    title: "Dual implementation: workflows + composite actions"
+    date: "2024-11-15"
+    status: accepted
+
+    context: |
+      GitHub Enterprise Server doesn't support cross-repository workflow_call
+      for reusable workflows. Users on GHES cannot use v2.x workflows.
+
+    decision: "Maintain both reusable workflows (v2.x) and composite actions (v3.0)"
+
+    alternatives_considered:
+      - name: "Reusable workflows only"
+        rejected_because: "Excludes GHES users without github.com access"
+
+      - name: "Composite actions only"
+        rejected_because: "Worse UX for github.com users (more boilerplate)"
+
+      - name: "External CI tool (Jenkins, Dagger)"
+        rejected_because: "Adds external dependency, less GitHub-native"
+
+    consequences:
+      positive:
+        - "Supports both github.com and isolated GHES"
+        - "Users can choose implementation that fits their environment"
+        - "No disruption during migration period"
+      negative:
+        - "Higher maintenance burden (two codepaths)"
+        - "Must test both implementations"
+        - "Documentation complexity"
+
+    implementation: |
+      v2.x: .github/workflows/
+      v3.0: .github/actions/
+
+  - id: ADR-002
+    title: "SARIF as universal output format"
+    date: "2024-11-20"
+    status: accepted
+
+    context: |
+      Each security scanner has its own output format (JSON, text, XML).
+      GitHub Security tab requires SARIF format for integration.
+
+    decision: "Convert all scanner outputs to SARIF format"
+
+    alternatives_considered:
+      - name: "Keep native formats"
+        rejected_because: "No unified severity thresholds, no GitHub Security integration"
+
+      - name: "Custom unified format"
+        rejected_because: "Not GitHub-native, requires custom tooling"
+
+    consequences:
+      positive:
+        - "Unified severity thresholds across scanners"
+        - "GitHub Security tab integration"
+        - "PR annotations for findings"
+        - "Industry standard, tooling ecosystem exists"
+      negative:
+        - "Some scanner-specific nuances lost in translation"
+        - "Requires parse scripts for each scanner"
+
+    implementation: "Each scanner has scripts/parse.sh that outputs SARIF-compatible JSON"
+
+  - id: ADR-003
+    title: "Bash scripts for parsing over Node.js/Python"
+    date: "2024-12-01"
+    status: accepted
+
+    context: |
+      Parse scripts run inside GitHub Actions. Need to convert scanner
+      output to structured JSON quickly and reliably.
+
+    decision: "Use bash + jq/yq for parsing scripts"
+
+    alternatives_considered:
+      - name: "Node.js scripts"
+        rejected_because: "Requires npm install step, slower action startup"
+
+      - name: "Python scripts"
+        rejected_because: "Requires Python setup, heavier runtime"
+
+      - name: "Go binaries"
+        rejected_because: "Compilation step, harder to debug"
+
+    consequences:
+      positive:
+        - "No runtime dependencies to install"
+        - "Fast action execution"
+        - "jq/yq commonly available in GitHub runners"
+        - "Easy to debug (view script inline)"
+      negative:
+        - "Less maintainable than typed languages"
+        - "Limited testing frameworks for bash"
+        - "Complex string manipulation harder"
+
+    implementation: ".github/actions/*/scripts/parse.sh"
+
+  - id: ADR-004
+    title: "Co-located tests with actions"
+    date: "2024-12-05"
+    status: accepted
+
+    context: |
+      Each composite action needs tests. Question: where should tests live?
+
+    decision: "Tests live in .github/actions/*/tests/ alongside the action"
+
+    alternatives_considered:
+      - name: "Centralized tests/ directory"
+        rejected_because: "Tests divorced from code they test, harder to maintain"
+
+      - name: "Separate test repository"
+        rejected_because: "Even more divorced, harder to keep in sync"
+
+    consequences:
+      positive:
+        - "Tests next to code they test"
+        - "Easy to see test coverage at a glance"
+        - "Natural to update tests when changing action"
+        - "Self-contained actions (action + tests together)"
+      negative:
+        - "Larger action directories"
+        - "Must traverse multiple directories to run all tests"
+
+    implementation: ".github/actions/scanner-*/tests/"
+
+  - id: ADR-005
+    title: "Single version.yaml as source of truth"
+    date: "2024-12-10"
+    status: accepted
+
+    context: |
+      Version number appears in 20+ files: README, examples, action references,
+      CONTRIBUTING docs, etc. Keeping them in sync is error-prone.
+
+    decision: "Use version.yaml as single source, release-it updates all references"
+
+    alternatives_considered:
+      - name: "Manual version updates"
+        rejected_because: "Error-prone, easy to miss files"
+
+      - name: "Git tags only"
+        rejected_because: "Docs still need hardcoded versions for examples"
+
+    consequences:
+      positive:
+        - "Single place to check/update version"
+        - "Automated consistency across all files"
+        - "release-it handles version bumping"
+      negative:
+        - "Requires release-it configuration maintenance"
+        - "Must remember to use release-it (not manual git tag)"
+
+    implementation: |
+      version.yaml - source of truth
+      .release-it.json - configuration for version replacement patterns
+
+  - id: ADR-006
+    title: "Matrix strategy for parallel scanner execution"
+    date: "2024-11-25"
+    status: accepted
+
+    context: |
+      Running 10+ scanners sequentially is slow. GitHub Actions supports
+      matrix strategy for parallel job execution.
+
+    decision: "Use matrix strategy to run scanners in parallel"
+
+    alternatives_considered:
+      - name: "Sequential execution"
+        rejected_because: "Too slow (30+ minutes vs 5-10 minutes)"
+
+      - name: "Single job with all scanners"
+        rejected_because: "No parallelism, harder to isolate failures"
+
+    consequences:
+      positive:
+        - "Much faster execution (parallel)"
+        - "Each scanner isolated (failures don't cascade)"
+        - "Easy to add/remove scanners from matrix"
+      negative:
+        - "More complex workflow syntax"
+        - "Matrix job limit (256) could be hit with many containers"
+
+    implementation: |
+      strategy:
+        matrix:
+          scanner: [codeql, bandit, gitleaks, ...]
+        fail-fast: false
+
+  - id: ADR-007
+    title: "Severity-based failure thresholds"
+    date: "2024-12-15"
+    status: accepted
+
+    context: |
+      Different branches need different failure criteria. Main branch should
+      fail on critical findings, dev branches might allow medium severity.
+
+    decision: "Implement fail_on_severity input with levels: critical/high/medium/low/none"
+
+    alternatives_considered:
+      - name: "Always fail on any finding"
+        rejected_because: "Too strict for development branches"
+
+      - name: "Never fail (report only)"
+        rejected_because: "Defeats purpose of security scanning"
+
+      - name: "Branch-specific defaults"
+        rejected_because: "User should control, not us"
+
+    consequences:
+      positive:
+        - "User controls failure behavior"
+        - "Supports different policies for different branches"
+        - "Can run report-only scans (fail_on_severity: none)"
+      negative:
+        - "Users might set too lenient thresholds"
+
+    implementation: |
+      inputs:
+        fail_on_severity:
+          description: 'Minimum severity to fail workflow'
+          default: 'high'
+          type: choice
+          options: [critical, high, medium, low, none]
+
+  - id: ADR-008
+    title: "Flexible PR commenting: standalone vs aggregated"
+    date: "2026-02-05"
+    status: accepted
+
+    context: |
+      Scanner actions can be used individually or via reusable workflows.
+      Individual usage benefits from scanner-specific PR comments.
+      Multiple scanners benefit from single aggregated PR comment.
+      Need to support both patterns without PR comment spam.
+
+    decision: |
+      All scanner composite actions include comment-pr step with post_pr_comment
+      input defaulting to false. Reusable workflows set post_pr_comment: false
+      for all scanners, only security-summary job posts comprehensive comment.
+
+    alternatives_considered:
+      - name: "Always post individual comments"
+        rejected_because: "Spams PRs with 10+ comments when using reusable workflow"
+
+      - name: "Never post individual comments"
+        rejected_because: "Poor UX when using scanners individually"
+
+      - name: "Remove comment logic from actions entirely"
+        rejected_because: "Forces users to implement their own PR commenting"
+
+    consequences:
+      positive:
+        - "Standalone scanners can post focused PR comments"
+        - "Reusable workflows produce single comprehensive comment"
+        - "Users control behavior via post_pr_comment input"
+        - "No PR comment spam from multiple scanners"
+      negative:
+        - "Requires post_pr_comment input on all scanner actions"
+        - "Must document when to use true vs false"
+
+    implementation: |
+      Scanner actions (.github/actions/scanner-*/action.yml):
+        inputs:
+          post_pr_comment:
+            default: 'false'
+        steps:
+          - name: Comment PR
+            if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
+            uses: ./.github/actions/comment-pr
+
+      Reusable workflow (.github/workflows/reusable-security-hardening.yml):
+        scanner-codeql:
+          with:
+            post_pr_comment: false  # All scanners set to false
+        scanner-opengrep:
+          with:
+            post_pr_comment: false
+        # ... all other scanners with post_pr_comment: false
+
+        security-summary:
+          steps:
+            - name: Comment PR with security summary
+              uses: actions/github-script@v8  # Only job that posts PR comment
+
+    usage_examples:
+      standalone: |
+        # Individual scanner posts its own PR comment
+        - uses: huntridge-labs/argus/.github/actions/scanner-bandit@v3
+          with:
+            post_pr_comment: true
+
+      reusable: |
+        # Only security-summary posts comprehensive comment
+        uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@v2
+        with:
+          scanners: all
+          post_pr_comment: true  # Controls security-summary, not individual scanners
+
+  - id: ADR-009
+    title: "Consolidate scripts and tests to Python"
+    date: "2026-02-08"
+    status: accepted
+
+    context: |
+      Project maintained three languages for action scripts (Bash, JavaScript, Python)
+      plus Ruby for Bash coverage via bashcov/SimpleCov. This fragmentation created:
+      - Three test frameworks with different patterns
+      - Three coverage tools with incompatible reporting
+      - Higher contributor barrier (must learn multiple languages)
+      - Harder to maintain and refactor code
+      - CI complexity (multiple setup/teardown steps)
+
+    decision: "Migrate all action scripts and tests to Python with pytest"
+
+    alternatives_considered:
+      - name: "Keep multi-language approach"
+        rejected_because: "Undermines trust in coverage metrics and raises contributor barrier"
+
+      - name: "Migrate only to Bash"
+        rejected_because: "Bash lacks type safety, harder to test complex logic"
+
+      - name: "Migrate only to JavaScript"
+        rejected_because: "Adds Node.js dependency; Python already used for some actions"
+
+    consequences:
+      positive:
+        - "Single test framework (pytest) with consistent patterns"
+        - "One coverage tool (pytest-cov) producing unified metrics"
+        - "Lower contributor barrier (Python widely known, standard on CI runners)"
+        - "Better readability (200-line Bash becomes ~80 lines Python)"
+        - "Simplified CI/CD (no Ruby, no Node.js for tests)"
+        - "Eliminated duplicate script pairs (container/container-summary, zap/zap-summary)"
+        - "Shared utility modules (sarif.py, summary.py, severity.py)"
+      negative:
+        - "Initial migration effort across 18 scripts + 15 test files"
+        - "Python 3.11+ runtime requirement (but pre-installed on ubuntu-latest)"
+
+    implementation: |
+      Phase 0: Foundation (.github/actions/_shared/ utilities + pytest.ini)
+      Phase 1: Migrate action scripts (.sh → .py) and tests
+      Phase 2: Migrate config parsers (.js → .py)
+      Phase 3: Clean up (remove old Bash/JS files and coverage tools)
+      Phase 4: Harden testing (edge cases, integration tests)
+      Phase 5: Update documentation
+
+    supersedes: "ADR-003 (Bash for scripts with no runtime dependencies)"
+
+    note: |
+      Python is now the lingua franca for action scripts and tests.
+      Node.js remains for release tooling (release-it, commitlint, husky) which is
+      appropriate as those are developer workflow tools, not pipeline logic.

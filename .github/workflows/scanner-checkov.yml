@@ -1,0 +1,72 @@
+# Checkov IaC Scanner - Reusable Workflow
+#
+# THIN WRAPPER: This workflow delegates to the scanner-checkov composite action.
+# All scanning logic is in: .github/actions/scanner-checkov/action.yml
+#
+# For GHES users: Use the composite action directly instead of this workflow.
+# See: examples/github-enterprise/infrastructure-scanning.yml
+
+name: Checkov Scanner
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      iac_path:
+        description: 'Relative path to the infrastructure-as-code directory to scan'
+        required: false
+        type: string
+        default: 'infrastructure'
+      framework:
+        description: 'IaC framework to scan (terraform, cloudformation, kubernetes, etc.)'
+        required: false
+        type: string
+        default: 'terraform'
+      enable_code_security:
+        description: 'Whether GitHub Code Security is enabled for this repository'
+        required: false
+        type: boolean
+        default: false
+      post_pr_comment:
+        description: 'Whether to post PR comments'
+        required: false
+        type: boolean
+        default: false
+      fail_on_severity:
+        description: 'Fail the job if any check fails. Checkov does not support severity-based filtering - any value other than "none" will fail on any failed check.'
+        required: false
+        type: string
+        default: 'none'
+    secrets:
+      BC_API_KEY:
+        description: 'Prisma Cloud API key for enhanced severity scoring and features'
+        required: false
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  pull-requests: write
+
+jobs:
+  checkov-scan:
+    name: Checkov Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run Checkov Scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-checkov@main
+        env:
+          BC_API_KEY: ${{ secrets.BC_API_KEY }}
+        with:
+          iac_path: ${{ inputs.iac_path }}
+          framework: ${{ inputs.framework }}
+          enable_code_security: ${{ inputs.enable_code_security }}
+          post_pr_comment: ${{ inputs.post_pr_comment }}
+          fail_on_severity: ${{ inputs.fail_on_severity }}
+          api_key: ${{ secrets.BC_API_KEY }}

@@ -1,0 +1,188 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Trivy",
+          "version": "0.48.0",
+          "informationUri": "https://trivy.dev",
+          "rules": [
+            {
+              "id": "AVD-AWS-0028",
+              "name": "IMDSv1Enabled",
+              "shortDescription": {
+                "text": "Instance Metadata Service Version 1 is enabled"
+              },
+              "fullDescription": {
+                "text": "IMDSv1 is less secure than IMDSv2 and should be disabled."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "tags": ["security", "aws", "ec2"],
+                "precision": "high",
+                "security-severity": "9.0"
+              }
+            },
+            {
+              "id": "AVD-AWS-0086",
+              "name": "S3BucketEncryption",
+              "shortDescription": {
+                "text": "S3 Bucket does not have encryption enabled"
+              },
+              "fullDescription": {
+                "text": "Unencrypted S3 buckets may lead to data exposure if accessed by unauthorized parties."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "tags": ["security", "aws", "s3"],
+                "precision": "high",
+                "security-severity": "7.5"
+              }
+            },
+            {
+              "id": "AVD-AWS-0089",
+              "name": "S3BucketLogging",
+              "shortDescription": {
+                "text": "S3 Bucket does not have logging enabled"
+              },
+              "fullDescription": {
+                "text": "S3 buckets without access logging make it difficult to track access patterns and detect anomalies."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": ["security", "aws", "s3", "logging"],
+                "precision": "high",
+                "security-severity": "5.0"
+              }
+            },
+            {
+              "id": "AVD-AWS-0088",
+              "name": "S3BucketVersioning",
+              "shortDescription": {
+                "text": "S3 Bucket does not have versioning enabled"
+              },
+              "fullDescription": {
+                "text": "Versioning in S3 buckets allows for object recovery in case of accidental deletion."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "tags": ["security", "aws", "s3", "backup"],
+                "precision": "medium",
+                "security-severity": "3.0"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "AVD-AWS-0028",
+          "ruleIndex": 0,
+          "level": "error",
+          "message": {
+            "text": "Instance has IMDSv1 enabled. Require IMDSv2 for the instance."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "ec2.tf",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1,
+                  "endLine": 4,
+                  "endColumn": 2
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "AVD-AWS-0086",
+          "ruleIndex": 1,
+          "level": "error",
+          "message": {
+            "text": "Bucket does not have encryption enabled. Configure server-side encryption."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "main.tf",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 15,
+                  "startColumn": 1,
+                  "endLine": 18,
+                  "endColumn": 2
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "AVD-AWS-0089",
+          "ruleIndex": 2,
+          "level": "warning",
+          "message": {
+            "text": "Bucket does not have logging enabled. Enable access logging."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "main.tf",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 15,
+                  "startColumn": 1,
+                  "endLine": 18,
+                  "endColumn": 2
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "AVD-AWS-0088",
+          "ruleIndex": 3,
+          "level": "note",
+          "message": {
+            "text": "Bucket does not have versioning enabled. Enable versioning."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "main.tf",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 15,
+                  "startColumn": 1,
+                  "endLine": 18,
+                  "endColumn": 2
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "columnKind": "utf16CodeUnits"
+    }
+  ]
+}

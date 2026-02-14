@@ -1,0 +1,227 @@
+name: 'OpenGrep Scanner'
+description: |
+  Run OpenGrep SAST analysis and generate reports.
+
+  This action analyzes code for security vulnerabilities using OpenGrep,
+  a pattern-based static analysis tool. It supports multiple languages
+  including Python, JavaScript, Go, Java, and more.
+
+  Results integrate with security-summary for aggregated reporting.
+
+  **Required Environment Variables:**
+  - GITHUB_TOKEN: GitHub token for API access (set automatically in workflows)
+
+  **Usage Example:**
+  ```yaml
+  - uses: actions/checkout@v6
+  - uses: huntridge-labs/argus/.github/actions/scanner-opengrep@main
+    with:
+      fail_on_severity: 'high'
+  ```
+
+author: 'Argus'
+
+branding:
+  icon: 'search'
+  color: 'orange'
+
+inputs:
+  config:
+    description: 'OpenGrep config (e.g., auto, p/default, p/security-audit, or path to custom rules)'
+    required: false
+    default: 'auto'
+  paths:
+    description: 'Paths to scan (space-separated)'
+    required: false
+    default: '.'
+  enable_code_security:
+    description: 'Whether GitHub Code Security is enabled for this repository (uploads SARIF to Security tab)'
+    required: false
+    default: 'false'
+  fail_on_severity:
+    description: 'Fail if findings at or above this severity. Options: none, low, medium, high'
+    required: false
+    default: 'none'
+  post_pr_comment:
+    description: 'Whether to post PR comments'
+    required: false
+    default: 'false'
+
+outputs:
+  error_count:
+    description: 'Number of error severity findings'
+    value: ${{ steps.parse-results.outputs.error_count }}
+  warning_count:
+    description: 'Number of warning severity findings'
+    value: ${{ steps.parse-results.outputs.warning_count }}
+  info_count:
+    description: 'Number of info severity findings'
+    value: ${{ steps.parse-results.outputs.info_count }}
+  total_count:
+    description: 'Total number of findings'
+    value: ${{ steps.parse-results.outputs.total_count }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install OpenGrep
+      shell: bash
+      run: |
+        echo "::group::Installing OpenGrep"
+        curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | bash
+        echo "$HOME/.opengrep/cli/latest" >> $GITHUB_PATH
+        echo "::endgroup::"
+
+    - name: Run OpenGrep Analysis
+      shell: bash
+      run: |
+        echo "::group::Running OpenGrep security analysis"
+        mkdir -p opengrep-reports
+
+        CONFIG="${{ inputs.config }}"
+        PATHS="${{ inputs.paths }}"
+
+        echo "Config: $CONFIG"
+        echo "Paths: $PATHS"
+
+        # Run with SARIF output for GitHub integration
+        $HOME/.opengrep/cli/latest/opengrep scan --config="$CONFIG" --sarif --output=opengrep-reports/opengrep.sarif $PATHS || true
+
+        # Run with JSON output for detailed parsing
+        $HOME/.opengrep/cli/latest/opengrep scan --config="$CONFIG" --json --output=opengrep-reports/opengrep.json $PATHS || true
+
+        echo "::endgroup::"
+      continue-on-error: true
+
+    - name: Parse results
+      id: parse-results
+      shell: bash
+      run: |
+        echo "::group::Parsing OpenGrep results"
+
+        ERROR_COUNT=0
+        WARNING_COUNT=0
+        INFO_COUNT=0
+        TOTAL=0
+
+        if [ -f "opengrep-reports/opengrep.json" ]; then
+          TOTAL=$(jq -r '[.results[]?] | length' opengrep-reports/opengrep.json 2>/dev/null || echo "0")
+          ERROR_COUNT=$(jq -r '[.results[]? | select(.extra.severity == "ERROR")] | length' opengrep-reports/opengrep.json 2>/dev/null || echo "0")
+          WARNING_COUNT=$(jq -r '[.results[]? | select(.extra.severity == "WARNING")] | length' opengrep-reports/opengrep.json 2>/dev/null || echo "0")
+          INFO_COUNT=$(jq -r '[.results[]? | select(.extra.severity == "INFO")] | length' opengrep-reports/opengrep.json 2>/dev/null || echo "0")
+        fi
+
+        echo "Results:"
+        echo "  Error: $ERROR_COUNT"
+        echo "  Warning: $WARNING_COUNT"
+        echo "  Info: $INFO_COUNT"
+        echo "  Total: $TOTAL"
+
+        echo "error_count=$ERROR_COUNT" >> $GITHUB_OUTPUT
+        echo "warning_count=$WARNING_COUNT" >> $GITHUB_OUTPUT
+        echo "info_count=$INFO_COUNT" >> $GITHUB_OUTPUT
+        echo "total_count=$TOTAL" >> $GITHUB_OUTPUT
+
+        echo "::endgroup::"
+
+    - name: Upload OpenGrep reports
+      uses: actions/upload-artifact@v6
+      with:
+        name: opengrep-reports
+        path: opengrep-reports/
+        retention-days: 30
+      if: always()
+      continue-on-error: true
+
+    - name: Upload SARIF to GitHub Security
+      if: inputs.enable_code_security == 'true' && hashFiles('opengrep-reports/opengrep.sarif') != ''
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: opengrep-reports/opengrep.sarif
+      continue-on-error: true
+
+    - name: Generate scanner summary
+      if: always()
+      shell: bash
+      env:
+        HEAD_REF: ${{ github.head_ref || github.ref_name }}
+        ERROR_COUNT: ${{ steps.parse-results.outputs.error_count }}
+        WARNING_COUNT: ${{ steps.parse-results.outputs.warning_count }}
+        INFO_COUNT: ${{ steps.parse-results.outputs.info_count }}
+        TOTAL: ${{ steps.parse-results.outputs.total_count }}
+      run: |
+        mkdir -p scanner-summaries
+
+        SCRIPT_DIR="${{ github.action_path }}"
+        REPO_URL="${{ github.server_url }}/${{ github.repository }}/blob/${HEAD_REF}"
+
+        python3 "$SCRIPT_DIR/scripts/generate_summary.py" \
+          "scanner-summaries/opengrep.md" \
+          --is-pr-comment "true" \
+          --error-count "$ERROR_COUNT" \
+          --warning-count "$WARNING_COUNT" \
+          --info-count "$INFO_COUNT" \
+          --total "$TOTAL" \
+          --repo-url "$REPO_URL" \
+          --github-server-url "${{ github.server_url }}" \
+          --github-repo "${{ github.repository }}" \
+          --github-run-id "${{ github.run_id }}"
+
+        python3 "$SCRIPT_DIR/scripts/generate_summary.py" \
+          "$GITHUB_STEP_SUMMARY" \
+          --is-pr-comment "false" \
+          --error-count "$ERROR_COUNT" \
+          --warning-count "$WARNING_COUNT" \
+          --info-count "$INFO_COUNT" \
+          --total "$TOTAL" \
+          --repo-url "$REPO_URL" \
+          --github-server-url "${{ github.server_url }}" \
+          --github-repo "${{ github.repository }}" \
+          --github-run-id "${{ github.run_id }}"
+      continue-on-error: true
+
+    - name: Upload scanner summary
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: scanner-summary-opengrep
+        path: scanner-summaries/opengrep.md
+        retention-days: 7
+      continue-on-error: true
+
+    - name: Comment PR with OpenGrep results
+      if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
+      uses: huntridge-labs/argus/.github/actions/comment-pr@main
+      with:
+        summary_file: scanner-summaries/opengrep.md
+        comment_marker: opengrep-comment-marker
+        title: '🔍 OpenGrep SAST Results'
+        fallback_message: 'No OpenGrep results available'
+
+    - name: Check severity threshold
+      if: inputs.fail_on_severity != 'none' && inputs.fail_on_severity != ''
+      shell: bash
+      run: |
+        ERROR_COUNT=${{ steps.parse-results.outputs.error_count }}
+        WARNING_COUNT=${{ steps.parse-results.outputs.warning_count }}
+        INFO_COUNT=${{ steps.parse-results.outputs.info_count }}
+        THRESHOLD="${{ inputs.fail_on_severity }}"
+
+        SHOULD_FAIL=false
+        case "$THRESHOLD" in
+          high|critical)
+            [ "$ERROR_COUNT" -gt 0 ] && SHOULD_FAIL=true
+            ;;
+          medium)
+            [ $((ERROR_COUNT + WARNING_COUNT)) -gt 0 ] && SHOULD_FAIL=true
+            ;;
+          low)
+            [ $((ERROR_COUNT + WARNING_COUNT + INFO_COUNT)) -gt 0 ] && SHOULD_FAIL=true
+            ;;
+        esac
+
+        if [ "$SHOULD_FAIL" = "true" ]; then
+          echo "::error::OpenGrep found findings at or above '$THRESHOLD' severity"
+          echo "Error: $ERROR_COUNT, Warning: $WARNING_COUNT, Info: $INFO_COUNT"
+          exit 1
+        fi

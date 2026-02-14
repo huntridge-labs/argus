@@ -1,0 +1,39 @@
+name: AICaC Adoption
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  aicac:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # Needed to commit badge updates
+      pull-requests: write   # Needed to create PRs
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Check if .ai directory exists
+        id: check-aicac
+        run: |
+          if [ -d ".ai" ]; then
+            echo "mode=maintain" >> $GITHUB_OUTPUT
+            echo "📁 .ai/ directory found - running in maintain mode"
+          else
+            echo "mode=setup" >> $GITHUB_OUTPUT
+            echo "🚀 .ai/ directory not found - running in setup mode"
+          fi
+
+      - name: Run AICaC Action
+        uses: eFAILution/AICaC/.github/actions/aicac-adoption@v0.1.0
+        with:
+          mode: ${{ steps.check-aicac.outputs.mode }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          update-badge: 'true'

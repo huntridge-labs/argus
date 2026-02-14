@@ -1,0 +1,123 @@
+name: Example - ZAP Scanning (All Methods)
+
+# This example demonstrates three ways to run ZAP DAST scans against podinfo:
+# 1. Direct call to scanner-zap.yml (single scan, simple)
+# 2. Config file via scanner-zap-from-config.yml (multi-scan, flexible)
+# 3. Via reusable-security-hardening.yml (integrated with other scanners)
+
+on:
+  workflow_dispatch:
+    inputs:
+      method:
+        description: 'Which scanning method to use'
+        required: true
+        type: choice
+        options:
+          - all
+          - direct
+          - config
+          - reusable
+        default: all
+      scan_type:
+        description: 'Scan type (for direct method)'
+        required: false
+        type: choice
+        options:
+          - baseline
+          - full
+          - api
+        default: baseline
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+  security-events: write
+
+# =============================================================================
+# METHOD 1: Direct Scanner Call
+# Use when: You need a single scan with simple configuration
+# =============================================================================
+jobs:
+  zap-direct:
+    name: ZAP Direct (${{ inputs.scan_type }})
+    if: inputs.method == 'direct' || inputs.method == 'all'
+    uses: huntridge-labs/argus/.github/workflows/scanner-zap.yml@main
+    with:
+      # Target configuration
+      scan_mode: docker-run
+      app_image_ref: 'ghcr.io/stefanprodan/podinfo:latest'
+      app_ports: '9898:9898'
+      healthcheck_url: 'http://127.0.0.1:9898/healthz'
+
+      # Scan configuration
+      scan_type: ${{ inputs.scan_type }}
+      target_url: 'http://127.0.0.1:9898'
+      api_spec: 'http://127.0.0.1:9898/swagger.json'  # Used only for api scan type
+      max_duration_minutes: 5
+
+      # Options
+      fail_on_severity: none
+      post_pr_comment: false
+
+# =============================================================================
+# METHOD 2: Config File Driven
+# Use when: You need multiple scans, complex configuration, or authentication
+# =============================================================================
+  zap-from-config:
+    name: ZAP from Config
+    if: inputs.method == 'config' || inputs.method == 'all'
+    uses: huntridge-labs/argus/.github/workflows/scanner-zap-from-config.yml@main
+    with:
+      # Path to config file in your repository
+      # See examples/configs/zap-config.example.yml for full schema
+      config_file: examples/configs/zap-config.example.yml
+    secrets: inherit  # Required for authentication secrets
+
+# =============================================================================
+# METHOD 3: Via Reusable Security Hardening
+# Use when: You want ZAP integrated with other security scanners (SAST, etc.)
+# =============================================================================
+  zap-via-hardening:
+    name: ZAP via Hardening Pipeline
+    if: inputs.method == 'reusable' || inputs.method == 'all'
+    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@main
+    with:
+      # Only run ZAP scanner (skip SAST, secrets, etc.)
+      scanners: zap
+
+      # ZAP configuration via inputs
+      zap_scan_mode: docker-run
+      zap_app_image_ref: 'ghcr.io/stefanprodan/podinfo:latest'
+      zap_app_ports: '9898:9898'
+      zap_healthcheck_url: 'http://127.0.0.1:9898/healthz'
+      zap_target_urls: 'http://127.0.0.1:9898'
+      zap_scan_type: baseline
+      zap_max_duration_minutes: 5
+
+      # Or use a config file instead:
+      # zap_config_file: '.zap/config.yml'
+
+      # Common options
+      post_pr_comment: false
+      allow_failure: true
+    secrets: inherit
+
+# =============================================================================
+# Summary of all methods
+# =============================================================================
+  summary:
+    name: Scan Summary
+    runs-on: ubuntu-latest
+    if: always() && inputs.method == 'all'
+    needs: [zap-direct, zap-from-config, zap-via-hardening]
+    steps:
+      - name: Summary
+        run: |
+          echo "## ZAP Scanning Methods Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Method | Status | Use Case |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|--------|----------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Direct | ${{ needs.zap-direct.result }} | Single scan, simple config |" >> $GITHUB_STEP_SUMMARY
+          echo "| Config | ${{ needs.zap-from-config.result }} | Multi-scan, auth, complex config |" >> $GITHUB_STEP_SUMMARY
+          echo "| Reusable | ${{ needs.zap-via-hardening.result }} | Integrated with SAST/secrets |" >> $GITHUB_STEP_SUMMARY

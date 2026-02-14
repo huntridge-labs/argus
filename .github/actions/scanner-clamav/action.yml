@@ -1,0 +1,342 @@
+name: 'ClamAV Malware Scanner'
+description: |
+  Run ClamAV malware scanning and generate reports.
+
+  **Required Environment Variables:**
+  - GITHUB_TOKEN: GitHub token for API access (set automatically in workflows)
+
+  **Usage Example:**
+  ```yaml
+  - uses: ./.github/actions/scanner-clamav
+    env:
+      GITHUB_TOKEN: (github.token)
+    with:
+      scan_path: '.'
+      fail_on_severity: 'none'
+  ```
+
+inputs:
+  post_pr_comment:
+    description: 'Whether to post PR comments'
+    required: false
+    default: 'true'
+  enable_code_security:
+    description: 'Whether GitHub Code Security is enabled for this repository'
+    required: false
+    default: 'false'
+  scan_path:
+    description: 'Path to scan (file, directory, or archive). Defaults to repository root.'
+    required: false
+    default: '.'
+  fail_on_severity:
+    description: 'Fail the job if malware is found. ClamAV does not support severity-based filtering - any value other than "none" will fail if malware is detected.'
+    required: false
+    default: 'none'
+  job_id:
+    description: 'Job ID for artifact naming'
+    required: false
+    default: ${{ github.job }}
+
+outputs:
+  infected_count:
+    description: 'Number of infected files detected'
+    value: ${{ steps.analyze-findings.outputs.infected_count }}
+  scanned_count:
+    description: 'Number of files scanned'
+    value: ${{ steps.analyze-findings.outputs.scanned_count }}
+  scan_status:
+    description: 'Overall scan status (clean or infected)'
+    value: ${{ steps.analyze-findings.outputs.scan_status }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v6
+
+    - name: Install ClamAV
+      shell: bash
+      run: |
+        echo "🔧 Installing ClamAV..."
+        sudo apt-get update
+        sudo apt-get install -y clamav
+
+        echo "🔍 Verifying ClamAV installation..."
+        clamscan --version
+      continue-on-error: false
+
+    - name: Set up Python for database updates
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.12'
+
+    - name: Update ClamAV database with cvdupdate
+      shell: bash
+      run: |
+        echo "📦 Installing cvdupdate (official ClamAV database updater)..."
+        pip install cvdupdate
+
+        echo "📥 Updating ClamAV virus database..."
+        # Configure cvdupdate to use system database directory
+        cvdupdate config set --dbdir /var/lib/clamav
+
+        # Update databases with retries
+        max_attempts=3
+        attempt=1
+        while [ $attempt -le $max_attempts ]; do
+          echo "Attempt $attempt of $max_attempts..."
+          if sudo $(which cvdupdate) update; then
+            echo "✅ Virus database updated successfully"
+            break
+          else
+            echo "⚠️  cvdupdate attempt $attempt failed"
+            attempt=$((attempt + 1))
+            [ $attempt -le $max_attempts ] && sleep 10
+          fi
+        done
+
+        # Verify databases
+        echo "📊 Database status:"
+        sudo sigtool --info /var/lib/clamav/main.cvd 2>/dev/null || echo "Main database: checking..."
+        sudo sigtool --info /var/lib/clamav/daily.cvd 2>/dev/null || echo "Daily database: checking..."
+        ls -lh /var/lib/clamav/*.cvd 2>/dev/null || echo "Database files present"
+      continue-on-error: false
+
+    - name: Install Python dependencies for scanning
+      shell: bash
+      run: |
+        echo "📦 Installing additional Python dependencies..."
+        pip install rarfile  # Optional dependency for RAR files
+      continue-on-error: true
+
+    - name: Run ClamAV Malware Scan
+      shell: bash
+      run: |
+        set +e  # Disable exit on error for this step
+
+        echo "🔍 Running ClamAV malware analysis..."
+        mkdir -p clamav-reports clamav-extracted
+
+        SCAN_PATH="${{ inputs.scan_path }}"
+
+        # Check if scan path exists
+        if [ ! -e "$SCAN_PATH" ]; then
+          echo "❌ Scan path does not exist: $SCAN_PATH"
+          echo "ClamAV scan failed: path not found" > clamav-reports/clamav-report.log
+          echo "Scanned files: 0" >> clamav-reports/clamav-report.log
+          echo "Infected files: 0" >> clamav-reports/clamav-report.log
+          exit 0  # Don't fail the step, just report no scan
+        fi
+
+        # Run ClamAV scan directly on the path
+        echo "🦠 Scanning $SCAN_PATH with ClamAV..."
+
+        clamscan --recursive \
+          --infected \
+          --exclude-dir=".git" \
+          --exclude-dir="node_modules" \
+          --exclude-dir=".venv" \
+          --exclude-dir="__pycache__" \
+          --exclude-dir="htmlcov" \
+          --exclude-dir="coverage" \
+          --exclude-dir=".pytest_cache" \
+          --log=clamav-reports/clamav-report.log \
+          "$SCAN_PATH"
+
+        SCAN_EXIT_CODE=$?
+        echo "📊 ClamAV scan completed with exit code: $SCAN_EXIT_CODE"
+
+        # Verify report was created
+        if [ -f clamav-reports/clamav-report.log ]; then
+          echo "📄 ClamAV report generated:"
+          tail -20 clamav-reports/clamav-report.log
+        else
+          echo "⚠️ No report file generated, creating placeholder"
+          echo "ClamAV scan completed with exit code $SCAN_EXIT_CODE" > clamav-reports/clamav-report.log
+          echo "Scanned files: 0" >> clamav-reports/clamav-report.log
+          echo "Infected files: 0" >> clamav-reports/clamav-report.log
+        fi
+
+        exit 0  # Always succeed - we'll handle failures in the analyze step
+      continue-on-error: true
+
+    - name: Parse ClamAV Report
+      shell: bash
+      run: |
+        python3 - <<'PYTHON_SCRIPT'
+        #!/usr/bin/env python3
+        import json
+        import re
+        from pathlib import Path
+
+        report_file = Path('clamav-reports/clamav-report.log')
+        if report_file.exists():
+            content = report_file.read_text(encoding='utf-8')
+            infected = 0
+            scanned = 0
+            if "Infected files:" in content:
+                match = re.search(r'Infected files: (\d+)', content)
+                if match:
+                    infected = int(match.group(1))
+            if "Scanned files:" in content:
+                match = re.search(r'Scanned files: (\d+)', content)
+                if match:
+                    scanned = int(match.group(1))
+            infected_files = []
+            for line in content.split('\n'):
+                if 'FOUND' in line:
+                    infected_files.append(line.strip())
+            results = []
+            for line in infected_files:
+                if ' FOUND ' in line:
+                    parts = line.split(' FOUND ', 1)
+                    if len(parts) == 2:
+                        results.append({"file": parts[0].strip(), "infection": parts[1].strip(), "status": "infected"})
+            json_data = {"total_files": scanned, "infected_files": infected, "clean_files": scanned - infected, "infections": infected_files, "results": results}
+            json_path = report_file.parent / f"{report_file.stem}.json"
+            json_path.write_text(json.dumps(json_data, indent=2), encoding='utf-8')
+            print(f"Scan complete: {scanned} files scanned, {infected} infected")
+        else:
+            print(f"No scan report found at: {report_file}")
+        PYTHON_SCRIPT
+
+        echo "Generated ClamAV files:"
+        ls -la clamav-reports/ || echo "No files generated"
+
+    - name: Upload ClamAV artifacts
+      uses: actions/upload-artifact@v6
+      with:
+        name: clamav-reports-${{ inputs.job_id }}
+        path: clamav-reports/
+        retention-days: 30
+      if: always()
+
+    - name: Generate ClamAV summary section
+      if: always()
+      shell: bash
+      run: |
+        mkdir -p scanner-summaries
+
+        # Function to generate summary (used for both artifact and step summary)
+        generate_summary() {
+          local output_file="$1"
+
+          echo "<details>" > "$output_file"
+          echo "<summary>🛡️ ClamAV</summary>" >> "$output_file"
+          echo "" >> "$output_file"
+
+          if [ -d "clamav-reports" ] && [ "$(ls -A clamav-reports)" ]; then
+            echo "**Status:** ✅ Completed" >> "$output_file"
+            echo "" >> "$output_file"
+
+            # Parse results from JSON report
+            if [ -f "clamav-reports/clamav-report.json" ] && command -v jq >/dev/null 2>&1; then
+              INFECTED_COUNT=$(jq -r '.infected_files // 0' clamav-reports/clamav-report.json 2>/dev/null || echo "0")
+              SCANNED_COUNT=$(jq -r '.total_files // 0' clamav-reports/clamav-report.json 2>/dev/null || echo "0")
+              ERROR_COUNT=$(jq -r '.error_files // 0' clamav-reports/clamav-report.json 2>/dev/null || echo "0")
+            else
+              # Fallback to text report parsing
+              INFECTED_COUNT=0
+              SCANNED_COUNT=0
+              ERROR_COUNT=0
+
+              if [ -f "clamav-reports/clamav-report.log" ]; then
+                INFECTED_COUNT=$(grep -i "infected files:" clamav-reports/clamav-report.log | sed 's/.*: //' 2>/dev/null || echo "0")
+                SCANNED_COUNT=$(grep -i "scanned files:" clamav-reports/clamav-report.log | sed 's/.*: //' 2>/dev/null || echo "0")
+                ERROR_COUNT=$(grep -c -i "error" clamav-reports/clamav-report.log 2>/dev/null || echo "0")
+              fi
+            fi
+
+            echo "**Files Scanned:** $SCANNED_COUNT" >> "$output_file"
+            echo "**Infected Files:** $INFECTED_COUNT" >> "$output_file"
+            echo "**Scan Errors:** $ERROR_COUNT" >> "$output_file"
+            echo "" >> "$output_file"
+
+            if [ "$INFECTED_COUNT" -gt 0 ]; then
+              echo "🚨 **WARNING:** Malware detected in your repository!" >> "$output_file"
+              echo "" >> "$output_file"
+
+              # List infections if available
+              if [ -f "clamav-reports/clamav-report.json" ] && command -v jq >/dev/null 2>&1; then
+                echo "**Detected Infections:**" >> "$output_file"
+                jq -r '.results[]? | select(.status == "infected") | "- \(.file): \(.infection // "Unknown")"' clamav-reports/clamav-report.json 2>/dev/null >> "$output_file" || true
+                echo "" >> "$output_file"
+              fi
+            fi
+
+            echo "**📁 Artifacts:** [ClamAV Reports](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts)" >> "$output_file"
+          else
+            echo "**Status:** ⏭️ Skipped" >> "$output_file"
+          fi
+
+          echo "" >> "$output_file"
+          echo "</details>" >> "$output_file"
+          echo "" >> "$output_file"
+        }
+
+        # Generate artifact summary
+        generate_summary "scanner-summaries/clamav.md"
+
+        # Also write to GitHub step summary
+        cat scanner-summaries/clamav.md >> "$GITHUB_STEP_SUMMARY"
+      continue-on-error: true
+
+    - name: Upload ClamAV summary section
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: scanner-summary-clamav-${{ inputs.job_id }}
+        path: scanner-summaries/clamav.md
+        retention-days: 7
+      continue-on-error: true
+
+    - name: Comment PR with ClamAV results
+      if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
+      uses: huntridge-labs/argus/.github/actions/comment-pr@main
+      with:
+        summary_file: scanner-summaries/clamav.md
+        comment_marker: clamav-scanner-comment-marker
+        title: '🛡️ ClamAV Malware Scan Results'
+        fallback_message: 'No ClamAV results available'
+
+    - name: Analyze ClamAV findings
+      id: analyze-findings
+      shell: bash
+      if: always()
+      run: |
+        echo "📊 Analyzing ClamAV scan results..."
+
+        INFECTED_COUNT=0
+        SCANNED_COUNT=0
+        SCAN_STATUS="clean"
+
+        if [ -f "clamav-reports/clamav-report.json" ]; then
+          INFECTED_COUNT=$(jq -r '.infected_files // 0' clamav-reports/clamav-report.json 2>/dev/null || echo "0")
+          SCANNED_COUNT=$(jq -r '.total_files // 0' clamav-reports/clamav-report.json 2>/dev/null || echo "0")
+        elif [ -f "clamav-reports/clamav-report.log" ]; then
+          INFECTED_COUNT=$(grep -i "infected files:" clamav-reports/clamav-report.log | sed 's/.*: //' 2>/dev/null || echo "0")
+          SCANNED_COUNT=$(grep -i "scanned files:" clamav-reports/clamav-report.log | sed 's/.*: //' 2>/dev/null || echo "0")
+        fi
+
+        echo "Files scanned: $SCANNED_COUNT"
+        echo "Infected files: $INFECTED_COUNT"
+        echo "infected_count=$INFECTED_COUNT" >> $GITHUB_OUTPUT
+        echo "scanned_count=$SCANNED_COUNT" >> $GITHUB_OUTPUT
+
+        if [ "$INFECTED_COUNT" -gt 0 ]; then
+          SCAN_STATUS="infected"
+          echo "scan_status=$SCAN_STATUS" >> $GITHUB_OUTPUT
+          echo "⚠️ WARNING: $INFECTED_COUNT infected file(s) detected!"
+          echo "::warning title=Malware Detected::ClamAV found $INFECTED_COUNT infected file(s) in the repository"
+
+          if [ "${{ inputs.fail_on_severity }}" != "none" ] && [ -n "${{ inputs.fail_on_severity }}" ]; then
+            exit 1
+          fi
+        else
+          echo "scan_status=$SCAN_STATUS" >> $GITHUB_OUTPUT
+          echo "✅ No malware detected"
+        fi
+
+branding:
+  icon: 'shield'
+  color: 'blue'

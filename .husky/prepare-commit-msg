@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Cross-platform TODO and release-utils checker for Husky
+
+echo "Running .husky prepare-commit-msg hook"
+
+# Add common paths that VSCode might not have
+export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$PATH"
+
+# Check if node is available
+if ! command -v node &> /dev/null; then
+    echo "Warning: node not found, skipping TODO checker and commitizen"
+    exit 0
+fi
+
+# Run TODO checker (Node.js version for cross-platform compatibility)
+if [ -f ".husky/check-todos.js" ]; then
+    node .husky/check-todos.js
+else
+    echo "Warning: TODO checker script not found"
+fi
+
+# Only run commitizen in interactive mode (not from VSCode)
+if [ -t 0 ]; then
+    npm run commitizen || true
+    exec </dev/tty && npx git-cz --hook || true
+fi

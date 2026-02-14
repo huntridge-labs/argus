@@ -1,0 +1,203 @@
+# Containerized Web App Security Pipeline
+#
+# A comprehensive security scanning workflow for containerized web applications.
+# This demonstrates the recommended pattern for securing containerized apps.
+#
+# Features:
+# - Secrets detection (Gitleaks)
+# - SAST scanning (Bandit, CodeQL, OpenGrep)
+# - Malware detection (ClamAV)
+# - Container image scanning (Trivy, Grype, Syft SBOM)
+# - DAST web application scanning (ZAP)
+# - Consolidated security summary with PR comments
+#
+# Usage:
+# 1. Copy this file to your repository's .github/workflows/ directory
+# 2. Adjust the Dockerfile path, port, and health endpoint for your application
+# 3. Configure CodeQL language(s) for your codebase
+# 4. For air-gapped GHES, update action references to your internal mirror
+#
+# Note: All individual scanners disable PR comments - the security-summary
+# action generates a single consolidated comment for cleaner PR reviews.
+
+# yamllint disable rule:brackets
+name: Security Pipeline
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+  actions: read
+  checks: write
+  id-token: write
+  packages: read
+
+jobs:
+  # ============================================
+  # Secrets Detection
+  # ============================================
+  gitleaks:
+    name: Gitleaks Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@v3
+        with:
+          fail_on_severity: 'high'
+          post_pr_comment: false  # Let security-summary handle comments
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  # ============================================
+  # SAST - Static Application Security Testing
+  # ============================================
+  bandit:
+    name: Bandit Python SAST
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@v3
+        with:
+          fail_on_severity: 'high'
+          post_pr_comment: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  codeql:
+    name: CodeQL SAST
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: huntridge-labs/argus/.github/actions/scanner-codeql@v3
+        with:
+          language: 'python'  # Adjust: python, javascript, java, go, etc.
+          fail_on_severity: 'high'
+          # Optional: Use a custom CodeQL config file
+          # config_file: '.github/codeql/codeql-config.yml'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  opengrep:
+    name: OpenGrep SAST
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: huntridge-labs/argus/.github/actions/scanner-opengrep@v3
+        with:
+          config: 'auto'
+          fail_on_severity: 'high'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ============================================
+  # Malware Detection
+  # ============================================
+  clamav:
+    name: ClamAV Malware Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: huntridge-labs/argus/.github/actions/scanner-clamav@v3
+        with:
+          scan_path: '.'
+          fail_on_severity: 'high'
+          post_pr_comment: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ============================================
+  # Container Scanning - Build and Scan Application Image
+  # ============================================
+  container-scan:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build container image
+        run: |
+          docker build -t my-app:${{ github.sha }} .
+          echo "✅ Built image: my-app:${{ github.sha }}"
+
+      - uses: huntridge-labs/argus/.github/actions/scanner-container@v3
+        with:
+          image_ref: 'my-app:${{ github.sha }}'
+          container_name: 'my-app'
+          scanners: 'trivy,grype,syft'
+          fail_on_severity: 'high'
+          allow_failure: 'false'
+          scan_mode: 'discover'  # Image was built locally
+
+  # ============================================
+  # DAST - Dynamic Application Security Testing
+  # ============================================
+  zap-dast:
+    name: ZAP DAST Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build and start container
+        run: |
+          docker build -t my-app:${{ github.sha }} .
+          docker run -d --name my-app -p 8080:8080 my-app:${{ github.sha }}
+          echo "⏳ Waiting for application to be healthy..."
+          # Poll health endpoint until ready (adjust /health to your app's endpoint)
+          for i in {1..30}; do
+            if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+              echo "✅ Application is healthy"
+              exit 0
+            fi
+            echo "  Attempt $i/30 - waiting..."
+            sleep 1
+          done
+          echo "❌ Application failed to start"
+          docker logs my-app
+          exit 1
+
+      - uses: huntridge-labs/argus/.github/actions/scanner-zap@v3
+        with:
+          target_url: 'http://localhost:8080'
+          scan_name: 'my-app'
+          fail_on_severity: 'high'
+          post_pr_comment: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Stop container
+        if: always()
+        run: |
+          docker stop my-app || true
+          docker rm my-app || true
+
+  # ============================================
+  # Security Summary - Consolidated PR Comment
+  # ============================================
+  security-summary:
+    name: Security Summary
+    needs: [gitleaks, bandit, codeql, opengrep, clamav, container-scan, zap-dast]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download scanner summaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: scanner-summary-*
+          path: scanner-summaries
+          merge-multiple: true
+        continue-on-error: true
+
+      - uses: huntridge-labs/argus/.github/actions/security-summary@v3
+        with:
+          title: '🔒 Security Pipeline Summary'
+          post_pr_comment: 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

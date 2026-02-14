@@ -1,0 +1,115 @@
+{
+  "version": "1.0.0",
+  "results": [
+    {
+      "check_id": "python.security.audit.dangerous-subprocess-use",
+      "path": "src/utils/shell.py",
+      "start": {
+        "line": 15,
+        "col": 5
+      },
+      "end": {
+        "line": 15,
+        "col": 45
+      },
+      "extra": {
+        "severity": "ERROR",
+        "message": "Detected subprocess with shell=True. This is dangerous if user input is passed to the command.",
+        "metadata": {
+          "cwe": [
+            "CWE-78"
+          ],
+          "owasp": [
+            "A03:2021"
+          ],
+          "category": "security"
+        },
+        "fingerprint": "abc123def456"
+      }
+    },
+    {
+      "check_id": "python.security.audit.hardcoded-password",
+      "path": "src/config/settings.py",
+      "start": {
+        "line": 42,
+        "col": 1
+      },
+      "end": {
+        "line": 42,
+        "col": 35
+      },
+      "extra": {
+        "severity": "WARNING",
+        "message": "Detected hardcoded password in source code.",
+        "metadata": {
+          "cwe": [
+            "CWE-798"
+          ],
+          "owasp": [
+            "A07:2021"
+          ],
+          "category": "security"
+        },
+        "fingerprint": "ghi789jkl012"
+      }
+    },
+    {
+      "check_id": "python.security.audit.insecure-hash-algorithm",
+      "path": "src/auth/crypto.py",
+      "start": {
+        "line": 28,
+        "col": 10
+      },
+      "end": {
+        "line": 28,
+        "col": 25
+      },
+      "extra": {
+        "severity": "WARNING",
+        "message": "Use of MD5 is insecure. Consider using SHA-256 or stronger.",
+        "metadata": {
+          "cwe": [
+            "CWE-327"
+          ],
+          "owasp": [
+            "A02:2021"
+          ],
+          "category": "security"
+        },
+        "fingerprint": "mno345pqr678"
+      }
+    },
+    {
+      "check_id": "python.style.unused-import",
+      "path": "src/main.py",
+      "start": {
+        "line": 3,
+        "col": 1
+      },
+      "end": {
+        "line": 3,
+        "col": 20
+      },
+      "extra": {
+        "severity": "INFO",
+        "message": "Unused import 'os' detected.",
+        "metadata": {
+          "category": "style"
+        },
+        "fingerprint": "stu901vwx234"
+      }
+    }
+  ],
+  "errors": [],
+  "paths": {
+    "scanned": [
+      "src/"
+    ],
+    "skipped": []
+  },
+  "stats": {
+    "files_scanned": 15,
+    "rules_run": 125,
+    "findings_total": 4
+  }
+}

@@ -1,0 +1,59 @@
+# ClamAV Malware Scanner - Reusable Workflow
+#
+# THIN WRAPPER: This workflow delegates to the scanner-clamav composite action.
+# All scanning logic is in: .github/actions/scanner-clamav/action.yml
+#
+# For GHES users: Use the composite action directly instead of this workflow.
+# See: examples/github-enterprise/all-scanners.yml
+
+name: ClamAV Malware Scanner
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      post_pr_comment:
+        description: 'Whether to post PR comments'
+        required: false
+        type: boolean
+        default: true
+      enable_code_security:
+        description: 'Whether GitHub Code Security is enabled for this repository'
+        required: false
+        type: boolean
+        default: false
+      scan_path:
+        description: 'Path to scan (file, directory, or archive). Defaults to repository root.'
+        required: false
+        type: string
+        default: '.'
+      fail_on_severity:
+        description: 'Fail the job if malware is found. ClamAV does not support severity-based filtering - any value other than "none" will fail if malware is detected.'
+        required: false
+        type: string
+        default: 'none'
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  pull-requests: write
+
+jobs:
+  clamav-scan:
+    name: ClamAV Malware Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run ClamAV Scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-clamav@main
+        with:
+          post_pr_comment: ${{ inputs.post_pr_comment }}
+          enable_code_security: ${{ inputs.enable_code_security }}
+          scan_path: ${{ inputs.scan_path }}
+          fail_on_severity: ${{ inputs.fail_on_severity }}

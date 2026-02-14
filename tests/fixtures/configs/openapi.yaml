@@ -1,0 +1,76 @@
+openapi: 3.0.0
+info:
+  title: Test API
+  version: 1.0.0
+  description: Simple test API for ZAP scanner testing
+
+servers:
+  - url: http://localhost:3000
+    description: Local test server
+
+paths:
+  /:
+    get:
+      summary: Index endpoint
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  version:
+                    type: string
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+
+  /api/data:
+    get:
+      summary: Get data
+      responses:
+        '200':
+          description: Data retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+
+  /api/echo:
+    post:
+      summary: Echo request body
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Echo response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  echo:
+                    type: object

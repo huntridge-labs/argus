@@ -1,0 +1,273 @@
+name: 'Terraform Linter'
+description: |
+  Run Terraform formatting and validation checks.
+
+  This action validates Terraform files using terraform fmt, terraform validate,
+  and optionally TFLint. Results are uploaded as artifacts and can be aggregated
+  by the linting-summary action.
+
+  **Usage Example:**
+  ```yaml
+  - uses: actions/checkout@v6
+  - uses: huntridge-labs/argus/.github/actions/linter-terraform@main
+    with:
+      fail_on_issues: false
+      terraform_version: 'latest'
+  ```
+
+inputs:
+  fail_on_issues:
+    description: 'Fail the job if linting issues are found'
+    required: false
+    default: 'false'
+  paths:
+    description: 'Paths to search for Terraform files (space-separated). Defaults to entire repository.'
+    required: false
+    default: '.'
+  terraform_version:
+    description: 'Terraform version to use'
+    required: false
+    default: 'latest'
+  run_tflint:
+    description: 'Run TFLint in addition to terraform fmt/validate'
+    required: false
+    default: 'true'
+
+outputs:
+  issues_count:
+    description: 'Total number of linting issues found'
+    value: ${{ steps.terraform-lint.outputs.issues }}
+  fmt_issues:
+    description: 'Number of formatting issues'
+    value: ${{ steps.terraform-lint.outputs.fmt_issues }}
+  validate_issues:
+    description: 'Number of validation issues'
+    value: ${{ steps.terraform-lint.outputs.validate_issues }}
+  tflint_issues:
+    description: 'Number of TFLint issues'
+    value: ${{ steps.terraform-lint.outputs.tflint_issues }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ inputs.terraform_version }}
+
+    - name: Install TFLint
+      if: inputs.run_tflint == 'true'
+      shell: bash
+      run: |
+        curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+        tflint --version
+
+    - name: Run Terraform linting
+      id: terraform-lint
+      shell: bash
+      continue-on-error: true
+      run: |
+        echo "::group::Terraform Linting"
+        echo "Searching for Terraform files in: ${{ inputs.paths }}"
+
+        ISSUES_FILE="/tmp/terraform_issues.txt"
+        TOTAL_ISSUES=0
+        FMT_ISSUES=0
+        VALIDATE_ISSUES=0
+        TFLINT_ISSUES=0
+
+        # Find Terraform files
+        TF_FILES=$(find ${{ inputs.paths }} -name "*.tf" \
+          -not -path "*/.git/*" \
+          -not -path "*/.terraform/*" \
+          -type f 2>/dev/null || true)
+
+        if [ -z "$TF_FILES" ]; then
+          echo "No Terraform files found to lint"
+          echo "issues=0" >> $GITHUB_OUTPUT
+          echo "fmt_issues=0" >> $GITHUB_OUTPUT
+          echo "validate_issues=0" >> $GITHUB_OUTPUT
+          echo "tflint_issues=0" >> $GITHUB_OUTPUT
+          echo "::endgroup::"
+          exit 0
+        fi
+
+        echo "Found Terraform files to check:"
+        echo "$TF_FILES" | head -20
+        FILE_COUNT=$(echo "$TF_FILES" | wc -l)
+        if [ "$FILE_COUNT" -gt 20 ]; then
+          echo "... and $((FILE_COUNT - 20)) more files"
+        fi
+
+        # Find unique directories containing .tf files
+        TF_DIRS=$(echo "$TF_FILES" | xargs -n1 dirname | sort -u)
+
+        # Run terraform fmt check
+        echo ""
+        echo "=== Running terraform fmt check ===" | tee -a "$ISSUES_FILE"
+        for dir in $TF_DIRS; do
+          if ! terraform -chdir="$dir" fmt -check -recursive > /tmp/tf_fmt_single.out 2>&1; then
+            FMT_COUNT=$(wc -l < /tmp/tf_fmt_single.out 2>/dev/null || echo "0")
+            if [ "$FMT_COUNT" -gt 0 ]; then
+              echo "Formatting issues in $dir:" | tee -a "$ISSUES_FILE"
+              cat /tmp/tf_fmt_single.out | tee -a "$ISSUES_FILE"
+              FMT_ISSUES=$((FMT_ISSUES + FMT_COUNT))
+            fi
+          fi
+        done
+
+        if [ "$FMT_ISSUES" -eq 0 ]; then
+          echo "No terraform formatting issues found" | tee -a "$ISSUES_FILE"
+        fi
+
+        # Run terraform validate on directories
+        echo ""
+        echo "=== Running terraform validate ===" | tee -a "$ISSUES_FILE"
+        for dir in $TF_DIRS; do
+          echo "Validating: $dir"
+          cd "$dir" || continue
+
+          # Initialize without backend
+          if terraform init -backend=false > /tmp/tf_init.out 2>&1; then
+            if ! terraform validate > /tmp/tf_validate.out 2>&1; then
+              VAL_COUNT=$(grep -c "Error:" /tmp/tf_validate.out 2>/dev/null || echo "1")
+              echo "Validation issues in $dir:" | tee -a "$ISSUES_FILE"
+              cat /tmp/tf_validate.out | tee -a "$ISSUES_FILE"
+              VALIDATE_ISSUES=$((VALIDATE_ISSUES + VAL_COUNT))
+            fi
+          else
+            echo "Could not initialize $dir for validation (skipped)" | tee -a "$ISSUES_FILE"
+          fi
+
+          cd - > /dev/null || exit
+        done
+
+        if [ "$VALIDATE_ISSUES" -eq 0 ]; then
+          echo "No terraform validation issues found" | tee -a "$ISSUES_FILE"
+        fi
+
+        # Run TFLint if enabled
+        if [ "${{ inputs.run_tflint }}" = "true" ]; then
+          echo ""
+          echo "=== Running TFLint ===" | tee -a "$ISSUES_FILE"
+          for dir in $TF_DIRS; do
+            echo "TFLint checking: $dir"
+            cd "$dir" || continue
+
+            # Initialize tflint
+            tflint --init > /dev/null 2>&1 || true
+
+            if ! tflint --format compact > /tmp/tflint_single.out 2>&1; then
+              TFLINT_COUNT=$(wc -l < /tmp/tflint_single.out 2>/dev/null || echo "0")
+              if [ "$TFLINT_COUNT" -gt 0 ]; then
+                echo "TFLint issues in $dir:" | tee -a "$ISSUES_FILE"
+                cat /tmp/tflint_single.out | tee -a "$ISSUES_FILE"
+                TFLINT_ISSUES=$((TFLINT_ISSUES + TFLINT_COUNT))
+              fi
+            fi
+
+            cd - > /dev/null || exit
+          done
+
+          if [ "$TFLINT_ISSUES" -eq 0 ]; then
+            echo "No TFLint issues found" | tee -a "$ISSUES_FILE"
+          fi
+        fi
+
+        TOTAL_ISSUES=$((FMT_ISSUES + VALIDATE_ISSUES + TFLINT_ISSUES))
+
+        echo "issues=$TOTAL_ISSUES" >> $GITHUB_OUTPUT
+        echo "fmt_issues=$FMT_ISSUES" >> $GITHUB_OUTPUT
+        echo "validate_issues=$VALIDATE_ISSUES" >> $GITHUB_OUTPUT
+        echo "tflint_issues=$TFLINT_ISSUES" >> $GITHUB_OUTPUT
+
+        if [ "$TOTAL_ISSUES" -gt 0 ]; then
+          echo ""
+          echo "Total Terraform issues found: $TOTAL_ISSUES"
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            echo "::warning title=Terraform Linting Issues::Found $TOTAL_ISSUES Terraform formatting/validation issues. See job logs for details."
+          fi
+        else
+          echo "No Terraform linting issues found"
+        fi
+
+        echo "::endgroup::"
+
+        # Fail if requested and issues found
+        if [ "${{ inputs.fail_on_issues }}" = "true" ] && [ "$TOTAL_ISSUES" -gt 0 ]; then
+          echo "::error::Terraform linting failed with $TOTAL_ISSUES issues"
+          exit 1
+        fi
+
+    - name: Generate linter summary
+      if: always()
+      shell: bash
+      run: |
+        mkdir -p linter-summaries
+        ISSUES="${{ steps.terraform-lint.outputs.issues }}"
+        FMT="${{ steps.terraform-lint.outputs.fmt_issues }}"
+        VALIDATE="${{ steps.terraform-lint.outputs.validate_issues }}"
+        TFLINT="${{ steps.terraform-lint.outputs.tflint_issues }}"
+
+        echo "<details>" > linter-summaries/terraform.md
+        echo "<summary>Terraform Linting</summary>" >> linter-summaries/terraform.md
+        echo "" >> linter-summaries/terraform.md
+
+        if [ "$ISSUES" -eq 0 ]; then
+          echo "**Status:** Passed" >> linter-summaries/terraform.md
+          echo "" >> linter-summaries/terraform.md
+          echo "No Terraform linting issues found." >> linter-summaries/terraform.md
+        else
+          echo "**Status:** Issues Found" >> linter-summaries/terraform.md
+          echo "" >> linter-summaries/terraform.md
+          echo "| Check | Issues |" >> linter-summaries/terraform.md
+          echo "|-------|--------|" >> linter-summaries/terraform.md
+          echo "| Formatting (fmt) | $FMT |" >> linter-summaries/terraform.md
+          echo "| Validation | $VALIDATE |" >> linter-summaries/terraform.md
+          if [ "${{ inputs.run_tflint }}" = "true" ]; then
+            echo "| TFLint | $TFLINT |" >> linter-summaries/terraform.md
+          fi
+          echo "| **Total** | **$ISSUES** |" >> linter-summaries/terraform.md
+          echo "" >> linter-summaries/terraform.md
+
+          if [ -f "/tmp/terraform_issues.txt" ]; then
+            echo "<details>" >> linter-summaries/terraform.md
+            echo "<summary>View Issues</summary>" >> linter-summaries/terraform.md
+            echo "" >> linter-summaries/terraform.md
+            echo '```' >> linter-summaries/terraform.md
+            head -50 /tmp/terraform_issues.txt >> linter-summaries/terraform.md
+            if [ $(wc -l < /tmp/terraform_issues.txt) -gt 50 ]; then
+              echo "... (truncated, see artifacts for full list)" >> linter-summaries/terraform.md
+            fi
+            echo '```' >> linter-summaries/terraform.md
+            echo "" >> linter-summaries/terraform.md
+            echo "</details>" >> linter-summaries/terraform.md
+          fi
+        fi
+
+        echo "" >> linter-summaries/terraform.md
+        echo "</details>" >> linter-summaries/terraform.md
+        echo "" >> linter-summaries/terraform.md
+
+    - name: Upload linter summary
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: linter-summary-terraform
+        path: linter-summaries/terraform.md
+        retention-days: 7
+      continue-on-error: true
+
+    - name: Upload raw lint results
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: terraform-lint-results
+        path: /tmp/terraform_issues.txt
+        retention-days: 7
+        if-no-files-found: ignore
+      continue-on-error: true
+
+branding:
+  icon: 'layers'
+  color: 'purple'
