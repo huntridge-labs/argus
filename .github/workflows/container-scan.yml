@@ -268,7 +268,7 @@ jobs:
 
       - name: Download all scan artifacts
         if: needs.discover-containers.outputs.has_containers == 'true' || inputs.scan_mode == 'remote'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         continue-on-error: true
         with:
           pattern: ${{ inputs.scan_mode == 'remote' && inputs.container_name != '' && format('container-scan-results-{0}*', inputs.container_name) || 'container-scan-results-*' }}
