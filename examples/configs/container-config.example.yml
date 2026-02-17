@@ -39,14 +39,14 @@ containers:
   # Use ${VAR_NAME} syntax to reference environment variables/secrets
 
   # GitHub Container Registry (GHCR) - structured format
-  - name: ghcr-runner
+  - name: ghcr-anchore-syft
     registry:
       host: ghcr.io
-      username: ${GITHUB_TRIGGERING_ACTOR}
+      username: ${GITHUB_ACTOR}
       auth_secret: GITHUB_TOKEN
     image:
-      repository: actions
-      name: actions-runner
+      repository: anchore
+      name: syft
       tag: latest
     scanners: [trivy, grype]
     allow_failure: false

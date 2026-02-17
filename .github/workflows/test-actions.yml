@@ -404,9 +404,9 @@ jobs:
           - grype
         include:
           - tool: trivy
-            image: ghcr.io/actions/actions-runner:latest
+            image: ghcr.io/anchore/syft:latest
           - tool: grype
-            image: ghcr.io/actions/actions-runner:latest
+            image: ghcr.io/anchore/syft:latest
 
     steps:
       - name: Checkout repository
