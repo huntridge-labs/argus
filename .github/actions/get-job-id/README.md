@@ -13,7 +13,7 @@ This action looks up the current job in the workflow run and returns a stable jo
 ```yaml
 - name: Resolve job ID
   id: job
-  uses: huntridge-labs/argus/.github/actions/get-job-id@0.2.0
+  uses: huntridge-labs/argus/.github/actions/get-job-id@0.2.1
   with:
     job-name-string: 'YAML Linting'
     fallback-suffix: 'yaml'
@@ -24,7 +24,7 @@ This action looks up the current job in the workflow run and returns a stable jo
 ```yaml
 - name: Resolve job ID
   id: job
-  uses: huntridge-labs/argus/.github/actions/get-job-id@0.2.0
+  uses: huntridge-labs/argus/.github/actions/get-job-id@0.2.1
   with:
     job-name-pattern: 'Scan my-app[ (/].*trivy'
     fallback-suffix: 'my-app-trivy'

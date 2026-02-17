@@ -65,7 +65,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Run Trivy IaC Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@0.2.0
+        uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@0.2.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -85,7 +85,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Run Checkov Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.2.0
+        uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.2.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

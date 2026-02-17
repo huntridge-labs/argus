@@ -16,7 +16,7 @@ description: |
     needs: [bandit-scan, gitleaks-scan, trivy-iac-scan, clamav-scan]
     if: always()
     steps:
-      - uses: huntridge-labs/argus/.github/actions/security-summary@0.2.0
+      - uses: huntridge-labs/argus/.github/actions/security-summary@0.2.1
   ```
 
   **Important:**
@@ -133,7 +133,7 @@ runs:
 
     - name: Comment PR with security summary
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@0.2.0
+      uses: huntridge-labs/argus/.github/actions/comment-pr@0.2.1
       with:
         summary_file: combined-summaries/security.md
         comment_marker: security-summary-comment-marker

@@ -48,7 +48,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Run ZAP Scan
-        uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.0
+        uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.1
         with:
           target_url: ${{ github.event.inputs.target_url }}
           scan_type: ${{ github.event.inputs.scan_type }}
@@ -87,7 +87,7 @@ jobs:
           echo "Application is ready"
 
       - name: Run ZAP Baseline Scan
-        uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.0
+        uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.1
         with:
           target_url: 'http://localhost:8080'
           scan_type: 'baseline'
@@ -113,7 +113,7 @@ jobs:
           sleep 10
 
       - name: Run ZAP API Scan
-        uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.0
+        uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.1
         with:
           target_url: 'http://localhost:8080'
           scan_type: 'api'

@@ -14,7 +14,7 @@ name: Container Scan from Config
 #     packages: read
 #   jobs:
 #     scan:
-#       uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@0.2.0
+#       uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@0.2.1
 #       with:
 #         config_file: 'containers.yml'
 #       secrets: inherit  # Required for dynamic secret resolution
@@ -74,7 +74,7 @@ permissions:
 
 env:
   # Use current branch/PR when testing in argus repo, otherwise use release tag
-  HRL_REF: ${{ github.repository == 'huntridge-labs/argus' && (github.head_ref || github.ref_name) || '0.2.0' }}
+  HRL_REF: ${{ github.repository == 'huntridge-labs/argus' && (github.head_ref || github.ref_name) || '0.2.1' }}
 
 jobs:
   parse-config:

@@ -13,7 +13,7 @@ This action validates Terraform files using `terraform fmt`, `terraform validate
   uses: actions/checkout@v6
 
 - name: Run Terraform linting
-  uses: huntridge-labs/argus/.github/actions/linter-terraform@0.2.0
+  uses: huntridge-labs/argus/.github/actions/linter-terraform@0.2.1
   with:
     fail_on_issues: false
     terraform_version: 'latest'

@@ -13,7 +13,7 @@ jobs:
       has_scans: ${{ steps.parse.outputs.has_scans }}
     steps:
       - uses: actions/checkout@v6
-      - uses: huntridge-labs/argus/.github/actions/parse-zap-config@0.2.0
+      - uses: huntridge-labs/argus/.github/actions/parse-zap-config@0.2.1
         id: parse
         with:
           config_file: .zap/config.yml
@@ -26,7 +26,7 @@ jobs:
       matrix: ${{ fromJson(needs.parse-zap.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v6
-      - uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.0
+      - uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.1
         with:
           scan_name: ${{ matrix.name }}
           scan_mode: ${{ matrix.mode }}
