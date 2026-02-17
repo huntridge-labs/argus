@@ -4,6 +4,14 @@ name: Container Scan from Config
 # Uses composite actions - no script checkouts needed.
 #
 # Usage Example:
+#   permissions:
+#     contents: read
+#     security-events: write
+#     actions: read
+#     pull-requests: write
+#     checks: write
+#     id-token: write
+#     packages: read
 #   jobs:
 #     scan:
 #       uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@0.2.0
@@ -27,6 +35,15 @@ name: Container Scan from Config
 #
 # IMPORTANT: You MUST use 'secrets: inherit' for this to work.
 # This allows the workflow to dynamically access whichever secret your config references.
+#
+# Required Permissions (caller must grant these):
+#   contents: read          - Checkout repository and read config files
+#   security-events: write  - Upload SARIF results to GitHub Security tab
+#   actions: read           - Download artifacts from scanner jobs
+#   pull-requests: write    - Post PR comments with scan results
+#   checks: write           - Create check runs for scan results
+#   id-token: write         - OIDC token for registry authentication
+#   packages: read          - Pull container images from GitHub Packages
 
 on:
   workflow_dispatch:
@@ -51,6 +68,9 @@ permissions:
   security-events: write
   actions: read
   pull-requests: write
+  checks: write
+  id-token: write
+  packages: read
 
 env:
   # Use current branch/PR when testing in argus repo, otherwise use release tag

@@ -30,9 +30,12 @@ on:
 
 permissions:
   contents: read
+  security-events: write
   actions: read
   pull-requests: write
-  security-events: write
+  checks: write
+  id-token: write
+  packages: read
 
 # =============================================================================
 # METHOD 1: Direct Scanner Call
