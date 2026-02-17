@@ -7,7 +7,7 @@
 ![GitHub Release](https://img.shields.io/github/v/release/huntridge-labs/argus?style=flat-square)
 ![Unit Tests](https://img.shields.io/github/actions/workflow/status/huntridge-labs/argus/test-unit.yml?label=unit%20tests&style=flat-square)
 ![Integration Tests](https://img.shields.io/github/actions/workflow/status/huntridge-labs/argus/test-actions.yml?label=integration%20tests&style=flat-square)
-[![codecov](https://img.shields.io/codecov/c/github/huntridge-labs/argus?token=LG3BOJYDZY&style=flat-square)](https://codecov.io/gh/huntridge-labs/argus)
+[![codecov](https://img.shields.io/codecov/c/github/huntridge-labs/argus?token=SZDF9J8UGX&style=flat-square)](https://codecov.io/gh/huntridge-labs/argus)
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg?style=flat-square)](https://www.gnu.org/licenses/agpl-3.0)
 [![AICaC](https://img.shields.io/badge/AICaC-Comprehensive-success.svg)](https://github.com/eFAILution/AICaC)
