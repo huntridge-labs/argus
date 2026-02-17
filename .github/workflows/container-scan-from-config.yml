@@ -1,9 +1,17 @@
 name: Container Scan from Config
 
 # Reusable workflow for scanning multiple container images defined in a config file.
-# Call this workflow from your repository - no need to copy it.
+# Uses composite actions - no script checkouts needed.
 #
 # Usage Example:
+#   permissions:
+#     contents: read
+#     security-events: write
+#     actions: read
+#     pull-requests: write
+#     checks: write
+#     id-token: write
+#     packages: read
 #   jobs:
 #     scan:
 #       uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@0.2.0
@@ -23,10 +31,19 @@ name: Container Scan from Config
 # 1. Your config specifies auth_secret: "MY_REGISTRY_TOKEN" (any secret name)
 # 2. You use secrets: inherit to pass ALL your repo secrets to this workflow
 # 3. This workflow uses secrets[matrix.registry_auth_secret] to resolve dynamically
-# 4. The secret value is passed to container-scan.yml as registry_password
+# 4. The secret value is passed to scanner-container as registry_password
 #
 # IMPORTANT: You MUST use 'secrets: inherit' for this to work.
 # This allows the workflow to dynamically access whichever secret your config references.
+#
+# Required Permissions (caller must grant these):
+#   contents: read          - Checkout repository and read config files
+#   security-events: write  - Upload SARIF results to GitHub Security tab
+#   actions: read           - Download artifacts from scanner jobs
+#   pull-requests: write    - Post PR comments with scan results
+#   checks: write           - Create check runs for scan results
+#   id-token: write         - OIDC token for registry authentication
+#   packages: read          - Pull container images from GitHub Packages
 
 on:
   workflow_dispatch:
@@ -51,10 +68,13 @@ permissions:
   security-events: write
   actions: read
   pull-requests: write
+  checks: write
+  id-token: write
+  packages: read
 
 env:
-  # Use current branch/PR when testing in hardening-workflows repo, otherwise use release tag
-  HRL_REF: ${{ github.repository == 'huntridge-labs/hardening-workflows' && (github.head_ref || github.ref_name) || '0.2.0' }}
+  # Use current branch/PR when testing in argus repo, otherwise use release tag
+  HRL_REF: ${{ github.repository == 'huntridge-labs/argus' && (github.head_ref || github.ref_name) || '0.2.0' }}
 
 jobs:
   parse-config:
@@ -67,163 +87,43 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Checkout hardening-workflows for parser script
-        uses: actions/checkout@v6
-        with:
-          repository: huntridge-labs/hardening-workflows
-          ref: ${{ env.HRL_REF }}
-          path: .hardening-workflows
-          token: ${{ secrets.HARDENING_WORKFLOWS_CHECKOUT_TOKEN || github.token }}
-          sparse-checkout: |
-            .github/scripts/parse-container-config.js
-            .github/schemas/container-config.schema.json
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-
-      - name: Install dependencies
-        run: npm install --no-save js-yaml ajv
-
-      - name: Parse and validate config
+      - name: Parse container config
         id: parse
-        env:
-          CONFIG_FILE: ${{ inputs.config_file }}
-          SCHEMA_FILE: .argus/.github/schemas/container-config.schema.json
-        run: |
-          node .argus/.github/scripts/parse-container-config.js
+        uses: huntridge-labs/argus/.github/actions/parse-container-config@0.2.0
+        with:
+          config_file: ${{ inputs.config_file }}
 
-          # Check if we have containers to scan
-          if [ -f "$GITHUB_OUTPUT" ]; then
-            MATRIX=$(grep "^matrix=" "$GITHUB_OUTPUT" | cut -d= -f2-)
-            if [ -n "$MATRIX" ] && [ "$MATRIX" != "{}" ] && [ "$MATRIX" != '{"include":[]}' ]; then
-              echo "has_containers=true" >> $GITHUB_OUTPUT
-            else
-              echo "has_containers=false" >> $GITHUB_OUTPUT
-            fi
-          else
-            echo "has_containers=false" >> $GITHUB_OUTPUT
-          fi
-
-  # Call container-scan.yml for each container in the matrix
   scan-containers:
     name: Scan ${{ matrix.name }}
     needs: parse-config
     if: needs.parse-config.outputs.has_containers == 'true'
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       max-parallel: 5
       matrix: ${{ fromJson(needs.parse-config.outputs.matrix) }}
-    # ⚠️ GHE FORKS: Update this path manually - 'uses:' cannot use env vars (GitHub limitation)
-    # Keep in sync with HRL_REF above
-    uses: huntridge-labs/argus/.github/workflows/container-scan.yml@0.2.0
-    with:
-      scan_mode: 'remote'
-      image_ref: ${{ matrix.image }}
-      container_name: ${{ matrix.name }}
-      registry_username: ${{ matrix.registry_username }}
-      scanners: ${{ matrix.scanners }}
-      fail_on_severity: ${{ matrix.fail_on_severity }}
-      enable_code_security: ${{ matrix.enable_code_security }}
-      # Disable individual PR comments - the summary job posts a comprehensive comment for all containers
-      post_pr_comment: false
-    secrets:
-      registry_password: ${{ secrets[matrix.registry_auth_secret] }}
+    steps:
+      - name: Run container security scanners
+        uses: huntridge-labs/argus/.github/actions/scanner-container@0.2.0
+        with:
+          scan_mode: 'remote'
+          image_ref: ${{ matrix.image }}
+          container_name: ${{ matrix.name }}
+          registry_username: ${{ matrix.registry_username }}
+          registry_password: ${{ secrets[matrix.registry_auth_secret] }}
+          scanners: ${{ matrix.scanners }}
+          fail_on_severity: ${{ matrix.fail_on_severity }}
+          enable_code_security: ${{ matrix.enable_code_security }}
+          post_pr_comment: false
+          skip_summary: 'true'
 
-  # Summary job collects all results
   scan-summary:
     name: Container Scan Summary
     runs-on: ubuntu-latest
     needs: [parse-config, scan-containers]
     if: always()
     steps:
-      - name: Download all scan artifacts
-        uses: actions/download-artifact@v7
-        continue-on-error: true
+      - name: Generate container scan summary
+        uses: huntridge-labs/argus/.github/actions/scanner-container-summary@0.2.0
         with:
-          pattern: container-scan-results-*
-          merge-multiple: true
-
-      - name: Checkout hardening-workflows for scripts
-        uses: actions/checkout@v6
-        with:
-          repository: huntridge-labs/hardening-workflows
-          ref: ${{ env.HRL_REF }}
-          path: .hardening-workflows
-          token: ${{ secrets.HARDENING_WORKFLOWS_CHECKOUT_TOKEN || github.token }}
-          sparse-checkout: |
-            .github/scripts/generate-container-summary.sh
-            .github/scripts/parse-trivy-results.sh
-            .github/scripts/parse-grype-results.sh
-
-      - name: Generate scan summary
-        env:
-          TRIVY_PARSER: .argus/.github/scripts/parse-trivy-results.sh
-          GRYPE_PARSER: .argus/.github/scripts/parse-grype-results.sh
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
-        run: |
-          set -euo pipefail
-
-          if [ "${{ needs.parse-config.outputs.has_containers }}" != "true" ]; then
-            echo "⚠️ No containers found to scan." > scanner-summaries/container.md
-            exit 0
-          fi
-
-          # Make scripts executable
-          chmod +x "$TRIVY_PARSER" "$GRYPE_PARSER" .argus/.github/scripts/generate-container-summary.sh
-
-          # Generate summary using existing script
-          .argus/.github/scripts/generate-container-summary.sh
-
-          # Copy the generated report for PR comment
-          cp scanner-summaries/container.md container-scan-summary.md
-
-      - name: Comment PR with scan results
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v8
-        continue-on-error: true
-        with:
-          script: |
-                const fs = require('fs');
-
-                try {
-                  const MARKER = 'container-scan-from-config-file-comment-marker';
-                  const reportPath = 'container-scan-summary.md';
-
-                  if (!fs.existsSync(reportPath)) {
-                    console.log('No summary file found:', reportPath);
-                    return;
-                  }
-
-                  let report = fs.readFileSync(reportPath, 'utf8');
-                  const MAX_COMMENT_LENGTH = 262000;
-                  if (report.length > MAX_COMMENT_LENGTH) {
-                    report = report.slice(0, MAX_COMMENT_LENGTH - 200) + '\n\n*Truncated report due to size.*';
-                  }
-
-                  const configFileUrl = `${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}/${{ inputs.config_file }}`;
-                  const commentBody = `## 🐳 Container Scan From [Config File](${configFileUrl})\n\n<!-- ${MARKER} -->\n\n${report}`;
-
-                  const comments = await github.rest.issues.listComments({
-                    owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number
-                  });
-
-                  const existingComment = comments.data.find(c => c.body && c.body.includes(MARKER) && (c.user.login === 'github-actions[bot]' || c.user.type === 'Bot'));
-
-                  if (existingComment) {
-                    await github.rest.issues.updateComment({
-                      owner: context.repo.owner, repo: context.repo.repo, comment_id: existingComment.id,
-                      body: commentBody + `\n\n---\n*Updated: ${new Date().toLocaleString()} | [View Run](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})*`
-                    });
-                    console.log('✅ Updated existing comment');
-                  } else {
-                    await github.rest.issues.createComment({
-                      issue_number: context.issue.number, owner: context.repo.owner, repo: context.repo.repo, body: commentBody
-                    });
-                    console.log('✅ Created new comment');
-                  }
-                } catch (error) {
-                  console.log('❌ Failed to post comment:', error.message);
-                }
+          post_pr_comment: ${{ github.event_name == 'pull_request' && 'true' || 'false' }}

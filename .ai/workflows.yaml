@@ -128,7 +128,7 @@ contributor_workflows:
     description: "Set up local development environment"
     steps:
       - action: "Clone repository"
-        command: "git clone <repo-url> && cd hardening-workflows"
+        command: "git clone <repo-url> && cd argus"
 
       - action: "Install Python dependencies"
         command: "pip install -r requirements.txt"

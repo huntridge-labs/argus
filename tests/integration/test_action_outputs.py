@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Integration tests for hardening-workflows action scripts.
+Integration tests for argus action scripts.
 
 Tests validate the critical GitHub Actions contract: every script's primary job
 is to write correct content to GITHUB_OUTPUT and/or GITHUB_STEP_SUMMARY. A

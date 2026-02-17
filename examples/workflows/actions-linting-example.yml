@@ -1,6 +1,6 @@
 name: Code Quality with Linting Composite Actions
 
-# This example workflow demonstrates how to use the hardening-workflows linter
+# This example workflow demonstrates how to use the argus linter
 # composite actions for comprehensive code quality checking. Copy this to your
 # repository and customize as needed.
 #

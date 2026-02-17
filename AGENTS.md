@@ -4,7 +4,7 @@
 
 ## Project Identity
 
-**hardening-workflows** is a GitHub Actions security scanning framework by Huntridge Labs.
+**argus** is a GitHub Actions security scanning framework by Huntridge Labs.
 
 - **What it does**: Orchestrates 14 security scanners (SAST, secrets, containers, IaC, DAST) from a single workflow call
 - **Current version**: 2.12.0

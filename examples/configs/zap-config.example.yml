@@ -4,6 +4,14 @@
 # This file defines target application and scans to run
 #
 # Usage with scanner-zap-from-config.yml:
+#   permissions:
+#     contents: read
+#     security-events: write
+#     actions: read
+#     pull-requests: write
+#     checks: write
+#     id-token: write
+#     packages: read
 #   jobs:
 #     zap:
 #       uses: huntridge-labs/argus/.github/workflows/scanner-zap-from-config.yml@main

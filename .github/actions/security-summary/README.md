@@ -5,7 +5,7 @@ Automatically aggregates and displays all security scan results in a unified, fo
 ## Features
 
 - **Zero Configuration** - Automatically discovers all scanner summaries
-- **Works with Any Scanners** - Compatible with all hardening-workflows scanner actions
+- **Works with Any Scanners** - Compatible with all argus scanner actions
 - **Flexible** - Works with 1 scanner or 10+ scanners
 - **GitHub Step Summary** - Formatted summary in workflow Summary tab
 - **Pull Request Comments** - Consolidated, updateable PR comments
@@ -102,7 +102,7 @@ The action generates a formatted summary in the workflow run's Summary tab showi
 1. **Header** - Title and metadata (run, branch, commit)
 2. **Statistics** - Number of scanners executed
 3. **Scanner Results** - Individual collapsible sections for each scanner
-4. **Footer** - Link to hardening-workflows
+4. **Footer** - Link to argus
 
 ### Pull Request Comment
 

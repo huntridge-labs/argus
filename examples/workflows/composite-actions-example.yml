@@ -1,6 +1,6 @@
 name: Security Scanning with Composite Actions
 
-# This example workflow demonstrates how to use the hardening-workflows composite actions
+# This example workflow demonstrates how to use the argus composite actions
 # for comprehensive security scanning. Copy this to your repository and customize as needed.
 #
 # Available Composite Actions:

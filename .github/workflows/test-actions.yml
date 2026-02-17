@@ -835,7 +835,7 @@ jobs:
               fi
 
               # Check for action references to this repo
-              if grep -q "huntridge-labs/hardening-workflows" "$example"; then
+              if grep -q "huntridge-labs/argus" "$example"; then
                 # Verify the action paths exist
                 REFS=$(grep -oP '(?<=uses: huntridge-labs/argus)\.github/actions/[^@]+' "$example" || true)
                 for ref in $REFS; do

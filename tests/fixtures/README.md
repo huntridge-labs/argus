@@ -1,6 +1,6 @@
 # Test Fixtures
 
-This directory contains synthetic test data for testing the hardening-workflows composite actions and scripts **without real vulnerabilities in the codebase**.
+This directory contains synthetic test data for testing the argus composite actions and scripts **without real vulnerabilities in the codebase**.
 
 ## Purpose
 
