@@ -28,7 +28,7 @@ It detects 200+ types of secrets including:
     fetch-depth: 0  # Required for full history scan
 
 - name: Run Gitleaks Scanner
-  uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@feat/migrate-to-composite-actions
+  uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.2.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Optional
@@ -40,7 +40,7 @@ It detects 200+ types of secrets including:
 
 ```yaml
 - name: Scan for secrets with strict settings
-  uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@feat/migrate-to-composite-actions
+  uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.2.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
@@ -103,7 +103,7 @@ All reports are uploaded as artifacts: `gitleaks-reports`
   with:
     fetch-depth: 0  # Scan all commits
 
-- uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@feat/migrate-to-composite-actions
+- uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.2.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -115,7 +115,7 @@ All reports are uploaded as artifacts: `gitleaks-reports`
   uses: actions/checkout@v6
   # Default fetch-depth: 1
 
-- uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@feat/migrate-to-composite-actions
+- uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.2.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -123,7 +123,7 @@ All reports are uploaded as artifacts: `gitleaks-reports`
 ### Fail on Any Secret
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@feat/migrate-to-composite-actions
+- uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.2.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:

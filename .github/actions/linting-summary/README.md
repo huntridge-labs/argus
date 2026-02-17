@@ -14,7 +14,7 @@ linting-summary:
   needs: [yaml-lint, json-lint, python-lint, javascript-lint, dockerfile-lint, terraform-lint]
   if: always()
   steps:
-    - uses: huntridge-labs/argus/.github/actions/linting-summary@feat/migrate-to-composite-actions
+    - uses: huntridge-labs/argus/.github/actions/linting-summary@0.2.0
 ```
 
 ## Inputs

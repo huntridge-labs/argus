@@ -144,7 +144,7 @@ jobs:
           sleep 2
 
       - name: Run ZAP scanner (all inputs)
-        uses: huntridge-labs/argus/.github/actions/scanner-zap@main
+        uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

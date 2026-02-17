@@ -494,7 +494,7 @@ runs:
 
     - name: Comment PR with ZAP summary
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@main
+      uses: huntridge-labs/argus/.github/actions/comment-pr@0.2.0
       with:
         summary_file: scanner-summaries/zap.md
         comment_marker: zap-dast-comment-${{ steps.validate.outputs.artifact_prefix }}

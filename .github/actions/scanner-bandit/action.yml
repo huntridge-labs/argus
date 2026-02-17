@@ -323,7 +323,7 @@ runs:
 
     - name: Comment PR with Bandit results
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@main
+      uses: huntridge-labs/argus/.github/actions/comment-pr@0.2.0
       with:
         summary_file: scanner-summaries/bandit.md
         comment_marker: bandit-scanner-comment-marker

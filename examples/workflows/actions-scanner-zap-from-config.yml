@@ -33,7 +33,7 @@ jobs:
 
       - name: Parse ZAP config
         id: parse
-        uses: huntridge-labs/argus/.github/actions/parse-zap-config@main
+        uses: huntridge-labs/argus/.github/actions/parse-zap-config@0.2.0
         with:
           config_file: ${{ inputs.config_file || 'examples/configs/zap-config.example.yml' }}
 
@@ -63,7 +63,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Run ZAP scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-zap@main
+        uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -96,7 +96,7 @@ jobs:
     if: always()
     steps:
       - name: Generate ZAP Summary
-        uses: huntridge-labs/argus/.github/actions/scanner-zap-summary@main
+        uses: huntridge-labs/argus/.github/actions/scanner-zap-summary@0.2.0
         id: summary
         with:
           post_pr_comment: ${{ needs.parse-config.outputs.post_pr_comment || 'true' }}

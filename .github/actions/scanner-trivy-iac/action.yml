@@ -317,7 +317,7 @@ runs:
 
     - name: Comment PR with Trivy IaC results
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@main
+      uses: huntridge-labs/argus/.github/actions/comment-pr@0.2.0
       with:
         summary_file: scanner-summaries/trivy-iac.md
         comment_marker: trivy-iac-scanner-comment-marker

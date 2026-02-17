@@ -74,7 +74,7 @@ jobs:
 
     steps:
       - name: Run Gitleaks Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@main
+        uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.2.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}

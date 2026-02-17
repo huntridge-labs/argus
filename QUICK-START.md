@@ -10,7 +10,7 @@ on: [push]
 
 jobs:
   sast:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@main
+    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.2.0
     with:
       scanners: codeql
     permissions:
@@ -26,7 +26,7 @@ on: [pull_request]
 
 jobs:
   hardening:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@main
+    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.2.0
     with:
       scanners: all
       post_pr_comment: true
@@ -46,7 +46,7 @@ on: [pull_request]
 
 jobs:
   hardening:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@main
+    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.2.0
     with:
       scanners: all
       allow_failure: false        # Enable failure mode
@@ -68,7 +68,7 @@ on: [push]
 
 jobs:
   security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@main
+    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.2.0
     with:
       scanners: container,infrastructure,gitleaks
       aws_region: us-west-2
@@ -89,7 +89,7 @@ on:
 
 jobs:
   nightly:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@main
+    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.2.0
     with:
       scanners: all
       post_pr_comment: false
@@ -107,14 +107,14 @@ on: [pull_request]
 
 jobs:
   trivy-iac:
-    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-iac.yml@main
+    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-iac.yml@0.2.0
     with:
       iac_path: 'infrastructure'
       enable_code_security: true
       fail_on_severity: high  # Fail on high or critical
 
   checkov:
-    uses: huntridge-labs/argus/.github/workflows/scanner-checkov.yml@main
+    uses: huntridge-labs/argus/.github/workflows/scanner-checkov.yml@0.2.0
     with:
       iac_path: 'infrastructure'
       fail_on_severity: medium  # Stricter threshold
@@ -130,7 +130,7 @@ on:
 
 jobs:
   scan-image:
-    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-container.yml@main
+    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-container.yml@0.2.0
     with:
       image_ref: 'myapp:${{ github.sha }}'
       enable_code_security: true

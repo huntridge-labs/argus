@@ -21,7 +21,7 @@ This composite action runs Trivy's IaC scanner to detect security issues in:
   uses: actions/checkout@v6
 
 - name: Run Trivy IaC Scanner
-  uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@feat/migrate-to-composite-actions
+  uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@0.2.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -33,7 +33,7 @@ This composite action runs Trivy's IaC scanner to detect security issues in:
 
 ```yaml
 - name: Scan Terraform with strict settings
-  uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@feat/migrate-to-composite-actions
+  uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@0.2.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -95,7 +95,7 @@ jobs:
         iac_path: ['terraform', 'kubernetes', 'cloudformation']
     steps:
       - uses: actions/checkout@v6
-      - uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@feat/migrate-to-composite-actions
+      - uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@0.2.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -105,7 +105,7 @@ jobs:
 ### Fail on High Severity Only
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@feat/migrate-to-composite-actions
+- uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@0.2.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
