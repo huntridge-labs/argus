@@ -1,5 +1,5 @@
 name: Security Hardening Pipeline - Scanner List Examples
-# from huntridge-labs/hardening-workflows
+# from huntridge-labs/argus
 # This example demonstrates the new scanner list approach for granular control
 
 on:

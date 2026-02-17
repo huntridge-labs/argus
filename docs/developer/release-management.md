@@ -37,7 +37,7 @@ Due to GitHub security restrictions, the automated release process requires a Pe
    - Set expiration as appropriate for your security policy
 
 2. **Configure token permissions:**
-   - **Repository access**: Select "Only select repositories" → `huntridge-labs/hardening-workflows`
+   - **Repository access**: Select "Only select repositories" → `huntridge-labs/argus`
    - **Repository permissions**:
      - `Contents`: **Read and write** (to push commits and tags)
      - `Workflows`: **Read and write** (to modify workflow files)

@@ -158,9 +158,6 @@ on:
       AWS_ACCOUNT_ID:
         description: 'AWS Account ID for infrastructure scans'
         required: false
-      HARDENING_WORKFLOWS_CHECKOUT_TOKEN:
-        description: 'Token for checking out hardening-workflows repo (required for private GHE servers)'
-        required: false
       GITLEAKS_LICENSE:
         description: 'License key for GitLeaks scans within a Github Organization. Obtain from https://gitleaks.io'
         required: false

@@ -4,7 +4,7 @@
 # Copy this file to your repository's .github/workflows/ directory.
 #
 # For air-gapped GHES instances, update action references to your internal mirror:
-#   huntridge-labs/hardening-workflows -> your-org/hardening-workflows
+#   huntridge-labs/argus -> your-org/argus
 
 name: Security Scan (All Scanners)
 

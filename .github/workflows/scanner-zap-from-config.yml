@@ -1,7 +1,7 @@
 name: ZAP DAST from Config
 
 # Reusable workflow for running ZAP DAST scans defined in a config file.
-# Call this workflow from your repository - no need to copy it.
+# Uses composite actions - no script checkouts needed.
 #
 # Usage Example:
 #   jobs:
@@ -54,8 +54,8 @@ permissions:
   pull-requests: write
 
 env:
-  # Use current branch/PR when testing in hardening-workflows repo, otherwise use release tag
-  HRL_REF: ${{ github.repository == 'huntridge-labs/hardening-workflows' && (github.head_ref || github.ref_name) || '2.11.0' }}
+  # Use current branch/PR when testing in argus repo, otherwise use release tag
+  HRL_REF: ${{ github.repository == 'huntridge-labs/argus' && (github.head_ref || github.ref_name) || '0.2.0' }}
 
 jobs:
   parse-config:
@@ -65,54 +65,16 @@ jobs:
       matrix: ${{ steps.parse.outputs.matrix }}
       has_scans: ${{ steps.parse.outputs.has_scans }}
       scan_count: ${{ steps.parse.outputs.scan_count }}
-      target_mode: ${{ steps.parse.outputs.target_mode }}
-      target_image: ${{ steps.parse.outputs.target_image }}
-      target_ports: ${{ steps.parse.outputs.target_ports }}
-      target_build_context: ${{ steps.parse.outputs.target_build_context }}
-      target_build_dockerfile: ${{ steps.parse.outputs.target_build_dockerfile }}
-      target_build_tag: ${{ steps.parse.outputs.target_build_tag }}
-      target_compose_file: ${{ steps.parse.outputs.target_compose_file }}
-      target_compose_build: ${{ steps.parse.outputs.target_compose_build }}
-      target_registry_host: ${{ steps.parse.outputs.target_registry_host }}
-      target_registry_username: ${{ steps.parse.outputs.target_registry_username }}
-      target_registry_auth_secret: ${{ steps.parse.outputs.target_registry_auth_secret }}
-      target_healthcheck_url: ${{ steps.parse.outputs.target_healthcheck_url }}
       post_pr_comment: ${{ steps.parse.outputs.post_pr_comment }}
-      config_hash: ${{ steps.parse.outputs.config_hash }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Checkout hardening-workflows for parser
-        uses: actions/checkout@v6
-        with:
-          repository: huntridge-labs/hardening-workflows
-          ref: ${{ env.HRL_REF }}
-          path: .hardening-workflows
-          token: ${{ secrets.HARDENING_WORKFLOWS_CHECKOUT_TOKEN || github.token }}
-          sparse-checkout: |
-            .github/scripts/parse-zap-config.js
-            .github/schemas/zap-config.schema.json
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-
-      - name: Install dependencies
-        run: npm install --no-save js-yaml ajv ajv-formats
-
-      - name: Parse and validate config
+      - name: Parse ZAP config
         id: parse
-        env:
-          CONFIG_FILE: ${{ inputs.config_file }}
-          SCHEMA_FILE: .argus/.github/schemas/zap-config.schema.json
-        run: |
-          node .argus/.github/scripts/parse-zap-config.js
-
-          # Generate config hash for artifact naming
-          config_hash=$(sha256sum "$CONFIG_FILE" | cut -c1-8)
-          echo "config_hash=$config_hash" >> "$GITHUB_OUTPUT"
+        uses: huntridge-labs/argus/.github/actions/parse-zap-config@0.2.0
+        with:
+          config_file: ${{ inputs.config_file }}
 
   zap-scan:
     name: ZAP ${{ matrix.name }}
@@ -131,209 +93,35 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Login to registry
-        if: matrix.registry_auth_secret != ''
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ matrix.registry_host }}
-          username: ${{ matrix.registry_username }}
-          password: ${{ secrets[matrix.registry_auth_secret] }}
-
-      - name: Build target image
-        if: matrix.mode == 'docker-run' && matrix.build_context != ''
-        run: |
-          set -euo pipefail
-          context="${{ matrix.build_context }}"
-          dockerfile="${{ matrix.build_dockerfile }}"
-          tag="${{ matrix.build_tag }}"
-
-          if [[ -z "$tag" ]]; then
-            tag="local-dast-app:${GITHUB_SHA}"
-          fi
-
-          echo "Building image '$tag' from '$dockerfile' (context: $context)"
-          docker build -f "$dockerfile" -t "$tag" "$context"
-          echo "ZAP_TARGET_IMAGE=$tag" >> "$GITHUB_ENV"
-
-      - name: Start target (docker-run)
-        if: matrix.mode == 'docker-run'
-        run: |
-          set -euo pipefail
-
-          image="${ZAP_TARGET_IMAGE:-${{ matrix.image }}}"
-          ports="${{ matrix.ports }}"
-          scan_name="${{ matrix.name }}"
-          container_name="zap-target-${scan_name}-${GITHUB_RUN_ID}"
-
-          echo "Starting container '$container_name' from '$image'"
-
-          port_args=()
-          IFS=',' read -ra mappings <<< "$ports"
-          for m in "${mappings[@]}"; do
-            m="${m// /}"
-            [[ -z "$m" ]] && continue
-            port_args+=( -p "$m" )
-          done
-
-          docker run -d --rm --name "$container_name" "${port_args[@]}" "$image"
-          echo "APP_CONTAINER_NAME=$container_name" >> "$GITHUB_ENV"
-
-      - name: Start target (compose)
-        if: matrix.mode == 'compose'
-        run: |
-          set -euo pipefail
-          file="${{ matrix.compose_file }}"
-          build_flag="${{ matrix.compose_build }}"
-
-          echo "Starting docker compose from $file"
-          if [[ "$build_flag" == "true" ]]; then
-            docker compose -f "$file" up -d --build
-          else
-            docker compose -f "$file" up -d
-          fi
-
-      - name: Wait for target readiness
-        run: |
-          set -euo pipefail
-
-          url="${{ matrix.healthcheck_url }}"
-          if [[ -z "$url" ]]; then
-            url="${{ matrix.target_url }}"
-          fi
-
-          if [[ -z "$url" ]]; then
-            echo "No readiness URL, skipping health check"
-            exit 0
-          fi
-
-          echo "Waiting for: $url"
-          end=$((SECONDS + 180))
-          while [[ $SECONDS -lt $end ]]; do
-            if curl -fsS --max-time 3 "$url" >/dev/null 2>&1; then
-              echo "Target is ready"
-              exit 0
-            fi
-            sleep 3
-          done
-
-          echo "Timed out waiting for $url"
-          exit 1
-
-      - name: Compute artifact prefix
-        id: artifact
-        run: |
-          config_hash="${{ needs.parse-config.outputs.config_hash }}"
-          scan_name="${{ matrix.name }}"
-          scan_type="${{ matrix.scan_type }}"
-          scan_hash=$(echo -n "$scan_name" | sha256sum | cut -c1-6)
-          prefix="${config_hash}-${scan_type}-${scan_hash}"
-          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
-
-      - name: Build ZAP options
-        id: zap_opts
-        run: |
-          max_dur="${{ matrix.max_duration_minutes }}"
-          [[ -z "$max_dur" ]] && max_dur="10"
-          extra_opts="${{ matrix.cmd_options }}"
-
-          cmd_opts="-T ${max_dur}"
-          [[ -n "$extra_opts" ]] && cmd_opts="$cmd_opts $extra_opts"
-
-          echo "cmd_options=$cmd_opts" >> "$GITHUB_OUTPUT"
-
-      - name: Run ZAP (baseline)
-        if: matrix.scan_type == 'baseline'
-        uses: zaproxy/action-baseline@v0.15.0
+      - name: Run ZAP scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.0
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           ZAP_AUTH_HEADER: ${{ matrix.auth_header_name }}
           ZAP_AUTH_HEADER_VALUE: ${{ matrix.auth_header_secret != '' && secrets[matrix.auth_header_secret] || matrix.auth_header_value }}
           ZAP_AUTH_HEADER_SITE: ${{ matrix.auth_header_site }}
         with:
-          allow_issue_writing: false
-          fail_action: false
-          artifact_name: zap-reports-${{ steps.artifact.outputs.prefix }}
-          target: ${{ matrix.target_url }}
+          scan_name: ${{ matrix.name }}
+          scan_type: ${{ matrix.scan_type }}
+          scan_mode: ${{ matrix.mode }}
+          target_url: ${{ matrix.target_url }}
+          api_spec: ${{ matrix.api_spec }}
+          healthcheck_url: ${{ matrix.healthcheck_url }}
+          app_image_ref: ${{ matrix.image }}
+          app_build_context: ${{ matrix.build_context }}
+          app_dockerfile: ${{ matrix.build_dockerfile }}
+          app_image_tag: ${{ matrix.build_tag }}
+          app_ports: ${{ matrix.ports }}
+          compose_file: ${{ matrix.compose_file }}
+          compose_build: ${{ matrix.compose_build }}
+          registry_username: ${{ matrix.registry_username }}
+          registry_password: ${{ secrets[matrix.registry_auth_secret] }}
+          max_duration_minutes: ${{ matrix.max_duration_minutes }}
           rules_file_name: ${{ matrix.rules_file }}
-          cmd_options: ${{ steps.zap_opts.outputs.cmd_options }}
-
-      - name: Run ZAP (full)
-        if: matrix.scan_type == 'full'
-        uses: zaproxy/action-full-scan@v0.13.0
-        env:
-          ZAP_AUTH_HEADER: ${{ matrix.auth_header_name }}
-          ZAP_AUTH_HEADER_VALUE: ${{ matrix.auth_header_secret != '' && secrets[matrix.auth_header_secret] || matrix.auth_header_value }}
-          ZAP_AUTH_HEADER_SITE: ${{ matrix.auth_header_site }}
-        with:
-          allow_issue_writing: false
-          fail_action: false
-          artifact_name: zap-reports-${{ steps.artifact.outputs.prefix }}
-          target: ${{ matrix.target_url }}
-          rules_file_name: ${{ matrix.rules_file }}
-          cmd_options: ${{ steps.zap_opts.outputs.cmd_options }}
-
-      - name: Run ZAP (api)
-        if: matrix.scan_type == 'api'
-        uses: zaproxy/action-api-scan@v0.10.0
-        env:
-          ZAP_AUTH_HEADER: ${{ matrix.auth_header_name }}
-          ZAP_AUTH_HEADER_VALUE: ${{ matrix.auth_header_secret != '' && secrets[matrix.auth_header_secret] || matrix.auth_header_value }}
-          ZAP_AUTH_HEADER_SITE: ${{ matrix.auth_header_site }}
-        with:
-          allow_issue_writing: false
-          fail_action: false
-          artifact_name: zap-reports-${{ steps.artifact.outputs.prefix }}
-          format: openapi
-          target: ${{ matrix.api_spec }}
-          rules_file_name: ${{ matrix.rules_file }}
-          cmd_options: ${{ steps.zap_opts.outputs.cmd_options }}
-
-      - name: Enforce severity threshold
-        if: always() && matrix.fail_on_severity != 'none' && matrix.fail_on_severity != ''
-        continue-on-error: ${{ matrix.allow_failure == true }}
-        run: |
-          set -euo pipefail
-
-          report="report_json.json"
-          if [[ ! -f "$report" ]]; then
-            echo "No ZAP JSON report found; cannot enforce threshold"
-            exit 0
-          fi
-
-          # ZAP risk codes: 3=High, 2=Medium, 1=Low, 0=Informational
-          zap_high=$(jq -r '[..|objects|select(has("riskcode"))|.riskcode|tonumber] | map(select(.==3)) | length' "$report" 2>/dev/null || echo "0")
-          zap_med=$(jq -r '[..|objects|select(has("riskcode"))|.riskcode|tonumber] | map(select(.==2)) | length' "$report" 2>/dev/null || echo "0")
-          zap_low=$(jq -r '[..|objects|select(has("riskcode"))|.riskcode|tonumber] | map(select(.==1)) | length' "$report" 2>/dev/null || echo "0")
-
-          fail_on="${{ matrix.fail_on_severity }}"
-          echo "ZAP alerts: High=$zap_high Medium=$zap_med Low=$zap_low (threshold: $fail_on)"
-
-          should_fail=false
-          case "$fail_on" in
-            low) [[ $((zap_high+zap_med+zap_low)) -gt 0 ]] && should_fail=true ;;
-            medium) [[ $((zap_high+zap_med)) -gt 0 ]] && should_fail=true ;;
-            high|critical) [[ $zap_high -gt 0 ]] && should_fail=true ;;
-          esac
-
-          if [[ "$should_fail" == "true" ]]; then
-            echo "ZAP findings at or above '$fail_on' detected"
-            exit 1
-          fi
-          echo "No findings at or above '$fail_on'"
-
-      - name: Stop target (docker-run)
-        if: always() && matrix.mode == 'docker-run'
-        run: |
-          if [[ -n "${APP_CONTAINER_NAME:-}" ]]; then
-            docker stop "$APP_CONTAINER_NAME" || true
-          fi
-
-      - name: Stop target (compose)
-        if: always() && matrix.mode == 'compose'
-        run: |
-          file="${{ matrix.compose_file }}"
-          if [[ -f "$file" ]]; then
-            docker compose -f "$file" down -v || true
-          fi
+          cmd_options: ${{ matrix.cmd_options }}
+          fail_on_severity: ${{ matrix.fail_on_severity }}
+          allow_failure: ${{ matrix.allow_failure }}
+          post_pr_comment: false
 
   zap-summary:
     name: ZAP Summary
@@ -341,104 +129,7 @@ jobs:
     needs: [parse-config, zap-scan]
     if: always()
     steps:
-      - name: Checkout hardening-workflows scripts
-        uses: actions/checkout@v6
-        with:
-          repository: huntridge-labs/hardening-workflows
-          ref: ${{ env.HRL_REF }}
-          path: .hardening-workflows
-          token: ${{ secrets.HARDENING_WORKFLOWS_CHECKOUT_TOKEN || github.token }}
-          sparse-checkout: |
-            .github/scripts/parse-zap-results.sh
-            .github/scripts/generate-zap-summary.sh
-
-      - name: Download ZAP artifacts
-        uses: actions/download-artifact@v7
-        with:
-          pattern: zap-reports-${{ needs.parse-config.outputs.config_hash }}-*
-          path: zap-downloads
-          merge-multiple: false
-
       - name: Generate ZAP summary
-        env:
-          ZAP_PARSER: .argus/.github/scripts/parse-zap-results.sh
-        run: |
-          set -euo pipefail
-
-          SUMMARY_SCRIPT=".argus/.github/scripts/generate-zap-summary.sh"
-          chmod +x "$ZAP_PARSER" "$SUMMARY_SCRIPT"
-          "$SUMMARY_SCRIPT"
-
-      - name: Upload scanner summary
-        if: always()
-        uses: actions/upload-artifact@v6
+        uses: huntridge-labs/argus/.github/actions/scanner-zap-summary@0.2.0
         with:
-          name: scanner-summary-zap-${{ needs.parse-config.outputs.config_hash }}
-          path: scanner-summaries/zap.md
-          retention-days: 30
-
-      - name: Comment PR with ZAP summary
-        if: github.event_name == 'pull_request' && needs.parse-config.outputs.post_pr_comment == 'true'
-        uses: actions/github-script@v8
-        continue-on-error: true
-        with:
-          script: |
-            const fs = require('fs');
-
-            try {
-              const reportPath = 'scanner-summaries/zap.md';
-              if (!fs.existsSync(reportPath)) {
-                console.log('No summary file found');
-                return;
-              }
-
-              let report = fs.readFileSync(reportPath, 'utf8');
-              const MAX_LENGTH = 262000;
-              if (report.length > MAX_LENGTH) {
-                report = report.slice(0, MAX_LENGTH - 200) + '\n\n*Truncated due to size.*';
-              }
-
-              // Strip <details> wrapper for PR display
-              report = report
-                .replace(/<details><summary>.*?<\/summary>\n*/, '')
-                .replace(/<\/details>\s*$/, '')
-                .trim();
-
-              const configHash = '${{ needs.parse-config.outputs.config_hash }}';
-              const MARKER = `zap-dast-config-comment-${configHash}`;
-              const configFile = '${{ inputs.config_file }}';
-              const configUrl = `${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}/${configFile}`;
-
-              const body = `## ZAP DAST from [Config](${configUrl})\n\n<!-- ${MARKER} -->\n\n${report}`;
-
-              const comments = await github.rest.issues.listComments({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number
-              });
-
-              const existing = comments.data.find(c =>
-                c.body && c.body.includes(MARKER) &&
-                (c.user.login === 'github-actions[bot]' || c.user.type === 'Bot')
-              );
-
-              if (existing) {
-                await github.rest.issues.updateComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  comment_id: existing.id,
-                  body: body + `\n\n---\n*Updated: ${new Date().toLocaleString()} | [View Run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})*`
-                });
-                console.log('Updated existing comment');
-              } else {
-                await github.rest.issues.createComment({
-                  issue_number: context.issue.number,
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  body: body
-                });
-                console.log('Created new comment');
-              }
-            } catch (error) {
-              console.log('Failed to post comment:', error.message);
-            }
+          post_pr_comment: ${{ needs.parse-config.outputs.post_pr_comment }}

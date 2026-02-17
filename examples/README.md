@@ -1,6 +1,6 @@
 # Argus - Examples
 
-This directory contains example workflows and configurations demonstrating different approaches to using hardening-workflows security scanners.
+This directory contains example workflows and configurations demonstrating different approaches to using argus security scanners.
 
 ## Directory Structure
 

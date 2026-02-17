@@ -75,8 +75,6 @@ jobs:
     secrets:
       AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
       GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Required for org repos
-      # Required for private GitHub Enterprise Server installations:
-      # HARDENING_WORKFLOWS_CHECKOUT_TOKEN: ${{ secrets.HARDENING_WORKFLOWS_CHECKOUT_TOKEN }}
 ```
 
 ## Nightly deep scan

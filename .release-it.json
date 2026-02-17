@@ -138,6 +138,7 @@
             ".github/workflows/linting.yml",
             ".github/workflows/container-scan.yml",
             ".github/workflows/container-scan-from-config.yml",
+            ".github/workflows/scanner-zap-from-config.yml",
             ".github/workflows/reusable-security-hardening.yml",
             ".github/workflows/scanner-clamav.yml"
           ],

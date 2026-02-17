@@ -1,10 +1,10 @@
 # Tests
 
-Comprehensive testing suite for hardening-workflows composite actions and supporting scripts.
+Comprehensive testing suite for argus composite actions and supporting scripts.
 
 ## Overview
 
-This testing infrastructure validates all components of the hardening-workflows project:
+This testing infrastructure validates all components of the argus project:
 
 - **174+ tests** across multiple languages (Bash, JavaScript, Python)
 - **Co-located tests** - tests live alongside the actions they validate

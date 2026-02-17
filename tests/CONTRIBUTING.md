@@ -1,6 +1,6 @@
 # Contributing to Tests
 
-This guide helps you add or modify tests when contributing to hardening-workflows.
+This guide helps you add or modify tests when contributing to argus.
 
 ## Quick Start
 
