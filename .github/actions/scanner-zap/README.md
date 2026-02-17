@@ -16,7 +16,7 @@ This composite action runs ZAP to scan running web applications for security vul
 ### URL Mode (Baseline)
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.1
+- uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.2
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -28,7 +28,7 @@ This composite action runs ZAP to scan running web applications for security vul
 ### Docker-Run Mode (Image)
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.1
+- uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.2
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -44,7 +44,7 @@ This composite action runs ZAP to scan running web applications for security vul
 ### Docker-Run Mode (Local Build)
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.1
+- uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.2
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -60,7 +60,7 @@ This composite action runs ZAP to scan running web applications for security vul
 ### Compose Mode
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.1
+- uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.2
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -74,7 +74,7 @@ This composite action runs ZAP to scan running web applications for security vul
 ### API Scan
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.1
+- uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.2
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -96,7 +96,7 @@ jobs:
           - { url: 'http://localhost:3000', name: 'api', type: 'full' }
     steps:
       - uses: actions/checkout@v6
-      - uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.1
+      - uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -116,7 +116,7 @@ jobs:
       has_scans: ${{ steps.parse.outputs.has_scans }}
     steps:
       - uses: actions/checkout@v6
-      - uses: huntridge-labs/argus/.github/actions/parse-zap-config@0.2.1
+      - uses: huntridge-labs/argus/.github/actions/parse-zap-config@0.2.2
         id: parse
         with:
           config_file: .zap/config.yml
@@ -129,7 +129,7 @@ jobs:
       matrix: ${{ fromJson(needs.parse-zap.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v6
-      - uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.1
+      - uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

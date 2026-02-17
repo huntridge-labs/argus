@@ -118,7 +118,7 @@ on:
 
 jobs:
   security:
-    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.2.1
+    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.2.2
     with:
       scanners: all
       fail_on_severity: none  # Report only
@@ -136,7 +136,7 @@ on:
 
 jobs:
   security:
-    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.2.1
+    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.2.2
     with:
       scanners: all
       fail_on_severity: high
@@ -154,7 +154,7 @@ on:
 
 jobs:
   security:
-    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.2.1
+    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.2.2
     with:
       scanners: all
       fail_on_severity: medium
@@ -172,7 +172,7 @@ on:
 
 jobs:
   security:
-    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.2.1
+    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.2.2
     with:
       scanners: all
       fail_on_severity: none
@@ -198,19 +198,19 @@ Configure different thresholds for different scanners by running them in separat
 ```yaml
 jobs:
   code-scan:
-    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.2.1
+    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.2.2
     with:
       scanners: codeql,bandit
       fail_on_severity: high
 
   secret-scan:
-    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.2.1
+    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.2.2
     with:
       scanners: gitleaks
       fail_on_severity: critical
 
   container-scan:
-    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.2.1
+    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.2.2
     with:
       scanners: trivy-container
       image_ref: 'myapp:latest'
@@ -267,7 +267,7 @@ Use GitHub branch protection to require manual review:
 # .github/workflows/security.yml
 jobs:
   security:
-    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.2.1
+    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.2.2
     with:
       fail_on_severity: high
     continue-on-error: true  # Don't block merge

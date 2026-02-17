@@ -95,7 +95,7 @@ runs:
     # ========================================
     - name: Get job ID for unique artifact naming
       id: job-id
-      uses: huntridge-labs/argus/.github/actions/get-job-id@0.2.1
+      uses: huntridge-labs/argus/.github/actions/get-job-id@0.2.2
       with:
         job-name-pattern: Scan ${{ inputs.container_name }}[ (/].*${{ inputs.scanners }}
         fallback-suffix: ${{ inputs.container_name }}-${{ inputs.scanners }}
@@ -466,7 +466,7 @@ runs:
     # ========================================
     - name: Comment PR with container scan results
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@0.2.1
+      uses: huntridge-labs/argus/.github/actions/comment-pr@0.2.2
       with:
         summary_file: scanner-summaries/container-${{ inputs.container_name }}.md
         comment_marker: container-${{ inputs.container_name }}-comment-marker

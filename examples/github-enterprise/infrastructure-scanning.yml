@@ -78,7 +78,7 @@ jobs:
       # ----------------------------------------
       - name: Run Trivy IaC
         if: steps.check-path.outputs.exists == 'true'
-        uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@0.2.1
+        uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@0.2.2
         with:
           iac_path: ${{ matrix.path }}
           post_pr_comment: 'true'
@@ -90,7 +90,7 @@ jobs:
       # ----------------------------------------
       - name: Run Checkov
         if: steps.check-path.outputs.exists == 'true'
-        uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.2.1
+        uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.2.2
         with:
           iac_path: ${{ matrix.path }}
           framework: ${{ matrix.framework }}
@@ -113,7 +113,7 @@ jobs:
   #       uses: actions/checkout@v6
   #
   #     - name: Run Trivy IaC (full repo)
-  #       uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@0.2.1
+  #       uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@0.2.2
   #       with:
   #         iac_path: '.'  # Scan entire repository
   #         post_pr_comment: 'true'
@@ -121,7 +121,7 @@ jobs:
   #         fail_on_severity: 'high'
   #
   #     - name: Run Checkov (auto-detect frameworks)
-  #       uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.2.1
+  #       uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.2.2
   #       with:
   #         iac_path: '.'
   #         framework: 'all'  # Auto-detect all frameworks

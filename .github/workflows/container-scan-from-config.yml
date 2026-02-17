@@ -14,7 +14,7 @@ name: Container Scan from Config
 #     packages: read
 #   jobs:
 #     scan:
-#       uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@0.2.1
+#       uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@0.2.2
 #       with:
 #         config_file: 'containers.yml'
 #       secrets: inherit  # Required for dynamic secret resolution
@@ -74,7 +74,7 @@ permissions:
 
 env:
   # Use current branch/PR when testing in argus repo, otherwise use release tag
-  HRL_REF: ${{ github.repository == 'huntridge-labs/argus' && (github.head_ref || github.ref_name) || '0.2.1' }}
+  HRL_REF: ${{ github.repository == 'huntridge-labs/argus' && (github.head_ref || github.ref_name) || '0.2.2' }}
 
 jobs:
   parse-config:
@@ -89,7 +89,7 @@ jobs:
 
       - name: Parse container config
         id: parse
-        uses: huntridge-labs/argus/.github/actions/parse-container-config@0.2.0
+        uses: huntridge-labs/argus/.github/actions/parse-container-config@0.2.2
         with:
           config_file: ${{ inputs.config_file }}
 
@@ -104,7 +104,7 @@ jobs:
       matrix: ${{ fromJson(needs.parse-config.outputs.matrix) }}
     steps:
       - name: Run container security scanners
-        uses: huntridge-labs/argus/.github/actions/scanner-container@0.2.0
+        uses: huntridge-labs/argus/.github/actions/scanner-container@0.2.2
         with:
           scan_mode: 'remote'
           image_ref: ${{ matrix.image }}
@@ -124,6 +124,6 @@ jobs:
     if: always()
     steps:
       - name: Generate container scan summary
-        uses: huntridge-labs/argus/.github/actions/scanner-container-summary@0.2.0
+        uses: huntridge-labs/argus/.github/actions/scanner-container-summary@0.2.2
         with:
           post_pr_comment: ${{ github.event_name == 'pull_request' && 'true' || 'false' }}

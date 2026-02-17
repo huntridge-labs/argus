@@ -45,7 +45,7 @@ jobs:
   zap-direct:
     name: ZAP Direct (${{ inputs.scan_type }})
     if: inputs.method == 'direct' || inputs.method == 'all'
-    uses: huntridge-labs/argus/.github/workflows/scanner-zap.yml@0.2.1
+    uses: huntridge-labs/argus/.github/workflows/scanner-zap.yml@0.2.2
     with:
       # Target configuration
       scan_mode: docker-run
@@ -70,7 +70,7 @@ jobs:
   zap-from-config:
     name: ZAP from Config
     if: inputs.method == 'config' || inputs.method == 'all'
-    uses: huntridge-labs/argus/.github/workflows/scanner-zap-from-config.yml@0.2.1
+    uses: huntridge-labs/argus/.github/workflows/scanner-zap-from-config.yml@0.2.2
     with:
       # Path to config file in your repository
       # See examples/configs/zap-config.example.yml for full schema
@@ -84,7 +84,7 @@ jobs:
   zap-via-hardening:
     name: ZAP via Hardening Pipeline
     if: inputs.method == 'reusable' || inputs.method == 'all'
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.2.1
+    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.2.2
     with:
       # Only run ZAP scanner (skip SAST, secrets, etc.)
       scanners: zap
