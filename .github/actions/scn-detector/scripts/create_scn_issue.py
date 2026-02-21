@@ -85,7 +85,7 @@ class SCNIssueCreator:
         elif category == 'TRANSFORMATIVE':
             # 30 days initial, 10 days final, 10 days after
             initial_date = add_business_days(today, 30)
-            final_date = add_business_days(datetime.strptime(initial_date, '%Y-%m-%d'), 20)
+            final_date = add_business_days(datetime.strptime(initial_date, '%Y-%m-%d'), 10)
             execution_date = add_business_days(datetime.strptime(final_date, '%Y-%m-%d'), 10)
             post_completion_date = add_business_days(datetime.strptime(execution_date, '%Y-%m-%d'), 10)
 
