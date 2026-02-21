@@ -52,6 +52,29 @@ class SCNIssueCreator:
         if 'api.github.com' not in self.api_url:
             self.api_url = f"{server_url}/api/v3"
 
+    def _get_nth_weekday(self, year: int, month: int, weekday: int, n: int) -> datetime:
+        """
+        Get the nth occurrence of a weekday in a month.
+        
+        Args:
+            year: Year
+            month: Month (1-12)
+            weekday: Day of week (0=Monday, 6=Sunday)
+            n: Which occurrence (1=first, 2=second, etc.)
+            
+        Returns:
+            datetime object for that day
+        """
+        first = datetime(year, month, 1)
+        # Days until the first occurrence of the target weekday
+        if first.weekday() == weekday:
+            first_occurrence = first
+        else:
+            days_ahead = (weekday - first.weekday()) % 7
+            first_occurrence = first + timedelta(days=days_ahead)
+        # Add (n-1) weeks to get the nth occurrence
+        return first_occurrence + timedelta(weeks=(n - 1))
+
     def get_us_federal_holidays(self, year: int) -> Set[datetime]:
         """
         Get US federal holidays for a given year.
@@ -70,48 +93,26 @@ class SCNIssueCreator:
         holidays.add(datetime(year, 11, 11).date()) # Veterans Day
         holidays.add(datetime(year, 12, 25).date()) # Christmas Day
         
-        def get_nth_weekday(year: int, month: int, weekday: int, n: int) -> datetime:
-            """
-            Get the nth occurrence of a weekday in a month.
-            
-            Args:
-                year: Year
-                month: Month (1-12)
-                weekday: Day of week (0=Monday, 6=Sunday)
-                n: Which occurrence (1=first, 2=second, etc.)
-                
-            Returns:
-                datetime object for that day
-            """
-            first = datetime(year, month, 1)
-            # Days until the first occurrence of the target weekday
-            if first.weekday() == weekday:
-                first_occurrence = first
-            else:
-                days_ahead = (weekday - first.weekday()) % 7
-                first_occurrence = first + timedelta(days=days_ahead)
-            # Add (n-1) weeks to get the nth occurrence
-            return first_occurrence + timedelta(weeks=(n - 1))
-        
         # Martin Luther King Jr. Day - 3rd Monday in January
-        holidays.add(get_nth_weekday(year, 1, 0, 3).date())
+        holidays.add(self._get_nth_weekday(year, 1, 0, 3).date())
         
         # Presidents' Day - 3rd Monday in February
-        holidays.add(get_nth_weekday(year, 2, 0, 3).date())
+        holidays.add(self._get_nth_weekday(year, 2, 0, 3).date())
         
-        # Memorial Day - Last Monday in May
+        # Memorial Day - Last Monday in May (always last Monday, not 4th/5th)
+        # Using backward calculation from May 31 since May can have 4 or 5 Mondays
         may_31 = datetime(year, 5, 31)
-        days_back_to_monday = (may_31.weekday() - 0) % 7
+        days_back_to_monday = may_31.weekday() % 7
         holidays.add((may_31 - timedelta(days=days_back_to_monday)).date())
         
         # Labor Day - 1st Monday in September
-        holidays.add(get_nth_weekday(year, 9, 0, 1).date())
+        holidays.add(self._get_nth_weekday(year, 9, 0, 1).date())
         
         # Columbus Day - 2nd Monday in October
-        holidays.add(get_nth_weekday(year, 10, 0, 2).date())
+        holidays.add(self._get_nth_weekday(year, 10, 0, 2).date())
         
         # Thanksgiving Day - 4th Thursday in November
-        holidays.add(get_nth_weekday(year, 11, 3, 4).date())
+        holidays.add(self._get_nth_weekday(year, 11, 3, 4).date())
         
         return holidays
 
