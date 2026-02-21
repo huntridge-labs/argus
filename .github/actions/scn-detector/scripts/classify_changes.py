@@ -22,13 +22,13 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import yaml
+import requests
 
-# Try importing anthropic SDK, fallback to requests
+# Try importing anthropic SDK (optional)
 try:
     from anthropic import Anthropic
     HAS_ANTHROPIC_SDK = True
 except ImportError:
-    import requests
     HAS_ANTHROPIC_SDK = False
 
 
