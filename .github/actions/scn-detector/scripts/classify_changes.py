@@ -264,7 +264,15 @@ class ChangeClassifier:
         resource_name = change.get('name', 'unnamed')
         operation = change.get('operation', 'unknown')
         attributes = ', '.join(change.get('attributes_changed', []))
-        diff_snippet = change.get('diff', '')[:500]
+        # Allow configurable diff snippet length, defaulting to 1000 characters
+        max_diff_chars = self.ai_config.get('max_diff_chars', 1000)
+        try:
+            max_diff_chars = int(max_diff_chars)
+            if max_diff_chars <= 0:
+                max_diff_chars = 1000
+        except (TypeError, ValueError):
+            max_diff_chars = 1000
+        diff_snippet = change.get('diff', '')[:max_diff_chars]
 
         prompt = f"""You are a FedRAMP compliance expert analyzing infrastructure changes.
 
