@@ -60,50 +60,58 @@ class SCNIssueCreator:
             year: Year to get holidays for
             
         Returns:
-            Set of datetime objects for federal holidays
+            Set of date objects for federal holidays (date only, no time)
         """
         holidays = set()
         
-        # Fixed-date holidays
-        holidays.add(datetime(year, 1, 1))   # New Year's Day
-        holidays.add(datetime(year, 7, 4))   # Independence Day
-        holidays.add(datetime(year, 11, 11)) # Veterans Day
-        holidays.add(datetime(year, 12, 25)) # Christmas Day
+        # Fixed-date holidays (date only, no time component)
+        holidays.add(datetime(year, 1, 1).date())   # New Year's Day
+        holidays.add(datetime(year, 7, 4).date())   # Independence Day
+        holidays.add(datetime(year, 11, 11).date()) # Veterans Day
+        holidays.add(datetime(year, 12, 25).date()) # Christmas Day
+        
+        def get_nth_weekday(year: int, month: int, weekday: int, n: int) -> datetime:
+            """
+            Get the nth occurrence of a weekday in a month.
+            
+            Args:
+                year: Year
+                month: Month (1-12)
+                weekday: Day of week (0=Monday, 6=Sunday)
+                n: Which occurrence (1=first, 2=second, etc.)
+                
+            Returns:
+                datetime object for that day
+            """
+            first = datetime(year, month, 1)
+            # Days until the first occurrence of the target weekday
+            if first.weekday() == weekday:
+                first_occurrence = first
+            else:
+                days_ahead = (weekday - first.weekday()) % 7
+                first_occurrence = first + timedelta(days=days_ahead)
+            # Add (n-1) weeks to get the nth occurrence
+            return first_occurrence + timedelta(weeks=(n - 1))
         
         # Martin Luther King Jr. Day - 3rd Monday in January
-        jan_first = datetime(year, 1, 1)
-        days_until_monday = (7 - jan_first.weekday()) % 7
-        first_monday = jan_first + timedelta(days=days_until_monday)
-        holidays.add(first_monday + timedelta(weeks=2))
+        holidays.add(get_nth_weekday(year, 1, 0, 3).date())
         
         # Presidents' Day - 3rd Monday in February
-        feb_first = datetime(year, 2, 1)
-        days_until_monday = (7 - feb_first.weekday()) % 7
-        first_monday = feb_first + timedelta(days=days_until_monday)
-        holidays.add(first_monday + timedelta(weeks=2))
+        holidays.add(get_nth_weekday(year, 2, 0, 3).date())
         
         # Memorial Day - Last Monday in May
         may_31 = datetime(year, 5, 31)
         days_back_to_monday = (may_31.weekday() - 0) % 7
-        holidays.add(may_31 - timedelta(days=days_back_to_monday))
+        holidays.add((may_31 - timedelta(days=days_back_to_monday)).date())
         
         # Labor Day - 1st Monday in September
-        sep_first = datetime(year, 9, 1)
-        days_until_monday = (7 - sep_first.weekday()) % 7
-        first_monday = sep_first + timedelta(days=days_until_monday)
-        holidays.add(first_monday)
+        holidays.add(get_nth_weekday(year, 9, 0, 1).date())
         
         # Columbus Day - 2nd Monday in October
-        oct_first = datetime(year, 10, 1)
-        days_until_monday = (7 - oct_first.weekday()) % 7
-        first_monday = oct_first + timedelta(days=days_until_monday)
-        holidays.add(first_monday + timedelta(weeks=1))
+        holidays.add(get_nth_weekday(year, 10, 0, 2).date())
         
         # Thanksgiving Day - 4th Thursday in November
-        nov_first = datetime(year, 11, 1)
-        days_until_thursday = (3 - nov_first.weekday()) % 7
-        first_thursday = nov_first + timedelta(days=days_until_thursday)
-        holidays.add(first_thursday + timedelta(weeks=3))
+        holidays.add(get_nth_weekday(year, 11, 3, 4).date())
         
         return holidays
 
@@ -131,8 +139,8 @@ class SCNIssueCreator:
 
             while added < days:
                 current += timedelta(days=1)
-                # Skip weekends and federal holidays
-                if current.weekday() < 5 and current not in all_holidays:
+                # Skip weekends and federal holidays (compare dates only)
+                if current.weekday() < 5 and current.date() not in all_holidays:
                     added += 1
 
             return current.strftime('%Y-%m-%d')
