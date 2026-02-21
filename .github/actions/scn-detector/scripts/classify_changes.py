@@ -168,12 +168,13 @@ class ChangeClassifier:
         # Check operation
         if 'operation' in rule:
             required_op = rule['operation']
+            op_value = (operation or "").lower()
             # Support multiple operations: "create|delete"
             if '|' in required_op:
-                allowed_ops = required_op.split('|')
-                if operation not in allowed_ops:
+                allowed_ops = [op.strip().lower() for op in required_op.split('|')]
+                if op_value not in allowed_ops:
                     return False
-            elif operation != required_op:
+            elif op_value != (required_op or "").lower():
                 return False
 
         # All criteria matched
