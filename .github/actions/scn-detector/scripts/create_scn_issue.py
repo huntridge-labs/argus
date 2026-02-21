@@ -68,11 +68,8 @@ class SCNIssueCreator:
         """
         first = datetime(year, month, 1)
         # Days until the first occurrence of the target weekday
-        if first.weekday() == weekday:
-            first_occurrence = first
-        else:
-            days_ahead = (weekday - first.weekday()) % 7
-            first_occurrence = first + timedelta(days=days_ahead)
+        days_ahead = (weekday - first.weekday()) % 7
+        first_occurrence = first + timedelta(days=days_ahead)
         # Add (n-1) weeks to get the nth occurrence
         return first_occurrence + timedelta(weeks=(n - 1))
 
@@ -103,10 +100,12 @@ class SCNIssueCreator:
         # Memorial Day - Last Monday in May
         # Using backward calculation from May 31 since we need the LAST Monday
         # (May can have 4 or 5 Mondays depending on the year)
-        # weekday() returns 0 for Monday, so if May 31 is Monday, we get 0 % 7 = 0 (correct: May 31)
-        # If May 31 is Tuesday-Sunday (1-6), we subtract that many days to get previous Monday
+        # weekday() returns 0 for Monday, 1 for Tuesday, etc.
+        # If May 31 is Monday (0), subtract 0 days = May 31 (correct)
+        # If May 31 is Tuesday (1), subtract 1 day = May 30 (Monday)
+        # If May 31 is Sunday (6), subtract 6 days = May 25 (Monday)
         may_31 = datetime(year, 5, 31)
-        days_back_to_monday = may_31.weekday() % 7
+        days_back_to_monday = may_31.weekday()
         holidays.add((may_31 - timedelta(days=days_back_to_monday)).date())
         
         # Labor Day - 1st Monday in September
