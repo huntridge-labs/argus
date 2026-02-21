@@ -52,7 +52,8 @@ class SCNIssueCreator:
         if 'api.github.com' not in self.api_url:
             self.api_url = f"{server_url}/api/v3"
 
-    def _get_nth_weekday(self, year: int, month: int, weekday: int, n: int) -> datetime:
+    @staticmethod
+    def _get_nth_weekday(year: int, month: int, weekday: int, n: int) -> datetime:
         """
         Get the nth occurrence of a weekday in a month.
         
@@ -99,8 +100,11 @@ class SCNIssueCreator:
         # Presidents' Day - 3rd Monday in February
         holidays.add(self._get_nth_weekday(year, 2, 0, 3).date())
         
-        # Memorial Day - Last Monday in May (always last Monday, not 4th/5th)
-        # Using backward calculation from May 31 since May can have 4 or 5 Mondays
+        # Memorial Day - Last Monday in May
+        # Using backward calculation from May 31 since we need the LAST Monday
+        # (May can have 4 or 5 Mondays depending on the year)
+        # weekday() returns 0 for Monday, so if May 31 is Monday, we get 0 % 7 = 0 (correct: May 31)
+        # If May 31 is Tuesday-Sunday (1-6), we subtract that many days to get previous Monday
         may_31 = datetime(year, 5, 31)
         days_back_to_monday = may_31.weekday() % 7
         holidays.add((may_31 - timedelta(days=days_back_to_monday)).date())
