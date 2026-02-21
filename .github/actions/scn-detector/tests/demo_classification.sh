@@ -86,7 +86,7 @@ EOF
     echo ""
     echo "Result:"
     echo "  Category: $CATEGORY"
-    echo "  Reasoning: $reasoning"
+    echo "  Reasoning: $REASONING"
 
     # Show FedRAMP requirements
     case "$CATEGORY" in

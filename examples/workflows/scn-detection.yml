@@ -1,0 +1,63 @@
+name: FedRAMP SCN Detection
+
+# Trigger on PR to paths containing Infrastructure as Code
+on:
+  pull_request:
+    paths:
+      - 'terraform/**'
+      - 'infrastructure/**'
+      - 'kubernetes/**'
+      - 'cloudformation/**'
+      - '.github/scn-config.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  scn-detection:
+    name: FedRAMP SCN Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout with full history for git diff
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Required for SCN detector to analyze changes
+
+      # Run SCN detector
+      - name: Analyze IaC changes for FedRAMP SCN
+        id: scn
+        uses: huntridge-labs/argus/.github/actions/scn-detector@v0.3.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # Optional: for AI fallback
+        with:
+          config_file: '.github/scn-config.yml'
+          create_issues: true       # Create GitHub Issues for tracking
+          post_pr_comment: true     # Post PR comment with analysis
+          enable_ai_fallback: true  # Use AI for ambiguous cases
+          fail_on_category: 'none'  # Don't fail workflow on any category
+
+      # Example: Conditional workflow based on SCN category
+      - name: Notify team for transformative changes
+        if: steps.scn.outputs.transformative_count > 0 || steps.scn.outputs.impact_count > 0
+        run: |
+          echo "⚠️ Transformative or Impact changes detected!"
+          echo "Transformative: ${{ steps.scn.outputs.transformative_count }}"
+          echo "Impact: ${{ steps.scn.outputs.impact_count }}"
+          echo "Issues created: ${{ steps.scn.outputs.issue_numbers }}"
+
+      # Example: Display analysis results
+      - name: Display SCN analysis results
+        if: always()
+        run: |
+          echo "📊 SCN Analysis Summary:"
+          echo "  Category: ${{ steps.scn.outputs.change_category }}"
+          echo "  Routine: ${{ steps.scn.outputs.routine_count }}"
+          echo "  Adaptive: ${{ steps.scn.outputs.adaptive_count }}"
+          echo "  Transformative: ${{ steps.scn.outputs.transformative_count }}"
+          echo "  Impact: ${{ steps.scn.outputs.impact_count }}"
+          echo "  Has Changes: ${{ steps.scn.outputs.has_changes }}"

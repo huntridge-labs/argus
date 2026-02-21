@@ -1,0 +1,35 @@
+name: FedRAMP SCN Detection (Strict)
+
+# Example: Separate workflow with failure threshold
+on:
+  pull_request:
+    branches:
+      - main
+      - production
+    paths:
+      - 'terraform/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  scn-detection-strict:
+    name: SCN Analysis (Fail on Impact)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: huntridge-labs/argus/.github/actions/scn-detector@v0.3.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          config_file: '.github/scn-config.yml'
+          create_issues: true
+          post_pr_comment: true
+          enable_ai_fallback: false  # Rule-based only for deterministic behavior
+          fail_on_category: 'impact'  # ❌ Fail workflow if impact changes detected

@@ -12,7 +12,7 @@ import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 import requests
 
@@ -52,6 +52,61 @@ class SCNIssueCreator:
         if 'api.github.com' not in self.api_url:
             self.api_url = f"{server_url}/api/v3"
 
+    def get_us_federal_holidays(self, year: int) -> Set[datetime]:
+        """
+        Get US federal holidays for a given year.
+        
+        Args:
+            year: Year to get holidays for
+            
+        Returns:
+            Set of datetime objects for federal holidays
+        """
+        holidays = set()
+        
+        # Fixed-date holidays
+        holidays.add(datetime(year, 1, 1))   # New Year's Day
+        holidays.add(datetime(year, 7, 4))   # Independence Day
+        holidays.add(datetime(year, 11, 11)) # Veterans Day
+        holidays.add(datetime(year, 12, 25)) # Christmas Day
+        
+        # Martin Luther King Jr. Day - 3rd Monday in January
+        jan_first = datetime(year, 1, 1)
+        days_until_monday = (7 - jan_first.weekday()) % 7
+        first_monday = jan_first + timedelta(days=days_until_monday)
+        holidays.add(first_monday + timedelta(weeks=2))
+        
+        # Presidents' Day - 3rd Monday in February
+        feb_first = datetime(year, 2, 1)
+        days_until_monday = (7 - feb_first.weekday()) % 7
+        first_monday = feb_first + timedelta(days=days_until_monday)
+        holidays.add(first_monday + timedelta(weeks=2))
+        
+        # Memorial Day - Last Monday in May
+        may_31 = datetime(year, 5, 31)
+        days_back_to_monday = (may_31.weekday() - 0) % 7
+        holidays.add(may_31 - timedelta(days=days_back_to_monday))
+        
+        # Labor Day - 1st Monday in September
+        sep_first = datetime(year, 9, 1)
+        days_until_monday = (7 - sep_first.weekday()) % 7
+        first_monday = sep_first + timedelta(days=days_until_monday)
+        holidays.add(first_monday)
+        
+        # Columbus Day - 2nd Monday in October
+        oct_first = datetime(year, 10, 1)
+        days_until_monday = (7 - oct_first.weekday()) % 7
+        first_monday = oct_first + timedelta(days=days_until_monday)
+        holidays.add(first_monday + timedelta(weeks=1))
+        
+        # Thanksgiving Day - 4th Thursday in November
+        nov_first = datetime(year, 11, 1)
+        days_until_thursday = (3 - nov_first.weekday()) % 7
+        first_thursday = nov_first + timedelta(days=days_until_thursday)
+        holidays.add(first_thursday + timedelta(weeks=3))
+        
+        return holidays
+
     def calculate_due_dates(self, category: str) -> Dict[str, str]:
         """
         Calculate compliance due dates for a category.
@@ -63,15 +118,21 @@ class SCNIssueCreator:
             Dictionary of due dates
         """
         today = datetime.now()
+        
+        # Get federal holidays for current and next year
+        current_year_holidays = self.get_us_federal_holidays(today.year)
+        next_year_holidays = self.get_us_federal_holidays(today.year + 1)
+        all_holidays = current_year_holidays | next_year_holidays
 
-        # Business days calculation (approximate, excludes weekends only)
+        # Business days calculation (excludes weekends and US federal holidays)
         def add_business_days(start_date: datetime, days: int) -> str:
             current = start_date
             added = 0
 
             while added < days:
                 current += timedelta(days=1)
-                if current.weekday() < 5:  # Monday-Friday
+                # Skip weekends and federal holidays
+                if current.weekday() < 5 and current not in all_holidays:
                     added += 1
 
             return current.strftime('%Y-%m-%d')

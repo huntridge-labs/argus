@@ -1,0 +1,47 @@
+name: Multi-Repo SCN Analysis
+
+# Example: Multi-repository analysis
+on:
+  workflow_dispatch:
+    inputs:
+      target_repo:
+        description: 'Target repository to analyze (org/repo)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  cross-repo-scn:
+    name: Cross-Repository SCN
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout target repository
+      - name: Checkout target repository
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.target_repo }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      # Checkout shared SCN config from this repo
+      - name: Checkout SCN config
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository }}
+          path: 'scn-config-repo'
+          sparse-checkout: |
+            .github/scn-config.yml
+
+      # Analyze with shared config
+      - name: Analyze with shared config
+        uses: huntridge-labs/argus/.github/actions/scn-detector@v0.3.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          config_file: 'scn-config-repo/.github/scn-config.yml'
+          create_issues: true
+          post_pr_comment: false

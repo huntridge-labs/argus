@@ -22,16 +22,14 @@ rules:
     - pattern: "comment"
       description: "Comment changes"
 
-    # Minor capacity adjustments (< 20% change)
+    # Minor capacity adjustments
     - resource: "aws_instance.*.desired_capacity"
       operation: "modify"
-      threshold_percent: 20
-      description: "Minor capacity adjustments under 20%"
+      description: "Minor capacity adjustments"
 
     - resource: "aws_autoscaling_group.*.desired_capacity"
       operation: "modify"
-      threshold_percent: 20
-      description: "Auto-scaling capacity adjustments under 20%"
+      description: "Auto-scaling capacity adjustments"
 
     # Firewall rule updates (existing rules only)
     - resource: "aws_security_group_rule.*"

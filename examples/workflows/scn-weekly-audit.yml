@@ -1,0 +1,35 @@
+name: FedRAMP SCN Weekly Audit
+
+# Example: Scheduled SCN analysis for main branch
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Every Monday at 9 AM UTC
+  workflow_dispatch:     # Manual trigger
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  weekly-scn-audit:
+    name: Weekly SCN Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      # Compare last week's changes
+      - name: Analyze week's changes
+        uses: huntridge-labs/argus/.github/actions/scn-detector@v0.3.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        with:
+          base_ref: 'HEAD~7'  # 7 days ago (approximate)
+          head_ref: 'HEAD'    # Current
+          config_file: '.github/scn-config.yml'
+          create_issues: true
+          post_pr_comment: false  # No PR to comment on
+          enable_ai_fallback: true
