@@ -11,7 +11,7 @@ rules:
       description: "Instance type changes"
 
   transformative:
-    - resource: "aws_rds_.*\.engine"
+    - resource: 'aws_rds_.*\.engine'
       operation: "modify"
       description: "Database engine changes"
 
