@@ -193,6 +193,7 @@ class TestChangeClassifier:
 
         assert result is None
 
+    @patch('classify_changes.HAS_ANTHROPIC_SDK', False)
     @patch('requests.post')
     def test_classify_with_ai_success(self, mock_post, classifier):
         """Test AI classification success."""
@@ -224,6 +225,7 @@ class TestChangeClassifier:
         assert result['confidence'] == 0.95
         assert 'Test' in result['reasoning']
 
+    @patch('classify_changes.HAS_ANTHROPIC_SDK', False)
     @patch('requests.post')
     def test_classify_with_ai_low_confidence(self, mock_post, classifier):
         """Test AI classification with low confidence."""
