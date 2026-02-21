@@ -1,0 +1,15 @@
+diff --git a/terraform/main.tf b/terraform/main.tf
+index 1234567..abcdefg 100644
+--- a/terraform/main.tf
++++ b/terraform/main.tf
+@@ -10,7 +10,7 @@ resource "aws_instance" "web_server" {
+   instance_type = "t3.small"
+
+   tags = {
+-    Name = "web-server"
++    Name = "web-server-prod"
+     Environment = "production"
+-    Team = "platform"
++    Team = "platform-ops"
+   }
+ }

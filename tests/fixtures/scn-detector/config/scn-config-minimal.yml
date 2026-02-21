@@ -1,0 +1,24 @@
+version: "1.0"
+
+rules:
+  routine:
+    - pattern: "tags.*"
+      description: "Tag changes"
+
+  adaptive:
+    - resource: "aws_instance.*.instance_type"
+      operation: "modify"
+      description: "Instance type changes"
+
+  transformative:
+    - resource: "aws_rds_.*\.engine"
+      operation: "modify"
+      description: "Database engine changes"
+
+  impact:
+    - attribute: ".*encryption.*"
+      operation: "delete|modify"
+      description: "Encryption changes"
+
+ai_fallback:
+  enabled: false
