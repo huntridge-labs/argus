@@ -135,7 +135,20 @@ class ChangeClassifier:
         if 'resource' in rule:
             resource_pattern = rule['resource']
             full_resource = f"{resource_type}.{resource_name}"
-            if not re.search(resource_pattern, full_resource, re.IGNORECASE):
+
+            # Check if pattern matches type.name or type.name.attribute
+            matched = re.search(resource_pattern, full_resource, re.IGNORECASE)
+
+            # If not matched and pattern contains more dots, check with attributes
+            if not matched and resource_pattern.count('.') >= 2 and attributes:
+                # Try matching with each attribute: type.name.attribute
+                for attr in attributes:
+                    full_resource_with_attr = f"{resource_type}.{resource_name}.{attr}"
+                    if re.search(resource_pattern, full_resource_with_attr, re.IGNORECASE):
+                        matched = True
+                        break
+
+            if not matched:
                 return False
 
         # Check specific attribute
