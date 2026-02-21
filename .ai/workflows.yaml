@@ -91,6 +91,64 @@ user_workflows:
         scanners: trivy-iac,checkov
         fail_on_severity: high
 
+  fedramp_scn_detection:
+    description: "FedRAMP Significant Change Notification detection and tracking"
+    category: compliance
+    when_to_use: "FedRAMP-authorized systems, compliance-required IaC changes"
+    code: |
+      name: FedRAMP SCN Detection
+      on:
+        pull_request:
+          paths:
+            - 'terraform/**'
+            - 'kubernetes/**'
+            - 'cloudformation/**'
+
+      permissions:
+        contents: read
+        pull-requests: write
+        issues: write
+
+      jobs:
+        scn-detection:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v6
+              with:
+                fetch-depth: 0  # Required for git diff
+
+            - uses: huntridge-labs/argus/.github/actions/scn-detector@v0.3.0
+              env:
+                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+              with:
+                config_file: '.github/scn-config.yml'
+                create_issues: true
+                post_pr_comment: true
+                enable_ai_fallback: true
+    requirements:
+      - ".github/scn-config.yml configuration file"
+      - "ANTHROPIC_API_KEY secret (optional, for AI fallback)"
+    outputs:
+      - "PR comment with SCN analysis"
+      - "GitHub Issues for Adaptive/Transformative/Impact changes"
+      - "JSON audit trail (90-day retention)"
+    config_example: |
+      # .github/scn-config.yml
+      version: "1.0"
+      rules:
+        routine:
+          - pattern: "tags.*"
+        adaptive:
+          - resource: "aws_ami.*"
+            operation: "modify"
+        transformative:
+          - resource: "aws_rds_.*\\.engine"
+            operation: "modify"
+        impact:
+          - attribute: ".*encryption.*"
+            operation: "delete|modify"
+
   scheduled_full_scan:
     description: "Nightly comprehensive security scan"
     category: scanning

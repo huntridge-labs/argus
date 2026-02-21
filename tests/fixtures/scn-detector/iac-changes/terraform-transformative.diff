@@ -1,0 +1,19 @@
+diff --git a/terraform/database.tf b/terraform/database.tf
+index abcd123..9876xyz 100644
+--- a/terraform/database.tf
++++ b/terraform/database.tf
+@@ -3,10 +3,10 @@ resource "aws_rds_cluster" "main" {
+   cluster_identifier      = "production-db"
+-  engine                  = "postgres"
+-  engine_version          = "14.7"
++  engine                  = "aurora-postgresql"
++  engine_version          = "15.2"
+   database_name           = "appdb"
+   master_username         = "dbadmin"
+   master_password         = var.db_password
+
+-  availability_zones      = ["us-east-1a", "us-east-1b"]
++  availability_zones      = ["us-west-2a", "us-west-2b"]
+
+   backup_retention_period = 7
+   preferred_backup_window = "03:00-04:00"

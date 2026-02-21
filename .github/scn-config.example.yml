@@ -1,0 +1,284 @@
+# FedRAMP Significant Change Notification (SCN) Configuration
+# Copy this file to .github/scn-config.yml and customize for your infrastructure
+
+version: "1.0"
+
+# Classification Rules
+# Rules are evaluated in order: routine → adaptive → transformative → impact
+# First matching rule wins. Use pattern, resource, attribute, and operation filters.
+
+rules:
+  # ROUTINE CHANGES - No notification required
+  # Regular maintenance, patching, vulnerability fixes, minor capacity adjustments
+  routine:
+    # Tag-only changes
+    - pattern: "tags.*"
+      description: "Tag-only changes are routine maintenance"
+
+    # Description and documentation changes
+    - pattern: "description"
+      description: "Description and documentation updates"
+
+    - pattern: "comment"
+      description: "Comment changes"
+
+    # Minor capacity adjustments (< 20% change)
+    - resource: "aws_instance.*.desired_capacity"
+      operation: "modify"
+      threshold_percent: 20
+      description: "Minor capacity adjustments under 20%"
+
+    - resource: "aws_autoscaling_group.*.desired_capacity"
+      operation: "modify"
+      threshold_percent: 20
+      description: "Auto-scaling capacity adjustments under 20%"
+
+    # Firewall rule updates (existing rules only)
+    - resource: "aws_security_group_rule.*"
+      operation: "modify"
+      description: "Firewall rule modifications (not additions/deletions)"
+
+    # Log retention adjustments
+    - resource: "*.*.log_retention_days"
+      operation: "modify"
+      description: "Log retention period adjustments"
+
+    # Monitoring and alerting threshold tweaks
+    - pattern: ".*threshold.*"
+      resource: "aws_cloudwatch_metric_alarm.*"
+      operation: "modify"
+      description: "CloudWatch alarm threshold adjustments"
+
+  # ADAPTIVE CHANGES - Notification within 10 business days after completion
+  # Frequent service improvements, like-for-like component replacements, breaking changes
+  adaptive:
+    # OS and base image updates
+    - resource: "aws_ami.*"
+      operation: "modify"
+      description: "AMI (operating system image) updates"
+
+    - resource: "aws_launch_template.*.image_id"
+      operation: "modify"
+      description: "Launch template image updates"
+
+    # Kubernetes version updates
+    - pattern: "kubernetes.io/.*version"
+      description: "Kubernetes version updates"
+
+    - resource: "aws_eks_cluster.*.version"
+      operation: "modify"
+      description: "EKS cluster version updates"
+
+    # Instance type changes (like-for-like, same family)
+    - resource: "aws_instance.*.instance_type"
+      operation: "modify"
+      description: "EC2 instance type changes (like-for-like)"
+
+    - resource: "aws_rds_instance.*.instance_class"
+      operation: "modify"
+      description: "RDS instance class changes (like-for-like)"
+
+    # Container image updates (same registry)
+    - pattern: ".*:image"
+      description: "Container image version updates"
+
+    # Dependency and library updates
+    - resource: ".*requirements.*"
+      operation: "modify"
+      description: "Dependency version updates"
+
+    # SSL/TLS certificate renewals
+    - resource: "aws_acm_certificate.*"
+      operation: "modify"
+      description: "Certificate renewals"
+
+    # Load balancer configuration tweaks
+    - resource: "aws_lb.*.idle_timeout"
+      operation: "modify"
+      description: "Load balancer timeout adjustments"
+
+    # Database parameter group updates (non-engine)
+    - resource: "aws_db_parameter_group.*"
+      operation: "modify"
+      description: "Database parameter adjustments"
+
+  # TRANSFORMATIVE CHANGES - 30 days initial notice + 10 days final notice + after
+  # Rare, significant changes altering service risk profile: datacenter migrations,
+  # new capabilities, management plane changes
+  transformative:
+    # Region/datacenter changes
+    - pattern: "provider.*.region"
+      operation: "modify"
+      description: "Region or datacenter migration"
+
+    - resource: "aws_.*"
+      attribute: "availability_zone"
+      operation: "modify"
+      description: "Availability zone changes"
+
+    # Database engine changes
+    - resource: "aws_rds_cluster.*.engine"
+      operation: "modify"
+      description: "Database engine changes (e.g., MySQL → PostgreSQL)"
+
+    - resource: "aws_rds_instance.*.engine"
+      operation: "modify"
+      description: "Database engine changes"
+
+    # Major version upgrades (breaking changes)
+    - resource: "aws_rds_cluster.*.engine_version"
+      operation: "modify"
+      pattern: ".*\\d+\\.0.*"  # Major version pattern (e.g., 14.0, 15.0)
+      description: "Major database version upgrades"
+
+    # New AI/ML capabilities
+    - resource: "aws_sagemaker_.*"
+      operation: "create"
+      description: "New SageMaker (AI/ML) resources"
+
+    - resource: "aws_lambda_function.*"
+      attribute: "runtime"
+      operation: "create"
+      pattern: ".*python3\\.1[2-9].*|.*python4.*"
+      description: "New runtime capabilities (Python 3.12+)"
+
+    # VPC changes (network architecture)
+    - resource: "aws_vpc.*"
+      operation: "create|delete"
+      description: "VPC creation or deletion"
+
+    - resource: "aws_vpc.*.cidr_block"
+      operation: "modify"
+      description: "VPC CIDR block changes (network restructuring)"
+
+    # Management plane replacements
+    - resource: "aws_iam_role.*.assume_role_policy"
+      operation: "modify"
+      description: "IAM role trust policy changes"
+
+    - resource: "aws_iam_policy.*"
+      operation: "create|delete"
+      description: "New or removed IAM policies"
+
+    # Service mesh or control plane changes
+    - pattern: ".*istio.*|.*consul.*|.*linkerd.*"
+      description: "Service mesh infrastructure changes"
+
+    # Disaster recovery architecture changes
+    - resource: "aws_backup_.*"
+      operation: "create|delete|modify"
+      description: "Backup and disaster recovery changes"
+
+    # Multi-region replication changes
+    - resource: "aws_s3_bucket_replication_configuration.*"
+      operation: "create|delete|modify"
+      description: "Cross-region replication changes"
+
+  # IMPACT CATEGORIZATION CHANGES - New assessment required (cannot use SCN process)
+  # Changes to security boundary, FIPS level, or impact categorization
+  impact:
+    # Encryption changes (any modification or removal)
+    - resource: ".*"
+      attribute: ".*encryption.*"
+      operation: "delete|modify"
+      description: "Encryption configuration changes or removal"
+
+    - resource: "aws_kms_key.*"
+      operation: "delete|modify"
+      description: "KMS key deletion or modification"
+
+    # Security group boundary changes (opening to internet)
+    - resource: "aws_security_group.*"
+      attribute: "ingress"
+      pattern: "0\\.0\\.0\\.0/0"
+      description: "Security group opening to public internet"
+
+    - resource: "aws_security_group.*"
+      attribute: "egress"
+      pattern: "0\\.0\\.0\\.0/0"
+      operation: "create"
+      description: "Unrestricted egress rule creation"
+
+    # Public access changes
+    - resource: "aws_s3_bucket.*"
+      attribute: ".*public.*"
+      operation: "modify"
+      description: "S3 bucket public access changes"
+
+    - resource: "aws_s3_bucket_acl.*"
+      attribute: "acl"
+      pattern: "public-read|public-read-write"
+      description: "S3 bucket ACL made public"
+
+    # Authentication mechanism changes
+    - resource: "aws_cognito_.*"
+      operation: "delete|modify"
+      description: "Authentication service changes"
+
+    - resource: ".*oauth.*|.*saml.*|.*oidc.*"
+      operation: "delete|modify"
+      description: "SSO or federated auth changes"
+
+    # FIPS mode changes
+    - pattern: ".*fips.*"
+      operation: "delete|modify"
+      description: "FIPS compliance configuration changes"
+
+    # Data classification boundaries
+    - resource: ".*"
+      attribute: ".*classification.*|.*sensitivity.*"
+      operation: "modify"
+      description: "Data classification level changes"
+
+    # Audit logging disablement
+    - resource: ".*"
+      attribute: ".*logging.*|.*audit.*"
+      operation: "delete"
+      description: "Audit logging removal"
+
+    - resource: "aws_cloudtrail.*"
+      operation: "delete"
+      description: "CloudTrail deletion (audit trail removal)"
+
+    # Security monitoring changes
+    - resource: "aws_guardduty_.*"
+      operation: "delete|modify"
+      description: "GuardDuty security monitoring changes"
+
+    - resource: "aws_config_.*"
+      operation: "delete"
+      description: "AWS Config deletion (compliance monitoring removal)"
+
+# AI Fallback Configuration
+# When rule-based classification is ambiguous, use AI (Claude Haiku) for analysis
+ai_fallback:
+  enabled: true
+  model: "claude-3-haiku-20240307"  # Fast, cost-effective ($0.25/1M input, $1.25/1M output)
+  confidence_threshold: 0.8          # Minimum confidence to accept AI classification (0.0-1.0)
+  max_tokens: 1024                   # Maximum tokens for AI response
+
+# Notification Timeline Configuration
+# FedRAMP notification requirements (in business days)
+notifications:
+  adaptive_notification_days: 10           # Within 10 business days after completion
+  transformative_initial_notice_days: 30   # 30 business days before change
+  transformative_final_notice_days: 10     # 10 business days before change
+  impact_assessment_required: true         # Impact changes require new assessment
+
+# Custom Resource Type Mappings (Optional)
+# Map custom resource types to standard AWS/K8s/GCP types for better classification
+# resource_mappings:
+#   custom_database:
+#     maps_to: "aws_rds_instance"
+#   custom_loadbalancer:
+#     maps_to: "aws_lb"
+
+# Exclusions (Optional)
+# Paths or patterns to exclude from SCN analysis
+# exclusions:
+#   paths:
+#     - "terraform/dev/**"      # Development environment
+#     - "terraform/test/**"     # Test environment
+#   patterns:
+#     - ".*_test\\.tf$"         # Test files
+#     - ".*\\.tfvars\\.example$"  # Example files

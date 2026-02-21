@@ -84,6 +84,30 @@ components:
       - security-summary
       - linting-summary
 
+  - name: scn-detector
+    location: ".github/actions/scn-detector/"
+    purpose: "FedRAMP Significant Change Notification detection and classification"
+    type: compliance-action
+    description: "Analyzes IaC changes and classifies them per FedRAMP 20X SCN guidelines"
+    classification_method: "Hybrid (rule-based + AI fallback)"
+    supported_formats: [terraform, kubernetes, cloudformation]
+    structure:
+      action.yml: "Composite action with 11 steps"
+      scripts/analyze_iac_changes.py: "Git diff → IaC change extraction"
+      scripts/classify_changes.py: "Rule-based + AI classification engine"
+      scripts/generate_scn_report.py: "Markdown + JSON report generation"
+      scripts/create_scn_issue.py: "GitHub Issue creator with timelines"
+      tests/: "pytest test suite with 80%+ coverage"
+    outputs:
+      - "PR comments with collapsible SCN analysis"
+      - "GitHub Issues with compliance timelines"
+      - "JSON audit trail (90-day retention)"
+    categories:
+      routine: "No notification required"
+      adaptive: "Within 10 business days after"
+      transformative: "30 days initial + 10 days final + after"
+      impact: "New assessment required"
+
 scanners:
   sast:
     - name: codeql
@@ -129,6 +153,12 @@ scanners:
     - name: zap
       purpose: "Dynamic web application testing"
       output: SARIF
+
+  compliance:
+    - name: scn-detector
+      purpose: "FedRAMP Significant Change Notification detection and classification"
+      output: "JSON, Markdown, GitHub Issues"
+      categories: [routine, adaptive, transformative, impact]
 
 dependencies:
   external:

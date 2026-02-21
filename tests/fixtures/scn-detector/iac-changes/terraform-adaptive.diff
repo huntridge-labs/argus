@@ -1,0 +1,23 @@
+diff --git a/terraform/compute.tf b/terraform/compute.tf
+index 9876543..fedcba9 100644
+--- a/terraform/compute.tf
++++ b/terraform/compute.tf
+@@ -5,7 +5,7 @@ resource "aws_instance" "app_server" {
+-  instance_type = "t2.micro"
++  instance_type = "t3.small"
+   ami           = data.aws_ami.ubuntu.id
+
+   tags = {
+@@ -15,7 +15,7 @@ resource "aws_instance" "app_server" {
+
+ data "aws_ami" "ubuntu" {
+   most_recent = true
+-  owners      = ["099720109477"]  # Canonical
++  owners      = ["099720109477"]
+
+   filter {
+     name   = "name"
+-    values = ["ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*"]
++    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+   }
+ }
