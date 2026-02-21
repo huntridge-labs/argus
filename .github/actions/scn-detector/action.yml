@@ -12,8 +12,8 @@ description: |
   ```yaml
   - uses: huntridge-labs/argus/.github/actions/scn-detector@main
     env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+      ANTHROPIC_API_KEY: \${{ secrets.ANTHROPIC_API_KEY }}
     with:
       config_file: '.github/scn-config.yml'
       create_issues: true
