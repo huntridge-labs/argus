@@ -59,6 +59,10 @@ class IaCChangeAnalyzer:
             files = [f.strip() for f in result.stdout.splitlines() if f.strip()]
             return files
         except subprocess.CalledProcessError as e:
+            # TODO: Improve error handling to provide more specific error messages
+            # indicating whether the issue is with git availability, invalid refs,
+            # or insufficient fetch depth. This would help users diagnose
+            # "No IaC changes detected" issues more easily.
             print(f"Error getting changed files: {e}", file=sys.stderr)
             print(f"  stderr: {e.stderr}", file=sys.stderr)
             return []
