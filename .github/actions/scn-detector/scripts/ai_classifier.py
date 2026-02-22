@@ -96,7 +96,7 @@ class AIClassifier:
             }
 
     def _build_prompt(self, change: Dict) -> str:
-        """Build AI classification prompt."""
+        """Build AI classification prompt using profile configuration."""
         resource_type = change.get('type', 'unknown')
         resource_name = change.get('name', 'unnamed')
         operation = change.get('operation', 'unknown')
@@ -111,15 +111,21 @@ class AIClassifier:
             max_diff_chars = 1000
         diff_snippet = change.get('diff', '')[:max_diff_chars]
 
-        return f"""You are a FedRAMP compliance expert analyzing infrastructure changes.
+        # Use profile-specific prompts if available
+        system_prompt = self.ai_config.get('system_prompt', '')
+        user_prompt_template = self.ai_config.get('user_prompt_template', '')
+
+        if not system_prompt or not user_prompt_template:
+            # Fallback to default prompts
+            system_prompt = """You are a FedRAMP compliance expert analyzing infrastructure changes.
 
 FedRAMP Change Categories:
 - ROUTINE: Regular maintenance, patching, minor capacity changes (no notification required)
 - ADAPTIVE: Frequent improvements with minimal security plan changes (10 days after completion)
 - TRANSFORMATIVE: Rare, significant changes altering risk profile (30 days initial + 10 days final notice)
-- IMPACT: Changes to security boundary or FIPS level (requires new assessment)
+- IMPACT: Changes to security boundary or FIPS level (requires new assessment)"""
 
-Change Details:
+            user_prompt_template = """Change Details:
 - Resource Type: {resource_type}
 - Resource Name: {resource_name}
 - Operation: {operation}
@@ -133,3 +139,15 @@ Classify this change. Respond ONLY with valid JSON in this exact format:
   "confidence": 0.0-1.0,
   "reasoning": "Brief explanation (max 200 chars)"
 }}"""
+
+        # Format user prompt with change details
+        user_prompt = user_prompt_template.format(
+            resource_type=resource_type,
+            resource_name=resource_name,
+            operation=operation,
+            attributes=attributes,
+            diff_snippet=diff_snippet
+        )
+
+        # Combine system and user prompts
+        return f"{system_prompt}\n\n{user_prompt}"

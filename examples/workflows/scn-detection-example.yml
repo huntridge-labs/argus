@@ -8,7 +8,6 @@ on:
       - 'infrastructure/**'
       - 'kubernetes/**'
       - 'cloudformation/**'
-      - '.github/scn-config.yml'
 
 permissions:
   contents: read
@@ -16,8 +15,9 @@ permissions:
   issues: write
 
 jobs:
-  scn-detection:
-    name: FedRAMP SCN Analysis
+  # Example 1: Use built-in FedRAMP Low profile (default)
+  scn-detection-default:
+    name: SCN Detection (FedRAMP Low - Default)
     runs-on: ubuntu-latest
 
     steps:
@@ -27,7 +27,7 @@ jobs:
         with:
           fetch-depth: 0  # Required for SCN detector to analyze changes
 
-      # Run SCN detector
+      # Run SCN detector with built-in FedRAMP Low profile
       - name: Analyze IaC changes for FedRAMP SCN
         id: scn
         uses: huntridge-labs/argus/.github/actions/scn-detector@main
@@ -35,7 +35,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # Optional: for AI fallback
         with:
-          config_file: '.github/scn-config.yml'
+          # No config_file specified = uses built-in 'fedramp-low' profile
           create_issues: true       # Create GitHub Issues for tracking
           post_pr_comment: true     # Post PR comment with analysis
           enable_ai_fallback: true  # Use AI for ambiguous cases
@@ -50,14 +50,38 @@ jobs:
           echo "Impact: ${{ steps.scn.outputs.impact_count }}"
           echo "Issues created: ${{ steps.scn.outputs.issue_numbers }}"
 
-      # Example: Display analysis results
-      - name: Display SCN analysis results
+  # Example 2: Use custom profile
+  scn-detection-custom:
+    name: SCN Detection (Custom Profile)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Analyze with custom profile
+        id: scn-custom
+        uses: huntridge-labs/argus/.github/actions/scn-detector@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        with:
+          # Specify custom profile path
+          # Create your custom profile at .github/scn-profiles/my-profile.yml
+          # See .github/actions/scn-detector/profiles/README.md for structure
+          config_file: '.github/scn-profiles/my-custom-profile.yml'
+          create_issues: true
+          post_pr_comment: true
+          enable_ai_fallback: true
+          fail_on_category: 'impact'  # Fail if IMPACT changes detected
+
+      - name: Display Results
         if: always()
         run: |
-          echo "📊 SCN Analysis Summary:"
-          echo "  Category: ${{ steps.scn.outputs.change_category }}"
-          echo "  Routine: ${{ steps.scn.outputs.routine_count }}"
-          echo "  Adaptive: ${{ steps.scn.outputs.adaptive_count }}"
-          echo "  Transformative: ${{ steps.scn.outputs.transformative_count }}"
-          echo "  Impact: ${{ steps.scn.outputs.impact_count }}"
-          echo "  Has Changes: ${{ steps.scn.outputs.has_changes }}"
+          echo "Change Category: ${{ steps.scn-custom.outputs.change_category }}"
+          echo "Routine: ${{ steps.scn-custom.outputs.routine_count }}"
+          echo "Adaptive: ${{ steps.scn-custom.outputs.adaptive_count }}"
+          echo "Transformative: ${{ steps.scn-custom.outputs.transformative_count }}"
+          echo "Impact: ${{ steps.scn-custom.outputs.impact_count }}"

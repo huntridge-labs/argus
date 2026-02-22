@@ -1,8 +1,13 @@
-name: 'FedRAMP SCN Detector'
+name: 'SCN Detector'
 description: |
-  Analyzes Infrastructure as Code changes and classifies them according to FedRAMP 20X
-  Significant Change Notification guidelines. Supports Terraform, Kubernetes, CloudFormation,
-  and generic IaC files.
+  Analyzes Infrastructure as Code files for significant changes, classifies them according to a configurable profile
+  and ruleset of your choosing, and generates detailed reports and GitHub issues for tracking.
+
+  Supports Terraform, Kubernetes, CloudFormation, and generic IaC files.
+
+  The current default classification rules are based on FedRAMP's SCN categories, but you can customize the rules and thresholds by providing your own configuration file.
+
+  Additional profiles will include other regulatory frameworks (e.g. DoD CC SRG, NIST SP 800-53) and custom organizational policies.
 
   **Required Environment Variables:**
   - GITHUB_TOKEN: GitHub token for API access (PR comments, issue creation)
@@ -32,9 +37,13 @@ inputs:
     required: false
     default: ${{ github.sha }}
   config_file:
-    description: 'Path to SCN configuration file'
+    description: |
+      Path to custom SCN profile/configuration file.
+      If not specified, uses built-in 'fedramp-low' profile.
+      Built-in profiles: fedramp-low (default)
+      Custom profiles: Specify path like '.github/scn-profiles/custom.yml'
     required: false
-    default: '.github/scn-config.yml'
+    default: ''
   create_issues:
     description: 'Create GitHub Issues for Adaptive/Transformative/Impact changes'
     required: false
@@ -105,18 +114,20 @@ runs:
           fi
         fi
 
-    # Step 3: Check for SCN configuration
+    # Step 3: Check for SCN configuration/profile
     - name: Check SCN configuration
       id: check-config
       shell: bash
       run: |
-        if [ -f "${{ inputs.config_file }}" ]; then
-          echo "✅ Found SCN config: ${{ inputs.config_file }}"
+        if [ -n "${{ inputs.config_file }}" ] && [ -f "${{ inputs.config_file }}" ]; then
+          echo "✅ Using custom SCN profile: ${{ inputs.config_file }}"
           echo "config_exists=true" >> $GITHUB_OUTPUT
+          echo "config_path=${{ inputs.config_file }}" >> $GITHUB_OUTPUT
         else
-          echo "⚠️  No SCN config found at ${{ inputs.config_file }}"
-          echo "📝 Using default FedRAMP rules..."
-          echo "config_exists=false" >> $GITHUB_OUTPUT
+          DEFAULT_PROFILE="${{ github.action_path }}/profiles/fedramp-low.yml"
+          echo "📝 Using built-in profile: fedramp-low (FedRAMP Low Impact)"
+          echo "config_exists=true" >> $GITHUB_OUTPUT
+          echo "config_path=$DEFAULT_PROFILE" >> $GITHUB_OUTPUT
         fi
 
     # Step 4: Analyze IaC changes
@@ -160,10 +171,8 @@ runs:
       run: |
         echo "🏷️  Classifying changes according to FedRAMP SCN categories..."
 
-        CONFIG_ARG=""
-        if [ "${{ steps.check-config.outputs.config_exists }}" = "true" ]; then
-          CONFIG_ARG="--config ${{ inputs.config_file }}"
-        fi
+        CONFIG_PATH="${{ steps.check-config.outputs.config_path }}"
+        echo "📋 Using profile: $CONFIG_PATH"
 
         AI_ARG=""
         if [ "${{ inputs.enable_ai_fallback }}" = "true" ]; then
@@ -178,7 +187,7 @@ runs:
         python3 ${{ github.action_path }}/scripts/classify_changes.py \
           --input scn-reports/iac-changes.json \
           --output scn-reports/scn-classifications.json \
-          $CONFIG_ARG \
+          --config "$CONFIG_PATH" \
           $AI_ARG
 
         if [ $? -eq 0 ]; then
