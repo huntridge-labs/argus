@@ -21,7 +21,7 @@ description: |
       GITHUB_TOKEN: (secrets.GITHUB_TOKEN)
       ANTHROPIC_API_KEY: (secrets.ANTHROPIC_API_KEY)
     with:
-      config_file: '.github/scn-config.yml'
+      config_file: '.github/scn-profiles/my-profile.yml'
       create_issues: true
       post_pr_comment: true
       enable_ai_fallback: true
@@ -203,10 +203,16 @@ runs:
           fi
         fi
 
+        AI_CONFIG_FILE="${{ inputs.ai_config_file }}"
         AI_CONFIG_ARG=""
-        if [ -n "${{ inputs.ai_config_file }}" ] && [ -f "${{ inputs.ai_config_file }}" ]; then
-          AI_CONFIG_ARG="--ai-config ${{ inputs.ai_config_file }}"
-          echo "🔧 Using AI config: ${{ inputs.ai_config_file }}"
+        if [ -n "$AI_CONFIG_FILE" ]; then
+          if [ -f "$AI_CONFIG_FILE" ]; then
+            AI_CONFIG_ARG="--ai-config $AI_CONFIG_FILE"
+            echo "🔧 Using AI config: $AI_CONFIG_FILE"
+          else
+            echo "❌ AI config file not found: $AI_CONFIG_FILE"
+            exit 1
+          fi
         fi
 
         python3 ${{ github.action_path }}/scripts/classify_changes.py \
