@@ -12,6 +12,8 @@ import json
 import sys
 from typing import Dict, Optional
 
+import requests
+
 from ai_providers import create_provider, resolve_api_key
 from defaults import DEFAULT_AI_CONFIG, merge_config
 
@@ -80,12 +82,26 @@ class AIClassifier:
                 'reasoning': reasoning
             }
 
-        except Exception as e:
-            print(f"⚠️  AI classification failed: {e}", file=sys.stderr)
+        except json.JSONDecodeError as e:
+            print(f"⚠️  AI returned invalid JSON: {e}", file=sys.stderr)
             return {
                 'category': 'MANUAL_REVIEW',
                 'confidence': 0.0,
-                'reasoning': f'AI error: {str(e)}'
+                'reasoning': f'AI returned invalid JSON: {str(e)}'
+            }
+        except (requests.RequestException, ConnectionError, TimeoutError) as e:
+            print(f"⚠️  AI API request failed: {e}", file=sys.stderr)
+            return {
+                'category': 'MANUAL_REVIEW',
+                'confidence': 0.0,
+                'reasoning': f'AI API error: {str(e)}'
+            }
+        except (KeyError, ValueError, TypeError) as e:
+            print(f"⚠️  AI response format error: {e}", file=sys.stderr)
+            return {
+                'category': 'MANUAL_REVIEW',
+                'confidence': 0.0,
+                'reasoning': f'AI response parse error: {str(e)}'
             }
 
     def _build_prompt(self, change: Dict) -> str:
