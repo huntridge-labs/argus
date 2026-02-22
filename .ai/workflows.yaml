@@ -117,7 +117,7 @@ user_workflows:
               with:
                 fetch-depth: 0  # Required for git diff
 
-            - uses: huntridge-labs/argus/.github/actions/scn-detector@v0.3.0
+            - uses: huntridge-labs/argus/.github/actions/scn-detector@main
               env:
                 GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                 ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

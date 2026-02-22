@@ -6,7 +6,8 @@ description: |
 
   **Required Environment Variables:**
   - GITHUB_TOKEN: GitHub token for API access (PR comments, issue creation)
-  - ANTHROPIC_API_KEY: (Optional) Anthropic API key for AI-based classification fallback
+  - ANTHROPIC_API_KEY: (Optional) Anthropic API key for AI classification (default provider)
+  - OPENAI_API_KEY: (Optional) OpenAI API key for AI classification (when provider is "openai")
 
   **Usage Example:**
   ```yaml
@@ -43,7 +44,7 @@ inputs:
     required: false
     default: 'true'
   enable_ai_fallback:
-    description: 'Use AI (Claude Haiku) for ambiguous change classification'
+    description: 'Use AI for ambiguous change classification (provider/model configured in scn-config.yml)'
     required: false
     default: 'true'
   fail_on_category:
@@ -92,7 +93,17 @@ runs:
       shell: bash
       run: |
         echo "🔧 Installing Python dependencies..."
-        pip install --quiet PyYAML requests anthropic
+        pip install --quiet PyYAML requests
+        if [ "${{ inputs.enable_ai_fallback }}" = "true" ]; then
+          if [ -n "${{ env.ANTHROPIC_API_KEY }}" ]; then
+            echo "🤖 Installing anthropic SDK for AI fallback..."
+            pip install --quiet anthropic
+          fi
+          if [ -n "${{ env.OPENAI_API_KEY }}" ]; then
+            echo "🤖 Installing openai SDK for AI fallback..."
+            pip install --quiet openai
+          fi
+        fi
 
     # Step 3: Check for SCN configuration
     - name: Check SCN configuration
@@ -138,7 +149,6 @@ runs:
           echo "❌ IaC analysis failed"
           echo "has_changes=false" >> $GITHUB_OUTPUT
         fi
-      continue-on-error: true
 
     # Step 5: Classify changes using rules + AI fallback
     - name: Classify changes
@@ -146,6 +156,7 @@ runs:
       shell: bash
       env:
         ANTHROPIC_API_KEY: ${{ env.ANTHROPIC_API_KEY }}
+        OPENAI_API_KEY: ${{ env.OPENAI_API_KEY }}
       run: |
         echo "🏷️  Classifying changes according to FedRAMP SCN categories..."
 
@@ -156,11 +167,11 @@ runs:
 
         AI_ARG=""
         if [ "${{ inputs.enable_ai_fallback }}" = "true" ]; then
-          if [ -n "$ANTHROPIC_API_KEY" ]; then
+          if [ -n "$ANTHROPIC_API_KEY" ] || [ -n "$OPENAI_API_KEY" ]; then
             AI_ARG="--enable-ai"
-            echo "🤖 AI fallback enabled (Claude Haiku)"
+            echo "🤖 AI fallback enabled"
           else
-            echo "⚠️  AI fallback requested but ANTHROPIC_API_KEY not set"
+            echo "⚠️  AI fallback requested but no AI provider API key set (ANTHROPIC_API_KEY or OPENAI_API_KEY)"
           fi
         fi
 
@@ -187,7 +198,6 @@ runs:
         else
           echo "❌ Classification failed"
         fi
-      continue-on-error: true
 
     # Step 6: Generate SCN reports
     - name: Generate SCN reports
@@ -212,7 +222,6 @@ runs:
         else
           echo "❌ Report generation failed"
         fi
-      continue-on-error: true
 
     # Step 7: Upload artifacts
     - name: Upload SCN artifacts

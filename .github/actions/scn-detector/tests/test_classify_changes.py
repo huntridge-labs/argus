@@ -15,6 +15,9 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 SCRIPTS_DIR = REPO_ROOT / ".github" / "actions" / "scn-detector" / "scripts"
 FIXTURES_DIR = REPO_ROOT / "tests" / "fixtures" / "scn-detector"
 
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
 # Import classify_changes module dynamically
 spec = importlib.util.spec_from_file_location(
     "classify_changes",
@@ -193,23 +196,19 @@ class TestChangeClassifier:
 
         assert result is None
 
-    @patch('classify_changes.HAS_ANTHROPIC_SDK', False)
-    @patch('requests.post')
-    def test_classify_with_ai_success(self, mock_post, classifier):
-        """Test AI classification success."""
-        # Enable AI
+    def test_classify_with_ai_success(self, classifier):
+        """Test AI classification success via mocked AIClassifier."""
         classifier.enable_ai = True
         classifier.api_key = 'test-api-key'
 
-        # Mock API response
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            'content': [{
-                'text': '{"category": "TRANSFORMATIVE", "confidence": 0.95, "reasoning": "Test"}'
-            }]
+        # Mock the AI classifier
+        mock_ai = MagicMock()
+        mock_ai.classify.return_value = {
+            'category': 'TRANSFORMATIVE',
+            'confidence': 0.95,
+            'reasoning': 'Test'
         }
-        mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
+        classifier._ai_classifier = mock_ai
 
         change = {
             'type': 'aws_rds_cluster',
@@ -225,22 +224,19 @@ class TestChangeClassifier:
         assert result['confidence'] == 0.95
         assert 'Test' in result['reasoning']
 
-    @patch('classify_changes.HAS_ANTHROPIC_SDK', False)
-    @patch('requests.post')
-    def test_classify_with_ai_low_confidence(self, mock_post, classifier):
+    def test_classify_with_ai_low_confidence(self, classifier):
         """Test AI classification with low confidence."""
         classifier.enable_ai = True
         classifier.api_key = 'test-api-key'
 
-        # Mock low confidence response
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            'content': [{
-                'text': '{"category": "ADAPTIVE", "confidence": 0.65, "reasoning": "Uncertain"}'
-            }]
+        # Mock the AI classifier returning low confidence
+        mock_ai = MagicMock()
+        mock_ai.classify.return_value = {
+            'category': 'MANUAL_REVIEW',
+            'confidence': 0.65,
+            'reasoning': 'Low confidence (0.65 < 0.8): Uncertain'
         }
-        mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
+        classifier._ai_classifier = mock_ai
 
         change = {'type': 'test', 'name': 'test', 'operation': 'modify', 'attributes_changed': [], 'diff': ''}
 
@@ -329,3 +325,44 @@ class TestEdgeCases:
 
         # Should not crash, returns classification
         assert 'category' in result
+
+
+class TestProviderConfiguration:
+    """Test multi-provider configuration."""
+
+    def test_default_provider_is_anthropic(self):
+        """Default AI config uses anthropic provider."""
+        classifier = classify_changes.ChangeClassifier()
+        assert classifier.ai_config.get('provider') == 'anthropic'
+
+    @patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'anthro-key'})
+    def test_anthropic_api_key_resolved(self):
+        """Anthropic API key resolved from env var."""
+        classifier = classify_changes.ChangeClassifier()
+        assert classifier.api_key == 'anthro-key'
+
+    @patch.dict('os.environ', {'OPENAI_API_KEY': 'openai-key'}, clear=True)
+    def test_openai_api_key_resolved(self):
+        """OpenAI API key resolved when provider is openai."""
+        config = {
+            'ai_fallback': {
+                'enabled': True,
+                'provider': 'openai',
+                'model': 'gpt-4o-mini',
+                'confidence_threshold': 0.8
+            }
+        }
+        classifier = classify_changes.ChangeClassifier(config=config)
+        assert classifier.api_key == 'openai-key'
+
+    def test_openai_config_from_fixture(self):
+        """OpenAI config loaded from fixture file."""
+        config_path = FIXTURES_DIR / "config" / "scn-config-openai.yml"
+        if not config_path.exists():
+            pytest.skip("OpenAI fixture not yet created")
+
+        classifier = classify_changes.ChangeClassifier()
+        config = classifier.load_config_from_file(str(config_path))
+
+        assert config.get('ai_fallback', {}).get('provider') == 'openai'
+        assert config.get('ai_fallback', {}).get('model') == 'gpt-4o-mini'

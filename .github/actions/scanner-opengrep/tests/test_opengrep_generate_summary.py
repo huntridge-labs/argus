@@ -2,16 +2,20 @@
 """
 Unit tests for scanner-opengrep/scripts/generate_summary.py
 Tests markdown generation for OpenGrep SAST scan results
+
+Uses in-process imports instead of subprocess for fast execution.
 """
 
+import importlib.util
 import json
 import os
 import shutil
-import subprocess
-import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+
+pytestmark = pytest.mark.unit
 
 # Paths
 REPO_ROOT = Path(__file__).parent.parent.parent.parent.parent
@@ -19,9 +23,54 @@ SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
 GENERATOR_SCRIPT = SCRIPTS_DIR / "generate_summary.py"
 FIXTURES_DIR = REPO_ROOT / "tests" / "fixtures" / "scanner-outputs" / "opengrep"
 
+# Load module in-process via importlib
+spec = importlib.util.spec_from_file_location(
+    "opengrep_generate_summary", GENERATOR_SCRIPT,
+)
+gen_mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(gen_mod)
+
+
+def _run_in_process(
+    workspace,
+    output_file,
+    is_pr_comment="false",
+    error_count="0",
+    warning_count="0",
+    info_count="0",
+    total="0",
+    repo_url="https://github.com/test/repo/blob/main",
+    server_url="https://github.com",
+    repository="test/repo",
+    run_id="12345",
+):
+    """Run generate_opengrep_summary in-process, returning a result-like object."""
+    original_dir = os.getcwd()
+    try:
+        os.chdir(workspace)
+        gen_mod.generate_opengrep_summary(
+            output_file,
+            is_pr_comment,
+            error_count,
+            warning_count,
+            info_count,
+            total,
+            repo_url,
+            server_url,
+            repository,
+            run_id,
+        )
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+    except SystemExit as e:
+        return SimpleNamespace(returncode=e.code or 1, stdout="", stderr="")
+    except Exception as e:
+        return SimpleNamespace(returncode=1, stdout="", stderr=str(e))
+    finally:
+        os.chdir(original_dir)
+
 
 class TestOpenGrepGenerateSummary:
-    """Test cases for scanner-opengrep generate-summary.sh"""
+    """Test cases for scanner-opengrep generate_summary.py"""
 
     @pytest.fixture(autouse=True)
     def setup(self, tmp_path):
@@ -30,59 +79,11 @@ class TestOpenGrepGenerateSummary:
         self.opengrep_reports = tmp_path / "opengrep-reports"
         self.opengrep_reports.mkdir(parents=True)
         self.output_file = tmp_path / "summary.md"
-        self.original_dir = os.getcwd()
-        os.chdir(tmp_path)
-        yield
-        os.chdir(self.original_dir)
 
-    def run_generator(
-        self,
-        output_file=None,
-        is_pr_comment="false",
-        error_count="0",
-        warning_count="0",
-        info_count="0",
-        total="0",
-        repo_url="https://github.com/test/repo/blob/main",
-        server_url="https://github.com",
-        repository="test/repo",
-        run_id="12345",
-    ):
-        """Helper to run the generator script with arguments."""
-        if output_file is None:
-            output_file = str(self.output_file)
-
-        cmd = [
-            "python",
-            str(GENERATOR_SCRIPT),
-            str(output_file),
-            "--is-pr-comment",
-            is_pr_comment,
-            "--error-count",
-            error_count,
-            "--warning-count",
-            warning_count,
-            "--info-count",
-            info_count,
-            "--total",
-            total,
-            "--repo-url",
-            repo_url,
-            "--github-server-url",
-            server_url,
-            "--github-repo",
-            repository,
-            "--github-run-id",
-            run_id,
-        ]
-
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            cwd=self.workspace,
-        )
-        return result
+    def run_generator(self, **kwargs):
+        """Helper to run the generator in-process."""
+        kwargs.setdefault("output_file", str(self.output_file))
+        return _run_in_process(self.workspace, **kwargs)
 
     def test_script_and_fixtures_exist(self):
         """Verify generator script and fixtures exist."""
@@ -93,13 +94,11 @@ class TestOpenGrepGenerateSummary:
 
     def test_generates_summary_with_findings(self):
         """Test generating summary with findings."""
-        # Copy fixture
         shutil.copy(
             FIXTURES_DIR / "results-with-findings.json",
             self.opengrep_reports / "opengrep.json",
         )
 
-        # Run generator (based on fixture: 1 ERROR, 2 WARNING, 1 INFO)
         result = self.run_generator(
             error_count="1",
             warning_count="2",
@@ -112,7 +111,6 @@ class TestOpenGrepGenerateSummary:
 
         content = self.output_file.read_text()
 
-        # Check for key elements
         assert "OpenGrep SAST" in content
         assert "Findings Summary" in content
 
@@ -152,12 +150,12 @@ class TestOpenGrepGenerateSummary:
         assert result.returncode == 0
         content = self.output_file.read_text()
 
-        # PR comment should use collapsible format
         assert "<details>" in content
         assert "<summary>" in content
         assert "</details>" in content
 
-        # Test non-PR format (reuse same fixture)
+        # Test non-PR format (reuse same fixture, but clear output file)
+        self.output_file.unlink()
         result = self.run_generator(
             is_pr_comment="false",
             total="4",
@@ -166,7 +164,6 @@ class TestOpenGrepGenerateSummary:
         assert result.returncode == 0
         content = self.output_file.read_text()
 
-        # Non-PR format should have ## heading
         assert "## OpenGrep SAST Scan" in content
 
     def test_severity_priority_messages(self):
@@ -176,7 +173,6 @@ class TestOpenGrepGenerateSummary:
             self.opengrep_reports / "opengrep.json",
         )
 
-        # Test ERROR severity
         result = self.run_generator(
             error_count="2",
             warning_count="0",
@@ -206,7 +202,6 @@ class TestOpenGrepGenerateSummary:
         assert result.returncode == 0
         content = self.output_file.read_text()
 
-        # Should have finding details
         assert "Finding Details" in content
         assert "Severity" in content
         assert "Rule" in content
@@ -231,14 +226,12 @@ class TestOpenGrepGenerateSummary:
 
     def test_handles_missing_json_file(self):
         """Test handles missing JSON file gracefully."""
-        # Don't copy any files - directory exists but is empty
         result = self.run_generator(total="0")
 
         assert result.returncode == 0
         assert self.output_file.exists()
 
         content = self.output_file.read_text()
-        # Should still generate output
         assert "OpenGrep" in content
 
     def test_summary_table_format(self):
@@ -258,9 +251,7 @@ class TestOpenGrepGenerateSummary:
         assert result.returncode == 0
         content = self.output_file.read_text()
 
-        # Check table headers
         assert "| Error | Warning | Info | Total |" in content
-        # Check table row with counts
         assert "| **1** | **2** | **3** | **6** |" in content
 
 
@@ -274,35 +265,26 @@ class TestEdgeCases:
         self.opengrep_reports = tmp_path / "opengrep-reports"
         self.opengrep_reports.mkdir(parents=True)
         self.output_file = tmp_path / "summary.md"
-        self.original_dir = os.getcwd()
-        os.chdir(tmp_path)
-        yield
-        os.chdir(self.original_dir)
 
-    def run_generator(self, output_file=None, is_pr_comment="false", error_count="0",
-                      warning_count="0", info_count="0", total="0",
-                      repo_url="https://github.com/test/repo/blob/main",
-                      server_url="https://github.com", repository="test/repo", run_id="12345"):
-        if output_file is None:
-            output_file = str(self.output_file)
-        cmd = [sys.executable, str(GENERATOR_SCRIPT), str(output_file),
-               "--is-pr-comment", is_pr_comment, "--error-count", error_count,
-               "--warning-count", warning_count, "--info-count", info_count, "--total", total,
-               "--repo-url", repo_url, "--github-server-url", server_url,
-               "--github-repo", repository, "--github-run-id", run_id]
-        result = subprocess.run(cmd, capture_output=True, text=True, cwd=self.workspace)
-        return result
+    def run_generator(self, **kwargs):
+        """Helper to run the generator in-process."""
+        kwargs.setdefault("output_file", str(self.output_file))
+        return _run_in_process(self.workspace, **kwargs)
 
     def test_empty_findings_all_zero(self):
         """Test with zero findings across all severity levels."""
-        result = self.run_generator(error_count="0", warning_count="0", info_count="0", total="0")
+        result = self.run_generator(
+            error_count="0", warning_count="0", info_count="0", total="0",
+        )
         assert result.returncode == 0
         content = self.output_file.read_text()
         assert "| **0** | **0** | **0** | **0** |" in content
 
     def test_very_large_counts(self):
         """Test with very large finding counts."""
-        result = self.run_generator(error_count="9999", warning_count="9999", info_count="9999", total="29997")
+        result = self.run_generator(
+            error_count="9999", warning_count="9999", info_count="9999", total="29997",
+        )
         assert result.returncode == 0
         content = self.output_file.read_text()
         assert "9999" in content
@@ -319,7 +301,6 @@ class TestEdgeCases:
         bad_json = self.opengrep_reports / "opengrep.json"
         bad_json.write_text("{invalid json")
         result = self.run_generator(total="0")
-        # Should handle gracefully
         assert result.returncode == 0
         assert self.output_file.exists()
 
