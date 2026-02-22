@@ -13,18 +13,11 @@ import sys
 from typing import Dict, Optional
 
 from ai_providers import create_provider, resolve_api_key
+from defaults import DEFAULT_AI_CONFIG, merge_config
 
 
 class AIClassifier:
     """Classifies IaC changes using a configurable AI provider."""
-
-    DEFAULT_CONFIG = {
-        'enabled': True,
-        'provider': 'anthropic',
-        'model': 'claude-3-haiku-20240307',
-        'confidence_threshold': 0.8,
-        'max_tokens': 1024
-    }
 
     def __init__(self, ai_config: Optional[Dict] = None, api_key: Optional[str] = None):
         """
@@ -34,7 +27,7 @@ class AIClassifier:
             ai_config: AI configuration dictionary (provider, model, etc.)
             api_key: API key (or None to resolve from env var per provider)
         """
-        self.ai_config = ai_config or self.DEFAULT_CONFIG
+        self.ai_config = merge_config(ai_config or {}, DEFAULT_AI_CONFIG)
         provider_name = self.ai_config.get('provider', 'anthropic')
         self.api_key = resolve_api_key(provider_name, api_key)
 
@@ -111,34 +104,9 @@ class AIClassifier:
             max_diff_chars = 1000
         diff_snippet = change.get('diff', '')[:max_diff_chars]
 
-        # Use profile-specific prompts if available
+        # Get prompts from config (already merged with defaults in __init__)
         system_prompt = self.ai_config.get('system_prompt', '')
         user_prompt_template = self.ai_config.get('user_prompt_template', '')
-
-        if not system_prompt or not user_prompt_template:
-            # Fallback to default prompts
-            system_prompt = """You are a FedRAMP compliance expert analyzing infrastructure changes.
-
-FedRAMP Change Categories:
-- ROUTINE: Regular maintenance, patching, minor capacity changes (no notification required)
-- ADAPTIVE: Frequent improvements with minimal security plan changes (10 days after completion)
-- TRANSFORMATIVE: Rare, significant changes altering risk profile (30 days initial + 10 days final notice)
-- IMPACT: Changes to security boundary or FIPS level (requires new assessment)"""
-
-            user_prompt_template = """Change Details:
-- Resource Type: {resource_type}
-- Resource Name: {resource_name}
-- Operation: {operation}
-- Attributes Changed: {attributes}
-- Diff Preview:
-{diff_snippet}
-
-Classify this change. Respond ONLY with valid JSON in this exact format:
-{{
-  "category": "ROUTINE|ADAPTIVE|TRANSFORMATIVE|IMPACT",
-  "confidence": 0.0-1.0,
-  "reasoning": "Brief explanation (max 200 chars)"
-}}"""
 
         # Format user prompt with change details
         user_prompt = user_prompt_template.format(

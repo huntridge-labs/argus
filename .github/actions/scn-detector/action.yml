@@ -38,10 +38,26 @@ inputs:
     default: ${{ github.sha }}
   config_file:
     description: |
-      Path to custom SCN profile/configuration file.
-      If not specified, uses built-in 'fedramp-low' profile.
-      Built-in profiles: fedramp-low (default)
+      Path to your SCN configuration file. This file defines the classification rules and thresholds for
+      categorizing changes based on your risk appetite and compliance requirements.
+      If not provided, a default FedRAMP Low profile will be used.
       Custom profiles: Specify path like '.github/scn-profiles/custom.yml'
+    required: false
+    default: ''
+  enable_ai_fallback:
+    description: 'Use AI for ambiguous change classification (provider/model configured in scn-config.yml)'
+    required: false
+    default: 'false'
+  ai_config_file:
+    description: |
+      Path to AI configuration file (optional). Allows you to specify AI provider settings
+      (provider, model, confidence_threshold, max_tokens, max_diff_chars, prompts) separately
+      from your SCN profile. This is useful for:
+      - Sharing AI config across multiple SCN profiles and actions without duplicating settings
+      - Keeping AI credentials/settings separate from classification rules
+      - Easy provider switching without modifying profiles
+      If not provided, AI settings from the SCN profile will be used.
+      Example: '.github/ai-config.yml'
     required: false
     default: ''
   create_issues:
@@ -50,10 +66,6 @@ inputs:
     default: 'true'
   post_pr_comment:
     description: 'Post PR comment with SCN analysis summary'
-    required: false
-    default: 'true'
-  enable_ai_fallback:
-    description: 'Use AI for ambiguous change classification (provider/model configured in scn-config.yml)'
     required: false
     default: 'true'
   fail_on_category:
@@ -119,15 +131,16 @@ runs:
       id: check-config
       shell: bash
       run: |
-        if [ -n "${{ inputs.config_file }}" ] && [ -f "${{ inputs.config_file }}" ]; then
-          echo "✅ Using custom SCN profile: ${{ inputs.config_file }}"
+        CONFIG_PATH="${{ inputs.config_file }}"
+
+        if [ -f "$CONFIG_PATH" ]; then
+          echo "✅ Using SCN profile: $CONFIG_PATH"
           echo "config_exists=true" >> $GITHUB_OUTPUT
-          echo "config_path=${{ inputs.config_file }}" >> $GITHUB_OUTPUT
+          echo "config_path=$CONFIG_PATH" >> $GITHUB_OUTPUT
         else
-          DEFAULT_PROFILE="${{ github.action_path }}/profiles/fedramp-low.yml"
-          echo "📝 Using built-in profile: fedramp-low (FedRAMP Low Impact)"
-          echo "config_exists=true" >> $GITHUB_OUTPUT
-          echo "config_path=$DEFAULT_PROFILE" >> $GITHUB_OUTPUT
+          echo "❌ SCN profile not found: $CONFIG_PATH"
+          echo "config_exists=false" >> $GITHUB_OUTPUT
+          exit 1
         fi
 
     # Step 4: Analyze IaC changes
@@ -184,11 +197,18 @@ runs:
           fi
         fi
 
+        AI_CONFIG_ARG=""
+        if [ -n "${{ inputs.ai_config_file }}" ] && [ -f "${{ inputs.ai_config_file }}" ]; then
+          AI_CONFIG_ARG="--ai-config ${{ inputs.ai_config_file }}"
+          echo "🔧 Using AI config: ${{ inputs.ai_config_file }}"
+        fi
+
         python3 ${{ github.action_path }}/scripts/classify_changes.py \
           --input scn-reports/iac-changes.json \
           --output scn-reports/scn-classifications.json \
           --config "$CONFIG_PATH" \
-          $AI_ARG
+          $AI_ARG \
+          $AI_CONFIG_ARG
 
         if [ $? -eq 0 ]; then
           echo "✅ Classification complete"

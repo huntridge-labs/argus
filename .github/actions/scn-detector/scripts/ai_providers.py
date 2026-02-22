@@ -16,6 +16,8 @@ from typing import Dict, Optional
 
 import requests
 
+from defaults import DEFAULT_API_BASE_URLS
+
 
 # --- Anthropic Provider ---
 
@@ -37,18 +39,16 @@ class AnthropicProvider:
     """Calls Anthropic Messages API (SDK or raw HTTP fallback)."""
 
     ENV_VAR = 'ANTHROPIC_API_KEY'
-    DEFAULT_BASE_URL = 'https://api.anthropic.com'
-    DEFAULT_MODEL = 'claude-3-haiku-20240307'
 
     def __init__(self, api_key: str, config: Dict):
         self.api_key = api_key
         self.config = config
-        self.base_url = config.get('api_base_url', self.DEFAULT_BASE_URL)
+        self.base_url = config.get('api_base_url') or DEFAULT_API_BASE_URLS['anthropic']
 
         # Initialize SDK client if available
         if HAS_ANTHROPIC_SDK:
             sdk_kwargs = {'api_key': api_key}
-            if self.base_url != self.DEFAULT_BASE_URL:
+            if self.base_url != DEFAULT_API_BASE_URLS['anthropic']:
                 sdk_kwargs['base_url'] = self.base_url
             self.client = Anthropic(**sdk_kwargs)
         else:
@@ -62,8 +62,8 @@ class AnthropicProvider:
 
     def _call_sdk(self, prompt: str) -> str:
         """Call via Anthropic SDK."""
-        model = self.config.get('model', self.DEFAULT_MODEL)
-        max_tokens = self.config.get('max_tokens', 1024)
+        model = self.config['model']  # Required - should be set by merge_config
+        max_tokens = self.config['max_tokens']  # Required - should be set by merge_config
 
         message = self.client.messages.create(
             model=model,
@@ -74,8 +74,8 @@ class AnthropicProvider:
 
     def _call_http(self, prompt: str) -> str:
         """Call via raw HTTP (fallback when SDK not installed)."""
-        model = self.config.get('model', self.DEFAULT_MODEL)
-        max_tokens = self.config.get('max_tokens', 1024)
+        model = self.config['model']  # Required - should be set by merge_config
+        max_tokens = self.config['max_tokens']  # Required - should be set by merge_config
 
         url = f'{self.base_url}/v1/messages'
         headers = {
@@ -104,13 +104,11 @@ class OpenAIProvider:
     """
 
     ENV_VAR = 'OPENAI_API_KEY'
-    DEFAULT_BASE_URL = 'https://api.openai.com/v1'
-    DEFAULT_MODEL = 'gpt-4o-mini'
 
     def __init__(self, api_key: str, config: Dict):
         self.api_key = api_key
         self.config = config
-        self.base_url = config.get('api_base_url', self.DEFAULT_BASE_URL)
+        self.base_url = config.get('api_base_url') or DEFAULT_API_BASE_URLS['openai']
 
         # Initialize SDK client if available
         if HAS_OPENAI_SDK:
@@ -126,8 +124,8 @@ class OpenAIProvider:
 
     def _call_sdk(self, prompt: str) -> str:
         """Call via OpenAI SDK."""
-        model = self.config.get('model', self.DEFAULT_MODEL)
-        max_tokens = self.config.get('max_tokens', 1024)
+        model = self.config['model']  # Required - should be set by merge_config
+        max_tokens = self.config['max_tokens']  # Required - should be set by merge_config
 
         response = self.client.chat.completions.create(
             model=model,
@@ -138,8 +136,8 @@ class OpenAIProvider:
 
     def _call_http(self, prompt: str) -> str:
         """Call via raw HTTP (fallback when SDK not installed)."""
-        model = self.config.get('model', self.DEFAULT_MODEL)
-        max_tokens = self.config.get('max_tokens', 1024)
+        model = self.config['model']  # Required - should be set by merge_config
+        max_tokens = self.config['max_tokens']  # Required - should be set by merge_config
 
         url = f'{self.base_url}/chat/completions'
         headers = {

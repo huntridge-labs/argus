@@ -120,6 +120,41 @@ Reference it in your workflow:
     config_file: '.github/scn-profiles/my-custom-profile.yml'
 ```
 
+### Use Separate AI Configuration (Recommended)
+
+For maximum flexibility, separate your AI settings from your SCN profile:
+
+**Benefits:**
+- Share one AI config across multiple SCN profiles
+- Swap AI providers without modifying classification rules
+- Keep credentials/settings separate from compliance rules
+- Easier to manage and version control
+
+Create AI config file:
+
+```yaml
+# .github/ai-config.yml
+provider: 'openai'  # or 'anthropic'
+model: 'gpt-4o-mini'
+confidence_threshold: 0.85
+max_tokens: 2048
+```
+
+Use in workflow:
+
+```yaml
+- uses: huntridge-labs/argus/.github/actions/scn-detector@main
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  with:
+    config_file: '.github/scn-profiles/my-profile.yml'  # Classification rules
+    ai_config_file: '.github/ai-config.yml'              # AI provider settings
+    enable_ai_fallback: true
+```
+
+See `examples/configs/ai-config.example.yml` for full AI configuration options.
+
 ## Rule Matching Logic
 
 Rules are evaluated in priority order:

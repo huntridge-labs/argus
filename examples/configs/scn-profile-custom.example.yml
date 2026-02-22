@@ -1,41 +1,35 @@
-version: "1.0"
-name: "FedRAMP Low Impact Level"
-description: |
-  Classification rules for FedRAMP Low impact systems. This profile provides
-  baseline rules for detecting significant changes in low-impact cloud systems.
-compliance_framework: "FedRAMP 20X"
-impact_level: "Low"
+# Custom SCN Profile Example
+# This file demonstrates how to create a custom SCN classification profile
+# Copy this file to .github/scn-profiles/my-profile.yml and customize as needed
 
-# FedRAMP Significant Change Notification Categories
-# - ROUTINE: No notification required (maintenance, patches, minor changes)
-# - ADAPTIVE: Notification within 10 business days after completion
-# - TRANSFORMATIVE: 30 days initial + 10 days final + post-completion notice
-# - IMPACT: Requires new authorization (boundary/FIPS changes)
+version: "1.0"
+name: "Custom Organization Profile"
+description: |
+  Custom SCN classification rules tailored for your organization's
+  risk appetite and compliance requirements.
+compliance_framework: "FedRAMP 20X"
+impact_level: "Moderate"  # Low, Moderate, or High
+
+# Classification Rules
+# Rules are evaluated in order: routine → adaptive → transformative → impact
+# First matching rule wins, so put more specific rules first
 
 rules:
+  # ROUTINE: No notification required
+  # Regular maintenance, patches, minor changes
   routine:
     - pattern: 'tags.*'
       description: 'Tag changes (metadata only)'
 
     - pattern: 'description'
-      description: 'Description changes (documentation)'
-
-    - resource: 'aws_instance.*.user_data'
-      operation: 'modify'
-      description: 'User data script updates (non-security)'
+      description: 'Description updates (documentation)'
 
     - resource: 'aws_autoscaling_group.*.desired_capacity'
       operation: 'modify'
-      description: 'Minor capacity adjustments'
+      description: 'Minor capacity adjustments (<20% change)'
 
-    - resource: 'aws_iam_role.*.description'
-      operation: 'modify'
-      description: 'IAM role description updates (documentation)'
-
-    - resource: 'aws_iam_policy.*.description'
-      operation: 'modify'
-      description: 'IAM policy description updates (documentation)'
-
+  # ADAPTIVE: Notification within 10 business days after completion
+  # Frequent improvements with minimal security plan impact
   adaptive:
     - resource: 'aws_ami.*'
       operation: 'modify'
@@ -45,29 +39,21 @@ rules:
       operation: 'modify'
       description: 'Instance type changes (like-for-like sizing)'
 
-    - pattern: 'kubernetes.io/.*version'
-      description: 'Kubernetes version updates'
-
-    - resource: 'aws_lambda_function.*.runtime'
-      operation: 'modify'
-      description: 'Lambda runtime version updates (same language)'
-
-    - resource: 'aws_db_instance.*.engine_version'
-      operation: 'modify'
-      description: 'Database minor version updates'
-
     - resource: 'aws_iam_policy_attachment.*'
       operation: 'create|delete|modify'
       description: 'IAM policy attachments (non-admin policies)'
-
-    - resource: 'aws_iam_role_policy.*'
-      operation: 'modify'
-      description: 'IAM inline policy updates (non-admin roles)'
 
     - resource: 'aws_iam_role.*.assume_role_policy'
       operation: 'modify'
       description: 'IAM role trust relationship updates'
 
+    # Add your organization-specific adaptive rules here
+    - resource: 'aws_lambda_function.*.memory_size'
+      operation: 'modify'
+      description: 'Lambda memory adjustments'
+
+  # TRANSFORMATIVE: 30 days initial + 10 days final + post-completion notice
+  # Rare, significant changes altering risk profile
   transformative:
     - resource: 'aws_rds_.*\.engine'
       operation: 'modify'
@@ -77,27 +63,6 @@ rules:
       operation: 'modify'
       description: 'Region or datacenter changes'
 
-    - resource: 'aws_lambda_function.*'
-      attribute: 'runtime'
-      operation: 'create'
-      description: 'New runtime capabilities'
-
-    - resource: 'aws_bedrock.*'
-      operation: 'create'
-      description: 'New AI/ML service usage (AWS Bedrock)'
-
-    - resource: 'aws_sagemaker.*'
-      operation: 'create'
-      description: 'New AI/ML service usage (AWS SageMaker)'
-
-    - resource: 'azurerm_cognitive_account.*'
-      operation: 'create'
-      description: 'New AI/ML service usage (Azure Cognitive Services)'
-
-    - resource: 'google_vertex_ai.*'
-      operation: 'create'
-      description: 'New AI/ML service usage (GCP Vertex AI)'
-
     - resource: 'aws_iam_role.*'
       operation: 'create'
       description: 'New IAM role creation (new permissions/capabilities)'
@@ -106,10 +71,22 @@ rules:
       operation: 'create'
       description: 'New IAM policy creation (new permissions)'
 
-    - resource: 'aws_iam_group.*'
-      operation: 'create|delete'
-      description: 'IAM group changes (user access patterns)'
+    # AI/ML services (require careful review)
+    - resource: 'aws_bedrock.*'
+      operation: 'create'
+      description: 'New AI/ML service usage (AWS Bedrock)'
 
+    - resource: 'aws_sagemaker.*'
+      operation: 'create'
+      description: 'New AI/ML service usage (AWS SageMaker)'
+
+    # Add your organization-specific transformative rules here
+    - resource: 'aws_ecs_cluster.*'
+      operation: 'create|delete'
+      description: 'Container orchestration changes'
+
+  # IMPACT: Requires new authorization
+  # Changes to security boundary, FIPS level, or authentication
   impact:
     - attribute: '.*encryption.*'
       operation: 'delete|modify'
@@ -132,6 +109,7 @@ rules:
       operation: 'delete|modify'
       description: 'FIPS compliance changes (requires re-authorization)'
 
+    # IAM administrative changes
     - resource: 'aws_iam_role.*'
       pattern: '.*[Aa]dmin.*|.*[Rr]oot.*|.*[Pp]ower[Uu]ser.*'
       operation: 'create|modify|delete'
@@ -147,46 +125,41 @@ rules:
       operation: 'modify'
       description: 'Cross-account or wildcard trust policies (security boundary)'
 
-    - resource: 'aws_organizations_policy.*'
-      operation: 'create|modify|delete'
-      description: 'Service Control Policies (security boundary)'
-
-    - resource: 'aws_iam_policy.*.policy'
-      pattern: '.*Effect.*:.*Allow.*Action.*:\s*\*'
-      operation: 'create|modify'
-      description: 'Wildcard action permissions (security boundary)'
-
     - resource: 'aws_iam_user.*'
       operation: 'create|delete'
       description: 'IAM user lifecycle changes (authentication boundary)'
 
-# AI Fallback Prompts if enabled and rules-based classification is inconclusive
+    # Add your organization-specific impact rules here
+    - resource: 'aws_cloudtrail.*'
+      operation: 'delete|modify'
+      description: 'CloudTrail modifications (audit logging boundary)'
+
+# AI Fallback Configuration
+# These settings are used when rules don't match and AI classification is needed
+# Can be overridden by ai_config_file input
 ai_fallback:
+  enabled: true
+  provider: 'anthropic'  # or 'openai'
+  model: 'claude-3-haiku-20240307'  # or 'gpt-4o-mini'
+  confidence_threshold: 0.85  # Higher threshold = more conservative (more MANUAL_REVIEW)
+  max_tokens: 1024
+  max_diff_chars: 1000
 
-  # AI classification prompt template
+  # Custom AI prompts for your organization
   system_prompt: |
-    You are a FedRAMP compliance expert analyzing infrastructure changes for Low impact systems. 
-    You are performing this task because a rules-based classification could not confidently categorize the change. 
-    
-    Use the following guidelines to classify the change:
+    You are a compliance expert analyzing infrastructure changes for a Moderate impact system.
 
-    FedRAMP Change Categories:
+    Change Categories:
     - ROUTINE: Regular maintenance, patching, minor capacity changes (no notification required)
     - ADAPTIVE: Frequent improvements with minimal security plan changes (10 days after completion)
     - TRANSFORMATIVE: Rare, significant changes altering risk profile (30 days initial + 10 days final notice)
     - IMPACT: Changes to security boundary or FIPS level (requires new assessment)
 
-    For FedRAMP Low systems:
-    - Focus on security boundary and encryption changes for IMPACT
-    - AI/ML services are typically TRANSFORMATIVE
-    - Infrastructure scaling and patching are typically ADAPTIVE or ROUTINE
-    - Configuration changes without security implications are ROUTINE
-
-    IAM Classification Guidance:
-    - ROUTINE: Description/tag updates only
-    - ADAPTIVE: Policy attachments, non-admin policy updates, trust relationship changes
-    - TRANSFORMATIVE: Creating new roles/policies/groups
-    - IMPACT: Admin roles, wildcard permissions, cross-account access, user lifecycle, SCPs
+    Organization-Specific Guidance:
+    - All AI/ML services require TRANSFORMATIVE classification minimum
+    - Cross-account access is always IMPACT
+    - Database engine changes are TRANSFORMATIVE
+    - Encryption changes are IMPACT
 
   user_prompt_template: |
     Change Details:
@@ -220,7 +193,7 @@ notifications:
     requires_new_assessment: true
     description: "Requires new authorization - work with 3PAO and AO"
 
-# Issue Template Configuration
+# Issue Template Configuration (for GitHub Issues created by the action)
 issue_templates:
   labels:
     prefix: "scn"

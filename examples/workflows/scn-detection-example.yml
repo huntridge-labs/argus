@@ -85,3 +85,34 @@ jobs:
           echo "Adaptive: ${{ steps.scn-custom.outputs.adaptive_count }}"
           echo "Transformative: ${{ steps.scn-custom.outputs.transformative_count }}"
           echo "Impact: ${{ steps.scn-custom.outputs.impact_count }}"
+
+  # Example 3: Use separate AI configuration file
+  scn-detection-with-ai-config:
+    name: SCN Detection (Separate AI Config)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Analyze with separate AI config
+        id: scn-ai
+        uses: huntridge-labs/argus/.github/actions/scn-detector@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # Using OpenAI instead
+        with:
+          # Use built-in FedRAMP Low profile for rules
+          # But override AI settings with separate config
+          ai_config_file: '.github/ai-config.yml'
+          create_issues: true
+          post_pr_comment: true
+          enable_ai_fallback: true
+
+      - name: Display Results
+        if: always()
+        run: |
+          echo "Change Category: ${{ steps.scn-ai.outputs.change_category }}"
+          echo "Total Changes: ${{ steps.scn-ai.outputs.routine_count + steps.scn-ai.outputs.adaptive_count + steps.scn-ai.outputs.transformative_count + steps.scn-ai.outputs.impact_count }}"

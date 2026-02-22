@@ -23,37 +23,11 @@ from typing import Dict, List, Optional, Tuple
 
 import yaml
 
+from defaults import DEFAULT_RULES, DEFAULT_AI_CONFIG, merge_config, get_default_config
+
 
 class ChangeClassifier:
     """Classifies IaC changes according to FedRAMP SCN guidelines."""
-
-    # Default FedRAMP-aligned rules (used when no config provided)
-    DEFAULT_RULES = {
-        'routine': [
-            {'pattern': r'tags\.*', 'description': 'Tag changes'},
-            {'pattern': r'description', 'description': 'Description changes'},
-        ],
-        'adaptive': [
-            {'resource': r'aws_ami\..*', 'operation': 'modify', 'description': 'AMI updates'},
-            {'resource': r'aws_instance\..*\.instance_type', 'operation': 'modify', 'description': 'Instance type changes'},
-        ],
-        'transformative': [
-            {'pattern': r'provider\..*\.region', 'operation': 'modify', 'description': 'Region changes'},
-            {'resource': r'aws_rds_.*\.engine', 'operation': 'modify', 'description': 'Database engine changes'},
-        ],
-        'impact': [
-            {'attribute': r'.*encryption.*', 'operation': 'delete|modify', 'description': 'Encryption changes'},
-            {'resource': r'aws_security_group\..*', 'attribute': r'ingress', 'pattern': r'0\.0\.0\.0/0', 'description': 'Public security group'},
-        ]
-    }
-
-    DEFAULT_AI_CONFIG = {
-        'enabled': True,
-        'provider': 'anthropic',
-        'model': 'claude-3-haiku-20240307',
-        'confidence_threshold': 0.8,
-        'max_tokens': 1024
-    }
 
     def __init__(self, config: Optional[Dict] = None, enable_ai: bool = False, api_key: Optional[str] = None):
         """
@@ -64,9 +38,12 @@ class ChangeClassifier:
             enable_ai: Whether to enable AI fallback
             api_key: AI provider API key (or None to resolve from env var)
         """
-        self.config = config or {}
-        self.rules = self.config.get('rules', self.DEFAULT_RULES)
-        self.ai_config = self.config.get('ai_fallback', self.DEFAULT_AI_CONFIG)
+        # Merge provided config with defaults
+        default_config = get_default_config()
+        self.config = merge_config(config or {}, default_config)
+
+        self.rules = self.config.get('rules', DEFAULT_RULES)
+        self.ai_config = self.config.get('ai_fallback', DEFAULT_AI_CONFIG)
         self.enable_ai = enable_ai and self.ai_config.get('enabled', True)
 
         # Resolve API key based on configured provider
@@ -292,6 +269,7 @@ def main():
     parser.add_argument('--input', required=True, help='Input JSON file')
     parser.add_argument('--output', required=True, help='Output JSON file')
     parser.add_argument('--config', help='Path to SCN configuration YAML')
+    parser.add_argument('--ai-config', help='Path to AI configuration YAML (overrides AI settings)')
     parser.add_argument('--enable-ai', action='store_true', help='Enable AI fallback')
 
     args = parser.parse_args()
@@ -306,10 +284,33 @@ def main():
         print(f"❌ Invalid JSON in input file: {e}", file=sys.stderr)
         return 1
 
+    # Load profile config
     config = None
     if args.config:
         classifier = ChangeClassifier()
         config = classifier.load_config_from_file(args.config)
+
+    # Load and merge AI config if provided (highest priority for AI settings)
+    if args.ai_config:
+        try:
+            with open(args.ai_config, 'r', encoding='utf-8') as f:
+                ai_config_override = yaml.safe_load(f)
+                print(f"✅ Loaded AI config from {args.ai_config}")
+
+                # Merge AI config into profile config
+                if config is None:
+                    config = {}
+
+                # AI config file can override any AI-related settings
+                if 'ai_fallback' in config:
+                    config['ai_fallback'] = merge_config(ai_config_override, config['ai_fallback'])
+                else:
+                    config['ai_fallback'] = ai_config_override
+
+        except FileNotFoundError:
+            print(f"⚠️  AI config file not found: {args.ai_config}", file=sys.stderr)
+        except yaml.YAMLError as e:
+            print(f"⚠️  Invalid YAML in AI config file: {e}", file=sys.stderr)
 
     from ai_providers import resolve_api_key, get_provider_class
     ai_config = config.get('ai_fallback', {}) if config else {}
