@@ -447,6 +447,29 @@ class TestEdgeCases:
         content = self.output_file.read_text()
         assert "9999" in content
 
+    def test_empty_string_counts_via_cli(self):
+        """Test CLI handles empty string counts (happens when has_iac=false skips parse-results)."""
+        result = subprocess.run(
+            [
+                sys.executable, str(GENERATOR_SCRIPT),
+                str(self.output_file),
+                "--has-iac", "false",
+                "--critical", "",
+                "--high", "",
+                "--medium", "",
+                "--low", "",
+                "--passed", "",
+                "--total", "",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=self.workspace,
+            timeout=10,
+        )
+        assert result.returncode == 0, f"Script failed on empty strings: {result.stderr}"
+        content = self.output_file.read_text()
+        assert "Skipped" in content
+
     def test_file_path_with_leading_slash(self):
         """Test with file_path that has leading slash."""
         json_file = self.checkov_reports / "checkov-results.json"
