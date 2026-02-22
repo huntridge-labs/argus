@@ -193,23 +193,19 @@ class TestChangeClassifier:
 
         assert result is None
 
-    @patch('classify_changes.HAS_ANTHROPIC_SDK', False)
-    @patch('requests.post')
-    def test_classify_with_ai_success(self, mock_post, classifier):
-        """Test AI classification success."""
-        # Enable AI
+    def test_classify_with_ai_success(self, classifier):
+        """Test AI classification success via mocked AIClassifier."""
         classifier.enable_ai = True
         classifier.api_key = 'test-api-key'
 
-        # Mock API response
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            'content': [{
-                'text': '{"category": "TRANSFORMATIVE", "confidence": 0.95, "reasoning": "Test"}'
-            }]
+        # Mock the AI classifier
+        mock_ai = MagicMock()
+        mock_ai.classify.return_value = {
+            'category': 'TRANSFORMATIVE',
+            'confidence': 0.95,
+            'reasoning': 'Test'
         }
-        mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
+        classifier._ai_classifier = mock_ai
 
         change = {
             'type': 'aws_rds_cluster',
@@ -225,22 +221,19 @@ class TestChangeClassifier:
         assert result['confidence'] == 0.95
         assert 'Test' in result['reasoning']
 
-    @patch('classify_changes.HAS_ANTHROPIC_SDK', False)
-    @patch('requests.post')
-    def test_classify_with_ai_low_confidence(self, mock_post, classifier):
+    def test_classify_with_ai_low_confidence(self, classifier):
         """Test AI classification with low confidence."""
         classifier.enable_ai = True
         classifier.api_key = 'test-api-key'
 
-        # Mock low confidence response
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            'content': [{
-                'text': '{"category": "ADAPTIVE", "confidence": 0.65, "reasoning": "Uncertain"}'
-            }]
+        # Mock the AI classifier returning low confidence
+        mock_ai = MagicMock()
+        mock_ai.classify.return_value = {
+            'category': 'MANUAL_REVIEW',
+            'confidence': 0.65,
+            'reasoning': 'Low confidence (0.65 < 0.8): Uncertain'
         }
-        mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
+        classifier._ai_classifier = mock_ai
 
         change = {'type': 'test', 'name': 'test', 'operation': 'modify', 'attributes_changed': [], 'diff': ''}
 
