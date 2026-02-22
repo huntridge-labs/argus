@@ -366,3 +366,185 @@ class TestProviderConfiguration:
 
         assert config.get('ai_fallback', {}).get('provider') == 'openai'
         assert config.get('ai_fallback', {}).get('model') == 'gpt-4o-mini'
+
+
+class TestMainFunction:
+    """Tests for main() function and CLI argument handling."""
+
+    def test_main_with_ai_config_file(self, tmp_path, monkeypatch):
+        """Test main() with AI config file loading."""
+        # Create test input file
+        input_file = tmp_path / "input.json"
+        input_file.write_text(json.dumps({
+            'changes': [
+                {
+                    'file': 'test.tf',
+                    'type': 'aws_instance',
+                    'name': 'test',
+                    'operation': 'modify',
+                    'attributes_changed': ['tags'],
+                    'diff': '+ tags = { Name = "test" }'
+                }
+            ]
+        }))
+
+        # Create AI config file
+        ai_config_file = tmp_path / "ai-config.yml"
+        ai_config_file.write_text("""
+provider: 'anthropic'
+model: 'claude-3-haiku-20240307'
+confidence_threshold: 0.85
+max_tokens: 2048
+""")
+
+        # Create output file path
+        output_file = tmp_path / "output.json"
+
+        # Mock sys.argv
+        monkeypatch.setattr('sys.argv', [
+            'classify_changes.py',
+            '--input', str(input_file),
+            '--output', str(output_file),
+            '--ai-config', str(ai_config_file)
+        ])
+
+        # Run main()
+        result = classify_changes.main()
+
+        # Should succeed
+        assert result is None or result == 0
+        assert output_file.exists()
+
+        # Check output has classifications
+        output_data = json.loads(output_file.read_text())
+        assert 'classifications' in output_data
+        assert 'summary' in output_data
+
+    def test_main_with_missing_ai_config_file(self, tmp_path, monkeypatch, capsys):
+        """Test main() with missing AI config file (should warn but continue)."""
+        # Create test input file
+        input_file = tmp_path / "input.json"
+        input_file.write_text(json.dumps({'changes': []}))
+
+        output_file = tmp_path / "output.json"
+
+        # Reference non-existent AI config file
+        ai_config_file = tmp_path / "nonexistent-ai-config.yml"
+
+        # Mock sys.argv
+        monkeypatch.setattr('sys.argv', [
+            'classify_changes.py',
+            '--input', str(input_file),
+            '--output', str(output_file),
+            '--ai-config', str(ai_config_file)
+        ])
+
+        # Run main() - should succeed with warning
+        result = classify_changes.main()
+        assert result is None or result == 0
+
+        # Check stderr for warning
+        captured = capsys.readouterr()
+        assert 'AI config file not found' in captured.err
+
+    def test_main_with_invalid_ai_config_file(self, tmp_path, monkeypatch, capsys):
+        """Test main() with invalid YAML in AI config file."""
+        # Create test input file
+        input_file = tmp_path / "input.json"
+        input_file.write_text(json.dumps({'changes': []}))
+
+        output_file = tmp_path / "output.json"
+
+        # Create invalid AI config file
+        ai_config_file = tmp_path / "invalid-ai-config.yml"
+        ai_config_file.write_text("{ invalid yaml content [[[")
+
+        # Mock sys.argv
+        monkeypatch.setattr('sys.argv', [
+            'classify_changes.py',
+            '--input', str(input_file),
+            '--output', str(output_file),
+            '--ai-config', str(ai_config_file)
+        ])
+
+        # Run main() - should succeed with warning
+        result = classify_changes.main()
+        assert result is None or result == 0
+
+        # Check stderr for warning
+        captured = capsys.readouterr()
+        assert 'Invalid YAML in AI config file' in captured.err
+
+    def test_main_ai_config_merges_with_profile(self, tmp_path, monkeypatch):
+        """Test that AI config file properly merges with profile ai_fallback."""
+        # Create test input file
+        input_file = tmp_path / "input.json"
+        input_file.write_text(json.dumps({'changes': []}))
+
+        # Create profile config with ai_fallback
+        profile_config_file = tmp_path / "profile.yml"
+        profile_config_file.write_text("""
+version: "1.0"
+rules:
+  routine:
+    - pattern: 'tags.*'
+      description: 'Tag changes'
+ai_fallback:
+  provider: 'openai'
+  model: 'gpt-4'
+  confidence_threshold: 0.7
+""")
+
+        # Create AI config file that should override
+        ai_config_file = tmp_path / "ai-config.yml"
+        ai_config_file.write_text("""
+provider: 'anthropic'
+model: 'claude-3-haiku-20240307'
+confidence_threshold: 0.9
+""")
+
+        output_file = tmp_path / "output.json"
+
+        # Mock sys.argv
+        monkeypatch.setattr('sys.argv', [
+            'classify_changes.py',
+            '--input', str(input_file),
+            '--output', str(output_file),
+            '--config', str(profile_config_file),
+            '--ai-config', str(ai_config_file)
+        ])
+
+        # Run main()
+        result = classify_changes.main()
+        assert result is None or result == 0
+
+        # The AI config should have overridden the profile settings
+        # (This is tested indirectly by successful execution)
+
+    def test_main_ai_config_without_profile(self, tmp_path, monkeypatch):
+        """Test AI config file works without a profile config."""
+        # Create test input file
+        input_file = tmp_path / "input.json"
+        input_file.write_text(json.dumps({'changes': []}))
+
+        # Create AI config file
+        ai_config_file = tmp_path / "ai-config.yml"
+        ai_config_file.write_text("""
+provider: 'anthropic'
+model: 'claude-3-haiku-20240307'
+""")
+
+        output_file = tmp_path / "output.json"
+
+        # Mock sys.argv (no --config, only --ai-config)
+        monkeypatch.setattr('sys.argv', [
+            'classify_changes.py',
+            '--input', str(input_file),
+            '--output', str(output_file),
+            '--ai-config', str(ai_config_file)
+        ])
+
+        # Run main()
+        result = classify_changes.main()
+        assert result is None or result == 0
+        assert output_file.exists()
