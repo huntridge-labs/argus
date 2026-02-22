@@ -60,7 +60,7 @@ DEFAULT_RULES = {
     ],
     'transformative': [
         {'pattern': r'provider\..*\.region', 'operation': 'modify', 'description': 'Region changes'},
-        {'resource': r'aws_rds_.*\\.engine', 'operation': 'modify', 'description': 'Database engine changes'},
+        {'resource': r'aws_rds_.*\.engine', 'operation': 'modify', 'description': 'Database engine changes'},
     ],
     'impact': [
         {'attribute': r'.*encryption.*', 'operation': 'delete|modify', 'description': 'Encryption changes'},
