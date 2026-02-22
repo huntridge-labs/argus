@@ -277,10 +277,10 @@ class TestCreateIssuesForClassifications:
             {'category': 'ROUTINE', 'resource': 'test', 'file': 'test.tf'}
         ]
 
-        result = creator.create_issues_for_classifications(classifications, 1, '1')
+        issue_numbers, _ = creator.create_issues_for_classifications(classifications, 1, '1')
 
         mock_create.assert_not_called()
-        assert result == []
+        assert issue_numbers == []
 
     @patch.object(create_scn_issue.SCNIssueCreator, 'create_issue')
     def test_creates_for_adaptive(self, mock_create, creator):
@@ -298,9 +298,9 @@ class TestCreateIssuesForClassifications:
             }
         ]
 
-        result = creator.create_issues_for_classifications(classifications, 1, '1')
+        issue_numbers, _ = creator.create_issues_for_classifications(classifications, 1, '1')
 
-        assert result == [100]
+        assert issue_numbers == [100]
         mock_create.assert_called_once()
 
     @patch.object(create_scn_issue.SCNIssueCreator, 'create_issue')
@@ -329,15 +329,15 @@ class TestCreateIssuesForClassifications:
             }
         ]
 
-        result = creator.create_issues_for_classifications(classifications, 1, '1')
+        issue_numbers, _ = creator.create_issues_for_classifications(classifications, 1, '1')
 
-        assert len(result) == 2
+        assert len(issue_numbers) == 2
         assert mock_create.call_count == 2
 
     @patch.object(create_scn_issue.SCNIssueCreator, 'create_issue')
     def test_empty_classifications(self, mock_create, creator):
         """Empty classification list creates no issues."""
-        result = creator.create_issues_for_classifications([], 1, '1')
+        issue_numbers, _ = creator.create_issues_for_classifications([], 1, '1')
 
-        assert result == []
+        assert issue_numbers == []
         mock_create.assert_not_called()

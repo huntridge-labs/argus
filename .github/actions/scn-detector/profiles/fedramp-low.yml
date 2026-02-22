@@ -133,7 +133,7 @@ rules:
       description: 'FIPS compliance changes (requires re-authorization)'
 
     - resource: 'aws_iam_role.*'
-      pattern: '.*[Aa]dmin.*|.*[Rr]oot.*|.*[Pp]ower[Uu]ser.*'
+      pattern: '.*[Aa]dmin.*|.*[Rr]oot.*|.*[Pp]ower[Uu]ser.*'  # codespell:ignore
       operation: 'create|modify|delete'
       description: 'Administrative IAM role changes (security boundary)'
 
@@ -165,9 +165,9 @@ ai_fallback:
 
   # AI classification prompt template
   system_prompt: |
-    You are a FedRAMP compliance expert analyzing infrastructure changes for Low impact systems. 
-    You are performing this task because a rules-based classification could not confidently categorize the change. 
-    
+    You are a FedRAMP compliance expert analyzing infrastructure changes for Low impact systems.
+    You are performing this task because a rules-based classification could not confidently categorize the change.
+
     Use the following guidelines to classify the change:
 
     FedRAMP Change Categories:
