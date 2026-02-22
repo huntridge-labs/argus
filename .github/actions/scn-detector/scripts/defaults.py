@@ -16,7 +16,7 @@ DEFAULT_API_BASE_URLS = {
 
 # Default AI Configuration
 DEFAULT_AI_CONFIG = {
-    'enabled': True,
+    'enabled': False,
     'provider': 'anthropic',
     'model': 'claude-3-haiku-20240307',
     'confidence_threshold': 0.8,
