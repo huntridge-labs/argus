@@ -15,6 +15,9 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 SCRIPTS_DIR = REPO_ROOT / ".github" / "actions" / "scn-detector" / "scripts"
 FIXTURES_DIR = REPO_ROOT / "tests" / "fixtures" / "scn-detector"
 
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
 # Import classify_changes module dynamically
 spec = importlib.util.spec_from_file_location(
     "classify_changes",
@@ -322,3 +325,44 @@ class TestEdgeCases:
 
         # Should not crash, returns classification
         assert 'category' in result
+
+
+class TestProviderConfiguration:
+    """Test multi-provider configuration."""
+
+    def test_default_provider_is_anthropic(self):
+        """Default AI config uses anthropic provider."""
+        classifier = classify_changes.ChangeClassifier()
+        assert classifier.ai_config.get('provider') == 'anthropic'
+
+    @patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'anthro-key'})
+    def test_anthropic_api_key_resolved(self):
+        """Anthropic API key resolved from env var."""
+        classifier = classify_changes.ChangeClassifier()
+        assert classifier.api_key == 'anthro-key'
+
+    @patch.dict('os.environ', {'OPENAI_API_KEY': 'openai-key'}, clear=True)
+    def test_openai_api_key_resolved(self):
+        """OpenAI API key resolved when provider is openai."""
+        config = {
+            'ai_fallback': {
+                'enabled': True,
+                'provider': 'openai',
+                'model': 'gpt-4o-mini',
+                'confidence_threshold': 0.8
+            }
+        }
+        classifier = classify_changes.ChangeClassifier(config=config)
+        assert classifier.api_key == 'openai-key'
+
+    def test_openai_config_from_fixture(self):
+        """OpenAI config loaded from fixture file."""
+        config_path = FIXTURES_DIR / "config" / "scn-config-openai.yml"
+        if not config_path.exists():
+            pytest.skip("OpenAI fixture not yet created")
+
+        classifier = classify_changes.ChangeClassifier()
+        config = classifier.load_config_from_file(str(config_path))
+
+        assert config.get('ai_fallback', {}).get('provider') == 'openai'
+        assert config.get('ai_fallback', {}).get('model') == 'gpt-4o-mini'

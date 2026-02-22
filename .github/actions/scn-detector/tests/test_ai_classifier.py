@@ -14,6 +14,9 @@ from unittest.mock import patch, MagicMock
 REPO_ROOT = Path(__file__).resolve().parents[4]
 SCRIPTS_DIR = REPO_ROOT / ".github" / "actions" / "scn-detector" / "scripts"
 
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
 spec = importlib.util.spec_from_file_location(
     "ai_classifier",
     SCRIPTS_DIR / "ai_classifier.py"
@@ -34,7 +37,7 @@ class TestAIClassifierInit:
         """Initializes without API key."""
         classifier = ai_classifier.AIClassifier(api_key=None)
         assert classifier.api_key is None
-        assert classifier.anthropic_client is None
+        assert classifier.provider is None
 
     def test_init_with_api_key(self):
         """Initializes with provided API key."""
@@ -46,19 +49,39 @@ class TestAIClassifierInit:
         classifier = ai_classifier.AIClassifier(api_key='test-key')
         assert classifier.ai_config['model'] == 'claude-3-haiku-20240307'
         assert classifier.ai_config['confidence_threshold'] == 0.8
+        assert classifier.ai_config['provider'] == 'anthropic'
 
     def test_init_custom_config(self):
         """Uses provided config."""
-        config = {'model': 'custom-model', 'confidence_threshold': 0.9, 'max_tokens': 512}
+        config = {'provider': 'openai', 'model': 'gpt-4o-mini', 'confidence_threshold': 0.9, 'max_tokens': 512}
         classifier = ai_classifier.AIClassifier(ai_config=config, api_key='test-key')
-        assert classifier.ai_config['model'] == 'custom-model'
+        assert classifier.ai_config['provider'] == 'openai'
+        assert classifier.ai_config['model'] == 'gpt-4o-mini'
         assert classifier.ai_config['confidence_threshold'] == 0.9
 
     @patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'env-key'})
     def test_init_api_key_from_env(self):
-        """Falls back to env var for API key."""
+        """Falls back to env var for API key (anthropic provider)."""
         classifier = ai_classifier.AIClassifier()
         assert classifier.api_key == 'env-key'
+
+    @patch.dict('os.environ', {'OPENAI_API_KEY': 'openai-env-key'})
+    def test_init_openai_api_key_from_env(self):
+        """Falls back to OPENAI_API_KEY for openai provider."""
+        config = {'provider': 'openai', 'model': 'gpt-4o-mini', 'confidence_threshold': 0.8}
+        classifier = ai_classifier.AIClassifier(ai_config=config)
+        assert classifier.api_key == 'openai-env-key'
+
+    def test_init_creates_provider_instance(self):
+        """Provider instance is created when API key is available."""
+        classifier = ai_classifier.AIClassifier(api_key='test-key')
+        assert classifier.provider is not None
+
+    def test_init_unknown_provider_no_crash(self):
+        """Unknown provider doesn't crash, provider is None."""
+        config = {'provider': 'gemini', 'model': 'test', 'confidence_threshold': 0.8}
+        classifier = ai_classifier.AIClassifier(ai_config=config, api_key='key')
+        assert classifier.provider is None
 
 
 class TestAIClassifierClassify:
@@ -75,23 +98,25 @@ class TestAIClassifierClassify:
         assert result['confidence'] == 0.0
         assert 'not available' in result['reasoning']
 
-    @patch('ai_classifier.HAS_ANTHROPIC_SDK', False)
-    @patch('ai_classifier.requests.post')
-    def test_classify_api_success(self, mock_post):
-        """Successful classification via raw API."""
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            'content': [{'text': json.dumps({
-                'category': 'ADAPTIVE',
-                'confidence': 0.92,
-                'reasoning': 'Instance type change'
-            })}]
-        }
-        mock_response.raise_for_status = MagicMock()
-        mock_post.return_value = mock_response
-
+    def test_classify_no_provider(self):
+        """Returns MANUAL_REVIEW when provider is None."""
         classifier = ai_classifier.AIClassifier(api_key='test-key')
-        classifier.anthropic_client = None
+        classifier.provider = None
+
+        result = classifier.classify({'type': 'test', 'name': 'test', 'operation': 'modify'})
+        assert result['category'] == 'MANUAL_REVIEW'
+
+    def test_classify_success(self):
+        """Successful classification via provider."""
+        classifier = ai_classifier.AIClassifier(api_key='test-key')
+        mock_provider = MagicMock()
+        mock_provider.call.return_value = json.dumps({
+            'category': 'ADAPTIVE',
+            'confidence': 0.92,
+            'reasoning': 'Instance type change'
+        })
+        classifier.provider = mock_provider
+
         change = {
             'type': 'aws_instance',
             'name': 'web',
@@ -104,43 +129,33 @@ class TestAIClassifierClassify:
 
         assert result['category'] == 'ADAPTIVE'
         assert result['confidence'] == 0.92
+        mock_provider.call.assert_called_once()
 
-    @patch('ai_classifier.HAS_ANTHROPIC_SDK', False)
-    @patch('ai_classifier.requests.post')
-    def test_classify_low_confidence(self, mock_post):
+    def test_classify_low_confidence(self):
         """Low confidence returns MANUAL_REVIEW."""
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            'content': [{'text': json.dumps({
-                'category': 'ADAPTIVE',
-                'confidence': 0.5,
-                'reasoning': 'Uncertain'
-            })}]
-        }
-        mock_response.raise_for_status = MagicMock()
-        mock_post.return_value = mock_response
-
         classifier = ai_classifier.AIClassifier(api_key='test-key')
-        classifier.anthropic_client = None
-        change = {'type': 'test', 'name': 'test', 'operation': 'modify'}
+        mock_provider = MagicMock()
+        mock_provider.call.return_value = json.dumps({
+            'category': 'ADAPTIVE',
+            'confidence': 0.5,
+            'reasoning': 'Uncertain'
+        })
+        classifier.provider = mock_provider
 
-        result = classifier.classify(change)
+        result = classifier.classify({'type': 'test', 'name': 'test', 'operation': 'modify'})
 
         assert result['category'] == 'MANUAL_REVIEW'
         assert result['confidence'] == 0.5
         assert 'Low confidence' in result['reasoning']
 
-    @patch('ai_classifier.HAS_ANTHROPIC_SDK', False)
-    @patch('ai_classifier.requests.post')
-    def test_classify_api_error_fallback(self, mock_post):
-        """API errors fall back to MANUAL_REVIEW."""
-        mock_post.side_effect = Exception("Connection timeout")
-
+    def test_classify_provider_error_fallback(self):
+        """Provider errors fall back to MANUAL_REVIEW."""
         classifier = ai_classifier.AIClassifier(api_key='test-key')
-        classifier.anthropic_client = None
-        change = {'type': 'test', 'name': 'test', 'operation': 'modify'}
+        mock_provider = MagicMock()
+        mock_provider.call.side_effect = Exception("Connection timeout")
+        classifier.provider = mock_provider
 
-        result = classifier.classify(change)
+        result = classifier.classify({'type': 'test', 'name': 'test', 'operation': 'modify'})
 
         assert result['category'] == 'MANUAL_REVIEW'
         assert 'AI error' in result['reasoning']
@@ -180,7 +195,7 @@ class TestBuildPrompt:
 
     def test_prompt_truncates_long_diff(self):
         """Diff truncated to max_diff_chars."""
-        config = {'max_diff_chars': 50, 'model': 'test', 'confidence_threshold': 0.8}
+        config = {'max_diff_chars': 50, 'model': 'test', 'confidence_threshold': 0.8, 'provider': 'anthropic'}
         classifier = ai_classifier.AIClassifier(ai_config=config, api_key='test-key')
         change = {
             'type': 'test',
@@ -197,7 +212,7 @@ class TestBuildPrompt:
 
     def test_prompt_invalid_max_diff_chars(self):
         """Invalid max_diff_chars falls back to 1000."""
-        config = {'max_diff_chars': 'invalid', 'model': 'test', 'confidence_threshold': 0.8}
+        config = {'max_diff_chars': 'invalid', 'model': 'test', 'confidence_threshold': 0.8, 'provider': 'anthropic'}
         classifier = ai_classifier.AIClassifier(ai_config=config, api_key='test-key')
         change = {
             'type': 'test',
@@ -211,38 +226,3 @@ class TestBuildPrompt:
 
         # Falls back to 1000 char truncation
         assert 'y' * 2000 not in prompt
-
-
-class TestCallApi:
-    """Test AIClassifier._call_api method."""
-
-    @patch('ai_classifier.requests.post')
-    def test_call_api_sends_correct_headers(self, mock_post):
-        """API call includes correct headers."""
-        mock_response = MagicMock()
-        mock_response.json.return_value = {'content': [{'text': '{}'}]}
-        mock_response.raise_for_status = MagicMock()
-        mock_post.return_value = mock_response
-
-        classifier = ai_classifier.AIClassifier(api_key='my-api-key')
-        classifier._call_api("test prompt")
-
-        call_kwargs = mock_post.call_args
-        headers = call_kwargs.kwargs.get('headers') or call_kwargs[1].get('headers')
-        assert headers['x-api-key'] == 'my-api-key'
-        assert headers['anthropic-version'] == '2023-06-01'
-
-    @patch('ai_classifier.requests.post')
-    def test_call_api_timeout(self, mock_post):
-        """API call uses 30s timeout."""
-        mock_response = MagicMock()
-        mock_response.json.return_value = {'content': [{'text': '{}'}]}
-        mock_response.raise_for_status = MagicMock()
-        mock_post.return_value = mock_response
-
-        classifier = ai_classifier.AIClassifier(api_key='test-key')
-        classifier._call_api("test prompt")
-
-        call_kwargs = mock_post.call_args
-        timeout = call_kwargs.kwargs.get('timeout') or call_kwargs[1].get('timeout')
-        assert timeout == 30
