@@ -92,7 +92,11 @@ runs:
       shell: bash
       run: |
         echo "🔧 Installing Python dependencies..."
-        pip install --quiet PyYAML requests anthropic
+        pip install --quiet PyYAML requests
+        if [ "${{ inputs.enable_ai_fallback }}" = "true" ] && [ -n "${{ env.ANTHROPIC_API_KEY }}" ]; then
+          echo "🤖 Installing anthropic SDK for AI fallback..."
+          pip install --quiet anthropic
+        fi
 
     # Step 3: Check for SCN configuration
     - name: Check SCN configuration
