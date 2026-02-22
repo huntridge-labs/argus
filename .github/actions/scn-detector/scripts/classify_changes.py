@@ -4,7 +4,7 @@ FedRAMP SCN Detector - Change Classification Engine
 
 Classifies IaC changes into FedRAMP SCN categories using:
 1. Rule-based pattern matching (fast, deterministic)
-2. AI fallback with Claude Haiku (for ambiguous cases, optional)
+2. AI fallback with configurable provider (for ambiguous cases, optional)
 
 Categories:
 - ROUTINE: No notification required
@@ -49,6 +49,7 @@ class ChangeClassifier:
 
     DEFAULT_AI_CONFIG = {
         'enabled': True,
+        'provider': 'anthropic',
         'model': 'claude-3-haiku-20240307',
         'confidence_threshold': 0.8,
         'max_tokens': 1024
@@ -61,13 +62,17 @@ class ChangeClassifier:
         Args:
             config: Configuration dictionary (or None for defaults)
             enable_ai: Whether to enable AI fallback
-            api_key: Anthropic API key (or None to use env var)
+            api_key: AI provider API key (or None to resolve from env var)
         """
         self.config = config or {}
         self.rules = self.config.get('rules', self.DEFAULT_RULES)
         self.ai_config = self.config.get('ai_fallback', self.DEFAULT_AI_CONFIG)
         self.enable_ai = enable_ai and self.ai_config.get('enabled', True)
-        self.api_key = api_key or os.environ.get('ANTHROPIC_API_KEY')
+
+        # Resolve API key based on configured provider
+        from ai_providers import resolve_api_key
+        provider_name = self.ai_config.get('provider', 'anthropic')
+        self.api_key = resolve_api_key(provider_name, api_key)
 
         # Lazily initialize AI classifier only when needed
         self._ai_classifier = None
@@ -306,9 +311,14 @@ def main():
         classifier = ChangeClassifier()
         config = classifier.load_config_from_file(args.config)
 
-    api_key = os.environ.get('ANTHROPIC_API_KEY')
+    from ai_providers import resolve_api_key, get_provider_class
+    ai_config = config.get('ai_fallback', {}) if config else {}
+    provider_name = ai_config.get('provider', 'anthropic')
+    api_key = resolve_api_key(provider_name)
     if args.enable_ai and not api_key:
-        print("⚠️  AI fallback enabled but ANTHROPIC_API_KEY not set", file=sys.stderr)
+        provider_cls = get_provider_class(provider_name)
+        env_var = provider_cls.ENV_VAR if provider_cls else 'ANTHROPIC_API_KEY'
+        print(f"⚠️  AI fallback enabled but {env_var} not set", file=sys.stderr)
 
     classifier = ChangeClassifier(config=config, enable_ai=args.enable_ai, api_key=api_key)
     results = classifier.classify_all_changes(changes_data)

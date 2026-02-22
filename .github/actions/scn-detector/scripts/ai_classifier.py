@@ -2,31 +2,25 @@
 """
 FedRAMP SCN Detector - AI Classification Module
 
-Provides AI-based classification of IaC changes using Claude Haiku.
+Provides AI-based classification of IaC changes using configurable providers.
+Supports Anthropic (Claude) and OpenAI (GPT) models via the ai_providers module.
 This module is optional — the main classifier falls back to MANUAL_REVIEW
 when AI is unavailable.
 """
 
 import json
-import os
 import sys
 from typing import Dict, Optional
 
-import requests
-
-# Try importing anthropic SDK (optional)
-try:
-    from anthropic import Anthropic
-    HAS_ANTHROPIC_SDK = True
-except ImportError:
-    HAS_ANTHROPIC_SDK = False
+from ai_providers import create_provider, resolve_api_key
 
 
 class AIClassifier:
-    """Classifies IaC changes using Claude Haiku."""
+    """Classifies IaC changes using a configurable AI provider."""
 
     DEFAULT_CONFIG = {
         'enabled': True,
+        'provider': 'anthropic',
         'model': 'claude-3-haiku-20240307',
         'confidence_threshold': 0.8,
         'max_tokens': 1024
@@ -37,21 +31,24 @@ class AIClassifier:
         Initialize AI classifier.
 
         Args:
-            ai_config: AI configuration dictionary
-            api_key: Anthropic API key (or None to use env var)
+            ai_config: AI configuration dictionary (provider, model, etc.)
+            api_key: API key (or None to resolve from env var per provider)
         """
         self.ai_config = ai_config or self.DEFAULT_CONFIG
-        self.api_key = api_key or os.environ.get('ANTHROPIC_API_KEY')
+        provider_name = self.ai_config.get('provider', 'anthropic')
+        self.api_key = resolve_api_key(provider_name, api_key)
 
-        # Initialize Anthropic client if SDK available
-        if HAS_ANTHROPIC_SDK and self.api_key:
-            self.anthropic_client = Anthropic(api_key=self.api_key)
-        else:
-            self.anthropic_client = None
+        # Initialize provider if we have an API key
+        self.provider = None
+        if self.api_key:
+            try:
+                self.provider = create_provider(provider_name, self.api_key, self.ai_config)
+            except ValueError as exc:
+                print(f"⚠️  {exc}", file=sys.stderr)
 
     def classify(self, change: Dict) -> Dict:
         """
-        Classify change using AI (Claude Haiku).
+        Classify change using the configured AI provider.
 
         Args:
             change: Change dictionary
@@ -59,7 +56,7 @@ class AIClassifier:
         Returns:
             Dictionary with category, confidence, reasoning
         """
-        if not self.api_key:
+        if not self.api_key or not self.provider:
             return {
                 'category': 'MANUAL_REVIEW',
                 'confidence': 0.0,
@@ -69,11 +66,7 @@ class AIClassifier:
         prompt = self._build_prompt(change)
 
         try:
-            if HAS_ANTHROPIC_SDK and self.anthropic_client:
-                response = self._call_sdk(prompt)
-            else:
-                response = self._call_api(prompt)
-
+            response = self.provider.call(prompt)
             result = json.loads(response)
 
             category = result.get('category', 'MANUAL_REVIEW').upper()
@@ -140,43 +133,3 @@ Classify this change. Respond ONLY with valid JSON in this exact format:
   "confidence": 0.0-1.0,
   "reasoning": "Brief explanation (max 200 chars)"
 }}"""
-
-    def _call_sdk(self, prompt: str) -> str:
-        """Call Anthropic API using SDK."""
-        model = self.ai_config.get('model', 'claude-3-haiku-20240307')
-        max_tokens = self.ai_config.get('max_tokens', 1024)
-
-        message = self.anthropic_client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
-        )
-
-        return message.content[0].text
-
-    def _call_api(self, prompt: str) -> str:
-        """Call Anthropic API using requests (fallback)."""
-        model = self.ai_config.get('model', 'claude-3-haiku-20240307')
-        max_tokens = self.ai_config.get('max_tokens', 1024)
-
-        url = 'https://api.anthropic.com/v1/messages'
-        headers = {
-            'x-api-key': self.api_key,
-            'anthropic-version': '2023-06-01',
-            'content-type': 'application/json'
-        }
-        data = {
-            'model': model,
-            'max_tokens': max_tokens,
-            'messages': [
-                {'role': 'user', 'content': prompt}
-            ]
-        }
-
-        response = requests.post(url, headers=headers, json=data, timeout=30)
-        response.raise_for_status()
-
-        result = response.json()
-        return result['content'][0]['text']
