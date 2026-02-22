@@ -272,18 +272,22 @@ See `examples/configs/ai-config-anthropic.example.yml` and `ai-config-openai.exa
 
 ## Rule Matching
 
-Rules are evaluated in order: **routine** → **adaptive** → **transformative** → **impact**
+Rules are evaluated in category order: **routine** → **adaptive** → **transformative** → **impact**
 
-**First match wins** - place more specific rules earlier in each category.
+**First match wins** — this means a routine rule will match before a more severe rule. Place your rules carefully: if a change should be classified as IMPACT, ensure no broader routine/adaptive rule matches it first.
+
+When a rule has **multiple criteria** (e.g., both `pattern` and `resource`), **all criteria must match** (AND logic). A change must satisfy every criterion in the rule to be classified.
+
+If **no rule matches** and AI fallback is disabled, the change is classified as **MANUAL_REVIEW** (requiring human assessment).
 
 ### Rule Criteria
 
-| Criteria | Description | Example |
-|----------|-------------|---------|
-| `pattern` | Regex matching resource name/type/attributes | `'tags.*'` |
-| `resource` | Regex matching `type.name` or `type.name.attribute` | `'aws_instance.*.instance_type'` |
-| `attribute` | Regex matching specific changed attributes | `'.*encryption.*'` |
-| `operation` | Filter by operation type | `'create\|delete\|modify'` |
+| Criteria | Description | Match Target | Example |
+|----------|-------------|--------------|---------|
+| `pattern` | Regex matching | `type.name attributes diff` (concatenated) | `'tags.*'` |
+| `resource` | Regex matching | `type.name` or `type.name.attribute` | `'aws_instance.*.instance_type'` |
+| `attribute` | Regex matching | Changed attributes list **and** diff text | `'.*encryption.*'` |
+| `operation` | Exact or pipe-delimited match | Operation field | `'create\|delete\|modify'` |
 
 ### Rule Examples
 
