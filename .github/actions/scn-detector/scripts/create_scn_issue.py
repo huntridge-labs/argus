@@ -24,14 +24,16 @@ class SCNIssueCreator:
     CATEGORY_LABELS = {
         'ADAPTIVE': ['scn', 'scn:adaptive', 'compliance'],
         'TRANSFORMATIVE': ['scn', 'scn:transformative', 'compliance'],
-        'IMPACT': ['scn', 'scn:impact', 'compliance']
+        'IMPACT': ['scn', 'scn:impact', 'compliance'],
+        'MANUAL_REVIEW': ['scn', 'scn:manual-review', 'needs-triage']
     }
 
     # Emoji indicators
     CATEGORY_EMOJIS = {
         'ADAPTIVE': '🟡',
         'TRANSFORMATIVE': '🟠',
-        'IMPACT': '🔴'
+        'IMPACT': '🔴',
+        'MANUAL_REVIEW': '⚠️'
     }
 
     def __init__(self, github_token: str, repo: str, server_url: str = 'https://github.com'):
@@ -183,6 +185,14 @@ class SCNIssueCreator:
             body += "- [ ] **Initiate Re-Assessment** - Begin new authorization process\n"
             body += "- [ ] **Document Changes** - Update System Security Plan (SSP)\n\n"
 
+        elif category == 'MANUAL_REVIEW':
+            body += "### ⚠️ Manual Review Required\n\n"
+            body += "**This change could not be automatically classified by rule-based matching.**\n\n"
+            body += "- [ ] Review the change and classification reasoning below\n"
+            body += "- [ ] Determine appropriate SCN category (Routine/Adaptive/Transformative/Impact)\n"
+            body += "- [ ] If a pattern emerges, update classification rules in the SCN profile\n"
+            body += "- [ ] Assign to compliance team for final determination\n\n"
+
         body += "---\n\n"
         body += "### Required Documentation\n\n"
 
@@ -201,6 +211,10 @@ class SCNIssueCreator:
             body += "- [ ] Security impact analysis\n"
             body += "- [ ] New authorization package\n"
             body += "- [ ] FedRAMP communication records\n"
+
+        elif category == 'MANUAL_REVIEW':
+            body += "- [ ] Classification determination and justification\n"
+            body += "- [ ] Updated SCN profile rules (if applicable)\n"
 
         body += "\n---\n\n"
         body += "### Artifacts\n\n"
@@ -265,7 +279,8 @@ class SCNIssueCreator:
             return None
 
     def create_issues_for_classifications(self, classifications: List[Dict],
-                                          pr_number: int, run_id: str) -> List[int]:
+                                          pr_number: int, run_id: str,
+                                          dry_run: bool = False) -> tuple:
         """
         Create issues for all relevant classifications.
 
@@ -273,22 +288,35 @@ class SCNIssueCreator:
             classifications: List of classification dictionaries
             pr_number: Pull request number
             run_id: GitHub Actions run ID
+            dry_run: If True, simulate issue creation without API calls
 
         Returns:
-            List of created issue numbers
+            Tuple of (issue_numbers, dry_run_issues)
         """
-        print("📋 Creating GitHub Issues for SCN tracking...")
+        if dry_run:
+            print("📋 [DRY-RUN] Simulating GitHub Issue creation...")
+        else:
+            print("📋 Creating GitHub Issues for SCN tracking...")
 
         issue_numbers = []
+        dry_run_issues = []
 
         # Group by category
         grouped = {}
         for classification in classifications:
             category = classification.get('category')
 
-            # Only create issues for Adaptive, Transformative, Impact
-            if category not in ['ADAPTIVE', 'TRANSFORMATIVE', 'IMPACT']:
+            if category not in ['ADAPTIVE', 'TRANSFORMATIVE', 'IMPACT', 'MANUAL_REVIEW']:
                 continue
+
+            # MANUAL_REVIEW issues only on merge to default branch
+            if category == 'MANUAL_REVIEW':
+                event_name = os.environ.get('GITHUB_EVENT_NAME', '')
+                ref = os.environ.get('GITHUB_REF', '')
+                default_branch = os.environ.get('GITHUB_DEFAULT_BRANCH', 'main')
+                if event_name != 'push' or ref != f'refs/heads/{default_branch}':
+                    print(f"  ℹ️  Skipping MANUAL_REVIEW issue (not a merge to {default_branch})")
+                    continue
 
             if category not in grouped:
                 grouped[category] = []
@@ -307,17 +335,29 @@ class SCNIssueCreator:
                 body = self.generate_issue_body(classification, pr_number, run_id, due_dates)
                 labels = self.CATEGORY_LABELS.get(category, ['scn'])
 
-                issue_number = self.create_issue(title, body, labels)
+                if dry_run:
+                    print(f"  [DRY-RUN] Would create issue: {title}")
+                    dry_run_issues.append({
+                        'category': category,
+                        'resource': resource,
+                        'title': title,
+                        'labels': labels,
+                        'body_length': len(body),
+                        'due_dates': due_dates
+                    })
+                else:
+                    issue_number = self.create_issue(title, body, labels)
+                    if issue_number:
+                        issue_numbers.append(issue_number)
 
-                if issue_number:
-                    issue_numbers.append(issue_number)
-
-        if issue_numbers:
+        if dry_run:
+            print(f"\n✅ [DRY-RUN] Would create {len(dry_run_issues)} issue(s)")
+        elif issue_numbers:
             print(f"\n✅ Created {len(issue_numbers)} issue(s)")
         else:
             print("\nℹ️  No issues created (may be routine changes only)")
 
-        return issue_numbers
+        return (issue_numbers, dry_run_issues)
 
 
 def main():
@@ -355,12 +395,21 @@ def main():
         '--output',
         help='Output file for issue numbers (comma-separated)'
     )
+    parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='Simulate issue creation without API calls'
+    )
+    parser.add_argument(
+        '--dry-run-output',
+        help='Output file for dry-run issue payloads (JSON)'
+    )
 
     args = parser.parse_args()
 
-    # Get GitHub token
-    github_token = os.environ.get('GITHUB_TOKEN')
-    if not github_token:
+    # Get GitHub token (not required in dry-run mode)
+    github_token = os.environ.get('GITHUB_TOKEN', '')
+    if not github_token and not args.dry_run:
         print("❌ GITHUB_TOKEN environment variable not set", file=sys.stderr)
         return 1
 
@@ -380,11 +429,27 @@ def main():
 
     # Create issues
     classifications = classifications_data.get('classifications', [])
-    issue_numbers = creator.create_issues_for_classifications(
+    issue_numbers, dry_run_issues = creator.create_issues_for_classifications(
         classifications,
         args.pr_number,
-        args.run_id
+        args.run_id,
+        dry_run=args.dry_run
     )
+
+    # Write dry-run output
+    if args.dry_run and args.dry_run_output:
+        dry_run_path = Path(args.dry_run_output)
+        dry_run_path.parent.mkdir(parents=True, exist_ok=True)
+
+        dry_run_data = {
+            'dry_run': True,
+            'issues': dry_run_issues,
+            'total': len(dry_run_issues)
+        }
+        with open(dry_run_path, 'w', encoding='utf-8') as f:
+            json.dump(dry_run_data, f, indent=2)
+
+        print(f"✅ Dry-run results: {dry_run_path}")
 
     # Write output if requested
     if args.output and issue_numbers:

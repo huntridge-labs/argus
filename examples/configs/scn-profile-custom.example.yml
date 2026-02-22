@@ -111,7 +111,7 @@ rules:
 
     # IAM administrative changes
     - resource: 'aws_iam_role.*'
-      pattern: '.*[Aa]dmin.*|.*[Rr]oot.*|.*[Pp]ower[Uu]ser.*'
+      pattern: '.*[Aa]dmin.*|.*[Rr]oot.*|.*[Pp]ower[Uu]ser.*'  # codespell:ignore
       operation: 'create|modify|delete'
       description: 'Administrative IAM role changes (security boundary)'
 

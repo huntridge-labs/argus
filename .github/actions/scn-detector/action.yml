@@ -76,6 +76,10 @@ inputs:
     description: 'Job ID for artifact naming (default: github.job)'
     required: false
     default: ${{ github.job }}
+  dry_run:
+    description: 'Dry-run mode: generate reports and issue payloads without posting PR comments or creating issues'
+    required: false
+    default: 'false'
 
 outputs:
   change_category:
@@ -293,9 +297,24 @@ runs:
           cat scn-summaries/scn-report.md >> $GITHUB_STEP_SUMMARY
         fi
 
-    # Step 9: Post PR comment
+    # Step 9: Dry-run PR comment preview (write to step summary instead of posting)
+    - name: Dry-run PR comment preview
+      if: |
+        inputs.dry_run == 'true' &&
+        inputs.post_pr_comment == 'true' &&
+        steps.analyze-changes.outputs.has_changes == 'true'
+      shell: bash
+      run: |
+        if [ -f scn-summaries/scn-report.md ]; then
+          echo "## 🔍 Dry-Run: PR Comment Preview" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cat scn-summaries/scn-report.md >> $GITHUB_STEP_SUMMARY
+        fi
+
+    # Step 10: Post PR comment (skipped in dry-run mode)
     - name: Comment PR with SCN analysis
       if: |
+        inputs.dry_run != 'true' &&
         github.event_name == 'pull_request' &&
         inputs.post_pr_comment == 'true' &&
         steps.analyze-changes.outputs.has_changes == 'true'
@@ -309,7 +328,7 @@ runs:
         fallback_message: 'No SCN analysis available'
       continue-on-error: true
 
-    # Step 10: Create GitHub Issues
+    # Step 11: Create GitHub Issues (supports dry-run mode)
     - name: Create SCN tracking issues
       id: create-issues
       if: |
@@ -321,15 +340,28 @@ runs:
       run: |
         echo "📋 Creating GitHub Issues for SCN tracking..."
 
+        DRY_RUN_ARG=""
+        if [ "${{ inputs.dry_run }}" = "true" ]; then
+          DRY_RUN_ARG="--dry-run --dry-run-output scn-reports/dry-run-issues.json"
+          echo "🔍 Dry-run mode: simulating issue creation"
+        fi
+
         python3 ${{ github.action_path }}/scripts/create_scn_issue.py \
           --input scn-reports/scn-classifications.json \
           --repo "${{ github.repository }}" \
           --pr-number "${{ github.event.pull_request.number || 0 }}" \
           --run-id "${{ github.run_id }}" \
           --server-url "${{ github.server_url }}" \
-          --output scn-reports/issue-numbers.txt
+          --output scn-reports/issue-numbers.txt \
+          $DRY_RUN_ARG
 
-        if [ $? -eq 0 ] && [ -f scn-reports/issue-numbers.txt ]; then
+        if [ "${{ inputs.dry_run }}" = "true" ]; then
+          if [ -f scn-reports/dry-run-issues.json ]; then
+            TOTAL=$(python3 -c "import json; print(json.load(open('scn-reports/dry-run-issues.json'))['total'])")
+            echo "🔍 Dry-run: would have created $TOTAL issue(s)"
+            echo "issue_numbers=" >> $GITHUB_OUTPUT
+          fi
+        elif [ $? -eq 0 ] && [ -f scn-reports/issue-numbers.txt ]; then
           ISSUE_NUMBERS=$(cat scn-reports/issue-numbers.txt)
           echo "✅ Created issues: $ISSUE_NUMBERS"
           echo "issue_numbers=$ISSUE_NUMBERS" >> $GITHUB_OUTPUT
@@ -339,7 +371,7 @@ runs:
         fi
       continue-on-error: true
 
-    # Step 11: Analyze SCN results and set outputs
+    # Step 12: Analyze SCN results and set outputs
     - name: Analyze SCN results
       id: analyze-scn
       if: always()
