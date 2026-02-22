@@ -123,7 +123,11 @@ class TestAnthropicProvider:
         mock_response.raise_for_status = MagicMock()
         mock_post.return_value = mock_response
 
-        config = {'model': 'test', 'api_base_url': 'https://custom.api.com'}
+        config = {
+            'model': 'test',
+            'max_tokens': 1024,
+            'api_base_url': 'https://custom.api.com'
+        }
         provider = ai_providers.AnthropicProvider('key', config)
         provider.call('prompt')
 
@@ -201,7 +205,11 @@ class TestOpenAIProvider:
         mock_response.raise_for_status = MagicMock()
         mock_post.return_value = mock_response
 
-        config = {'model': 'local-model', 'api_base_url': 'http://localhost:11434/v1'}
+        config = {
+            'model': 'local-model',
+            'max_tokens': 1024,
+            'api_base_url': 'http://localhost:11434/v1'
+        }
         provider = ai_providers.OpenAIProvider('key', config)
         provider.call('prompt')
 
