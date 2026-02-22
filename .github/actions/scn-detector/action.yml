@@ -46,7 +46,7 @@ inputs:
     default: ''
   enable_ai_fallback:
     description: 'Use AI for ambiguous change classification (provider/model configured in scn-config.yml)'
-    required: false
+    required: true
     default: 'false'
   ai_config_file:
     description: |
