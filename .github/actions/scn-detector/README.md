@@ -1,30 +1,23 @@
 # FedRAMP Significant Change Notification (SCN) Detector
 
-Automatically analyzes Infrastructure as Code (IaC) changes and classifies them according to [FedRAMP 20X Significant Change Notification guidelines](https://www.fedramp.gov/docs/20x/significant-change-notifications/).
+Automatically analyze Infrastructure as Code (IaC) changes and classify them according to FedRAMP 20X Significant Change Notification guidelines.
 
-## Overview
+## Features
 
-This action inspects IaC changes in pull requests and classifies them into four FedRAMP categories:
-
-| Category | Description | Notification Required |
-|----------|-------------|----------------------|
-| 🟢 **Routine** | Regular maintenance, patching, minor config changes | No |
-| 🟡 **Adaptive** | Frequent improvements with minimal security plan changes | Within 10 business days after |
-| 🟠 **Transformative** | Rare, significant changes altering risk profile | 30 days initial + 10 days final + after |
-| 🔴 **Impact** | Security boundary or FIPS level changes | New assessment required |
-
-### Features
-
-- **Hybrid Classification**: Rule-based engine with AI fallback for ambiguous cases
-- **Multi-Format Support**: Terraform (HCL), Kubernetes (YAML), CloudFormation (JSON/YAML)
-- **GitHub Integration**: Creates issues with compliance timelines and posts PR comments
-- **Configurable Rules**: Customize classification via YAML config file
-- **Audit Trail**: Comprehensive JSON artifacts with 90-day retention
-- **CI/CD Gates**: Optional workflow failure on specific change categories
+- **Hybrid Classification**: Rule-based pattern matching with optional AI fallback for ambiguous changes
+- **Multi-Format IaC Support**: Terraform (HCL), Kubernetes (YAML), CloudFormation (YAML/JSON), generic git diff
+- **Built-in FedRAMP Low Profile**: Pre-configured rules aligned with FedRAMP requirements
+- **Custom Profiles**: Define organization-specific classification rules and risk thresholds
+- **Separate AI Configuration**: Share AI provider settings across multiple profiles
+- **IAM Detection**: Comprehensive rules for IAM roles, policies, users, and cross-account access
+- **Automated Notifications**: Creates GitHub Issues for ADAPTIVE, TRANSFORMATIVE, and IMPACT changes
+- **PR Comments**: Posts detailed analysis as PR comments with compliance timelines
+- **SARIF Upload**: Optional upload to GitHub Security tab for centralized visibility
+- **Audit Trail**: 90-day artifact retention for compliance evidence
 
 ## Quick Start
 
-### Basic Usage
+### Minimal Setup (Default FedRAMP Low Profile)
 
 ```yaml
 name: SCN Detection
@@ -33,8 +26,7 @@ on:
   pull_request:
     paths:
       - 'terraform/**'
-      - 'kubernetes/**'
-      - 'cloudformation/**'
+      - 'infrastructure/**'
 
 permissions:
   contents: read
@@ -49,292 +41,401 @@ jobs:
         with:
           fetch-depth: 0  # Required for git diff
 
-      - uses: huntridge-labs/argus/.github/actions/scn-detector@v0.3.0
+      - uses: huntridge-labs/argus/.github/actions/scn-detector@main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # Optional for AI fallback
         with:
-          config_file: '.github/scn-config.yml'
           create_issues: true
           post_pr_comment: true
 ```
 
-### With Configuration File
+## FedRAMP Change Categories
 
-Create `.github/scn-config.yml`:
+| Category | Notification Required | Timeline | Examples |
+|----------|----------------------|----------|----------|
+| **ROUTINE** | None | None | Tag changes, description updates, minor capacity adjustments |
+| **ADAPTIVE** | Yes | Within 10 business days after completion | AMI updates, instance type changes, policy attachments |
+| **TRANSFORMATIVE** | Yes | 30 days initial + 10 days final + post-completion | Region changes, new roles/policies, AI/ML services |
+| **IMPACT** | New assessment required | Work with AO/3PAO | Encryption changes, admin roles, security boundary changes |
+
+## Configuration Options
+
+### 1. Default Configuration (Simplest)
+
+Uses built-in FedRAMP Low profile with rule-based classification only.
+
+```yaml
+- uses: huntridge-labs/argus/.github/actions/scn-detector@main
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+### 2. With AI Fallback
+
+Enables AI classification for changes that don't match any rules.
+
+```yaml
+- uses: huntridge-labs/argus/.github/actions/scn-detector@main
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # or OPENAI_API_KEY
+  with:
+    enable_ai_fallback: true
+```
+
+### 3. Custom Profile
+
+Use organization-specific classification rules.
+
+Create `.github/scn-profiles/my-profile.yml`:
 
 ```yaml
 version: "1.0"
+name: "My Organization Profile"
+compliance_framework: "FedRAMP 20X"
+impact_level: "Moderate"
 
 rules:
   routine:
-    - pattern: "tags.*"
-      description: "Tag-only changes"
-    - pattern: "description"
-      description: "Description changes"
-
+    - pattern: 'tags.*'
+      description: 'Tag changes'
   adaptive:
-    - resource: "aws_ami.*"
-      operation: "modify"
-      description: "AMI updates"
-    - resource: "aws_instance.*.instance_type"
-      operation: "modify"
-      description: "Instance type changes"
-
-  transformative:
-    - resource: "aws_rds_cluster.*"
-      attribute: "engine"
-      operation: "modify"
-      description: "Database engine changes"
-    - pattern: "provider.*.region"
-      operation: "modify"
-      description: "Region/datacenter migrations"
-
-  impact:
-    - resource: ".*"
-      attribute: ".*encryption.*"
-      operation: "delete|modify"
-      description: "Encryption changes"
-
-ai_fallback:
-  enabled: true
-  model: "claude-3-haiku-20240307"
-  confidence_threshold: 0.8
+    - resource: 'aws_instance.*.instance_type'
+      operation: 'modify'
+      description: 'Instance type changes'
+  # ... more rules
 ```
 
-See [`.github/scn-config.example.yml`](../../../scn-config.example.yml) for a complete example.
+Use in workflow:
+
+```yaml
+- uses: huntridge-labs/argus/.github/actions/scn-detector@main
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  with:
+    config_file: '.github/scn-profiles/my-profile.yml'
+```
+
+### 4. Separate AI Configuration (Recommended)
+
+Share AI provider settings across multiple profiles.
+
+Create `.github/ai-config.yml`:
+
+```yaml
+provider: 'anthropic'  # or 'openai'
+model: 'claude-3-haiku-20240307'
+confidence_threshold: 0.85
+max_tokens: 1024
+```
+
+Use in workflow:
+
+```yaml
+- uses: huntridge-labs/argus/.github/actions/scn-detector@main
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  with:
+    config_file: '.github/scn-profiles/my-profile.yml'
+    ai_config_file: '.github/ai-config.yml'
+    enable_ai_fallback: true
+```
 
 ## Inputs
 
-| Input | Description | Default | Required |
-|-------|-------------|---------|----------|
-| `base_ref` | Base branch/ref for comparison | `github.base_ref` or `main` | No |
-| `head_ref` | Head commit/ref for comparison | `github.sha` | No |
-| `config_file` | Path to SCN configuration file | `.github/scn-config.yml` | No |
-| `create_issues` | Create GitHub Issues for tracking | `true` | No |
-| `post_pr_comment` | Post PR comment with summary | `true` | No |
-| `enable_ai_fallback` | Use AI for ambiguous classifications | `true` | No |
-| `fail_on_category` | Fail on specific category | `none` | No |
-| `job_id` | Job ID for artifact naming | `github.job` | No |
-
-### fail_on_category Options
-
-- `none` - Never fail (default)
-- `adaptive` - Fail on Adaptive, Transformative, or Impact changes
-- `transformative` - Fail on Transformative or Impact changes
-- `impact` - Fail only on Impact changes
+| Input | Description | Default |
+|-------|-------------|---------|
+| `base_ref` | Base branch/ref for comparison | `github.base_ref` or `main` |
+| `head_ref` | Head commit/ref for comparison | `github.sha` |
+| `config_file` | Path to SCN profile configuration | `''` (uses built-in fedramp-low) |
+| `ai_config_file` | Path to AI configuration file | `''` (uses profile settings) |
+| `create_issues` | Create GitHub Issues for tracking | `true` |
+| `post_pr_comment` | Post PR comment with analysis summary | `true` |
+| `enable_ai_fallback` | Use AI for ambiguous changes | `false` |
+| `fail_on_category` | Fail workflow on category (`none`, `adaptive`, `transformative`, `impact`) | `none` |
+| `job_id` | Job ID for artifact naming | `github.job` |
 
 ## Outputs
 
 | Output | Description |
 |--------|-------------|
-| `change_category` | Highest severity category detected |
+| `change_category` | Highest severity category detected (`ROUTINE`, `ADAPTIVE`, `TRANSFORMATIVE`, `IMPACT`, `NONE`) |
 | `routine_count` | Number of routine changes |
 | `adaptive_count` | Number of adaptive changes |
 | `transformative_count` | Number of transformative changes |
-| `impact_count` | Number of impact categorization changes |
-| `has_changes` | Whether any IaC changes were detected |
-| `issue_numbers` | Comma-separated list of created issue numbers |
+| `impact_count` | Number of impact changes |
+| `has_changes` | Whether any IaC changes were detected (`true`/`false`) |
+| `issue_numbers` | Comma-separated list of GitHub issue numbers created |
 
 ## Environment Variables
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `GITHUB_TOKEN` | GitHub token for PR comments and issue creation | Yes |
-| `ANTHROPIC_API_KEY` | Anthropic API key for AI fallback | No (if `enable_ai_fallback=true`) |
+| `GITHUB_TOKEN` | GitHub token for API access | Yes |
+| `ANTHROPIC_API_KEY` | Anthropic API key for Claude models | No (if AI enabled) |
+| `OPENAI_API_KEY` | OpenAI API key for GPT models | No (if AI enabled) |
 
-## Configuration
+## AI Providers
 
-### Rule Format
+### Anthropic (Claude)
 
-Rules are evaluated in order: `routine` → `adaptive` → `transformative` → `impact`. First match wins.
+**Recommended Models:**
+- `claude-3-haiku-20240307` - Fast, affordable, good for routine classification (default)
+- `claude-3-sonnet-20240229` - Balanced speed/quality
+- `claude-3-opus-20240229` - Highest quality
+
+**Configuration:**
 
 ```yaml
-rules:
-  {category}:
-    - pattern: "regex_pattern"           # Match attribute/resource name
-      resource: "resource_type.name"     # Match specific resource
-      attribute: "attribute_name"        # Match specific attribute
-      operation: "create|modify|delete"  # Match operation type
-      description: "Human-readable"      # Explanation for audit trail
+# .github/ai-config.yml
+provider: 'anthropic'
+model: 'claude-3-haiku-20240307'
+confidence_threshold: 0.8
+max_tokens: 1024
 ```
 
-### Pattern Matching
+**Environment:** Set `ANTHROPIC_API_KEY` secret in GitHub
 
-- **Wildcard**: `aws_instance.*` matches all instances
-- **Regex**: `.*encryption.*` matches any encryption-related attribute
-- **Multiple operations**: `create|modify` matches either operation
+### OpenAI (GPT)
 
-### AI Fallback
+**Recommended Models:**
+- `gpt-4o-mini` - Fast, affordable (recommended)
+- `gpt-4o` - Latest GPT-4 optimized
+- `gpt-4-turbo` - High quality
 
-When enabled, unmatched changes are classified using Claude Haiku with FedRAMP context:
+**Configuration:**
 
 ```yaml
+# .github/ai-config.yml
+provider: 'openai'
+model: 'gpt-4o-mini'
+confidence_threshold: 0.8
+max_tokens: 1024
+```
+
+**Environment:** Set `OPENAI_API_KEY` secret in GitHub
+
+### Azure OpenAI / OpenAI-Compatible APIs
+
+```yaml
+# .github/ai-config.yml
+provider: 'openai'
+model: 'gpt-4'
+api_base_url: 'https://YOUR_RESOURCE.openai.azure.com/openai/deployments/YOUR_DEPLOYMENT'
+```
+
+## Configuration Files
+
+### SCN Profile Structure
+
+```yaml
+version: "1.0"
+name: "Profile Name"
+description: "Profile description"
+compliance_framework: "FedRAMP 20X"
+impact_level: "Low|Moderate|High"
+
+rules:
+  routine: [...]
+  adaptive: [...]
+  transformative: [...]
+  impact: [...]
+
 ai_fallback:
   enabled: true
-  model: "claude-3-haiku-20240307"  # Fast, cost-effective
-  confidence_threshold: 0.8         # Minimum confidence for classification
-  max_tokens: 1024
+  provider: 'anthropic'
+  model: 'claude-3-haiku-20240307'
+  # ...
+
+notifications:
+  adaptive: { post_completion_days: 10 }
+  transformative: { initial_notice_days: 30, final_notice_days: 10 }
+  impact: { requires_new_assessment: true }
 ```
 
-**Cost Estimate**: ~$0.001-0.005 per change classification (Haiku pricing: $0.25/1M input, $1.25/1M output)
+See `examples/configs/scn-profile-custom.example.yml` for complete example.
 
-## Supported IaC Formats
+### AI Configuration Structure
 
-| Format | Detection | Example Files |
-|--------|-----------|---------------|
-| **Terraform** | `*.tf`, `*.tfvars` | `main.tf`, `variables.tf` |
-| **Kubernetes** | YAML with `kind:`/`apiVersion:` | `deployment.yaml`, `service.yaml` |
-| **CloudFormation** | JSON/YAML with `AWSTemplateFormatVersion:` | `template.yaml`, `stack.json` |
-| **Generic** | Any IaC file in specified paths | All above formats |
+```yaml
+enabled: true
+provider: 'anthropic'  # or 'openai'
+model: 'claude-3-haiku-20240307'
+confidence_threshold: 0.8
+max_tokens: 1024
+max_diff_chars: 1000
+# Optional: api_base_url, system_prompt, user_prompt_template
+```
 
-## GitHub Issues
+See `examples/configs/ai-config-anthropic.example.yml` and `ai-config-openai.example.yml` for complete examples.
 
-For Adaptive, Transformative, and Impact changes, the action automatically creates tracking issues with:
+## Rule Matching
 
-- **Labels**: `scn`, `scn:adaptive`, `scn:transformative`, `scn:impact`
-- **Compliance Timelines**: Due dates calculated from FedRAMP requirements
-- **Checklists**: Required documentation and steps
-- **Links**: PR, artifacts, change details
+Rules are evaluated in category order: **routine** → **adaptive** → **transformative** → **impact**
 
-### Example Issue
+**First match wins** — this means a routine rule will match before a more severe rule. Place your rules carefully: if a change should be classified as IMPACT, ensure no broader routine/adaptive rule matches it first.
 
-```markdown
-## 🔐 FedRAMP Significant Change Notification
+When a rule has **multiple criteria** (e.g., both `pattern` and `resource`), **all criteria must match** (AND logic). A change must satisfy every criterion in the rule to be classified.
 
-**Category**: 🟠 Transformative
-**PR**: #123
-**Detection Date**: 2026-02-21
+If **no rule matches** and AI fallback is disabled, the change is classified as **MANUAL_REVIEW** (requiring human assessment).
 
-### FedRAMP Compliance Timeline
+### Rule Criteria
 
-- [ ] **Initial Notice** - Due: 2026-03-23 (30 business days before)
-- [ ] **Impact Analysis** - Due: 2026-04-15
-- [ ] **Final Notice** - Due: 2026-04-22 (10 business days before)
-- [ ] **Change Execution** - Target: 2026-05-06
-- [ ] **Post-Completion Notification** - Due: 2026-05-16
+| Criteria | Description | Match Target | Example |
+|----------|-------------|--------------|---------|
+| `pattern` | Regex matching | `type.name attributes diff` (concatenated) | `'tags.*'` |
+| `resource` | Regex matching | `type.name` or `type.name.attribute` | `'aws_instance.*.instance_type'` |
+| `attribute` | Regex matching | Changed attributes list **and** diff text | `'.*encryption.*'` |
+| `operation` | Exact or pipe-delimited match | Operation field | `'create\|delete\|modify'` |
+
+### Rule Examples
+
+```yaml
+# ROUTINE: Tag changes only
+- pattern: 'tags.*'
+  description: 'Tag changes'
+
+# ADAPTIVE: Instance type changes
+- resource: 'aws_instance.*.instance_type'
+  operation: 'modify'
+  description: 'Instance type changes'
+
+# TRANSFORMATIVE: Database engine changes
+- resource: 'aws_rds_.*\.engine'
+  operation: 'modify'
+  description: 'Database engine changes'
+
+# IMPACT: Admin roles (pattern matching in resource name)
+- resource: 'aws_iam_role.*'
+  pattern: '.*[Aa]dmin.*|.*[Rr]oot.*'
+  operation: 'create|modify|delete'
+  description: 'Administrative IAM role changes'
+
+# IMPACT: Wildcard permissions (pattern matching in diff)
+- resource: 'aws_iam_policy.*.policy'
+  pattern: '.*Action.*:\s*\*'
+  operation: 'create|modify'
+  description: 'Wildcard action permissions'
+```
+
+## Examples
+
+See `examples/` directory for complete examples:
+
+- **`workflows/scn-detection-example.yml`** - Basic examples (default, custom profile, AI config)
+- **`workflows/scn-detection-complete.example.yml`** - Advanced examples (multi-profile, notifications, auto-approval)
+- **`configs/scn-profile-custom.example.yml`** - Complete custom profile with all options
+- **`configs/ai-config-anthropic.example.yml`** - Anthropic AI configuration
+- **`configs/ai-config-openai.example.yml`** - OpenAI AI configuration
+
+## Built-in Profiles
+
+### FedRAMP Low (Default)
+
+Located at `.github/actions/scn-detector/profiles/fedramp-low.yml`
+
+**Includes:**
+- 35 rules across all categories
+- IAM detection (13 rules for roles, policies, users)
+- AI/ML service detection
+- Encryption and security boundary changes
+- Cross-account access detection
+- Wildcard permission detection
+
+## Use Cases
+
+### 1. Basic Compliance
+
+```yaml
+- uses: huntridge-labs/argus/.github/actions/scn-detector@main
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+### 2. Fail on High-Severity Changes
+
+```yaml
+- uses: huntridge-labs/argus/.github/actions/scn-detector@main
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  with:
+    fail_on_category: 'transformative'  # Fail on TRANSFORMATIVE or IMPACT
+```
+
+### 3. Team Notifications
+
+```yaml
+- uses: huntridge-labs/argus/.github/actions/scn-detector@main
+  id: scn
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+- name: Notify Security Team
+  if: steps.scn.outputs.impact_count > 0
+  run: |
+    echo "Impact changes: ${{ steps.scn.outputs.impact_count }}"
+    # Send Slack/Teams notification
+```
+
+### 4. Multi-Profile Strategy
+
+```yaml
+# Strict for infrastructure
+- uses: huntridge-labs/argus/.github/actions/scn-detector@main
+  if: contains(github.event.pull_request.files, 'terraform/')
+  with:
+    config_file: '.github/scn-profiles/infrastructure-strict.yml'
+    fail_on_category: 'transformative'
+
+# Lenient for frontend
+- uses: huntridge-labs/argus/.github/actions/scn-detector@main
+  if: contains(github.event.pull_request.files, 'frontend/')
+  with:
+    config_file: '.github/scn-profiles/frontend-lenient.yml'
 ```
 
 ## Artifacts
 
-All runs upload artifacts with extended retention:
+The action uploads the following artifacts (90-day retention for compliance):
 
-| Artifact | Description | Retention |
-|----------|-------------|-----------|
-| `scn-reports-{job_id}` | JSON files: `iac-changes.json`, `scn-classifications.json`, `scn-audit-trail.json` | 90 days |
-| `scn-summary-{job_id}` | Markdown report for PR comments | 7 days |
-
-## Advanced Usage
-
-### Fail CI on High-Impact Changes
-
-```yaml
-- uses: huntridge-labs/argus/.github/actions/scn-detector@v0.3.0
-  with:
-    fail_on_category: 'transformative'  # Fail on Transformative or Impact
-```
-
-### Disable AI Fallback (Rule-Based Only)
-
-```yaml
-- uses: huntridge-labs/argus/.github/actions/scn-detector@v0.3.0
-  with:
-    enable_ai_fallback: false
-```
-
-### Multiple Repositories with Shared Config
-
-```yaml
-- uses: actions/checkout@v6
-  with:
-    repository: 'org/shared-configs'
-    path: 'shared-configs'
-
-- uses: huntridge-labs/argus/.github/actions/scn-detector@v0.3.0
-  with:
-    config_file: 'shared-configs/scn-config.yml'
-```
-
-### Custom Branch Comparison
-
-```yaml
-- uses: huntridge-labs/argus/.github/actions/scn-detector@v0.3.0
-  with:
-    base_ref: 'production'
-    head_ref: 'staging'
-```
+- **`scn-reports-{job_id}`** - Full analysis (iac-changes.json, scn-classifications.json, scn-audit-trail.json)
+- **`scn-summary-{job_id}`** - Markdown summary (scn-report.md)
 
 ## Troubleshooting
 
 ### No Changes Detected
 
-**Problem**: Action reports "No IaC changes detected" but you know files changed.
+Ensure `fetch-depth: 0` is set in `actions/checkout` to get full git history for diff analysis.
 
-**Solutions**:
-- Ensure `fetch-depth: 0` in `actions/checkout` step
-- Verify IaC files match supported patterns (`*.tf`, `*.yaml` with `kind:`, etc.)
-- Check that changed files are in tracked paths
+### AI Classification Not Working
 
-### Classification Seems Wrong
+1. Check that `enable_ai_fallback: true` is set
+2. Verify API key environment variable is set (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`)
+3. Check action logs for API errors
+4. Verify AI config has correct `provider` and `model` values
 
-**Problem**: Changes classified incorrectly.
+### Rules Not Matching
 
-**Solutions**:
-- Review rule ordering in config (first match wins)
-- Add more specific rules for your use case
-- Check AI fallback confidence scores in audit trail
-- Add manual review rule:
-  ```yaml
-  adaptive:
-    - resource: "aws_instance.*"
-      pattern: ".*my_special_case.*"
-      description: "Override for specific resource"
-  ```
+1. Review rule syntax in profile YAML
+2. Check pattern regex (use online regex testers)
+3. Enable AI fallback to see what unmatched changes look like
+4. Check action logs for rule evaluation details
 
-### AI Fallback Not Working
+### Low AI Confidence
 
-**Problem**: All changes classified as "manual review required".
+Increase `max_diff_chars` to provide more context in AI prompts, or lower `confidence_threshold` to accept more AI classifications.
 
-**Solutions**:
-- Verify `ANTHROPIC_API_KEY` is set correctly
-- Check API key has quota remaining
-- Review confidence threshold (lower if too strict)
-- Check logs for API errors
+## Contributing
 
-### Issues Not Created
-
-**Problem**: No GitHub Issues created for Transformative changes.
-
-**Solutions**:
-- Verify `issues: write` permission in workflow
-- Check `GITHUB_TOKEN` has correct scopes
-- Ensure `create_issues: true` input
-- Review logs for API rate limiting
-
-## How It Works
-
-1. **Git Diff Analysis**: Compares base and head refs, identifies IaC files
-2. **Change Extraction**: Parses diffs to extract resource types, operations, attributes
-3. **Rule Matching**: Applies user-configured rules in order (routine → adaptive → transformative → impact)
-4. **AI Fallback**: For unmatched changes, queries Claude Haiku with FedRAMP context
-5. **Report Generation**: Creates markdown summary and JSON audit trail
-6. **Integration**: Posts PR comments, creates GitHub Issues, uploads artifacts
-
-## Examples
-
-See [`examples/workflows/scn-detection-example.yml`](../../../../examples/workflows/scn-detection-example.yml) for complete workflow examples.
-
-## Related Documentation
-
-- [FedRAMP SCN Guidelines](https://www.fedramp.gov/docs/20x/significant-change-notifications/)
-- [Argus Documentation](../../../../README.md)
-- [Configuration Example](../../../scn-config.example.yml)
-
-## Support
-
-- **Issues**: [GitHub Issues](https://github.com/huntridge-labs/argus/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/huntridge-labs/argus/discussions)
+See [CONTRIBUTING.md](../../../../CONTRIBUTING.md) for development guidelines.
 
 ## License
 
-AGPL v3 - See [LICENSE.md](../../../../LICENSE.md)
+GNU Affero General Public License v3.0 (AGPL-3.0) - see [LICENSE.md](../../../../LICENSE.md)
+
+## Support
+
+- **Issues**: https://github.com/huntridge-labs/argus/issues
+- **Documentation**: https://github.com/huntridge-labs/argus
+- **FedRAMP Guidance**: https://www.fedramp.gov/documents/

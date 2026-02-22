@@ -1,0 +1,231 @@
+name: FedRAMP SCN Detection - Complete Examples
+
+# This workflow demonstrates all the different ways to use the SCN detector
+# Choose the pattern that best fits your organization's needs
+
+on:
+  pull_request:
+    paths:
+      - 'terraform/**'
+      - 'infrastructure/**'
+      - 'kubernetes/**'
+      - 'cloudformation/**'
+      - '.github/scn-profiles/**'
+      - '.github/ai-config.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  # Example 1: Default Configuration (Simplest)
+  # Uses built-in FedRAMP Low profile with default AI settings
+  scn-default:
+    name: Default (FedRAMP Low, No AI)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: SCN Analysis
+        uses: huntridge-labs/argus/.github/actions/scn-detector@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Minimal configuration - uses all defaults
+          create_issues: true
+          post_pr_comment: true
+          enable_ai_fallback: false  # Rule-based only
+
+  # Example 2: Default Profile with AI Fallback
+  # Uses built-in FedRAMP Low profile + AI for ambiguous changes
+  scn-with-ai:
+    name: FedRAMP Low + AI (Anthropic)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: SCN Analysis with AI
+        uses: huntridge-labs/argus/.github/actions/scn-detector@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        with:
+          create_issues: true
+          post_pr_comment: true
+          enable_ai_fallback: true  # Enable AI for unmatched changes
+          fail_on_category: 'impact'  # Fail workflow if IMPACT changes detected
+
+  # Example 3: Custom Profile
+  # Uses organization-specific classification rules
+  scn-custom-profile:
+    name: Custom Profile
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: SCN Analysis with Custom Profile
+        uses: huntridge-labs/argus/.github/actions/scn-detector@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        with:
+          # Custom profile with organization-specific rules
+          config_file: '.github/scn-profiles/org-moderate.yml'
+          create_issues: true
+          post_pr_comment: true
+          enable_ai_fallback: true
+
+  # Example 4: Separate AI Configuration (Recommended)
+  # Custom profile + separate AI config for maximum flexibility
+  scn-separate-configs:
+    name: Custom Profile + Separate AI Config
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: SCN Analysis with Separate Configs
+        uses: huntridge-labs/argus/.github/actions/scn-detector@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        with:
+          # Separate concerns: classification rules vs AI settings
+          config_file: '.github/scn-profiles/org-moderate.yml'
+          ai_config_file: '.github/ai-config.yml'
+          create_issues: true
+          post_pr_comment: true
+          enable_ai_fallback: true
+
+  # Example 5: OpenAI Provider
+  # Using OpenAI instead of Anthropic
+  scn-openai:
+    name: FedRAMP Low + AI (OpenAI)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: SCN Analysis with OpenAI
+        uses: huntridge-labs/argus/.github/actions/scn-detector@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        with:
+          # OpenAI configuration via separate file
+          ai_config_file: '.github/ai-config-openai.yml'
+          create_issues: true
+          post_pr_comment: true
+          enable_ai_fallback: true
+
+  # Example 6: Multi-Profile Strategy
+  # Different profiles for different paths/teams
+  scn-frontend:
+    name: Frontend (Less Strict)
+    runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.files, 'frontend/')
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Frontend SCN Analysis
+        uses: huntridge-labs/argus/.github/actions/scn-detector@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          config_file: '.github/scn-profiles/frontend.yml'
+          ai_config_file: '.github/ai-config.yml'
+          create_issues: false  # No issues for frontend
+          post_pr_comment: true
+          enable_ai_fallback: true
+
+  scn-backend:
+    name: Backend (Strict)
+    runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.files, 'terraform/') || contains(github.event.pull_request.files, 'infrastructure/')
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Backend SCN Analysis
+        uses: huntridge-labs/argus/.github/actions/scn-detector@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        with:
+          config_file: '.github/scn-profiles/backend-strict.yml'
+          ai_config_file: '.github/ai-config.yml'
+          create_issues: true
+          post_pr_comment: true
+          enable_ai_fallback: true
+          fail_on_category: 'transformative'  # Stricter for backend
+
+  # Example 7: Notification Workflow
+  # Use SCN outputs to trigger notifications
+  scn-with-notifications:
+    name: With Team Notifications
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: SCN Analysis
+        id: scn
+        uses: huntridge-labs/argus/.github/actions/scn-detector@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        with:
+          config_file: '.github/scn-profiles/org-moderate.yml'
+          ai_config_file: '.github/ai-config.yml'
+          create_issues: true
+          post_pr_comment: true
+          enable_ai_fallback: true
+
+      # Notify security team for IMPACT changes
+      - name: Notify Security Team
+        if: steps.scn.outputs.impact_count > 0
+        run: |
+          echo "🚨 IMPACT changes detected - requires new authorization!"
+          echo "Impact Count: ${{ steps.scn.outputs.impact_count }}"
+          echo "Issues Created: ${{ steps.scn.outputs.issue_numbers }}"
+          # Add Slack/Teams/Email notification here
+
+      # Notify compliance team for TRANSFORMATIVE changes
+      - name: Notify Compliance Team
+        if: steps.scn.outputs.transformative_count > 0
+        run: |
+          echo "⚠️ TRANSFORMATIVE changes detected - 30+10 day notice required"
+          echo "Transformative Count: ${{ steps.scn.outputs.transformative_count }}"
+          # Add notification here
+
+      # Auto-approve ROUTINE changes
+      - name: Auto-approve Routine Changes
+        if: |
+          steps.scn.outputs.change_category == 'ROUTINE' &&
+          steps.scn.outputs.adaptive_count == 0 &&
+          steps.scn.outputs.transformative_count == 0 &&
+          steps.scn.outputs.impact_count == 0
+        run: |
+          echo "✅ Only ROUTINE changes - safe to auto-approve"
+          # Add auto-approval logic here

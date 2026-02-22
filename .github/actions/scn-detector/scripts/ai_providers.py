@@ -16,6 +16,8 @@ from typing import Dict, Optional
 
 import requests
 
+from defaults import DEFAULT_API_BASE_URLS
+
 
 # --- Anthropic Provider ---
 
@@ -33,22 +35,35 @@ except ImportError:
     HAS_OPENAI_SDK = False
 
 
+def _validate_provider_config(config: Dict, provider_name: str) -> None:
+    """Validate required config keys are present for a provider.
+
+    Raises:
+        ValueError: If 'model' or 'max_tokens' are missing from config.
+    """
+    missing = [k for k in ('model', 'max_tokens') if k not in config]
+    if missing:
+        raise ValueError(
+            f"{provider_name} provider config missing required keys: {', '.join(missing)}. "
+            f"Ensure your AI config includes 'model' and 'max_tokens'."
+        )
+
+
 class AnthropicProvider:
     """Calls Anthropic Messages API (SDK or raw HTTP fallback)."""
 
     ENV_VAR = 'ANTHROPIC_API_KEY'
-    DEFAULT_BASE_URL = 'https://api.anthropic.com'
-    DEFAULT_MODEL = 'claude-3-haiku-20240307'
 
     def __init__(self, api_key: str, config: Dict):
+        _validate_provider_config(config, 'Anthropic')
         self.api_key = api_key
         self.config = config
-        self.base_url = config.get('api_base_url', self.DEFAULT_BASE_URL)
+        self.base_url = config.get('api_base_url') or DEFAULT_API_BASE_URLS['anthropic']
 
         # Initialize SDK client if available
         if HAS_ANTHROPIC_SDK:
             sdk_kwargs = {'api_key': api_key}
-            if self.base_url != self.DEFAULT_BASE_URL:
+            if self.base_url != DEFAULT_API_BASE_URLS['anthropic']:
                 sdk_kwargs['base_url'] = self.base_url
             self.client = Anthropic(**sdk_kwargs)
         else:
@@ -62,8 +77,8 @@ class AnthropicProvider:
 
     def _call_sdk(self, prompt: str) -> str:
         """Call via Anthropic SDK."""
-        model = self.config.get('model', self.DEFAULT_MODEL)
-        max_tokens = self.config.get('max_tokens', 1024)
+        model = self.config['model']  # Validated in __init__
+        max_tokens = self.config['max_tokens']  # Validated in __init__
 
         message = self.client.messages.create(
             model=model,
@@ -74,8 +89,8 @@ class AnthropicProvider:
 
     def _call_http(self, prompt: str) -> str:
         """Call via raw HTTP (fallback when SDK not installed)."""
-        model = self.config.get('model', self.DEFAULT_MODEL)
-        max_tokens = self.config.get('max_tokens', 1024)
+        model = self.config['model']  # Validated in __init__
+        max_tokens = self.config['max_tokens']  # Validated in __init__
 
         url = f'{self.base_url}/v1/messages'
         headers = {
@@ -104,13 +119,12 @@ class OpenAIProvider:
     """
 
     ENV_VAR = 'OPENAI_API_KEY'
-    DEFAULT_BASE_URL = 'https://api.openai.com/v1'
-    DEFAULT_MODEL = 'gpt-4o-mini'
 
     def __init__(self, api_key: str, config: Dict):
+        _validate_provider_config(config, 'OpenAI')
         self.api_key = api_key
         self.config = config
-        self.base_url = config.get('api_base_url', self.DEFAULT_BASE_URL)
+        self.base_url = config.get('api_base_url') or DEFAULT_API_BASE_URLS['openai']
 
         # Initialize SDK client if available
         if HAS_OPENAI_SDK:
@@ -126,8 +140,8 @@ class OpenAIProvider:
 
     def _call_sdk(self, prompt: str) -> str:
         """Call via OpenAI SDK."""
-        model = self.config.get('model', self.DEFAULT_MODEL)
-        max_tokens = self.config.get('max_tokens', 1024)
+        model = self.config['model']  # Validated in __init__
+        max_tokens = self.config['max_tokens']  # Validated in __init__
 
         response = self.client.chat.completions.create(
             model=model,
@@ -138,8 +152,8 @@ class OpenAIProvider:
 
     def _call_http(self, prompt: str) -> str:
         """Call via raw HTTP (fallback when SDK not installed)."""
-        model = self.config.get('model', self.DEFAULT_MODEL)
-        max_tokens = self.config.get('max_tokens', 1024)
+        model = self.config['model']  # Validated in __init__
+        max_tokens = self.config['max_tokens']  # Validated in __init__
 
         url = f'{self.base_url}/chat/completions'
         headers = {

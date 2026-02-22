@@ -1,0 +1,64 @@
+# AI Configuration - Anthropic (Claude)
+# This file demonstrates AI provider settings for Anthropic's Claude models
+# Copy to .github/ai-config.yml and customize as needed
+
+# Enable/disable AI fallback for ambiguous changes
+enabled: true
+
+# AI Provider: 'anthropic'
+provider: 'anthropic'
+
+# Model selection (choose based on your needs)
+# - claude-3-haiku-20240307: Fastest, cheapest, good for routine classification
+# - claude-3-sonnet-20240229: Balanced speed/quality
+# - claude-3-opus-20240229: Highest quality, slower, more expensive
+model: 'claude-3-haiku-20240307'
+
+# Confidence threshold (0.0-1.0)
+# AI classifications below this confidence are marked as MANUAL_REVIEW
+# Higher = more conservative (more manual reviews)
+# Lower = more automated (fewer manual reviews but less certain)
+confidence_threshold: 0.8
+
+# Maximum tokens for AI response
+# 1024 is sufficient for JSON classification responses
+max_tokens: 1024
+
+# Maximum characters from diff to include in AI prompt
+# Larger values = more context but higher cost
+# 1000 is usually enough to understand the change
+max_diff_chars: 1000
+
+# Optional: Custom API base URL (for Claude on Vertex AI, AWS Bedrock, etc.)
+# Uncomment and set if using a custom endpoint
+# api_base_url: 'https://api.anthropic.com'
+
+# Optional: Custom system prompt
+# Uncomment to override the profile-specific system prompt
+# system_prompt: |
+#   You are a FedRAMP compliance expert analyzing infrastructure changes.
+#
+#   FedRAMP Change Categories:
+#   - ROUTINE: Regular maintenance, patching, minor capacity changes
+#   - ADAPTIVE: Frequent improvements with minimal security plan changes
+#   - TRANSFORMATIVE: Rare, significant changes altering risk profile
+#   - IMPACT: Changes to security boundary or FIPS level
+
+# Optional: Custom user prompt template
+# Uncomment to override the profile-specific user prompt
+# Variables available: {resource_type}, {resource_name}, {operation}, {attributes}, {diff_snippet}
+# user_prompt_template: |
+#   Change Details:
+#   - Resource Type: {resource_type}
+#   - Resource Name: {resource_name}
+#   - Operation: {operation}
+#   - Attributes Changed: {attributes}
+#   - Diff Preview:
+#   {diff_snippet}
+#
+#   Classify this change. Respond ONLY with valid JSON:
+#   {{
+#     "category": "ROUTINE|ADAPTIVE|TRANSFORMATIVE|IMPACT",
+#     "confidence": 0.0-1.0,
+#     "reasoning": "Brief explanation"
+#   }}

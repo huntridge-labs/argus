@@ -1,4 +1,8 @@
 version: "1.0"
+name: "Test Profile - Minimal"
+description: "Minimal test configuration for unit tests"
+compliance_framework: "FedRAMP 20X"
+impact_level: "Test"
 
 rules:
   routine:
@@ -22,3 +26,6 @@ rules:
 
 ai_fallback:
   enabled: false
+  model: "claude-3-haiku-20240307"
+  confidence_threshold: 0.8
+  max_tokens: 1024

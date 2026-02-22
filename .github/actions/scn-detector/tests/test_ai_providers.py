@@ -25,6 +25,15 @@ ai_providers = importlib.util.module_from_spec(spec)
 sys.modules["ai_providers"] = ai_providers
 spec.loader.exec_module(ai_providers)
 
+# Import defaults module
+defaults_spec = importlib.util.spec_from_file_location(
+    "defaults",
+    SCRIPTS_DIR / "defaults.py"
+)
+defaults = importlib.util.module_from_spec(defaults_spec)
+sys.modules["defaults"] = defaults
+defaults_spec.loader.exec_module(defaults)
+
 
 pytestmark = pytest.mark.unit
 
@@ -37,13 +46,18 @@ class TestAnthropicProvider:
         assert ai_providers.AnthropicProvider.ENV_VAR == 'ANTHROPIC_API_KEY'
 
     def test_default_base_url(self):
-        """Default base URL for Anthropic."""
-        assert ai_providers.AnthropicProvider.DEFAULT_BASE_URL == 'https://api.anthropic.com'
+        """Default base URL for Anthropic comes from defaults module."""
+        provider = ai_providers.AnthropicProvider('test-key', {
+            'model': 'claude-3-haiku-20240307',
+            'max_tokens': 1024
+        })
+        assert provider.base_url == defaults.DEFAULT_API_BASE_URLS['anthropic']
+        assert provider.base_url == 'https://api.anthropic.com'
 
     @patch('ai_providers.HAS_ANTHROPIC_SDK', False)
     def test_init_without_sdk(self):
         """Initializes without SDK (client is None)."""
-        provider = ai_providers.AnthropicProvider('test-key', {'model': 'claude-3-haiku-20240307'})
+        provider = ai_providers.AnthropicProvider('test-key', {'model': 'claude-3-haiku-20240307', 'max_tokens': 1024})
         assert provider.client is None
         assert provider.api_key == 'test-key'
 
@@ -58,7 +72,10 @@ class TestAnthropicProvider:
         mock_response.raise_for_status = MagicMock()
         mock_post.return_value = mock_response
 
-        provider = ai_providers.AnthropicProvider('test-key', {'model': 'claude-3-haiku-20240307'})
+        provider = ai_providers.AnthropicProvider('test-key', {
+            'model': 'claude-3-haiku-20240307',
+            'max_tokens': 1024
+        })
         result = provider.call('test prompt')
 
         assert result == '{"category": "ADAPTIVE"}'
@@ -73,7 +90,7 @@ class TestAnthropicProvider:
         mock_response.raise_for_status = MagicMock()
         mock_post.return_value = mock_response
 
-        provider = ai_providers.AnthropicProvider('my-api-key', {'model': 'test-model'})
+        provider = ai_providers.AnthropicProvider('my-api-key', {'model': 'test-model', 'max_tokens': 1024})
         provider.call('prompt')
 
         call_kwargs = mock_post.call_args
@@ -90,7 +107,7 @@ class TestAnthropicProvider:
         mock_response.raise_for_status = MagicMock()
         mock_post.return_value = mock_response
 
-        provider = ai_providers.AnthropicProvider('key', {'model': 'test'})
+        provider = ai_providers.AnthropicProvider('key', {'model': 'test', 'max_tokens': 1024})
         provider.call('prompt')
 
         call_kwargs = mock_post.call_args
@@ -106,7 +123,11 @@ class TestAnthropicProvider:
         mock_response.raise_for_status = MagicMock()
         mock_post.return_value = mock_response
 
-        config = {'model': 'test', 'api_base_url': 'https://custom.api.com'}
+        config = {
+            'model': 'test',
+            'max_tokens': 1024,
+            'api_base_url': 'https://custom.api.com'
+        }
         provider = ai_providers.AnthropicProvider('key', config)
         provider.call('prompt')
 
@@ -123,13 +144,18 @@ class TestOpenAIProvider:
         assert ai_providers.OpenAIProvider.ENV_VAR == 'OPENAI_API_KEY'
 
     def test_default_base_url(self):
-        """Default base URL for OpenAI."""
-        assert ai_providers.OpenAIProvider.DEFAULT_BASE_URL == 'https://api.openai.com/v1'
+        """Default base URL for OpenAI comes from defaults module."""
+        provider = ai_providers.OpenAIProvider('test-key', {
+            'model': 'gpt-4o-mini',
+            'max_tokens': 1024
+        })
+        assert provider.base_url == defaults.DEFAULT_API_BASE_URLS['openai']
+        assert provider.base_url == 'https://api.openai.com/v1'
 
     @patch('ai_providers.HAS_OPENAI_SDK', False)
     def test_init_without_sdk(self):
         """Initializes without SDK (client is None)."""
-        provider = ai_providers.OpenAIProvider('test-key', {'model': 'gpt-4o-mini'})
+        provider = ai_providers.OpenAIProvider('test-key', {'model': 'gpt-4o-mini', 'max_tokens': 1024})
         assert provider.client is None
         assert provider.api_key == 'test-key'
 
@@ -144,7 +170,7 @@ class TestOpenAIProvider:
         mock_response.raise_for_status = MagicMock()
         mock_post.return_value = mock_response
 
-        provider = ai_providers.OpenAIProvider('test-key', {'model': 'gpt-4o-mini'})
+        provider = ai_providers.OpenAIProvider('test-key', {'model': 'gpt-4o-mini', 'max_tokens': 1024})
         result = provider.call('test prompt')
 
         assert result == '{"category": "ROUTINE"}'
@@ -161,7 +187,7 @@ class TestOpenAIProvider:
         mock_response.raise_for_status = MagicMock()
         mock_post.return_value = mock_response
 
-        provider = ai_providers.OpenAIProvider('my-openai-key', {'model': 'gpt-4o-mini'})
+        provider = ai_providers.OpenAIProvider('my-openai-key', {'model': 'gpt-4o-mini', 'max_tokens': 1024})
         provider.call('prompt')
 
         call_kwargs = mock_post.call_args
@@ -179,7 +205,11 @@ class TestOpenAIProvider:
         mock_response.raise_for_status = MagicMock()
         mock_post.return_value = mock_response
 
-        config = {'model': 'local-model', 'api_base_url': 'http://localhost:11434/v1'}
+        config = {
+            'model': 'local-model',
+            'max_tokens': 1024,
+            'api_base_url': 'http://localhost:11434/v1'
+        }
         provider = ai_providers.OpenAIProvider('key', config)
         provider.call('prompt')
 
@@ -198,7 +228,7 @@ class TestOpenAIProvider:
         mock_response.raise_for_status = MagicMock()
         mock_post.return_value = mock_response
 
-        provider = ai_providers.OpenAIProvider('key', {'model': 'test'})
+        provider = ai_providers.OpenAIProvider('key', {'model': 'test', 'max_tokens': 1024})
         provider.call('prompt')
 
         call_kwargs = mock_post.call_args
@@ -234,14 +264,20 @@ class TestProviderRegistry:
     @patch('ai_providers.HAS_ANTHROPIC_SDK', False)
     def test_create_provider_anthropic(self):
         """Factory creates AnthropicProvider."""
-        provider = ai_providers.create_provider('anthropic', 'key', {'model': 'test'})
+        provider = ai_providers.create_provider('anthropic', 'key', {'model': 'test', 'max_tokens': 1024})
         assert isinstance(provider, ai_providers.AnthropicProvider)
 
     @patch('ai_providers.HAS_OPENAI_SDK', False)
     def test_create_provider_openai(self):
         """Factory creates OpenAIProvider."""
-        provider = ai_providers.create_provider('openai', 'key', {'model': 'test'})
+        provider = ai_providers.create_provider('openai', 'key', {'model': 'test', 'max_tokens': 1024})
         assert isinstance(provider, ai_providers.OpenAIProvider)
+
+    @patch('ai_providers.HAS_ANTHROPIC_SDK', False)
+    def test_create_provider_missing_config_raises(self):
+        """Provider with missing required config raises ValueError."""
+        with pytest.raises(ValueError, match="missing required keys"):
+            ai_providers.create_provider('anthropic', 'key', {'model': 'test'})
 
     def test_create_provider_unknown_raises(self):
         """Unknown provider raises ValueError."""
