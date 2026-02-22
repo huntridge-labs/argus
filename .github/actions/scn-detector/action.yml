@@ -83,7 +83,7 @@ inputs:
 
 outputs:
   change_category:
-    description: 'Highest severity change category detected (ROUTINE, ADAPTIVE, TRANSFORMATIVE, IMPACT)'
+    description: 'Highest severity change category detected (ROUTINE, ADAPTIVE, TRANSFORMATIVE, IMPACT, MANUAL_REVIEW)'
     value: ${{ steps.analyze-scn.outputs.change_category }}
   routine_count:
     description: 'Number of routine changes detected'
@@ -97,6 +97,9 @@ outputs:
   impact_count:
     description: 'Number of impact categorization changes detected'
     value: ${{ steps.analyze-scn.outputs.impact_count }}
+  manual_review_count:
+    description: 'Number of changes requiring manual review (unmatched by rules)'
+    value: ${{ steps.analyze-scn.outputs.manual_review_count }}
   has_changes:
     description: 'Whether any IaC changes were detected (true/false)'
     value: ${{ steps.analyze-scn.outputs.has_changes }}
@@ -234,12 +237,16 @@ runs:
           ADAPTIVE=$(jq -r '.summary.adaptive // 0' scn-reports/scn-classifications.json)
           TRANSFORMATIVE=$(jq -r '.summary.transformative // 0' scn-reports/scn-classifications.json)
           IMPACT=$(jq -r '.summary.impact // 0' scn-reports/scn-classifications.json)
+          MANUAL_REVIEW=$(jq -r '.summary.manual_review // 0' scn-reports/scn-classifications.json)
 
           echo "📊 Classification Summary:"
           echo "  🟢 Routine: $ROUTINE"
           echo "  🟡 Adaptive: $ADAPTIVE"
           echo "  🟠 Transformative: $TRANSFORMATIVE"
           echo "  🔴 Impact: $IMPACT"
+          if [ "$MANUAL_REVIEW" -gt 0 ]; then
+            echo "  ⚠️  Manual Review: $MANUAL_REVIEW"
+          fi
         else
           echo "❌ Classification failed"
         fi
@@ -383,6 +390,7 @@ runs:
           ADAPTIVE=$(jq -r '.summary.adaptive // 0' scn-reports/scn-classifications.json)
           TRANSFORMATIVE=$(jq -r '.summary.transformative // 0' scn-reports/scn-classifications.json)
           IMPACT=$(jq -r '.summary.impact // 0' scn-reports/scn-classifications.json)
+          MANUAL_REVIEW=$(jq -r '.summary.manual_review // 0' scn-reports/scn-classifications.json)
 
           # Determine highest severity
           if [ "$IMPACT" -gt 0 ]; then
@@ -391,6 +399,10 @@ runs:
             CATEGORY="TRANSFORMATIVE"
           elif [ "$ADAPTIVE" -gt 0 ]; then
             CATEGORY="ADAPTIVE"
+          elif [ "$ROUTINE" -gt 0 ]; then
+            CATEGORY="ROUTINE"
+          elif [ "$MANUAL_REVIEW" -gt 0 ]; then
+            CATEGORY="MANUAL_REVIEW"
           else
             CATEGORY="ROUTINE"
           fi
@@ -400,6 +412,7 @@ runs:
           echo "adaptive_count=$ADAPTIVE" >> $GITHUB_OUTPUT
           echo "transformative_count=$TRANSFORMATIVE" >> $GITHUB_OUTPUT
           echo "impact_count=$IMPACT" >> $GITHUB_OUTPUT
+          echo "manual_review_count=$MANUAL_REVIEW" >> $GITHUB_OUTPUT
           echo "change_category=$CATEGORY" >> $GITHUB_OUTPUT
           echo "has_changes=true" >> $GITHUB_OUTPUT
 
@@ -434,6 +447,7 @@ runs:
           echo "adaptive_count=0" >> $GITHUB_OUTPUT
           echo "transformative_count=0" >> $GITHUB_OUTPUT
           echo "impact_count=0" >> $GITHUB_OUTPUT
+          echo "manual_review_count=0" >> $GITHUB_OUTPUT
           echo "change_category=NONE" >> $GITHUB_OUTPUT
           echo "has_changes=false" >> $GITHUB_OUTPUT
         fi
