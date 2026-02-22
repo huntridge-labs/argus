@@ -373,17 +373,21 @@ class TestMainFunction:
 
     def test_main_with_ai_config_file(self, tmp_path, monkeypatch):
         """Test main() with AI config file loading."""
-        # Create test input file
+        # Create test input with correct nested resources[] structure
         input_file = tmp_path / "input.json"
         input_file.write_text(json.dumps({
             'changes': [
                 {
                     'file': 'test.tf',
-                    'type': 'aws_instance',
-                    'name': 'test',
-                    'operation': 'modify',
-                    'attributes_changed': ['tags'],
-                    'diff': '+ tags = { Name = "test" }'
+                    'resources': [
+                        {
+                            'type': 'aws_instance',
+                            'name': 'test',
+                            'operation': 'modify',
+                            'attributes_changed': ['tags'],
+                            'diff': '+ tags = { Name = "test" }'
+                        }
+                    ]
                 }
             ]
         }))
@@ -421,7 +425,7 @@ max_tokens: 2048
         assert 'summary' in output_data
 
     def test_main_with_missing_ai_config_file(self, tmp_path, monkeypatch, capsys):
-        """Test main() with missing AI config file (should warn but continue)."""
+        """Test main() with missing AI config file (should fail since user explicitly specified it)."""
         # Create test input file
         input_file = tmp_path / "input.json"
         input_file.write_text(json.dumps({'changes': []}))
@@ -439,16 +443,16 @@ max_tokens: 2048
             '--ai-config', str(ai_config_file)
         ])
 
-        # Run main() - should succeed with warning
+        # Run main() - should fail because user explicitly specified a file that doesn't exist
         result = classify_changes.main()
-        assert result is None or result == 0
+        assert result == 1
 
-        # Check stderr for warning
+        # Check stderr for error message
         captured = capsys.readouterr()
         assert 'AI config file not found' in captured.err
 
     def test_main_with_invalid_ai_config_file(self, tmp_path, monkeypatch, capsys):
-        """Test main() with invalid YAML in AI config file."""
+        """Test main() with invalid YAML in AI config file (should fail)."""
         # Create test input file
         input_file = tmp_path / "input.json"
         input_file.write_text(json.dumps({'changes': []}))
@@ -467,11 +471,11 @@ max_tokens: 2048
             '--ai-config', str(ai_config_file)
         ])
 
-        # Run main() - should succeed with warning
+        # Run main() - should fail because AI config has invalid YAML
         result = classify_changes.main()
-        assert result is None or result == 0
+        assert result == 1
 
-        # Check stderr for warning
+        # Check stderr for error message
         captured = capsys.readouterr()
         assert 'Invalid YAML in AI config file' in captured.err
 
@@ -493,9 +497,10 @@ ai_fallback:
   provider: 'openai'
   model: 'gpt-4'
   confidence_threshold: 0.7
+  max_tokens: 512
 """)
 
-        # Create AI config file that should override
+        # Create AI config file that should override provider and model
         ai_config_file = tmp_path / "ai-config.yml"
         ai_config_file.write_text("""
 provider: 'anthropic'
@@ -518,8 +523,9 @@ confidence_threshold: 0.9
         result = classify_changes.main()
         assert result is None or result == 0
 
-        # The AI config should have overridden the profile settings
-        # (This is tested indirectly by successful execution)
+        # Verify the output file reflects merged config
+        output_data = json.loads(output_file.read_text())
+        assert output_data['ai_enabled'] is False  # --enable-ai not passed
 
     def test_main_ai_config_without_profile(self, tmp_path, monkeypatch):
         """Test AI config file works without a profile config."""

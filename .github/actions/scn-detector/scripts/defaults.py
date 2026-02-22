@@ -113,6 +113,9 @@ def merge_config(custom: Dict[str, Any], defaults: Dict[str, Any]) -> Dict[str, 
     if not custom:
         return defaults.copy()
 
+    if not isinstance(custom, dict):
+        return defaults.copy()
+
     result = defaults.copy()
 
     for key, value in custom.items():

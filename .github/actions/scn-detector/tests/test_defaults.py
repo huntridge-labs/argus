@@ -141,3 +141,38 @@ class TestDefaults:
         assert notifications['transformative']['initial_notice_days'] == 30
         assert notifications['transformative']['final_notice_days'] == 10
         assert notifications['impact']['requires_new_assessment'] is True
+
+    def test_default_ai_config_enabled_field(self):
+        """Test DEFAULT_AI_CONFIG has enabled=False by default."""
+        assert 'enabled' in defaults.DEFAULT_AI_CONFIG
+        assert defaults.DEFAULT_AI_CONFIG['enabled'] is False
+
+    def test_merge_config_list_replacement(self):
+        """Test that merge_config replaces lists entirely (not merging)."""
+        custom = {
+            'rules': {
+                'routine': [{'pattern': 'custom_only', 'description': 'Custom rule'}]
+            }
+        }
+        defaults_cfg = {
+            'rules': {
+                'routine': [
+                    {'pattern': 'default_1', 'description': 'Default 1'},
+                    {'pattern': 'default_2', 'description': 'Default 2'},
+                ]
+            }
+        }
+
+        result = defaults.merge_config(custom, defaults_cfg)
+
+        # Custom list should replace default list entirely
+        assert len(result['rules']['routine']) == 1
+        assert result['rules']['routine'][0]['pattern'] == 'custom_only'
+
+    def test_merge_config_non_dict_custom(self):
+        """Test merge_config with non-dict custom input returns defaults."""
+        defaults_cfg = {'key': 'value'}
+
+        assert defaults.merge_config('string', defaults_cfg) == defaults_cfg
+        assert defaults.merge_config(42, defaults_cfg) == defaults_cfg
+        assert defaults.merge_config(['list'], defaults_cfg) == defaults_cfg

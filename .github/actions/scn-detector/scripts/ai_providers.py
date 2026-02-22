@@ -35,12 +35,27 @@ except ImportError:
     HAS_OPENAI_SDK = False
 
 
+def _validate_provider_config(config: Dict, provider_name: str) -> None:
+    """Validate required config keys are present for a provider.
+
+    Raises:
+        ValueError: If 'model' or 'max_tokens' are missing from config.
+    """
+    missing = [k for k in ('model', 'max_tokens') if k not in config]
+    if missing:
+        raise ValueError(
+            f"{provider_name} provider config missing required keys: {', '.join(missing)}. "
+            f"Ensure your AI config includes 'model' and 'max_tokens'."
+        )
+
+
 class AnthropicProvider:
     """Calls Anthropic Messages API (SDK or raw HTTP fallback)."""
 
     ENV_VAR = 'ANTHROPIC_API_KEY'
 
     def __init__(self, api_key: str, config: Dict):
+        _validate_provider_config(config, 'Anthropic')
         self.api_key = api_key
         self.config = config
         self.base_url = config.get('api_base_url') or DEFAULT_API_BASE_URLS['anthropic']
@@ -62,8 +77,8 @@ class AnthropicProvider:
 
     def _call_sdk(self, prompt: str) -> str:
         """Call via Anthropic SDK."""
-        model = self.config['model']  # Required - should be set by merge_config
-        max_tokens = self.config['max_tokens']  # Required - should be set by merge_config
+        model = self.config['model']  # Validated in __init__
+        max_tokens = self.config['max_tokens']  # Validated in __init__
 
         message = self.client.messages.create(
             model=model,
@@ -74,8 +89,8 @@ class AnthropicProvider:
 
     def _call_http(self, prompt: str) -> str:
         """Call via raw HTTP (fallback when SDK not installed)."""
-        model = self.config['model']  # Required - should be set by merge_config
-        max_tokens = self.config['max_tokens']  # Required - should be set by merge_config
+        model = self.config['model']  # Validated in __init__
+        max_tokens = self.config['max_tokens']  # Validated in __init__
 
         url = f'{self.base_url}/v1/messages'
         headers = {
@@ -106,6 +121,7 @@ class OpenAIProvider:
     ENV_VAR = 'OPENAI_API_KEY'
 
     def __init__(self, api_key: str, config: Dict):
+        _validate_provider_config(config, 'OpenAI')
         self.api_key = api_key
         self.config = config
         self.base_url = config.get('api_base_url') or DEFAULT_API_BASE_URLS['openai']
@@ -124,8 +140,8 @@ class OpenAIProvider:
 
     def _call_sdk(self, prompt: str) -> str:
         """Call via OpenAI SDK."""
-        model = self.config['model']  # Required - should be set by merge_config
-        max_tokens = self.config['max_tokens']  # Required - should be set by merge_config
+        model = self.config['model']  # Validated in __init__
+        max_tokens = self.config['max_tokens']  # Validated in __init__
 
         response = self.client.chat.completions.create(
             model=model,
@@ -136,8 +152,8 @@ class OpenAIProvider:
 
     def _call_http(self, prompt: str) -> str:
         """Call via raw HTTP (fallback when SDK not installed)."""
-        model = self.config['model']  # Required - should be set by merge_config
-        max_tokens = self.config['max_tokens']  # Required - should be set by merge_config
+        model = self.config['model']  # Validated in __init__
+        max_tokens = self.config['max_tokens']  # Validated in __init__
 
         url = f'{self.base_url}/chat/completions'
         headers = {

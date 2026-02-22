@@ -44,7 +44,9 @@ class ChangeClassifier:
 
         self.rules = self.config.get('rules', DEFAULT_RULES)
         self.ai_config = self.config.get('ai_fallback', DEFAULT_AI_CONFIG)
-        self.enable_ai = enable_ai and self.ai_config.get('enabled', True)
+        # CLI --enable-ai flag is the sole authority for enabling AI fallback.
+        # The config 'enabled' field only controls the default when no CLI flag is given.
+        self.enable_ai = enable_ai
 
         # Resolve API key based on configured provider
         from ai_providers import resolve_api_key
@@ -65,11 +67,18 @@ class ChangeClassifier:
             )
         return self._ai_classifier
 
-    def load_config_from_file(self, config_path: str) -> Dict:
-        """Load configuration from YAML file."""
+    def load_config_from_file(self, config_path: str) -> Optional[Dict]:
+        """Load configuration from YAML file.
+
+        Returns:
+            Parsed config dict, empty dict if file not found, or None if YAML is invalid.
+        """
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = yaml.safe_load(f)
+                if not isinstance(config, dict):
+                    print(f"⚠️  Config file is empty or not a YAML mapping: {config_path}", file=sys.stderr)
+                    return {}
                 print(f"✅ Loaded config from {config_path}")
                 return config
         except FileNotFoundError:
@@ -78,7 +87,7 @@ class ChangeClassifier:
             return {}
         except yaml.YAMLError as e:
             print(f"❌ Invalid YAML in config file: {e}", file=sys.stderr)
-            return {}
+            return None
 
     def match_rule(self, change: Dict, rule: Dict) -> bool:
         """
@@ -289,12 +298,20 @@ def main():
     if args.config:
         classifier = ChangeClassifier()
         config = classifier.load_config_from_file(args.config)
+        if config is None:
+            print(f"❌ Cannot proceed with invalid config file: {args.config}", file=sys.stderr)
+            return 1
 
     # Load and merge AI config if provided (highest priority for AI settings)
     if args.ai_config:
         try:
             with open(args.ai_config, 'r', encoding='utf-8') as f:
                 ai_config_override = yaml.safe_load(f)
+
+                if not isinstance(ai_config_override, dict):
+                    print(f"❌ AI config file is empty or not a YAML mapping: {args.ai_config}", file=sys.stderr)
+                    return 1
+
                 print(f"✅ Loaded AI config from {args.ai_config}")
 
                 # Merge AI config into profile config
@@ -308,9 +325,11 @@ def main():
                     config['ai_fallback'] = ai_config_override
 
         except FileNotFoundError:
-            print(f"⚠️  AI config file not found: {args.ai_config}", file=sys.stderr)
+            print(f"❌ AI config file not found: {args.ai_config}", file=sys.stderr)
+            return 1
         except yaml.YAMLError as e:
-            print(f"⚠️  Invalid YAML in AI config file: {e}", file=sys.stderr)
+            print(f"❌ Invalid YAML in AI config file: {e}", file=sys.stderr)
+            return 1
 
     from ai_providers import resolve_api_key, get_provider_class
     ai_config = config.get('ai_fallback', {}) if config else {}

@@ -160,7 +160,7 @@ rules:
       operation: 'create|delete'
       description: 'IAM user lifecycle changes (authentication boundary)'
 
-# AI Fallback Prompts if enabled and rules-based classification is inconclusive
+# AI Fallback Prompts (used when no rule matches and AI fallback is enabled)
 ai_fallback:
 
   # AI classification prompt template

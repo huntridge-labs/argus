@@ -157,12 +157,14 @@ See `examples/configs/ai-config.example.yml` for full AI configuration options.
 
 ## Rule Matching Logic
 
-Rules are evaluated in priority order:
+When a rule has **multiple criteria**, all must match (AND logic). A change must satisfy every criterion in the rule to be classified.
 
-1. **Pattern** - Matches resource name, type, or attributes (regex)
-2. **Resource** - Matches `resource_type.resource_name` or `resource_type.name.attribute`
-3. **Attribute** - Matches specific changed attributes
-4. **Operation** - Filters by create/modify/delete
+Criteria are checked in this order within each rule:
+
+1. **Pattern** - Matches against concatenated `type.name attributes diff` text (regex)
+2. **Resource** - Matches `resource_type.resource_name` or `resource_type.name.attribute` (regex)
+3. **Attribute** - Matches changed attribute names **and** diff text (regex)
+4. **Operation** - Filters by create/modify/delete (exact or pipe-delimited match)
 
 ### Rule Evaluation Order
 
@@ -172,7 +174,9 @@ Categories are checked from **least to most severe**:
 3. TRANSFORMATIVE
 4. IMPACT
 
-**First match wins** - more specific rules should be placed earlier in each category.
+**First match wins** — a routine rule matches before an impact rule. Ensure broader rules don't accidentally capture changes that belong in a higher-severity category.
+
+If **no rule matches** and AI fallback is disabled, the change is classified as **MANUAL_REVIEW**.
 
 ## AI Fallback
 

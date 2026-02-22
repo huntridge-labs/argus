@@ -148,17 +148,46 @@ class TestAIClassifierClassify:
         assert result['confidence'] == 0.5
         assert 'Low confidence' in result['reasoning']
 
-    def test_classify_provider_error_fallback(self):
-        """Provider errors fall back to MANUAL_REVIEW."""
+    def test_classify_provider_network_error_fallback(self):
+        """Network errors fall back to MANUAL_REVIEW."""
         classifier = ai_classifier.AIClassifier(api_key='test-key')
         mock_provider = MagicMock()
-        mock_provider.call.side_effect = Exception("Connection timeout")
+        mock_provider.call.side_effect = ConnectionError("Connection timeout")
         classifier.provider = mock_provider
 
         result = classifier.classify({'type': 'test', 'name': 'test', 'operation': 'modify'})
 
         assert result['category'] == 'MANUAL_REVIEW'
-        assert 'AI error' in result['reasoning']
+        assert 'AI API error' in result['reasoning']
+
+    def test_classify_provider_invalid_json_fallback(self):
+        """Invalid JSON response falls back to MANUAL_REVIEW."""
+        classifier = ai_classifier.AIClassifier(api_key='test-key')
+        mock_provider = MagicMock()
+        mock_provider.call.return_value = "not valid json {{"
+        classifier.provider = mock_provider
+
+        result = classifier.classify({'type': 'test', 'name': 'test', 'operation': 'modify'})
+
+        assert result['category'] == 'MANUAL_REVIEW'
+        assert 'invalid JSON' in result['reasoning']
+
+    def test_classify_provider_malformed_response_fallback(self):
+        """Malformed response data falls back to MANUAL_REVIEW."""
+        import json as _json
+        classifier = ai_classifier.AIClassifier(api_key='test-key')
+        mock_provider = MagicMock()
+        mock_provider.call.return_value = _json.dumps({
+            'category': 'ADAPTIVE',
+            'confidence': 'not-a-number',
+            'reasoning': 'test'
+        })
+        classifier.provider = mock_provider
+
+        result = classifier.classify({'type': 'test', 'name': 'test', 'operation': 'modify'})
+
+        assert result['category'] == 'MANUAL_REVIEW'
+        assert 'parse error' in result['reasoning']
 
 
 class TestBuildPrompt:

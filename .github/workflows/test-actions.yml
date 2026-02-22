@@ -372,6 +372,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          iac_path: 'tests/fixtures/iac'
           post_pr_comment: 'false'
           enable_code_security: ${{ env.ENABLE_CODE_SECURITY }}
           fail_on_severity: 'none'

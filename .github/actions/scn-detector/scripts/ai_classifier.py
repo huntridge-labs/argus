@@ -12,6 +12,8 @@ import json
 import sys
 from typing import Dict, Optional
 
+import requests
+
 from ai_providers import create_provider, resolve_api_key
 from defaults import DEFAULT_AI_CONFIG, merge_config
 
@@ -80,12 +82,26 @@ class AIClassifier:
                 'reasoning': reasoning
             }
 
-        except Exception as e:
-            print(f"⚠️  AI classification failed: {e}", file=sys.stderr)
+        except json.JSONDecodeError as e:
+            print(f"⚠️  AI returned invalid JSON: {e}", file=sys.stderr)
             return {
                 'category': 'MANUAL_REVIEW',
                 'confidence': 0.0,
-                'reasoning': f'AI error: {str(e)}'
+                'reasoning': f'AI returned invalid JSON: {str(e)}'
+            }
+        except (requests.RequestException, ConnectionError, TimeoutError) as e:
+            print(f"⚠️  AI API request failed: {e}", file=sys.stderr)
+            return {
+                'category': 'MANUAL_REVIEW',
+                'confidence': 0.0,
+                'reasoning': f'AI API error: {str(e)}'
+            }
+        except (KeyError, ValueError, TypeError) as e:
+            print(f"⚠️  AI response format error: {e}", file=sys.stderr)
+            return {
+                'category': 'MANUAL_REVIEW',
+                'confidence': 0.0,
+                'reasoning': f'AI response parse error: {str(e)}'
             }
 
     def _build_prompt(self, change: Dict) -> str:
@@ -108,14 +124,23 @@ class AIClassifier:
         system_prompt = self.ai_config.get('system_prompt', '')
         user_prompt_template = self.ai_config.get('user_prompt_template', '')
 
-        # Format user prompt with change details
-        user_prompt = user_prompt_template.format(
-            resource_type=resource_type,
-            resource_name=resource_name,
-            operation=operation,
-            attributes=attributes,
-            diff_snippet=diff_snippet
-        )
+        # Format user prompt with change details.
+        # Use format_map with a safe dict so custom templates with unknown
+        # placeholders pass through unchanged instead of crashing.
+        format_values = {
+            'resource_type': resource_type,
+            'resource_name': resource_name,
+            'operation': operation,
+            'attributes': attributes,
+            'diff_snippet': diff_snippet,
+        }
+
+        class _SafeDict(dict):
+            """Returns the original placeholder for unrecognized keys."""
+            def __missing__(self, key):
+                return '{' + key + '}'
+
+        user_prompt = user_prompt_template.format_map(_SafeDict(format_values))
 
         # Combine system and user prompts
         return f"{system_prompt}\n\n{user_prompt}"
