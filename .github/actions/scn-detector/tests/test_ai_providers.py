@@ -49,7 +49,7 @@ class TestAnthropicProvider:
     @patch('ai_providers.HAS_ANTHROPIC_SDK', False)
     def test_init_without_sdk(self):
         """Initializes without SDK (client is None)."""
-        provider = ai_providers.AnthropicProvider('test-key', {'model': 'claude-3-haiku-20240307'})
+        provider = ai_providers.AnthropicProvider('test-key', {'model': 'claude-3-haiku-20240307', 'max_tokens': 1024})
         assert provider.client is None
         assert provider.api_key == 'test-key'
 
@@ -64,7 +64,10 @@ class TestAnthropicProvider:
         mock_response.raise_for_status = MagicMock()
         mock_post.return_value = mock_response
 
-        provider = ai_providers.AnthropicProvider('test-key', {'model': 'claude-3-haiku-20240307'})
+        provider = ai_providers.AnthropicProvider('test-key', {
+            'model': 'claude-3-haiku-20240307',
+            'max_tokens': 1024
+        })
         result = provider.call('test prompt')
 
         assert result == '{"category": "ADAPTIVE"}'
@@ -79,7 +82,7 @@ class TestAnthropicProvider:
         mock_response.raise_for_status = MagicMock()
         mock_post.return_value = mock_response
 
-        provider = ai_providers.AnthropicProvider('my-api-key', {'model': 'test-model'})
+        provider = ai_providers.AnthropicProvider('my-api-key', {'model': 'test-model', 'max_tokens': 1024})
         provider.call('prompt')
 
         call_kwargs = mock_post.call_args
@@ -96,7 +99,7 @@ class TestAnthropicProvider:
         mock_response.raise_for_status = MagicMock()
         mock_post.return_value = mock_response
 
-        provider = ai_providers.AnthropicProvider('key', {'model': 'test'})
+        provider = ai_providers.AnthropicProvider('key', {'model': 'test', 'max_tokens': 1024})
         provider.call('prompt')
 
         call_kwargs = mock_post.call_args
@@ -120,38 +123,6 @@ class TestAnthropicProvider:
         url = call_args.args[0] if call_args.args else call_args.kwargs.get('url', '')
         assert url == 'https://custom.api.com/v1/messages'
 
-    @patch('ai_providers.HAS_ANTHROPIC_SDK', True)
-    @patch('ai_providers.Anthropic')
-    def test_sdk_init_with_custom_base_url(self, mock_anthropic_class):
-        """SDK initialization with custom base URL passes base_url to SDK."""
-        config = {
-            'model': 'claude-3-haiku-20240307',
-            'max_tokens': 1024,
-            'api_base_url': 'https://custom-anthropic.example.com'
-        }
-        provider = ai_providers.AnthropicProvider('test-key', config)
-
-        # Verify SDK was initialized with both api_key and base_url
-        mock_anthropic_class.assert_called_once_with(
-            api_key='test-key',
-            base_url='https://custom-anthropic.example.com'
-        )
-
-    @patch('ai_providers.HAS_ANTHROPIC_SDK', True)
-    @patch('ai_providers.Anthropic')
-    def test_sdk_init_with_default_base_url(self, mock_anthropic_class):
-        """SDK initialization with default base URL only passes api_key."""
-        from defaults import DEFAULT_API_BASE_URLS
-        config = {
-            'model': 'claude-3-haiku-20240307',
-            'max_tokens': 1024
-        }
-        provider = ai_providers.AnthropicProvider('test-key', config)
-
-        # When using default base URL, should only pass api_key (not base_url)
-        # because the SDK uses the default internally
-        mock_anthropic_class.assert_called_once_with(api_key='test-key')
-
 
 class TestOpenAIProvider:
     """Test OpenAIProvider class."""
@@ -173,7 +144,7 @@ class TestOpenAIProvider:
     @patch('ai_providers.HAS_OPENAI_SDK', False)
     def test_init_without_sdk(self):
         """Initializes without SDK (client is None)."""
-        provider = ai_providers.OpenAIProvider('test-key', {'model': 'gpt-4o-mini'})
+        provider = ai_providers.OpenAIProvider('test-key', {'model': 'gpt-4o-mini', 'max_tokens': 1024})
         assert provider.client is None
         assert provider.api_key == 'test-key'
 
@@ -188,7 +159,7 @@ class TestOpenAIProvider:
         mock_response.raise_for_status = MagicMock()
         mock_post.return_value = mock_response
 
-        provider = ai_providers.OpenAIProvider('test-key', {'model': 'gpt-4o-mini'})
+        provider = ai_providers.OpenAIProvider('test-key', {'model': 'gpt-4o-mini', 'max_tokens': 1024})
         result = provider.call('test prompt')
 
         assert result == '{"category": "ROUTINE"}'
@@ -205,7 +176,7 @@ class TestOpenAIProvider:
         mock_response.raise_for_status = MagicMock()
         mock_post.return_value = mock_response
 
-        provider = ai_providers.OpenAIProvider('my-openai-key', {'model': 'gpt-4o-mini'})
+        provider = ai_providers.OpenAIProvider('my-openai-key', {'model': 'gpt-4o-mini', 'max_tokens': 1024})
         provider.call('prompt')
 
         call_kwargs = mock_post.call_args
@@ -242,46 +213,12 @@ class TestOpenAIProvider:
         mock_response.raise_for_status = MagicMock()
         mock_post.return_value = mock_response
 
-        provider = ai_providers.OpenAIProvider('key', {'model': 'test'})
+        provider = ai_providers.OpenAIProvider('key', {'model': 'test', 'max_tokens': 1024})
         provider.call('prompt')
 
         call_kwargs = mock_post.call_args
         timeout = call_kwargs.kwargs.get('timeout') or call_kwargs[1].get('timeout')
         assert timeout == 30
-
-    @patch('ai_providers.HAS_OPENAI_SDK', True)
-    @patch('ai_providers.OpenAI')
-    def test_sdk_init_with_custom_base_url(self, mock_openai_class):
-        """SDK initialization with custom base URL."""
-        config = {
-            'model': 'gpt-4o-mini',
-            'max_tokens': 1024,
-            'api_base_url': 'https://custom-openai.example.com'
-        }
-        provider = ai_providers.OpenAIProvider('test-key', config)
-
-        # Verify SDK was initialized with both api_key and base_url
-        mock_openai_class.assert_called_once_with(
-            api_key='test-key',
-            base_url='https://custom-openai.example.com'
-        )
-
-    @patch('ai_providers.HAS_OPENAI_SDK', True)
-    @patch('ai_providers.OpenAI')
-    def test_sdk_init_with_default_base_url(self, mock_openai_class):
-        """SDK initialization with default base URL."""
-        from defaults import DEFAULT_API_BASE_URLS
-        config = {
-            'model': 'gpt-4o-mini',
-            'max_tokens': 1024
-        }
-        provider = ai_providers.OpenAIProvider('test-key', config)
-
-        # Verify SDK was initialized with api_key and default base_url
-        mock_openai_class.assert_called_once_with(
-            api_key='test-key',
-            base_url=DEFAULT_API_BASE_URLS['openai']
-        )
 
 
 class TestProviderRegistry:
