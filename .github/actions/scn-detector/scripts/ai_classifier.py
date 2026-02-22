@@ -108,14 +108,23 @@ class AIClassifier:
         system_prompt = self.ai_config.get('system_prompt', '')
         user_prompt_template = self.ai_config.get('user_prompt_template', '')
 
-        # Format user prompt with change details
-        user_prompt = user_prompt_template.format(
-            resource_type=resource_type,
-            resource_name=resource_name,
-            operation=operation,
-            attributes=attributes,
-            diff_snippet=diff_snippet
-        )
+        # Format user prompt with change details.
+        # Use format_map with a safe dict so custom templates with unknown
+        # placeholders pass through unchanged instead of crashing.
+        format_values = {
+            'resource_type': resource_type,
+            'resource_name': resource_name,
+            'operation': operation,
+            'attributes': attributes,
+            'diff_snippet': diff_snippet,
+        }
+
+        class _SafeDict(dict):
+            """Returns the original placeholder for unrecognized keys."""
+            def __missing__(self, key):
+                return '{' + key + '}'
+
+        user_prompt = user_prompt_template.format_map(_SafeDict(format_values))
 
         # Combine system and user prompts
         return f"{system_prompt}\n\n{user_prompt}"
