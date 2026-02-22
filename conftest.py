@@ -32,7 +32,11 @@ def _import_script(path: Path) -> bool:
             sys.modules[module_name] = module
             spec.loader.exec_module(module)
             return True
-    except Exception as exc:
+    except (Exception, SystemExit) as exc:
+        # SystemExit is raised by scripts that call argparse.parse_args()
+        # at module level (outside `if __name__ == '__main__':` guard).
+        # Clean up the partially-registered module to avoid stale entries.
+        sys.modules.pop(module_name, None)
         warnings.warn(
             f"conftest: failed to import {path.relative_to(REPO_ROOT)} "
             f"for coverage — {type(exc).__name__}: {exc}",
@@ -50,6 +54,12 @@ def pytest_configure(config):
     failed = 0
 
     for scripts_dir in sorted(ACTIONS_DIR.glob("*/scripts")):
+        # Add scripts dir to sys.path so sibling imports resolve
+        # (e.g. analyze_iac_changes.py does "from diff_helpers import ...")
+        scripts_str = str(scripts_dir)
+        if scripts_str not in sys.path:
+            sys.path.insert(0, scripts_str)
+
         for py_file in sorted(scripts_dir.glob("*.py")):
             if _import_script(py_file):
                 imported += 1

@@ -14,6 +14,10 @@ from unittest.mock import patch, MagicMock
 REPO_ROOT = Path(__file__).resolve().parents[4]
 SCRIPTS_DIR = REPO_ROOT / ".github" / "actions" / "scn-detector" / "scripts"
 
+# Add scripts dir to sys.path so sibling imports (from diff_helpers import ...) resolve
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
 spec = importlib.util.spec_from_file_location(
     "analyze_iac_changes",
     SCRIPTS_DIR / "analyze_iac_changes.py"
