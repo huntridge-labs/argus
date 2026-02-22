@@ -421,7 +421,7 @@ max_tokens: 2048
         assert 'summary' in output_data
 
     def test_main_with_missing_ai_config_file(self, tmp_path, monkeypatch, capsys):
-        """Test main() with missing AI config file (should warn but continue)."""
+        """Test main() with missing AI config file (should fail since user explicitly specified it)."""
         # Create test input file
         input_file = tmp_path / "input.json"
         input_file.write_text(json.dumps({'changes': []}))
@@ -439,16 +439,16 @@ max_tokens: 2048
             '--ai-config', str(ai_config_file)
         ])
 
-        # Run main() - should succeed with warning
+        # Run main() - should fail because user explicitly specified a file that doesn't exist
         result = classify_changes.main()
-        assert result is None or result == 0
+        assert result == 1
 
-        # Check stderr for warning
+        # Check stderr for error message
         captured = capsys.readouterr()
         assert 'AI config file not found' in captured.err
 
     def test_main_with_invalid_ai_config_file(self, tmp_path, monkeypatch, capsys):
-        """Test main() with invalid YAML in AI config file."""
+        """Test main() with invalid YAML in AI config file (should fail)."""
         # Create test input file
         input_file = tmp_path / "input.json"
         input_file.write_text(json.dumps({'changes': []}))
@@ -467,11 +467,11 @@ max_tokens: 2048
             '--ai-config', str(ai_config_file)
         ])
 
-        # Run main() - should succeed with warning
+        # Run main() - should fail because AI config has invalid YAML
         result = classify_changes.main()
-        assert result is None or result == 0
+        assert result == 1
 
-        # Check stderr for warning
+        # Check stderr for error message
         captured = capsys.readouterr()
         assert 'Invalid YAML in AI config file' in captured.err
 
