@@ -51,7 +51,7 @@ Classify this change. Respond ONLY with valid JSON in this exact format:
 # Default Classification Rules (used if no config profile is provided)
 DEFAULT_RULES = {
     'routine': [
-        {'pattern': r'tags\.*', 'description': 'Tag changes'},
+        {'pattern': r'tags.*', 'description': 'Tag changes'},
         {'pattern': r'description', 'description': 'Description changes'},
     ],
     'adaptive': [
