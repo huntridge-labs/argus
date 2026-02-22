@@ -362,3 +362,51 @@ decisions:
       Python is now the lingua franca for action scripts and tests.
       Node.js remains for release tooling (release-it, commitlint, husky) which is
       appropriate as those are developer workflow tools, not pipeline logic.
+
+  - id: ADR-010
+    title: "Hybrid rule-based + AI classification for FedRAMP SCN detection"
+    date: "2026-02-21"
+    status: accepted
+
+    context: |
+      FedRAMP 20X requires classifying IaC changes into SCN categories (Routine,
+      Adaptive, Transformative, Impact). Some changes map cleanly to rules (e.g.,
+      tag changes are always Routine), but many are ambiguous and require judgment.
+      The project also has an air-gap constraint — some environments cannot make
+      external API calls.
+
+    decision: |
+      Use a hybrid classification approach:
+      1. Rule-based pattern matching first (deterministic, fast, air-gap safe)
+      2. AI fallback via Claude Haiku for ambiguous cases (optional, requires API key)
+      3. MANUAL_REVIEW category when neither method can classify with confidence
+
+    alternatives_considered:
+      - name: "Rules only"
+        rejected_because: "Cannot handle novel resource types or complex attribute interactions"
+
+      - name: "AI only"
+        rejected_because: "Violates air-gap constraint, adds latency and cost to every classification"
+
+      - name: "ML model trained on FedRAMP data"
+        rejected_because: "Insufficient training data, high maintenance burden, still needs API"
+
+    consequences:
+      positive:
+        - "Works fully offline with rule-based classification"
+        - "AI improves accuracy for ambiguous cases when available"
+        - "Graceful degradation — MANUAL_REVIEW instead of wrong classification"
+        - "Configurable confidence threshold prevents low-confidence AI results"
+        - "Audit trail records which method was used per classification"
+      negative:
+        - "AI fallback requires Anthropic API key and network access"
+        - "Rule maintenance burden grows with supported IaC providers"
+        - "Two code paths to test and maintain"
+
+    implementation: |
+      .github/actions/scn-detector/scripts/classify_changes.py:
+        - ChangeClassifier.classify_with_rules() — pattern matching
+        - ChangeClassifier.classify_with_ai() — Claude Haiku fallback
+        - classify_change() orchestrates: rules first, AI if unmatched
+      anthropic SDK is optional (try/except ImportError)
+      requests library used as HTTP fallback when SDK unavailable
