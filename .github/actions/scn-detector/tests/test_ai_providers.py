@@ -25,6 +25,15 @@ ai_providers = importlib.util.module_from_spec(spec)
 sys.modules["ai_providers"] = ai_providers
 spec.loader.exec_module(ai_providers)
 
+# Import defaults module
+defaults_spec = importlib.util.spec_from_file_location(
+    "defaults",
+    SCRIPTS_DIR / "defaults.py"
+)
+defaults = importlib.util.module_from_spec(defaults_spec)
+sys.modules["defaults"] = defaults
+defaults_spec.loader.exec_module(defaults)
+
 
 pytestmark = pytest.mark.unit
 
@@ -38,12 +47,11 @@ class TestAnthropicProvider:
 
     def test_default_base_url(self):
         """Default base URL for Anthropic comes from defaults module."""
-        from defaults import DEFAULT_API_BASE_URLS
         provider = ai_providers.AnthropicProvider('test-key', {
             'model': 'claude-3-haiku-20240307',
             'max_tokens': 1024
         })
-        assert provider.base_url == DEFAULT_API_BASE_URLS['anthropic']
+        assert provider.base_url == defaults.DEFAULT_API_BASE_URLS['anthropic']
         assert provider.base_url == 'https://api.anthropic.com'
 
     @patch('ai_providers.HAS_ANTHROPIC_SDK', False)
@@ -133,12 +141,11 @@ class TestOpenAIProvider:
 
     def test_default_base_url(self):
         """Default base URL for OpenAI comes from defaults module."""
-        from defaults import DEFAULT_API_BASE_URLS
         provider = ai_providers.OpenAIProvider('test-key', {
             'model': 'gpt-4o-mini',
             'max_tokens': 1024
         })
-        assert provider.base_url == DEFAULT_API_BASE_URLS['openai']
+        assert provider.base_url == defaults.DEFAULT_API_BASE_URLS['openai']
         assert provider.base_url == 'https://api.openai.com/v1'
 
     @patch('ai_providers.HAS_OPENAI_SDK', False)
