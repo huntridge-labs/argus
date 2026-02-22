@@ -89,12 +89,25 @@ components:
     purpose: "FedRAMP Significant Change Notification detection and classification"
     type: compliance-action
     description: "Analyzes IaC changes and classifies them per FedRAMP 20X SCN guidelines"
-    classification_method: "Hybrid (rule-based + AI fallback)"
+    classification_method: "Hybrid (rule-based + multi-provider AI fallback)"
     supported_formats: [terraform, kubernetes, cloudformation]
+    ai_providers:
+      supported: [anthropic, openai]
+      default: anthropic
+      configurable_via: "ai_fallback section in scn-config.yml"
+      env_vars:
+        anthropic: "ANTHROPIC_API_KEY"
+        openai: "OPENAI_API_KEY"
+      features:
+        - "SDK-first with raw HTTP fallback"
+        - "Custom base URL for OpenAI-compatible APIs (Azure, Ollama)"
+        - "Configurable model, confidence threshold, max tokens"
     structure:
       action.yml: "Composite action with 11 steps"
       scripts/analyze_iac_changes.py: "Git diff → IaC change extraction"
       scripts/classify_changes.py: "Rule-based + AI classification engine"
+      scripts/ai_classifier.py: "AI classification orchestrator (provider-agnostic)"
+      scripts/ai_providers.py: "Provider abstraction (Anthropic, OpenAI)"
       scripts/generate_scn_report.py: "Markdown + JSON report generation"
       scripts/create_scn_issue.py: "GitHub Issue creator with timelines"
       tests/: "pytest test suite with 80%+ coverage"

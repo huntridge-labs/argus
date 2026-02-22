@@ -406,7 +406,75 @@ decisions:
     implementation: |
       .github/actions/scn-detector/scripts/classify_changes.py:
         - ChangeClassifier.classify_with_rules() — pattern matching
-        - ChangeClassifier.classify_with_ai() — Claude Haiku fallback
+        - ChangeClassifier.classify_with_ai() — multi-provider AI fallback
         - classify_change() orchestrates: rules first, AI if unmatched
-      anthropic SDK is optional (try/except ImportError)
+      Provider abstraction in ai_providers.py (see ADR-011)
+      Each provider SDK is optional (try/except ImportError)
       requests library used as HTTP fallback when SDK unavailable
+
+  - id: ADR-011
+    title: "Multi-provider AI abstraction for SCN classifier"
+    date: "2026-02-21"
+    status: accepted
+
+    context: |
+      ADR-010 established hybrid rule-based + AI classification but hardcoded
+      the AI provider to Anthropic Claude Haiku. Users need to:
+      1. Choose their preferred AI model (e.g., claude-3-5-sonnet, gpt-4o-mini)
+      2. Choose their preferred provider (Anthropic or OpenAI)
+      3. Use OpenAI-compatible APIs (Azure OpenAI, Ollama, vLLM) via custom base URLs
+      The classifier was tightly coupled to Anthropic's API format, SDK, and env vars.
+
+    decision: |
+      Add a lightweight provider abstraction layer in ai_providers.py with:
+      1. Registry pattern (PROVIDERS dict) mapping provider names to classes
+      2. Factory function (create_provider) for instantiation
+      3. Each provider implements call(prompt) → str with SDK-first + HTTP fallback
+      4. Provider-aware API key resolution (resolve_api_key)
+      5. Config-driven via ai_fallback.provider field in scn-config.yml
+
+    alternatives_considered:
+      - name: "Abstract base class hierarchy"
+        rejected_because: "Over-engineered for two providers; registry pattern is simpler"
+
+      - name: "LiteLLM or similar library"
+        rejected_because: "Adds external dependency; violates air-gap constraint for offline use"
+
+      - name: "OpenAI-compatible only (both providers use OpenAI format)"
+        rejected_because: "Anthropic API format differs significantly; would require Anthropic proxy"
+
+    consequences:
+      positive:
+        - "Users can choose Anthropic or OpenAI models via config"
+        - "Custom base URL enables Azure OpenAI, Ollama, vLLM support"
+        - "Backward compatible — missing provider field defaults to anthropic"
+        - "ai_classifier.py simplified (183 → 130 lines) by extracting API plumbing"
+        - "Easy to add new providers (implement call/ENV_VAR/DEFAULT_BASE_URL)"
+      negative:
+        - "One additional Python file (ai_providers.py, ~175 lines)"
+        - "Two SDKs to conditionally install (anthropic, openai)"
+
+    implementation: |
+      New file: .github/actions/scn-detector/scripts/ai_providers.py
+        - AnthropicProvider: SDK + HTTP, x-api-key header, /v1/messages endpoint
+        - OpenAIProvider: SDK + HTTP, Bearer token, /v1/chat/completions endpoint
+        - PROVIDERS registry, create_provider factory, resolve_api_key helper
+
+      Modified: ai_classifier.py
+        - Uses create_provider() instead of direct Anthropic calls
+        - Provider-agnostic: self.provider.call(prompt)
+
+      Modified: classify_changes.py
+        - Dynamic API key resolution per provider
+        - Provider-specific env var in warning messages
+
+      Modified: action.yml
+        - Installs openai SDK when OPENAI_API_KEY is set
+        - Passes both API keys to classify step
+
+      Config: scn-config.yml ai_fallback section
+        provider: "anthropic" | "openai"
+        model: "<provider-specific model name>"
+        api_base_url: "<optional custom endpoint>"
+
+    supersedes: "Refines ADR-010 (which assumed Anthropic-only)"
