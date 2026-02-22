@@ -264,14 +264,20 @@ class TestProviderRegistry:
     @patch('ai_providers.HAS_ANTHROPIC_SDK', False)
     def test_create_provider_anthropic(self):
         """Factory creates AnthropicProvider."""
-        provider = ai_providers.create_provider('anthropic', 'key', {'model': 'test'})
+        provider = ai_providers.create_provider('anthropic', 'key', {'model': 'test', 'max_tokens': 1024})
         assert isinstance(provider, ai_providers.AnthropicProvider)
 
     @patch('ai_providers.HAS_OPENAI_SDK', False)
     def test_create_provider_openai(self):
         """Factory creates OpenAIProvider."""
-        provider = ai_providers.create_provider('openai', 'key', {'model': 'test'})
+        provider = ai_providers.create_provider('openai', 'key', {'model': 'test', 'max_tokens': 1024})
         assert isinstance(provider, ai_providers.OpenAIProvider)
+
+    @patch('ai_providers.HAS_ANTHROPIC_SDK', False)
+    def test_create_provider_missing_config_raises(self):
+        """Provider with missing required config raises ValueError."""
+        with pytest.raises(ValueError, match="missing required keys"):
+            ai_providers.create_provider('anthropic', 'key', {'model': 'test'})
 
     def test_create_provider_unknown_raises(self):
         """Unknown provider raises ValueError."""
