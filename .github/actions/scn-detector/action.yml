@@ -142,7 +142,6 @@ runs:
           echo "❌ IaC analysis failed"
           echo "has_changes=false" >> $GITHUB_OUTPUT
         fi
-      continue-on-error: true
 
     # Step 5: Classify changes using rules + AI fallback
     - name: Classify changes
@@ -191,7 +190,6 @@ runs:
         else
           echo "❌ Classification failed"
         fi
-      continue-on-error: true
 
     # Step 6: Generate SCN reports
     - name: Generate SCN reports
@@ -216,7 +214,6 @@ runs:
         else
           echo "❌ Report generation failed"
         fi
-      continue-on-error: true
 
     # Step 7: Upload artifacts
     - name: Upload SCN artifacts
