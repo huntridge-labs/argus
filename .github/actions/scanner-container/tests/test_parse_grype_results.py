@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
-"""Unit tests for parse_grype_results.py using pytest."""
+"""Unit tests for parse_grype_results.py using pytest.
 
+Uses in-process imports instead of subprocess for fast execution.
+"""
+
+import importlib.util
 import json
 import subprocess
 import sys
@@ -15,19 +19,18 @@ pytestmark = pytest.mark.unit
 SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
 PARSER_SCRIPT = SCRIPTS_DIR / "parse_grype_results.py"
 
+# Load module in-process via importlib
+spec = importlib.util.spec_from_file_location(
+    "parse_grype_results", PARSER_SCRIPT,
+)
+parse_grype = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(parse_grype)
+
 # Get fixtures directory
 FIXTURES_DIR = (
-    Path(__file__).parent.parent.parent.parent.parent / "tests" / "fixtures" / "scanner-outputs" / "grype"
+    Path(__file__).parent.parent.parent.parent.parent
+    / "tests" / "fixtures" / "scanner-outputs" / "grype"
 )
-
-
-def run_parser(command: str, json_file: Path, *args) -> str:
-    """Run the parser script and return output."""
-    cmd = [sys.executable, str(PARSER_SCRIPT), command, str(json_file)]
-    cmd.extend(args)
-
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-    return result.stdout.strip()
 
 
 class TestParseGrypeResults:
@@ -37,102 +40,87 @@ class TestParseGrypeResults:
 
     def test_counts_zero_findings(self):
         """Test counts command with zero findings."""
-        result = run_parser("counts", FIXTURES_DIR / "results-zero-findings.json")
+        result = parse_grype.get_counts(str(FIXTURES_DIR / "results-zero-findings.json"))
         assert result == "0 0 0 0"
 
     def test_counts_with_findings_and_errors(self, tmp_path):
         """Test counts with findings (including errors: nonexistent, empty, invalid JSON)."""
-        # With findings - Grype uses: Critical, High, Medium, Low
-        result = run_parser("counts", FIXTURES_DIR / "results-with-findings.json")
+        result = parse_grype.get_counts(str(FIXTURES_DIR / "results-with-findings.json"))
         parts = result.split()
         assert len(parts) == 4
         for part in parts:
             assert int(part) >= 0
 
         # Nonexistent file
-        result = run_parser("counts", Path("/nonexistent/file.json"))
+        result = parse_grype.get_counts("/nonexistent/file.json")
         assert result == "0 0 0 0"
 
         # Empty file
         empty_file = tmp_path / "empty.json"
         empty_file.write_text("")
-        result = run_parser("counts", empty_file)
+        result = parse_grype.get_counts(str(empty_file))
         assert result == "0 0 0 0"
 
         # Invalid JSON
         bad_file = tmp_path / "bad.json"
         bad_file.write_text("{invalid json")
-        result = run_parser("counts", bad_file)
+        result = parse_grype.get_counts(str(bad_file))
         assert result == "0 0 0 0"
 
     # ====== Tests for 'total' command ======
 
     def test_total_zero_findings(self):
         """Test total command with zero findings."""
-        result = run_parser("total", FIXTURES_DIR / "results-zero-findings.json")
+        result = parse_grype.get_total(str(FIXTURES_DIR / "results-zero-findings.json"))
         assert result == "0"
 
     def test_total_with_findings(self):
         """Test total command with findings and nonexistent file."""
-        # With findings
-        result = run_parser("total", FIXTURES_DIR / "results-with-findings.json")
+        result = parse_grype.get_total(str(FIXTURES_DIR / "results-with-findings.json"))
         assert int(result) > 0
 
-        # Nonexistent file
-        result = run_parser("total", Path("/nonexistent/file.json"))
+        result = parse_grype.get_total("/nonexistent/file.json")
         assert result == "0"
 
     # ====== Tests for 'unique' command ======
 
     def test_unique_zero_findings(self):
         """Test unique command with zero findings."""
-        result = run_parser("unique", FIXTURES_DIR / "results-zero-findings.json")
+        result = parse_grype.get_unique(str(FIXTURES_DIR / "results-zero-findings.json"))
         assert result == "0"
 
     def test_unique_with_findings_and_duplicates(self, tmp_path):
         """Test unique command with findings (including duplicate deduplication)."""
-        # With findings
-        result = run_parser("unique", FIXTURES_DIR / "results-with-findings.json")
+        result = parse_grype.get_unique(str(FIXTURES_DIR / "results-with-findings.json"))
         assert int(result) > 0
 
         # With duplicates - should deduplicate
         json_file = tmp_path / "duplicates.json"
         data = {
             "matches": [
-                {
-                    "vulnerability": {
-                        "id": "CVE-2023-1111",
-                        "severity": "High",
-                    }
-                },
-                {
-                    "vulnerability": {
-                        "id": "CVE-2023-1111",  # duplicate
-                        "severity": "High",
-                    }
-                },
-                {
-                    "vulnerability": {
-                        "id": "CVE-2023-2222",
-                        "severity": "Medium",
-                    }
-                },
+                {"vulnerability": {"id": "CVE-2023-1111", "severity": "High"}},
+                {"vulnerability": {"id": "CVE-2023-1111", "severity": "High"}},
+                {"vulnerability": {"id": "CVE-2023-2222", "severity": "Medium"}},
             ]
         }
         json_file.write_text(json.dumps(data))
-        result = run_parser("unique", json_file)
+        result = parse_grype.get_unique(str(json_file))
         assert result == "2"
 
     # ====== Tests for 'unique-by-severity' command ======
 
     def test_unique_by_severity_zero_findings(self):
         """Test unique-by-severity with zero findings."""
-        result = run_parser("unique-by-severity", FIXTURES_DIR / "results-zero-findings.json")
+        result = parse_grype.get_unique_by_severity(
+            str(FIXTURES_DIR / "results-zero-findings.json"),
+        )
         assert result == "0 0 0 0"
 
     def test_unique_by_severity_with_findings(self):
         """Test unique-by-severity with findings."""
-        result = run_parser("unique-by-severity", FIXTURES_DIR / "results-with-findings.json")
+        result = parse_grype.get_unique_by_severity(
+            str(FIXTURES_DIR / "results-with-findings.json"),
+        )
         parts = result.split()
         assert len(parts) == 4
 
@@ -140,13 +128,12 @@ class TestParseGrypeResults:
 
     def test_cves_zero_findings(self):
         """Test cves command with zero findings."""
-        result = run_parser("cves", FIXTURES_DIR / "results-zero-findings.json")
+        result = parse_grype.get_cves(str(FIXTURES_DIR / "results-zero-findings.json"))
         assert result == ""
 
     def test_cves_with_findings_and_sorting(self, tmp_path):
         """Test cves command with findings (including sorting and deduplication)."""
-        # With findings - should return CVE IDs
-        result = run_parser("cves", FIXTURES_DIR / "results-with-findings.json")
+        result = parse_grype.get_cves(str(FIXTURES_DIR / "results-with-findings.json"))
         lines = result.split("\n")
         assert len(lines) > 0
         assert any("CVE-" in line for line in lines)
@@ -157,32 +144,36 @@ class TestParseGrypeResults:
             "matches": [
                 {"vulnerability": {"id": "CVE-2023-3333"}},
                 {"vulnerability": {"id": "CVE-2023-1111"}},
-                {"vulnerability": {"id": "CVE-2023-3333"}},  # duplicate
+                {"vulnerability": {"id": "CVE-2023-3333"}},
                 {"vulnerability": {"id": "CVE-2023-2222"}},
             ]
         }
         json_file.write_text(json.dumps(data))
-        result = run_parser("cves", json_file)
+        result = parse_grype.get_cves(str(json_file))
         lines = result.split("\n")
         assert len(lines) == 3
-        assert lines == sorted(lines)  # Check sorting
+        assert lines == sorted(lines)
 
     # ====== Tests for 'cves-by-severity' command ======
 
     def test_cves_by_severity_filters(self):
         """Test cves-by-severity filters by severity level."""
-        # Test multiple severity levels (Critical, High, Medium, Low, Unknown)
+        fixture = str(FIXTURES_DIR / "results-with-findings.json")
         for severity in ["Critical", "High", "Medium", "Low"]:
-            result = run_parser("cves-by-severity", FIXTURES_DIR / "results-with-findings.json", "-s", severity)
+            result = parse_grype.get_cves_by_severity(fixture, severity)
             assert "CVE-" in result or result == ""
 
         # Unknown severity should return empty
-        result = run_parser("cves-by-severity", FIXTURES_DIR / "results-with-findings.json", "-s", "Unknown")
+        result = parse_grype.get_cves_by_severity(fixture, "Unknown")
         assert result == ""
 
     def test_cves_by_severity_missing_flag(self):
-        """Test cves-by-severity without severity flag."""
-        cmd = [sys.executable, str(PARSER_SCRIPT), "cves-by-severity", str(FIXTURES_DIR / "results-with-findings.json")]
+        """Test cves-by-severity without severity flag (CLI validation)."""
+        cmd = [
+            sys.executable, str(PARSER_SCRIPT),
+            "cves-by-severity",
+            str(FIXTURES_DIR / "results-with-findings.json"),
+        ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         assert result.returncode != 0
 
@@ -190,23 +181,24 @@ class TestParseGrypeResults:
 
     def test_table_zero_findings(self):
         """Test table command with zero findings."""
-        result = run_parser("table", FIXTURES_DIR / "results-zero-findings.json")
+        result = parse_grype.get_table(str(FIXTURES_DIR / "results-zero-findings.json"))
         assert "No data" in result
 
     def test_table_with_findings_limit_and_emoji(self):
         """Test table command with findings, limit, and emojis."""
-        # With findings - should contain pipe separators and CVE IDs
-        result = run_parser("table", FIXTURES_DIR / "results-with-findings.json")
+        fixture = str(FIXTURES_DIR / "results-with-findings.json")
+
+        result = parse_grype.get_table(fixture)
         assert "|" in result
         assert "CVE-" in result or "CRITICAL" in result.upper()
 
-        # With limit - should respect row count
-        result = run_parser("table", FIXTURES_DIR / "results-with-findings.json", "-l", "2")
-        lines = [l for l in result.split("\n") if "|" in l and "CVE" in l]
+        # With limit
+        result = parse_grype.get_table(fixture, limit=2)
+        lines = [line for line in result.split("\n") if "|" in line and "CVE" in line]
         assert len(lines) <= 2
 
         # Check for severity emojis
-        result = run_parser("table", FIXTURES_DIR / "results-with-findings.json")
+        result = parse_grype.get_table(fixture)
         assert any(emoji in result for emoji in ["🚨", "⚠️", "🟡", "🔵"])
 
     # ====== Integration tests ======
@@ -214,9 +206,9 @@ class TestParseGrypeResults:
     def test_malformed_matches_structure(self, tmp_path):
         """Test with malformed matches structure."""
         json_file = tmp_path / "malformed.json"
-        data = {"matches": "not a list"}  # Wrong type
+        data = {"matches": "not a list"}
         json_file.write_text(json.dumps(data))
-        result = run_parser("counts", json_file)
+        result = parse_grype.get_counts(str(json_file))
         assert result == "0 0 0 0"
 
     def test_missing_fields(self, tmp_path):
@@ -224,17 +216,11 @@ class TestParseGrypeResults:
         json_file = tmp_path / "missing_fields.json"
         data = {
             "matches": [
-                {
-                    "vulnerability": {
-                        "id": "CVE-2023-1111"
-                        # Missing severity
-                    }
-                }
+                {"vulnerability": {"id": "CVE-2023-1111"}},
             ]
         }
         json_file.write_text(json.dumps(data))
-        result = run_parser("counts", json_file)
-        # Should default missing severity to Low
+        result = parse_grype.get_counts(str(json_file))
         assert result == "0 0 0 1"
 
     def test_empty_matches(self, tmp_path):
@@ -242,7 +228,7 @@ class TestParseGrypeResults:
         json_file = tmp_path / "empty_matches.json"
         data = {"matches": []}
         json_file.write_text(json.dumps(data))
-        result = run_parser("counts", json_file)
+        result = parse_grype.get_counts(str(json_file))
         assert result == "0 0 0 0"
 
     def test_multiple_matches(self, tmp_path):
@@ -250,22 +236,12 @@ class TestParseGrypeResults:
         json_file = tmp_path / "multi_match.json"
         data = {
             "matches": [
-                {
-                    "vulnerability": {
-                        "id": "CVE-2023-1111",
-                        "severity": "Critical",
-                    }
-                },
-                {
-                    "vulnerability": {
-                        "id": "CVE-2023-2222",
-                        "severity": "High",
-                    }
-                },
+                {"vulnerability": {"id": "CVE-2023-1111", "severity": "Critical"}},
+                {"vulnerability": {"id": "CVE-2023-2222", "severity": "High"}},
             ]
         }
         json_file.write_text(json.dumps(data))
-        result = run_parser("counts", json_file)
+        result = parse_grype.get_counts(str(json_file))
         assert result == "1 1 0 0"
 
     def test_grype_severity_casing(self, tmp_path):
@@ -280,19 +256,23 @@ class TestParseGrypeResults:
             ]
         }
         json_file.write_text(json.dumps(data))
-        result = run_parser("counts", json_file)
+        result = parse_grype.get_counts(str(json_file))
         assert result == "1 1 1 1"
 
     def test_help_command(self):
-        """Test help flag."""
+        """Test help flag (CLI validation)."""
         cmd = [sys.executable, str(PARSER_SCRIPT), "--help"]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         assert result.returncode == 0
         assert "counts" in result.stdout
 
     def test_unknown_command(self):
-        """Test unknown command."""
-        cmd = [sys.executable, str(PARSER_SCRIPT), "unknown", str(FIXTURES_DIR / "results-zero-findings.json")]
+        """Test unknown command (CLI validation)."""
+        cmd = [
+            sys.executable, str(PARSER_SCRIPT),
+            "unknown",
+            str(FIXTURES_DIR / "results-zero-findings.json"),
+        ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         assert result.returncode != 0
         assert "Unknown command" in result.stderr
@@ -306,19 +286,16 @@ class TestParseGrypeResults:
                     "vulnerability": {
                         "id": "CVE-2023-1111",
                         "severity": "High",
-                        "fix": {"versions": []}  # No fix versions
+                        "fix": {"versions": []},
                     },
-                    "artifact": {
-                        "name": "test-package",
-                        "version": "1.0.0",
-                    }
+                    "artifact": {"name": "test-package", "version": "1.0.0"},
                 }
             ]
         }
         json_file.write_text(json.dumps(data))
-        result = run_parser("table", json_file)
+        result = parse_grype.get_table(str(json_file))
         assert "CVE-2023-1111" in result
-        assert "N/A" in result  # Should show N/A for missing fix
+        assert "N/A" in result
 
 
 class TestEdgeCases:
@@ -328,45 +305,44 @@ class TestEdgeCases:
         """Test with empty JSON file."""
         json_file = tmp_path / "empty.json"
         json_file.write_text("")
-        result = run_parser("counts", json_file)
+        result = parse_grype.get_counts(str(json_file))
         assert result == "0 0 0 0"
 
     def test_malformed_json(self, tmp_path):
         """Test with malformed JSON."""
         json_file = tmp_path / "bad.json"
         json_file.write_text("{invalid json")
-        result = run_parser("counts", json_file)
+        result = parse_grype.get_counts(str(json_file))
         assert result == "0 0 0 0"
 
     def test_json_with_no_matches(self, tmp_path):
         """Test JSON with missing matches field."""
         json_file = tmp_path / "no_matches.json"
         json_file.write_text(json.dumps({}))
-        result = run_parser("counts", json_file)
+        result = parse_grype.get_counts(str(json_file))
         assert result == "0 0 0 0"
 
     def test_matches_not_array(self, tmp_path):
         """Test when matches is not an array."""
         json_file = tmp_path / "not_array.json"
         json_file.write_text(json.dumps({"matches": "not an array"}))
-        result = run_parser("counts", json_file)
+        result = parse_grype.get_counts(str(json_file))
         assert result == "0 0 0 0"
 
     def test_empty_matches_array(self, tmp_path):
         """Test with empty matches array."""
         json_file = tmp_path / "empty_matches.json"
         json_file.write_text(json.dumps({"matches": []}))
-        result = run_parser("counts", json_file)
+        result = parse_grype.get_counts(str(json_file))
         assert result == "0 0 0 0"
 
     def test_matches_without_vulnerability_field(self, tmp_path):
         """Test match without vulnerability field."""
         json_file = tmp_path / "no_vuln.json"
         json_file.write_text(json.dumps({
-            "matches": [{"artifact": {"name": "pkg"}}]
+            "matches": [{"artifact": {"name": "pkg"}}],
         }))
-        result = run_parser("counts", json_file)
-        # Match without vulnerability field uses empty dict, which defaults to "Low"
+        result = parse_grype.get_counts(str(json_file))
         assert result == "0 0 0 1"
 
     def test_vulnerability_missing_severity(self, tmp_path):
@@ -375,11 +351,10 @@ class TestEdgeCases:
         json_file.write_text(json.dumps({
             "matches": [{
                 "vulnerability": {"id": "CVE-2023-1111"},
-                "artifact": {"name": "pkg"}
-            }]
+                "artifact": {"name": "pkg"},
+            }],
         }))
-        result = run_parser("counts", json_file)
-        # Missing severity should be treated as Low
+        result = parse_grype.get_counts(str(json_file))
         assert result.startswith("0 0 0")
 
     def test_unknown_severity_level(self, tmp_path):
@@ -387,15 +362,11 @@ class TestEdgeCases:
         json_file = tmp_path / "unknown_sev.json"
         json_file.write_text(json.dumps({
             "matches": [{
-                "vulnerability": {
-                    "id": "CVE-2023-1111",
-                    "severity": "Unknown"
-                },
-                "artifact": {"name": "pkg", "version": "1.0"}
-            }]
+                "vulnerability": {"id": "CVE-2023-1111", "severity": "Unknown"},
+                "artifact": {"name": "pkg", "version": "1.0"},
+            }],
         }))
-        result = run_parser("counts", json_file)
-        # Unknown severity should be ignored or treated as Low
+        result = parse_grype.get_counts(str(json_file))
         parts = result.split()
         assert len(parts) == 4
 
@@ -405,47 +376,28 @@ class TestEdgeCases:
         json_file.write_text(json.dumps({
             "matches": [
                 {
-                    "vulnerability": {
-                        "severity": "High",
-                        "id": None
-                    },
-                    "artifact": {"name": "pkg", "version": "1.0"}
+                    "vulnerability": {"severity": "High", "id": None},
+                    "artifact": {"name": "pkg", "version": "1.0"},
                 },
                 {
-                    "vulnerability": {
-                        "severity": "High",
-                        "id": "CVE-2023-2222"
-                    },
-                    "artifact": {"name": "pkg", "version": "1.0"}
-                }
-            ]
+                    "vulnerability": {"severity": "High", "id": "CVE-2023-2222"},
+                    "artifact": {"name": "pkg", "version": "1.0"},
+                },
+            ],
         }))
-        result = run_parser("cves", json_file)
+        result = parse_grype.get_cves(str(json_file))
         assert "CVE-2023-2222" in result
-        # None should be filtered out
 
     def test_duplicate_cves(self, tmp_path):
         """Test that duplicate CVEs are counted as unique."""
         json_file = tmp_path / "dups.json"
         json_file.write_text(json.dumps({
             "matches": [
-                {
-                    "vulnerability": {
-                        "id": "CVE-2023-1111",
-                        "severity": "High"
-                    },
-                    "artifact": {"name": "pkg1"}
-                },
-                {
-                    "vulnerability": {
-                        "id": "CVE-2023-1111",
-                        "severity": "High"
-                    },
-                    "artifact": {"name": "pkg2"}
-                }
-            ]
+                {"vulnerability": {"id": "CVE-2023-1111", "severity": "High"}, "artifact": {"name": "pkg1"}},
+                {"vulnerability": {"id": "CVE-2023-1111", "severity": "High"}, "artifact": {"name": "pkg2"}},
+            ],
         }))
-        result = run_parser("unique", json_file)
+        result = parse_grype.get_unique(str(json_file))
         assert result == "1"
 
     def test_very_long_cve_id(self, tmp_path):
@@ -454,14 +406,11 @@ class TestEdgeCases:
         json_file = tmp_path / "long_cve.json"
         json_file.write_text(json.dumps({
             "matches": [{
-                "vulnerability": {
-                    "id": long_cve,
-                    "severity": "High"
-                },
-                "artifact": {"name": "pkg"}
-            }]
+                "vulnerability": {"id": long_cve, "severity": "High"},
+                "artifact": {"name": "pkg"},
+            }],
         }))
-        result = run_parser("cves", json_file)
+        result = parse_grype.get_cves(str(json_file))
         assert long_cve in result
 
     def test_unicode_in_package_names(self, tmp_path):
@@ -469,19 +418,16 @@ class TestEdgeCases:
         json_file = tmp_path / "unicode.json"
         json_file.write_text(json.dumps({
             "matches": [{
-                "vulnerability": {
-                    "id": "CVE-2023-1111",
-                    "severity": "High"
-                },
-                "artifact": {"name": "日本語パッケージ", "version": "1.0.0"}
-            }]
+                "vulnerability": {"id": "CVE-2023-1111", "severity": "High"},
+                "artifact": {"name": "\u65e5\u672c\u8a9e\u30d1\u30c3\u30b1\u30fc\u30b8", "version": "1.0.0"},
+            }],
         }))
-        result = run_parser("counts", json_file)
+        result = parse_grype.get_counts(str(json_file))
         assert result == "0 1 0 0"
 
     def test_nonexistent_input_file(self):
         """Test with nonexistent input file."""
-        result = run_parser("counts", Path("/nonexistent/path.json"))
+        result = parse_grype.get_counts("/nonexistent/path.json")
         assert result == "0 0 0 0"
 
     def test_table_with_very_long_strings(self, tmp_path):
@@ -493,12 +439,12 @@ class TestEdgeCases:
                 "vulnerability": {
                     "id": "CVE-2023-1111",
                     "severity": "Critical",
-                    "description": long_str
+                    "description": long_str,
                 },
-                "artifact": {"name": long_str, "version": long_str}
-            }]
+                "artifact": {"name": long_str, "version": long_str},
+            }],
         }))
-        result = run_parser("table", json_file)
+        result = parse_grype.get_table(str(json_file))
         assert "CVE-2023-1111" in result
 
     def test_severity_case_sensitivity(self, tmp_path):
@@ -509,9 +455,9 @@ class TestEdgeCases:
                 {"vulnerability": {"id": "CVE-1", "severity": "CRITICAL"}, "artifact": {"name": "p"}},
                 {"vulnerability": {"id": "CVE-2", "severity": "critical"}, "artifact": {"name": "p"}},
                 {"vulnerability": {"id": "CVE-3", "severity": "Critical"}, "artifact": {"name": "p"}},
-            ]
+            ],
         }))
-        result = run_parser("counts", json_file)
+        result = parse_grype.get_counts(str(json_file))
         # At least some should be recognized as critical
         assert result != "0 0 0 0"
 
@@ -524,7 +470,7 @@ class TestEdgeCases:
                 {"vulnerability": {"id": "CVE-2", "severity": "High"}, "artifact": {"name": "p"}},
                 {"vulnerability": {"id": "CVE-3", "severity": "Medium"}, "artifact": {"name": "p"}},
                 {"vulnerability": {"id": "CVE-4", "severity": "Low"}, "artifact": {"name": "p"}},
-            ]
+            ],
         }))
-        result = run_parser("counts", json_file)
+        result = parse_grype.get_counts(str(json_file))
         assert result == "1 1 1 1"

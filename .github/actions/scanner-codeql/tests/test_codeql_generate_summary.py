@@ -2,22 +2,76 @@
 """
 Unit tests for scanner-codeql/scripts/generate_summary.py
 Tests markdown generation for CodeQL SAST scan results
+
+Uses in-process imports instead of subprocess for fast execution.
 """
 
+import importlib.util
 import json
 import os
 import shutil
-import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+
+pytestmark = pytest.mark.unit
 
 # Paths
 REPO_ROOT = Path(__file__).parent.parent.parent.parent.parent
 SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
 GENERATOR_SCRIPT = SCRIPTS_DIR / "generate_summary.py"
 FIXTURES_DIR = REPO_ROOT / "tests" / "fixtures" / "scanner-outputs" / "codeql"
+
+# Load module in-process via importlib
+spec = importlib.util.spec_from_file_location(
+    "codeql_generate_summary", GENERATOR_SCRIPT,
+)
+gen_mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(gen_mod)
+
+
+def _run_in_process(
+    workspace,
+    output_file,
+    is_pr_comment="false",
+    language="python",
+    critical="0",
+    high="0",
+    medium="0",
+    low="0",
+    total="0",
+    repo_url="https://github.com/test/repo/blob/main",
+    server_url="https://github.com",
+    repository="test/repo",
+    run_id="12345",
+):
+    """Run generate_codeql_summary in-process, returning a result-like object."""
+    original_dir = os.getcwd()
+    try:
+        os.chdir(workspace)
+        gen_mod.generate_codeql_summary(
+            output_file,
+            is_pr_comment,
+            language,
+            critical,
+            high,
+            medium,
+            low,
+            total,
+            repo_url,
+            server_url,
+            repository,
+            run_id,
+        )
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+    except SystemExit as e:
+        return SimpleNamespace(returncode=e.code or 1, stdout="", stderr="")
+    except Exception as e:
+        return SimpleNamespace(returncode=1, stdout="", stderr=str(e))
+    finally:
+        os.chdir(original_dir)
 
 
 class TestCodeQLGenerateSummary:
@@ -31,54 +85,11 @@ class TestCodeQLGenerateSummary:
         self.sarif_dir = self.codeql_reports / "sarif"
         self.sarif_dir.mkdir(parents=True)
         self.output_file = tmp_path / "summary.md"
-        self.original_dir = os.getcwd()
-        os.chdir(tmp_path)
-        yield
-        os.chdir(self.original_dir)
 
-    def run_generator(
-        self,
-        output_file=None,
-        is_pr_comment="false",
-        language="python",
-        critical="0",
-        high="0",
-        medium="0",
-        low="0",
-        total="0",
-        repo_url="https://github.com/test/repo/blob/main",
-        server_url="https://github.com",
-        repository="test/repo",
-        run_id="12345",
-    ):
-        """Helper to run the generator script with arguments."""
-        if output_file is None:
-            output_file = str(self.output_file)
-
-        cmd = [
-            sys.executable,
-            str(GENERATOR_SCRIPT),
-            str(output_file),
-            "--is-pr-comment", is_pr_comment,
-            "--language", language,
-            "--critical", critical,
-            "--high", high,
-            "--medium", medium,
-            "--low", low,
-            "--total", total,
-            "--repo-url", repo_url,
-            "--server-url", server_url,
-            "--repository", repository,
-            "--run-id", run_id,
-        ]
-
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            cwd=self.workspace,
-        )
-        return result
+    def run_generator(self, **kwargs):
+        """Helper to run the generator in-process."""
+        kwargs.setdefault("output_file", str(self.output_file))
+        return _run_in_process(self.workspace, **kwargs)
 
     def test_script_and_fixtures_exist(self):
         """Verify generator script and fixtures exist."""
@@ -89,13 +100,11 @@ class TestCodeQLGenerateSummary:
 
     def test_generates_summary_with_findings(self):
         """Test generating summary with findings (tests language, format, severity grouping)."""
-        # Copy SARIF fixture
         shutil.copy(
             FIXTURES_DIR / "results-with-findings.sarif",
             self.sarif_dir / "python.sarif",
         )
 
-        # Run generator (3 findings based on fixture: 1 high=8.8, 1 high=7.5, 1 medium=5.0)
         result = self.run_generator(
             language="python",
             critical="0",
@@ -111,13 +120,10 @@ class TestCodeQLGenerateSummary:
 
         content = self.output_file.read_text()
 
-        # Check for key elements
         assert "CodeQL SAST" in content
-        assert "python" in content.lower()  # Language appears in output
+        assert "python" in content.lower()
         assert "Findings Summary" in content
-        # Verify non-PR format uses heading
         assert "## 🔬 CodeQL SAST Scan (Python)" in content
-        # Verify language in output
         assert "Python" in content
 
     def test_generates_summary_zero_findings(self):
@@ -158,7 +164,6 @@ class TestCodeQLGenerateSummary:
         assert result.returncode == 0
         content = self.output_file.read_text()
 
-        # PR comment should use collapsible format
         assert "<details>" in content
         assert "<summary>" in content
         assert "</details>" in content
@@ -198,7 +203,6 @@ class TestCodeQLGenerateSummary:
         assert result.returncode == 0
         content = self.output_file.read_text()
 
-        # Should have finding details
         assert "Finding Details" in content
         assert "Severity" in content
         assert "Rule" in content
@@ -224,7 +228,6 @@ class TestCodeQLGenerateSummary:
 
     def test_handles_no_sarif_directory(self):
         """Test handles missing SARIF directory gracefully."""
-        # Remove the SARIF directory
         shutil.rmtree(self.sarif_dir)
 
         result = self.run_generator(
@@ -236,7 +239,6 @@ class TestCodeQLGenerateSummary:
         assert self.output_file.exists()
 
         content = self.output_file.read_text()
-        # Should still generate output but indicate no findings/skipped
         assert "CodeQL" in content
 
     def test_summary_table_format(self):
@@ -258,9 +260,7 @@ class TestCodeQLGenerateSummary:
         assert result.returncode == 0
         content = self.output_file.read_text()
 
-        # Check table headers
         assert "| Critical | High | Medium | Low | Total |" in content
-        # Check table row with counts
         assert "| **1** | **2** | **3** | **4** | **10** |" in content
 
 
@@ -275,54 +275,11 @@ class TestEdgeCases:
         self.sarif_dir = self.codeql_reports / "sarif"
         self.sarif_dir.mkdir(parents=True)
         self.output_file = tmp_path / "summary.md"
-        self.original_dir = os.getcwd()
-        os.chdir(tmp_path)
-        yield
-        os.chdir(self.original_dir)
 
-    def run_generator(
-        self,
-        output_file=None,
-        is_pr_comment="false",
-        language="python",
-        critical="0",
-        high="0",
-        medium="0",
-        low="0",
-        total="0",
-        repo_url="https://github.com/test/repo/blob/main",
-        server_url="https://github.com",
-        repository="test/repo",
-        run_id="12345",
-    ):
-        """Helper to run the generator script with arguments."""
-        if output_file is None:
-            output_file = str(self.output_file)
-
-        cmd = [
-            sys.executable,
-            str(GENERATOR_SCRIPT),
-            str(output_file),
-            "--is-pr-comment", is_pr_comment,
-            "--language", language,
-            "--critical", critical,
-            "--high", high,
-            "--medium", medium,
-            "--low", low,
-            "--total", total,
-            "--repo-url", repo_url,
-            "--server-url", server_url,
-            "--repository", repository,
-            "--run-id", run_id,
-        ]
-
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            cwd=self.workspace,
-        )
-        return result
+    def run_generator(self, **kwargs):
+        """Helper to run the generator in-process."""
+        kwargs.setdefault("output_file", str(self.output_file))
+        return _run_in_process(self.workspace, **kwargs)
 
     def test_malformed_sarif_file(self):
         """Test with malformed SARIF JSON file."""
@@ -361,7 +318,7 @@ class TestEdgeCases:
             high="0",
             medium="0",
             low="0",
-            total="5"
+            total="5",
         )
         assert result.returncode == 0
         content = self.output_file.read_text()
@@ -376,7 +333,7 @@ class TestEdgeCases:
             high="9999",
             medium="9999",
             low="9999",
-            total="39996"
+            total="39996",
         )
         assert result.returncode == 0
         content = self.output_file.read_text()
@@ -422,7 +379,7 @@ class TestEdgeCases:
         result = self.run_generator(
             is_pr_comment="true",
             language="python",
-            total="0"
+            total="0",
         )
         assert result.returncode == 0
         content = self.output_file.read_text()
