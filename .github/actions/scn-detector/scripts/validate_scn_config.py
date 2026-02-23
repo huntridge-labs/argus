@@ -84,9 +84,6 @@ def _validate_ai_fields(config: Dict, prefix: str, errors: List[str]) -> None:
         errors.append(f'{prefix}: must be a mapping')
         return
 
-    if 'enabled' in config and not isinstance(config['enabled'], bool):
-        errors.append(f'{prefix}.enabled: must be a boolean')
-
     if 'provider' in config:
         if not isinstance(config['provider'], str):
             errors.append(f'{prefix}.provider: must be a string')

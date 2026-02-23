@@ -81,7 +81,6 @@ def full_valid_config():
             ]
         },
         'ai_fallback': {
-            'enabled': False,
             'provider': 'anthropic',
             'model': 'claude-3-haiku-20240307',
             'confidence_threshold': 0.8,
@@ -294,7 +293,6 @@ class TestValidateAiFallback:
     def test_valid_ai_fallback(self, schema, minimal_valid_config):
         """Valid ai_fallback section passes."""
         minimal_valid_config['ai_fallback'] = {
-            'enabled': True,
             'provider': 'anthropic',
             'model': 'claude-3-haiku-20240307',
             'confidence_threshold': 0.85,
@@ -410,7 +408,6 @@ class TestValidateAiConfigStructure:
     def test_valid_ai_config(self):
         """Valid standalone AI config passes."""
         config = {
-            'enabled': True,
             'provider': 'anthropic',
             'model': 'claude-3-haiku-20240307',
             'confidence_threshold': 0.8,

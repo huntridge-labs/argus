@@ -2,8 +2,8 @@
 # This file demonstrates AI provider settings for OpenAI's GPT models
 # Copy to .github/ai-config.yml and customize as needed
 
-# Enable/disable AI fallback for ambiguous changes
-enabled: true
+# AI is activated by the enable_ai_fallback action input (not by this config file).
+# This file only configures AI behavior (provider, model, thresholds).
 
 # AI Provider: 'openai'
 provider: 'openai'

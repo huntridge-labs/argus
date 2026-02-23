@@ -21,7 +21,6 @@ rules:
       description: "Encryption changes"
 
 ai_fallback:
-  enabled: true
   provider: "openai"
   model: "gpt-4o-mini"
   confidence_threshold: 0.8

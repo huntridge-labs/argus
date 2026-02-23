@@ -346,7 +346,6 @@ class TestProviderConfiguration:
         """OpenAI API key resolved when provider is openai."""
         config = {
             'ai_fallback': {
-                'enabled': True,
                 'provider': 'openai',
                 'model': 'gpt-4o-mini',
                 'confidence_threshold': 0.8

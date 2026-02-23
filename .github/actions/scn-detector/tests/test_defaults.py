@@ -142,10 +142,9 @@ class TestDefaults:
         assert notifications['transformative']['final_notice_days'] == 10
         assert notifications['impact']['requires_new_assessment'] is True
 
-    def test_default_ai_config_enabled_field(self):
-        """Test DEFAULT_AI_CONFIG has enabled=False by default."""
-        assert 'enabled' in defaults.DEFAULT_AI_CONFIG
-        assert defaults.DEFAULT_AI_CONFIG['enabled'] is False
+    def test_default_ai_config_has_no_enabled_field(self):
+        """AI enablement is controlled by CLI flag, not config. Config must not contain 'enabled'."""
+        assert 'enabled' not in defaults.DEFAULT_AI_CONFIG
 
     def test_merge_config_list_replacement(self):
         """Test that merge_config replaces lists entirely (not merging)."""

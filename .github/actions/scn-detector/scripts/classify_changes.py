@@ -44,8 +44,8 @@ class ChangeClassifier:
 
         self.rules = self.config.get('rules', DEFAULT_RULES)
         self.ai_config = self.config.get('ai_fallback', DEFAULT_AI_CONFIG)
-        # CLI --enable-ai flag is the sole authority for enabling AI fallback.
-        # The config 'enabled' field only controls the default when no CLI flag is given.
+        # AI enablement is controlled exclusively by the --enable-ai CLI flag
+        # (or the enable_ai_fallback action input). Config files cannot enable AI.
         self.enable_ai = enable_ai
 
         # Resolve API key based on configured provider

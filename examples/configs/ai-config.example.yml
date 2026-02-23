@@ -2,8 +2,8 @@
 # This file allows you to configure AI provider settings separately from your SCN profile.
 # Useful for sharing AI config across multiple profiles or keeping credentials separate.
 
-# Enable/disable AI fallback for ambiguous changes
-enabled: true
+# AI is activated by the enable_ai_fallback action input (not by this config file).
+# This file only configures AI behavior (provider, model, thresholds).
 
 # AI Provider: 'anthropic' or 'openai'
 provider: 'anthropic'

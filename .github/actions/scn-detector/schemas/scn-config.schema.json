@@ -56,11 +56,6 @@
       "type": "object",
       "description": "AI fallback configuration for classifying changes that don't match any rule",
       "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Whether AI fallback is enabled by default (can be overridden by action input)",
-          "default": false
-        },
         "provider": {
           "type": "string",
           "description": "AI provider to use",
