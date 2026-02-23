@@ -2,7 +2,7 @@ version: "1.0"
 name: "Test Profile - Minimal"
 description: "Minimal test configuration for unit tests"
 compliance_framework: "FedRAMP 20X"
-impact_level: "Test"
+impact_level: "Low"
 
 rules:
   routine:

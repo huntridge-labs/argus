@@ -1,0 +1,10 @@
+version: "1.0"
+name: "Invalid Config - Bad Rules"
+
+rules:
+  routine:
+    - description: "Tag changes"
+      pattern: "tags.*"
+    - operation: "modify"
+  adaptive:
+    - resource: "aws_instance.*"

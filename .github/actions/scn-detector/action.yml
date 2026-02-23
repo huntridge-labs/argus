@@ -156,7 +156,27 @@ runs:
           exit 1
         fi
 
-    # Step 4: Analyze IaC changes
+    # Step 4: Validate SCN configuration against schema
+    - name: Validate SCN configuration
+      if: steps.check-config.outputs.config_exists == 'true'
+      shell: bash
+      env:
+        CONFIG_FILE: ${{ steps.check-config.outputs.config_path }}
+        SCHEMA_FILE: ${{ github.action_path }}/schemas/scn-config.schema.json
+        AI_CONFIG_FILE: ${{ inputs.ai_config_file }}
+      run: |
+        echo "Validating SCN configuration..."
+
+        python3 ${{ github.action_path }}/scripts/validate_scn_config.py
+
+        if [ $? -eq 0 ]; then
+          echo "SCN configuration validation passed"
+        else
+          echo "::error::SCN configuration validation failed"
+          exit 1
+        fi
+
+    # Step 5: Analyze IaC changes
     - name: Analyze IaC changes
       id: analyze-changes
       shell: bash
