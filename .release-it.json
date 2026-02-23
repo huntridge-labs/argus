@@ -151,12 +151,13 @@
         {
           "files": [
             ".github/schemas/container-config.schema.json",
-            ".github/schemas/zap-config.schema.json"
+            ".github/schemas/zap-config.schema.json",
+            ".github/actions/scn-detector/schemas/scn-config.schema.json"
           ],
           "search": {
-            "pattern": "(\"\\$id\": \"https://raw\\.githubusercontent\\.com/huntridge-labs/argus)([^/]+)(/.github/schemas/[\\w-]+\\.schema\\.json\")"
+            "pattern": "(\"\\$id\": \"https://raw\\.githubusercontent\\.com/huntridge-labs/argus)/[^/]+(/.github/)"
           },
-          "replace": "${1}{{version}}${3}"
+          "replace": "${1}/{{version}}${2}"
         },
         {
           "files": [
