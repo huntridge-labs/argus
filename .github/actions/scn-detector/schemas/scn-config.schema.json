@@ -1,0 +1,306 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/huntridge-labs/argus/.github/actions/scn-detector/schemas/scn-config.schema.json",
+  "title": "SCN Detector Configuration",
+  "description": "Configuration schema for SCN change classification profiles used by the scn-detector action",
+  "type": "object",
+  "required": [
+    "version",
+    "rules"
+  ],
+  "definitions": {
+    "rule": {
+      "type": "object",
+      "description": "A single classification rule that matches IaC changes by pattern, resource, and/or attribute",
+      "required": [
+        "description"
+      ],
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "description": "Regex pattern matched against the full resource string, attributes, and diff content",
+          "minLength": 1
+        },
+        "resource": {
+          "type": "string",
+          "description": "Regex pattern matched against the Terraform resource type and name (e.g., aws_instance.*.instance_type)",
+          "minLength": 1
+        },
+        "attribute": {
+          "type": "string",
+          "description": "Regex pattern matched against changed attribute names and diff content",
+          "minLength": 1
+        },
+        "operation": {
+          "type": "string",
+          "description": "Operation type(s) to match, pipe-separated (e.g., create|delete|modify)",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of what this rule matches",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "rule_list": {
+      "type": "array",
+      "description": "List of classification rules for a category",
+      "items": {
+        "$ref": "#/definitions/rule"
+      },
+      "minItems": 1
+    },
+    "ai_fallback": {
+      "type": "object",
+      "description": "AI fallback configuration for classifying changes that don't match any rule",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether AI fallback is enabled by default (can be overridden by action input)",
+          "default": false
+        },
+        "provider": {
+          "type": "string",
+          "description": "AI provider to use",
+          "enum": [
+            "anthropic",
+            "openai"
+          ],
+          "default": "anthropic"
+        },
+        "model": {
+          "type": "string",
+          "description": "Model identifier (provider-specific, e.g., claude-3-haiku-20240307 or gpt-4o-mini)",
+          "minLength": 1
+        },
+        "confidence_threshold": {
+          "type": "number",
+          "description": "Minimum confidence score (0.0-1.0) for AI classification to be accepted",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 0.8
+        },
+        "max_tokens": {
+          "type": "integer",
+          "description": "Maximum tokens for AI response",
+          "minimum": 1,
+          "default": 1024
+        },
+        "max_diff_chars": {
+          "type": "integer",
+          "description": "Maximum characters from diff to include in AI prompt",
+          "minimum": 1,
+          "default": 1000
+        },
+        "api_base_url": {
+          "type": "string",
+          "description": "Custom API base URL (for OpenAI-compatible APIs, Azure OpenAI, etc.)",
+          "format": "uri"
+        },
+        "system_prompt": {
+          "type": "string",
+          "description": "Custom system prompt for AI classification"
+        },
+        "user_prompt_template": {
+          "type": "string",
+          "description": "Custom user prompt template with {resource_type}, {resource_name}, {operation}, {attributes}, {diff_snippet} placeholders"
+        }
+      },
+      "additionalProperties": false
+    },
+    "notification_adaptive": {
+      "type": "object",
+      "description": "Notification configuration for adaptive changes",
+      "properties": {
+        "post_completion_days": {
+          "type": "integer",
+          "description": "Number of business days after completion to submit notification",
+          "minimum": 1
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of notification requirements"
+        }
+      },
+      "additionalProperties": false
+    },
+    "notification_transformative": {
+      "type": "object",
+      "description": "Notification configuration for transformative changes",
+      "properties": {
+        "initial_notice_days": {
+          "type": "integer",
+          "description": "Number of days before implementation for initial notice",
+          "minimum": 1
+        },
+        "final_notice_days": {
+          "type": "integer",
+          "description": "Number of days before implementation for final notice",
+          "minimum": 1
+        },
+        "post_completion_required": {
+          "type": "boolean",
+          "description": "Whether post-completion notification is required",
+          "default": true
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of notification requirements"
+        }
+      },
+      "additionalProperties": false
+    },
+    "notification_impact": {
+      "type": "object",
+      "description": "Notification configuration for impact changes",
+      "properties": {
+        "requires_new_assessment": {
+          "type": "boolean",
+          "description": "Whether a new security assessment is required",
+          "default": true
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of notification requirements"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Configuration schema version",
+      "minLength": 1
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable profile name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Profile description"
+    },
+    "compliance_framework": {
+      "type": "string",
+      "description": "Compliance framework this profile targets (e.g., FedRAMP 20X, DoD CC SRG, NIST SP 800-53)"
+    },
+    "impact_level": {
+      "type": "string",
+      "description": "Impact level for the compliance framework",
+      "enum": [
+        "Low",
+        "Moderate",
+        "High"
+      ]
+    },
+    "rules": {
+      "type": "object",
+      "description": "Classification rules organized by category",
+      "properties": {
+        "routine": {
+          "$ref": "#/definitions/rule_list",
+          "description": "Rules for routine changes (no notification required)"
+        },
+        "adaptive": {
+          "$ref": "#/definitions/rule_list",
+          "description": "Rules for adaptive changes (notification within 10 business days after completion)"
+        },
+        "transformative": {
+          "$ref": "#/definitions/rule_list",
+          "description": "Rules for transformative changes (30 days initial + 10 days final + post-completion notice)"
+        },
+        "impact": {
+          "$ref": "#/definitions/rule_list",
+          "description": "Rules for impact changes (requires new authorization)"
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    },
+    "ai_fallback": {
+      "$ref": "#/definitions/ai_fallback"
+    },
+    "notifications": {
+      "type": "object",
+      "description": "Notification timeline configuration",
+      "properties": {
+        "adaptive": {
+          "$ref": "#/definitions/notification_adaptive"
+        },
+        "transformative": {
+          "$ref": "#/definitions/notification_transformative"
+        },
+        "impact": {
+          "$ref": "#/definitions/notification_impact"
+        }
+      },
+      "additionalProperties": false
+    },
+    "issue_templates": {
+      "type": "object",
+      "description": "GitHub Issue template configuration",
+      "properties": {
+        "labels": {
+          "type": "object",
+          "description": "Label configuration for created issues",
+          "properties": {
+            "prefix": {
+              "type": "string",
+              "description": "Label prefix (e.g., scn)"
+            },
+            "categories": {
+              "type": "object",
+              "description": "Label names per category",
+              "properties": {
+                "routine": {
+                  "type": "string"
+                },
+                "adaptive": {
+                  "type": "string"
+                },
+                "transformative": {
+                  "type": "string"
+                },
+                "impact": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "checklist": {
+          "type": "object",
+          "description": "Checklist items per category for created issues",
+          "properties": {
+            "adaptive": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "transformative": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "impact": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

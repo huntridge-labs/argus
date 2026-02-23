@@ -71,7 +71,7 @@ class ChangeClassifier:
         """Load configuration from YAML file.
 
         Returns:
-            Parsed config dict, empty dict if file not found, or None if YAML is invalid.
+            Parsed config dict, empty dict if file not found, or None if YAML/validation is invalid.
         """
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
@@ -79,6 +79,10 @@ class ChangeClassifier:
                 if not isinstance(config, dict):
                     print(f"⚠️  Config file is empty or not a YAML mapping: {config_path}", file=sys.stderr)
                     return {}
+
+                # Validate config structure against schema
+                self._validate_config(config)
+
                 print(f"✅ Loaded config from {config_path}")
                 return config
         except FileNotFoundError:
@@ -88,6 +92,19 @@ class ChangeClassifier:
         except yaml.YAMLError as e:
             print(f"❌ Invalid YAML in config file: {e}", file=sys.stderr)
             return None
+        except ValueError as e:
+            print(f"❌ {e}", file=sys.stderr)
+            return None
+
+    @staticmethod
+    def _validate_config(config: Dict) -> None:
+        """Validate config structure against the SCN schema."""
+        from validate_scn_config import validate_config_structure
+        schema_path = Path(__file__).parent.parent / 'schemas' / 'scn-config.schema.json'
+        if schema_path.exists():
+            with open(schema_path, 'r', encoding='utf-8') as sf:
+                schema = json.load(sf)
+            validate_config_structure(config, schema)
 
     def match_rule(self, change: Dict, rule: Dict) -> bool:
         """
@@ -312,6 +329,10 @@ def main():
                     print(f"❌ AI config file is empty or not a YAML mapping: {args.ai_config}", file=sys.stderr)
                     return 1
 
+                # Validate AI config structure
+                from validate_scn_config import validate_ai_config_structure
+                validate_ai_config_structure(ai_config_override)
+
                 print(f"✅ Loaded AI config from {args.ai_config}")
 
                 # Merge AI config into profile config
@@ -329,6 +350,9 @@ def main():
             return 1
         except yaml.YAMLError as e:
             print(f"❌ Invalid YAML in AI config file: {e}", file=sys.stderr)
+            return 1
+        except ValueError as e:
+            print(f"❌ {e}", file=sys.stderr)
             return 1
 
     from ai_providers import resolve_api_key, get_provider_class
