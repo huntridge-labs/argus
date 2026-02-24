@@ -16,7 +16,7 @@ description: |
           has_scans: (( steps.parse.outputs.has_scans ))
         steps:
           - uses: actions/checkout@v6
-          - uses: huntridge-labs/argus/.github/actions/parse-zap-config@0.2.2
+          - uses: huntridge-labs/argus/.github/actions/parse-zap-config@0.3.0
             id: parse
             with:
               config_file: .zap/config.yml
@@ -28,7 +28,7 @@ description: |
           matrix: (( fromJson(needs.parse.outputs.matrix) ))
         runs-on: ubuntu-latest
         steps:
-          - uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.2
+          - uses: huntridge-labs/argus/.github/actions/scanner-zap@0.3.0
             with:
               scan_name: (( matrix.name ))
               scan_type: (( matrix.scan_type ))

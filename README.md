@@ -41,7 +41,7 @@ on: [pull_request, push]
 
 jobs:
   security:
-    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.2.2
+    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.3.0
     with:
       scanners: all
       enable_code_security: true
@@ -166,7 +166,7 @@ permissions:
 
 jobs:
   security:
-    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.2.2
+    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.3.0
     with:
       scanners: all
       enable_code_security: true
@@ -187,7 +187,7 @@ on: [pull_request]
 
 jobs:
   sast:
-    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.2.2
+    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.3.0
     with:
       scanners: codeql,bandit,opengrep,gitleaks
       codeql_languages: 'python,javascript'
@@ -211,7 +211,7 @@ on:
 
 jobs:
   scan-image:
-    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.2.2
+    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.3.0
     with:
       scanners: trivy-container,grype,sbom
       image_ref: 'ghcr.io/myorg/myapp:${{ github.ref_name }}'
@@ -233,7 +233,7 @@ on:
 
 jobs:
   scan:
-    uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@0.2.2
+    uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@0.3.0
     with:
       config_file: container-config.yml
       enable_code_security: true
@@ -283,7 +283,7 @@ on:
 
 jobs:
   iac:
-    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.2.2
+    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.3.0
     with:
       scanners: trivy-iac,checkov
       iac_path: 'terraform/'
@@ -305,7 +305,7 @@ on:
 
 jobs:
   security:
-    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.2.2
+    uses: huntridge-labs/argus/.github/workflows/security-scan.yml@0.3.0
     with:
       scanners: all
       enable_code_security: true

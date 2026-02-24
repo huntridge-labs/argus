@@ -30,7 +30,7 @@ jobs:
       # Run SCN detector with built-in FedRAMP Low profile
       - name: Analyze IaC changes for FedRAMP SCN
         id: scn
-        uses: huntridge-labs/argus/.github/actions/scn-detector@main
+        uses: huntridge-labs/argus/.github/actions/scn-detector@0.3.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # Optional: for AI fallback
@@ -63,7 +63,7 @@ jobs:
 
       - name: Analyze with custom profile
         id: scn-custom
-        uses: huntridge-labs/argus/.github/actions/scn-detector@main
+        uses: huntridge-labs/argus/.github/actions/scn-detector@0.3.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -99,7 +99,7 @@ jobs:
 
       - name: Analyze with separate AI config
         id: scn-ai
-        uses: huntridge-labs/argus/.github/actions/scn-detector@main
+        uses: huntridge-labs/argus/.github/actions/scn-detector@0.3.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # Using OpenAI instead

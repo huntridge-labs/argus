@@ -41,7 +41,7 @@ jobs:
         with:
           fetch-depth: 0  # Required for git diff
 
-      - uses: huntridge-labs/argus/.github/actions/scn-detector@main
+      - uses: huntridge-labs/argus/.github/actions/scn-detector@0.3.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -65,7 +65,7 @@ jobs:
 Uses built-in FedRAMP Low profile with rule-based classification only.
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/scn-detector@main
+- uses: huntridge-labs/argus/.github/actions/scn-detector@0.3.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -75,7 +75,7 @@ Uses built-in FedRAMP Low profile with rule-based classification only.
 Enables AI classification for changes that don't match any rules.
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/scn-detector@main
+- uses: huntridge-labs/argus/.github/actions/scn-detector@0.3.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # or OPENAI_API_KEY
@@ -109,7 +109,7 @@ rules:
 Use in workflow:
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/scn-detector@main
+- uses: huntridge-labs/argus/.github/actions/scn-detector@0.3.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -132,7 +132,7 @@ max_tokens: 1024
 Use in workflow:
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/scn-detector@main
+- uses: huntridge-labs/argus/.github/actions/scn-detector@0.3.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -348,7 +348,7 @@ Located at `.github/actions/scn-detector/profiles/fedramp-low.yml`
 ### 1. Basic Compliance
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/scn-detector@main
+- uses: huntridge-labs/argus/.github/actions/scn-detector@0.3.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -356,7 +356,7 @@ Located at `.github/actions/scn-detector/profiles/fedramp-low.yml`
 ### 2. Fail on High-Severity Changes
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/scn-detector@main
+- uses: huntridge-labs/argus/.github/actions/scn-detector@0.3.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -366,7 +366,7 @@ Located at `.github/actions/scn-detector/profiles/fedramp-low.yml`
 ### 3. Team Notifications
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/scn-detector@main
+- uses: huntridge-labs/argus/.github/actions/scn-detector@0.3.0
   id: scn
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -382,14 +382,14 @@ Located at `.github/actions/scn-detector/profiles/fedramp-low.yml`
 
 ```yaml
 # Strict for infrastructure
-- uses: huntridge-labs/argus/.github/actions/scn-detector@main
+- uses: huntridge-labs/argus/.github/actions/scn-detector@0.3.0
   if: contains(github.event.pull_request.files, 'terraform/')
   with:
     config_file: '.github/scn-profiles/infrastructure-strict.yml'
     fail_on_category: 'transformative'
 
 # Lenient for frontend
-- uses: huntridge-labs/argus/.github/actions/scn-detector@main
+- uses: huntridge-labs/argus/.github/actions/scn-detector@0.3.0
   if: contains(github.event.pull_request.files, 'frontend/')
   with:
     config_file: '.github/scn-profiles/frontend-lenient.yml'

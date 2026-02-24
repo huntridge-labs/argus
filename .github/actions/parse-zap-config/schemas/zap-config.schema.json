@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/huntridge-labs/argus/0.2.2/.github/actions/parse-zap-config/schemas/zap-config.schema.json",
+  "$id": "https://raw.githubusercontent.com/huntridge-labs/argus/0.3.0/.github/actions/parse-zap-config/schemas/zap-config.schema.json",
   "title": "ZAP DAST Scanner Configuration",
   "description": "Configuration schema for ZAP dynamic application security testing",
   "type": "object",

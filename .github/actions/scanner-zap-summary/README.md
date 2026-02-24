@@ -6,7 +6,7 @@ Composite action to aggregate and summarize results from multiple ZAP DAST scans
 
 ```yaml
 - name: Generate ZAP Summary
-  uses: huntridge-labs/argus/.github/actions/scanner-zap-summary@0.2.2
+  uses: huntridge-labs/argus/.github/actions/scanner-zap-summary@0.3.0
   id: summary
 
 - name: Check findings
@@ -60,7 +60,7 @@ jobs:
       has_scans: ${{ steps.parse.outputs.has_scans }}
     steps:
       - uses: actions/checkout@v6
-      - uses: huntridge-labs/argus/.github/actions/parse-zap-config@0.2.2
+      - uses: huntridge-labs/argus/.github/actions/parse-zap-config@0.3.0
         id: parse
         with:
           config_file: ${{ inputs.config_file }}
@@ -74,7 +74,7 @@ jobs:
       matrix: ${{ fromJson(needs.parse-config.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v6
-      - uses: huntridge-labs/argus/.github/actions/scanner-zap@0.2.2
+      - uses: huntridge-labs/argus/.github/actions/scanner-zap@0.3.0
         with:
           scan_name: ${{ matrix.name }}
           scan_mode: ${{ matrix.mode }}
@@ -86,7 +86,7 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: huntridge-labs/argus/.github/actions/scanner-zap-summary@0.2.2
+      - uses: huntridge-labs/argus/.github/actions/scanner-zap-summary@0.3.0
         id: summary
 
       - name: Fail on critical findings

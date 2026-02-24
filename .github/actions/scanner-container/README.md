@@ -26,7 +26,7 @@ The action can scan images from:
   run: docker build -t myapp:latest .
 
 - name: Run Container Scanner
-  uses: huntridge-labs/argus/.github/actions/scanner-container@0.2.2
+  uses: huntridge-labs/argus/.github/actions/scanner-container@0.3.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -39,7 +39,7 @@ The action can scan images from:
 
 ```yaml
 - name: Scan image from ECR
-  uses: huntridge-labs/argus/.github/actions/scanner-container@0.2.2
+  uses: huntridge-labs/argus/.github/actions/scanner-container@0.3.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -122,7 +122,7 @@ All reports are uploaded as artifacts: `container-scan-{scan_name}`
 - name: Build and scan
   run: docker build -t myapp:test .
 
-- uses: huntridge-labs/argus/.github/actions/scanner-container@0.2.2
+- uses: huntridge-labs/argus/.github/actions/scanner-container@0.3.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -145,7 +145,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - run: docker build -t ${{ matrix.image.ref }} .
-      - uses: huntridge-labs/argus/.github/actions/scanner-container@0.2.2
+      - uses: huntridge-labs/argus/.github/actions/scanner-container@0.3.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -163,7 +163,7 @@ jobs:
     username: ${{ github.actor }}
     password: ${{ secrets.GITHUB_TOKEN }}
 
-- uses: huntridge-labs/argus/.github/actions/scanner-container@0.2.2
+- uses: huntridge-labs/argus/.github/actions/scanner-container@0.3.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -188,7 +188,7 @@ jobs:
     aws ecr get-login-password --region us-east-1 | \
     docker login --username AWS --password-stdin 123456.dkr.ecr.us-east-1.amazonaws.com
 
-- uses: huntridge-labs/argus/.github/actions/scanner-container@0.2.2
+- uses: huntridge-labs/argus/.github/actions/scanner-container@0.3.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -199,7 +199,7 @@ jobs:
 ### Fail on Critical Only
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/scanner-container@0.2.2
+- uses: huntridge-labs/argus/.github/actions/scanner-container@0.3.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:

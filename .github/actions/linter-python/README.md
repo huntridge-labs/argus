@@ -13,7 +13,7 @@ This action checks Python code for style violations (flake8) and security issues
   uses: actions/checkout@v6
 
 - name: Run Python linting
-  uses: huntridge-labs/argus/.github/actions/linter-python@0.2.2
+  uses: huntridge-labs/argus/.github/actions/linter-python@0.3.0
   with:
     fail_on_issues: false
     max_line_length: '120'

@@ -16,7 +16,7 @@ description: |
 
   **Usage Example:**
   ```yaml
-  - uses: huntridge-labs/argus/.github/actions/scn-detector@main
+  - uses: huntridge-labs/argus/.github/actions/scn-detector@0.3.0
     env:
       GITHUB_TOKEN: (secrets.GITHUB_TOKEN)
       ANTHROPIC_API_KEY: (secrets.ANTHROPIC_API_KEY)
@@ -345,7 +345,7 @@ runs:
         github.event_name == 'pull_request' &&
         inputs.post_pr_comment == 'true' &&
         steps.analyze-changes.outputs.has_changes == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@0.2.2
+      uses: huntridge-labs/argus/.github/actions/comment-pr@0.3.0
       env:
         GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
       with:

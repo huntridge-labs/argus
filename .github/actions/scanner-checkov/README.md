@@ -15,7 +15,7 @@ This composite action analyzes IaC for security misconfigurations using Checkov.
   uses: actions/checkout@v6
 
 - name: Run Checkov
-  uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.2.2
+  uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.3.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -31,7 +31,7 @@ This composite action analyzes IaC for security misconfigurations using Checkov.
   uses: actions/checkout@v6
 
 - name: Run Checkov with API Key
-  uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.2.2
+  uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.3.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -53,7 +53,7 @@ strategy:
         framework: 'kubernetes'
 steps:
   - uses: actions/checkout@v6
-  - uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.2.2
+  - uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.3.0
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     with:
@@ -125,7 +125,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.2.2
+      - uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.3.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -137,7 +137,7 @@ jobs:
     needs: [checkov-scan]
     if: always()
     steps:
-      - uses: huntridge-labs/argus/.github/actions/security-summary@0.2.2
+      - uses: huntridge-labs/argus/.github/actions/security-summary@0.3.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```

@@ -93,7 +93,7 @@ issue_templates:
 ### Use Built-in Profile (Default)
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/scn-detector@main
+- uses: huntridge-labs/argus/.github/actions/scn-detector@0.3.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   # No profile specified = uses fedramp-low.yml
@@ -113,7 +113,7 @@ name: "My Custom Profile"
 Reference it in your workflow:
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/scn-detector@main
+- uses: huntridge-labs/argus/.github/actions/scn-detector@0.3.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -143,7 +143,7 @@ max_tokens: 2048
 Use in workflow:
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/scn-detector@main
+- uses: huntridge-labs/argus/.github/actions/scn-detector@0.3.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

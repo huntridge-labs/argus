@@ -45,7 +45,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Run YAML Linter
-        uses: huntridge-labs/argus/.github/actions/linter-yaml@0.2.2
+        uses: huntridge-labs/argus/.github/actions/linter-yaml@0.3.0
         with:
           fail_on_issues: false
           # config_file: '.yamllint.yml'  # Optional: custom config
@@ -62,7 +62,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Run JSON Linter
-        uses: huntridge-labs/argus/.github/actions/linter-json@0.2.2
+        uses: huntridge-labs/argus/.github/actions/linter-json@0.3.0
         with:
           fail_on_issues: false
 
@@ -78,7 +78,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Run Python Linter
-        uses: huntridge-labs/argus/.github/actions/linter-python@0.2.2
+        uses: huntridge-labs/argus/.github/actions/linter-python@0.3.0
         with:
           fail_on_issues: false
           python_version: ${{ env.PYTHON_VERSION }}
@@ -96,7 +96,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Run JavaScript Linter
-        uses: huntridge-labs/argus/.github/actions/linter-javascript@0.2.2
+        uses: huntridge-labs/argus/.github/actions/linter-javascript@0.3.0
         with:
           fail_on_issues: false
           node_version: ${{ env.NODE_VERSION }}
@@ -113,7 +113,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Run Dockerfile Linter
-        uses: huntridge-labs/argus/.github/actions/linter-dockerfile@0.2.2
+        uses: huntridge-labs/argus/.github/actions/linter-dockerfile@0.3.0
         with:
           fail_on_issues: false
           # ignore_rules: 'DL3008,DL3009'  # Optional: ignore specific rules
@@ -130,7 +130,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Run Terraform Linter
-        uses: huntridge-labs/argus/.github/actions/linter-terraform@0.2.2
+        uses: huntridge-labs/argus/.github/actions/linter-terraform@0.3.0
         with:
           fail_on_issues: false
           terraform_version: 'latest'
@@ -145,7 +145,7 @@ jobs:
 
     steps:
       - name: Generate Combined Linting Summary
-        uses: huntridge-labs/argus/.github/actions/linting-summary@0.2.2
+        uses: huntridge-labs/argus/.github/actions/linting-summary@0.3.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

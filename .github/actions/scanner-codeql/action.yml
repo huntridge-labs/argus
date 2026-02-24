@@ -12,7 +12,7 @@ description: |
   **Usage Example (single language):**
   ```yaml
   - uses: actions/checkout@v6
-  - uses: huntridge-labs/argus/.github/actions/scanner-codeql@0.2.2
+  - uses: huntridge-labs/argus/.github/actions/scanner-codeql@0.3.0
     with:
       language: 'python'
       fail_on_severity: 'high'
@@ -25,7 +25,7 @@ description: |
       language: [python, javascript]
   steps:
     - uses: actions/checkout@v6
-    - uses: huntridge-labs/argus/.github/actions/scanner-codeql@0.2.2
+    - uses: huntridge-labs/argus/.github/actions/scanner-codeql@0.3.0
       with:
         language: (use matrix.language)
   ```
@@ -296,7 +296,7 @@ runs:
 
     - name: Comment PR with CodeQL results
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@0.2.2
+      uses: huntridge-labs/argus/.github/actions/comment-pr@0.3.0
       with:
         summary_file: scanner-summaries/codeql-${{ inputs.language }}.md
         comment_marker: codeql-${{ inputs.language }}-comment-marker
