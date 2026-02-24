@@ -45,16 +45,17 @@ tests/                 # Test infrastructure
 docs/                  # Detailed documentation
 ```
 
-### Supported Scanners
+### Supported Actions
 
-| Category | Scanners |
-|----------|----------|
-| SAST | codeql, bandit, opengrep |
-| Secrets | gitleaks |
-| Container | trivy, grype, syft |
-| IaC | trivy-iac, checkov |
-| Malware | clamav |
-| DAST | zap |
+| Category | Actions | Purpose |
+|----------|---------|---------|
+| SAST | codeql, bandit, opengrep | Code security analysis |
+| Secrets | gitleaks | Credential detection |
+| Container | trivy, grype, syft | Container scanning |
+| IaC | trivy-iac, checkov | Infrastructure as Code |
+| Malware | clamav | File malware detection |
+| DAST | zap | Dynamic web app security |
+| Compliance | scn-detector | FedRAMP change notifications |
 
 ---
 
@@ -107,6 +108,53 @@ npm run lint
 ### Coverage Targets
 - Overall: 80%+
 
+### Testing Levels
+
+**For simple actions** (scanners with 2 scripts):
+1. **Unit tests**: Test parse/summary scripts with fixtures
+2. **Integration**: Run action in test workflow
+
+**For complex actions** (multi-script with logic):
+1. **Level 1 - Unit Tests**: Test individual Python functions
+   ```bash
+   pytest .github/actions/my-action/tests/test_*.py -v
+   ```
+
+2. **Level 2 - Script Integration**: Test scripts end-to-end with mock data
+   ```bash
+   python scripts/classify.py --input mock-data.json --output results.json
+   ```
+
+3. **Level 3 - Action Integration**: Test full action with `act` locally
+   ```bash
+   act pull_request -j test-job --secret GITHUB_TOKEN=$TOKEN
+   ```
+
+4. **Level 4 - Full Workflow**: Test in real GitHub Actions environment
+   - Create test branch with real changes
+   - Open PR, verify action runs correctly
+
+5. **Level 5 - AI Fallback**: Test external API integration (mock in CI)
+   ```python
+   @patch('requests.post')
+   def test_ai_classification(mock_post):
+       mock_post.return_value.json.return_value = {...}
+   ```
+
+6. **Level 6 - Performance**: Large inputs, stress testing
+
+7. **Level 7 - Edge Cases**: Empty files, malformed configs, API failures
+
+**Test Organization**:
+```
+tests/
+├── fixtures/              # Mock data, sample configs
+│   ├── api-responses/    # Mock AI/API responses
+│   └── sample-data/      # Real-world examples
+├── unit/                  # Fast unit tests
+└── integration/           # Slower integration tests
+```
+
 ---
 
 ## Code Conventions
@@ -117,7 +165,8 @@ npm run lint
 - Tests: Co-located in `tests/` subdirectory of each action
 
 ### Action Structure
-Every composite action follows this pattern:
+
+**Scanner Pattern** (2-script, parse + summarize):
 ```
 .github/actions/scanner-{name}/
 ├── action.yml              # Inputs, outputs, steps
@@ -131,6 +180,30 @@ Every composite action follows this pattern:
 └── README.md
 ```
 
+**Multi-Script Pattern** (complex workflows with multiple stages):
+```
+.github/actions/{name}/
+├── action.yml              # Orchestrates multiple scripts
+├── scripts/
+│   ├── analyze.py          # Data analysis/extraction
+│   ├── classify.py         # Classification/decision logic
+│   ├── generate-report.py  # Report generation
+│   └── create-issue.py     # GitHub integration (optional)
+├── tests/
+│   ├── test_analyze.py
+│   ├── test_classify.py
+│   ├── test_generate_report.py
+│   ├── test_create_issue.py
+│   └── conftest.py
+└── README.md
+
+# Example: scn-detector (FedRAMP compliance)
+# - analyze_iac_changes.py: Extract IaC changes from git diff
+# - classify_changes.py: Classify using rules + AI fallback
+# - generate_scn_report.py: Create compliance reports
+# - create_scn_issue.py: GitHub Issues with timelines
+```
+
 ### Commit Messages
 Follow Conventional Commits:
 ```
@@ -139,6 +212,139 @@ fix(trivy): handle empty results
 docs: update scanner reference
 test(bandit): add edge case pytest coverage
 ```
+
+### Design Patterns
+
+**Hybrid Classification (Rules + AI Fallback)**
+When building actions that need intelligent decision-making:
+1. **Rule-based first**: Fast, deterministic, cost-free
+2. **AI fallback**: For ambiguous cases that rules can't handle
+3. **Confidence thresholds**: If AI confidence < threshold, flag for manual review
+4. **Mock AI in tests**: Use fixtures for reliable testing
+
+```python
+# Example from scn-detector
+def classify_change(self, change: Dict) -> Dict:
+    # Try rule-based first
+    result = self.classify_with_rules(change)
+    if result:
+        return result
+
+    # Fallback to AI if enabled
+    if self.enable_ai:
+        return self.classify_with_ai(change)
+
+    # Flag for manual review
+    return {"category": "MANUAL_REVIEW"}
+```
+
+**Generic vs. Cloud-Specific Patterns**
+For broader applicability across clouds/platforms:
+- ✅ **Generic attributes**: `encryption`, `region`, `capacity`, `authentication`
+- ❌ **Cloud-specific**: `aws_bedrock`, `azure_openai`, `google_vertex_ai`
+
+```yaml
+# Good: Works across AWS, Azure, GCP, custom platforms
+transformative:
+  - pattern: "ai_service|ml_service|ml_model"
+    description: "AI/ML capabilities"
+  - attribute: "region|location|datacenter"
+    description: "Geographic changes"
+
+# Bad: Only works for AWS
+transformative:
+  - resource: "aws_bedrock.*"
+    description: "AWS Bedrock only"
+```
+
+**Rule Ordering & Priority**
+When processing rules for classification:
+1. **Within category**: Check specific patterns before generic ones
+2. **Across categories**: Order categories by desired precedence
+3. **First match wins**: Stop processing after first successful match
+
+```yaml
+# Example: Check transformative (specific) before routine (generic)
+transformative:
+  - resource: "aws_bedrock.*"  # Specific resource type
+    operation: "create"
+
+routine:
+  - attribute: "description"    # Generic attribute
+    # This would match almost anything, so check last
+```
+
+**Business Day Calculations**
+For compliance/audit timelines:
+- Exclude weekends from calculations
+- Use `datetime` + `timedelta` + weekend checks
+- Document timezone assumptions (usually UTC)
+
+```python
+def calculate_business_days(start_date: datetime, num_days: int) -> datetime:
+    current = start_date
+    days_added = 0
+    while days_added < num_days:
+        current += timedelta(days=1)
+        if current.weekday() < 5:  # Monday=0, Sunday=6
+            days_added += 1
+    return current
+```
+
+**AI API Integration with Fallback**
+When integrating external AI APIs (Anthropic, OpenAI, etc.):
+
+1. **Make it optional**: AI should be fallback, not requirement
+   ```yaml
+   inputs:
+     enable_ai_fallback:
+       default: 'true'
+     anthropic_api_key:
+       required: false
+   ```
+
+2. **Graceful degradation**: Handle API failures
+   ```python
+   def classify(self, data):
+       # Try rule-based first
+       result = self.classify_with_rules(data)
+       if result:
+           return result
+
+       # AI fallback if enabled and API key present
+       if self.enable_ai and self.api_key:
+           try:
+               return self.classify_with_ai(data)
+           except Exception as e:
+               logger.warning(f"AI fallback failed: {e}")
+               return {"category": "MANUAL_REVIEW"}
+
+       return {"category": "MANUAL_REVIEW"}
+   ```
+
+3. **Mock in tests**: Never make real API calls in CI
+   ```python
+   @patch('anthropic.Anthropic')
+   def test_ai_classification(self, mock_anthropic):
+       mock_client = Mock()
+       mock_client.messages.create.return_value = Mock(
+           content=[Mock(text='{"category": "TRANSFORMATIVE"}')]
+       )
+       mock_anthropic.return_value = mock_client
+
+       result = classifier.classify_with_ai(change)
+       assert result['category'] == 'TRANSFORMATIVE'
+   ```
+
+4. **Use fixtures for API responses**:
+   ```
+   tests/fixtures/api-responses/
+   ├── classification-high-confidence.json
+   ├── classification-low-confidence.json
+   └── classification-error.json
+   ```
+
+5. **Document API costs**: Claude Haiku ~$0.25/million input tokens
 
 ---
 
@@ -190,6 +396,44 @@ containers:
 5. Update `docs/scanners.md`
 6. Add to matrix in main orchestrator
 
+### GitHub Integration Patterns
+
+**PR Comments** (Standard for most scanners):
+```yaml
+- name: Post PR Comment
+  if: github.event_name == 'pull_request'
+  uses: huntridge-labs/argus/.github/actions/comment-pr@main
+  with:
+    comment_file: summary.md
+```
+
+**GitHub Issues** (For audit trails, compliance, tracking):
+```python
+# Use PyGithub or direct API calls
+from github import Github
+
+g = Github(os.environ['GITHUB_TOKEN'])
+repo = g.get_repo(os.environ['GITHUB_REPOSITORY'])
+
+issue = repo.create_issue(
+    title=f"🔐 Compliance: {category} - {resource}",
+    body=issue_body,
+    labels=['compliance', f'scn:{category.lower()}']
+)
+```
+
+**When to use Issues vs PR Comments**:
+- **PR Comments**: Immediate feedback, scanner results, validation
+- **Issues**: Audit trail, compliance tracking, follow-up tasks, timelines
+
+**Required Permissions**:
+```yaml
+permissions:
+  pull-requests: write  # For PR comments
+  issues: write         # For Issue creation
+  security-events: write # For SARIF upload
+```
+
 ---
 
 ## Error Resolution
@@ -228,12 +472,35 @@ permissions:
 
 ## PR Guidelines
 
+### CRITICAL: Feature Branch Workflow
+
+**NEVER commit directly to main.** Always use feature branches and create draft PRs for team review.
+
+```bash
+# Create feature branch
+git checkout -b feat/my-feature
+
+# Make changes and commit
+git add .
+git commit -m "feat(component): description"
+
+# Push to origin
+git push origin feat/my-feature
+
+# Create draft PR for team review
+gh pr create --draft --title "..." --body "..."
+
+# Or use GitHub UI: Check "Create as draft"
+```
+
 ### Before Creating PR
 - [ ] All tests pass (`pytest`)
 - [ ] No linting errors (`npm run lint`)
 - [ ] Conventional commit messages used
 - [ ] Documentation updated if needed
 - [ ] Action README updated if action changed
+- [ ] Feature branch (not main)
+- [ ] Draft PR for team review
 
 ### PR Description Template
 ```markdown
@@ -266,6 +533,11 @@ How was this tested?
 | Python for all scripts | Single language, one test framework (pytest), unified coverage |
 | Co-located tests | Tests live next to code they test |
 | Single version.yaml | Prevents version drift across 20+ files |
+| Feature branches + draft PRs | Team review required, never commit to main |
+| Hybrid classification (rules + AI) | Fast/deterministic rules, AI handles ambiguity |
+| Generic patterns over cloud-specific | Broader applicability (AWS, Azure, GCP, custom) |
+| GitHub Issues for compliance | Audit trail with 90-day artifact retention |
+| Rule-based before AI | Cost-free, deterministic, testable |
 
 ---
 

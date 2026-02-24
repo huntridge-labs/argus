@@ -299,3 +299,67 @@ debugging:
       bandit -r tests/fixtures/test-apps/python-app -f json | \
         python .github/actions/scanner-bandit/scripts/parse-results.py counts - | \
         python -m json.tool
+
+# ==============================================================================
+# SCN DETECTOR ERRORS
+# ==============================================================================
+
+scn_detector_errors:
+
+  - pattern: "AI fallback requested but ANTHROPIC_API_KEY not set"
+    category: scn-detector
+    context: "SCN detector with enable_ai_fallback: true"
+
+    root_cause: "ANTHROPIC_API_KEY secret not configured in repository"
+
+    solution:
+      steps:
+        - "If AI fallback is desired: add ANTHROPIC_API_KEY to repository secrets"
+        - "If air-gapped: set enable_ai_fallback: false (rule-based only)"
+      note: "Rule-based classification works without any API keys"
+
+  - pattern: "No IaC changes detected"
+    category: scn-detector
+    context: "SCN detector reports no changes on PR with IaC files"
+
+    root_cause: "fetch-depth not set or base_ref incorrect"
+
+    solution:
+      steps:
+        - "Ensure actions/checkout has fetch-depth: 0"
+        - "Verify base_ref points to correct comparison branch"
+      code: |
+        - uses: actions/checkout@v6
+          with:
+            fetch-depth: 0  # Required for git diff
+
+  - pattern: "conftest: failed to import.*scn-detector"
+    category: scn-detector
+    context: "pytest coverage measurement fails for SCN scripts"
+
+    root_cause: |
+      SCN detector scripts have runtime dependencies (requests, PyYAML)
+      that may not be installed in the test environment.
+
+    solution:
+      steps:
+        - "Install dependencies: pip install -r requirements.txt"
+        - "The conftest.py import warnings are informational only"
+      note: "Scripts with import errors appear at 0% coverage but are still measured"
+
+  - pattern: "Classification failed.*MANUAL_REVIEW"
+    category: scn-detector
+    context: "Changes classified as MANUAL_REVIEW"
+
+    root_cause: |
+      No rule matched and AI fallback either disabled, unavailable,
+      or returned low confidence.
+
+    solution:
+      options:
+        - description: "Add specific rules to scn-config.yml"
+          how: "Define pattern/resource/attribute rules for the resource type"
+        - description: "Enable AI fallback"
+          how: "Set enable_ai_fallback: true and provide ANTHROPIC_API_KEY"
+        - description: "Review manually"
+          how: "MANUAL_REVIEW is the expected safe default for unrecognized changes"

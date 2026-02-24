@@ -1,0 +1,254 @@
+version: "1.0"
+name: "FedRAMP Low Impact Level"
+description: |
+  Classification rules for FedRAMP Low impact systems. This profile provides
+  baseline rules for detecting significant changes in low-impact cloud systems.
+compliance_framework: "FedRAMP 20X"
+impact_level: "Low"
+
+# FedRAMP Significant Change Notification Categories
+# - ROUTINE: No notification required (maintenance, patches, minor changes)
+# - ADAPTIVE: Notification within 10 business days after completion
+# - TRANSFORMATIVE: 30 days initial + 10 days final + post-completion notice
+# - IMPACT: Requires new authorization (boundary/FIPS changes)
+
+rules:
+  routine:
+    - pattern: 'tags.*'
+      description: 'Tag changes (metadata only)'
+
+    - pattern: 'description'
+      description: 'Description changes (documentation)'
+
+    - resource: 'aws_instance.*.user_data'
+      operation: 'modify'
+      description: 'User data script updates (non-security)'
+
+    - resource: 'aws_autoscaling_group.*.desired_capacity'
+      operation: 'modify'
+      description: 'Minor capacity adjustments'
+
+    - resource: 'aws_iam_role.*.description'
+      operation: 'modify'
+      description: 'IAM role description updates (documentation)'
+
+    - resource: 'aws_iam_policy.*.description'
+      operation: 'modify'
+      description: 'IAM policy description updates (documentation)'
+
+  adaptive:
+    - resource: 'aws_ami.*'
+      operation: 'modify'
+      description: 'AMI updates (patching, version updates)'
+
+    - resource: 'aws_instance.*.instance_type'
+      operation: 'modify'
+      description: 'Instance type changes (like-for-like sizing)'
+
+    - pattern: 'kubernetes.io/.*version'
+      description: 'Kubernetes version updates'
+
+    - resource: 'aws_lambda_function.*.runtime'
+      operation: 'modify'
+      description: 'Lambda runtime version updates (same language)'
+
+    - resource: 'aws_db_instance.*.engine_version'
+      operation: 'modify'
+      description: 'Database minor version updates'
+
+    - resource: 'aws_iam_policy_attachment.*'
+      operation: 'create|delete|modify'
+      description: 'IAM policy attachments (non-admin policies)'
+
+    - resource: 'aws_iam_role_policy.*'
+      operation: 'modify'
+      description: 'IAM inline policy updates (non-admin roles)'
+
+    - resource: 'aws_iam_role.*.assume_role_policy'
+      operation: 'modify'
+      description: 'IAM role trust relationship updates'
+
+  transformative:
+    - resource: 'aws_rds_.*\.engine'
+      operation: 'modify'
+      description: 'Database engine changes (major version or type)'
+
+    - pattern: 'provider.*.region'
+      operation: 'modify'
+      description: 'Region or datacenter changes'
+
+    - resource: 'aws_lambda_function.*'
+      attribute: 'runtime'
+      operation: 'create'
+      description: 'New runtime capabilities'
+
+    - resource: 'aws_bedrock.*'
+      operation: 'create'
+      description: 'New AI/ML service usage (AWS Bedrock)'
+
+    - resource: 'aws_sagemaker.*'
+      operation: 'create'
+      description: 'New AI/ML service usage (AWS SageMaker)'
+
+    - resource: 'azurerm_cognitive_account.*'
+      operation: 'create'
+      description: 'New AI/ML service usage (Azure Cognitive Services)'
+
+    - resource: 'google_vertex_ai.*'
+      operation: 'create'
+      description: 'New AI/ML service usage (GCP Vertex AI)'
+
+    - resource: 'aws_iam_role.*'
+      operation: 'create'
+      description: 'New IAM role creation (new permissions/capabilities)'
+
+    - resource: 'aws_iam_policy.*'
+      operation: 'create'
+      description: 'New IAM policy creation (new permissions)'
+
+    - resource: 'aws_iam_group.*'
+      operation: 'create|delete'
+      description: 'IAM group changes (user access patterns)'
+
+  impact:
+    - attribute: '.*encryption.*'
+      operation: 'delete|modify'
+      description: 'Encryption configuration changes (security boundary)'
+
+    - resource: 'aws_security_group.*'
+      attribute: 'ingress'
+      pattern: '0\.0\.0\.0/0'
+      description: 'Public internet access (security boundary change)'
+
+    - resource: 'aws_kms_key.*'
+      operation: 'delete'
+      description: 'KMS key deletion (encryption boundary change)'
+
+    - resource: 'aws_vpc.*'
+      operation: 'create|delete'
+      description: 'Network boundary changes (new/removed VPC)'
+
+    - pattern: '.*fips.*'
+      operation: 'delete|modify'
+      description: 'FIPS compliance changes (requires re-authorization)'
+
+    - resource: 'aws_iam_role.*'
+      pattern: '.*[Aa]dmin.*|.*[Rr]oot.*|.*[Pp]ower[Uu]ser.*'  # codespell:ignore
+      operation: 'create|modify|delete'
+      description: 'Administrative IAM role changes (security boundary)'
+
+    - resource: 'aws_iam_policy.*'
+      pattern: '.*[Aa]dmin.*|\*'
+      operation: 'create|modify'
+      description: 'Administrative or wildcard IAM policies (security boundary)'
+
+    - resource: 'aws_iam_role.*.assume_role_policy'
+      pattern: '.*:root.*|.*\*.*'
+      operation: 'modify'
+      description: 'Cross-account or wildcard trust policies (security boundary)'
+
+    - resource: 'aws_organizations_policy.*'
+      operation: 'create|modify|delete'
+      description: 'Service Control Policies (security boundary)'
+
+    - resource: 'aws_iam_policy.*.policy'
+      pattern: '.*Effect.*:.*Allow.*Action.*:\s*\*'
+      operation: 'create|modify'
+      description: 'Wildcard action permissions (security boundary)'
+
+    - resource: 'aws_iam_user.*'
+      operation: 'create|delete'
+      description: 'IAM user lifecycle changes (authentication boundary)'
+
+# AI Fallback Prompts (used when no rule matches and AI fallback is enabled)
+ai_fallback:
+
+  # AI classification prompt template
+  system_prompt: |
+    You are a FedRAMP compliance expert analyzing infrastructure changes for Low impact systems.
+    You are performing this task because a rules-based classification could not confidently categorize the change.
+
+    Use the following guidelines to classify the change:
+
+    FedRAMP Change Categories:
+    - ROUTINE: Regular maintenance, patching, minor capacity changes (no notification required)
+    - ADAPTIVE: Frequent improvements with minimal security plan changes (10 days after completion)
+    - TRANSFORMATIVE: Rare, significant changes altering risk profile (30 days initial + 10 days final notice)
+    - IMPACT: Changes to security boundary or FIPS level (requires new assessment)
+
+    For FedRAMP Low systems:
+    - Focus on security boundary and encryption changes for IMPACT
+    - AI/ML services are typically TRANSFORMATIVE
+    - Infrastructure scaling and patching are typically ADAPTIVE or ROUTINE
+    - Configuration changes without security implications are ROUTINE
+
+    IAM Classification Guidance:
+    - ROUTINE: Description/tag updates only
+    - ADAPTIVE: Policy attachments, non-admin policy updates, trust relationship changes
+    - TRANSFORMATIVE: Creating new roles/policies/groups
+    - IMPACT: Admin roles, wildcard permissions, cross-account access, user lifecycle, SCPs
+
+  user_prompt_template: |
+    Change Details:
+    - Resource Type: {resource_type}
+    - Resource Name: {resource_name}
+    - Operation: {operation}
+    - Attributes Changed: {attributes}
+    - Diff Preview:
+    {diff_snippet}
+
+    Classify this change. Respond ONLY with valid JSON in this exact format:
+    {{
+      "category": "ROUTINE|ADAPTIVE|TRANSFORMATIVE|IMPACT",
+      "confidence": 0.0-1.0,
+      "reasoning": "Brief explanation (max 200 chars)"
+    }}
+
+# Notification Timeline Configuration (FedRAMP requirements)
+notifications:
+  adaptive:
+    post_completion_days: 10
+    description: "Submit notification within 10 business days after completion"
+
+  transformative:
+    initial_notice_days: 30
+    final_notice_days: 10
+    post_completion_required: true
+    description: "30 days initial notice, 10 days final notice, post-completion notification"
+
+  impact:
+    requires_new_assessment: true
+    description: "Requires new authorization - work with 3PAO and AO"
+
+# Issue Template Configuration
+issue_templates:
+  labels:
+    prefix: "scn"
+    categories:
+      routine: "scn:routine"
+      adaptive: "scn:adaptive"
+      transformative: "scn:transformative"
+      impact: "scn:impact"
+
+  checklist:
+    adaptive:
+      - "Change description and justification"
+      - "Impact analysis completed"
+      - "Testing and validation results"
+      - "Post-completion notification submitted"
+
+    transformative:
+      - "Initial SCN notice submitted (30 days before)"
+      - "Impact analysis and risk assessment completed"
+      - "Test results and validation evidence documented"
+      - "Final SCN notice submitted (10 days before)"
+      - "Change executed successfully"
+      - "Post-completion notification submitted"
+
+    impact:
+      - "Engage 3PAO for assessment planning"
+      - "Coordinate with Authorizing Official (AO)"
+      - "Submit ConMon notification"
+      - "Update System Security Plan (SSP)"
+      - "Complete security assessment"
+      - "Obtain new Authorization to Operate (ATO)"

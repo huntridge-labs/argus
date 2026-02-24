@@ -1,0 +1,5 @@
+{
+  "category": "TRANSFORMATIVE",
+  "confidence": 0.95,
+  "reasoning": "Database engine change from PostgreSQL to Aurora significantly alters service architecture and requires thorough testing"
+}

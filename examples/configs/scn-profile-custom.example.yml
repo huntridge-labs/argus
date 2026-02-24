@@ -1,0 +1,227 @@
+# Custom SCN Profile Example
+# This file demonstrates how to create a custom SCN classification profile
+# Copy this file to .github/scn-profiles/my-profile.yml and customize as needed
+
+version: "1.0"
+name: "Custom Organization Profile"
+description: |
+  Custom SCN classification rules tailored for your organization's
+  risk appetite and compliance requirements.
+compliance_framework: "FedRAMP 20X"
+impact_level: "Moderate"  # Low, Moderate, or High
+
+# Classification Rules
+# Rules are evaluated in order: routine → adaptive → transformative → impact
+# First matching rule wins, so put more specific rules first
+
+rules:
+  # ROUTINE: No notification required
+  # Regular maintenance, patches, minor changes
+  routine:
+    - pattern: 'tags.*'
+      description: 'Tag changes (metadata only)'
+
+    - pattern: 'description'
+      description: 'Description updates (documentation)'
+
+    - resource: 'aws_autoscaling_group.*.desired_capacity'
+      operation: 'modify'
+      description: 'Minor capacity adjustments (<20% change)'
+
+  # ADAPTIVE: Notification within 10 business days after completion
+  # Frequent improvements with minimal security plan impact
+  adaptive:
+    - resource: 'aws_ami.*'
+      operation: 'modify'
+      description: 'AMI updates (patching, version updates)'
+
+    - resource: 'aws_instance.*.instance_type'
+      operation: 'modify'
+      description: 'Instance type changes (like-for-like sizing)'
+
+    - resource: 'aws_iam_policy_attachment.*'
+      operation: 'create|delete|modify'
+      description: 'IAM policy attachments (non-admin policies)'
+
+    - resource: 'aws_iam_role.*.assume_role_policy'
+      operation: 'modify'
+      description: 'IAM role trust relationship updates'
+
+    # Add your organization-specific adaptive rules here
+    - resource: 'aws_lambda_function.*.memory_size'
+      operation: 'modify'
+      description: 'Lambda memory adjustments'
+
+  # TRANSFORMATIVE: 30 days initial + 10 days final + post-completion notice
+  # Rare, significant changes altering risk profile
+  transformative:
+    - resource: 'aws_rds_.*\.engine'
+      operation: 'modify'
+      description: 'Database engine changes (major version or type)'
+
+    - pattern: 'provider.*.region'
+      operation: 'modify'
+      description: 'Region or datacenter changes'
+
+    - resource: 'aws_iam_role.*'
+      operation: 'create'
+      description: 'New IAM role creation (new permissions/capabilities)'
+
+    - resource: 'aws_iam_policy.*'
+      operation: 'create'
+      description: 'New IAM policy creation (new permissions)'
+
+    # AI/ML services (require careful review)
+    - resource: 'aws_bedrock.*'
+      operation: 'create'
+      description: 'New AI/ML service usage (AWS Bedrock)'
+
+    - resource: 'aws_sagemaker.*'
+      operation: 'create'
+      description: 'New AI/ML service usage (AWS SageMaker)'
+
+    # Add your organization-specific transformative rules here
+    - resource: 'aws_ecs_cluster.*'
+      operation: 'create|delete'
+      description: 'Container orchestration changes'
+
+  # IMPACT: Requires new authorization
+  # Changes to security boundary, FIPS level, or authentication
+  impact:
+    - attribute: '.*encryption.*'
+      operation: 'delete|modify'
+      description: 'Encryption configuration changes (security boundary)'
+
+    - resource: 'aws_security_group.*'
+      attribute: 'ingress'
+      pattern: '0\.0\.0\.0/0'
+      description: 'Public internet access (security boundary change)'
+
+    - resource: 'aws_kms_key.*'
+      operation: 'delete'
+      description: 'KMS key deletion (encryption boundary change)'
+
+    - resource: 'aws_vpc.*'
+      operation: 'create|delete'
+      description: 'Network boundary changes (new/removed VPC)'
+
+    - pattern: '.*fips.*'
+      operation: 'delete|modify'
+      description: 'FIPS compliance changes (requires re-authorization)'
+
+    # IAM administrative changes
+    - resource: 'aws_iam_role.*'
+      pattern: '.*[Aa]dmin.*|.*[Rr]oot.*|.*[Pp]ower[Uu]ser.*'  # codespell:ignore
+      operation: 'create|modify|delete'
+      description: 'Administrative IAM role changes (security boundary)'
+
+    - resource: 'aws_iam_policy.*'
+      pattern: '.*[Aa]dmin.*|\*'
+      operation: 'create|modify'
+      description: 'Administrative or wildcard IAM policies (security boundary)'
+
+    - resource: 'aws_iam_role.*.assume_role_policy'
+      pattern: '.*:root.*|.*\*.*'
+      operation: 'modify'
+      description: 'Cross-account or wildcard trust policies (security boundary)'
+
+    - resource: 'aws_iam_user.*'
+      operation: 'create|delete'
+      description: 'IAM user lifecycle changes (authentication boundary)'
+
+    # Add your organization-specific impact rules here
+    - resource: 'aws_cloudtrail.*'
+      operation: 'delete|modify'
+      description: 'CloudTrail modifications (audit logging boundary)'
+
+# AI Fallback Configuration
+# These settings configure AI behavior when rules don't match.
+# AI is only active when enable_ai_fallback=true is set in the action input.
+# Can be overridden by ai_config_file input.
+ai_fallback:
+  provider: 'anthropic'  # or 'openai'
+  model: 'claude-3-haiku-20240307'  # or 'gpt-4o-mini'
+  confidence_threshold: 0.85  # Higher threshold = more conservative (more MANUAL_REVIEW)
+  max_tokens: 1024
+  max_diff_chars: 1000
+
+  # Custom AI prompts for your organization
+  system_prompt: |
+    You are a compliance expert analyzing infrastructure changes for a Moderate impact system.
+
+    Change Categories:
+    - ROUTINE: Regular maintenance, patching, minor capacity changes (no notification required)
+    - ADAPTIVE: Frequent improvements with minimal security plan changes (10 days after completion)
+    - TRANSFORMATIVE: Rare, significant changes altering risk profile (30 days initial + 10 days final notice)
+    - IMPACT: Changes to security boundary or FIPS level (requires new assessment)
+
+    Organization-Specific Guidance:
+    - All AI/ML services require TRANSFORMATIVE classification minimum
+    - Cross-account access is always IMPACT
+    - Database engine changes are TRANSFORMATIVE
+    - Encryption changes are IMPACT
+
+  user_prompt_template: |
+    Change Details:
+    - Resource Type: {resource_type}
+    - Resource Name: {resource_name}
+    - Operation: {operation}
+    - Attributes Changed: {attributes}
+    - Diff Preview:
+    {diff_snippet}
+
+    Classify this change. Respond ONLY with valid JSON in this exact format:
+    {{
+      "category": "ROUTINE|ADAPTIVE|TRANSFORMATIVE|IMPACT",
+      "confidence": 0.0-1.0,
+      "reasoning": "Brief explanation (max 200 chars)"
+    }}
+
+# Notification Timeline Configuration (FedRAMP requirements)
+notifications:
+  adaptive:
+    post_completion_days: 10
+    description: "Submit notification within 10 business days after completion"
+
+  transformative:
+    initial_notice_days: 30
+    final_notice_days: 10
+    post_completion_required: true
+    description: "30 days initial notice, 10 days final notice, post-completion notification"
+
+  impact:
+    requires_new_assessment: true
+    description: "Requires new authorization - work with 3PAO and AO"
+
+# Issue Template Configuration (for GitHub Issues created by the action)
+issue_templates:
+  labels:
+    prefix: "scn"
+    categories:
+      routine: "scn:routine"
+      adaptive: "scn:adaptive"
+      transformative: "scn:transformative"
+      impact: "scn:impact"
+
+  checklist:
+    adaptive:
+      - "Change description and justification"
+      - "Impact analysis completed"
+      - "Testing and validation results"
+      - "Post-completion notification submitted"
+
+    transformative:
+      - "Initial SCN notice submitted (30 days before)"
+      - "Impact analysis and risk assessment completed"
+      - "Test results and validation evidence documented"
+      - "Final SCN notice submitted (10 days before)"
+      - "Change executed successfully"
+      - "Post-completion notification submitted"
+
+    impact:
+      - "Engage 3PAO for assessment planning"
+      - "Coordinate with Authorizing Official (AO)"
+      - "Submit ConMon notification"
+      - "Update System Security Plan (SSP)"
+      - "Complete security assessment"
+      - "Obtain new Authorization to Operate (ATO)"

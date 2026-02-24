@@ -1,0 +1,30 @@
+version: "1.0"
+name: "Test Profile - Minimal"
+description: "Minimal test configuration for unit tests"
+compliance_framework: "FedRAMP 20X"
+impact_level: "Low"
+
+rules:
+  routine:
+    - pattern: "tags.*"
+      description: "Tag changes"
+
+  adaptive:
+    - resource: "aws_instance.*.instance_type"
+      operation: "modify"
+      description: "Instance type changes"
+
+  transformative:
+    - resource: 'aws_rds_.*\.engine'
+      operation: "modify"
+      description: "Database engine changes"
+
+  impact:
+    - attribute: ".*encryption.*"
+      operation: "delete|modify"
+      description: "Encryption changes"
+
+ai_fallback:
+  model: "claude-3-haiku-20240307"
+  confidence_threshold: 0.8
+  max_tokens: 1024

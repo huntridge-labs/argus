@@ -2,3 +2,10 @@
 pytest>=7.0
 pytest-cov>=4.0
 pyyaml>=6.0
+
+# SCN Detector dependencies
+requests>=2.31.0
+
+# Optional: AI fallback for SCN Detector (not required for rule-based classification)
+# Install with: pip install anthropic>=0.39.0
+# Required only when enable_ai_fallback: true AND ANTHROPIC_API_KEY is set

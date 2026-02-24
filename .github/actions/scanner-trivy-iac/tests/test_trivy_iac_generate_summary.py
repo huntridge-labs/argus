@@ -2,16 +2,21 @@
 """
 Unit tests for scanner-trivy-iac/scripts/generate_summary.py
 Tests markdown generation for Trivy IaC security scan results
+
+Uses in-process imports instead of subprocess for fast execution.
 """
 
+import importlib.util
 import json
 import os
 import shutil
-import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+
+pytestmark = pytest.mark.unit
 
 # Paths
 REPO_ROOT = Path(__file__).parent.parent.parent.parent.parent
@@ -19,9 +24,50 @@ SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
 GENERATOR_SCRIPT = SCRIPTS_DIR / "generate_summary.py"
 FIXTURES_DIR = REPO_ROOT / "tests" / "fixtures" / "scanner-outputs" / "trivy-iac"
 
+# Load module in-process via importlib
+spec = importlib.util.spec_from_file_location(
+    "trivy_iac_generate_summary", GENERATOR_SCRIPT,
+)
+gen_mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(gen_mod)
+
+
+def _run_in_process(
+    workspace,
+    output_file,
+    is_pr_comment="false",
+    has_iac="true",
+    iac_path=None,
+    repo_url="https://github.com/test/repo/blob/main",
+    github_server_url="https://github.com",
+    github_repo="test/repo",
+    github_run_id="12345",
+):
+    """Run generate_trivy_iac_summary in-process, returning a result-like object."""
+    original_dir = os.getcwd()
+    try:
+        os.chdir(workspace)
+        gen_mod.generate_trivy_iac_summary(
+            output_file,
+            is_pr_comment,
+            has_iac,
+            iac_path or "",
+            repo_url,
+            github_server_url,
+            github_repo,
+            github_run_id,
+        )
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+    except SystemExit as e:
+        return SimpleNamespace(returncode=e.code or 1, stdout="", stderr="")
+    except Exception as e:
+        return SimpleNamespace(returncode=1, stdout="", stderr=str(e))
+    finally:
+        os.chdir(original_dir)
+
 
 class TestTrivyIaCGenerateSummary:
-    """Test cases for scanner-trivy-iac generate-summary.sh"""
+    """Test cases for scanner-trivy-iac generate_summary.py"""
 
     @pytest.fixture(autouse=True)
     def setup(self, tmp_path):
@@ -31,55 +77,12 @@ class TestTrivyIaCGenerateSummary:
         self.security_reports = self.iac_path / "security-reports"
         self.security_reports.mkdir(parents=True)
         self.output_file = tmp_path / "summary.md"
-        self.original_dir = os.getcwd()
-        os.chdir(tmp_path)
-        yield
-        os.chdir(self.original_dir)
 
-    def run_generator(
-        self,
-        output_file=None,
-        is_pr_comment="false",
-        has_iac="true",
-        iac_path=None,
-        repo_url="https://github.com/test/repo/blob/main",
-        github_server_url="https://github.com",
-        github_repo="test/repo",
-        github_run_id="12345",
-    ):
-        """Helper to run the generator script with arguments."""
-        if output_file is None:
-            output_file = str(self.output_file)
-        if iac_path is None:
-            iac_path = str(self.iac_path)
-
-        cmd = [
-            "python",
-            str(GENERATOR_SCRIPT),
-            str(output_file),
-            "--is-pr-comment",
-            is_pr_comment,
-            "--has-iac",
-            has_iac,
-            "--iac-path",
-            iac_path,
-            "--repo-url",
-            repo_url,
-            "--github-server-url",
-            github_server_url,
-            "--github-repo",
-            github_repo,
-            "--github-run-id",
-            github_run_id,
-        ]
-
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            cwd=self.workspace,
-        )
-        return result
+    def run_generator(self, **kwargs):
+        """Helper to run the generator in-process."""
+        kwargs.setdefault("output_file", str(self.output_file))
+        kwargs.setdefault("iac_path", str(self.iac_path))
+        return _run_in_process(self.workspace, **kwargs)
 
     def test_script_exists(self):
         """Verify generator script exists."""
@@ -94,7 +97,6 @@ class TestTrivyIaCGenerateSummary:
 
     def test_generates_summary_with_findings(self):
         """Test generating summary with findings."""
-        # Copy fixtures
         shutil.copy(
             FIXTURES_DIR / "results-with-findings.json",
             self.security_reports / "trivy-results.json",
@@ -111,10 +113,8 @@ class TestTrivyIaCGenerateSummary:
 
         content = self.output_file.read_text()
 
-        # Check for key elements
         assert "Trivy IaC" in content
         assert "Findings Summary" in content
-        # Should have severity counts in table
         assert "Critical" in content
         assert "High" in content
 
@@ -159,7 +159,6 @@ class TestTrivyIaCGenerateSummary:
         assert result.returncode == 0
         content = self.output_file.read_text()
 
-        # PR comment should use collapsible format
         assert "<details>" in content
         assert "<summary>" in content
         assert "</details>" in content
@@ -180,7 +179,6 @@ class TestTrivyIaCGenerateSummary:
         assert result.returncode == 0
         content = self.output_file.read_text()
 
-        # Should have finding details section
         assert "Finding Details" in content
 
     def test_artifact_link_present(self):
@@ -202,7 +200,6 @@ class TestTrivyIaCGenerateSummary:
 
     def test_handles_missing_json_file(self):
         """Test handles missing JSON file gracefully."""
-        # Don't copy any files
         result = self.run_generator(has_iac="true")
 
         assert result.returncode == 0
@@ -223,7 +220,6 @@ class TestTrivyIaCGenerateSummary:
         assert result.returncode == 0
         content = self.output_file.read_text()
 
-        # Non-PR format should have ## heading
         assert "## " in content
         assert "Trivy IaC" in content
 
@@ -239,7 +235,6 @@ class TestTrivyIaCGenerateSummary:
         assert result.returncode == 0
         content = self.output_file.read_text()
 
-        # Check table headers
         assert "Critical" in content
         assert "High" in content
         assert "Medium" in content
@@ -261,7 +256,6 @@ class TestTrivyIaCGenerateSummary:
         assert result.returncode == 0
         content = self.output_file.read_text()
 
-        # Should group findings by severity
         assert "Critical Severity" in content or "High Severity" in content
 
 
@@ -276,26 +270,12 @@ class TestEdgeCases:
         self.security_reports = self.iac_path / "security-reports"
         self.security_reports.mkdir(parents=True)
         self.output_file = tmp_path / "summary.md"
-        self.original_dir = os.getcwd()
-        os.chdir(tmp_path)
-        yield
-        os.chdir(self.original_dir)
 
-    def run_generator(self, output_file=None, is_pr_comment="false", has_iac="true",
-                      iac_path=None, repo_url="https://github.com/test/repo/blob/main",
-                      github_server_url="https://github.com", github_repo="test/repo",
-                      github_run_id="12345"):
-        if output_file is None:
-            output_file = str(self.output_file)
-        if iac_path is None:
-            iac_path = str(self.iac_path)
-        cmd = [sys.executable, str(GENERATOR_SCRIPT), str(output_file),
-               "--is-pr-comment", is_pr_comment, "--has-iac", has_iac,
-               "--iac-path", iac_path, "--repo-url", repo_url,
-               "--github-server-url", github_server_url, "--github-repo", github_repo,
-               "--github-run-id", github_run_id]
-        result = subprocess.run(cmd, capture_output=True, text=True, cwd=self.workspace)
-        return result
+    def run_generator(self, **kwargs):
+        """Helper to run the generator in-process."""
+        kwargs.setdefault("output_file", str(self.output_file))
+        kwargs.setdefault("iac_path", str(self.iac_path))
+        return _run_in_process(self.workspace, **kwargs)
 
     def test_no_iac_directory(self):
         """Test when IaC directory is not found."""
@@ -316,7 +296,6 @@ class TestEdgeCases:
         results_file = self.security_reports / "trivy-results.json"
         results_file.write_text("{invalid json")
         result = self.run_generator(has_iac="true")
-        # Should handle gracefully
         assert result.returncode == 0
         assert self.output_file.exists()
 

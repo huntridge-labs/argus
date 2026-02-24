@@ -1,0 +1,65 @@
+# AI Configuration - OpenAI (GPT)
+# This file demonstrates AI provider settings for OpenAI's GPT models
+# Copy to .github/ai-config.yml and customize as needed
+
+# AI is activated by the enable_ai_fallback action input (not by this config file).
+# This file only configures AI behavior (provider, model, thresholds).
+
+# AI Provider: 'openai'
+provider: 'openai'
+
+# Model selection (choose based on your needs)
+# - gpt-4o-mini: Fast, affordable, good for routine classification
+# - gpt-4o: Latest GPT-4 optimized model, balanced performance
+# - gpt-4-turbo: High quality, comprehensive reasoning
+model: 'gpt-4o-mini'
+
+# Confidence threshold (0.0-1.0)
+# AI classifications below this confidence are marked as MANUAL_REVIEW
+# Higher = more conservative (more manual reviews)
+# Lower = more automated (fewer manual reviews but less certain)
+confidence_threshold: 0.8
+
+# Maximum tokens for AI response
+# 1024 is sufficient for JSON classification responses
+max_tokens: 1024
+
+# Maximum characters from diff to include in AI prompt
+# Larger values = more context but higher cost
+# 1000 is usually enough to understand the change
+max_diff_chars: 1000
+
+# Optional: Custom API base URL
+# For Azure OpenAI, use: https://YOUR_RESOURCE_NAME.openai.azure.com/openai/deployments/YOUR_DEPLOYMENT_NAME
+# For OpenAI-compatible APIs (Ollama, vLLM, etc.): http://localhost:11434/v1
+# api_base_url: 'https://api.openai.com/v1'
+
+# Optional: Custom system prompt
+# Uncomment to override the profile-specific system prompt
+# system_prompt: |
+#   You are a FedRAMP compliance expert analyzing infrastructure changes.
+#
+#   FedRAMP Change Categories:
+#   - ROUTINE: Regular maintenance, patching, minor capacity changes
+#   - ADAPTIVE: Frequent improvements with minimal security plan changes
+#   - TRANSFORMATIVE: Rare, significant changes altering risk profile
+#   - IMPACT: Changes to security boundary or FIPS level
+
+# Optional: Custom user prompt template
+# Uncomment to override the profile-specific user prompt
+# Variables available: {resource_type}, {resource_name}, {operation}, {attributes}, {diff_snippet}
+# user_prompt_template: |
+#   Change Details:
+#   - Resource Type: {resource_type}
+#   - Resource Name: {resource_name}
+#   - Operation: {operation}
+#   - Attributes Changed: {attributes}
+#   - Diff Preview:
+#   {diff_snippet}
+#
+#   Classify this change. Respond ONLY with valid JSON:
+#   {{
+#     "category": "ROUTINE|ADAPTIVE|TRANSFORMATIVE|IMPACT",
+#     "confidence": 0.0-1.0,
+#     "reasoning": "Brief explanation"
+#   }}

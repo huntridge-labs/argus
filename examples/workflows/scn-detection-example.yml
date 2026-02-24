@@ -1,0 +1,118 @@
+name: FedRAMP SCN Detection
+
+# Trigger on PR to paths containing Infrastructure as Code
+on:
+  pull_request:
+    paths:
+      - 'terraform/**'
+      - 'infrastructure/**'
+      - 'kubernetes/**'
+      - 'cloudformation/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  # Example 1: Use built-in FedRAMP Low profile (default)
+  scn-detection-default:
+    name: SCN Detection (FedRAMP Low - Default)
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout with full history for git diff
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Required for SCN detector to analyze changes
+
+      # Run SCN detector with built-in FedRAMP Low profile
+      - name: Analyze IaC changes for FedRAMP SCN
+        id: scn
+        uses: huntridge-labs/argus/.github/actions/scn-detector@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # Optional: for AI fallback
+        with:
+          # No config_file specified = uses built-in 'fedramp-low' profile
+          create_issues: true       # Create GitHub Issues for tracking
+          post_pr_comment: true     # Post PR comment with analysis
+          enable_ai_fallback: true  # Use AI for ambiguous cases
+          fail_on_category: 'none'  # Don't fail workflow on any category
+
+      # Example: Conditional workflow based on SCN category
+      - name: Notify team for transformative changes
+        if: steps.scn.outputs.transformative_count > 0 || steps.scn.outputs.impact_count > 0
+        run: |
+          echo "⚠️ Transformative or Impact changes detected!"
+          echo "Transformative: ${{ steps.scn.outputs.transformative_count }}"
+          echo "Impact: ${{ steps.scn.outputs.impact_count }}"
+          echo "Issues created: ${{ steps.scn.outputs.issue_numbers }}"
+
+  # Example 2: Use custom profile
+  scn-detection-custom:
+    name: SCN Detection (Custom Profile)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Analyze with custom profile
+        id: scn-custom
+        uses: huntridge-labs/argus/.github/actions/scn-detector@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        with:
+          # Specify custom profile path
+          # Create your custom profile at .github/scn-profiles/my-profile.yml
+          # See .github/actions/scn-detector/profiles/README.md for structure
+          config_file: '.github/scn-profiles/my-custom-profile.yml'
+          create_issues: true
+          post_pr_comment: true
+          enable_ai_fallback: true
+          fail_on_category: 'impact'  # Fail if IMPACT changes detected
+
+      - name: Display Results
+        if: always()
+        run: |
+          echo "Change Category: ${{ steps.scn-custom.outputs.change_category }}"
+          echo "Routine: ${{ steps.scn-custom.outputs.routine_count }}"
+          echo "Adaptive: ${{ steps.scn-custom.outputs.adaptive_count }}"
+          echo "Transformative: ${{ steps.scn-custom.outputs.transformative_count }}"
+          echo "Impact: ${{ steps.scn-custom.outputs.impact_count }}"
+
+  # Example 3: Use separate AI configuration file
+  scn-detection-with-ai-config:
+    name: SCN Detection (Separate AI Config)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Analyze with separate AI config
+        id: scn-ai
+        uses: huntridge-labs/argus/.github/actions/scn-detector@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # Using OpenAI instead
+        with:
+          # Use built-in FedRAMP Low profile for rules
+          # But override AI settings with separate config
+          ai_config_file: '.github/ai-config.yml'
+          create_issues: true
+          post_pr_comment: true
+          enable_ai_fallback: true
+
+      - name: Display Results
+        if: always()
+        run: |
+          echo "Change Category: ${{ steps.scn-ai.outputs.change_category }}"
+          echo "Total Changes: ${{ steps.scn-ai.outputs.routine_count + steps.scn-ai.outputs.adaptive_count + steps.scn-ai.outputs.transformative_count + steps.scn-ai.outputs.impact_count }}"

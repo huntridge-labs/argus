@@ -254,6 +254,13 @@ def _write_ungrouped_checks(f, json_file, repo_url, iac_path):
         f.write("\n")
 
 
+def _int_or_zero(value):
+    """Convert value to int, treating empty strings as 0."""
+    if not value and value != 0:
+        return 0
+    return int(value)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Generate markdown summary for Checkov IaC security scan results"
@@ -271,22 +278,22 @@ def main():
         "--iac-path", default="", help="Path to IaC directory (default: empty)"
     )
     parser.add_argument(
-        "--critical", type=int, default=0, help="Number of critical issues (default: 0)"
+        "--critical", type=_int_or_zero, default=0, help="Number of critical issues (default: 0)"
     )
     parser.add_argument(
-        "--high", type=int, default=0, help="Number of high issues (default: 0)"
+        "--high", type=_int_or_zero, default=0, help="Number of high issues (default: 0)"
     )
     parser.add_argument(
-        "--medium", type=int, default=0, help="Number of medium issues (default: 0)"
+        "--medium", type=_int_or_zero, default=0, help="Number of medium issues (default: 0)"
     )
     parser.add_argument(
-        "--low", type=int, default=0, help="Number of low issues (default: 0)"
+        "--low", type=_int_or_zero, default=0, help="Number of low issues (default: 0)"
     )
     parser.add_argument(
-        "--passed", type=int, default=0, help="Number of passed checks (default: 0)"
+        "--passed", type=_int_or_zero, default=0, help="Number of passed checks (default: 0)"
     )
     parser.add_argument(
-        "--total", type=int, default=0, help="Total number of failed checks (default: 0)"
+        "--total", type=_int_or_zero, default=0, help="Total number of failed checks (default: 0)"
     )
     parser.add_argument(
         "--repo-url", default="", help="Repository URL (default: empty)"

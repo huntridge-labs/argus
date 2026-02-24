@@ -372,6 +372,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          iac_path: 'tests/fixtures/iac'
           post_pr_comment: 'false'
           enable_code_security: ${{ env.ENABLE_CODE_SECURITY }}
           fail_on_severity: 'none'
@@ -381,6 +382,68 @@ jobs:
         run: |
           echo "## Checkov Test Results" >> $GITHUB_STEP_SUMMARY
           echo "✅ Scanner executed successfully" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================================================
+  # Compliance
+  # Tests: scn-detector
+  # ============================================================================
+  test-scn-detector:
+    name: Compliance / scn-detector
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      (inputs.test_group == 'all' || inputs.test_group == 'infrastructure') ||
+      github.event_name != 'workflow_dispatch'
+    timeout-minutes: 15
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Required for SCN detector git diff analysis
+
+      - name: Create test IaC changes
+        shell: bash
+        run: |
+          mkdir -p terraform
+          cat > terraform/test.tf << 'EOF'
+          resource "compute_instance" "test" {
+            name = "test-instance"
+            size = "medium"
+
+            tags = {
+              Environment = "test"
+              Purpose = "e2e-testing"
+            }
+          }
+          EOF
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add terraform/test.tf
+          git commit -m "test: Add test infrastructure"
+
+      - name: Run SCN detector
+        id: scan
+        uses: ./.github/actions/scn-detector
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          base_ref: 'HEAD~1'
+          head_ref: 'HEAD'
+          create_issues: false
+          post_pr_comment: false
+          enable_ai_fallback: false
+          fail_on_category: 'none'
+
+      - name: Verify scan completed
+        shell: bash
+        run: |
+          echo "## SCN Detector Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "✅ SCN detector executed successfully" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Change Category:** \`${{ steps.scan.outputs.change_category }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Has Changes:** \`${{ steps.scan.outputs.has_changes }}\`" >> $GITHUB_STEP_SUMMARY
 
   # ============================================================================
   # Container Scanners

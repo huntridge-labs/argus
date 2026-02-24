@@ -1,0 +1,7 @@
+name: "Invalid Config - No Version"
+description: "Missing required version field"
+
+rules:
+  routine:
+    - pattern: "tags.*"
+      description: "Tag changes"

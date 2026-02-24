@@ -1,0 +1,477 @@
+name: 'SCN Detector'
+description: |
+  Analyzes Infrastructure as Code files for significant changes, classifies them according to a configurable profile
+  and ruleset of your choosing, and generates detailed reports and GitHub issues for tracking.
+
+  Supports Terraform, Kubernetes, CloudFormation, and generic IaC files.
+
+  The current default classification rules are based on FedRAMP's SCN categories, but you can customize the rules and thresholds by providing your own configuration file.
+
+  Additional profiles will include other regulatory frameworks (e.g. DoD CC SRG, NIST SP 800-53) and custom organizational policies.
+
+  **Required Environment Variables:**
+  - GITHUB_TOKEN: GitHub token for API access (PR comments, issue creation)
+  - ANTHROPIC_API_KEY: (Optional) Anthropic API key for AI classification (default provider)
+  - OPENAI_API_KEY: (Optional) OpenAI API key for AI classification (when provider is "openai")
+
+  **Usage Example:**
+  ```yaml
+  - uses: huntridge-labs/argus/.github/actions/scn-detector@main
+    env:
+      GITHUB_TOKEN: (secrets.GITHUB_TOKEN)
+      ANTHROPIC_API_KEY: (secrets.ANTHROPIC_API_KEY)
+    with:
+      config_file: '.github/scn-profiles/my-profile.yml'
+      create_issues: true
+      post_pr_comment: true
+      enable_ai_fallback: true
+  ```
+
+inputs:
+  base_ref:
+    description: 'Base branch/ref for comparison (default: PR base or main)'
+    required: false
+    default: ${{ github.base_ref || 'main' }}
+  head_ref:
+    description: 'Head commit/ref for comparison (default: current SHA)'
+    required: false
+    default: ${{ github.sha }}
+  config_file:
+    description: |
+      Path to your SCN configuration file. This file defines the classification rules and thresholds for
+      categorizing changes based on your risk appetite and compliance requirements.
+      If not provided, a default FedRAMP Low profile will be used.
+      Custom profiles: Specify path like '.github/scn-profiles/custom.yml'
+    required: false
+    default: ''
+  enable_ai_fallback:
+    description: 'Use AI for ambiguous change classification (provider/model configured in scn-config.yml)'
+    required: true
+    default: 'false'
+  ai_config_file:
+    description: |
+      Path to AI configuration file (optional). Allows you to specify AI provider settings
+      (provider, model, confidence_threshold, max_tokens, max_diff_chars, prompts) separately
+      from your SCN profile. This is useful for:
+      - Sharing AI config across multiple SCN profiles and actions without duplicating settings
+      - Keeping AI credentials/settings separate from classification rules
+      - Easy provider switching without modifying profiles
+      If not provided, AI settings from the SCN profile will be used.
+      Example: '.github/ai-config.yml'
+    required: false
+    default: ''
+  create_issues:
+    description: 'Create GitHub Issues for Adaptive/Transformative/Impact changes'
+    required: false
+    default: 'true'
+  post_pr_comment:
+    description: 'Post PR comment with SCN analysis summary'
+    required: false
+    default: 'true'
+  fail_on_category:
+    description: 'Fail workflow on specific category (none, adaptive, transformative, impact)'
+    required: false
+    default: 'none'
+  job_id:
+    description: 'Job ID for artifact naming (default: github.job)'
+    required: false
+    default: ${{ github.job }}
+  dry_run:
+    description: 'Dry-run mode: generate reports and issue payloads without posting PR comments or creating issues'
+    required: false
+    default: 'false'
+
+outputs:
+  change_category:
+    description: 'Highest severity change category detected (ROUTINE, ADAPTIVE, TRANSFORMATIVE, IMPACT, MANUAL_REVIEW)'
+    value: ${{ steps.analyze-scn.outputs.change_category }}
+  routine_count:
+    description: 'Number of routine changes detected'
+    value: ${{ steps.analyze-scn.outputs.routine_count }}
+  adaptive_count:
+    description: 'Number of adaptive changes detected'
+    value: ${{ steps.analyze-scn.outputs.adaptive_count }}
+  transformative_count:
+    description: 'Number of transformative changes detected'
+    value: ${{ steps.analyze-scn.outputs.transformative_count }}
+  impact_count:
+    description: 'Number of impact categorization changes detected'
+    value: ${{ steps.analyze-scn.outputs.impact_count }}
+  manual_review_count:
+    description: 'Number of changes requiring manual review (unmatched by rules)'
+    value: ${{ steps.analyze-scn.outputs.manual_review_count }}
+  has_changes:
+    description: 'Whether any IaC changes were detected (true/false)'
+    value: ${{ steps.analyze-scn.outputs.has_changes }}
+  issue_numbers:
+    description: 'Comma-separated list of GitHub issue numbers created'
+    value: ${{ steps.create-issues.outputs.issue_numbers }}
+
+runs:
+  using: 'composite'
+  steps:
+    # Step 1: Setup Python environment
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    # Step 2: Install dependencies
+    - name: Install dependencies
+      shell: bash
+      run: |
+        echo "🔧 Installing Python dependencies..."
+        pip install --quiet PyYAML requests
+        if [ "${{ inputs.enable_ai_fallback }}" = "true" ]; then
+          if [ -n "${{ env.ANTHROPIC_API_KEY }}" ]; then
+            echo "🤖 Installing anthropic SDK for AI fallback..."
+            pip install --quiet anthropic
+          fi
+          if [ -n "${{ env.OPENAI_API_KEY }}" ]; then
+            echo "🤖 Installing openai SDK for AI fallback..."
+            pip install --quiet openai
+          fi
+        fi
+
+    # Step 3: Check for SCN configuration/profile
+    - name: Check SCN configuration
+      id: check-config
+      shell: bash
+      run: |
+        CONFIG_PATH="${{ inputs.config_file }}"
+
+        # If no config provided, use built-in FedRAMP Low profile
+        if [ -z "$CONFIG_PATH" ]; then
+          CONFIG_PATH="${{ github.action_path }}/profiles/fedramp-low.yml"
+          echo "📋 Using default FedRAMP Low profile"
+        fi
+
+        if [ -f "$CONFIG_PATH" ]; then
+          echo "✅ Using SCN profile: $CONFIG_PATH"
+          echo "config_exists=true" >> $GITHUB_OUTPUT
+          echo "config_path=$CONFIG_PATH" >> $GITHUB_OUTPUT
+        else
+          echo "❌ SCN profile not found: $CONFIG_PATH"
+          echo "config_exists=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+
+    # Step 4: Validate SCN configuration against schema
+    - name: Validate SCN configuration
+      if: steps.check-config.outputs.config_exists == 'true'
+      shell: bash
+      env:
+        CONFIG_FILE: ${{ steps.check-config.outputs.config_path }}
+        SCHEMA_FILE: ${{ github.action_path }}/schemas/scn-config.schema.json
+        AI_CONFIG_FILE: ${{ inputs.ai_config_file }}
+      run: |
+        echo "Validating SCN configuration..."
+
+        python3 ${{ github.action_path }}/scripts/validate_scn_config.py
+
+        if [ $? -eq 0 ]; then
+          echo "SCN configuration validation passed"
+        else
+          echo "::error::SCN configuration validation failed"
+          exit 1
+        fi
+
+    # Step 5: Analyze IaC changes
+    - name: Analyze IaC changes
+      id: analyze-changes
+      shell: bash
+      run: |
+        echo "🔍 Analyzing IaC changes between ${{ inputs.base_ref }} and ${{ inputs.head_ref }}..."
+
+        mkdir -p scn-reports
+
+        python3 ${{ github.action_path }}/scripts/analyze_iac_changes.py \
+          --base-ref "${{ inputs.base_ref }}" \
+          --head-ref "${{ inputs.head_ref }}" \
+          --output scn-reports/iac-changes.json
+
+        if [ $? -eq 0 ]; then
+          echo "✅ IaC change analysis complete"
+
+          # Check if any changes detected
+          TOTAL_CHANGES=$(jq -r '.summary.total_files // 0' scn-reports/iac-changes.json)
+          if [ "$TOTAL_CHANGES" -gt 0 ]; then
+            echo "📊 Detected $TOTAL_CHANGES IaC file(s) with changes"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "ℹ️  No IaC changes detected"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "❌ IaC analysis failed"
+          echo "has_changes=false" >> $GITHUB_OUTPUT
+        fi
+
+    # Step 5: Classify changes using rules + AI fallback
+    - name: Classify changes
+      if: steps.analyze-changes.outputs.has_changes == 'true'
+      shell: bash
+      env:
+        ANTHROPIC_API_KEY: ${{ env.ANTHROPIC_API_KEY }}
+        OPENAI_API_KEY: ${{ env.OPENAI_API_KEY }}
+      run: |
+        echo "🏷️  Classifying changes according to FedRAMP SCN categories..."
+
+        CONFIG_PATH="${{ steps.check-config.outputs.config_path }}"
+        echo "📋 Using profile: $CONFIG_PATH"
+
+        AI_ARG=""
+        if [ "${{ inputs.enable_ai_fallback }}" = "true" ]; then
+          if [ -n "$ANTHROPIC_API_KEY" ] || [ -n "$OPENAI_API_KEY" ]; then
+            AI_ARG="--enable-ai"
+            echo "🤖 AI fallback enabled"
+          else
+            echo "⚠️  AI fallback requested but no AI provider API key set (ANTHROPIC_API_KEY or OPENAI_API_KEY)"
+          fi
+        fi
+
+        AI_CONFIG_FILE="${{ inputs.ai_config_file }}"
+        AI_CONFIG_ARG=""
+        if [ -n "$AI_CONFIG_FILE" ]; then
+          if [ -f "$AI_CONFIG_FILE" ]; then
+            AI_CONFIG_ARG="--ai-config $AI_CONFIG_FILE"
+            echo "🔧 Using AI config: $AI_CONFIG_FILE"
+          else
+            echo "❌ AI config file not found: $AI_CONFIG_FILE"
+            exit 1
+          fi
+        fi
+
+        python3 ${{ github.action_path }}/scripts/classify_changes.py \
+          --input scn-reports/iac-changes.json \
+          --output scn-reports/scn-classifications.json \
+          --config "$CONFIG_PATH" \
+          $AI_ARG \
+          $AI_CONFIG_ARG
+
+        if [ $? -eq 0 ]; then
+          echo "✅ Classification complete"
+
+          # Display summary
+          ROUTINE=$(jq -r '.summary.routine // 0' scn-reports/scn-classifications.json)
+          ADAPTIVE=$(jq -r '.summary.adaptive // 0' scn-reports/scn-classifications.json)
+          TRANSFORMATIVE=$(jq -r '.summary.transformative // 0' scn-reports/scn-classifications.json)
+          IMPACT=$(jq -r '.summary.impact // 0' scn-reports/scn-classifications.json)
+          MANUAL_REVIEW=$(jq -r '.summary.manual_review // 0' scn-reports/scn-classifications.json)
+
+          echo "📊 Classification Summary:"
+          echo "  🟢 Routine: $ROUTINE"
+          echo "  🟡 Adaptive: $ADAPTIVE"
+          echo "  🟠 Transformative: $TRANSFORMATIVE"
+          echo "  🔴 Impact: $IMPACT"
+          if [ "$MANUAL_REVIEW" -gt 0 ]; then
+            echo "  ⚠️  Manual Review: $MANUAL_REVIEW"
+          fi
+        else
+          echo "❌ Classification failed"
+        fi
+
+    # Step 6: Generate SCN reports
+    - name: Generate SCN reports
+      if: steps.analyze-changes.outputs.has_changes == 'true'
+      shell: bash
+      run: |
+        echo "📝 Generating SCN reports..."
+
+        mkdir -p scn-summaries
+
+        python3 ${{ github.action_path }}/scripts/generate_scn_report.py \
+          --input scn-reports/scn-classifications.json \
+          --output-md scn-summaries/scn-report.md \
+          --output-json scn-reports/scn-audit-trail.json \
+          --repo "${{ github.repository }}" \
+          --pr-number "${{ github.event.pull_request.number || 0 }}" \
+          --run-id "${{ github.run_id }}" \
+          --server-url "${{ github.server_url }}"
+
+        if [ $? -eq 0 ]; then
+          echo "✅ Report generation complete"
+        else
+          echo "❌ Report generation failed"
+        fi
+
+    # Step 7: Upload artifacts
+    - name: Upload SCN artifacts
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: scn-reports-${{ inputs.job_id }}
+        path: scn-reports/
+        retention-days: 90  # Extended retention for compliance audit trail
+      continue-on-error: true
+
+    - name: Upload SCN summary
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: scn-summary-${{ inputs.job_id }}
+        path: scn-summaries/
+        retention-days: 7
+      continue-on-error: true
+
+    # Step 8: Add to GitHub Step Summary
+    - name: Add SCN summary to job output
+      if: always() && steps.analyze-changes.outputs.has_changes == 'true'
+      shell: bash
+      run: |
+        if [ -f scn-summaries/scn-report.md ]; then
+          echo "📋 Adding SCN analysis to job summary..."
+          cat scn-summaries/scn-report.md >> $GITHUB_STEP_SUMMARY
+        fi
+
+    # Step 9: Dry-run PR comment preview (write to step summary instead of posting)
+    - name: Dry-run PR comment preview
+      if: |
+        inputs.dry_run == 'true' &&
+        inputs.post_pr_comment == 'true' &&
+        steps.analyze-changes.outputs.has_changes == 'true'
+      shell: bash
+      run: |
+        if [ -f scn-summaries/scn-report.md ]; then
+          echo "## 🔍 Dry-Run: PR Comment Preview" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cat scn-summaries/scn-report.md >> $GITHUB_STEP_SUMMARY
+        fi
+
+    # Step 10: Post PR comment (skipped in dry-run mode)
+    - name: Comment PR with SCN analysis
+      if: |
+        inputs.dry_run != 'true' &&
+        github.event_name == 'pull_request' &&
+        inputs.post_pr_comment == 'true' &&
+        steps.analyze-changes.outputs.has_changes == 'true'
+      uses: huntridge-labs/argus/.github/actions/comment-pr@0.2.2
+      env:
+        GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
+      with:
+        summary_file: scn-summaries/scn-report.md
+        comment_marker: scn-detector-comment-marker
+        title: '🔐 FedRAMP SCN Analysis'
+        fallback_message: 'No SCN analysis available'
+      continue-on-error: true
+
+    # Step 11: Create GitHub Issues (supports dry-run mode)
+    - name: Create SCN tracking issues
+      id: create-issues
+      if: |
+        inputs.create_issues == 'true' &&
+        steps.analyze-changes.outputs.has_changes == 'true'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
+      run: |
+        echo "📋 Creating GitHub Issues for SCN tracking..."
+
+        DRY_RUN_ARG=""
+        if [ "${{ inputs.dry_run }}" = "true" ]; then
+          DRY_RUN_ARG="--dry-run --dry-run-output scn-reports/dry-run-issues.json"
+          echo "🔍 Dry-run mode: simulating issue creation"
+        fi
+
+        python3 ${{ github.action_path }}/scripts/create_scn_issue.py \
+          --input scn-reports/scn-classifications.json \
+          --repo "${{ github.repository }}" \
+          --pr-number "${{ github.event.pull_request.number || 0 }}" \
+          --run-id "${{ github.run_id }}" \
+          --server-url "${{ github.server_url }}" \
+          --output scn-reports/issue-numbers.txt \
+          $DRY_RUN_ARG
+
+        if [ "${{ inputs.dry_run }}" = "true" ]; then
+          if [ -f scn-reports/dry-run-issues.json ]; then
+            TOTAL=$(python3 -c "import json; print(json.load(open('scn-reports/dry-run-issues.json'))['total'])")
+            echo "🔍 Dry-run: would have created $TOTAL issue(s)"
+            echo "issue_numbers=" >> $GITHUB_OUTPUT
+          fi
+        elif [ $? -eq 0 ] && [ -f scn-reports/issue-numbers.txt ]; then
+          ISSUE_NUMBERS=$(cat scn-reports/issue-numbers.txt)
+          echo "✅ Created issues: $ISSUE_NUMBERS"
+          echo "issue_numbers=$ISSUE_NUMBERS" >> $GITHUB_OUTPUT
+        else
+          echo "⚠️  No issues created (may be routine changes only)"
+          echo "issue_numbers=" >> $GITHUB_OUTPUT
+        fi
+      continue-on-error: true
+
+    # Step 12: Analyze SCN results and set outputs
+    - name: Analyze SCN results
+      id: analyze-scn
+      if: always()
+      shell: bash
+      run: |
+        if [ -f scn-reports/scn-classifications.json ]; then
+          # Extract counts
+          ROUTINE=$(jq -r '.summary.routine // 0' scn-reports/scn-classifications.json)
+          ADAPTIVE=$(jq -r '.summary.adaptive // 0' scn-reports/scn-classifications.json)
+          TRANSFORMATIVE=$(jq -r '.summary.transformative // 0' scn-reports/scn-classifications.json)
+          IMPACT=$(jq -r '.summary.impact // 0' scn-reports/scn-classifications.json)
+          MANUAL_REVIEW=$(jq -r '.summary.manual_review // 0' scn-reports/scn-classifications.json)
+
+          # Determine highest severity
+          if [ "$IMPACT" -gt 0 ]; then
+            CATEGORY="IMPACT"
+          elif [ "$TRANSFORMATIVE" -gt 0 ]; then
+            CATEGORY="TRANSFORMATIVE"
+          elif [ "$ADAPTIVE" -gt 0 ]; then
+            CATEGORY="ADAPTIVE"
+          elif [ "$ROUTINE" -gt 0 ]; then
+            CATEGORY="ROUTINE"
+          elif [ "$MANUAL_REVIEW" -gt 0 ]; then
+            CATEGORY="MANUAL_REVIEW"
+          else
+            CATEGORY="ROUTINE"
+          fi
+
+          # Set outputs
+          echo "routine_count=$ROUTINE" >> $GITHUB_OUTPUT
+          echo "adaptive_count=$ADAPTIVE" >> $GITHUB_OUTPUT
+          echo "transformative_count=$TRANSFORMATIVE" >> $GITHUB_OUTPUT
+          echo "impact_count=$IMPACT" >> $GITHUB_OUTPUT
+          echo "manual_review_count=$MANUAL_REVIEW" >> $GITHUB_OUTPUT
+          echo "change_category=$CATEGORY" >> $GITHUB_OUTPUT
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+
+          # Handle fail_on_category
+          FAIL_CATEGORY="${{ inputs.fail_on_category }}"
+
+          if [ "$FAIL_CATEGORY" != "none" ]; then
+            case "$FAIL_CATEGORY" in
+              "impact")
+                if [ "$IMPACT" -gt 0 ]; then
+                  echo "❌ Failing: Impact changes detected (fail_on_category=impact)"
+                  exit 1
+                fi
+                ;;
+              "transformative")
+                if [ "$TRANSFORMATIVE" -gt 0 ] || [ "$IMPACT" -gt 0 ]; then
+                  echo "❌ Failing: Transformative or Impact changes detected (fail_on_category=transformative)"
+                  exit 1
+                fi
+                ;;
+              "adaptive")
+                if [ "$ADAPTIVE" -gt 0 ] || [ "$TRANSFORMATIVE" -gt 0 ] || [ "$IMPACT" -gt 0 ]; then
+                  echo "❌ Failing: Adaptive, Transformative, or Impact changes detected (fail_on_category=adaptive)"
+                  exit 1
+                fi
+                ;;
+            esac
+          fi
+        else
+          echo "ℹ️  No SCN analysis results found"
+          echo "routine_count=0" >> $GITHUB_OUTPUT
+          echo "adaptive_count=0" >> $GITHUB_OUTPUT
+          echo "transformative_count=0" >> $GITHUB_OUTPUT
+          echo "impact_count=0" >> $GITHUB_OUTPUT
+          echo "manual_review_count=0" >> $GITHUB_OUTPUT
+          echo "change_category=NONE" >> $GITHUB_OUTPUT
+          echo "has_changes=false" >> $GITHUB_OUTPUT
+        fi
+
+branding:
+  icon: 'shield'
+  color: 'blue'

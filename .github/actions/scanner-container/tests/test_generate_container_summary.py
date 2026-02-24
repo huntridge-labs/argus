@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
-"""Unit tests for generate_container_summary.py using pytest."""
+"""Unit tests for generate_container_summary.py using pytest.
 
+Uses in-process imports with patched run_parser for fast execution.
+Eliminates subprocess overhead for both the generator and internal parser calls.
+"""
+
+import importlib.util
+import io
 import json
 import os
 import subprocess
 import sys
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -15,8 +23,27 @@ pytestmark = pytest.mark.unit
 # Get the scripts directory
 SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
 SUMMARY_SCRIPT = SCRIPTS_DIR / "generate_container_summary.py"
-TRIVY_PARSER = SCRIPTS_DIR / "parse_trivy_results.py"
-GRYPE_PARSER = SCRIPTS_DIR / "parse_grype_results.py"
+TRIVY_PARSER_PATH = SCRIPTS_DIR / "parse_trivy_results.py"
+GRYPE_PARSER_PATH = SCRIPTS_DIR / "parse_grype_results.py"
+
+# Load modules in-process via importlib
+_spec_summary = importlib.util.spec_from_file_location(
+    "generate_container_summary", SUMMARY_SCRIPT,
+)
+gen_summary = importlib.util.module_from_spec(_spec_summary)
+_spec_summary.loader.exec_module(gen_summary)
+
+_spec_trivy = importlib.util.spec_from_file_location(
+    "parse_trivy_results", TRIVY_PARSER_PATH,
+)
+parse_trivy = importlib.util.module_from_spec(_spec_trivy)
+_spec_trivy.loader.exec_module(parse_trivy)
+
+_spec_grype = importlib.util.spec_from_file_location(
+    "parse_grype_results", GRYPE_PARSER_PATH,
+)
+parse_grype = importlib.util.module_from_spec(_spec_grype)
+_spec_grype.loader.exec_module(parse_grype)
 
 # Get fixtures directory
 FIXTURES_DIR = (
@@ -31,33 +58,99 @@ GRYPE_WITH_FINDINGS = FIXTURES_DIR / "grype" / "results-with-findings.json"
 GRYPE_ZERO_FINDINGS = FIXTURES_DIR / "grype" / "results-zero-findings.json"
 
 
+def _in_process_run_parser(parser_path, command, json_file, *args):
+    """In-process replacement for subprocess-based run_parser.
+
+    Routes commands to the correct parser module's functions directly,
+    eliminating subprocess overhead for each parser call.
+    """
+    if not json_file or not Path(json_file).exists():
+        return None
+
+    file_path = str(json_file)
+    parser_path_str = str(parser_path)
+
+    if "parse_trivy_results" in parser_path_str:
+        parser_mod = parse_trivy
+    elif "parse_grype_results" in parser_path_str:
+        parser_mod = parse_grype
+    else:
+        return None
+
+    try:
+        if command == "counts":
+            return parser_mod.get_counts(file_path)
+        elif command == "total":
+            return parser_mod.get_total(file_path)
+        elif command == "unique":
+            return parser_mod.get_unique(file_path)
+        elif command == "unique-by-severity":
+            return parser_mod.get_unique_by_severity(file_path)
+        elif command == "cves":
+            result = parser_mod.get_cves(file_path)
+            return result if result else None
+        elif command == "cves-by-severity":
+            # args = ["-s", "SEVERITY"]
+            severity = args[1] if len(args) > 1 else ""
+            result = parser_mod.get_cves_by_severity(file_path, severity)
+            return result if result else None
+        elif command == "table":
+            # args = ["-l", "50"]
+            limit = int(args[1]) if len(args) > 1 else 50
+            return parser_mod.get_table(file_path, limit)
+        elif command == "digest":
+            return parser_mod.get_digest(file_path)
+        elif command == "image":
+            return parser_mod.get_image_ref(file_path)
+    except Exception:
+        pass
+    return None
+
+
 def run_summary_generator(
     combined: bool = False,
     cwd: Path = None,
 ) -> tuple:
-    """Run the summary generator script.
+    """Run the summary generator in-process.
 
     Returns (returncode, stdout, stderr, github_output, summary_md).
     github_output is a dict of key=value pairs from GITHUB_OUTPUT.
     summary_md is the content of scanner-summaries/container.md.
     """
-    env = os.environ.copy()
-    env["TRIVY_PARSER"] = str(TRIVY_PARSER)
-    env["GRYPE_PARSER"] = str(GRYPE_PARSER)
-
-    # Always capture GITHUB_OUTPUT
     work_dir = cwd or Path(".")
     github_output_file = work_dir / "github_output"
-    env["GITHUB_OUTPUT"] = str(github_output_file)
 
-    cmd = [sys.executable, str(SUMMARY_SCRIPT)]
-    if combined:
-        cmd.append("--combined")
+    # Save and set env vars
+    old_github_output = os.environ.get("GITHUB_OUTPUT")
+    os.environ["GITHUB_OUTPUT"] = str(github_output_file)
 
-    result = subprocess.run(
-        cmd, capture_output=True, text=True, timeout=30, env=env,
-        cwd=str(cwd) if cwd else None,
-    )
+    # Save and change working directory
+    old_cwd = os.getcwd()
+    os.chdir(str(work_dir))
+
+    stdout_capture = io.StringIO()
+    returncode = 0
+    stderr = ""
+
+    try:
+        with patch.object(gen_summary, "run_parser", _in_process_run_parser):
+            with redirect_stdout(stdout_capture):
+                gen_summary.generate_summary(
+                    str(TRIVY_PARSER_PATH),
+                    str(GRYPE_PARSER_PATH),
+                    combined=combined,
+                )
+    except SystemExit as e:
+        returncode = e.code if e.code else 0
+    except Exception as e:
+        returncode = 1
+        stderr = str(e)
+    finally:
+        os.chdir(old_cwd)
+        if old_github_output is not None:
+            os.environ["GITHUB_OUTPUT"] = old_github_output
+        else:
+            os.environ.pop("GITHUB_OUTPUT", None)
 
     # Parse GITHUB_OUTPUT into a dict
     github_output = {}
@@ -69,12 +162,10 @@ def run_summary_generator(
 
     # Read summary markdown
     summary_file = work_dir / "scanner-summaries" / "container.md"
-    summary_md = (
-        summary_file.read_text() if summary_file.exists() else ""
-    )
+    summary_md = summary_file.read_text() if summary_file.exists() else ""
 
     return (
-        result.returncode, result.stdout, result.stderr,
+        returncode, stdout_capture.getvalue(), stderr,
         github_output, summary_md,
     )
 
@@ -160,7 +251,6 @@ class TestGenerateContainerSummary:
         assert rc == 0
 
         # Vuln counts must be non-zero
-        # Fixtures have 1 crit, 1 high, 1 med, 1 low each
         assert int(gh_out["total_vulns"]) > 0
         assert int(gh_out["critical"]) > 0
         assert int(gh_out["high"]) > 0
@@ -376,7 +466,7 @@ class TestGenerateContainerSummary:
 
         assert rc == 0
 
-        # Vulns must be non-zero — this is the bug that was missed
+        # Vulns must be non-zero
         assert int(gh_out["total_vulns"]) > 0
         assert int(gh_out["critical"]) > 0
         assert int(gh_out["high"]) > 0
@@ -457,7 +547,7 @@ class TestGenerateContainerSummary:
         assert "High" in summary_md
         assert "Medium" in summary_md
         assert "Low" in summary_md
-        assert "|" in summary_md  # Markdown table
+        assert "|" in summary_md
 
     def test_container_names_and_sbom_filter(self, tmp_path):
         """Test that SBOM-only dirs are ignored."""
@@ -487,21 +577,15 @@ class TestGenerateContainerSummary:
 
     def test_missing_parser_env_var(self, tmp_path):
         """Test error handling when parser env vars are missing."""
-        orig_trivy = os.environ.pop("TRIVY_PARSER", None)
-        orig_grype = os.environ.pop("GRYPE_PARSER", None)
-
-        try:
-            cmd = [sys.executable, str(SUMMARY_SCRIPT)]
-            result = subprocess.run(
-                cmd, capture_output=True, text=True,
-                timeout=10, cwd=str(tmp_path),
-            )
-            assert result.returncode != 0
-        finally:
-            if orig_trivy:
-                os.environ["TRIVY_PARSER"] = orig_trivy
-            if orig_grype:
-                os.environ["GRYPE_PARSER"] = orig_grype
+        cmd = [sys.executable, str(SUMMARY_SCRIPT)]
+        # Deliberately don't set TRIVY_PARSER / GRYPE_PARSER
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("TRIVY_PARSER", "GRYPE_PARSER")}
+        result = subprocess.run(
+            cmd, capture_output=True, text=True,
+            timeout=10, cwd=str(tmp_path), env=env,
+        )
+        assert result.returncode != 0
 
     def test_summary_file_encoding(self, tmp_path):
         """Test that summary file contains valid UTF-8 emojis."""
@@ -517,7 +601,7 @@ class TestGenerateContainerSummary:
         rc, _, _, _, summary_md = run_summary_generator(cwd=tmp_path)
 
         assert rc == 0
-        assert "🐳" in summary_md
+        assert "\U0001f433" in summary_md
 
 
 class TestEdgeCases:
