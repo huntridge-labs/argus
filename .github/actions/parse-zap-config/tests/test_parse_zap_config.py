@@ -33,7 +33,7 @@ from parse_zap_config import (
 # Paths for fixtures
 REPO_ROOT = Path(__file__).parent.parent.parent.parent.parent
 FIXTURES_DIR = REPO_ROOT / 'tests' / 'fixtures' / 'configs'
-SCHEMA_PATH = REPO_ROOT / '.github' / 'schemas' / 'zap-config.schema.json'
+SCHEMA_PATH = REPO_ROOT / '.github' / 'actions' / 'parse-zap-config' / 'schemas' / 'zap-config.schema.json'
 
 
 class TestLoadConfig:

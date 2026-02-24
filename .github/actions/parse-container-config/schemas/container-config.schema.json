@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/huntridge-labs/argus2.11.2/.github/schemas/container-config.schema.json",
+  "$id": "https://raw.githubusercontent.com/huntridge-labs/argus/0.2.2/.github/actions/parse-container-config/schemas/container-config.schema.json",
   "title": "Container Registry Configuration",
   "description": "Configuration schema for matrix container scanning across multiple registries",
   "type": "object",

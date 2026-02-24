@@ -137,7 +137,7 @@ error_patterns:
     solution:
       steps:
         - "Verify config file path is relative to repo root"
-        - "Validate against schema: .github/schemas/container-config.schema.json"
+        - "Validate against schema: .github/actions/parse-container-config/schemas/container-config.schema.json"
         - "Use examples/configs/container-config.example.yml as reference"
       common_issues:
         - "Path starts with / (should be relative)"

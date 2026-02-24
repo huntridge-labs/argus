@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/huntridge-labs/argusmain/.github/schemas/container-config.schema.json",
+  "$schema": "https://raw.githubusercontent.com/huntridge-labs/argus/main/.github/actions/parse-container-config/schemas/container-config.schema.json",
   "_comment": "For Dependabot automated updates, use simple string format for 'image' field. Dependabot cannot parse structured object format. See examples/dependabot.example.yml",
   "containers": [
     {

@@ -604,7 +604,7 @@ See `.ai/MAINTENANCE.md` for detailed update instructions.
 | Main workflow | `.github/workflows/reusable-security-hardening.yml` |
 | All scanners | `docs/scanners.md` |
 | Examples | `examples/workflows/` |
-| Container config schema | `.github/schemas/container-config.schema.json` |
+| Container config schema | `.github/actions/parse-container-config/schemas/container-config.schema.json` |
 | Version | `version.yaml` |
 | Changelog | `CHANGELOG.md` |
 
