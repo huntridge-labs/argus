@@ -226,11 +226,11 @@ Always validate config files against schemas:
 
 ```bash
 # Container config
-ajv validate -s .github/schemas/container-config.schema.json \
+ajv validate -s .github/actions/parse-container-config/schemas/container-config.schema.json \
   -d tests/fixtures/configs/container-config.yml
 
 # ZAP config
-ajv validate -s .github/schemas/zap-config.schema.json \
+ajv validate -s .github/actions/parse-zap-config/schemas/zap-config.schema.json \
   -d tests/fixtures/configs/zap-config.yml
 ```
 

@@ -22,7 +22,7 @@ Container configurations can be written in YAML, JSON, or JavaScript.
 ### Schema Location
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argusmain/.github/schemas/container-config.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argus/main/.github/actions/parse-container-config/schemas/container-config.schema.json
 ```
 
 ### Basic Structure

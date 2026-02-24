@@ -150,8 +150,8 @@
         },
         {
           "files": [
-            ".github/schemas/container-config.schema.json",
-            ".github/schemas/zap-config.schema.json",
+            ".github/actions/parse-container-config/schemas/container-config.schema.json",
+            ".github/actions/parse-zap-config/schemas/zap-config.schema.json",
             ".github/actions/scn-detector/schemas/scn-config.schema.json"
           ],
           "search": {

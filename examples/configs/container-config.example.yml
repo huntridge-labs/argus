@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argusmain/.github/schemas/container-config.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argus/main/.github/actions/parse-container-config/schemas/container-config.schema.json
 # Container Registry Configuration
 # This file defines containers to scan across multiple registries
 # Use real, publicly available images for testing
