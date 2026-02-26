@@ -478,3 +478,54 @@ decisions:
         api_base_url: "<optional custom endpoint>"
 
     supersedes: "Refines ADR-010 (which assumed Anthropic-only)"
+
+  - id: ADR-012
+    title: "FedRAMP Low profile v1.1 aligned to NIST SP 800-53 Rev 5"
+    date: "2026-02-25"
+    status: accepted
+
+    context: |
+      The fedramp-low.yml profile (v1.0) was authored against the original FedRAMP
+      20X SCN framework but predated the full NIST SP 800-53 Rev 5 transition.
+      Rev 5 introduced several entirely new control families not represented in v1.0:
+      - SR (Supply Chain Risk Management): SR-1 through SR-12, covering software
+        supply chain integrity, provenance, and SBOM requirements.
+      - PT (Privacy): privacy overlay controls integrated into the baseline.
+      - CM-14 (Signed Components): software/container image signing.
+      - IA-12 (Identity Proofing): new identity proofing requirements.
+      The v1.0 profile also lacked rules for security monitoring boundary resources
+      (CloudTrail, GuardDuty, AWS Config) and had incomplete multi-cloud coverage.
+
+    decision: |
+      Update fedramp-low.yml to v1.1 with targeted additions reflecting Rev 5:
+      1. TRANSFORMATIVE: supply chain registries (ECR, CodeArtifact, Azure CR,
+         GCP Artifact Registry), new API Gateway stages, Cognito user pools (IA-12)
+      2. IMPACT: security monitoring boundary (CloudTrail, GuardDuty, AWS Config,
+         Security Hub), container image scanning (CM-14/SR-3), S3 public access
+         block, TLS/ACM certificate boundary, Azure and GCP audit log/KMS parity
+      3. ROUTINE: CloudWatch non-security tuning additions
+      4. ADAPTIVE: WAF rule updates, ACM certificate renewals
+      5. AI prompt: adds SR family, ConMon, and PT family guidance
+
+    alternatives_considered:
+      - name: "Add separate fedramp-moderate.yml with stricter rules"
+        rejected_because: "Scope creep; Low profile gaps are the immediate need"
+
+      - name: "Single catch-all IMPACT rule for all new resource types"
+        rejected_because: "Over-triggers; supply chain resources are TRANSFORMATIVE on
+          creation but only IMPACT when security controls (scanning) are disabled"
+
+    consequences:
+      positive:
+        - "Profile covers new Rev 5 control families (SR, CM-14, IA-12)"
+        - "ConMon boundary rules prevent silent disabling of detection capabilities"
+        - "Multi-cloud parity (Azure/GCP) reduces false MANUAL_REVIEW classifications"
+        - "AI fallback uses current Claude model (claude-haiku-4-5-20251001)"
+      negative:
+        - "More rules increases maintenance surface"
+        - "Egress 0.0.0.0/0 rule may trigger for standard deployments with open egress"
+
+    implementation: |
+      .github/actions/scn-detector/profiles/fedramp-low.yml (v1.0 → v1.1)
+      Changes: +37 rules (routine +2, adaptive +2, transformative +7, impact +12),
+      updated AI system_prompt, updated model reference

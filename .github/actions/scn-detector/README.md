@@ -124,7 +124,7 @@ Create `.github/ai-config.yml`:
 
 ```yaml
 provider: 'anthropic'  # or 'openai'
-model: 'claude-3-haiku-20240307'
+model: 'claude-haiku-4-5-20251001'
 confidence_threshold: 0.85
 max_tokens: 1024
 ```
@@ -181,16 +181,16 @@ Use in workflow:
 ### Anthropic (Claude)
 
 **Recommended Models:**
-- `claude-3-haiku-20240307` - Fast, affordable, good for routine classification (default)
-- `claude-3-sonnet-20240229` - Balanced speed/quality
-- `claude-3-opus-20240229` - Highest quality
+- `claude-haiku-4-5-20251001` - Fast, affordable, good for routine classification (default)
+- `claude-sonnet-4-6` - Balanced speed/quality
+- `claude-opus-4-6` - Highest quality
 
 **Configuration:**
 
 ```yaml
 # .github/ai-config.yml
 provider: 'anthropic'
-model: 'claude-3-haiku-20240307'
+model: 'claude-haiku-4-5-20251001'
 confidence_threshold: 0.8
 max_tokens: 1024
 ```
@@ -245,7 +245,7 @@ rules:
 ai_fallback:
   enabled: true
   provider: 'anthropic'
-  model: 'claude-3-haiku-20240307'
+  model: 'claude-haiku-4-5-20251001'
   # ...
 
 notifications:
@@ -336,12 +336,15 @@ See `examples/` directory for complete examples:
 Located at `.github/actions/scn-detector/profiles/fedramp-low.yml`
 
 **Includes:**
-- 35 rules across all categories
+- 61 rules across all categories (v1.1, aligned with NIST SP 800-53 Rev 5)
 - IAM detection (13 rules for roles, policies, users)
 - AI/ML service detection
+- Supply chain risk management (SR family): ECR, CodeArtifact, Artifact Registry, container image scanning
 - Encryption and security boundary changes
+- Security monitoring boundary (CloudTrail, GuardDuty, AWS Config, Security Hub)
 - Cross-account access detection
 - Wildcard permission detection
+- Multi-cloud coverage (AWS, Azure, GCP)
 
 ## Use Cases
 
