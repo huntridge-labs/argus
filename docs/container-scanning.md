@@ -22,7 +22,7 @@ Container configurations can be written in YAML, JSON, or JavaScript.
 ### Schema Location
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argusmain/.github/schemas/container-config.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argus/main/.github/actions/parse-container-config/schemas/container-config.schema.json
 ```
 
 ### Basic Structure
@@ -261,7 +261,7 @@ on:
 
 jobs:
   scan:
-    uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@0.2.2
+    uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@0.3.0
     with:
       config_file: container-config.yml
       enable_code_security: true
@@ -274,7 +274,7 @@ jobs:
 ```yaml
 jobs:
   scan:
-    uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@0.2.2
+    uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@0.3.0
     with:
       config_file: .github/security/containers.yml
       enable_code_security: true

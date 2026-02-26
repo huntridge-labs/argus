@@ -13,7 +13,7 @@ This action checks YAML syntax and style. It uploads results as artifacts that c
   uses: actions/checkout@v6
 
 - name: Run YAML linting
-  uses: huntridge-labs/argus/.github/actions/linter-yaml@0.2.2
+  uses: huntridge-labs/argus/.github/actions/linter-yaml@0.3.0
   with:
     fail_on_issues: false
     config_file: '.yamllint.yml'

@@ -31,7 +31,7 @@ from parse_container_config import (
 # Paths for fixtures
 REPO_ROOT = Path(__file__).parent.parent.parent.parent.parent
 FIXTURES_DIR = REPO_ROOT / 'tests' / 'fixtures' / 'configs'
-SCHEMA_PATH = REPO_ROOT / '.github' / 'schemas' / 'container-config.schema.json'
+SCHEMA_PATH = REPO_ROOT / '.github' / 'actions' / 'parse-container-config' / 'schemas' / 'container-config.schema.json'
 
 
 class TestLoadConfig:

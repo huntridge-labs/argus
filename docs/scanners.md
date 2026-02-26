@@ -508,7 +508,7 @@ jobs:
 
 #### Config File Reference
 
-**Schema URL**: [`zap-config.schema.json`](../.github/schemas/zap-config.schema.json)
+**Schema URL**: [`zap-config.schema.json`](../.github/actions/parse-zap-config/schemas/zap-config.schema.json)
 
 **Two config styles supported:**
 

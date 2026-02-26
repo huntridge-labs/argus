@@ -295,7 +295,7 @@ data_flow:
 directory_structure:
   ".github/actions/": "v3.0 composite actions"
   ".github/workflows/": "v2.x reusable workflows"
-  ".github/schemas/": "JSON schemas for config validation"
+  ".github/actions/*/schemas/": "JSON schemas co-located with each action"
   "examples/workflows/": "User-facing workflow examples"
   "examples/configs/": "Configuration file examples"
   "tests/": "Test infrastructure"

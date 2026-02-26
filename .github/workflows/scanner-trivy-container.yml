@@ -85,7 +85,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Run Trivy Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-container@0.2.2
+        uses: huntridge-labs/argus/.github/actions/scanner-container@0.3.0
         with:
           image_ref: ${{ inputs.image_ref }}
           container_name: ${{ inputs.scan_name || 'trivy-scan' }}
