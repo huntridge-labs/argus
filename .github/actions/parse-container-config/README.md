@@ -17,7 +17,7 @@ jobs:
       has_containers: ${{ steps.parse.outputs.has_containers }}
     steps:
       - uses: actions/checkout@v6
-      - uses: huntridge-labs/argus/.github/actions/parse-container-config@0.3.0
+      - uses: huntridge-labs/argus/.github/actions/parse-container-config@0.4.0
         id: parse
         with:
           config_file: container-config.yml
@@ -29,7 +29,7 @@ jobs:
       matrix: ${{ fromJson(needs.parse.outputs.matrix) }}
     runs-on: ubuntu-latest
     steps:
-      - uses: huntridge-labs/argus/.github/actions/scanner-container@0.3.0
+      - uses: huntridge-labs/argus/.github/actions/scanner-container@0.4.0
         with:
           image_ref: ${{ matrix.image }}
           container_name: ${{ matrix.name }}

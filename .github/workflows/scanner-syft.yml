@@ -82,7 +82,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Run Syft SBOM Generator
-        uses: huntridge-labs/argus/.github/actions/scanner-syft@0.3.0
+        uses: huntridge-labs/argus/.github/actions/scanner-syft@0.4.0
         with:
           scan_path: ${{ inputs.scan_path }}
           scan_image: ${{ inputs.scan_image }}

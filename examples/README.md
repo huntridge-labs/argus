@@ -46,7 +46,7 @@ Choose the approach that best fits your needs:
 **Usage:**
 ```yaml
 - name: Run Bandit Scanner
-  uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.3.0
+  uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.4.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -80,7 +80,7 @@ Choose the approach that best fits your needs:
 ```yaml
 jobs:
   security-scan:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.3.0
+    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.4.0
     with:
       enable_code_security: true
 ```

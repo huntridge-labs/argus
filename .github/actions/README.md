@@ -76,7 +76,7 @@ This directory contains reusable composite actions for security scanning. Each a
 **Option A: Individual Scanners** (Most Flexible)
 ```yaml
 - uses: actions/checkout@v6
-- uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.3.0
+- uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.4.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -99,7 +99,7 @@ steps:
 
   # 2. Run the scanner
   - name: Run Security Scanner
-    uses: huntridge-labs/argus/.github/actions/scanner-{name}@0.3.0
+    uses: huntridge-labs/argus/.github/actions/scanner-{name}@0.4.0
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     with:
@@ -140,7 +140,7 @@ All actions require:
 
 ```yaml
 - uses: actions/checkout@v6
-- uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.3.0
+- uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.4.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -153,7 +153,7 @@ All actions require:
 - uses: actions/checkout@v6
   with:
     fetch-depth: 0  # Full history for comprehensive scan
-- uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.3.0
+- uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.4.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -162,7 +162,7 @@ All actions require:
 
 ```yaml
 - uses: actions/checkout@v6
-- uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@0.3.0
+- uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@0.4.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -174,7 +174,7 @@ All actions require:
 ```yaml
 - uses: actions/checkout@v6
 - run: docker build -t myapp:test .
-- uses: huntridge-labs/argus/.github/actions/scanner-container@0.3.0
+- uses: huntridge-labs/argus/.github/actions/scanner-container@0.4.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -185,7 +185,7 @@ All actions require:
 
 ```yaml
 - uses: actions/checkout@v6
-- uses: huntridge-labs/argus/.github/actions/linter-yaml@0.3.0
+- uses: huntridge-labs/argus/.github/actions/linter-yaml@0.4.0
   with:
     fail_on_issues: false
 ```
@@ -194,7 +194,7 @@ All actions require:
 
 ```yaml
 - uses: actions/checkout@v6
-- uses: huntridge-labs/argus/.github/actions/linter-python@0.3.0
+- uses: huntridge-labs/argus/.github/actions/linter-python@0.4.0
   with:
     fail_on_issues: false
     max_line_length: '120'
@@ -204,7 +204,7 @@ All actions require:
 
 ```yaml
 - uses: actions/checkout@v6
-- uses: huntridge-labs/argus/.github/actions/linter-dockerfile@0.3.0
+- uses: huntridge-labs/argus/.github/actions/linter-dockerfile@0.4.0
   with:
     fail_on_issues: false
 ```
@@ -221,7 +221,7 @@ jobs:
         scanner: [bandit, gitleaks, trivy-iac]
     steps:
       - uses: actions/checkout@v6
-      - uses: huntridge-labs/argus/.github/actions/scanner-${{ matrix.scanner }}@0.3.0
+      - uses: huntridge-labs/argus/.github/actions/scanner-${{ matrix.scanner }}@0.4.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```

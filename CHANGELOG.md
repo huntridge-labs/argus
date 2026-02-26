@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.4.0](https://github.com/huntridge-labs/argus/compare/0.3.0...0.4.0) (2026-02-26)
+
+### Features
+
+* **scn-detector:** expand FedRAMP Low profile for NIST SP 800-53 Rev 5 and FedRAMP 20X ([7e88f98](https://github.com/huntridge-labs/argus/commit/7e88f9876561d3abea8da95ac4d77c3fcfad1d77))
+
+### Code Refactoring
+
+* **deps:** remove Docker package ecosystem configuration from Dependabot ([d4023e9](https://github.com/huntridge-labs/argus/commit/d4023e9b8b1b52c896e4415dfc00045ad430c202))
+
 ## [0.3.0](https://github.com/huntridge-labs/argus/compare/0.2.2...0.3.0) (2026-02-24)
 
 ### Features

@@ -183,7 +183,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Run CodeQL Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-codeql@0.3.0
+        uses: huntridge-labs/argus/.github/actions/scanner-codeql@0.4.0
         with:
           language: ${{ matrix.language }}
           config_file: ${{ inputs.config_file }}

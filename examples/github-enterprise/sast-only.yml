@@ -36,7 +36,7 @@ jobs:
       # Bandit - Python Security Linter
       # ----------------------------------------
       - name: Run Bandit (Python)
-        uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.3.0
+        uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.4.0
         with:
           post_pr_comment: 'true'
           enable_code_security: 'true'
@@ -47,7 +47,7 @@ jobs:
       # OpenGrep - Multi-language Static Analysis
       # ----------------------------------------
       - name: Run OpenGrep
-        uses: huntridge-labs/argus/.github/actions/scanner-opengrep@0.3.0
+        uses: huntridge-labs/argus/.github/actions/scanner-opengrep@0.4.0
         with:
           enable_code_security: 'true'
           fail_on_severity: 'high'
@@ -58,7 +58,7 @@ jobs:
       # Gitleaks - Secrets Detection
       # ----------------------------------------
       - name: Run Gitleaks
-        uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.3.0
+        uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.4.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }} # Optional: for organizations
