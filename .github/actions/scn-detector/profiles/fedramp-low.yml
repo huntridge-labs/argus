@@ -1,8 +1,10 @@
-version: "1.0"
+version: "1.1"
 name: "FedRAMP Low Impact Level"
 description: |
   Classification rules for FedRAMP Low impact systems. This profile provides
-  baseline rules for detecting significant changes in low-impact cloud systems.
+  baseline rules for detecting significant changes in low-impact cloud systems,
+  aligned with NIST SP 800-53 Rev 5 and FedRAMP 20X requirements including
+  supply chain risk management (SR family) and continuous monitoring.
 compliance_framework: "FedRAMP 20X"
 impact_level: "Low"
 
@@ -36,6 +38,15 @@ rules:
       operation: 'modify'
       description: 'IAM policy description updates (documentation)'
 
+    - resource: 'aws_cloudwatch_log_group.*.retention_in_days'
+      operation: 'modify'
+      description: 'CloudWatch log retention period changes (non-security)'
+
+    - resource: 'aws_cloudwatch_metric_alarm.*'
+      attribute: 'threshold|evaluation_periods'
+      operation: 'modify'
+      description: 'CloudWatch alarm threshold adjustments (monitoring tuning)'
+
   adaptive:
     - resource: 'aws_ami.*'
       operation: 'modify'
@@ -67,6 +78,14 @@ rules:
     - resource: 'aws_iam_role.*.assume_role_policy'
       operation: 'modify'
       description: 'IAM role trust relationship updates'
+
+    - resource: 'aws_wafv2_web_acl.*.rule'
+      operation: 'modify'
+      description: 'WAF rule updates to existing web ACL (rule tuning)'
+
+    - resource: 'aws_acm_certificate.*'
+      operation: 'modify'
+      description: 'ACM certificate renewals and domain updates (same boundary)'
 
   transformative:
     - resource: 'aws_rds_.*\.engine'
@@ -110,6 +129,37 @@ rules:
       operation: 'create|delete'
       description: 'IAM group changes (user access patterns)'
 
+    # Supply chain risk management (SR family - new in NIST SP 800-53 Rev 5)
+    - resource: 'aws_ecr_repository.*'
+      operation: 'create'
+      description: 'New container registry (supply chain boundary - SR-3)'
+
+    - resource: 'aws_codeartifact_.*'
+      operation: 'create'
+      description: 'New software artifact repository (supply chain boundary - SR-3)'
+
+    - resource: 'azurerm_container_registry.*'
+      operation: 'create'
+      description: 'New container registry (supply chain boundary - SR-3, Azure)'
+
+    - resource: 'google_artifact_registry_repository.*'
+      operation: 'create'
+      description: 'New artifact repository (supply chain boundary - SR-3, GCP)'
+
+    # New external access points
+    - resource: 'aws_api_gateway_stage.*'
+      operation: 'create'
+      description: 'New API Gateway stage (new external access point)'
+
+    - resource: 'aws_apigatewayv2_stage.*'
+      operation: 'create'
+      description: 'New API Gateway v2 stage (new external access point)'
+
+    # New authentication boundaries (IA-12 - Identity Proofing, new in Rev 5)
+    - resource: 'aws_cognito_user_pool.*'
+      operation: 'create'
+      description: 'New Cognito user pool (new authentication boundary - IA-12)'
+
   impact:
     - attribute: '.*encryption.*'
       operation: 'delete|modify'
@@ -117,8 +167,13 @@ rules:
 
     - resource: 'aws_security_group.*'
       attribute: 'ingress'
-      pattern: '0\.0\.0\.0/0'
-      description: 'Public internet access (security boundary change)'
+      pattern: '0\.0\.0\.0/0|::/0'
+      description: 'Public internet ingress (IPv4/IPv6 security boundary change)'
+
+    - resource: 'aws_security_group.*'
+      attribute: 'egress'
+      pattern: '0\.0\.0\.0/0|::/0'
+      description: 'Unrestricted outbound egress (data exfiltration boundary)'
 
     - resource: 'aws_kms_key.*'
       operation: 'delete'
@@ -160,21 +215,87 @@ rules:
       operation: 'create|delete'
       description: 'IAM user lifecycle changes (authentication boundary)'
 
+    # Security monitoring boundary (FedRAMP 20X continuous monitoring - ConMon)
+    - resource: 'aws_cloudtrail.*'
+      operation: 'delete'
+      description: 'CloudTrail deletion (audit log boundary - ConMon)'
+
+    - resource: 'aws_cloudtrail.*'
+      attribute: '.*is_logging.*|.*enable_log_file_validation.*'
+      operation: 'modify'
+      description: 'CloudTrail logging disabled or integrity validation changed (audit boundary)'
+
+    - resource: 'aws_guardduty_detector.*'
+      operation: 'delete'
+      description: 'GuardDuty deletion (threat detection boundary - ConMon)'
+
+    - resource: 'aws_guardduty_detector.*'
+      attribute: '.*enable.*'
+      operation: 'modify'
+      description: 'GuardDuty disabled (threat detection boundary - ConMon)'
+
+    - resource: 'aws_config_configuration_recorder_status.*'
+      operation: 'modify'
+      description: 'AWS Config recorder status changes (compliance monitoring boundary)'
+
+    - resource: 'aws_securityhub_account.*'
+      operation: 'delete'
+      description: 'Security Hub disabled (security posture monitoring boundary)'
+
+    # Public data exposure
+    - resource: 'aws_s3_bucket_public_access_block.*'
+      operation: 'modify|delete'
+      description: 'S3 public access block changes (data exposure boundary)'
+
+    # TLS/certificate boundary
+    - resource: 'aws_acm_certificate.*'
+      operation: 'delete'
+      description: 'ACM certificate deletion (TLS boundary change)'
+
+    - resource: 'aws_lb_listener.*.ssl_policy'
+      operation: 'modify'
+      description: 'Load balancer SSL/TLS policy changes (encryption in transit boundary)'
+
+    # Supply chain integrity (SR-3, CM-14 Signed Components - new in Rev 5)
+    - resource: 'aws_ecr_repository.*'
+      attribute: 'image_scanning_configuration'
+      operation: 'modify'
+      description: 'Container image scanning configuration changes (supply chain integrity - SR-3, CM-14)'
+
+    # Azure security monitoring and encryption boundary
+    - resource: 'azurerm_monitor_diagnostic_setting.*'
+      operation: 'delete'
+      description: 'Azure diagnostic settings deleted (audit log boundary - ConMon)'
+
+    - resource: 'azurerm_key_vault.*'
+      operation: 'delete'
+      description: 'Azure Key Vault deletion (encryption boundary change)'
+
+    # GCP security monitoring and encryption boundary
+    - resource: 'google_logging_project_sink.*'
+      operation: 'delete'
+      description: 'GCP logging sink deleted (audit log boundary - ConMon)'
+
+    - resource: 'google_kms_crypto_key.*'
+      operation: 'delete'
+      description: 'GCP KMS key deletion (encryption boundary change)'
+
 # AI Fallback Prompts (used when no rule matches and AI fallback is enabled)
 ai_fallback:
+  model: 'claude-haiku-4-5-20251001'
 
   # AI classification prompt template
   system_prompt: |
     You are a FedRAMP compliance expert analyzing infrastructure changes for Low impact systems.
     You are performing this task because a rules-based classification could not confidently categorize the change.
 
-    Use the following guidelines to classify the change:
+    Use the following guidelines to classify the change per FedRAMP 20X (NIST SP 800-53 Rev 5):
 
     FedRAMP Change Categories:
     - ROUTINE: Regular maintenance, patching, minor capacity changes (no notification required)
-    - ADAPTIVE: Frequent improvements with minimal security plan changes (10 days after completion)
+    - ADAPTIVE: Frequent improvements with minimal security plan changes (10 business days after completion)
     - TRANSFORMATIVE: Rare, significant changes altering risk profile (30 days initial + 10 days final notice)
-    - IMPACT: Changes to security boundary or FIPS level (requires new assessment)
+    - IMPACT: Changes to security boundary, FIPS level, or authorization perimeter (requires new assessment)
 
     For FedRAMP Low systems:
     - Focus on security boundary and encryption changes for IMPACT
@@ -187,6 +308,20 @@ ai_fallback:
     - ADAPTIVE: Policy attachments, non-admin policy updates, trust relationship changes
     - TRANSFORMATIVE: Creating new roles/policies/groups
     - IMPACT: Admin roles, wildcard permissions, cross-account access, user lifecycle, SCPs
+
+    Supply Chain Risk Management (SR Family - new in NIST SP 800-53 Rev 5):
+    - TRANSFORMATIVE: New container registries, artifact repositories, new third-party code execution paths
+    - IMPACT: Disabling container image scanning, removing software signing, changes that introduce
+      unverified software into the authorization boundary (SR-3, CM-14)
+
+    Security Monitoring Boundary (FedRAMP 20X Continuous Monitoring):
+    - IMPACT: Disabling or deleting audit logs (CloudTrail, Azure Monitor, GCP Logging),
+      threat detection (GuardDuty), compliance monitoring (AWS Config, Security Hub).
+      These directly affect the authorization boundary's observability.
+
+    Privacy Controls (PT Family - new in NIST SP 800-53 Rev 5):
+    - TRANSFORMATIVE: Adding new data stores or services that handle PII, new data processing pipelines
+    - ROUTINE/ADAPTIVE: Updates to existing privacy configuration without expanding data scope
 
   user_prompt_template: |
     Change Details:
@@ -214,7 +349,7 @@ notifications:
     initial_notice_days: 30
     final_notice_days: 10
     post_completion_required: true
-    description: "30 days initial notice, 10 days final notice, post-completion notification"
+    description: "30 business days initial notice, 10 business days final notice, post-completion notification"
 
   impact:
     requires_new_assessment: true
@@ -235,13 +370,16 @@ issue_templates:
       - "Change description and justification"
       - "Impact analysis completed"
       - "Testing and validation results"
+      - "Supply chain risk review completed (if new software dependencies introduced)"
       - "Post-completion notification submitted"
 
     transformative:
-      - "Initial SCN notice submitted (30 days before)"
+      - "Initial SCN notice submitted (30 business days before)"
       - "Impact analysis and risk assessment completed"
+      - "Supply chain risk management review completed (SR-3, if new registries or artifact sources)"
       - "Test results and validation evidence documented"
-      - "Final SCN notice submitted (10 days before)"
+      - "System Security Plan (SSP) update initiated"
+      - "Final SCN notice submitted (10 business days before)"
       - "Change executed successfully"
       - "Post-completion notification submitted"
 
@@ -249,6 +387,6 @@ issue_templates:
       - "Engage 3PAO for assessment planning"
       - "Coordinate with Authorizing Official (AO)"
       - "Submit ConMon notification"
-      - "Update System Security Plan (SSP)"
+      - "Update System Security Plan (SSP) in OSCAL format"
       - "Complete security assessment"
       - "Obtain new Authorization to Operate (ATO)"
