@@ -23,7 +23,7 @@ from typing import Dict, List, Optional, Tuple
 
 import yaml
 
-from defaults import DEFAULT_RULES, DEFAULT_AI_CONFIG, merge_config, get_default_config
+from defaults import DEFAULT_RULES, merge_config, get_default_config
 
 
 class ChangeClassifier:
@@ -43,10 +43,12 @@ class ChangeClassifier:
         self.config = merge_config(config or {}, default_config)
 
         self.rules = self.config.get('rules', DEFAULT_RULES)
-        self.ai_config = self.config.get('ai_fallback', DEFAULT_AI_CONFIG)
-        # CLI --enable-ai flag is the sole authority for enabling AI fallback.
-        # The config 'enabled' field only controls the default when no CLI flag is given.
-        self.enable_ai = enable_ai
+        # AI config comes exclusively from the user's profile or ai-config file.
+        # There are no built-in AI defaults — AI is opt-in only.
+        self.ai_config = self.config.get('ai_fallback', {})
+        # AI is enabled when the --enable-ai CLI flag is passed OR when the user's
+        # config explicitly sets ai_fallback.enabled: true.
+        self.enable_ai = enable_ai or self.ai_config.get('enabled', False)
 
         # Resolve API key based on configured provider
         from ai_providers import resolve_api_key
@@ -359,7 +361,8 @@ def main():
     ai_config = config.get('ai_fallback', {}) if config else {}
     provider_name = ai_config.get('provider', 'anthropic')
     api_key = resolve_api_key(provider_name)
-    if args.enable_ai and not api_key:
+    effective_ai_enabled = args.enable_ai or ai_config.get('enabled', False)
+    if effective_ai_enabled and not api_key:
         provider_cls = get_provider_class(provider_name)
         env_var = provider_cls.ENV_VAR if provider_cls else 'ANTHROPIC_API_KEY'
         print(f"⚠️  AI fallback enabled but {env_var} not set", file=sys.stderr)

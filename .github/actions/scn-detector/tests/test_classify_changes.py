@@ -330,10 +330,12 @@ class TestEdgeCases:
 class TestProviderConfiguration:
     """Test multi-provider configuration."""
 
-    def test_default_provider_is_anthropic(self):
-        """Default AI config uses anthropic provider."""
+    def test_no_default_ai_provider(self):
+        """No default AI provider — ai_config is empty when no user config supplied."""
         classifier = classify_changes.ChangeClassifier()
-        assert classifier.ai_config.get('provider') == 'anthropic'
+        # AI is opt-in; no default provider is configured
+        assert classifier.ai_config == {}
+        assert classifier.ai_config.get('provider') is None
 
     @patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'anthro-key'})
     def test_anthropic_api_key_resolved(self):
@@ -537,7 +539,7 @@ confidence_threshold: 0.9
         ai_config_file = tmp_path / "ai-config.yml"
         ai_config_file.write_text("""
 provider: 'anthropic'
-model: 'claude-3-haiku-20240307'
+model: 'claude-haiku-4-5-20251001'
 """)
 
         output_file = tmp_path / "output.json"
@@ -554,3 +556,44 @@ model: 'claude-3-haiku-20240307'
         result = classify_changes.main()
         assert result is None or result == 0
         assert output_file.exists()
+
+
+class TestAiFallbackEnabled:
+    """Tests for ai_fallback.enabled config field enabling AI without CLI flag."""
+
+    def test_enabled_false_by_default_when_no_config(self):
+        """Without any config, AI fallback is disabled."""
+        classifier = classify_changes.ChangeClassifier()
+        assert classifier.enable_ai is False
+
+    def test_cli_flag_enables_ai(self):
+        """--enable-ai CLI flag enables AI regardless of config."""
+        classifier = classify_changes.ChangeClassifier(enable_ai=True)
+        assert classifier.enable_ai is True
+
+    def test_config_enabled_true_enables_ai(self):
+        """ai_fallback.enabled: true in user config enables AI without CLI flag."""
+        config = {'ai_fallback': {'enabled': True, 'provider': 'anthropic'}}
+        classifier = classify_changes.ChangeClassifier(config=config, enable_ai=False)
+        assert classifier.enable_ai is True
+
+    def test_config_enabled_false_keeps_ai_disabled(self):
+        """ai_fallback.enabled: false in config keeps AI disabled."""
+        config = {'ai_fallback': {'enabled': False, 'provider': 'anthropic'}}
+        classifier = classify_changes.ChangeClassifier(config=config, enable_ai=False)
+        assert classifier.enable_ai is False
+
+    def test_cli_flag_wins_over_config_disabled(self):
+        """--enable-ai CLI flag enables AI even when config has enabled: false."""
+        config = {'ai_fallback': {'enabled': False, 'provider': 'anthropic'}}
+        classifier = classify_changes.ChangeClassifier(config=config, enable_ai=True)
+        assert classifier.enable_ai is True
+
+    def test_no_ai_config_in_defaults(self):
+        """Default config must not contain ai_fallback (AI is opt-in only)."""
+        from defaults import get_default_config
+        default_cfg = get_default_config()
+        assert 'ai_fallback' not in default_cfg, (
+            "ai_fallback must not be in default config — "
+            "AI must be explicitly opted in via user config or CLI."
+        )

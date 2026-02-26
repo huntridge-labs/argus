@@ -15,7 +15,6 @@ from typing import Dict, Optional
 import requests
 
 from ai_providers import create_provider, resolve_api_key
-from defaults import DEFAULT_AI_CONFIG, merge_config
 
 
 class AIClassifier:
@@ -26,10 +25,13 @@ class AIClassifier:
         Initialize AI classifier.
 
         Args:
-            ai_config: AI configuration dictionary (provider, model, etc.)
+            ai_config: AI configuration dictionary (provider, model, prompts, etc.)
+                       Must be supplied by the caller from the user's config — there
+                       are no built-in AI defaults. Missing optional keys (e.g.
+                       confidence_threshold, max_tokens) fall back to safe inline values.
             api_key: API key (or None to resolve from env var per provider)
         """
-        self.ai_config = merge_config(ai_config or {}, DEFAULT_AI_CONFIG)
+        self.ai_config = ai_config or {}
         provider_name = self.ai_config.get('provider', 'anthropic')
         self.api_key = resolve_api_key(provider_name, api_key)
 

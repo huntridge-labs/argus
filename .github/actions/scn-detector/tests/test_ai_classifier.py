@@ -44,12 +44,10 @@ class TestAIClassifierInit:
         classifier = ai_classifier.AIClassifier(api_key='test-key')
         assert classifier.api_key == 'test-key'
 
-    def test_init_default_config(self):
-        """Uses default config when none provided."""
+    def test_init_no_config_empty_ai_config(self):
+        """When no config provided, ai_config is empty — AI is opt-in, no defaults."""
         classifier = ai_classifier.AIClassifier(api_key='test-key')
-        assert classifier.ai_config['model'] == 'claude-3-haiku-20240307'
-        assert classifier.ai_config['confidence_threshold'] == 0.8
-        assert classifier.ai_config['provider'] == 'anthropic'
+        assert classifier.ai_config == {}
 
     def test_init_custom_config(self):
         """Uses provided config."""
@@ -73,8 +71,14 @@ class TestAIClassifierInit:
         assert classifier.api_key == 'openai-env-key'
 
     def test_init_creates_provider_instance(self):
-        """Provider instance is created when API key is available."""
-        classifier = ai_classifier.AIClassifier(api_key='test-key')
+        """Provider instance is created when API key and valid config are available."""
+        config = {
+            'provider': 'anthropic',
+            'model': 'claude-haiku-4-5-20251001',
+            'max_tokens': 1024,
+            'confidence_threshold': 0.8
+        }
+        classifier = ai_classifier.AIClassifier(ai_config=config, api_key='test-key')
         assert classifier.provider is not None
 
     def test_init_unknown_provider_no_crash(self):
@@ -194,8 +198,21 @@ class TestBuildPrompt:
     """Test AIClassifier._build_prompt method."""
 
     def test_prompt_contains_change_details(self):
-        """Prompt includes resource type, name, operation."""
-        classifier = ai_classifier.AIClassifier(api_key='test-key')
+        """Prompt includes resource type, name, operation from user-supplied config."""
+        config = {
+            'provider': 'anthropic',
+            'model': 'test-model',
+            'confidence_threshold': 0.8,
+            'system_prompt': 'You are a FedRAMP compliance expert.',
+            'user_prompt_template': (
+                'Classify the change:\n'
+                'Resource: {resource_type}.{resource_name}\n'
+                'Operation: {operation}\n'
+                'Attributes: {attributes}\n'
+                'Diff: {diff_snippet}'
+            )
+        }
+        classifier = ai_classifier.AIClassifier(ai_config=config, api_key='test-key')
         change = {
             'type': 'aws_instance',
             'name': 'web_server',
@@ -214,7 +231,11 @@ class TestBuildPrompt:
 
     def test_prompt_handles_missing_fields(self):
         """Prompt handles change with missing fields gracefully."""
-        classifier = ai_classifier.AIClassifier(api_key='test-key')
+        config = {
+            'system_prompt': 'FedRAMP classifier.',
+            'user_prompt_template': 'Resource: {resource_type}.{resource_name}, Op: {operation}'
+        }
+        classifier = ai_classifier.AIClassifier(ai_config=config, api_key='test-key')
         change = {}
 
         prompt = classifier._build_prompt(change)

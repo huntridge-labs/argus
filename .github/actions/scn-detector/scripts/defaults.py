@@ -13,40 +13,6 @@ DEFAULT_API_BASE_URLS = {
     'openai': 'https://api.openai.com/v1'
 }
 
-
-# Default AI Configuration
-DEFAULT_AI_CONFIG = {
-    'provider': 'anthropic',
-    'model': 'claude-3-haiku-20240307',
-    'confidence_threshold': 0.8,
-    'max_tokens': 1024,
-    'max_diff_chars': 1000,
-    'system_prompt': """You are a FedRAMP compliance expert analyzing infrastructure changes for Low impact systems.
-You are performing this task because a rules-based classification could not confidently categorize the change.
-
-Use the following guidelines to classify the change:
-
-FedRAMP Change Categories:
-- ROUTINE: Regular maintenance, patching, minor capacity changes (no notification required)
-- ADAPTIVE: Frequent improvements with minimal security plan changes (10 days after completion)
-- TRANSFORMATIVE: Rare, significant changes altering risk profile (30 days initial + 10 days final notice)
-- IMPACT: Changes to security boundary or FIPS level (requires new assessment)""",
-    'user_prompt_template': """Change Details:
-- Resource Type: {resource_type}
-- Resource Name: {resource_name}
-- Operation: {operation}
-- Attributes Changed: {attributes}
-- Diff Preview:
-{diff_snippet}
-
-Classify this change. Respond ONLY with valid JSON in this exact format:
-{{
-  "category": "ROUTINE|ADAPTIVE|TRANSFORMATIVE|IMPACT",
-  "confidence": 0.0-1.0,
-  "reasoning": "Brief explanation (max 200 chars)"
-}}"""
-}
-
 # Default Classification Rules (used if no config profile is provided)
 DEFAULT_RULES = {
     'routine': [
@@ -138,6 +104,5 @@ def get_default_config() -> Dict[str, Any]:
     return {
         **DEFAULT_PROFILE_METADATA,
         'rules': DEFAULT_RULES,
-        'ai_fallback': DEFAULT_AI_CONFIG,
         'notifications': DEFAULT_NOTIFICATIONS
     }
