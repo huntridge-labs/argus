@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-# ── Config ────────────────────────────────────────────────────────────────────
+# ───────────────────────────────── Config ─────────────────────────────────
 SUMMARY_DIR  = os.environ.get("SUMMARY_DIR",  "/tmp/scanner-summaries")
 OUTPUT_FILE  = os.environ.get("OUTPUT_FILE",  "/tmp/ai-summary.md")
 MAX_FINDINGS = os.environ.get("MAX_FINDINGS", "20")
@@ -29,7 +29,7 @@ COMMIT_SHA   = os.environ.get("COMMIT_SHA",   "")
 print(f"-> AI Provider: {PROVIDER}")
 
 
-# ── Collect scanner summaries ─────────────────────────────────────────────────
+# ───────────────────────────────── Collect Scanner Summaries ─────────────────────────────────
 print(f"-> Collecting scanner summaries from: {SUMMARY_DIR}")
 
 summary_path = Path(SUMMARY_DIR)
@@ -60,7 +60,7 @@ scanner_names_str = ", ".join(scanner_names)
 date_str = datetime.now().strftime("%B %d, %Y")
 
 
-# ── Build prompt ──────────────────────────────────────────────────────────────
+# ───────────────────────────────── Build Prompt ─────────────────────────────────
 PROMPT = f"""You are a security analyst writing an executive security summary from automated scan results.
 
 Repository: {REPO}
@@ -182,7 +182,7 @@ Rules:
 """
 
 
-# ── Run AI provider ───────────────────────────────────────────────────────────
+# ───────────────────────────────── Run AI Provider ─────────────────────────────────
 print(f"-> Generating AI summary via {PROVIDER}...")
 
 summary_output = ""
@@ -283,13 +283,13 @@ else:
     sys.exit(1)
 
 
-# ── Validate output ───────────────────────────────────────────────────────────
+# ───────────────────────────────── Validate Output ─────────────────────────────────
 if not summary_output or not summary_output.strip():
     print(f"ERROR: {PROVIDER} returned empty response")
     sys.exit(1)
 
 
-# ── Write output ──────────────────────────────────────────────────────────────
+# ───────────────────────────────── Write Output ─────────────────────────────────
 provider_labels = {
     "copilot": "GitHub Copilot",
     "claude":  "Anthropic Claude",

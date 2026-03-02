@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-# ── Load script as module ─────────────────────────────────────────────────────
+# ───────────────────────────────── Load Script as Module ─────────────────────────────────
 SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
 SCRIPT_PATH = SCRIPTS_DIR / "generate-ai-summary.py"
 
