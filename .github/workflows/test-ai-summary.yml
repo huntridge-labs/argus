@@ -1,0 +1,109 @@
+name: AI Security Summary
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: 'AI provider to use for summary generation'
+        required: true
+        default: 'copilot'
+        type: choice
+        options:
+          - copilot
+          - claude
+          #  - gemini
+      pr_number:
+        description: 'PR number that has a completed security scan run'
+        required: true
+        type: string
+
+  #pull_request:
+  #  branches: [main]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  ai-summary:
+    name: AI Security Summary / ${{ inputs.provider }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Resolve run ID from PR number
+        id: resolve
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+        run: |
+          echo "Looking up latest completed test-actions.yml run for PR #${PR_NUMBER}..."
+          
+          # shellcheck disable=SC2016
+          JQ_FILTER='[.workflow_runs[] | select(.pull_requests[].number == ($pr | tonumber))] | first | .id'
+
+          RUN_ID=$(gh api \
+            "/repos/${{ github.repository }}/actions/workflows/test-actions.yml/runs?event=pull_request&status=completed&per_page=20" \
+            --arg pr "${PR_NUMBER}" \
+            --jq "${JQ_FILTER}")
+          
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" == "null" ]; then
+            echo "::error::No completed test-actions.yml run found for PR #${PR_NUMBER}. Ensure the security scan workflow has run against this PR first."
+            exit 1
+          fi
+
+          echo "Found run ID: ${RUN_ID}"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Download scanner summaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: scanner-summary-*
+          path: /tmp/scanner-summaries
+          merge-multiple: true
+          run-id: ${{ steps.resolve.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run AI Summary
+        uses: ./.github/actions/ai-summary
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY:    ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN:         ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER:            ${{ inputs.pr_number }}
+          PR_URL:               https://github.com/${{ github.repository }}/pull/${{ inputs.pr_number }}
+        with:
+          provider: ${{ inputs.provider }}
+          post_issue: 'true'
+          post_pr_comment: 'false'
+          fail_on_ai_error: 'true'
+          skip_download: 'true'
+
+      - name: Verify summary generated
+        shell: bash
+        run: |
+          {
+            echo "## AI Security Summary Results"
+            if [ -f /tmp/ai-summary.md ]; then
+              echo "✅ Summary generated successfully"
+              echo ""
+              echo "**Provider:** \`${{ inputs.provider }}\`"
+              echo "**PR:** #${{ inputs.pr_number }}"
+              echo "**Source run:** \`${{ steps.resolve.outputs.run_id }}\`"
+              LINES=$(wc -l < /tmp/ai-summary.md)
+              echo "**Output size:** ${LINES} lines"
+            else
+              echo "❌ Summary file not found"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ ! -f /tmp/ai-summary.md ]; then
+            exit 1
+          fi

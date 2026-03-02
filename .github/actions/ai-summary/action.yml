@@ -1,0 +1,104 @@
+name: 'AI Security Summary'
+description: |
+  Generates an AI-powered executive security summary from aggregated Argus scanner results.
+  Delivers the summary as a GitHub Issue on the pull request.
+
+inputs:
+  provider:
+    description: 'AI provider to use: copilot, claude, or gemini'
+    required: false
+    default: 'copilot'
+  max_findings:
+    description: 'Maximum number of findings to include in the summary'
+    required: false
+    default: '20'
+  post_issue:
+    description: 'Post the summary as a GitHub Issue'
+    required: false
+    default: 'true'
+  post_pr_comment:
+    description: 'Post the summary as a PR comment'
+    required: false
+    default: 'false'
+  issue_label:
+    description: 'Label to apply to the generated GitHub Issue'
+    required: false
+    default: 'security-summary'
+  fail_on_ai_error:
+    description: 'Fail the workflow if AI summary generation fails'
+    required: false
+    default: 'false'
+  skip_download:
+    description: 'Skip the internal artifact download (use when summaries are pre-populated by the caller)'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+
+    - name: Set up Node.js
+      if: inputs.provider == 'copilot'
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install Copilot CLI
+      if: inputs.provider == 'copilot'
+      shell: bash
+      run: npm install -g @github/copilot
+
+    - name: Download scanner summaries
+      if: inputs.skip_download == 'false'
+      uses: actions/download-artifact@v4
+      with:
+        pattern: scanner-summary-*
+        path: /tmp/scanner-summaries
+        merge-multiple: true
+      continue-on-error: true
+
+    - name: Generate AI summary
+      shell: bash
+      env:
+        COPILOT_GITHUB_TOKEN: ${{ env.COPILOT_GITHUB_TOKEN }}
+        ANTHROPIC_API_KEY:    ${{ env.ANTHROPIC_API_KEY }}
+        GEMINI_API_KEY:       ${{ env.GEMINI_API_KEY }}
+        AI_PROVIDER:          ${{ inputs.provider }}
+        SUMMARY_DIR:          /tmp/scanner-summaries
+        OUTPUT_FILE:          /tmp/ai-summary.md
+        MAX_FINDINGS:         ${{ inputs.max_findings }}
+        REPO:                 ${{ github.repository }}
+        PR_NUMBER:            ${{ env.PR_NUMBER || github.event.pull_request.number }}
+        PR_TITLE:             ${{ env.PR_TITLE  || github.event.pull_request.title }}
+        PR_URL:               ${{ env.PR_URL    || github.event.pull_request.html_url }}
+        COMMIT_SHA:           ${{ github.sha }}
+      run: python3 ${{ github.action_path }}/scripts/generate-ai-summary.py
+      continue-on-error: ${{ inputs.fail_on_ai_error == 'false' }}
+
+    - name: Post as GitHub Issue
+      if: inputs.post_issue == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ env.GITHUB_TOKEN }}
+      run: |
+        SUMMARY=$(cat /tmp/ai-summary.md)
+        gh issue create \
+          --title "🔒 Security Summary: PR #${{ env.PR_NUMBER || github.event.pull_request.number }}" \
+          --body "$SUMMARY" \
+          --label "${{ inputs.issue_label }}" \
+          --repo "${{ github.repository }}"
+
+    - name: Post as PR comment
+      if: inputs.post_pr_comment == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ env.GITHUB_TOKEN }}
+      run: |
+        SUMMARY=$(cat /tmp/ai-summary.md)
+        gh pr comment "${{ github.event.pull_request.number }}" \
+          --body "$SUMMARY" \
+          --repo "${{ github.repository }}"
+
+branding:
+  icon: 'shield'
+  color: 'purple'

@@ -68,6 +68,7 @@ This directory contains reusable composite actions for security scanning. Each a
 |--------|-------------|---------------|
 | [linting-summary](linting-summary/) | Aggregate linter results into report | [README](linting-summary/README.md) |
 | [security-summary](security-summary/) | Aggregate scanner results into report | [README](security-summary/README.md) |
+| [ai-summary](ai-summary/) | AI-powered executive security summary from scanner results | [README](ai-summary/README.md) |
 
 ## Quick Start
 
