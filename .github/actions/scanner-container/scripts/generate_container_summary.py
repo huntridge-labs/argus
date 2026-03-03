@@ -322,6 +322,15 @@ def generate_summary(
 
     print("📊 Generating container security summary...")
 
+    # Build workflow run URL for linking to job logs on errors
+    server_url = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
+    repo = os.environ.get("GITHUB_REPOSITORY", "")
+    run_id = os.environ.get("GITHUB_RUN_ID", "")
+    run_url = (
+        f"{server_url}/{repo}/actions/runs/{run_id}"
+        if repo and run_id else ""
+    )
+
     # Process each container
     scanned = 0
     failed = 0
@@ -405,7 +414,8 @@ def generate_summary(
                 for data in container_data:
                     if data["status"] in ("failed", "error"):
                         status_label = "Scan Error" if data["status"] == "error" else "Failed"
-                        f.write(f"| {data['name']} | - | - | - | - | - | - | - | ❌ {data.get('error', status_label)} |\n")
+                        log_link = f" ([logs]({run_url}))" if run_url else ""
+                        f.write(f"| {data['name']} | - | - | - | - | - | - | - | ❌ {status_label}{log_link} |\n")
                     else:
                         f.write(f"| {data['name']} | `{data['image_ref']}` | {data['crit']} | {data['high']} | {data['med']} | {data['low']} | {data['total']} | {data['combined_unique']} | ✅ |\n")
                 f.write("\n")
@@ -418,7 +428,10 @@ def generate_summary(
                     status_label = "Scan Error" if data["status"] == "error" else "Build Failed"
                     f.write(f"<details>\n")
                     f.write(f"<summary>❌ <strong>{data['name']}</strong> - {status_label}</summary>\n\n")
-                    f.write(f"**Status:** {data.get('error', status_label)}\n\n")
+                    if run_url:
+                        f.write(f"**Status:** {status_label} — [View job logs]({run_url})\n\n")
+                    else:
+                        f.write(f"**Status:** {status_label}\n\n")
                     f.write("</details>\n\n")
                 else:
                     # Determine emoji
@@ -480,15 +493,9 @@ def generate_summary(
 
         # Add artifact link (only for main summary)
         if output_file.endswith("container.md"):
-            repo = os.environ.get("GITHUB_REPOSITORY")
-            run_id = os.environ.get("GITHUB_RUN_ID")
-            server_url = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
-
-            if repo and run_id:
-                with open(output_file, "a") as f:
-                    f.write(f"**📁 Artifacts:** [Container Scan Reports]({server_url}/{repo}/actions/runs/{run_id}#artifacts)\n")
-
             with open(output_file, "a") as f:
+                if run_url:
+                    f.write(f"**📁 Artifacts:** [Container Scan Reports]({run_url}#artifacts)\n")
                 f.write("\n</details>\n")
 
     print("✅ Reports generated")

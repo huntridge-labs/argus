@@ -195,7 +195,9 @@ runs:
           --output "trivy-${CONTAINER_NAME}-results.json" \
           "$IMAGE_REF" 2>/tmp/trivy-json-stderr.txt; then
           TRIVY_FAILED=true
-          ERROR_MSG=$(tail -5 /tmp/trivy-json-stderr.txt 2>/dev/null | tr '\n' ' ' | head -c 500)
+          # Capture last non-empty stderr line, strip ISO timestamp prefixes (e.g., 2026-03-03T02:24:09Z)
+          ERROR_MSG=$(grep -v '^\s*$' /tmp/trivy-json-stderr.txt 2>/dev/null | grep -vi '^[0-9T:.Z-]* *INFO' | tail -1 | sed 's/^[0-9T:.Z-]* *//' | head -c 200)
+          [ -z "$ERROR_MSG" ] && ERROR_MSG="scan failed (see job logs for details)"
           echo "⚠️ Trivy JSON scan failed - creating error marker"
           python3 -c "
         import json, sys

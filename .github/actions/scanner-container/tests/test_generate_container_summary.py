@@ -317,9 +317,8 @@ class TestGenerateContainerSummary:
         assert gh_out["containers_scanned"] == "0"
         assert gh_out["total_vulns"] == "0"
 
-        # Summary should show the failure with error message
+        # Summary should show the failure status (error details are in job logs)
         assert "Build Failed" in summary_md
-        assert "Image pull failed" in summary_md
 
     def test_single_scanner_trivy_only(self, tmp_path):
         """Test container with only Trivy results."""
@@ -392,9 +391,8 @@ class TestGenerateContainerSummary:
         assert gh_out["containers_scanned"] == "0"
         assert gh_out["total_vulns"] == "0"
 
-        # Summary should show the error
+        # Summary should show the error status (error details are in job logs)
         assert "Scan Error" in summary_md
-        assert "no space left on device" in summary_md
 
     def test_mixed_success_and_error(self, tmp_path):
         """Test processing mix of successful and errored containers."""
@@ -449,7 +447,6 @@ class TestGenerateContainerSummary:
         assert rc == 0
         assert gh_out["containers_scanned"] == "0"
         assert "Scan Error" in summary_md
-        assert "unable to pull image" in summary_md
 
     def test_scan_error_with_status_file(self, tmp_path):
         """Test that scan-status.json with error status is handled."""
@@ -506,7 +503,6 @@ class TestGenerateContainerSummary:
         assert rc == 0
         assert gh_out["containers_scanned"] == "0"
         assert "Scan Error" in summary_md
-        assert "no space left on device" in summary_md
 
     def test_malformed_status_and_result_files_text_fallback(self, tmp_path):
         """Test text-based fallback when both JSON files are malformed.
@@ -559,8 +555,8 @@ class TestGenerateContainerSummary:
 
         assert rc == 0
         assert gh_out["containers_scanned"] == "0"
-        # Last resort: status file present but unreadable
-        assert "unreadable" in summary_md.lower() or "Error" in summary_md
+        # Last resort: status file present but unreadable → shown as error
+        assert "Scan Error" in summary_md or "Error" in summary_md
 
     def test_scan_error_status_preserved_from_status_file(self, tmp_path):
         """Test that scan-status.json with error status returns error (not failed)."""
@@ -580,6 +576,84 @@ class TestGenerateContainerSummary:
         assert gh_out["containers_scanned"] == "0"
         # Should show "Scan Error" (error status) not "Build Failed" (failed status)
         assert "Scan Error" in summary_md
+
+    # ====== Tests for job log link ======
+
+    def test_error_summary_includes_job_log_link(self, tmp_path):
+        """Test that error summaries include a link to the workflow run."""
+        container_dir = tmp_path / "container-scan-results-link-test"
+        container_dir.mkdir(parents=True)
+
+        (container_dir / "scan-status.json").write_text(
+            json.dumps({"status": "error", "error": "Scanner failed"}),
+        )
+        (container_dir / "trivy-link-test-results.json").write_text(
+            json.dumps({"Results": []}),
+        )
+
+        env_vars = {
+            "GITHUB_SERVER_URL": "https://github.example.com",
+            "GITHUB_REPOSITORY": "org/repo",
+            "GITHUB_RUN_ID": "12345",
+        }
+        old_vals = {k: os.environ.get(k) for k in env_vars}
+        for k, v in env_vars.items():
+            os.environ[k] = v
+
+        try:
+            rc, _, _, gh_out, summary_md = run_summary_generator(cwd=tmp_path)
+        finally:
+            for k, old_val in old_vals.items():
+                if old_val is not None:
+                    os.environ[k] = old_val
+                else:
+                    os.environ.pop(k, None)
+
+        assert rc == 0
+        assert "Scan Error" in summary_md
+        assert "View job logs" in summary_md
+        assert "https://github.example.com/org/repo/actions/runs/12345" in summary_md
+
+    def test_error_table_shows_log_link(self, tmp_path):
+        """Test that the table row for errors shows a log link, not raw error text."""
+        # Create two containers so breakdown table appears
+        ok_dir = tmp_path / "container-scan-results-good"
+        ok_dir.mkdir(parents=True)
+        (ok_dir / "trivy-good-results.json").write_text(
+            TRIVY_ZERO_FINDINGS.read_text(),
+        )
+
+        err_dir = tmp_path / "container-scan-results-broken"
+        err_dir.mkdir(parents=True)
+        (err_dir / "scan-status.json").write_text(
+            json.dumps({"status": "error", "error": "Verbose error message here"}),
+        )
+        (err_dir / "trivy-broken-results.json").write_text(
+            json.dumps({"Results": []}),
+        )
+
+        env_vars = {
+            "GITHUB_SERVER_URL": "https://ghe.corp.com",
+            "GITHUB_REPOSITORY": "team/app",
+            "GITHUB_RUN_ID": "99999",
+        }
+        old_vals = {k: os.environ.get(k) for k in env_vars}
+        for k, v in env_vars.items():
+            os.environ[k] = v
+
+        try:
+            rc, _, _, _, summary_md = run_summary_generator(cwd=tmp_path)
+        finally:
+            for k, old_val in old_vals.items():
+                if old_val is not None:
+                    os.environ[k] = old_val
+                else:
+                    os.environ.pop(k, None)
+
+        assert rc == 0
+        # Table should show concise status + link, NOT the raw error message
+        assert "Verbose error message here" not in summary_md
+        assert "([logs](https://ghe.corp.com/team/app/actions/runs/99999))" in summary_md
 
     # ====== Tests for GITHUB_STEP_SUMMARY ======
 
