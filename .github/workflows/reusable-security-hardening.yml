@@ -836,7 +836,18 @@ jobs:
             echo "✅ Adding ${scanner} summary..."
             cat "${scanner}.md" >> security-hardening-report.md
           else
-            echo "⏭️  No ${scanner}.md summary found"
+            # Handle language-suffixed variants (e.g. codeql-javascript-typescript.md)
+            found_variant=false
+            for variant in ${scanner}-*.md; do
+              if [ -f "$variant" ]; then
+                echo "✅ Adding ${variant} summary..."
+                cat "$variant" >> security-hardening-report.md
+                found_variant=true
+              fi
+            done
+            if [ "$found_variant" = "false" ]; then
+              echo "⏭️  No ${scanner}.md summary found"
+            fi
           fi
         done
       continue-on-error: true
