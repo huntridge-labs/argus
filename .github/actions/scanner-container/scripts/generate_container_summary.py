@@ -4,6 +4,7 @@
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -89,21 +90,33 @@ def _check_scan_error_fallback(file_path: Path) -> str:
     """
     try:
         content = file_path.read_text(encoding='utf-8', errors='replace')
-        if '"scan_error"' in content and ('true' in content.lower()):
-            # Extract error message with a simple search
-            marker = '"error"'
-            idx = content.find(marker)
-            if idx != -1:
-                # Find the value after "error": "..."
-                start = content.find('"', idx + len(marker) + 1)
-                if start != -1:
-                    end = content.find('"', start + 1)
-                    if end != -1:
-                        return content[start + 1:end][:500]
-            return "scan failed (details unavailable)"
     except OSError:
-        pass
-    return ""
+        return ""
+
+    if '"scan_error"' not in content or 'true' not in content.lower():
+        return ""
+
+    # Try to extract the error message value: "error": "some message"
+    match = re.search(r'"error"\s*:\s*"([^"]{1,500})"', content)
+    if match:
+        return match.group(1)
+
+    return "scan failed (details unavailable)"
+
+
+def _detect_scan_error(parser_path: str, result_file: Path) -> str:
+    """Check a result file for scan errors using parser, then text fallback.
+
+    Returns error message if scan_error detected, empty string otherwise.
+    """
+    if not result_file:
+        return ""
+
+    error = run_parser(parser_path, "check-error", result_file) or ""
+    if not error:
+        error = _check_scan_error_fallback(result_file)
+
+    return error
 
 
 def parse_counts(output: str) -> Tuple[int, int, int, int]:
@@ -157,20 +170,9 @@ def process_container(
             # Fall through to check-error detection below
             print(f"    ⚠️ Warning: could not parse {status_file}: {e}", file=sys.stderr)
 
-    # Check for scan error markers in result files
-    trivy_error = ""
-    grype_error = ""
-
-    if trivy_file:
-        trivy_error = run_parser(trivy_parser, "check-error", trivy_file) or ""
-        # Text-based fallback: if parser returned nothing but file contains marker
-        if not trivy_error:
-            trivy_error = _check_scan_error_fallback(trivy_file)
-
-    if grype_file:
-        grype_error = run_parser(grype_parser, "check-error", grype_file) or ""
-        if not grype_error:
-            grype_error = _check_scan_error_fallback(grype_file)
+    # Check for scan error markers in result files (parser JSON, then text fallback)
+    trivy_error = _detect_scan_error(trivy_parser, trivy_file)
+    grype_error = _detect_scan_error(grype_parser, grype_file)
 
     if trivy_error or grype_error:
         error_parts = []
@@ -344,22 +346,10 @@ def generate_summary(
             total_med += data["med"]
             total_low += data["low"]
 
-            # Collect all CVEs
-            if scan_files["trivy"]:
-                cves = run_parser(trivy_parser, "cves", scan_files["trivy"])
-                if cves:
-                    for line in cves.split('\n'):
-                        line = line.strip()
-                        if line:
-                            all_cves.add(line)
-
-            if scan_files["grype"]:
-                cves = run_parser(grype_parser, "cves", scan_files["grype"])
-                if cves:
-                    for line in cves.split('\n'):
-                        line = line.strip()
-                        if line:
-                            all_cves.add(line)
+            # Collect all CVEs using existing combine_cves helper
+            trivy_cves = run_parser(trivy_parser, "cves", scan_files["trivy"]) or ""
+            grype_cves = run_parser(grype_parser, "cves", scan_files["grype"]) or ""
+            all_cves.update(combine_cves(trivy_cves, grype_cves))
 
             status = "✅" if data["status"] == "success" else "❌"
             print(f"    {status} {container_name}: {data['total']} vulns "
