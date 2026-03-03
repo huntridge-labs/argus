@@ -1,0 +1,5 @@
+{
+  "scan_error": true,
+  "error": "Grype scan failed: unable to pull image",
+  "matches": []
+}

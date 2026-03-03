@@ -78,7 +78,10 @@ def _in_process_run_parser(parser_path, command, json_file, *args):
         return None
 
     try:
-        if command == "counts":
+        if command == "check-error":
+            result = parser_mod.check_scan_error(file_path)
+            return result if result else None
+        elif command == "counts":
             return parser_mod.get_counts(file_path)
         elif command == "total":
             return parser_mod.get_total(file_path)
@@ -363,6 +366,113 @@ class TestGenerateContainerSummary:
         # Should show Grype findings
         assert "Grype" in summary_md
         assert "0 vulns" not in stdout
+
+    # ====== Tests for scan error handling ======
+
+    def test_container_with_scan_error(self, tmp_path):
+        """Test handling of container with scan error (not build failure)."""
+        container_dir = tmp_path / "container-scan-results-errored"
+        container_dir.mkdir(parents=True)
+
+        trivy_error = {
+            "scan_error": True,
+            "error": "Trivy scan failed: no space left on device",
+            "Results": [],
+            "SchemaVersion": 2,
+        }
+        (container_dir / "trivy-errored-results.json").write_text(
+            json.dumps(trivy_error),
+        )
+
+        rc, _, _, gh_out, summary_md = run_summary_generator(cwd=tmp_path)
+
+        assert rc == 0
+
+        # Errored containers should NOT count as successfully scanned
+        assert gh_out["containers_scanned"] == "0"
+        assert gh_out["total_vulns"] == "0"
+
+        # Summary should show the error
+        assert "Scan Error" in summary_md
+        assert "no space left on device" in summary_md
+
+    def test_mixed_success_and_error(self, tmp_path):
+        """Test processing mix of successful and errored containers."""
+        assert TRIVY_WITH_FINDINGS.exists()
+
+        # Successful container
+        success_dir = tmp_path / "container-scan-results-good"
+        success_dir.mkdir(parents=True)
+        (success_dir / "trivy-good-results.json").write_text(
+            TRIVY_WITH_FINDINGS.read_text(),
+        )
+
+        # Errored container
+        error_dir = tmp_path / "container-scan-results-broken"
+        error_dir.mkdir(parents=True)
+        trivy_error = {
+            "scan_error": True,
+            "error": "auth failure",
+            "Results": [],
+        }
+        (error_dir / "trivy-broken-results.json").write_text(
+            json.dumps(trivy_error),
+        )
+
+        rc, _, _, gh_out, summary_md = run_summary_generator(cwd=tmp_path)
+
+        assert rc == 0
+        assert gh_out["containers_scanned"] == "1"
+        assert int(gh_out["total_vulns"]) > 0
+
+        # Both containers should appear in breakdown
+        assert "Container Breakdown" in summary_md
+        assert "good" in summary_md
+        assert "broken" in summary_md
+
+    def test_grype_scan_error(self, tmp_path):
+        """Test handling of Grype scan error."""
+        container_dir = tmp_path / "container-scan-results-grype-fail"
+        container_dir.mkdir(parents=True)
+
+        grype_error = {
+            "scan_error": True,
+            "error": "Grype scan failed: unable to pull image",
+            "matches": [],
+        }
+        (container_dir / "grype-grype-fail-results.json").write_text(
+            json.dumps(grype_error),
+        )
+
+        rc, _, _, gh_out, summary_md = run_summary_generator(cwd=tmp_path)
+
+        assert rc == 0
+        assert gh_out["containers_scanned"] == "0"
+        assert "Scan Error" in summary_md
+        assert "unable to pull image" in summary_md
+
+    def test_scan_error_with_status_file(self, tmp_path):
+        """Test that scan-status.json with error status is handled."""
+        container_dir = tmp_path / "container-scan-results-disk-full"
+        container_dir.mkdir(parents=True)
+
+        # scan-status.json takes precedence over result files
+        (container_dir / "scan-status.json").write_text(
+            json.dumps({"status": "error", "error": "Scanner errors detected"}),
+        )
+        trivy_error = {
+            "scan_error": True,
+            "error": "no space left on device",
+            "Results": [],
+        }
+        (container_dir / "trivy-disk-full-results.json").write_text(
+            json.dumps(trivy_error),
+        )
+
+        rc, _, _, gh_out, summary_md = run_summary_generator(cwd=tmp_path)
+
+        assert rc == 0
+        assert gh_out["containers_scanned"] == "0"
 
     # ====== Tests for GITHUB_STEP_SUMMARY ======
 

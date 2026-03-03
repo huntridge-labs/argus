@@ -248,6 +248,72 @@ class TestParseTrivyResults:
         result = parse_trivy.get_image_ref("/nonexistent/file.json")
         assert result == "unknown"
 
+    # ====== Tests for 'check-error' command ======
+
+    def test_check_error_clean_scan(self):
+        """Test check-error returns empty for normal scan results."""
+        result = parse_trivy.check_scan_error(str(FIXTURES_DIR / "results-zero-findings.json"))
+        assert result == ""
+
+    def test_check_error_with_findings(self):
+        """Test check-error returns empty for results with findings."""
+        result = parse_trivy.check_scan_error(str(FIXTURES_DIR / "results-with-findings.json"))
+        assert result == ""
+
+    def test_check_error_scan_failed(self):
+        """Test check-error detects scan error marker."""
+        result = parse_trivy.check_scan_error(str(FIXTURES_DIR / "results-scan-error.json"))
+        assert result != ""
+        assert "scan failed" in result.lower() or "no space" in result.lower()
+
+    def test_check_error_nonexistent_file(self):
+        """Test check-error with nonexistent file."""
+        result = parse_trivy.check_scan_error("/nonexistent/file.json")
+        assert result == ""
+
+    def test_check_error_empty_file(self, tmp_path):
+        """Test check-error with empty file."""
+        empty = tmp_path / "empty.json"
+        empty.write_text("")
+        result = parse_trivy.check_scan_error(str(empty))
+        assert result == ""
+
+    def test_check_error_without_message(self, tmp_path):
+        """Test check-error with scan_error but no error message."""
+        f = tmp_path / "no_msg.json"
+        f.write_text(json.dumps({"scan_error": True, "Results": []}))
+        result = parse_trivy.check_scan_error(str(f))
+        assert result == "scan failed"
+
+    def test_check_error_false_marker(self, tmp_path):
+        """Test check-error when scan_error is explicitly false."""
+        f = tmp_path / "no_error.json"
+        f.write_text(json.dumps({"scan_error": False, "Results": []}))
+        result = parse_trivy.check_scan_error(str(f))
+        assert result == ""
+
+    def test_check_error_cli(self):
+        """Test check-error command via CLI."""
+        cmd = [
+            sys.executable, str(PARSER_SCRIPT),
+            "check-error",
+            str(FIXTURES_DIR / "results-scan-error.json"),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        assert result.returncode == 0
+        assert "scan failed" in result.stdout.lower() or "no space" in result.stdout.lower()
+
+    def test_check_error_cli_clean_scan(self):
+        """Test check-error CLI returns nothing for clean scan."""
+        cmd = [
+            sys.executable, str(PARSER_SCRIPT),
+            "check-error",
+            str(FIXTURES_DIR / "results-zero-findings.json"),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        assert result.returncode == 0
+        assert result.stdout.strip() == ""
+
     # ====== Integration tests ======
 
     def test_malformed_results_structure(self, tmp_path):

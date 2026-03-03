@@ -23,6 +23,24 @@ def load_json(file_path):
         return None
 
 
+def check_scan_error(file_path):
+    """Check if the result file contains a scan error marker.
+
+    Returns error message string if scan_error is true, empty string otherwise.
+    """
+    if not validate_file(file_path):
+        return ""
+
+    data = load_json(file_path)
+    if not data:
+        return ""
+
+    if data.get("scan_error"):
+        return data.get("error", "scan failed")
+
+    return ""
+
+
 def get_counts(file_path):
     """Get vulnerability counts by severity: 'crit high med low'."""
     if not validate_file(file_path):
@@ -311,6 +329,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Commands:
+  check-error         - Check if results contain a scan error marker
   counts              - Output "crit high med low" counts
   total               - Output total vulnerability count
   unique              - Output unique CVE count
@@ -352,7 +371,11 @@ Options:
         print("Error: json_file is required", file=sys.stderr)
         sys.exit(1)
 
-    if args.command == "counts":
+    if args.command == "check-error":
+        error = check_scan_error(args.json_file)
+        if error:
+            print(error)
+    elif args.command == "counts":
         print(get_counts(args.json_file))
     elif args.command == "total":
         print(get_total(args.json_file))

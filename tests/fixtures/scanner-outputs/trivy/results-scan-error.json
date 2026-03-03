@@ -1,0 +1,7 @@
+{
+  "scan_error": true,
+  "error": "Trivy scan failed: unable to export the image: no space left on device",
+  "Results": [],
+  "SchemaVersion": 2,
+  "ArtifactName": "containers.example.com/software/myapp:main"
+}

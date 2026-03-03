@@ -129,6 +129,29 @@ def process_container(
         except Exception:
             pass
 
+    # Check for scan error markers in result files
+    trivy_error = ""
+    grype_error = ""
+
+    if trivy_file:
+        trivy_error = run_parser(trivy_parser, "check-error", trivy_file) or ""
+
+    if grype_file:
+        grype_error = run_parser(grype_parser, "check-error", grype_file) or ""
+
+    if trivy_error or grype_error:
+        error_parts = []
+        if trivy_error:
+            error_parts.append(f"Trivy: {trivy_error}")
+        if grype_error:
+            error_parts.append(f"Grype: {grype_error}")
+        error_msg = "; ".join(error_parts)
+        return {
+            "name": container_name,
+            "status": "error",
+            "error": error_msg,
+        }, 1
+
     # Get Trivy data
     t_crit, t_high, t_med, t_low = 0, 0, 0, 0
     t_total, t_unique = 0, 0
@@ -349,8 +372,9 @@ def generate_summary(
                 f.write("|-----------|-------|---------|---------|--------|--------|-------|--------|--------|\n")
 
                 for data in container_data:
-                    if data["status"] == "failed":
-                        f.write(f"| {data['name']} | - | - | - | - | - | - | - | ❌ {data.get('error', 'Failed')} |\n")
+                    if data["status"] in ("failed", "error"):
+                        status_label = "Scan Error" if data["status"] == "error" else "Failed"
+                        f.write(f"| {data['name']} | - | - | - | - | - | - | - | ❌ {data.get('error', status_label)} |\n")
                     else:
                         f.write(f"| {data['name']} | `{data['image_ref']}` | {data['crit']} | {data['high']} | {data['med']} | {data['low']} | {data['total']} | {data['combined_unique']} | ✅ |\n")
                 f.write("\n")
@@ -359,10 +383,11 @@ def generate_summary(
             f.write("### 🔍 Detailed Findings by Container\n\n")
 
             for data in container_data:
-                if data["status"] == "failed":
+                if data["status"] in ("failed", "error"):
+                    status_label = "Scan Error" if data["status"] == "error" else "Build Failed"
                     f.write(f"<details>\n")
-                    f.write(f"<summary>❌ <strong>{data['name']}</strong> - Build Failed</summary>\n\n")
-                    f.write(f"**Status:** {data.get('error', 'Build failed')}\n\n")
+                    f.write(f"<summary>❌ <strong>{data['name']}</strong> - {status_label}</summary>\n\n")
+                    f.write(f"**Status:** {data.get('error', status_label)}\n\n")
                     f.write("</details>\n\n")
                 else:
                     # Determine emoji
