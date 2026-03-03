@@ -81,6 +81,31 @@ def run_parser(parser_path: str, command: str, json_file: Path, *args):
     return None
 
 
+def _check_scan_error_fallback(file_path: Path) -> str:
+    """Text-based fallback to detect scan_error marker when JSON parsing fails.
+
+    Handles cases where shell-generated JSON has unescaped characters that
+    break json.load() but the scan_error marker is still present in the file.
+    """
+    try:
+        content = file_path.read_text(encoding='utf-8', errors='replace')
+        if '"scan_error"' in content and ('true' in content.lower()):
+            # Extract error message with a simple search
+            marker = '"error"'
+            idx = content.find(marker)
+            if idx != -1:
+                # Find the value after "error": "..."
+                start = content.find('"', idx + len(marker) + 1)
+                if start != -1:
+                    end = content.find('"', start + 1)
+                    if end != -1:
+                        return content[start + 1:end][:500]
+            return "scan failed (details unavailable)"
+    except OSError:
+        pass
+    return ""
+
+
 def parse_counts(output: str) -> Tuple[int, int, int, int]:
     """Parse 'crit high med low' output into tuple."""
     if not output:
@@ -115,19 +140,22 @@ def process_container(
     grype_file = scan_files["grype"]
     status_file = scan_files["status"]
 
-    # Check for failure status
+    # Check for failure status (scan-status.json marker)
     if status_file:
         try:
             with open(status_file, 'r') as f:
-                status = json.load(f)
-                error_msg = status.get("error", "Scan failed")
+                status_data = json.load(f)
+                error_msg = status_data.get("error", "Scan failed")
+                status_val = status_data.get("status", "failed")
                 return {
                     "name": container_name,
-                    "status": "failed",
+                    "status": "error" if status_val == "error" else "failed",
                     "error": error_msg,
                 }, 1
-        except Exception:
-            pass
+        except (json.JSONDecodeError, OSError) as e:
+            # JSON might be malformed (e.g., empty shell variables during generation)
+            # Fall through to check-error detection below
+            print(f"    ⚠️ Warning: could not parse {status_file}: {e}", file=sys.stderr)
 
     # Check for scan error markers in result files
     trivy_error = ""
@@ -135,9 +163,14 @@ def process_container(
 
     if trivy_file:
         trivy_error = run_parser(trivy_parser, "check-error", trivy_file) or ""
+        # Text-based fallback: if parser returned nothing but file contains marker
+        if not trivy_error:
+            trivy_error = _check_scan_error_fallback(trivy_file)
 
     if grype_file:
         grype_error = run_parser(grype_parser, "check-error", grype_file) or ""
+        if not grype_error:
+            grype_error = _check_scan_error_fallback(grype_file)
 
     if trivy_error or grype_error:
         error_parts = []
@@ -150,6 +183,14 @@ def process_container(
             "name": container_name,
             "status": "error",
             "error": error_msg,
+        }, 1
+
+    # Last resort: if status_file existed but was unparsable, treat as error
+    if status_file:
+        return {
+            "name": container_name,
+            "status": "error",
+            "error": "Scan status file present but unreadable",
         }, 1
 
     # Get Trivy data

@@ -197,7 +197,16 @@ runs:
           TRIVY_FAILED=true
           ERROR_MSG=$(tail -5 /tmp/trivy-json-stderr.txt 2>/dev/null | tr '\n' ' ' | head -c 500)
           echo "⚠️ Trivy JSON scan failed - creating error marker"
-          echo "{\"scan_error\":true,\"error\":\"Trivy scan failed: ${ERROR_MSG}\",\"Results\":[],\"SchemaVersion\":2,\"ArtifactName\":\"${IMAGE_REF}\"}" > "trivy-${CONTAINER_NAME}-results.json"
+          python3 -c "
+        import json, sys
+        json.dump({
+            'scan_error': True,
+            'error': 'Trivy scan failed: ' + sys.argv[1],
+            'Results': [],
+            'SchemaVersion': 2,
+            'ArtifactName': sys.argv[2]
+        }, open(sys.argv[3], 'w'))
+        " "${ERROR_MSG}" "${IMAGE_REF}" "trivy-${CONTAINER_NAME}-results.json"
         fi
 
         # SARIF format
@@ -537,13 +546,28 @@ runs:
         if [ "$TRIVY_ERROR" = "true" ] || [ "$GRYPE_ERROR" = "true" ]; then
           TRIVY_MSG="${{ steps.trivy-status.outputs.trivy_error_msg }}"
           GRYPE_MSG="${{ steps.grype-status.outputs.grype_error_msg }}"
-          echo "{\"status\":\"error\",\"container\":\"${CONTAINER_NAME}\",\"error\":\"Scanner errors: ${TRIVY_MSG} ${GRYPE_MSG}\",\"trivy_error\":$TRIVY_ERROR,\"grype_error\":$GRYPE_ERROR}" \
-            > "container-scan-results-${CONTAINER_NAME}/scan-status.json"
+          python3 -c "
+        import json, sys
+        json.dump({
+            'status': 'error',
+            'container': sys.argv[1],
+            'error': ('Scanner errors: ' + ' '.join(filter(None, [sys.argv[2], sys.argv[3]]))).strip(),
+            'trivy_error': sys.argv[4] == 'true',
+            'grype_error': sys.argv[5] == 'true'
+        }, open(sys.argv[6], 'w'))
+        " "${CONTAINER_NAME}" "${TRIVY_MSG}" "${GRYPE_MSG}" "${TRIVY_ERROR}" "${GRYPE_ERROR}" \
+            "container-scan-results-${CONTAINER_NAME}/scan-status.json"
           echo "  ⚠️ Scanner errors detected - created status marker"
         elif [ ! -f "container-scan-results-${CONTAINER_NAME}/trivy-${CONTAINER_NAME}-results.json" ] && \
              [ ! -f "container-scan-results-${CONTAINER_NAME}/grype-${CONTAINER_NAME}-results.json" ]; then
-          echo '{"status":"failed","container":"'"${CONTAINER_NAME}"'","error":"No scan results produced"}' \
-            > "container-scan-results-${CONTAINER_NAME}/scan-status.json"
+          python3 -c "
+        import json, sys
+        json.dump({
+            'status': 'failed',
+            'container': sys.argv[1],
+            'error': 'No scan results produced'
+        }, open(sys.argv[2], 'w'))
+        " "${CONTAINER_NAME}" "container-scan-results-${CONTAINER_NAME}/scan-status.json"
           echo "  ⚠️ No scan results found - created status marker"
         fi
 
