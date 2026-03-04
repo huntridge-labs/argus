@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.4.1](https://github.com/huntridge-labs/argus/compare/0.4.0...0.4.1) (2026-03-04)
+
+### Bug Fixes
+
+* **scanner-container:** detect and report scan failures instead of silent pass ([86fde1b](https://github.com/huntridge-labs/argus/commit/86fde1b6558fa35636ad3dbdbca2b9e68343bedd)), closes [#18](https://github.com/huntridge-labs/argus/issues/18)
+* **scanner-container:** replace raw error dump with concise status and job log link ([7195a5a](https://github.com/huntridge-labs/argus/commit/7195a5ac94ed10969ff0b1e9d3aef4bb56b943d1)), closes [#18](https://github.com/huntridge-labs/argus/issues/18)
+* **scanner-container:** use python json.dumps for marker files and add text-based fallback ([15afce0](https://github.com/huntridge-labs/argus/commit/15afce08b19d695bf8a96c9e697ab90c29c9de62))
+* **security-summary:** include CodeQL language-suffixed summaries in PR comment ([4b36097](https://github.com/huntridge-labs/argus/commit/4b36097f10b9838754a91bbe7f45210e3981fdee)), closes [#15](https://github.com/huntridge-labs/argus/issues/15)
+* **workflows:** resolve all shellcheck findings across CI workflows ([e61d47a](https://github.com/huntridge-labs/argus/commit/e61d47ad74e3515282c66caf75266232eac13a86))
+
+### Code Refactoring
+
+* **scanner-container:** simplify error detection and CVE collection ([6a3c18e](https://github.com/huntridge-labs/argus/commit/6a3c18ecf9c37908995e5e1ec0bc541458a4a1d4))
+
+### Continuous Integration
+
+* **workflows:** add linting for GitHub Actions workflows ([6249813](https://github.com/huntridge-labs/argus/commit/6249813f119892d48b00129fcbfd7f6b3db715b6))
+
 ## [0.4.0](https://github.com/huntridge-labs/argus/compare/0.3.0...0.4.0) (2026-02-26)
 
 ### Features
