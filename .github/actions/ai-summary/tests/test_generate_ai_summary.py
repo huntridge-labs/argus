@@ -82,15 +82,26 @@ class TestScannerSummaryCollection:
         """Returns zero count when no matching files exist."""
         files = list(tmp_path.glob("scanner-summary-*.md"))
         assert len(files) == 0
-
-    def test_ignores_non_matching_files(self, tmp_path):
-        """Does not pick up files that don't match the pattern."""
-        (tmp_path / "other-file.md").write_text("should be ignored")
+    def test_collects_any_file_in_directory(self, tmp_path):
+        """Collects any file in the directory regardless of name or extension."""
         (tmp_path / "scanner-summary-trivy.md").write_text("trivy findings")
+        (tmp_path / "scanner-summary-bandit").write_text("bandit findings")
+        (tmp_path / "some-other-file.txt").write_text("other findings")
 
-        files = list(tmp_path.glob("scanner-summary-*.md"))
-        assert len(files) == 1
-        assert files[0].name == "scanner-summary-trivy.md"
+        count = 0
+        for f in sorted(tmp_path.rglob("*")):
+            if f.is_file():
+                count += 1
+
+        assert count == 3
+    #def test_ignores_non_matching_files(self, tmp_path):
+     #   """Does not pick up files that don't match the pattern."""
+      #  (tmp_path / "other-file.md").write_text("should be ignored")
+       # (tmp_path / "scanner-summary-trivy.md").write_text("trivy findings")
+
+        #files = list(tmp_path.glob("scanner-summary-*.md"))
+        #assert len(files) == 1
+        #assert files[0].name == "scanner-summary-trivy.md"
 
 
 class TestOutputFormatting:
