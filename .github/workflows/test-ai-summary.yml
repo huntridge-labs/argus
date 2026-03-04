@@ -28,14 +28,77 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download real scanner summaries
-        uses: actions/download-artifact@v4
+      - name: Create mock scanner summaries
+        run: |
+          mkdir -p /tmp/mock-summaries
+
+          cat > /tmp/mock-summaries/scanner-summary-trivy.md << 'EOF'
+          ## Trivy Container Scan Results
+          **Image scanned:** app-container:latest
+
+          ### Critical Vulnerabilities (3)
+          | CVE | Package | Version | Description |
+          |---|---|---|---|
+          | CVE-2021-44228 | log4j-core | 2.14.1 | Remote code execution via JNDI lookup |
+          | CVE-2023-45853 | zlib | 1.2.11 | Integer overflow leading to heap corruption |
+          | CVE-2025-22871 | openssl | 3.0.2 | Buffer overflow allowing arbitrary code execution |
+
+          ### High Vulnerabilities (12)
+          | CVE | Package | Description |
+          |---|---|---|
+          | CVE-2024-30105 | dotnet-runtime | Denial of service |
+          | CVE-2024-0056 | dotnet-sql | Security feature bypass |
+          | CVE-2025-9086 | curl | Secure cookie leak |
+          | CVE-2024-1234 | libssl | Information disclosure |
+          | CVE-2024-5678 | libc | Memory corruption |
+          | CVE-2024-9012 | python3 | Privilege escalation |
+          | CVE-2024-3456 | nginx | HTTP request smuggling |
+          | CVE-2024-7890 | git | Remote code execution |
+          | CVE-2024-2345 | tar | Path traversal |
+          | CVE-2024-6789 | glibc | Stack overflow |
+          | CVE-2024-1111 | kernel-libs | Local privilege escalation |
+          | CVE-2024-2222 | bash | Command injection |
+
+          ### Medium Vulnerabilities (8)
+          - CVE-2024-3333: vim - Arbitrary code execution
+          - CVE-2024-4444: openssh - Information disclosure
+          - CVE-2024-5555: wget - SSRF vulnerability
+          - CVE-2024-6666: sudo - Privilege escalation
+          - CVE-2024-7777: expat - XML denial of service
+          - CVE-2024-8888: sqlite3 - SQL injection
+          - CVE-2024-9999: perl - Arbitrary code execution
+          - CVE-2024-0000: rpm - Signature bypass
+
+          ### Low Vulnerabilities (5)
+          - Various informational findings in development dependencies
+          EOF
+
+          cat > /tmp/mock-summaries/scanner-summary-gitleaks.md << 'EOF'
+          ## Gitleaks Secret Detection Results
+          **Files scanned:** 342
+
+          ### Exposed Secrets (2)
+          | Severity | Type | File | Line |
+          |---|---|---|---|
+          | CRITICAL | AWS Access Key | infrastructure/terraform/main.tf | 42 |
+          | CRITICAL | Generic API Key | src/config/settings.py | 118 |
+
+          ### Detail
+          **Finding 1:** AWS Access Key in infrastructure/terraform/main.tf line 42. Could allow full AWS account access.
+          **Finding 2:** Generic API key in src/config/settings.py line 118. Could allow unauthorized third-party service access.
+          EOF
+
+      - name: Upload mock summaries as artifacts
+        uses: actions/upload-artifact@v4
         with:
-          pattern: scanner-summary-*
-          path: /tmp/scanner-summaries
-          merge-multiple: true
-          run-id: 22650413724
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: scanner-summary-trivy
+          path: /tmp/mock-summaries/scanner-summary-trivy.md
+
+      - name: Upload mock gitleaks summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanner-summary-gitleaks
+          path: /tmp/mock-summaries/scanner-summary-gitleaks.md
 
       - name: Run AI Summary
         uses: ./.github/actions/ai-summary
@@ -45,8 +108,7 @@ jobs:
           GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN:         ${{ secrets.GITHUB_TOKEN }}
         with:
-          provider: 'copilot'
+          provider: ${{ github.event.inputs.provider || 'copilot' }}
           post_issue: 'true'
           post_pr_comment: 'false'
           fail_on_ai_error: 'false'
-          skip_download: 'true'
