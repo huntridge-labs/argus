@@ -28,29 +28,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Find latest successful security scan run
-        id: find-run
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          RUN_ID=$(gh run list \
-            --repo "${{ github.repository }}" \
-            --workflow "reusable-security-hardening.yml" \
-            --status success \
-            --limit 1 \
-            --json databaseId \
-            --jq '.[0].databaseId')
-
-          echo "Found run ID: $RUN_ID"
-          echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
-
       - name: Download real scanner summaries
         uses: actions/download-artifact@v4
         with:
           pattern: scanner-summary-*
           path: /tmp/scanner-summaries
           merge-multiple: true
-          run-id: ${{ steps.find-run.outputs.run_id }}
+          run-id: 22650413724
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run AI Summary
