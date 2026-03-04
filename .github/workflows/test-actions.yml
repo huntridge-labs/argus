@@ -90,6 +90,7 @@ jobs:
             ["scanner-container-summary"]="Tested as part of scanner-container"
             ["scanner-zap-summary"]="Tested as part of scanner-zap"
             ["security-summary"]="Tested in test-summary job"
+            ["ai-summary"]="Requires external AI provider API keys - tested via dedicated test-ai-summary.yml workflow"
           )
 
           echo "| Action | E2E Test Status | Notes |" >> "$report_file"

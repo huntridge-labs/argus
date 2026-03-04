@@ -92,7 +92,7 @@ Only include rows where findings exist. For vulnerability counts, always specify
 ---
 
 ## Executive Overview
-1-2 sentences summarizing the overall security posture based on the findings. Mention the tools used and the general risk level.
+1-3 sentences summarizing the overall security posture based on the findings. Mention the tools used and the general risk level.
 
 ---
 
@@ -125,7 +125,7 @@ Only include if infrastructure misconfigurations or IaC findings exist. Use the 
 ---
 
 ## Risk Assessment
-State the overall risk level (CRITICAL / HIGH / MEDIUM / LOW) followed by 3-4 bullet points explaining the rationale based on the actual findings.
+State the overall risk level (CRITICAL / HIGH / MEDIUM / LOW) followed by bullet points explaining the rationale based on the actual findings. Use up to 6 bullet points to explain the rationale reached.
 
 ---
 
@@ -179,7 +179,6 @@ Rules:
 - Only populate sections where the scan data supports it - omit empty sections entirely
 - Use actual CVE IDs, file paths, and line numbers from the findings where available
 - Keep language professional but accessible to a technical lead reviewing a PR
-- Do not add any preamble or closing remarks outside the defined sections
 - Do not invent content for the Appendices or Contact Information sections
 """
 
