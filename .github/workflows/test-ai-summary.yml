@@ -49,3 +49,4 @@ jobs:
           post_issue: 'true'
           post_pr_comment: 'false'
           fail_on_ai_error: 'false'
+          skip_download: 'true'

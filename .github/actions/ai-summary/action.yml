@@ -2,7 +2,6 @@ name: 'AI Security Summary'
 description: |
   Generates an AI-powered executive security summary from aggregated Argus scanner results.
   Delivers the summary as a GitHub Issue on the pull request.
-  Powered by GitHub Copilot CLI.
 
 inputs:
   provider:
@@ -29,6 +28,10 @@ inputs:
     description: 'Fail the workflow if AI summary generation fails'
     required: false
     default: 'false'
+  skip_download:
+    description: 'Skip the internal artifact download (use when summaries are pre-populated by the caller)'
+    required: false
+    default: 'false'
 
 runs:
   using: 'composite'
@@ -46,6 +49,7 @@ runs:
       run: npm install -g @github/copilot
 
     - name: Download scanner summaries
+      if: inputs.skip_download == 'false'
       uses: actions/download-artifact@v4
       with:
         pattern: scanner-summary-*
