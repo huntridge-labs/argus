@@ -174,6 +174,8 @@ Leave this section with the placeholder: '[Insert security team contact informat
 ---
 
 Rules:
+- Do not add any preamble or closing remarks outside the defined sections
+- Do not include any top-level title or header at the start of your response — begin directly with ## Key Findings Summary
 - Only populate sections where the scan data supports it - omit empty sections entirely
 - Use actual CVE IDs, file paths, and line numbers from the findings where available
 - Keep language professional but accessible to a technical lead reviewing a PR
@@ -220,7 +222,7 @@ elif PROVIDER == "claude":
 
     body = json.dumps({
         "model":      "claude-sonnet-4-5",
-        "max_tokens": 2048,
+        "max_tokens": 4096,
         "system":     "You are a security analyst writing executive summaries from automated scan results.",
         "messages":   [{"role": "user", "content": PROMPT}],
     }).encode("utf-8")
