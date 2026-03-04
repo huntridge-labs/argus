@@ -13,7 +13,7 @@ on:
           - claude
           - gemini
   pull_request:
-    branches: [main]
+    branches: [main, feat/ai-summary]
 
 permissions:
   contents: read
@@ -108,7 +108,7 @@ jobs:
           GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN:         ${{ secrets.GITHUB_TOKEN }}
         with:
-          provider: ${{ github.event.inputs.provider || 'copilot' }}
+          provider: ${{ github.event.inputs.provider || 'claude' }}
           post_issue: 'true'
           post_pr_comment: 'false'
           fail_on_ai_error: 'false'
