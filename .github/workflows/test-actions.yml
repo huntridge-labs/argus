@@ -14,12 +14,16 @@ on:
   pull_request:
     paths:
       - '.github/actions/**'
+      - '.github/workflows/scanner-*.yml'
+      - '.github/workflows/reusable-*.yml'
       - 'tests/fixtures/**'
       - '.github/workflows/test-actions.yml'
   push:
     branches: [main]
     paths:
       - '.github/actions/**'
+      - '.github/workflows/scanner-*.yml'
+      - '.github/workflows/reusable-*.yml'
   workflow_dispatch:
     inputs:
       test_group:
