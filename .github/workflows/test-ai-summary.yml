@@ -12,14 +12,6 @@ on:
           - copilot
           - claude
         #  - gemini
-      use_real_data:
-        description: 'Use real scanner artifacts from a past run'
-        required: false
-        default: 'true'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
   pull_request:
     branches: [main]
 
@@ -36,19 +28,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download real scanner summaries from past Run
-        if: inputs.use_real_data == 'true' || github.event_name == 'pull_request'
-        uses: actions/download-artifact@v4
-        with:
-          pattern: scanner-summary-*
-          path: /tmp/scanner-summaries
-          merge-multiple: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: 22650413724
-        continue-on-error: true
-      
-      - name: Create mock scanner summaries (fallback)
-        if: inputs.use_real_data == 'false'
+      - name: Create mock scanner summaries
         run: |
           mkdir -p /tmp/mock-summaries
 
@@ -109,14 +89,12 @@ jobs:
           EOF
 
       - name: Upload mock summaries as artifacts
-        if: inputs.use_real_data == 'false'
         uses: actions/upload-artifact@v4
         with:
           name: scanner-summary-trivy
           path: /tmp/mock-summaries/scanner-summary-trivy.md
 
       - name: Upload mock gitleaks summary
-        if: inputs.use_real_data == 'false'
         uses: actions/upload-artifact@v4
         with:
           name: scanner-summary-gitleaks
