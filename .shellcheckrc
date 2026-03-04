@@ -1,0 +1,5 @@
+# Suppress noisy style suggestions in GitHub Actions workflow scripts
+# SC2129: "Consider using { cmd1; cmd2; } >> file instead of individual redirects"
+# This is purely stylistic and adds noise in CI workflow scripts where
+# individual redirects to $GITHUB_STEP_SUMMARY are clearer and more maintainable.
+disable=SC2129
