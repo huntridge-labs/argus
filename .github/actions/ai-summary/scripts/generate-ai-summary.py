@@ -41,7 +41,7 @@ combined_findings = ""
 scanner_count = 0
 scanner_names = []
 
-for summary_file in sorted(summary_path.glob("scanner-summary-*.md")):
+for summary_file in sorted(summary_path.rglob("scanner-summary-*.md")):
     scanner_name = summary_file.stem.replace("scanner-summary-", "")
     print(f"  + Reading: {scanner_name}")
     combined_findings += f"### {scanner_name} findings\n"
