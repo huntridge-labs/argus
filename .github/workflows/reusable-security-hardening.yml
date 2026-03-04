@@ -261,7 +261,7 @@ jobs:
               # - zap is opt-in since it requires an application target
               local -a exclude=(trivy-iac checkov sbom trivy-container grype zap)
               for key in "${!RUN[@]}"; do
-                if [[ ! " ${exclude[*]} " =~ " ${key} " ]]; then
+                if [[ " ${exclude[*]} " != *" ${key} "* ]]; then
                   add_scanner "$key"
                 fi
               done
@@ -813,15 +813,17 @@ jobs:
 
         echo ""
         echo "📄 Scanner summaries at root level:"
-        ls -la *.md 2>/dev/null || echo "  (none found)"
+        ls -la ./*.md 2>/dev/null || echo "  (none found)"
       continue-on-error: true
 
     - name: Combine scanner summaries into security report
       run: |
-        echo "**Repository:** ${{ github.repository }}" >> security-hardening-report.md
-        echo "**Branch:** ${{ github.ref_name }}" >> security-hardening-report.md
-        echo "**Generated:** $(date)" >> security-hardening-report.md
-        echo "" >> security-hardening-report.md
+        {
+          echo "**Repository:** ${{ github.repository }}"
+          echo "**Branch:** ${{ github.ref_name }}"
+          echo "**Generated:** $(date)"
+          echo ""
+        } >> security-hardening-report.md
 
         echo "📦 Checking for scanner summaries..."
         ls -la . 2>/dev/null || true
@@ -838,7 +840,7 @@ jobs:
           else
             # Handle language-suffixed variants (e.g. codeql-javascript-typescript.md)
             found_variant=false
-            for variant in ${scanner}-*.md; do
+            for variant in "${scanner}"-*.md; do
               if [ -f "$variant" ]; then
                 echo "✅ Adding ${variant} summary..."
                 cat "$variant" >> security-hardening-report.md
@@ -854,27 +856,29 @@ jobs:
 
     - name: Generate overall summary
       run: |
-        echo "## 📊 Overall Security Score" >> security-hardening-report.md
-        echo "" >> security-hardening-report.md
+        {
+          echo "## 📊 Overall Security Score"
+          echo ""
+        } >> security-hardening-report.md
 
         # Calculate total issues across all scanners
         TOTAL_ISSUES=0
         if command -v jq >/dev/null 2>&1; then
           # Count SARIF issues
-          for sarif_file in $(find . -name "*.sarif" -type f 2>/dev/null); do
+          while IFS= read -r sarif_file; do
             if [ -f "$sarif_file" ] && [ -s "$sarif_file" ]; then
               issues=$(jq -r '.runs[]?.results[]? | .ruleId' "$sarif_file" 2>/dev/null | wc -l | tr -d ' ')
               TOTAL_ISSUES=$((TOTAL_ISSUES + issues))
             fi
-          done
+          done < <(find . -name "*.sarif" -type f 2>/dev/null)
 
           # Count OpenGrep JSON issues
-          for json_file in $(find ./opengrep-reports -name "*.json" -type f 2>/dev/null); do
+          while IFS= read -r json_file; do
             if [ -f "$json_file" ] && [ -s "$json_file" ]; then
               issues=$(jq -r '.results[]? | .check_id' "$json_file" 2>/dev/null | wc -l | tr -d ' ')
               TOTAL_ISSUES=$((TOTAL_ISSUES + issues))
             fi
-          done
+          done < <(find ./opengrep-reports -name "*.json" -type f 2>/dev/null)
         fi
 
         echo "**Total Issues Found:** $TOTAL_ISSUES" >> security-hardening-report.md
@@ -888,12 +892,14 @@ jobs:
           echo "🔴 **Attention Required** - Multiple security issues found." >> security-hardening-report.md
         fi
 
-        echo "" >> security-hardening-report.md
-        echo "## 📋 Next Steps" >> security-hardening-report.md
-        echo "1. Review the detailed scanner results in the collapsible sections above" >> security-hardening-report.md
-        echo "2. Download and review security reports from workflow artifacts" >> security-hardening-report.md
-        echo "3. Address any critical or high-severity findings" >> security-hardening-report.md
-        echo "4. Consider enabling automated dependency updates" >> security-hardening-report.md
+        {
+          echo ""
+          echo "## 📋 Next Steps"
+          echo "1. Review the detailed scanner results in the collapsible sections above"
+          echo "2. Download and review security reports from workflow artifacts"
+          echo "3. Address any critical or high-severity findings"
+          echo "4. Consider enabling automated dependency updates"
+        } >> security-hardening-report.md
 
     - name: Get job ID
       id: job_id

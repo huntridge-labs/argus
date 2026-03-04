@@ -10,7 +10,6 @@ on:
       - '.github/workflows/**'
       - '.github/actions/**'
       - '.github/actionlint.yaml'
-      - '.shellcheckrc'
   push:
     branches: [main]
     paths:
@@ -43,14 +42,18 @@ jobs:
         shell: bash
         run: |
           if ./actionlint -color 2>&1 | tee actionlint-output.txt; then
-            echo "## Actionlint Results" >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "All workflow files passed actionlint." >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo "## Actionlint Results"
+              echo ""
+              echo "All workflow files passed actionlint."
+            } >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "## Actionlint Results" >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-            cat actionlint-output.txt >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo "## Actionlint Results"
+              echo ""
+              echo '```'
+              cat actionlint-output.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi

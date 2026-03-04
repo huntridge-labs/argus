@@ -24,10 +24,10 @@ jobs:
         id: check-aicac
         run: |
           if [ -d ".ai" ]; then
-            echo "mode=maintain" >> $GITHUB_OUTPUT
+            echo "mode=maintain" >> "$GITHUB_OUTPUT"
             echo "📁 .ai/ directory found - running in maintain mode"
           else
-            echo "mode=setup" >> $GITHUB_OUTPUT
+            echo "mode=setup" >> "$GITHUB_OUTPUT"
             echo "🚀 .ai/ directory not found - running in setup mode"
           fi
 

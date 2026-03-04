@@ -42,27 +42,33 @@ jobs:
       - name: Coverage Report Summary
         if: always()
         run: |
-          echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Coverage Report"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
           if [ -f coverage/python.lcov ]; then
-            echo "### Python Coverage" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            head -20 coverage/python.lcov >> $GITHUB_STEP_SUMMARY || true
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            {
+              echo "### Python Coverage"
+              echo "\`\`\`"
+              head -20 coverage/python.lcov || true
+              echo "\`\`\`"
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Test Summary
         if: always()
         run: |
-          echo "## Unit Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ All tests completed!" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Test Coverage:**" >> $GITHUB_STEP_SUMMARY
-          echo "- Python tests (utilities & ClamAV)" >> $GITHUB_STEP_SUMMARY
-          echo "- Action schema validation" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "See detailed coverage reports in artifacts" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Unit Test Results"
+            echo ""
+            echo "✅ All tests completed!"
+            echo ""
+            echo "**Test Coverage:**"
+            echo "- Python tests (utilities & ClamAV)"
+            echo "- Action schema validation"
+            echo ""
+            echo "See detailed coverage reports in artifacts"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage to Codecov
         if: always()

@@ -72,38 +72,47 @@ jobs:
 
           if [ "$NEW_VERSION" != "unknown" ] && [ "$NEW_VERSION" != "$CURRENT_VERSION" ] && [ "$RELEASE_WILL_HAPPEN" -gt 0 ]; then
             # Version will be bumped
-            echo "### 📦 Version Update" >> preview.md
-            echo "**Current:** \`$CURRENT_VERSION\` → **New:** \`$NEW_VERSION\`" >> preview.md
-            echo "" >> preview.md
+            {
+              echo "### 📦 Version Update"
+              echo "**Current:** \`$CURRENT_VERSION\` → **New:** \`$NEW_VERSION\`"
+              echo ""
+            } >> preview.md
 
             # Extract and format changelog
-            echo "### 📋 Changelog" >> preview.md
-            echo "" >> preview.md
+            {
+              echo "### 📋 Changelog"
+              echo ""
+            } >> preview.md
 
             # Extract changelog section from release output (between "Changelog:" and first "Updating version")
             sed -n '/^Changelog:/,/^Updating version/p' release_output.txt | sed '1d;$d' | sed 's/^//' > changelog_raw.md
 
             # Process the changelog to filter/categorize deps commits
             # Create a temporary changelog file with just the extracted section
-            echo "# Temp Changelog" > temp_changelog.md
-            echo "" >> temp_changelog.md
-            cat changelog_raw.md >> temp_changelog.md
+            {
+              echo "# Temp Changelog"
+              echo ""
+              cat changelog_raw.md
+            } >> temp_changelog.md
 
             # Run the post-processing script on the temp changelog
             node scripts/release-it-process-changelog.js temp_changelog.md
 
             # Extract the processed changelog (skip the temp header)
-            tail -n +3 temp_changelog.md >> preview.md
-            echo "" >> preview.md
-
-            # Extract file changes that would be made
-            echo "### 📁 Files that would be modified" >> preview.md
-            echo "" >> preview.md
+            {
+              tail -n +3 temp_changelog.md
+              echo ""
+              # Extract file changes that would be made
+              echo "### 📁 Files that would be modified"
+              echo ""
+            } >> preview.md
 
             # Extract list of files being updated from the release output
-            echo "\`\`\`" >> preview.md
-            grep "^Updating version in" release_output.txt | sed 's/Updating version in //' | sed 's/^/- /' >> preview.md
-            echo "\`\`\`" >> preview.md
+            {
+              echo "\`\`\`"
+              grep "^Updating version in" release_output.txt | sed 's/Updating version in //' | sed 's/^/- /'
+              echo "\`\`\`"
+            } >> preview.md
 
             # Extract changeset information
             if grep -q "Changeset:" release_output.txt; then
@@ -112,30 +121,36 @@ jobs:
               echo "\`\`\`" >> preview.md
             fi
 
-            echo "" >> preview.md
-            echo "### ✅ Actions that would be performed" >> preview.md
-            echo "- 📝 Update CHANGELOG.md with new entries" >> preview.md
-            echo "- 🏷️ Create git tag \`$NEW_VERSION\`" >> preview.md
-            echo "- 📤 Push changes and tag to repository" >> preview.md
-            echo "- 📦 Create GitHub release" >> preview.md
+            {
+              echo ""
+              echo "### ✅ Actions that would be performed"
+              echo "- 📝 Update CHANGELOG.md with new entries"
+              echo "- 🏷️ Create git tag \`$NEW_VERSION\`"
+              echo "- 📤 Push changes and tag to repository"
+              echo "- 📦 Create GitHub release"
+            } >> preview.md
 
           else
             # No version bump
-            echo "### ℹ️ No Release Required" >> preview.md
-            echo "" >> preview.md
-            echo "This PR does not contain any conventional commits that would trigger a release." >> preview.md
-            echo "" >> preview.md
-            echo "**Conventional commit types that trigger releases:**" >> preview.md
-            echo "- \`feat:\` → minor version bump" >> preview.md
-            echo "- \`fix:\` → patch version bump" >> preview.md
-            echo "- \`BREAKING CHANGE:\` → major version bump" >> preview.md
-            echo "" >> preview.md
-            echo "**Types that don't trigger releases:** \`docs:\`, \`chore:\`, \`style:\`, \`test:\`, \`ci:\`, \`build:\`, \`refactor:\`, \`perf:\`" >> preview.md
+            {
+              echo "### ℹ️ No Release Required"
+              echo ""
+              echo "This PR does not contain any conventional commits that would trigger a release."
+              echo ""
+              echo "**Conventional commit types that trigger releases:**"
+              echo "- \`feat:\` → minor version bump"
+              echo "- \`fix:\` → patch version bump"
+              echo "- \`BREAKING CHANGE:\` → major version bump"
+              echo ""
+              echo "**Types that don't trigger releases:** \`docs:\`, \`chore:\`, \`style:\`, \`test:\`, \`ci:\`, \`build:\`, \`refactor:\`, \`perf:\`"
+            } >> preview.md
           fi
 
-          echo "" >> preview.md
-          echo "---" >> preview.md
-          echo "*This preview is generated by running \`release-it --dry-run\`*" >> preview.md
+          {
+            echo ""
+            echo "---"
+            echo "*This preview is generated by running \`release-it --dry-run\`*"
+          } >> preview.md
 
       - name: Upload debug artifacts
         if: always()
