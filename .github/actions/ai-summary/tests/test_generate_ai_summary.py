@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-# ───────────────────────────────── Load Script as Module ─────────────────────────────────
+# ──────────────────────────── Load Script as Module ────────────────────────────
 SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
 SCRIPT_PATH = SCRIPTS_DIR / "generate-ai-summary.py"
 
@@ -285,3 +285,230 @@ class TestOutputFileWriting:
         raw = output_file.read_bytes()
         assert not raw.startswith(b"\xef\xbb\xbf"), "File should not have UTF-8 BOM"
         assert "⚠️" in output_file.read_text(encoding="utf-8")
+
+
+class TestClaudeProviderIntegration:
+    """Tests for Claude API call path using mocked HTTP."""
+
+    def _make_claude_response(self, text="Executive summary content"):
+        """Build a mock Claude API response."""
+        return json.dumps({
+            "content": [{"type": "text", "text": text}]
+        }).encode("utf-8")
+
+    def test_claude_success(self, tmp_path, monkeypatch):
+        """Claude provider returns summary when API call succeeds."""
+        monkeypatch.setenv("AI_PROVIDER", "claude")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        monkeypatch.setenv("SUMMARY_DIR", str(tmp_path))
+        monkeypatch.setenv("OUTPUT_FILE", str(tmp_path / "out.md"))
+
+        (tmp_path / "scanner-summary-trivy.md").write_text("## Trivy\nCVE-2021-44228")
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = self._make_claude_response("## Key Findings Summary\nAll clear.")
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            import runpy
+            runpy.run_path(str(SCRIPT_PATH))
+
+        out = (tmp_path / "out.md").read_text(encoding="utf-8")
+        assert "Key Findings Summary" in out
+        assert "Anthropic Claude" in out
+
+    def test_claude_missing_api_key_exits(self, tmp_path, monkeypatch):
+        """Claude provider exits with error when API key is missing."""
+        monkeypatch.setenv("AI_PROVIDER", "claude")
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.setenv("SUMMARY_DIR", str(tmp_path))
+        monkeypatch.setenv("OUTPUT_FILE", str(tmp_path / "out.md"))
+
+        (tmp_path / "scanner-summary-trivy.md").write_text("## Trivy\nfindings")
+
+        with pytest.raises(SystemExit) as exc:
+            import runpy
+            runpy.run_path(str(SCRIPT_PATH))
+        assert exc.value.code == 1
+
+    def test_claude_http_error_exits(self, tmp_path, monkeypatch):
+        """Claude provider exits with error on HTTP failure."""
+        import urllib.error
+        monkeypatch.setenv("AI_PROVIDER", "claude")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        monkeypatch.setenv("SUMMARY_DIR", str(tmp_path))
+        monkeypatch.setenv("OUTPUT_FILE", str(tmp_path / "out.md"))
+
+        (tmp_path / "scanner-summary-trivy.md").write_text("## Trivy\nfindings")
+
+        with patch("urllib.request.urlopen", side_effect=urllib.error.HTTPError(
+            url=None, code=401, msg="Unauthorized", hdrs=None, fp=None
+        )):
+            with pytest.raises(SystemExit) as exc:
+                import runpy
+                runpy.run_path(str(SCRIPT_PATH))
+        assert exc.value.code == 1
+
+    def test_claude_empty_response_exits(self, tmp_path, monkeypatch):
+        """Claude provider exits when response text is empty."""
+        monkeypatch.setenv("AI_PROVIDER", "claude")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        monkeypatch.setenv("SUMMARY_DIR", str(tmp_path))
+        monkeypatch.setenv("OUTPUT_FILE", str(tmp_path / "out.md"))
+
+        (tmp_path / "scanner-summary-trivy.md").write_text("## Trivy\nfindings")
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps({
+            "content": [{"type": "text", "text": "   "}]
+        }).encode("utf-8")
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            with pytest.raises(SystemExit) as exc:
+                import runpy
+                runpy.run_path(str(SCRIPT_PATH))
+        assert exc.value.code == 1
+
+
+class TestGeminiProviderIntegration:
+    """Tests for Gemini API call path using mocked HTTP."""
+
+    def _make_gemini_response(self, text="Gemini summary content"):
+        return json.dumps({
+            "candidates": [{"content": {"parts": [{"text": text}]}}]
+        }).encode("utf-8")
+
+    def test_gemini_success(self, tmp_path, monkeypatch):
+        """Gemini provider returns summary when API call succeeds."""
+        monkeypatch.setenv("AI_PROVIDER", "gemini")
+        monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+        monkeypatch.setenv("SUMMARY_DIR", str(tmp_path))
+        monkeypatch.setenv("OUTPUT_FILE", str(tmp_path / "out.md"))
+
+        (tmp_path / "scanner-summary-trivy.md").write_text("## Trivy\nCVE-2021-44228")
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = self._make_gemini_response("## Key Findings Summary\nAll clear.")
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            import runpy
+            runpy.run_path(str(SCRIPT_PATH))
+
+        out = (tmp_path / "out.md").read_text(encoding="utf-8")
+        assert "Key Findings Summary" in out
+        assert "Google Gemini" in out
+
+    def test_gemini_missing_api_key_exits(self, tmp_path, monkeypatch):
+        """Gemini provider exits with error when API key is missing."""
+        monkeypatch.setenv("AI_PROVIDER", "gemini")
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.setenv("SUMMARY_DIR", str(tmp_path))
+        monkeypatch.setenv("OUTPUT_FILE", str(tmp_path / "out.md"))
+
+        (tmp_path / "scanner-summary-trivy.md").write_text("## Trivy\nfindings")
+
+        with pytest.raises(SystemExit) as exc:
+            import runpy
+            runpy.run_path(str(SCRIPT_PATH))
+        assert exc.value.code == 1
+
+    def test_gemini_http_error_exits(self, tmp_path, monkeypatch):
+        """Gemini provider exits with error on HTTP failure."""
+        import urllib.error
+        monkeypatch.setenv("AI_PROVIDER", "gemini")
+        monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+        monkeypatch.setenv("SUMMARY_DIR", str(tmp_path))
+        monkeypatch.setenv("OUTPUT_FILE", str(tmp_path / "out.md"))
+
+        (tmp_path / "scanner-summary-trivy.md").write_text("## Trivy\nfindings")
+
+        with patch("urllib.request.urlopen", side_effect=urllib.error.HTTPError(
+            url=None, code=403, msg="Forbidden", hdrs=None, fp=None
+        )):
+            with pytest.raises(SystemExit) as exc:
+                import runpy
+                runpy.run_path(str(SCRIPT_PATH))
+        assert exc.value.code == 1
+
+
+class TestCopilotProviderIntegration:
+    """Tests for Copilot subprocess call path."""
+
+    def test_copilot_success(self, tmp_path, monkeypatch):
+        """Copilot provider returns filtered summary output."""
+        monkeypatch.setenv("AI_PROVIDER", "copilot")
+        monkeypatch.setenv("SUMMARY_DIR", str(tmp_path))
+        monkeypatch.setenv("OUTPUT_FILE", str(tmp_path / "out.md"))
+
+        (tmp_path / "scanner-summary-trivy.md").write_text("## Trivy\nCVE-2021-44228")
+
+        mock_result = MagicMock()
+        mock_result.stdout = "## Key Findings Summary\nAll clear.\nTotal usage: 100 tokens\ngpt-4o used"
+
+        with patch("subprocess.run", return_value=mock_result):
+            import runpy
+            runpy.run_path(str(SCRIPT_PATH))
+
+        out = (tmp_path / "out.md").read_text(encoding="utf-8")
+        assert "Key Findings Summary" in out
+        assert "GitHub Copilot" in out
+        assert "Total usage" not in out
+        assert "gpt-4o" not in out
+
+    def test_copilot_not_installed_exits(self, tmp_path, monkeypatch):
+        """Copilot provider exits when CLI is not installed."""
+        monkeypatch.setenv("AI_PROVIDER", "copilot")
+        monkeypatch.setenv("SUMMARY_DIR", str(tmp_path))
+        monkeypatch.setenv("OUTPUT_FILE", str(tmp_path / "out.md"))
+
+        (tmp_path / "scanner-summary-trivy.md").write_text("## Trivy\nfindings")
+
+        with patch("subprocess.run", side_effect=FileNotFoundError):
+            with pytest.raises(SystemExit) as exc:
+                import runpy
+                runpy.run_path(str(SCRIPT_PATH))
+        assert exc.value.code == 1
+
+
+class TestUnknownProvider:
+    def test_unknown_provider_exits(self, tmp_path, monkeypatch):
+        """Unknown provider name exits with error."""
+        monkeypatch.setenv("AI_PROVIDER", "openai")
+        monkeypatch.setenv("SUMMARY_DIR", str(tmp_path))
+        monkeypatch.setenv("OUTPUT_FILE", str(tmp_path / "out.md"))
+
+        (tmp_path / "scanner-summary-trivy.md").write_text("## Trivy\nfindings")
+
+        with pytest.raises(SystemExit) as exc:
+            import runpy
+            runpy.run_path(str(SCRIPT_PATH))
+        assert exc.value.code == 1
+
+
+class TestMissingSummaryDir:
+    def test_missing_summary_dir_exits(self, tmp_path, monkeypatch):
+        """Script exits when summary directory does not exist."""
+        monkeypatch.setenv("AI_PROVIDER", "claude")
+        monkeypatch.setenv("SUMMARY_DIR", str(tmp_path / "nonexistent"))
+        monkeypatch.setenv("OUTPUT_FILE", str(tmp_path / "out.md"))
+
+        with pytest.raises(SystemExit) as exc:
+            import runpy
+            runpy.run_path(str(SCRIPT_PATH))
+        assert exc.value.code == 1
+
+    def test_empty_summary_dir_exits(self, tmp_path, monkeypatch):
+        """Script exits when summary directory has no matching files."""
+        monkeypatch.setenv("AI_PROVIDER", "claude")
+        monkeypatch.setenv("SUMMARY_DIR", str(tmp_path))
+        monkeypatch.setenv("OUTPUT_FILE", str(tmp_path / "out.md"))
+
+        with pytest.raises(SystemExit) as exc:
+            import runpy
+            runpy.run_path(str(SCRIPT_PATH))
+        assert exc.value.code == 1
