@@ -78,7 +78,10 @@ def _in_process_run_parser(parser_path, command, json_file, *args):
         return None
 
     try:
-        if command == "counts":
+        if command == "check-error":
+            result = parser_mod.check_scan_error(file_path)
+            return result if result else None
+        elif command == "counts":
             return parser_mod.get_counts(file_path)
         elif command == "total":
             return parser_mod.get_total(file_path)
@@ -314,9 +317,8 @@ class TestGenerateContainerSummary:
         assert gh_out["containers_scanned"] == "0"
         assert gh_out["total_vulns"] == "0"
 
-        # Summary should show the failure with error message
+        # Summary should show the failure status (error details are in job logs)
         assert "Build Failed" in summary_md
-        assert "Image pull failed" in summary_md
 
     def test_single_scanner_trivy_only(self, tmp_path):
         """Test container with only Trivy results."""
@@ -363,6 +365,295 @@ class TestGenerateContainerSummary:
         # Should show Grype findings
         assert "Grype" in summary_md
         assert "0 vulns" not in stdout
+
+    # ====== Tests for scan error handling ======
+
+    def test_container_with_scan_error(self, tmp_path):
+        """Test handling of container with scan error (not build failure)."""
+        container_dir = tmp_path / "container-scan-results-errored"
+        container_dir.mkdir(parents=True)
+
+        trivy_error = {
+            "scan_error": True,
+            "error": "Trivy scan failed: no space left on device",
+            "Results": [],
+            "SchemaVersion": 2,
+        }
+        (container_dir / "trivy-errored-results.json").write_text(
+            json.dumps(trivy_error),
+        )
+
+        rc, _, _, gh_out, summary_md = run_summary_generator(cwd=tmp_path)
+
+        assert rc == 0
+
+        # Errored containers should NOT count as successfully scanned
+        assert gh_out["containers_scanned"] == "0"
+        assert gh_out["total_vulns"] == "0"
+
+        # Summary should show the error status (error details are in job logs)
+        assert "Scan Error" in summary_md
+
+    def test_mixed_success_and_error(self, tmp_path):
+        """Test processing mix of successful and errored containers."""
+        assert TRIVY_WITH_FINDINGS.exists()
+
+        # Successful container
+        success_dir = tmp_path / "container-scan-results-good"
+        success_dir.mkdir(parents=True)
+        (success_dir / "trivy-good-results.json").write_text(
+            TRIVY_WITH_FINDINGS.read_text(),
+        )
+
+        # Errored container
+        error_dir = tmp_path / "container-scan-results-broken"
+        error_dir.mkdir(parents=True)
+        trivy_error = {
+            "scan_error": True,
+            "error": "auth failure",
+            "Results": [],
+        }
+        (error_dir / "trivy-broken-results.json").write_text(
+            json.dumps(trivy_error),
+        )
+
+        rc, _, _, gh_out, summary_md = run_summary_generator(cwd=tmp_path)
+
+        assert rc == 0
+        assert gh_out["containers_scanned"] == "1"
+        assert int(gh_out["total_vulns"]) > 0
+
+        # Both containers should appear in breakdown
+        assert "Container Breakdown" in summary_md
+        assert "good" in summary_md
+        assert "broken" in summary_md
+
+    def test_grype_scan_error(self, tmp_path):
+        """Test handling of Grype scan error."""
+        container_dir = tmp_path / "container-scan-results-grype-fail"
+        container_dir.mkdir(parents=True)
+
+        grype_error = {
+            "scan_error": True,
+            "error": "Grype scan failed: unable to pull image",
+            "matches": [],
+        }
+        (container_dir / "grype-grype-fail-results.json").write_text(
+            json.dumps(grype_error),
+        )
+
+        rc, _, _, gh_out, summary_md = run_summary_generator(cwd=tmp_path)
+
+        assert rc == 0
+        assert gh_out["containers_scanned"] == "0"
+        assert "Scan Error" in summary_md
+
+    def test_scan_error_with_status_file(self, tmp_path):
+        """Test that scan-status.json with error status is handled."""
+        container_dir = tmp_path / "container-scan-results-disk-full"
+        container_dir.mkdir(parents=True)
+
+        # scan-status.json takes precedence over result files
+        (container_dir / "scan-status.json").write_text(
+            json.dumps({"status": "error", "error": "Scanner errors detected"}),
+        )
+        trivy_error = {
+            "scan_error": True,
+            "error": "no space left on device",
+            "Results": [],
+        }
+        (container_dir / "trivy-disk-full-results.json").write_text(
+            json.dumps(trivy_error),
+        )
+
+        rc, _, _, gh_out, summary_md = run_summary_generator(cwd=tmp_path)
+
+        assert rc == 0
+        assert gh_out["containers_scanned"] == "0"
+
+    # ====== Tests for malformed JSON fallback ======
+
+    def test_malformed_status_file_falls_through_to_check_error(self, tmp_path):
+        """Test that malformed scan-status.json falls through to check-error.
+
+        When shell echo generates invalid JSON (e.g., empty variable produces
+        "grype_error":}), the status_file parse fails. The check-error path
+        on the result file should still catch the error.
+        """
+        container_dir = tmp_path / "container-scan-results-broken-status"
+        container_dir.mkdir(parents=True)
+
+        # Simulate the exact bug: empty $GRYPE_ERROR produces invalid JSON
+        (container_dir / "scan-status.json").write_text(
+            '{"status":"error","container":"broken-status","error":"Scanner errors: Trivy GHES scan failed ","trivy_error":true,"grype_error":}'
+        )
+
+        # Trivy result file with valid scan_error marker
+        (container_dir / "trivy-broken-status-results.json").write_text(
+            json.dumps({
+                "scan_error": True,
+                "error": "Trivy scan failed: no space left on device",
+                "Results": [],
+                "SchemaVersion": 2,
+            }),
+        )
+
+        rc, _, _, gh_out, summary_md = run_summary_generator(cwd=tmp_path)
+
+        assert rc == 0
+        assert gh_out["containers_scanned"] == "0"
+        assert "Scan Error" in summary_md
+
+    def test_malformed_status_and_result_files_text_fallback(self, tmp_path):
+        """Test text-based fallback when both JSON files are malformed.
+
+        When BOTH scan-status.json AND the result file have broken JSON,
+        the text-based fallback should still detect the scan_error marker.
+        """
+        container_dir = tmp_path / "container-scan-results-all-broken"
+        container_dir.mkdir(parents=True)
+
+        # Malformed scan-status.json
+        (container_dir / "scan-status.json").write_text(
+            '{"status":"error","grype_error":}'
+        )
+
+        # Malformed trivy result JSON (unescaped quotes in error message)
+        # but scan_error marker is still detectable as text
+        (container_dir / "trivy-all-broken-results.json").write_text(
+            '{"scan_error":true,"error":"Trivy scan failed: unable to "initialize" scanner","Results":[]}'
+        )
+
+        rc, _, _, gh_out, summary_md = run_summary_generator(cwd=tmp_path)
+
+        assert rc == 0
+        assert gh_out["containers_scanned"] == "0"
+        # Should detect error via text fallback
+        assert "Scan Error" in summary_md
+
+    def test_unparseable_status_file_no_result_files(self, tmp_path):
+        """Test last resort: unparsable status file with no result files.
+
+        When status file exists but is malformed, and there are no result
+        files to check-error on, the last-resort check should still report
+        an error (since the presence of scan-status.json means something failed).
+        """
+        container_dir = tmp_path / "container-scan-results-status-only"
+        container_dir.mkdir(parents=True)
+
+        # Malformed scan-status.json
+        (container_dir / "scan-status.json").write_text(
+            '{"broken json'
+        )
+
+        # Need a result file for find_scan_results to discover this container
+        (container_dir / "trivy-status-only-results.json").write_text(
+            '{"Results": []}'
+        )
+
+        rc, _, _, gh_out, summary_md = run_summary_generator(cwd=tmp_path)
+
+        assert rc == 0
+        assert gh_out["containers_scanned"] == "0"
+        # Last resort: status file present but unreadable → shown as error
+        assert "Scan Error" in summary_md or "Error" in summary_md
+
+    def test_scan_error_status_preserved_from_status_file(self, tmp_path):
+        """Test that scan-status.json with error status returns error (not failed)."""
+        container_dir = tmp_path / "container-scan-results-err-status"
+        container_dir.mkdir(parents=True)
+
+        (container_dir / "scan-status.json").write_text(
+            json.dumps({"status": "error", "error": "Scanner errors detected"}),
+        )
+        (container_dir / "trivy-err-status-results.json").write_text(
+            json.dumps({"Results": []}),
+        )
+
+        rc, _, _, gh_out, summary_md = run_summary_generator(cwd=tmp_path)
+
+        assert rc == 0
+        assert gh_out["containers_scanned"] == "0"
+        # Should show "Scan Error" (error status) not "Build Failed" (failed status)
+        assert "Scan Error" in summary_md
+
+    # ====== Tests for job log link ======
+
+    def test_error_summary_includes_job_log_link(self, tmp_path):
+        """Test that error summaries include a link to the workflow run."""
+        container_dir = tmp_path / "container-scan-results-link-test"
+        container_dir.mkdir(parents=True)
+
+        (container_dir / "scan-status.json").write_text(
+            json.dumps({"status": "error", "error": "Scanner failed"}),
+        )
+        (container_dir / "trivy-link-test-results.json").write_text(
+            json.dumps({"Results": []}),
+        )
+
+        env_vars = {
+            "GITHUB_SERVER_URL": "https://github.example.com",
+            "GITHUB_REPOSITORY": "org/repo",
+            "GITHUB_RUN_ID": "12345",
+        }
+        old_vals = {k: os.environ.get(k) for k in env_vars}
+        for k, v in env_vars.items():
+            os.environ[k] = v
+
+        try:
+            rc, _, _, gh_out, summary_md = run_summary_generator(cwd=tmp_path)
+        finally:
+            for k, old_val in old_vals.items():
+                if old_val is not None:
+                    os.environ[k] = old_val
+                else:
+                    os.environ.pop(k, None)
+
+        assert rc == 0
+        assert "Scan Error" in summary_md
+        assert "View job logs" in summary_md
+        assert "https://github.example.com/org/repo/actions/runs/12345" in summary_md
+
+    def test_error_table_shows_log_link(self, tmp_path):
+        """Test that the table row for errors shows a log link, not raw error text."""
+        # Create two containers so breakdown table appears
+        ok_dir = tmp_path / "container-scan-results-good"
+        ok_dir.mkdir(parents=True)
+        (ok_dir / "trivy-good-results.json").write_text(
+            TRIVY_ZERO_FINDINGS.read_text(),
+        )
+
+        err_dir = tmp_path / "container-scan-results-broken"
+        err_dir.mkdir(parents=True)
+        (err_dir / "scan-status.json").write_text(
+            json.dumps({"status": "error", "error": "Verbose error message here"}),
+        )
+        (err_dir / "trivy-broken-results.json").write_text(
+            json.dumps({"Results": []}),
+        )
+
+        env_vars = {
+            "GITHUB_SERVER_URL": "https://ghe.corp.com",
+            "GITHUB_REPOSITORY": "team/app",
+            "GITHUB_RUN_ID": "99999",
+        }
+        old_vals = {k: os.environ.get(k) for k in env_vars}
+        for k, v in env_vars.items():
+            os.environ[k] = v
+
+        try:
+            rc, _, _, _, summary_md = run_summary_generator(cwd=tmp_path)
+        finally:
+            for k, old_val in old_vals.items():
+                if old_val is not None:
+                    os.environ[k] = old_val
+                else:
+                    os.environ.pop(k, None)
+
+        assert rc == 0
+        # Table should show concise status + link, NOT the raw error message
+        assert "Verbose error message here" not in summary_md
+        assert "([logs](https://ghe.corp.com/team/app/actions/runs/99999))" in summary_md
 
     # ====== Tests for GITHUB_STEP_SUMMARY ======
 

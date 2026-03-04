@@ -64,8 +64,11 @@ outputs:
     description: 'Number of high vulnerabilities'
     value: ${{ steps.severity-check.outputs.high }}
   scan_status:
-    description: 'Overall scan status (pass or fail)'
+    description: 'Overall scan status (pass, fail, or error)'
     value: ${{ steps.severity-check.outputs.scan_status }}
+  scan_error:
+    description: 'Whether a scanner error occurred (true/false)'
+    value: ${{ steps.severity-check.outputs.scan_error }}
 
 runs:
   using: 'composite'
@@ -174,6 +177,7 @@ runs:
         echo "✅ Trivy installed"
 
     - name: Run Trivy scan (GHES)
+      id: trivy-ghes
       if: contains(inputs.scanners, 'trivy') && !contains(github.server_url, 'github.com')
       shell: bash
       continue-on-error: true
@@ -184,19 +188,33 @@ runs:
         echo "🔍 Running Trivy scan..."
         CONTAINER_NAME="${{ inputs.container_name }}"
         IMAGE_REF="${{ inputs.image_ref }}"
+        TRIVY_FAILED=false
 
         # JSON format
         if ! trivy image --format json \
           --output "trivy-${CONTAINER_NAME}-results.json" \
-          "$IMAGE_REF"; then
-          echo "⚠️ Trivy JSON scan failed - creating empty results"
-          echo '{"Results":[],"SchemaVersion":2,"ArtifactName":"'"$IMAGE_REF"'","Metadata":{"error":"scan failed"}}' > "trivy-${CONTAINER_NAME}-results.json"
+          "$IMAGE_REF" 2>/tmp/trivy-json-stderr.txt; then
+          TRIVY_FAILED=true
+          # Capture last non-empty stderr line, strip ISO timestamp prefixes (e.g., 2026-03-03T02:24:09Z)
+          ERROR_MSG=$(grep -v '^\s*$' /tmp/trivy-json-stderr.txt 2>/dev/null | grep -vi '^[0-9T:.Z-]* *INFO' | tail -1 | sed 's/^[0-9T:.Z-]* *//' | head -c 200)
+          [ -z "$ERROR_MSG" ] && ERROR_MSG="scan failed (see job logs for details)"
+          echo "⚠️ Trivy JSON scan failed - creating error marker"
+          python3 -c "
+        import json, sys
+        json.dump({
+            'scan_error': True,
+            'error': 'Trivy scan failed: ' + sys.argv[1],
+            'Results': [],
+            'SchemaVersion': 2,
+            'ArtifactName': sys.argv[2]
+        }, open(sys.argv[3], 'w'))
+        " "${ERROR_MSG}" "${IMAGE_REF}" "trivy-${CONTAINER_NAME}-results.json"
         fi
 
         # SARIF format
         if ! trivy image --format sarif \
           --output "trivy-${CONTAINER_NAME}-results.sarif" \
-          "$IMAGE_REF"; then
+          "$IMAGE_REF" 2>/dev/null; then
           echo "⚠️ Trivy SARIF scan failed - creating empty results"
           echo '{"version":"2.1.0","runs":[]}' > "trivy-${CONTAINER_NAME}-results.sarif"
         fi
@@ -204,15 +222,21 @@ runs:
         # Table format
         if ! trivy image --format table \
           --output "trivy-${CONTAINER_NAME}-results.txt" \
-          "$IMAGE_REF"; then
+          "$IMAGE_REF" 2>/dev/null; then
           echo "⚠️ Trivy table scan failed - creating empty results"
           echo "Scan failed - unable to access image" > "trivy-${CONTAINER_NAME}-results.txt"
+        fi
+
+        if [ "$TRIVY_FAILED" = "true" ]; then
+          echo "::error::Trivy scan failed for ${CONTAINER_NAME}"
+          exit 1
         fi
 
         echo "✅ Trivy scan completed"
 
     # github.com: Use published action
     - name: Run Trivy vulnerability scanner (JSON)
+      id: trivy-json
       if: contains(inputs.scanners, 'trivy') && contains(github.server_url, 'github.com')
       uses: aquasecurity/trivy-action@0.33.1
       continue-on-error: true
@@ -225,6 +249,7 @@ runs:
         TRIVY_PASSWORD: ${{ inputs.registry_password }}
 
     - name: Run Trivy vulnerability scanner (SARIF)
+      id: trivy-sarif
       if: contains(inputs.scanners, 'trivy') && contains(github.server_url, 'github.com')
       uses: aquasecurity/trivy-action@0.33.1
       continue-on-error: true
@@ -237,6 +262,7 @@ runs:
         TRIVY_PASSWORD: ${{ inputs.registry_password }}
 
     - name: Run Trivy vulnerability scanner (Table)
+      id: trivy-table
       if: contains(inputs.scanners, 'trivy') && contains(github.server_url, 'github.com')
       uses: aquasecurity/trivy-action@0.33.1
       continue-on-error: true
@@ -255,6 +281,47 @@ runs:
       with:
         sarif_file: trivy-${{ inputs.container_name }}-results.sarif
         category: trivy-container-${{ inputs.container_name }}
+
+    # ========================================
+    # Trivy Scan Outcome Check
+    # ========================================
+    - name: Check Trivy scan outcome
+      id: trivy-status
+      if: contains(inputs.scanners, 'trivy') && always()
+      shell: bash
+      run: |
+        CONTAINER_NAME="${{ inputs.container_name }}"
+        TRIVY_JSON="trivy-${CONTAINER_NAME}-results.json"
+        TRIVY_ERROR=false
+        ERROR_MSG=""
+
+        # Check GHES path outcome
+        if [ "${{ steps.trivy-ghes.outcome }}" = "failure" ]; then
+          TRIVY_ERROR=true
+          ERROR_MSG="Trivy GHES scan failed"
+        fi
+
+        # Check github.com path outcome (JSON step is the critical one)
+        if [ "${{ steps.trivy-json.outcome }}" = "failure" ]; then
+          TRIVY_ERROR=true
+          ERROR_MSG="Trivy scan action failed"
+        fi
+
+        # Check if JSON result file has scan_error marker
+        if [ -f "$TRIVY_JSON" ] && python3 -c "import json,sys; d=json.load(open('$TRIVY_JSON')); sys.exit(0 if d.get('scan_error') else 1)" 2>/dev/null; then
+          TRIVY_ERROR=true
+          ERROR_MSG=$(python3 -c "import json; print(json.load(open('$TRIVY_JSON')).get('error','scan failed'))" 2>/dev/null || echo "scan failed")
+        elif [ ! -f "$TRIVY_JSON" ] && [ "${{ steps.trivy-json.outcome }}" != "skipped" ] && [ "${{ steps.trivy-ghes.outcome }}" != "skipped" ]; then
+          # Expected a result file but none exists
+          TRIVY_ERROR=true
+          ERROR_MSG="No Trivy result file produced"
+        fi
+
+        echo "trivy_error=$TRIVY_ERROR" >> $GITHUB_OUTPUT
+        echo "trivy_error_msg=$ERROR_MSG" >> $GITHUB_OUTPUT
+        if [ "$TRIVY_ERROR" = "true" ]; then
+          echo "::warning::Trivy scan error: $ERROR_MSG"
+        fi
 
     # ========================================
     # Grype Vulnerability Scanner - Using published action
@@ -310,6 +377,37 @@ runs:
         category: grype-container-${{ inputs.container_name }}
 
     # ========================================
+    # Grype Scan Outcome Check
+    # ========================================
+    - name: Check Grype scan outcome
+      id: grype-status
+      if: contains(inputs.scanners, 'grype') && always()
+      shell: bash
+      run: |
+        CONTAINER_NAME="${{ inputs.container_name }}"
+        GRYPE_JSON="grype-${CONTAINER_NAME}-results.json"
+        GRYPE_ERROR=false
+        ERROR_MSG=""
+
+        # Check if Grype JSON step failed
+        if [ "${{ steps.grype-json.outcome }}" = "failure" ]; then
+          GRYPE_ERROR=true
+          ERROR_MSG="Grype JSON scan action failed"
+        fi
+
+        # Check if result file exists (Grype doesn't create a file on failure)
+        if [ ! -f "$GRYPE_JSON" ] && [ "${{ steps.grype-json.outcome }}" != "skipped" ]; then
+          GRYPE_ERROR=true
+          ERROR_MSG="No Grype result file produced"
+        fi
+
+        echo "grype_error=$GRYPE_ERROR" >> $GITHUB_OUTPUT
+        echo "grype_error_msg=$ERROR_MSG" >> $GITHUB_OUTPUT
+        if [ "$GRYPE_ERROR" = "true" ]; then
+          echo "::warning::Grype scan error: $ERROR_MSG"
+        fi
+
+    # ========================================
     # Severity Check and Analysis
     # ========================================
     - name: Check severity threshold
@@ -321,6 +419,19 @@ runs:
         FAIL_ON="${{ inputs.fail_on_severity }}"
 
         echo "📊 Analyzing scan results for ${CONTAINER_NAME}..."
+
+        # Check for scanner errors
+        TRIVY_ERROR="${{ steps.trivy-status.outputs.trivy_error }}"
+        GRYPE_ERROR="${{ steps.grype-status.outputs.grype_error }}"
+        SCANNER_ERROR=false
+        SCANNERS="${{ inputs.scanners }}"
+
+        if [[ "$SCANNERS" == *"trivy"* ]] && [ "$TRIVY_ERROR" = "true" ]; then
+          SCANNER_ERROR=true
+        fi
+        if [[ "$SCANNERS" == *"grype"* ]] && [ "$GRYPE_ERROR" = "true" ]; then
+          SCANNER_ERROR=true
+        fi
 
         TRIVY_JSON="trivy-${CONTAINER_NAME}-results.json"
         GRYPE_JSON="grype-${CONTAINER_NAME}-results.json"
@@ -391,11 +502,21 @@ runs:
             ;;
         esac
 
-        if [ "$SHOULD_FAIL" = "true" ]; then
+        if [ "$SCANNER_ERROR" = "true" ]; then
+          echo "scan_status=error" >> $GITHUB_OUTPUT
+          echo "scan_error=true" >> $GITHUB_OUTPUT
+          TRIVY_ERR_MSG="${{ steps.trivy-status.outputs.trivy_error_msg }}"
+          GRYPE_ERR_MSG="${{ steps.grype-status.outputs.grype_error_msg }}"
+          echo "scan_error_msg=${TRIVY_ERR_MSG} ${GRYPE_ERR_MSG}" >> $GITHUB_OUTPUT
+          echo "::error::One or more scanners failed to execute"
+          echo "❌ Scanner error detected"
+        elif [ "$SHOULD_FAIL" = "true" ]; then
           echo "scan_status=fail" >> $GITHUB_OUTPUT
+          echo "scan_error=false" >> $GITHUB_OUTPUT
           echo "❌ Vulnerabilities found at or above $FAIL_ON severity"
         else
           echo "scan_status=pass" >> $GITHUB_OUTPUT
+          echo "scan_error=false" >> $GITHUB_OUTPUT
           echo "✅ Scan passed"
         fi
 
@@ -420,11 +541,35 @@ runs:
           fi
         done
 
-        # Create scan-status.json marker if no scan results found
-        if [ ! -f "container-scan-results-${CONTAINER_NAME}/trivy-${CONTAINER_NAME}-results.json" ] && \
-           [ ! -f "container-scan-results-${CONTAINER_NAME}/grype-${CONTAINER_NAME}-results.json" ]; then
-          echo '{"status":"failed","container":"'"${CONTAINER_NAME}"'","error":"No scan results produced"}' \
-            > "container-scan-results-${CONTAINER_NAME}/scan-status.json"
+        # Create scan-status.json marker if scanner errors occurred or no results found
+        TRIVY_ERROR="${{ steps.trivy-status.outputs.trivy_error }}"
+        GRYPE_ERROR="${{ steps.grype-status.outputs.grype_error }}"
+
+        if [ "$TRIVY_ERROR" = "true" ] || [ "$GRYPE_ERROR" = "true" ]; then
+          TRIVY_MSG="${{ steps.trivy-status.outputs.trivy_error_msg }}"
+          GRYPE_MSG="${{ steps.grype-status.outputs.grype_error_msg }}"
+          python3 -c "
+        import json, sys
+        json.dump({
+            'status': 'error',
+            'container': sys.argv[1],
+            'error': ('Scanner errors: ' + ' '.join(filter(None, [sys.argv[2], sys.argv[3]]))).strip(),
+            'trivy_error': sys.argv[4] == 'true',
+            'grype_error': sys.argv[5] == 'true'
+        }, open(sys.argv[6], 'w'))
+        " "${CONTAINER_NAME}" "${TRIVY_MSG}" "${GRYPE_MSG}" "${TRIVY_ERROR}" "${GRYPE_ERROR}" \
+            "container-scan-results-${CONTAINER_NAME}/scan-status.json"
+          echo "  ⚠️ Scanner errors detected - created status marker"
+        elif [ ! -f "container-scan-results-${CONTAINER_NAME}/trivy-${CONTAINER_NAME}-results.json" ] && \
+             [ ! -f "container-scan-results-${CONTAINER_NAME}/grype-${CONTAINER_NAME}-results.json" ]; then
+          python3 -c "
+        import json, sys
+        json.dump({
+            'status': 'failed',
+            'container': sys.argv[1],
+            'error': 'No scan results produced'
+        }, open(sys.argv[2], 'w'))
+        " "${CONTAINER_NAME}" "container-scan-results-${CONTAINER_NAME}/scan-status.json"
           echo "  ⚠️ No scan results found - created status marker"
         fi
 
@@ -476,9 +621,13 @@ runs:
     # ========================================
     # Fail Job if Needed
     # ========================================
-    - name: Fail if vulnerabilities exceed threshold
-      if: always() && inputs.allow_failure != 'true' && steps.severity-check.outputs.scan_status == 'fail'
+    - name: Fail if vulnerabilities exceed threshold or scanner errors
+      if: always() && inputs.allow_failure != 'true' && (steps.severity-check.outputs.scan_status == 'fail' || steps.severity-check.outputs.scan_status == 'error')
       shell: bash
       run: |
-        echo "::error title=Security Vulnerabilities Found::Container ${{ inputs.container_name }} has vulnerabilities at or above ${{ inputs.fail_on_severity }} severity"
+        if [ "${{ steps.severity-check.outputs.scan_status }}" = "error" ]; then
+          echo "::error title=Scanner Error::Container ${{ inputs.container_name }} scan failed: ${{ steps.severity-check.outputs.scan_error_msg }}"
+        else
+          echo "::error title=Security Vulnerabilities Found::Container ${{ inputs.container_name }} has vulnerabilities at or above ${{ inputs.fail_on_severity }} severity"
+        fi
         exit 1

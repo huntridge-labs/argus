@@ -4,6 +4,7 @@
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -81,6 +82,43 @@ def run_parser(parser_path: str, command: str, json_file: Path, *args):
     return None
 
 
+def _check_scan_error_fallback(file_path: Path) -> str:
+    """Text-based fallback to detect scan_error marker when JSON parsing fails.
+
+    Handles cases where shell-generated JSON has unescaped characters that
+    break json.load() but the scan_error marker is still present in the file.
+    """
+    try:
+        content = file_path.read_text(encoding='utf-8', errors='replace')
+    except OSError:
+        return ""
+
+    if '"scan_error"' not in content or 'true' not in content.lower():
+        return ""
+
+    # Try to extract the error message value: "error": "some message"
+    match = re.search(r'"error"\s*:\s*"([^"]{1,500})"', content)
+    if match:
+        return match.group(1)
+
+    return "scan failed (details unavailable)"
+
+
+def _detect_scan_error(parser_path: str, result_file: Path) -> str:
+    """Check a result file for scan errors using parser, then text fallback.
+
+    Returns error message if scan_error detected, empty string otherwise.
+    """
+    if not result_file:
+        return ""
+
+    error = run_parser(parser_path, "check-error", result_file) or ""
+    if not error:
+        error = _check_scan_error_fallback(result_file)
+
+    return error
+
+
 def parse_counts(output: str) -> Tuple[int, int, int, int]:
     """Parse 'crit high med low' output into tuple."""
     if not output:
@@ -115,19 +153,47 @@ def process_container(
     grype_file = scan_files["grype"]
     status_file = scan_files["status"]
 
-    # Check for failure status
+    # Check for failure status (scan-status.json marker)
     if status_file:
         try:
             with open(status_file, 'r') as f:
-                status = json.load(f)
-                error_msg = status.get("error", "Scan failed")
+                status_data = json.load(f)
+                error_msg = status_data.get("error", "Scan failed")
+                status_val = status_data.get("status", "failed")
                 return {
                     "name": container_name,
-                    "status": "failed",
+                    "status": "error" if status_val == "error" else "failed",
                     "error": error_msg,
                 }, 1
-        except Exception:
-            pass
+        except (json.JSONDecodeError, OSError) as e:
+            # JSON might be malformed (e.g., empty shell variables during generation)
+            # Fall through to check-error detection below
+            print(f"    ⚠️ Warning: could not parse {status_file}: {e}", file=sys.stderr)
+
+    # Check for scan error markers in result files (parser JSON, then text fallback)
+    trivy_error = _detect_scan_error(trivy_parser, trivy_file)
+    grype_error = _detect_scan_error(grype_parser, grype_file)
+
+    if trivy_error or grype_error:
+        error_parts = []
+        if trivy_error:
+            error_parts.append(f"Trivy: {trivy_error}")
+        if grype_error:
+            error_parts.append(f"Grype: {grype_error}")
+        error_msg = "; ".join(error_parts)
+        return {
+            "name": container_name,
+            "status": "error",
+            "error": error_msg,
+        }, 1
+
+    # Last resort: if status_file existed but was unparsable, treat as error
+    if status_file:
+        return {
+            "name": container_name,
+            "status": "error",
+            "error": "Scan status file present but unreadable",
+        }, 1
 
     # Get Trivy data
     t_crit, t_high, t_med, t_low = 0, 0, 0, 0
@@ -256,6 +322,15 @@ def generate_summary(
 
     print("📊 Generating container security summary...")
 
+    # Build workflow run URL for linking to job logs on errors
+    server_url = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
+    repo = os.environ.get("GITHUB_REPOSITORY", "")
+    run_id = os.environ.get("GITHUB_RUN_ID", "")
+    run_url = (
+        f"{server_url}/{repo}/actions/runs/{run_id}"
+        if repo and run_id else ""
+    )
+
     # Process each container
     scanned = 0
     failed = 0
@@ -280,22 +355,10 @@ def generate_summary(
             total_med += data["med"]
             total_low += data["low"]
 
-            # Collect all CVEs
-            if scan_files["trivy"]:
-                cves = run_parser(trivy_parser, "cves", scan_files["trivy"])
-                if cves:
-                    for line in cves.split('\n'):
-                        line = line.strip()
-                        if line:
-                            all_cves.add(line)
-
-            if scan_files["grype"]:
-                cves = run_parser(grype_parser, "cves", scan_files["grype"])
-                if cves:
-                    for line in cves.split('\n'):
-                        line = line.strip()
-                        if line:
-                            all_cves.add(line)
+            # Collect all CVEs using existing combine_cves helper
+            trivy_cves = run_parser(trivy_parser, "cves", scan_files["trivy"]) or ""
+            grype_cves = run_parser(grype_parser, "cves", scan_files["grype"]) or ""
+            all_cves.update(combine_cves(trivy_cves, grype_cves))
 
             status = "✅" if data["status"] == "success" else "❌"
             print(f"    {status} {container_name}: {data['total']} vulns "
@@ -349,8 +412,10 @@ def generate_summary(
                 f.write("|-----------|-------|---------|---------|--------|--------|-------|--------|--------|\n")
 
                 for data in container_data:
-                    if data["status"] == "failed":
-                        f.write(f"| {data['name']} | - | - | - | - | - | - | - | ❌ {data.get('error', 'Failed')} |\n")
+                    if data["status"] in ("failed", "error"):
+                        status_label = "Scan Error" if data["status"] == "error" else "Failed"
+                        log_link = f" ([logs]({run_url}))" if run_url else ""
+                        f.write(f"| {data['name']} | - | - | - | - | - | - | - | ❌ {status_label}{log_link} |\n")
                     else:
                         f.write(f"| {data['name']} | `{data['image_ref']}` | {data['crit']} | {data['high']} | {data['med']} | {data['low']} | {data['total']} | {data['combined_unique']} | ✅ |\n")
                 f.write("\n")
@@ -359,10 +424,14 @@ def generate_summary(
             f.write("### 🔍 Detailed Findings by Container\n\n")
 
             for data in container_data:
-                if data["status"] == "failed":
+                if data["status"] in ("failed", "error"):
+                    status_label = "Scan Error" if data["status"] == "error" else "Build Failed"
                     f.write(f"<details>\n")
-                    f.write(f"<summary>❌ <strong>{data['name']}</strong> - Build Failed</summary>\n\n")
-                    f.write(f"**Status:** {data.get('error', 'Build failed')}\n\n")
+                    f.write(f"<summary>❌ <strong>{data['name']}</strong> - {status_label}</summary>\n\n")
+                    if run_url:
+                        f.write(f"**Status:** {status_label} — [View job logs]({run_url})\n\n")
+                    else:
+                        f.write(f"**Status:** {status_label}\n\n")
                     f.write("</details>\n\n")
                 else:
                     # Determine emoji
@@ -424,15 +493,9 @@ def generate_summary(
 
         # Add artifact link (only for main summary)
         if output_file.endswith("container.md"):
-            repo = os.environ.get("GITHUB_REPOSITORY")
-            run_id = os.environ.get("GITHUB_RUN_ID")
-            server_url = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
-
-            if repo and run_id:
-                with open(output_file, "a") as f:
-                    f.write(f"**📁 Artifacts:** [Container Scan Reports]({server_url}/{repo}/actions/runs/{run_id}#artifacts)\n")
-
             with open(output_file, "a") as f:
+                if run_url:
+                    f.write(f"**📁 Artifacts:** [Container Scan Reports]({run_url}#artifacts)\n")
                 f.write("\n</details>\n")
 
     print("✅ Reports generated")
