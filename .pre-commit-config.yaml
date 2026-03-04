@@ -82,4 +82,4 @@ repos:
     rev: v1.7.8
     hooks:
       - id: actionlint
-        args: [-shellcheck=, --config-file=.github/actionlint.yaml]  # Disable shellcheck to avoid false positives in GitHub Actions context
+        args: [--config-file=.github/actionlint.yaml]

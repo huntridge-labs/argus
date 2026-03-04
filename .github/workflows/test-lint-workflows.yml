@@ -1,0 +1,59 @@
+name: Lint Workflow Files
+
+# Validates all GitHub Actions workflow files using actionlint with shellcheck.
+# Runs on any workflow or action change to catch syntax errors, type issues,
+# and shell scripting problems before they hit CI.
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - '.github/actions/**'
+      - '.github/actionlint.yaml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+      - '.github/actions/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-lint-workflows:
+    name: actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install actionlint
+        shell: bash
+        run: bash <(curl -s https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+
+      - name: Run actionlint
+        shell: bash
+        run: |
+          if ./actionlint -color 2>&1 | tee actionlint-output.txt; then
+            {
+              echo "## Actionlint Results"
+              echo ""
+              echo "All workflow files passed actionlint."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "## Actionlint Results"
+              echo ""
+              echo '```'
+              cat actionlint-output.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi

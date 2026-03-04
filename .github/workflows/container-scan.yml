@@ -116,8 +116,8 @@ jobs:
 
           if [ -z "$DOCKERFILES" ]; then
             echo "No Dockerfiles found in repository"
-            echo "has_containers=false" >> $GITHUB_OUTPUT
-            echo "containers=[]" >> $GITHUB_OUTPUT
+            echo "has_containers=false" >> "$GITHUB_OUTPUT"
+            echo "containers=[]" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -152,8 +152,8 @@ jobs:
 
           containers="$containers]"
 
-          echo "has_containers=true" >> $GITHUB_OUTPUT
-          echo "containers=$containers" >> $GITHUB_OUTPUT
+          echo "has_containers=true" >> "$GITHUB_OUTPUT"
+          echo "containers=$containers" >> "$GITHUB_OUTPUT"
 
           echo "Container scan matrix:"
           echo "$containers" | jq '.'
@@ -183,12 +183,14 @@ jobs:
         continue-on-error: true
         run: |
           IMAGE_NAME="hardening-test-$(echo '${{ matrix.container.name }}' | tr '/' '-' | tr '[:upper:]' '[:lower:]')"
-          IMAGE_TAG="scan-$(echo $GITHUB_SHA | cut -c1-8)"
+          IMAGE_TAG="scan-$(echo "$GITHUB_SHA" | cut -c1-8)"
           FULL_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
 
-          echo "image_name=$IMAGE_NAME" >> $GITHUB_OUTPUT
-          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
-          echo "full_image=$FULL_IMAGE" >> $GITHUB_OUTPUT
+          {
+            echo "image_name=$IMAGE_NAME"
+            echo "image_tag=$IMAGE_TAG"
+            echo "full_image=$FULL_IMAGE"
+          } >> "$GITHUB_OUTPUT"
 
           echo "Building image: $FULL_IMAGE"
 
@@ -197,10 +199,10 @@ jobs:
             --file "${{ matrix.container.dockerfile }}" \
             "${{ matrix.container.context }}"; then
             echo "Successfully built image: $FULL_IMAGE"
-            echo "build_success=true" >> $GITHUB_OUTPUT
+            echo "build_success=true" >> "$GITHUB_OUTPUT"
           else
             echo "Failed to build image: $FULL_IMAGE"
-            echo "build_success=false" >> $GITHUB_OUTPUT
+            echo "build_success=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run security scanners

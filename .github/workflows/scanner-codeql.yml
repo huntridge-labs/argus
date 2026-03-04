@@ -138,14 +138,14 @@ jobs:
             fi
 
             # Remove trailing comma
-            LANGUAGES=$(echo "$DETECTED" | sed 's/,$//')
+            LANGUAGES="${DETECTED%,}"
 
             if [ -z "$LANGUAGES" ]; then
               echo "⚠️ No supported languages detected, defaulting to python,javascript"
               LANGUAGES="python,javascript"
             fi
 
-            echo "detected_languages=$LANGUAGES" >> $GITHUB_OUTPUT
+            echo "detected_languages=$LANGUAGES" >> "$GITHUB_OUTPUT"
           fi
 
           echo "Languages to analyze: $LANGUAGES"
@@ -164,7 +164,7 @@ jobs:
             MATRIX_JSON='["python","javascript"]'
           fi
 
-          echo "matrix={\"language\":$MATRIX_JSON}" >> $GITHUB_OUTPUT
+          echo "matrix={\"language\":$MATRIX_JSON}" >> "$GITHUB_OUTPUT"
 
   codeql-analysis:
     name: CodeQL Analysis

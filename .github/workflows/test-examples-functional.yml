@@ -44,13 +44,15 @@ jobs:
         run: |
           # Find workflow examples (simple - just in workflows/ subdirectory)
           WORKFLOW_EXAMPLES=$(find examples/workflows -name "*.yml" -type f 2>/dev/null | jq -R -s -c 'split("\n")[:-1]')
-          echo "workflow-examples=$WORKFLOW_EXAMPLES" >> $GITHUB_OUTPUT
+          echo "workflow-examples=$WORKFLOW_EXAMPLES" >> "$GITHUB_OUTPUT"
 
-          echo "## Discovered Examples" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Workflow Examples:**" >> $GITHUB_STEP_SUMMARY
-          echo "$WORKFLOW_EXAMPLES" | jq -r '.[]' | while read file; do
-            [ -n "$file" ] && echo "- \`$file\`" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Discovered Examples"
+            echo ""
+            echo "**Workflow Examples:**"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "$WORKFLOW_EXAMPLES" | jq -r '.[]' | while read -r file; do
+            [ -n "$file" ] && echo "- \`$file\`" >> "$GITHUB_STEP_SUMMARY"
           done
 
   # ============================================================================
@@ -82,7 +84,7 @@ jobs:
         run: |
           echo "Validating: ${{ matrix.example }}"
           python -c "import yaml; yaml.safe_load(open('${{ matrix.example }}'))"
-          echo "✅ Valid YAML syntax" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Valid YAML syntax" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Validate action references
         run: |
@@ -95,7 +97,7 @@ jobs:
             LOCAL_PATH="${action#huntridge-labs/argus}"
 
             if [ ! -d "$LOCAL_PATH" ]; then
-              echo "❌ **Referenced action does not exist:** \`$action\`" >> $GITHUB_STEP_SUMMARY
+              echo "❌ **Referenced action does not exist:** \`$action\`" >> "$GITHUB_STEP_SUMMARY"
               ERRORS=$((ERRORS + 1))
             fi
           done
@@ -104,27 +106,27 @@ jobs:
             exit 1
           fi
 
-          echo "✅ All action references valid" >> $GITHUB_STEP_SUMMARY
+          echo "✅ All action references valid" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Validate required structure
         run: |
           # Check that workflow has required elements
           if ! grep -q "name:" "${{ matrix.example }}"; then
-            echo "❌ **Missing workflow name**" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Missing workflow name**" >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
 
           if ! grep -q "on:" "${{ matrix.example }}"; then
-            echo "❌ **Missing trigger (on:)**" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Missing trigger (on:)**" >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
 
           if ! grep -q "jobs:" "${{ matrix.example }}"; then
-            echo "❌ **Missing jobs definition**" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Missing jobs definition**" >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
 
-          echo "✅ Required workflow structure present" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Required workflow structure present" >> "$GITHUB_STEP_SUMMARY"
 
   # ============================================================================
   # Validate Configuration Examples
@@ -146,8 +148,8 @@ jobs:
 
       - name: Validate container configs
         run: |
-          echo "## Configuration Validation" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Configuration Validation" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
           ERRORS=0
 
@@ -159,16 +161,16 @@ jobs:
               # Validate it's valid YAML/JSON
               if [[ "$config" == *.yml ]]; then
                 if python -c "import yaml; yaml.safe_load(open('$config'))" 2>/dev/null; then
-                  echo "✅ \`$(basename $config)\` is valid YAML" >> $GITHUB_STEP_SUMMARY
+                  echo "✅ \`$(basename "$config")\` is valid YAML" >> "$GITHUB_STEP_SUMMARY"
                 else
-                  echo "❌ \`$(basename $config)\` invalid YAML syntax" >> $GITHUB_STEP_SUMMARY
+                  echo "❌ \`$(basename "$config")\` invalid YAML syntax" >> "$GITHUB_STEP_SUMMARY"
                   ERRORS=$((ERRORS + 1))
                 fi
               elif [[ "$config" == *.json ]]; then
                 if python -c "import json; json.load(open('$config'))" 2>/dev/null; then
-                  echo "✅ \`$(basename $config)\` is valid JSON" >> $GITHUB_STEP_SUMMARY
+                  echo "✅ \`$(basename "$config")\` is valid JSON" >> "$GITHUB_STEP_SUMMARY"
                 else
-                  echo "❌ \`$(basename $config)\` invalid JSON syntax" >> $GITHUB_STEP_SUMMARY
+                  echo "❌ \`$(basename "$config")\` invalid JSON syntax" >> "$GITHUB_STEP_SUMMARY"
                   ERRORS=$((ERRORS + 1))
                 fi
               fi
@@ -185,7 +187,7 @@ jobs:
             if [ -f "$config" ]; then
               echo "Validating: $config"
               python -c "import yaml; yaml.safe_load(open('$config'))"
-              echo "✅ \`$(basename $config)\` is valid YAML" >> $GITHUB_STEP_SUMMARY
+              echo "✅ \`$(basename "$config")\` is valid YAML" >> "$GITHUB_STEP_SUMMARY"
             fi
           done
 
@@ -203,21 +205,23 @@ jobs:
     steps:
       - name: Generate Summary
         run: |
-          echo "# Example Validation Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Validation Type | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----------------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Workflow Examples | ${{ needs.validate-examples.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Config Examples | ${{ needs.validate-configs.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "> **Note**: Functional testing of actions is handled by \`test-actions.yml\`" >> $GITHUB_STEP_SUMMARY
-          echo "> This workflow focuses on validating example **documentation** is correct." >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "# Example Validation Results"
+            echo ""
+            echo "| Validation Type | Status |"
+            echo "|-----------------|--------|"
+            echo "| Workflow Examples | ${{ needs.validate-examples.result == 'success' && '✅ Passed' || '❌ Failed' }} |"
+            echo "| Config Examples | ${{ needs.validate-configs.result == 'success' && '✅ Passed' || '❌ Failed' }} |"
+            echo ""
+            echo "> **Note**: Functional testing of actions is handled by \`test-actions.yml\`"
+            echo "> This workflow focuses on validating example **documentation** is correct."
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
 
           if [[ "${{ needs.validate-examples.result }}" == "success" && \
                 "${{ needs.validate-configs.result }}" == "success" ]]; then
-            echo "✅ **All examples validated successfully!**" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **All examples validated successfully!**" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "❌ **Some validations failed - review above for details**" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Some validations failed - review above for details**" >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
