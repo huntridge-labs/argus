@@ -47,7 +47,8 @@ jobs:
 
           RUN_ID=$(gh api \
             "/repos/${{ github.repository }}/actions/workflows/test-actions.yml/runs?event=pull_request&status=completed&per_page=20" \
-            --jq "[.workflow_runs[] | select(.pull_requests[].number == ${PR_NUMBER})] | first | .id")
+            --arg pr "${PR_NUMBER}" \
+            --jq '[.workflow_runs[] | select(.pull_requests[].number == ($pr | tonumber))] | first | .id")
           
           if [ -z "$RUN_ID" ] || [ "$RUN_ID" == "null" ]; then
             echo "::error::No completed test-actions.yml run found for PR #${PR_NUMBER}. Ensure the security scan workflow has run against this PR first."
