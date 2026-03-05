@@ -45,6 +45,7 @@ jobs:
         run: |
           echo "Looking up latest completed test-actions.yml run for PR #${PR_NUMBER}..."
           
+          # shellcheck disable=SC2016
           JQ_FILTER='[.workflow_runs[] | select(.pull_requests[].number == ($pr | tonumber))] | first | .id'
 
           RUN_ID=$(gh api \
