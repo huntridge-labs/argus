@@ -1,0 +1,124 @@
+name: Test Reusable Workflows
+
+# Tests reusable workflows via ./ relative paths so the feature branch version is tested.
+# Complements test-actions.yml (composite actions) and argus-test (released versions).
+#
+# DESIGN:
+# - Calls reusable workflows with minimal, safe inputs
+# - post_pr_comment: false to avoid noisy duplicate comments on argus PRs
+# - allow_failure: true / fail_on_severity: 'none' — we're testing orchestration, not scan results
+# - No container workflows — too expensive (15-30 min), already covered by test-actions.yml
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/reusable-security-hardening.yml'
+      - '.github/workflows/container-scan.yml'
+      - '.github/workflows/container-scan-from-config.yml'
+      - '.github/workflows/infrastructure-scan.yml'
+      - '.github/workflows/linting.yml'
+      - '.github/workflows/scanner-*.yml'
+      - '.github/workflows/test-reusable-workflows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  pull-requests: write
+  checks: write
+  id-token: write
+  packages: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ==========================================================================
+  # Security Orchestrator — SAST subset
+  # Validates the coordinator, scanner selection, and security-summary aggregation
+  # ==========================================================================
+  test-orchestrator-sast:
+    name: Orchestrator / SAST subset
+    uses: ./.github/workflows/reusable-security-hardening.yml
+    with:
+      scanners: 'bandit,gitleaks'
+      post_pr_comment: false
+      enable_code_security: false
+      allow_failure: true
+      gitleaks_enable_comments: false
+      gitleaks_config: '.gitleaks.toml'
+    secrets:
+      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  # ==========================================================================
+  # Infrastructure Scanning — trivy-iac + checkov
+  # ==========================================================================
+  test-infrastructure:
+    name: Infrastructure Scan
+    uses: ./.github/workflows/infrastructure-scan.yml
+    with:
+      iac_path: 'tests/fixtures/iac'
+      post_pr_comment: false
+      enable_code_security: false
+      fail_on_severity: 'none'
+
+  # ==========================================================================
+  # Linting — all linters + linting-summary
+  # ==========================================================================
+  test-linting:
+    name: Linting
+    uses: ./.github/workflows/linting.yml
+    with:
+      fail_on_issues: false
+      post_pr_comment: false
+
+  # ==========================================================================
+  # Summary — collects results from all upstream jobs
+  # ==========================================================================
+  reusable-summary:
+    name: Reusable Workflow Summary
+    runs-on: ubuntu-latest
+    needs:
+      - test-orchestrator-sast
+      - test-infrastructure
+      - test-linting
+    if: always()
+
+    steps:
+      - name: Collect results
+        shell: bash
+        env:
+          ORCHESTRATOR_RESULT: ${{ needs.test-orchestrator-sast.result }}
+          INFRA_RESULT: ${{ needs.test-infrastructure.result }}
+          LINTING_RESULT: ${{ needs.test-linting.result }}
+        run: |
+          {
+            echo "# Reusable Workflow Test Summary"
+            echo ""
+            echo "| Workflow | Status |"
+            echo "|----------|--------|"
+
+            for pair in "Security Orchestrator (bandit + gitleaks):$ORCHESTRATOR_RESULT" \
+                        "Infrastructure Scan (trivy-iac + checkov):$INFRA_RESULT" \
+                        "Linting (all linters + summary):$LINTING_RESULT"; do
+              name="${pair%%:*}"
+              result="${pair##*:}"
+              icon="⚠️"
+              if [ "$result" = "success" ]; then icon="✅"; fi
+              echo "| $name | $icon $result |"
+            done
+
+            echo ""
+            echo "---"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if any workflow failed
+        env:
+          RESULTS: ${{ join(needs.*.result, ',') }}
+        run: |
+          if echo "$RESULTS" | grep -q "failure"; then
+            echo "::error::One or more reusable workflows failed"
+            exit 1
+          fi
