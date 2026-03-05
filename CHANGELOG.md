@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.4.2](https://github.com/huntridge-labs/argus/compare/0.4.1...0.4.2) (2026-03-05)
+
+### Bug Fixes
+
+* **ci:** add packages:read permission for nested reusable workflow jobs ([f4494d7](https://github.com/huntridge-labs/argus/commit/f4494d7313677728f87f90d6fdb2c947d1765c80))
+
+### Tests
+
+* **ci:** add reusable workflow PR testing ([c181cb8](https://github.com/huntridge-labs/argus/commit/c181cb8e2167f20a287d13a9c652780cc64c7baa)), closes [#15](https://github.com/huntridge-labs/argus/issues/15)
+
 ## [0.4.1](https://github.com/huntridge-labs/argus/compare/0.4.0...0.4.1) (2026-03-04)
 
 ### Bug Fixes
