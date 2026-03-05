@@ -68,9 +68,9 @@ runs:
         OUTPUT_FILE:          /tmp/ai-summary.md
         MAX_FINDINGS:         ${{ inputs.max_findings }}
         REPO:                 ${{ github.repository }}
-        PR_NUMBER:            ${{ github.event.pull_request.number }}
-        PR_TITLE:             ${{ github.event.pull_request.title }}
-        PR_URL:               ${{ github.event.pull_request.html_url }}
+        PR_NUMBER:            ${{ env.PR_NUMBER || github.event.pull_request.number }}
+        PR_TITLE:             ${{ env.PR_TITLE  || github.event.pull_request.title }}
+        PR_URL:               ${{ env.PR_URL    || github.event.pull_request.html_url }}
         COMMIT_SHA:           ${{ github.sha }}
       run: python3 ${{ github.action_path }}/scripts/generate-ai-summary.py
       continue-on-error: ${{ inputs.fail_on_ai_error == 'false' }}

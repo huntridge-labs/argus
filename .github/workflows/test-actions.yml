@@ -91,6 +91,7 @@ jobs:
             ["scanner-container-summary"]="Tested as part of scanner-container"
             ["scanner-zap-summary"]="Tested as part of scanner-zap"
             ["security-summary"]="Tested in test-summary job"
+            ["ai-summary"]="Manual-only action - triggered via dedicated ai-summary.yml workflow with user-supplied PR number"
           )
 
           echo "| Action | E2E Test Status | Notes |" >> "$report_file"
@@ -789,68 +790,68 @@ jobs:
   # AI Summary
   # Runs after scanner jobs to generate summary from real artifact output
   # ============================================================================
-  test-ai-summary:
-    name: AI Summary / ${{ matrix.provider }}
-    runs-on: ubuntu-latest
-    needs:
-      - test-bandit
-      - test-opengrep
-      - test-codeql
-      - test-secrets
-      - test-trivy-iac
-      - test-checkov
-      - test-container
-      - test-syft
-      - test-zap
-      - test-clamav
-    if: |
-      always() && (
-        github.event_name == 'workflow_dispatch' &&
-        (inputs.test_group == 'all') ||
-        github.event_name != 'workflow_dispatch'
-      )
-    timeout-minutes: 10
-    continue-on-error: true
+  #test-ai-summary:
+   # name: AI Summary / ${{ matrix.provider }}
+    #runs-on: ubuntu-latest
+    #needs:
+     # - test-bandit
+      #- test-opengrep
+      #- test-codeql
+      #- test-secrets
+      #- test-trivy-iac
+      #- test-checkov
+      #- test-container
+      #- test-syft
+      #- test-zap
+      #- test-clamav
+    #if: |
+     # always() && (
+      #  github.event_name == 'workflow_dispatch' &&
+       # (inputs.test_group == 'all') ||
+        #github.event_name != 'workflow_dispatch'
+      #)
+    #timeout-minutes: 10
+    #continue-on-error: true
 
-    strategy:
-      fail-fast: false
-      matrix:
-        provider:
-          - copilot
-          - claude
+    #strategy:
+     # fail-fast: false
+      #matrix:
+       # provider:
+        #  - copilot
+         # - claude
         #  - gemini
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+    #steps:
+     # - name: Checkout repository
+      #  uses: actions/checkout@v6
 
-      - name: Run AI Summary
-        id: summary
-        uses: ./.github/actions/ai-summary
-        env:
-          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
-          ANTHROPIC_API_KEY:    ${{ secrets.ANTHROPIC_API_KEY }}
-          GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY }}
-          GITHUB_TOKEN:         ${{ secrets.GITHUB_TOKEN }}
-        with:
-          provider:          ${{ matrix.provider }}
-          post_issue:        'true'
-          post_pr_comment:   'false'
-          fail_on_ai_error:  'false'
+      #- name: Run AI Summary
+       # id: summary
+        #uses: ./.github/actions/ai-summary
+        #env:
+         # COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          #ANTHROPIC_API_KEY:    ${{ secrets.ANTHROPIC_API_KEY }}
+          #GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY }}
+          #GITHUB_TOKEN:         ${{ secrets.GITHUB_TOKEN }}
+        #with:
+         # provider:          ${{ matrix.provider }}
+          #post_issue:        'true'
+          #post_pr_comment:   'false'
+          #fail_on_ai_error:  'false'
 
-      - name: Verify summary generated
-        shell: bash
-        run: |
-          echo "## AI Summary Test Results (${{ matrix.provider }})" >> $GITHUB_STEP_SUMMARY
-          if [ -f /tmp/ai-summary.md ]; then
-            echo "✅ Summary generated successfully" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Provider:** \`${{ matrix.provider }}\`" >> $GITHUB_STEP_SUMMARY
-            LINES=$(wc -l < /tmp/ai-summary.md)
-            echo "**Output size:** ${LINES} lines" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "⚠️ Summary file not found (provider may have failed)" >> $GITHUB_STEP_SUMMARY
-          fi
+      #- name: Verify summary generated
+       # shell: bash
+        #run: |
+         # echo "## AI Summary Test Results (${{ matrix.provider }})" >> $GITHUB_STEP_SUMMARY
+          #if [ -f /tmp/ai-summary.md ]; then
+           # echo "✅ Summary generated successfully" >> $GITHUB_STEP_SUMMARY
+            #echo "" >> $GITHUB_STEP_SUMMARY
+            #echo "**Provider:** \`${{ matrix.provider }}\`" >> $GITHUB_STEP_SUMMARY
+            #LINES=$(wc -l < /tmp/ai-summary.md)
+            #echo "**Output size:** ${LINES} lines" >> $GITHUB_STEP_SUMMARY
+          #else
+           # echo "⚠️ Summary file not found (provider may have failed)" >> $GITHUB_STEP_SUMMARY
+          #fi
   # ============================================================================
   # Summary Generators
   # Tests: linting-summary
@@ -1049,7 +1050,7 @@ jobs:
       - test-parse-container-config
       - test-parse-zap-config
       - validate-examples
-      - test-ai-summary
+      #- test-ai-summary
     if: always()
 
     steps:
@@ -1081,7 +1082,6 @@ jobs:
           echo "| Container Config Parser | ${{ needs.test-parse-container-config.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-parse-container-config.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| ZAP Config Parser | ${{ needs.test-parse-zap-config.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-parse-zap-config.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Example Validation | ${{ needs.validate-examples.result == 'success' && '✅' || '⚠️' }} ${{ needs.validate-examples.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| AI Summary | ${{ needs.test-ai-summary.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-ai-summary.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
