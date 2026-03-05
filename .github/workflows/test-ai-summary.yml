@@ -41,15 +41,16 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ inputs.pr_number }}
         run: |
-          echo "Looking up latest completed test-actions.yml run for PR #${{ inputs.pr_number }}..."
+          echo "Looking up latest completed test-actions.yml run for PR #${PR_NUMBER}..."
 
           RUN_ID=$(gh api \
             "/repos/${{ github.repository }}/actions/workflows/test-actions.yml/runs?event=pull_request&status=completed&per_page=20" \
-            --jq "[.workflow_runs[] | select(.pull_requests[].number == ${{ inputs.pr_number }})] | first | .id")
+            --jq "[.workflow_runs[] | select(.pull_requests[].number == ${PR_NUMBER})] | first | .id")
           
           if [ -z "$RUN_ID" ] || [ "$RUN_ID" == "null" ]; then
-            echo "::error::No completed test-actions.yml run found for PR #${{ inputs.pr_number }}. Ensure the security scan workflow has run against this PR first."
+            echo "::error::No completed test-actions.yml run found for PR #${PR_NUMBER}. Ensure the security scan workflow has run against this PR first."
             exit 1
           fi
 
@@ -155,16 +156,21 @@ jobs:
       - name: Verify summary generated
         shell: bash
         run: |
-          echo "## AI Security Summary Results" >> $GITHUB_STEP_SUMMARY
-          if [ -f /tmp/ai-summary.md ]; then
-            echo "✅ Summary generated successfully" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Provider:** \`${{ inputs.provider }}\`" >> $GITHUB_STEP_SUMMARY
-            echo "**PR:** #${{ inputs.pr_number }}" >> $GITHUB_STEP_SUMMARY
-            echo "**Source run:** \`${{ steps.resolve.outputs.run_id }}\`" >> $GITHUB_STEP_SUMMARY
-            LINES=$(wc -l < /tmp/ai-summary.md)
-            echo "**Output size:** ${LINES} lines" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ Summary file not found" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## AI Security Summary Results"
+            if [ -f /tmp/ai-summary.md ]; then
+              echo "✅ Summary generated successfully"
+              echo ""
+              echo "**Provider:** \`${{ inputs.provider }}\`"
+              echo "**PR:** #${{ inputs.pr_number }}"
+              echo "**Source run:** \`${{ steps.resolve.outputs.run_id }}\`"
+              LINES=$(wc -l < /tmp/ai-summary.md)
+              echo "**Output size:** ${LINES} lines"
+            else
+              echo "❌ Summary file not found"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ ! -f /tmp/ai-summary.md ]; then
             exit 1
           fi
