@@ -42,7 +42,6 @@ permissions:
   actions: read
   pull-requests: write
   checks: write
-  issues: write
 
 # Cancel in-progress runs when a new commit is pushed
 concurrency:

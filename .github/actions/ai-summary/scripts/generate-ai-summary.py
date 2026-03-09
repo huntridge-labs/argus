@@ -41,7 +41,7 @@ combined_findings = ""
 scanner_count = 0
 scanner_names = []
 
-for summary_file in sorted(summary_path.rglob("*")):
+for summary_file in sorted(summary_path.rglob("*.md")):
     if not summary_file.is_file():
         continue
     scanner_name = summary_file.stem.replace("scanner-summary-", "")
@@ -256,6 +256,8 @@ elif PROVIDER == "gemini":
     if not api_key:
         print("ERROR: GEMINI_API_KEY not set")
         sys.exit(1)
+    
+    print(f"::add-mask::{api_key}")
 
     body = json.dumps({
         "contents":         [{"parts": [{"text": PROMPT}]}],

@@ -57,6 +57,17 @@ runs:
         merge-multiple: true
       continue-on-error: true
 
+    - name: Verify scanner summaries exist
+      if: inputs.skip_download == 'false'
+      shell: bash
+      run: |
+        if [ -z "$(find /tmp/scanner-summaries -type f 2>/dev/null)" ]; then
+          echo "::error::No scanner-summary-* artifacts found. Ensure scanner jobs ran and uploaded artifacts before invoking ai-summary."
+          exit 1
+        fi
+        echo "Found scanner summaries:"
+        find /tmp/scanner-summaries -type f  
+
     - name: Generate AI summary
       shell: bash
       env:
@@ -81,10 +92,9 @@ runs:
       env:
         GH_TOKEN: ${{ env.GITHUB_TOKEN }}
       run: |
-        SUMMARY=$(cat /tmp/ai-summary.md)
         gh issue create \
           --title "🔒 Security Summary: PR #${{ env.PR_NUMBER || github.event.pull_request.number }}" \
-          --body "$SUMMARY" \
+          --body-file /tmp/ai-summary.md \
           --label "${{ inputs.issue_label }}" \
           --repo "${{ github.repository }}"
 
@@ -94,9 +104,8 @@ runs:
       env:
         GH_TOKEN: ${{ env.GITHUB_TOKEN }}
       run: |
-        SUMMARY=$(cat /tmp/ai-summary.md)
         gh pr comment "${{ github.event.pull_request.number }}" \
-          --body "$SUMMARY" \
+          --body-file /tmp/ai-summary.md \
           --repo "${{ github.repository }}"
 
 branding:

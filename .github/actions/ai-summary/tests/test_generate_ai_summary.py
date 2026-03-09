@@ -94,15 +94,6 @@ class TestScannerSummaryCollection:
                 count += 1
 
         assert count == 3
-    #def test_ignores_non_matching_files(self, tmp_path):
-     #   """Does not pick up files that don't match the pattern."""
-      #  (tmp_path / "other-file.md").write_text("should be ignored")
-       # (tmp_path / "scanner-summary-trivy.md").write_text("trivy findings")
-
-        #files = list(tmp_path.glob("scanner-summary-*.md"))
-        #assert len(files) == 1
-        #assert files[0].name == "scanner-summary-trivy.md"
-
 
 class TestOutputFormatting:
     def test_short_sha_truncation(self):
@@ -523,3 +514,4 @@ class TestMissingSummaryDir:
             import runpy
             runpy.run_path(str(SCRIPT_PATH))
         assert exc.value.code == 1
+        
