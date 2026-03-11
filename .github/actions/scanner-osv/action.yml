@@ -3,8 +3,8 @@ description: |
   Run Google OSV-Scanner for dependency vulnerability scanning.
 
   Scans lockfiles and SBOMs for known vulnerabilities using the OSV database.
-  Works on any event trigger (push, PR, schedule) and is GHES-compatible
-  via direct binary installation.
+  Works on any event trigger (push, PR, schedule). Uses the official
+  google/osv-scanner-action Docker image from ghcr.io.
 
   Results integrate with security-summary for aggregated reporting.
 
@@ -41,10 +41,6 @@ inputs:
     description: 'Scan subdirectories recursively for lockfiles'
     required: false
     default: 'true'
-  osv_version:
-    description: 'OSV-Scanner version to install'
-    required: false
-    default: '1.9.1'
   enable_code_security:
     description: 'Whether GitHub Code Security is enabled for this repository (uploads SARIF to Security tab)'
     required: false
@@ -85,88 +81,88 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - name: Install OSV-Scanner
+    - name: Build scan arguments
+      id: build-args
       shell: bash
       run: |
-        echo "🔧 Installing OSV-Scanner v${{ inputs.osv_version }}..."
-
-        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-        ARCH=$(uname -m)
-        case "$ARCH" in
-          x86_64) ARCH="amd64" ;;
-          aarch64|arm64) ARCH="arm64" ;;
-        esac
-
-        URL="https://github.com/google/osv-scanner/releases/download/v${{ inputs.osv_version }}/osv-scanner_${OS}_${ARCH}"
-        echo "📥 Downloading from: $URL"
-
-        curl -sSL "$URL" -o /usr/local/bin/osv-scanner
-        chmod +x /usr/local/bin/osv-scanner
-
-        echo "✅ OSV-Scanner installed:"
-        osv-scanner --version
-
-    - name: Run OSV-Scanner
-      id: scan
-      shell: bash
-      run: |
-        echo "::group::Running OSV-Scanner"
-
         mkdir -p osv-reports
 
-        SCAN_ARGS="--format json --output osv-reports/osv-results.json"
+        # Build newline-separated scan-args for the official action
+        # JSON scan (primary output for our parser)
+        JSON_ARGS="--format json"
+        JSON_ARGS="${JSON_ARGS}
+        --output osv-reports/osv-results.json"
 
         if [ -n "${{ inputs.lockfile }}" ]; then
-          SCAN_ARGS="$SCAN_ARGS --lockfile ${{ inputs.lockfile }}"
+          JSON_ARGS="${JSON_ARGS}
+        -L ${{ inputs.lockfile }}"
         else
           if [ "${{ inputs.recursive }}" == "true" ]; then
-            SCAN_ARGS="$SCAN_ARGS -r"
+            JSON_ARGS="${JSON_ARGS}
+        --recursive"
           fi
-          SCAN_ARGS="$SCAN_ARGS ${{ inputs.scan_path }}"
+          JSON_ARGS="${JSON_ARGS}
+        ${{ inputs.scan_path }}"
         fi
 
-        echo "🔍 Running: osv-scanner $SCAN_ARGS"
-        # Exit code 1 = vulnerabilities found (expected), other codes = error
-        set +e
-        eval osv-scanner $SCAN_ARGS
-        EXIT_CODE=$?
-        set -e
+        # SARIF scan args (for GitHub Security tab)
+        SARIF_ARGS="--format sarif"
+        SARIF_ARGS="${SARIF_ARGS}
+        --output osv-reports/osv-results.sarif"
 
-        if [ $EXIT_CODE -eq 0 ]; then
-          echo "scan_result=clean" >> $GITHUB_OUTPUT
-          echo "✅ No vulnerabilities found"
-        elif [ $EXIT_CODE -eq 1 ]; then
-          echo "scan_result=vulnerable" >> $GITHUB_OUTPUT
-          echo "⚠️  Vulnerabilities found"
+        if [ -n "${{ inputs.lockfile }}" ]; then
+          SARIF_ARGS="${SARIF_ARGS}
+        -L ${{ inputs.lockfile }}"
         else
-          echo "scan_result=error" >> $GITHUB_OUTPUT
-          echo "❌ OSV-Scanner encountered an error (exit code: $EXIT_CODE)"
-          # Create empty results so downstream steps don't fail
+          if [ "${{ inputs.recursive }}" == "true" ]; then
+            SARIF_ARGS="${SARIF_ARGS}
+        --recursive"
+          fi
+          SARIF_ARGS="${SARIF_ARGS}
+        ${{ inputs.scan_path }}"
+        fi
+
+        # Store args using heredoc to preserve newlines
+        {
+          echo "json_args<<ARGS_EOF"
+          echo "$JSON_ARGS"
+          echo "ARGS_EOF"
+        } >> "$GITHUB_OUTPUT"
+
+        {
+          echo "sarif_args<<ARGS_EOF"
+          echo "$SARIF_ARGS"
+          echo "ARGS_EOF"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Run OSV-Scanner (JSON)
+      id: scan
+      uses: google/osv-scanner-action/osv-scanner-action@v2.3.3
+      with:
+        scan-args: ${{ steps.build-args.outputs.json_args }}
+      continue-on-error: true
+
+    - name: Handle scan result
+      shell: bash
+      run: |
+        EXIT_CODE=${{ steps.scan.outcome == 'success' && '0' || '1' }}
+
+        if [ "$EXIT_CODE" -eq 0 ]; then
+          echo "✅ OSV-Scanner completed"
+        else
+          echo "⚠️  OSV-Scanner found vulnerabilities or encountered an error"
+        fi
+
+        # Ensure results file exists for downstream steps
+        if [ ! -f "osv-reports/osv-results.json" ]; then
           echo '{"results":[]}' > osv-reports/osv-results.json
         fi
 
-        echo "::endgroup::"
-
-    - name: Generate SARIF output
+    - name: Run OSV-Scanner (SARIF)
       if: inputs.enable_code_security == 'true'
-      shell: bash
-      run: |
-        SARIF_ARGS="--format sarif --output osv-reports/osv-results.sarif"
-
-        if [ -n "${{ inputs.lockfile }}" ]; then
-          SARIF_ARGS="$SARIF_ARGS --lockfile ${{ inputs.lockfile }}"
-        else
-          if [ "${{ inputs.recursive }}" == "true" ]; then
-            SARIF_ARGS="$SARIF_ARGS -r"
-          fi
-          SARIF_ARGS="$SARIF_ARGS ${{ inputs.scan_path }}"
-        fi
-
-        set +e
-        eval osv-scanner $SARIF_ARGS
-        set -e
-
-        echo "📄 SARIF output generated"
+      uses: google/osv-scanner-action/osv-scanner-action@v2.3.3
+      with:
+        scan-args: ${{ steps.build-args.outputs.sarif_args }}
       continue-on-error: true
 
     - name: Parse results

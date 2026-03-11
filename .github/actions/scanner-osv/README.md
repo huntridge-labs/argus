@@ -6,7 +6,7 @@ Scans project dependencies for known vulnerabilities using [Google OSV-Scanner](
 
 - Scans lockfiles and SBOMs against the [OSV database](https://osv.dev)
 - Works on **any event trigger** (push, PR, schedule, workflow_dispatch)
-- GHES-compatible via direct binary installation (no marketplace dependency)
+- Uses the [official Google OSV-Scanner action](https://github.com/google/osv-scanner-action) (Docker image from ghcr.io)
 - Deduplicates vulnerabilities across lockfiles
 - Supports SARIF upload to GitHub Security tab
 
@@ -30,7 +30,6 @@ Scans project dependencies for known vulnerabilities using [Google OSV-Scanner](
 | `scan_path` | Path to scan for lockfiles | `.` |
 | `lockfile` | Specific lockfile path (auto-discovers if empty) | `''` |
 | `recursive` | Scan subdirectories recursively | `'true'` |
-| `osv_version` | OSV-Scanner version to install | `'1.9.1'` |
 | `enable_code_security` | Upload SARIF to GitHub Security tab | `'false'` |
 | `post_pr_comment` | Post results as PR comment | `'false'` |
 | `fail_on_severity` | Fail threshold: `none`, `low`, `medium`, `high`, `critical` | `'none'` |

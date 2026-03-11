@@ -165,7 +165,7 @@ scanners:
     - name: osv
       purpose: "Dependency vulnerability scanning via OSV database"
       output: JSON/SARIF
-      note: "Any trigger, GHES-compatible via binary install"
+      note: "Any trigger, uses official google/osv-scanner-action Docker image"
     - name: dependency-review
       purpose: "PR dependency diff analysis and license compliance"
       output: JSON
@@ -208,7 +208,7 @@ dependencies:
 
     osv-scanner:
       purpose: "Dependency vulnerability scanning via OSV database"
-      why_chosen: "GHES-compatible binary, comprehensive OSV database, any-trigger support"
+      why_chosen: "Official Docker action from ghcr.io, comprehensive OSV database, any-trigger support"
       alternatives_considered: [snyk, npm-audit, pip-audit]
       critical: true
 
