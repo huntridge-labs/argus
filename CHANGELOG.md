@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.4.3](https://github.com/huntridge-labs/argus/compare/0.4.2...0.4.3) (2026-03-11)
+
+### Dependencies
+
+* **deps:** bump eFAILution/AICaC from 0.1.1 to 0.3.0 ([#36](https://github.com/huntridge-labs/argus/issues/36)) ([b4542bc](https://github.com/huntridge-labs/argus/commit/b4542bc47e8a08ae4f883705cbcb21a6621de414))
+* **deps:** bump the github-actions-major group with 3 updates ([a00113d](https://github.com/huntridge-labs/argus/commit/a00113dd2770ed127a7d407e93856ff96f4e38de))
+
+
 ## [0.4.2](https://github.com/huntridge-labs/argus/compare/0.4.1...0.4.2) (2026-03-05)
 
 ### Bug Fixes
