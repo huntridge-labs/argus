@@ -35,6 +35,7 @@ on:
           - container
           - linters
           - infrastructure
+          - dependencies
 
 permissions:
   contents: read
@@ -832,6 +833,87 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ============================================================================
+  # Dependency Scanners
+  # Tests: scanner-osv, scanner-dependency-review
+  # ============================================================================
+  test-osv:
+    name: Dependencies / osv
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      (inputs.test_group == 'all' || inputs.test_group == 'dependencies') ||
+      github.event_name != 'workflow_dispatch'
+    timeout-minutes: 15
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run OSV scanner
+        id: scan
+        uses: ./.github/actions/scanner-osv
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          scan_path: '.'
+          recursive: 'true'
+          post_pr_comment: 'false'
+          enable_code_security: ${{ env.ENABLE_CODE_SECURITY }}
+          fail_on_severity: 'none'
+
+      - name: Verify scan completed
+        shell: bash
+        run: |
+          {
+            echo "## OSV Scanner Test Results"
+            echo "✅ OSV scanner executed successfully"
+            echo ""
+            echo "**Critical:** ${{ steps.scan.outputs.critical_count }}"
+            echo "**High:** ${{ steps.scan.outputs.high_count }}"
+            echo "**Medium:** ${{ steps.scan.outputs.medium_count }}"
+            echo "**Low:** ${{ steps.scan.outputs.low_count }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  test-dependency-review:
+    name: Dependencies / dependency-review
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      (inputs.test_group == 'all' || inputs.test_group == 'dependencies') ||
+      github.event_name != 'workflow_dispatch'
+    timeout-minutes: 10
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run dependency-review scanner
+        id: scan
+        uses: ./.github/actions/scanner-dependency-review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          post_pr_comment: 'false'
+          enable_code_security: ${{ env.ENABLE_CODE_SECURITY }}
+          fail_on_severity: 'none'
+
+      - name: Verify scan completed
+        shell: bash
+        run: |
+          # On non-PR events, dependency-review gracefully skips with zero counts
+          {
+            echo "## Dependency Review Test Results"
+            echo "✅ Dependency review scanner executed successfully"
+            echo ""
+            echo "**Event type:** ${{ github.event_name }}"
+            echo "**Critical:** ${{ steps.scan.outputs.critical_count }}"
+            echo "**High:** ${{ steps.scan.outputs.high_count }}"
+            echo "**License violations:** ${{ steps.scan.outputs.license_violations }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ============================================================================
   # Summary Generators
   # Tests: linting-summary
   # Note: Other summary generators need upstream artifacts, tested separately
@@ -1035,6 +1117,8 @@ jobs:
       - test-linter-terraform
       - test-zap
       - test-clamav
+      - test-osv
+      - test-dependency-review
       - test-linting-summary
       - test-parse-container-config
       - test-parse-zap-config
@@ -1067,6 +1151,8 @@ jobs:
             echo "| Terraform Linter | ${{ needs.test-linter-terraform.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-linter-terraform.result }} |"
             echo "| ZAP DAST | ${{ needs.test-zap.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-zap.result }} |"
             echo "| ClamAV Malware | ${{ needs.test-clamav.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-clamav.result }} |"
+            echo "| OSV Dependencies | ${{ needs.test-osv.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-osv.result }} |"
+            echo "| Dependency Review | ${{ needs.test-dependency-review.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-dependency-review.result }} |"
             echo "| Linting Summary | ${{ needs.test-linting-summary.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-linting-summary.result }} |"
             echo "| Container Config Parser | ${{ needs.test-parse-container-config.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-parse-container-config.result }} |"
             echo "| ZAP Config Parser | ${{ needs.test-parse-zap-config.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-parse-zap-config.result }} |"
