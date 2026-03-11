@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       scanners:
-        description: 'Comma-separated list of scanners to run (codeql, opengrep, bandit, gitleaks, container, infrastructure, trivy-iac, checkov, trivy-container, grype, lint, clamav, sbom, zap, all, sast, secrets, etc.). Note: zap (DAST) is opt-in and is not included in "all" by default.'
+        description: 'Comma-separated list of scanners to run (codeql, opengrep, bandit, gitleaks, container, infrastructure, trivy-iac, checkov, trivy-container, grype, lint, clamav, sbom, zap, osv, dependency-review, dependencies, all, sast, secrets, etc.). Note: zap (DAST) is opt-in and is not included in "all" by default.'
         required: false
         default: 'all'
         type: string
@@ -154,6 +154,43 @@ on:
         required: false
         default: 10
         type: number
+
+      osv_scan_path:
+        description: 'OSV: path to scan for lockfiles and dependency manifests'
+        required: false
+        default: '.'
+        type: string
+      osv_lockfile:
+        description: 'OSV: specific lockfile path to scan (auto-discovers if empty)'
+        required: false
+        default: ''
+        type: string
+      osv_recursive:
+        description: 'OSV: scan subdirectories recursively for lockfiles'
+        required: false
+        default: true
+        type: boolean
+
+      dependency_review_vulnerability_check:
+        description: 'Dependency Review: enable vulnerability checking'
+        required: false
+        default: true
+        type: boolean
+      dependency_review_license_check:
+        description: 'Dependency Review: enable license compliance checking'
+        required: false
+        default: false
+        type: boolean
+      dependency_review_allow_licenses:
+        description: 'Dependency Review: comma-separated SPDX license identifiers to allow'
+        required: false
+        default: ''
+        type: string
+      dependency_review_deny_licenses:
+        description: 'Dependency Review: comma-separated SPDX license identifiers to deny'
+        required: false
+        default: ''
+        type: string
     secrets:
       AWS_ACCOUNT_ID:
         description: 'AWS Account ID for infrastructure scans'
@@ -197,6 +234,8 @@ jobs:
       run_lint: ${{ steps.resolve.outputs.run_lint }}
       run_clamav: ${{ steps.resolve.outputs.run_clamav }}
       run_zap: ${{ steps.resolve.outputs.run_zap }}
+      run_osv: ${{ steps.resolve.outputs.run_osv }}
+      run_dependency_review: ${{ steps.resolve.outputs.run_dependency_review }}
       run_any: ${{ steps.resolve.outputs.run_any }}
 
     steps:
@@ -221,6 +260,8 @@ jobs:
           [clamav]=false
           [sbom]=false
           [zap]=false
+          [osv]=false
+          [dependency-review]=false
         )
 
         DEFAULT_SCANNERS=(codeql opengrep bandit gitleaks container infrastructure sbom)
@@ -259,7 +300,7 @@ jobs:
               # - container auto-discovers Dockerfiles and scans them
               # - infrastructure runs trivy-iac + checkov together
               # - zap is opt-in since it requires an application target
-              local -a exclude=(trivy-iac checkov sbom trivy-container grype zap)
+              local -a exclude=(trivy-iac checkov sbom trivy-container grype zap dependency-review)
               for key in "${!RUN[@]}"; do
                 if [[ " ${exclude[*]} " != *" ${key} "* ]]; then
                   add_scanner "$key"
@@ -313,6 +354,15 @@ jobs:
               ;;
             zap|dast)
               add_scanner zap
+              ;;
+            osv|osv-scanner)
+              add_scanner osv
+              ;;
+            dependency-review|dep-review)
+              add_scanner dependency-review
+              ;;
+            dependencies|deps|dependency)
+              for key in osv dependency-review; do add_scanner "$key"; done
               ;;
             none|off)
               reset_selection
@@ -653,6 +703,45 @@ jobs:
       pull-requests: write
     secrets: inherit
 
+  scanner-osv:
+    name: OSV Dependency Scanner
+    needs: scan-coordinator
+    if: needs.scan-coordinator.outputs.run_osv == 'true'
+    uses: huntridge-labs/argus/.github/workflows/scanner-osv.yml@feat/dependency-scanner
+    with:
+      post_pr_comment: false
+      enable_code_security: ${{ inputs.enable_code_security }}
+      fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
+      scan_path: ${{ inputs.osv_scan_path }}
+      lockfile: ${{ inputs.osv_lockfile }}
+      recursive: ${{ inputs.osv_recursive }}
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+    secrets: inherit
+
+  scanner-dependency-review:
+    name: Dependency Review Scanner
+    needs: scan-coordinator
+    if: needs.scan-coordinator.outputs.run_dependency_review == 'true'
+    uses: huntridge-labs/argus/.github/workflows/scanner-dependency-review.yml@feat/dependency-scanner
+    with:
+      post_pr_comment: false
+      enable_code_security: ${{ inputs.enable_code_security }}
+      fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
+      vulnerability_check: ${{ inputs.dependency_review_vulnerability_check }}
+      license_check: ${{ inputs.dependency_review_license_check }}
+      allow_licenses: ${{ inputs.dependency_review_allow_licenses }}
+      deny_licenses: ${{ inputs.dependency_review_deny_licenses }}
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+    secrets: inherit
+
   security-summary:
     name: Security Hardening Summary
     runs-on: ubuntu-latest
@@ -672,6 +761,8 @@ jobs:
       - scanner-trivy-container
       - scanner-grype
       - scanner-zap
+      - scanner-osv
+      - scanner-dependency-review
     if: always()
 
     steps:
@@ -759,6 +850,20 @@ jobs:
         pattern: zap-reports-*
       continue-on-error: true
 
+    - name: Download OSV artifacts
+      if: needs.scan-coordinator.outputs.run_osv == 'true'
+      uses: actions/download-artifact@v7
+      with:
+        pattern: osv-*
+      continue-on-error: true
+
+    - name: Download Dependency Review artifacts
+      if: needs.scan-coordinator.outputs.run_dependency_review == 'true'
+      uses: actions/download-artifact@v7
+      with:
+        pattern: dependency-review-*
+      continue-on-error: true
+
     - name: Download Linting artifacts
       if: needs.scan-coordinator.outputs.run_lint == 'true'
       uses: actions/download-artifact@v8
@@ -833,7 +938,7 @@ jobs:
         echo ""
 
         # Combine all scanner summaries in a specific order
-        for scanner in codeql opengrep bandit gitleaks clamav container infrastructure zap sbom trivy-iac checkov trivy-container grype; do
+        for scanner in codeql opengrep bandit gitleaks clamav container infrastructure zap sbom trivy-iac checkov trivy-container grype osv dependency-review; do
           if [ -f "${scanner}.md" ]; then
             echo "✅ Adding ${scanner} summary..."
             cat "${scanner}.md" >> security-hardening-report.md

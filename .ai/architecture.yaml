@@ -50,6 +50,8 @@ components:
       - scanner-checkov.yml
       - scanner-clamav.yml
       - scanner-zap.yml
+      - scanner-osv.yml
+      - scanner-dependency-review.yml
 
   - name: composite-actions
     location: ".github/actions/scanner-*/"
@@ -159,6 +161,16 @@ scanners:
       purpose: "IaC policy-as-code scanning"
       output: SARIF
 
+  dependencies:
+    - name: osv
+      purpose: "Dependency vulnerability scanning via OSV database"
+      output: JSON/SARIF
+      note: "Any trigger, GHES-compatible via binary install"
+    - name: dependency-review
+      purpose: "PR dependency diff analysis and license compliance"
+      output: JSON
+      note: "PR-only, graceful skip on non-PR events"
+
   malware:
     - name: clamav
       purpose: "File-based malware detection"
@@ -193,6 +205,17 @@ dependencies:
       purpose: "Semantic code analysis"
       why_chosen: "GitHub native, deep analysis, free for public repos"
       limitation: "Requires GitHub Advanced Security for private repos"
+
+    osv-scanner:
+      purpose: "Dependency vulnerability scanning via OSV database"
+      why_chosen: "GHES-compatible binary, comprehensive OSV database, any-trigger support"
+      alternatives_considered: [snyk, npm-audit, pip-audit]
+      critical: true
+
+    dependency-review-action:
+      purpose: "PR-based dependency diff analysis and license compliance"
+      why_chosen: "GitHub-native, license checking, PR diff comparison"
+      limitation: "PR-only (requires pull_request event context)"
 
   internal:
     pyyaml:

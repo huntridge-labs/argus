@@ -1,0 +1,71 @@
+# OSV Dependency Scanner - Reusable Workflow
+#
+# THIN WRAPPER: This workflow delegates to the scanner-osv composite action.
+# All scanning logic is in: .github/actions/scanner-osv/action.yml
+#
+# For GHES users: Use the composite action directly instead of this workflow.
+# See: examples/github-enterprise/sast-only.yml
+
+name: OSV Dependency Scanner
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      post_pr_comment:
+        description: 'Whether to post PR comments'
+        required: false
+        type: boolean
+        default: true
+      enable_code_security:
+        description: 'Whether GitHub Code Security is enabled for this repository'
+        required: false
+        type: boolean
+        default: false
+      fail_on_severity:
+        description: 'Fail if findings at or above this severity. Options: none, low, medium, high, critical.'
+        required: false
+        type: string
+        default: 'none'
+      scan_path:
+        description: 'Path to scan for lockfiles and dependency manifests'
+        required: false
+        type: string
+        default: '.'
+      lockfile:
+        description: 'Specific lockfile path to scan (auto-discovers if empty)'
+        required: false
+        type: string
+        default: ''
+      recursive:
+        description: 'Scan subdirectories recursively for lockfiles'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  pull-requests: write
+
+jobs:
+  osv-scan:
+    name: OSV Dependency Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run OSV Scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-osv@0.4.2
+        with:
+          post_pr_comment: ${{ inputs.post_pr_comment }}
+          enable_code_security: ${{ inputs.enable_code_security }}
+          fail_on_severity: ${{ inputs.fail_on_severity }}
+          scan_path: ${{ inputs.scan_path }}
+          lockfile: ${{ inputs.lockfile }}
+          recursive: ${{ inputs.recursive }}
