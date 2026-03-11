@@ -197,3 +197,37 @@ class TestCLI:
         output = json.loads(result.stdout)
         assert "vulnerability_counts" in output
         assert "license_violations" in output
+
+
+class TestMainInProcess:
+    """Test main() CLI entry point in-process for coverage."""
+
+    def test_counts_main(self, monkeypatch):
+        fixture = FIXTURES_DIR / "results-with-findings.json"
+        data = json.loads(fixture.read_text())
+        vuln_json = json.dumps(data["vulnerable_changes"])
+        monkeypatch.setattr("sys.argv", [
+            "parse_results.py", "counts",
+            "--vulnerable-changes", vuln_json,
+        ])
+        parse_mod.main()
+
+    def test_licenses_main(self, monkeypatch):
+        fixture = FIXTURES_DIR / "results-with-findings.json"
+        data = json.loads(fixture.read_text())
+        lic_json = json.dumps(data["invalid_license_changes"])
+        monkeypatch.setattr("sys.argv", [
+            "parse_results.py", "licenses",
+            "--license-changes", lic_json,
+        ])
+        parse_mod.main()
+
+    def test_all_main(self, monkeypatch):
+        fixture = FIXTURES_DIR / "results-with-findings.json"
+        data = json.loads(fixture.read_text())
+        monkeypatch.setattr("sys.argv", [
+            "parse_results.py", "all",
+            "--vulnerable-changes", json.dumps(data["vulnerable_changes"]),
+            "--license-changes", json.dumps(data["invalid_license_changes"]),
+        ])
+        parse_mod.main()

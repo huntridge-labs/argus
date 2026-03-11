@@ -269,3 +269,170 @@ class TestCLI:
         )
         assert result.returncode == 0
         assert result.stdout.strip() == "0 0 0 0"
+
+
+class TestCVSSVectorParsing:
+    """Test CVSS vector score extraction edge cases."""
+
+    def test_invalid_vector_prefix(self):
+        assert parse_mod._cvss_score_from_vector("not-a-vector") is None
+
+    def test_empty_vector(self):
+        assert parse_mod._cvss_score_from_vector("") is None
+
+    def test_none_vector(self):
+        assert parse_mod._cvss_score_from_vector(None) is None
+
+    def test_low_impact_vector(self):
+        # AV:L (not network), AC:H (high complexity), PR:H (high priv)
+        score = parse_mod._cvss_score_from_vector(
+            "CVSS:3.1/AV:L/AC:H/PR:H/UI:N/S:U/C:L/I:L/A:L"
+        )
+        assert score is not None
+        assert score < 7.0  # Should be low/medium
+
+    def test_high_impact_vector(self):
+        score = parse_mod._cvss_score_from_vector(
+            "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+        )
+        assert score is not None
+        assert score >= 9.0
+
+
+class TestScoreToSeverity:
+    """Test CVSS score to severity label mapping."""
+
+    def test_critical(self):
+        assert parse_mod._score_to_severity(9.0) == "CRITICAL"
+        assert parse_mod._score_to_severity(10.0) == "CRITICAL"
+
+    def test_high(self):
+        assert parse_mod._score_to_severity(7.0) == "HIGH"
+        assert parse_mod._score_to_severity(8.9) == "HIGH"
+
+    def test_medium(self):
+        assert parse_mod._score_to_severity(4.0) == "MEDIUM"
+        assert parse_mod._score_to_severity(6.9) == "MEDIUM"
+
+    def test_low(self):
+        assert parse_mod._score_to_severity(3.9) == "LOW"
+        assert parse_mod._score_to_severity(0.0) == "LOW"
+
+
+class TestExtractFixedVersion:
+    """Test fixed version extraction from affected ranges."""
+
+    def test_with_fixed_event(self):
+        vuln = {
+            "affected": [
+                {
+                    "package": {"name": "lodash", "ecosystem": "npm"},
+                    "ranges": [
+                        {"events": [{"introduced": "0"}, {"fixed": "4.17.21"}]}
+                    ],
+                }
+            ]
+        }
+        assert parse_mod._extract_fixed_version(vuln, "npm", "lodash") == "4.17.21"
+
+    def test_no_affected(self):
+        assert parse_mod._extract_fixed_version({}, "npm", "pkg") == "N/A"
+
+    def test_affected_not_list(self):
+        assert parse_mod._extract_fixed_version(
+            {"affected": "invalid"}, "npm", "pkg"
+        ) == "N/A"
+
+    def test_ranges_not_list(self):
+        vuln = {
+            "affected": [
+                {"package": {"name": "pkg"}, "ranges": "invalid"}
+            ]
+        }
+        assert parse_mod._extract_fixed_version(vuln, "npm", "pkg") == "N/A"
+
+    def test_events_not_list(self):
+        vuln = {
+            "affected": [
+                {"package": {"name": "pkg"}, "ranges": [{"events": "invalid"}]}
+            ]
+        }
+        assert parse_mod._extract_fixed_version(vuln, "npm", "pkg") == "N/A"
+
+    def test_no_fixed_event(self):
+        vuln = {
+            "affected": [
+                {
+                    "package": {"name": "pkg"},
+                    "ranges": [{"events": [{"introduced": "0"}]}],
+                }
+            ]
+        }
+        assert parse_mod._extract_fixed_version(vuln, "npm", "pkg") == "N/A"
+
+    def test_wrong_package_name(self):
+        vuln = {
+            "affected": [
+                {
+                    "package": {"name": "other-pkg"},
+                    "ranges": [{"events": [{"fixed": "1.0"}]}],
+                }
+            ]
+        }
+        assert parse_mod._extract_fixed_version(vuln, "npm", "pkg") == "N/A"
+
+
+class TestGetVulnerabilitiesEdgeCases:
+    """Test get_vulnerabilities edge cases."""
+
+    def test_results_not_list(self, tmp_path):
+        f = tmp_path / "bad.json"
+        f.write_text(json.dumps({"results": "not-a-list"}))
+        assert parse_mod.get_vulnerabilities(str(f)) == []
+
+    def test_packages_not_list(self, tmp_path):
+        data = {"results": [{"source": {}, "packages": "invalid"}]}
+        f = tmp_path / "bad.json"
+        f.write_text(json.dumps(data))
+        assert parse_mod.get_vulnerabilities(str(f)) == []
+
+    def test_vulns_not_list(self, tmp_path):
+        data = {
+            "results": [
+                {
+                    "source": {"path": "a.lock"},
+                    "packages": [
+                        {
+                            "package": {"name": "x", "version": "1", "ecosystem": "npm"},
+                            "vulnerabilities": "not-a-list",
+                        }
+                    ],
+                }
+            ]
+        }
+        f = tmp_path / "bad.json"
+        f.write_text(json.dumps(data))
+        assert parse_mod.get_vulnerabilities(str(f)) == []
+
+    def test_empty_file(self, tmp_path):
+        f = tmp_path / "empty.json"
+        f.write_text("")
+        assert parse_mod.get_vulnerabilities(str(f)) == []
+
+
+class TestMainInProcess:
+    """Test main() CLI entry point in-process for coverage."""
+
+    def test_counts_main(self, tmp_path, monkeypatch):
+        fixture = FIXTURES_DIR / "results-with-findings.json"
+        monkeypatch.setattr(
+            "sys.argv", ["parse_results.py", "counts", str(fixture)]
+        )
+        parse_mod.main()
+
+    def test_vulnerabilities_main(self, tmp_path, monkeypatch):
+        fixture = FIXTURES_DIR / "results-with-findings.json"
+        monkeypatch.setattr(
+            "sys.argv", ["parse_results.py", "vulnerabilities", str(fixture)]
+        )
+        parse_mod.main()

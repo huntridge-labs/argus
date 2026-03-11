@@ -335,3 +335,79 @@ class TestCLI:
         assert result.returncode == 0
         content = output.read_text()
         assert "Skipped" in content
+
+
+class TestIntOrZero:
+    """Test _int_or_zero edge cases."""
+
+    def test_non_numeric_string(self):
+        assert gen_mod._int_or_zero("abc") == 0
+
+    def test_none_value(self):
+        assert gen_mod._int_or_zero(None) == 0
+
+    def test_valid_number(self):
+        assert gen_mod._int_or_zero("42") == 42
+
+
+class TestLoadResults:
+    """Test _load_results edge cases."""
+
+    def test_nonexistent_file(self):
+        assert gen_mod._load_results("/tmp/nonexistent-file.json") == ([], [])
+
+    def test_empty_string_path(self):
+        assert gen_mod._load_results("") == ([], [])
+
+    def test_none_path(self):
+        assert gen_mod._load_results(None) == ([], [])
+
+    def test_non_dict_json(self, tmp_path):
+        f = tmp_path / "list.json"
+        f.write_text('[1, 2, 3]')
+        assert gen_mod._load_results(str(f)) == ([], [])
+
+    def test_malformed_json(self, tmp_path):
+        f = tmp_path / "bad.json"
+        f.write_text("{not json")
+        assert gen_mod._load_results(str(f)) == ([], [])
+
+
+class TestMainInProcess:
+    """Test main() CLI entry point in-process for coverage."""
+
+    def test_main_zero_findings(self, tmp_path, monkeypatch):
+        output = str(tmp_path / "output.md")
+        monkeypatch.setattr("sys.argv", [
+            "generate_summary.py",
+            "--output-file", output,
+        ])
+        gen_mod.main()
+        assert Path(output).exists()
+
+    def test_main_with_results(self, tmp_path, monkeypatch):
+        results = {
+            "vulnerabilities": [
+                {"package": "pkg", "version": "1.0", "severity": "HIGH",
+                 "advisory_id": "GHSA-1", "advisory_url": "https://x",
+                 "ecosystem": "npm"},
+            ],
+            "license_violations": {"count": 0, "violations": []},
+        }
+        results_file = tmp_path / "results.json"
+        results_file.write_text(json.dumps(results))
+        output = str(tmp_path / "output.md")
+        monkeypatch.setattr("sys.argv", [
+            "generate_summary.py",
+            "--output-file", output,
+            "--results-file", str(results_file),
+            "--critical", "0", "--high", "1", "--medium", "0", "--low", "0",
+            "--is-pr-comment", "true",
+            "--skipped", "false",
+            "--github-server-url", "https://github.com",
+            "--github-repo", "test/repo",
+            "--github-run-id", "123",
+        ])
+        gen_mod.main()
+        content = Path(output).read_text()
+        assert "pkg" in content

@@ -294,3 +294,107 @@ class TestCLI:
         assert result.returncode == 0
         content = output.read_text()
         assert "Severity Summary" in content
+
+
+class TestIntOrZero:
+    """Test _int_or_zero edge cases."""
+
+    def test_non_numeric_string(self):
+        assert gen_mod._int_or_zero("abc") == 0
+
+    def test_none_value(self):
+        assert gen_mod._int_or_zero(None) == 0
+
+    def test_valid_number(self):
+        assert gen_mod._int_or_zero("42") == 42
+
+
+class TestLoadVulnerabilities:
+    """Test _load_vulnerabilities edge cases."""
+
+    def test_nonexistent_file(self):
+        assert gen_mod._load_vulnerabilities("/tmp/nonexistent-file.json") == []
+
+    def test_empty_string_path(self):
+        assert gen_mod._load_vulnerabilities("") == []
+
+    def test_none_path(self):
+        assert gen_mod._load_vulnerabilities(None) == []
+
+    def test_non_list_json(self, tmp_path):
+        f = tmp_path / "dict.json"
+        f.write_text('{"key": "value"}')
+        assert gen_mod._load_vulnerabilities(str(f)) == []
+
+    def test_malformed_json(self, tmp_path):
+        f = tmp_path / "bad.json"
+        f.write_text("{not json")
+        assert gen_mod._load_vulnerabilities(str(f)) == []
+
+
+class TestTruncation:
+    """Test summary truncation with >50 vulnerabilities."""
+
+    def test_more_than_50_vulns_shows_truncation_message(self, tmp_path):
+        vulns = [
+            {
+                "id": f"GHSA-{i:04d}",
+                "package": f"pkg-{i}",
+                "version": "1.0",
+                "severity": "MEDIUM",
+                "summary": f"Vuln {i}",
+                "fixed_version": "2.0",
+            }
+            for i in range(55)
+        ]
+        results_file = tmp_path / "vulns.json"
+        results_file.write_text(json.dumps(vulns))
+
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        output = str(workspace / "out.md")
+
+        _run_in_process(
+            workspace, output,
+            results_file=str(results_file),
+            critical="0", high="0", medium="55", low="0",
+        )
+        content = Path(output).read_text()
+        assert "... and 5 more vulnerabilities" in content
+
+
+class TestMainInProcess:
+    """Test main() CLI entry point in-process for coverage."""
+
+    def test_main_zero_findings(self, tmp_path, monkeypatch):
+        output = str(tmp_path / "output.md")
+        monkeypatch.setattr("sys.argv", [
+            "generate_summary.py",
+            "--output-file", output,
+            "--critical", "0",
+            "--high", "0",
+            "--medium", "0",
+            "--low", "0",
+        ])
+        gen_mod.main()
+        assert Path(output).exists()
+
+    def test_main_with_results_file(self, tmp_path, monkeypatch):
+        vulns = [{"id": "GHSA-1", "package": "pkg", "version": "1.0",
+                  "severity": "HIGH", "summary": "test", "fixed_version": "2.0"}]
+        results = tmp_path / "vulns.json"
+        results.write_text(json.dumps(vulns))
+        output = str(tmp_path / "output.md")
+        monkeypatch.setattr("sys.argv", [
+            "generate_summary.py",
+            "--output-file", output,
+            "--results-file", str(results),
+            "--critical", "0", "--high", "1", "--medium", "0", "--low", "0",
+            "--is-pr-comment", "true",
+            "--github-server-url", "https://github.com",
+            "--github-repo", "test/repo",
+            "--github-run-id", "123",
+        ])
+        gen_mod.main()
+        content = Path(output).read_text()
+        assert "pkg" in content
