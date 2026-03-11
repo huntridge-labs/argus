@@ -861,6 +861,8 @@ jobs:
           post_pr_comment: 'false'
           enable_code_security: ${{ env.ENABLE_CODE_SECURITY }}
           fail_on_severity: 'none'
+          # Exercises config_file input; filters out intentionally vulnerable test fixtures
+          config_file: 'tests/fixtures/osv-scanner-test.toml'
 
       - name: Verify scan completed
         shell: bash
