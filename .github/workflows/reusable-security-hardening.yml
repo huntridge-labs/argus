@@ -677,104 +677,104 @@ jobs:
     steps:
     - name: Download CodeQL artifacts
       if: needs.scan-coordinator.outputs.run_codeql == 'true'
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         pattern: codeql-*
       continue-on-error: true
 
     - name: Download OpenGrep artifacts
       if: needs.scan-coordinator.outputs.run_opengrep == 'true'
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         pattern: opengrep-*
       continue-on-error: true
 
     - name: Download Bandit artifacts
       if: needs.scan-coordinator.outputs.run_bandit == 'true'
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         pattern: bandit-*
       continue-on-error: true
 
     - name: Download GitLeaks artifacts
       if: needs.scan-coordinator.outputs.run_gitleaks == 'true'
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         pattern: gitleaks-*
       continue-on-error: true
 
     - name: Download ClamAV artifacts
       if: needs.scan-coordinator.outputs.run_clamav == 'true'
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         pattern: clamav-*
       continue-on-error: true
 
     - name: Download Container artifacts
       if: needs.scan-coordinator.outputs.run_container == 'true'
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         pattern: container-*
       continue-on-error: true
 
     - name: Download Infrastructure artifacts
       if: needs.scan-coordinator.outputs.run_infrastructure == 'true'
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         pattern: infrastructure-*
       continue-on-error: true
 
     - name: Download Trivy IaC artifacts
       if: needs.scan-coordinator.outputs.run_trivy_iac == 'true'
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         pattern: trivy-iac-*
       continue-on-error: true
 
     - name: Download Checkov artifacts
       if: needs.scan-coordinator.outputs.run_checkov == 'true'
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         pattern: checkov-*
       continue-on-error: true
 
     - name: Download Trivy Container artifacts
       if: needs.scan-coordinator.outputs.run_trivy_container == 'true'
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         pattern: trivy-container-*
       continue-on-error: true
 
     - name: Download Grype artifacts
       if: needs.scan-coordinator.outputs.run_grype == 'true'
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         pattern: grype-*
       continue-on-error: true
 
     - name: Download ZAP artifacts
       if: needs.scan-coordinator.outputs.run_zap == 'true'
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         pattern: zap-reports-*
       continue-on-error: true
 
     - name: Download Linting artifacts
       if: needs.scan-coordinator.outputs.run_lint == 'true'
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         pattern: '*lint*'
       continue-on-error: true
 
     - name: Download SBOM artifacts
       if: needs.scan-coordinator.outputs.run_sbom == 'true'
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         pattern: sbom-*
       continue-on-error: true
 
     - name: Download all scanner summaries
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         pattern: scanner-summary-*
         merge-multiple: true
@@ -909,7 +909,7 @@ jobs:
         fallback-suffix: 'security-hardening-report'
 
     - name: Upload comprehensive security report
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: security-hardening-report-${{ steps.job_id.outputs.job-id }}
         path: security-hardening-report.md
