@@ -158,6 +158,61 @@ class TestOsvGenerateSummary:
         assert "4.17.21" in content
         assert "GHSA-1234" in content
 
+    def test_collapsible_severity_grouping(self, tmp_path):
+        """Vulnerability details should be in collapsible sections grouped by severity."""
+        vulns = [
+            {
+                "id": "GHSA-0001",
+                "package": "pkg-crit",
+                "version": "1.0",
+                "severity": "CRITICAL",
+                "summary": "Critical vuln",
+                "fixed_version": "1.1",
+            },
+            {
+                "id": "GHSA-0002",
+                "package": "pkg-high",
+                "version": "2.0",
+                "severity": "HIGH",
+                "summary": "High vuln",
+                "fixed_version": "2.1",
+            },
+            {
+                "id": "GHSA-0003",
+                "package": "pkg-low",
+                "version": "3.0",
+                "severity": "LOW",
+                "summary": "Low vuln",
+                "fixed_version": "3.1",
+            },
+        ]
+        results_file = tmp_path / "vulns.json"
+        results_file.write_text(json.dumps(vulns))
+
+        _run_in_process(
+            self.workspace, self.output_file,
+            results_file=str(results_file),
+            critical="1", high="1", medium="0", low="1",
+        )
+        content = Path(self.output_file).read_text()
+
+        # Outer collapsible wrapping all details
+        assert "<summary>🔍 Vulnerability Details (3)</summary>" in content
+
+        # Per-severity collapsible groups
+        assert "<details open>" in content  # CRITICAL is open by default
+        assert "🚨 CRITICAL Severity (1)" in content
+        assert "⚠️ HIGH Severity (1)" in content
+        assert "🔵 LOW Severity (1)" in content
+
+        # MEDIUM should not appear since count is 0
+        assert "MEDIUM Severity" not in content
+
+        # Package data within severity groups
+        assert "pkg-crit" in content
+        assert "pkg-high" in content
+        assert "pkg-low" in content
+
     def test_artifacts_link(self):
         result = _run_in_process(
             self.workspace, self.output_file,

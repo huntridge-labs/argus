@@ -200,6 +200,77 @@ class TestDepReviewGenerateSummary:
         assert "gpl-pkg" in content
         assert "GPL-3.0" in content
 
+    def test_collapsible_severity_grouping(self, tmp_path):
+        """Vulnerability details should be in collapsible sections grouped by severity."""
+        results = {
+            "vulnerabilities": [
+                {
+                    "package": "pkg-crit",
+                    "version": "1.0",
+                    "ecosystem": "npm",
+                    "severity": "CRITICAL",
+                    "advisory_id": "GHSA-0001",
+                    "advisory_url": "https://github.com/advisories/GHSA-0001",
+                },
+                {
+                    "package": "pkg-high",
+                    "version": "2.0",
+                    "ecosystem": "npm",
+                    "severity": "HIGH",
+                    "advisory_id": "GHSA-0002",
+                    "advisory_url": "https://github.com/advisories/GHSA-0002",
+                },
+            ],
+            "license_violations": {"count": 0, "violations": []},
+        }
+        results_file = tmp_path / "results.json"
+        results_file.write_text(json.dumps(results))
+
+        _run_in_process(
+            self.workspace, self.output_file,
+            critical="1", high="1", medium="0", low="0",
+            results_file=str(results_file),
+        )
+        content = Path(self.output_file).read_text()
+
+        # Outer collapsible wrapping all details
+        assert "<summary>🔍 Vulnerable Dependencies (2)</summary>" in content
+
+        # Per-severity collapsible groups
+        assert "<details open>" in content  # CRITICAL is open by default
+        assert "🚨 CRITICAL Severity (1)" in content
+        assert "⚠️ HIGH Severity (1)" in content
+
+        # Package data within severity groups
+        assert "pkg-crit" in content
+        assert "pkg-high" in content
+
+    def test_collapsible_license_violations(self, tmp_path):
+        """License violations should be in a collapsible section."""
+        results = {
+            "vulnerabilities": [],
+            "license_violations": {
+                "count": 2,
+                "violations": [
+                    {"package": "gpl-a", "version": "1.0", "license": "GPL-3.0", "ecosystem": "pip"},
+                    {"package": "gpl-b", "version": "2.0", "license": "AGPL-3.0", "ecosystem": "pip"},
+                ],
+            },
+        }
+        results_file = tmp_path / "results.json"
+        results_file.write_text(json.dumps(results))
+
+        _run_in_process(
+            self.workspace, self.output_file,
+            license_violations="2",
+            results_file=str(results_file),
+        )
+        content = Path(self.output_file).read_text()
+
+        assert "<summary>⚖️ License Violations (2)</summary>" in content
+        assert "gpl-a" in content
+        assert "gpl-b" in content
+
     def test_artifacts_link(self):
         result = _run_in_process(
             self.workspace, self.output_file,

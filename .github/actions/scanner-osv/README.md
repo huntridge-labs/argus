@@ -32,6 +32,7 @@ Scans project dependencies for known vulnerabilities using [Google OSV-Scanner](
 | `recursive` | Scan subdirectories recursively | `'true'` |
 | `enable_code_security` | Upload SARIF to GitHub Security tab | `'false'` |
 | `post_pr_comment` | Post results as PR comment | `'false'` |
+| `config_file` | Path to `osv-scanner.toml` config for filtering (e.g. ignore dev deps) | `''` |
 | `fail_on_severity` | Fail threshold: `none`, `low`, `medium`, `high`, `critical` | `'none'` |
 | `job_id` | Job ID for artifact naming | `github.job` |
 
@@ -54,6 +55,26 @@ OSV-Scanner auto-detects: `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `P
 
 - `osv-reports-{job_id}` — Raw JSON results and vulnerability details
 - `scanner-summary-osv-{job_id}` — Markdown summary for security-summary aggregation
+
+## Filtering Dev Dependencies
+
+To exclude dev dependencies from scan results, create an `osv-scanner.toml` config file:
+
+```toml
+[[PackageOverrides]]
+group = "dev"
+ignore = true
+```
+
+Then pass it to the action:
+
+```yaml
+- uses: huntridge-labs/argus/.github/actions/scanner-osv@0.4.2
+  with:
+    config_file: 'osv-scanner.toml'
+```
+
+See [OSV-Scanner configuration docs](https://google.github.io/osv-scanner/configuration/) for more filtering options.
 
 ## Companion Scanner
 

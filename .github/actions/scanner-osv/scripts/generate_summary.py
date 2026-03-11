@@ -83,27 +83,18 @@ def generate_osv_summary(
                 f.write("\n")
 
             if vulns:
-                f.write("### 🔍 Vulnerability Details\n")
+                f.write("<details>\n")
+                f.write(f"<summary>🔍 Vulnerability Details ({total})</summary>\n")
                 f.write("\n")
-                f.write("| Severity | Package | Version | Fixed | ID | Summary |\n")
-                f.write("|----------|---------|---------|-------|----|---------|\n")
-                for vuln in vulns[:50]:
-                    emoji = SEVERITY_EMOJI.get(vuln["severity"], "❓")
-                    fixed = vuln.get("fixed_version", "N/A")
-                    summary = vuln.get("summary", "")[:80]
-                    f.write(
-                        f"| {emoji} {vuln['severity']} "
-                        f"| {vuln['package']} "
-                        f"| {vuln['version']} "
-                        f"| {fixed} "
-                        f"| {vuln['id']} "
-                        f"| {summary} |\n"
-                    )
-                f.write("\n")
+
+                _write_severity_grouped_vulns(f, vulns)
 
                 if len(vulns) > 50:
                     f.write(f"*... and {len(vulns) - 50} more vulnerabilities. See full report in artifacts.*\n")
                     f.write("\n")
+
+                f.write("</details>\n")
+                f.write("\n")
 
         artifacts_url = f"{github_server_url}/{github_repo}/actions/runs/{github_run_id}"
         f.write(f"📋 [View full report]({artifacts_url})\n")
@@ -112,6 +103,38 @@ def generate_osv_summary(
             f.write("\n")
             f.write("</details>\n")
 
+        f.write("\n")
+
+
+def _write_severity_grouped_vulns(f, vulns):
+    """Write vulnerabilities grouped by severity in collapsible sections."""
+    for severity in ["CRITICAL", "HIGH", "MEDIUM", "LOW"]:
+        severity_vulns = [v for v in vulns if v.get("severity") == severity]
+        if not severity_vulns:
+            continue
+
+        open_tag = " open" if severity == "CRITICAL" else ""
+        emoji = SEVERITY_EMOJI.get(severity, "❓")
+
+        f.write(f"<details{open_tag}>\n")
+        f.write(f"<summary>{emoji} {severity} Severity ({len(severity_vulns)})</summary>\n")
+        f.write("\n")
+        f.write("| Package | Version | Fixed | ID | Summary |\n")
+        f.write("|---------|---------|-------|----|---------|\n")
+
+        for vuln in severity_vulns[:50]:
+            fixed = vuln.get("fixed_version", "N/A")
+            summary = vuln.get("summary", "")[:80]
+            f.write(
+                f"| {vuln['package']} "
+                f"| {vuln['version']} "
+                f"| {fixed} "
+                f"| {vuln['id']} "
+                f"| {summary} |\n"
+            )
+
+        f.write("\n")
+        f.write("</details>\n")
         f.write("\n")
 
 

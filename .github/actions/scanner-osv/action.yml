@@ -49,6 +49,10 @@ inputs:
     description: 'Whether to post PR comments'
     required: false
     default: 'false'
+  config_file:
+    description: 'Path to osv-scanner.toml config file for filtering (e.g. ignore dev dependencies)'
+    required: false
+    default: ''
   fail_on_severity:
     description: 'Fail if findings at or above this severity. Options: none, low, medium, high, critical.'
     required: false
@@ -93,6 +97,11 @@ runs:
         JSON_ARGS="${JSON_ARGS}
         --output osv-reports/osv-results.json"
 
+        if [ -n "${{ inputs.config_file }}" ]; then
+          JSON_ARGS="${JSON_ARGS}
+        --config=${{ inputs.config_file }}"
+        fi
+
         if [ -n "${{ inputs.lockfile }}" ]; then
           JSON_ARGS="${JSON_ARGS}
         -L ${{ inputs.lockfile }}"
@@ -109,6 +118,11 @@ runs:
         SARIF_ARGS="--format sarif"
         SARIF_ARGS="${SARIF_ARGS}
         --output osv-reports/osv-results.sarif"
+
+        if [ -n "${{ inputs.config_file }}" ]; then
+          SARIF_ARGS="${SARIF_ARGS}
+        --config=${{ inputs.config_file }}"
+        fi
 
         if [ -n "${{ inputs.lockfile }}" ]; then
           SARIF_ARGS="${SARIF_ARGS}

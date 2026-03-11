@@ -93,26 +93,18 @@ def generate_dependency_review_summary(
                     f.write("\n")
 
                 if vuln_details:
-                    f.write("### 🔍 Vulnerable Dependencies\n")
+                    f.write("<details>\n")
+                    f.write(f"<summary>🔍 Vulnerable Dependencies ({total})</summary>\n")
                     f.write("\n")
-                    f.write("| Severity | Package | Version | Ecosystem | Advisory |\n")
-                    f.write("|----------|---------|---------|-----------|----------|\n")
-                    for vuln in vuln_details[:50]:
-                        emoji = SEVERITY_EMOJI.get(vuln.get("severity", ""), "❓")
-                        advisory_url = vuln.get("advisory_url", "")
-                        advisory_id = vuln.get("advisory_id", "N/A")
-                        link = f"[{advisory_id}]({advisory_url})" if advisory_url else advisory_id
-                        f.write(
-                            f"| {emoji} {vuln.get('severity', 'N/A')} "
-                            f"| {vuln.get('package', 'N/A')} "
-                            f"| {vuln.get('version', 'N/A')} "
-                            f"| {vuln.get('ecosystem', 'N/A')} "
-                            f"| {link} |\n"
-                        )
+
+                    _write_severity_grouped_vulns(f, vuln_details)
+
+                    f.write("</details>\n")
                     f.write("\n")
 
             if license_violations > 0:
-                f.write("### ⚖️ License Violations\n")
+                f.write("<details>\n")
+                f.write(f"<summary>⚖️ License Violations ({license_violations})</summary>\n")
                 f.write("\n")
                 f.write(f"**{license_violations}** dependencies violate the license policy.\n")
                 f.write("\n")
@@ -129,6 +121,9 @@ def generate_dependency_review_summary(
                         )
                     f.write("\n")
 
+                f.write("</details>\n")
+                f.write("\n")
+
         if not skipped:
             artifacts_url = f"{github_server_url}/{github_repo}/actions/runs/{github_run_id}"
             f.write(f"📋 [View full report]({artifacts_url})\n")
@@ -137,6 +132,40 @@ def generate_dependency_review_summary(
             f.write("\n")
             f.write("</details>\n")
 
+        f.write("\n")
+
+
+def _write_severity_grouped_vulns(f, vuln_details):
+    """Write vulnerabilities grouped by severity in collapsible sections."""
+    for severity in ["CRITICAL", "HIGH", "MEDIUM", "LOW"]:
+        severity_vulns = [
+            v for v in vuln_details if v.get("severity") == severity
+        ]
+        if not severity_vulns:
+            continue
+
+        open_tag = " open" if severity == "CRITICAL" else ""
+        emoji = SEVERITY_EMOJI.get(severity, "❓")
+
+        f.write(f"<details{open_tag}>\n")
+        f.write(f"<summary>{emoji} {severity} Severity ({len(severity_vulns)})</summary>\n")
+        f.write("\n")
+        f.write("| Package | Version | Ecosystem | Advisory |\n")
+        f.write("|---------|---------|-----------|----------|\n")
+
+        for vuln in severity_vulns[:50]:
+            advisory_url = vuln.get("advisory_url", "")
+            advisory_id = vuln.get("advisory_id", "N/A")
+            link = f"[{advisory_id}]({advisory_url})" if advisory_url else advisory_id
+            f.write(
+                f"| {vuln.get('package', 'N/A')} "
+                f"| {vuln.get('version', 'N/A')} "
+                f"| {vuln.get('ecosystem', 'N/A')} "
+                f"| {link} |\n"
+            )
+
+        f.write("\n")
+        f.write("</details>\n")
         f.write("\n")
 
 
