@@ -19,6 +19,10 @@ inputs:
     description: 'Fail the job if any issue is found. Bandit does not support severity-based filtering - any value other than "none" will fail on any found issue.'
     required: false
     default: 'none'
+  bandit_config_file:
+    description: 'Path to Bandit configuration file (e.g. pyproject.toml, .bandit). Passed as bandit -c flag.'
+    required: false
+    default: ''
   python_version:
     description: 'Python version to use'
     required: false
@@ -69,14 +73,21 @@ runs:
           EXIT_ZERO_FLAG="--exit-zero"
         fi
 
+        # Add config file flag if specified
+        CONFIG_ARG=""
+        if [ -n "${{ inputs.bandit_config_file }}" ] && [ -f "${{ inputs.bandit_config_file }}" ]; then
+          CONFIG_ARG="-c ${{ inputs.bandit_config_file }}"
+          echo "Using config file: ${{ inputs.bandit_config_file }}"
+        fi
+
         echo "Generating SARIF report..."
-        bandit -r . --exclude .husky,.github -f sarif -o bandit-reports/bandit-report.sarif $EXIT_ZERO_FLAG || true
+        bandit -r . --exclude .husky,.github $CONFIG_ARG -f sarif -o bandit-reports/bandit-report.sarif $EXIT_ZERO_FLAG || true
 
         echo "Generating JSON report..."
-        bandit -r . --exclude .husky,.github -f json -o bandit-reports/bandit-report.json $EXIT_ZERO_FLAG || true
+        bandit -r . --exclude .husky,.github $CONFIG_ARG -f json -o bandit-reports/bandit-report.json $EXIT_ZERO_FLAG || true
 
         echo "Generating text report..."
-        bandit -r . --exclude .husky,.github -f txt -o bandit-reports/bandit-report.txt $EXIT_ZERO_FLAG || true
+        bandit -r . --exclude .husky,.github $CONFIG_ARG -f txt -o bandit-reports/bandit-report.txt $EXIT_ZERO_FLAG || true
 
         echo "Generated Bandit files:"
         ls -la bandit-reports/
