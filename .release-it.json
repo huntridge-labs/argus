@@ -95,52 +95,36 @@
         "version.yaml",
         {
           "files": [
-            "CONTRIBUTING.md",
-            "QUICK-START.md",
-            "examples/workflows/scanner-list-examples.yml",
-            "examples/workflows/use-reusable-workflow.yml"
+            ".github/actions/**/*.{yml,yaml,md}",
+            ".github/workflows/**/*.yml",
+            "examples/**/*.{yml,yaml}",
+            "docs/**/*.md",
+            ".ai/**/*.yaml",
+            "*.md"
           ],
           "search": {
-            "pattern": "reusable-security-hardening.yml@\\d+\\.\\d+\\.\\d+",
+            "pattern": "(huntridge-labs/argus/\\.github/actions/[^@]+)@[^\\s]+",
             "flags": "g"
           },
-          "replace": "reusable-security-hardening.yml@{{version}}"
+          "replace": "${1}@{{version}}"
         },
         {
           "files": [
-            "QUICK-START.md",
-            "README.md",
-            "docs/container-scanning.md",
-            "docs/failure-control.md",
-            "examples/README.md"
+            ".github/workflows/**/*.yml",
+            "examples/**/*.{yml,yaml}",
+            "docs/**/*.md",
+            ".ai/**/*.yaml",
+            "*.md"
           ],
           "search": {
-            "pattern": "argus/\\.github/workflows/([\\w-]+)\\.yml@[^\\s]+",
+            "pattern": "(huntridge-labs/argus/\\.github/workflows/[\\w-]+\\.yml)@[^\\s]+",
             "flags": "g"
           },
-          "replace": "argus/.github/workflows/$1.yml@{{version}}"
+          "replace": "${1}@{{version}}"
         },
         {
           "files": [
-            ".github/workflows/reusable-security-hardening.yml",
-            ".github/workflows/container-scan-from-config.yml",
-            "examples/workflows/scanner-zap-podinfo.yml"
-          ],
-          "search": {
-            "pattern": "\\.yml@[^\\s]+",
-            "flags": "g"
-          },
-          "replace": ".yml@{{version}}"
-        },
-        {
-          "files": [
-            ".github/workflows/scanner-zap.yml",
-            ".github/workflows/linting.yml",
-            ".github/workflows/container-scan.yml",
-            ".github/workflows/container-scan-from-config.yml",
-            ".github/workflows/scanner-zap-from-config.yml",
-            ".github/workflows/reusable-security-hardening.yml",
-            ".github/workflows/scanner-clamav.yml"
+            ".github/workflows/**/*.yml"
           ],
           "search": {
             "pattern": "(HRL_REF:.*\\|\\| ')[^']+('.*}})",
@@ -150,9 +134,7 @@
         },
         {
           "files": [
-            ".github/actions/parse-container-config/schemas/container-config.schema.json",
-            ".github/actions/parse-zap-config/schemas/zap-config.schema.json",
-            ".github/actions/scn-detector/schemas/scn-config.schema.json"
+            ".github/actions/**/schemas/*.json"
           ],
           "search": {
             "pattern": "(\"\\$id\": \"https://raw\\.githubusercontent\\.com/huntridge-labs/argus)/[^/]+(/.github/)"
@@ -161,61 +143,14 @@
         },
         {
           "files": [
-            ".github/actions/**/*.{yml,yaml,md}"
+            "docs/**/*.md",
+            "examples/configs/**/*.{yml,yaml,json}"
           ],
           "search": {
-            "pattern": "(huntridge-labs/argus/.github/actions/[^@]+)@[^\\s]+",
+            "pattern": "(raw\\.githubusercontent\\.com/huntridge-labs/argus)/[^/]+(/.github/)",
             "flags": "g"
           },
-          "replace": "${1}@{{version}}"
-        },
-        {
-          "files": [
-            "CONTRIBUTING.md",
-            "examples/README.md"
-          ],
-          "search": {
-            "pattern": "(huntridge-labs/argus/.github/actions/[^@]+)@[^\\s]+",
-            "flags": "g"
-          },
-          "replace": "${1}@{{version}}"
-        },
-        {
-          "files": [
-            ".github/workflows/scanner-*.yml",
-            ".github/workflows/linting.yml",
-            ".github/workflows/infrastructure-scan.yml",
-            ".github/workflows/container-scan.yml",
-            ".github/workflows/container-scan-from-config.yml",
-            ".github/workflows/reusable-security-hardening.yml"
-          ],
-          "search": {
-            "pattern": "(huntridge-labs/argus/.github/actions/[^@]+)@[^\\s]+",
-            "flags": "g"
-          },
-          "replace": "${1}@{{version}}"
-        },
-        {
-          "files": [
-            "examples/github-enterprise/**/*.yml",
-            "examples/github-enterprise/**/*.yaml"
-          ],
-          "search": {
-            "pattern": "(huntridge-labs/argus/.github/actions/[^@]+)@[^\\s]+",
-            "flags": "g"
-          },
-          "replace": "${1}@{{version}}"
-        },
-        {
-          "files": [
-            "examples/workflows/**/*.yml",
-            "examples/workflows/**/*.yaml"
-          ],
-          "search": {
-            "pattern": "(huntridge-labs/argus/.github/actions/[^@]+)@[^\\s]+",
-            "flags": "g"
-          },
-          "replace": "${1}@{{version}}"
+          "replace": "${1}/{{version}}${2}"
         }
       ]
     }

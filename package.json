@@ -32,7 +32,8 @@
     "release:dry": "release-it --dry-run",
     "release:ci": "release-it --ci",
     "release:preview": "release-it --dry-run --ci",
-    "release:changelog": "release-it --changelog --dry-run"
+    "release:changelog": "release-it --changelog --dry-run",
+    "check:versions": "python3 scripts/check-version-refs.py"
   },
   "config": {
     "commitizen": {

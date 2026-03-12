@@ -102,23 +102,32 @@ jobs:
             {
               tail -n +3 temp_changelog.md
               echo ""
-              # Extract file changes that would be made
-              echo "### 📁 Files that would be modified"
+            } >> preview.md
+
+            # Run version reference coverage check
+            {
+              echo "### 🔍 Version Reference Coverage"
               echo ""
             } >> preview.md
 
-            # Extract list of files being updated from the release output
-            {
-              echo "\`\`\`"
-              grep "^Updating version in" release_output.txt | sed 's/Updating version in //' | sed 's/^/- /'
-              echo "\`\`\`"
-            } >> preview.md
-
-            # Extract changeset information
-            if grep -q "Changeset:" release_output.txt; then
-              echo "\`\`\`" >> preview.md
-              sed -n '/^Changeset:/,/^🔗/p' release_output.txt | sed '1d;$d' | grep -E "^\s*[MAD]\s" >> preview.md || echo "No file changes detected" >> preview.md
-              echo "\`\`\`" >> preview.md
+            if python3 scripts/check-version-refs.py > version_check.txt 2>&1; then
+              {
+                echo "✅ $(head -1 version_check.txt)"
+                echo ""
+                echo "$(tail -1 version_check.txt)"
+              } >> preview.md
+            else
+              {
+                echo "⚠️ $(head -1 version_check.txt)"
+                echo ""
+                echo "<details>"
+                echo "<summary>Uncovered references (click to expand)</summary>"
+                echo ""
+                echo "\`\`\`"
+                tail -n +3 version_check.txt
+                echo "\`\`\`"
+                echo "</details>"
+              } >> preview.md
             fi
 
             {
