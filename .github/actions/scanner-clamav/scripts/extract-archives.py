@@ -126,34 +126,48 @@ class ArchiveExtractor:
             self.errors.append(str(e))
             return False
 
+    @staticmethod
+    def _is_path_safe(member_path: str, extract_to: Path) -> bool:
+        """Check that an archive member extracts inside the target directory."""
+        target = (extract_to / member_path).resolve()
+        return str(target).startswith(str(extract_to.resolve()))
+
     def _extract_tar(self, archive_path: Path, extract_to: Path) -> bool:
-        """Extract tar archives."""
+        """Extract tar archives with path traversal protection."""
         try:
             with tarfile.open(archive_path, 'r:*') as tar:
-                tar.extractall(extract_to)
+                tar.extractall(extract_to, filter='data')
             return True
         except (OSError, tarfile.TarError) as e:
             logger.error("Failed to extract tar %s: %s", archive_path, e)
             return False
 
     def _extract_zip(self, archive_path: Path, extract_to: Path) -> bool:
-        """Extract zip archives."""
+        """Extract zip archives with path traversal protection."""
         try:
             with zipfile.ZipFile(archive_path, 'r') as zip_ref:
-                zip_ref.extractall(extract_to)
+                for member in zip_ref.namelist():
+                    if not self._is_path_safe(member, extract_to):
+                        logger.warning("Skipping unsafe zip member: %s", member)
+                        continue
+                    zip_ref.extract(member, extract_to)
             return True
         except (OSError, zipfile.BadZipFile) as e:
             logger.error("Failed to extract zip %s: %s", archive_path, e)
             return False
 
     def _extract_rar(self, archive_path: Path, extract_to: Path) -> bool:
-        """Extract rar archives."""
+        """Extract rar archives with path traversal protection."""
         if not HAS_RARFILE:
             logger.warning("rarfile module not available, skipping RAR extraction: %s", archive_path)
             return False
         try:
             with rarfile.RarFile(archive_path, 'r') as rar:
-                rar.extractall(extract_to)
+                for member in rar.namelist():
+                    if not self._is_path_safe(member, extract_to):
+                        logger.warning("Skipping unsafe rar member: %s", member)
+                        continue
+                    rar.extract(member, extract_to)
             return True
         except (OSError, rarfile.Error) as e:
             logger.error("Failed to extract rar %s: %s", archive_path, e)
