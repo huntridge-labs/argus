@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.5.0](https://github.com/huntridge-labs/argus/compare/0.4.3...0.5.0) (2026-03-13)
+
+### Features
+
+* **bandit:** add bandit_config_file input for custom configuration ([1d17613](https://github.com/huntridge-labs/argus/commit/1d17613578217d8f63fbc5af444070751ce7d11e))
+* **dependencies:** add OSV and dependency-review scanners ([77e6514](https://github.com/huntridge-labs/argus/commit/77e651469d19e254ecf0626eafe8f0e592651623))
+
+### Bug Fixes
+
+* **bandit:** add bandit_config_file passthrough to reusable workflows ([e0317db](https://github.com/huntridge-labs/argus/commit/e0317db7f5d19b7ff53b350d9042a1fd2239b76f))
+* **ci:** add issues:write permission to AICaC workflow ([83d694a](https://github.com/huntridge-labs/argus/commit/83d694a4cb2602cafd7d94fb21afdd169d99bbaf))
+* **clamav:** add path traversal protection to archive extraction ([45103de](https://github.com/huntridge-labs/argus/commit/45103def0aa8c68f1fb7c9a8f827516c04e2791a))
+* **dependencies:** use collapsible details in summaries and add config_file input ([27ffade](https://github.com/huntridge-labs/argus/commit/27ffadeecf6a219868869c4dca69640698ec7e72))
+* **osv:** add config_file to exclude vulnerable test fixtures ([e0242a7](https://github.com/huntridge-labs/argus/commit/e0242a706f1cd89b7638efa269a847296ae11204))
+* **release-it:** skip release_output.txt in version ref checker ([f12076b](https://github.com/huntridge-labs/argus/commit/f12076beaed3e679caf91a82e1df7288f4a09cce))
+
+### Maintenance
+
+* **release-it:** add version reference coverage checker and consolidate config ([795c09a](https://github.com/huntridge-labs/argus/commit/795c09ae60d795ccc1ba82ec814dc0c41e1af0fc))
+* **release-it:** use stdlib Path.glob for version ref coverage checker ([1b32408](https://github.com/huntridge-labs/argus/commit/1b32408d077cbb2352d273ac1cac0b65dde170cb))
+* **reusable-security-hardening:** temp use of feature branch for e2e tests ([f5964ee](https://github.com/huntridge-labs/argus/commit/f5964ee423f1c40c53ed772279a9794bc57d8803))
+* **scanner-bandit:** temp use feature branch for e2e tests ([2b1bf8f](https://github.com/huntridge-labs/argus/commit/2b1bf8f48c782c1053a55d31d752c4d8d22d2695))
+
+
+### Styles
+
+* **release-it:** fix shellcheck SC2005 in release-preview workflow ([b33ab55](https://github.com/huntridge-labs/argus/commit/b33ab5513c43b324238c92c57abd3663bc591bf1))
+
+### Code Refactoring
+
+* **scanner-osv:** use official google/osv-scanner-action Docker image ([eee381e](https://github.com/huntridge-labs/argus/commit/eee381e91b65496ca296e90617a764129ab73808))
+
+### Tests
+
+* **dependencies:** boost patch coverage to 98-99% for new scanners ([e7a8448](https://github.com/huntridge-labs/argus/commit/e7a8448c120139e9dd167028d54d26d90b0d42b0))
+* **e2e:** add dependency scanner E2E jobs to test-actions.yml ([8a48688](https://github.com/huntridge-labs/argus/commit/8a486883031976a0e6c468656fd6d946f003c659))
+
 ## [0.4.3](https://github.com/huntridge-labs/argus/compare/0.4.2...0.4.3) (2026-03-11)
 
 ### Dependencies

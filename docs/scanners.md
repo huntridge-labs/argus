@@ -29,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@v2.12.0
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.5.0
         with:
           enable_code_security: true
           fail_on_severity: high
@@ -471,7 +471,7 @@ scans:
 ```yaml
 jobs:
   security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@main
+    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.5.0
     with:
       scanners: zap
       zap_config_file: .github/zap-config.yml
@@ -704,7 +704,7 @@ scans:
 # .github/workflows/security.yml
 jobs:
   zap-scan:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@main
+    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.5.0
     with:
       scanners: zap
       zap_config_file: .github/zap-config.yml
@@ -795,7 +795,7 @@ For simple single-scan scenarios, you can still use workflow inputs directly (no
 ```yaml
 jobs:
   security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@main
+    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.5.0
     with:
       scanners: zap
       zap_scan_mode: url
@@ -809,7 +809,7 @@ jobs:
 ```yaml
 jobs:
   security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@main
+    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.5.0
     with:
       scanners: zap
       zap_scan_mode: docker-run
