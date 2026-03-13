@@ -11,7 +11,6 @@ after a release.
 import json
 import re
 import sys
-from fnmatch import fnmatch
 from pathlib import Path
 
 # Directories and files to skip when scanning
@@ -21,7 +20,7 @@ SKIP_DIRS = {
 }
 SKIP_FILES = {
     'CHANGELOG.md', 'package-lock.json', 'check-version-refs.py',
-    '.release-it.json',
+    '.release-it.json', 'copilot-instructions.md',
 }
 
 # Patterns that represent version references in this repo
@@ -37,8 +36,21 @@ VERSION_REF_PATTERNS = [
 ]
 
 
+def _expand_braces(pattern: str) -> list:
+    """Expand brace patterns like *.{yml,yaml,md} into multiple patterns."""
+    if '{' not in pattern:
+        return [pattern]
+    base, rest = pattern.split('{', 1)
+    exts, suffix = rest.split('}', 1)
+    return [f'{base}{ext}{suffix}' for ext in exts.split(',')]
+
+
 def load_release_it_rules(repo_root: Path) -> list:
-    """Extract regex-bumper rules from .release-it.json."""
+    """Extract regex-bumper rules from .release-it.json.
+
+    Uses Path.glob() to expand file patterns into actual file paths,
+    avoiding custom glob matching logic entirely.
+    """
     config_path = repo_root / '.release-it.json'
     with open(config_path, 'r', encoding='utf-8') as f:
         config = json.load(f)
@@ -49,70 +61,32 @@ def load_release_it_rules(repo_root: Path) -> list:
     rules = []
     for entry in out_entries:
         if isinstance(entry, str):
-            # Simple file path like "version.yaml" — covers version string
             rules.append({
-                'files': [entry],
+                'covered_files': {entry},
                 'pattern': None,
             })
         elif isinstance(entry, dict):
-            files = entry.get('files', [])
+            covered = set()
+            for glob_pat in entry.get('files', []):
+                for expanded in _expand_braces(glob_pat):
+                    for matched in repo_root.glob(expanded):
+                        if matched.is_file():
+                            covered.add(str(matched.relative_to(repo_root)))
+
             search = entry.get('search', {})
             pattern = search.get('pattern')
             rules.append({
-                'files': files,
+                'covered_files': covered,
                 'pattern': pattern,
             })
 
     return rules
 
 
-def _expand_braces(pattern: str) -> list:
-    """Expand brace patterns like *.{yml,yaml,md} into multiple patterns."""
-    if '{' not in pattern:
-        return [pattern]
-    base, rest = pattern.split('{', 1)
-    exts, suffix = rest.split('}', 1)
-    return [f'{base}{ext}{suffix}' for ext in exts.split(',')]
-
-
-def file_matches_glob(file_rel: str, glob_pattern: str) -> bool:
-    """Check if a relative file path matches a glob pattern."""
-    # Expand braces first, then check each expanded pattern
-    for pattern in _expand_braces(glob_pattern):
-        if _file_matches_single_glob(file_rel, pattern):
-            return True
-    return False
-
-
-def _file_matches_single_glob(file_rel: str, glob_pattern: str) -> bool:
-    """Check if a relative file path matches a single glob pattern (no braces)."""
-    if '**' in glob_pattern:
-        parts = glob_pattern.split('**/')
-        if len(parts) == 2:
-            prefix, suffix = parts
-            if file_rel.startswith(prefix):
-                remainder = file_rel[len(prefix):]
-                # ** matches any depth, so check if suffix matches
-                # any trailing portion of the remainder
-                # e.g. remainder="foo/bar/baz.yml", suffix="bar/*.yml"
-                segments = remainder.split('/')
-                for i in range(len(segments)):
-                    sub = '/'.join(segments[i:])
-                    if fnmatch(sub, suffix):
-                        return True
-        return False
-
-    return fnmatch(file_rel, glob_pattern)
-
-
 def is_ref_covered(file_rel: str, ref_text: str, full_line: str, rules: list) -> bool:
     """Check if a version reference in a file is covered by any release-it rule."""
     for rule in rules:
-        file_matched = any(
-            file_matches_glob(file_rel, glob_pat)
-            for glob_pat in rule['files']
-        )
-        if not file_matched:
+        if file_rel not in rule['covered_files']:
             continue
 
         # If rule has no pattern (e.g. version.yaml), it covers the whole file
