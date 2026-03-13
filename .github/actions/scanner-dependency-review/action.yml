@@ -1,0 +1,290 @@
+name: 'Dependency Review Scanner'
+description: |
+  Run GitHub's dependency-review-action for PR-based dependency vulnerability
+  and license compliance checking.
+
+  **Important:** This action only works on pull_request events. On other event
+  types it will skip gracefully with a warning annotation and zero-count summary.
+  For dependency scanning outside of PRs, use scanner-osv.
+
+  Results integrate with security-summary for aggregated reporting.
+
+  **Required Environment Variables:**
+  - GITHUB_TOKEN: GitHub token for API access (set automatically in workflows)
+
+  **Usage Example:**
+  ```yaml
+  - uses: actions/checkout@v6
+  - uses: huntridge-labs/argus/.github/actions/scanner-dependency-review@0.4.2
+    env:
+      GITHUB_TOKEN: (secrets.GITHUB_TOKEN)
+    with:
+      vulnerability_check: 'true'
+      license_check: 'true'
+      deny_licenses: 'GPL-3.0'
+      fail_on_severity: 'high'
+  ```
+
+author: 'Argus'
+
+branding:
+  icon: 'git-pull-request'
+  color: 'purple'
+
+inputs:
+  vulnerability_check:
+    description: 'Enable vulnerability checking'
+    required: false
+    default: 'true'
+  license_check:
+    description: 'Enable license compliance checking'
+    required: false
+    default: 'false'
+  allow_licenses:
+    description: 'Comma-separated SPDX license identifiers to allow'
+    required: false
+    default: ''
+  deny_licenses:
+    description: 'Comma-separated SPDX license identifiers to deny'
+    required: false
+    default: ''
+  enable_code_security:
+    description: 'Whether GitHub Code Security is enabled for this repository'
+    required: false
+    default: 'false'
+  post_pr_comment:
+    description: 'Whether to post PR comments'
+    required: false
+    default: 'false'
+  fail_on_severity:
+    description: 'Fail if findings at or above this severity. Options: none, low, medium, high, critical.'
+    required: false
+    default: 'none'
+  job_id:
+    description: 'Job ID for artifact naming'
+    required: false
+    default: ${{ github.job }}
+
+outputs:
+  critical_count:
+    description: 'Number of critical severity findings'
+    value: ${{ steps.parse-results.outputs.critical_count }}
+  high_count:
+    description: 'Number of high severity findings'
+    value: ${{ steps.parse-results.outputs.high_count }}
+  medium_count:
+    description: 'Number of medium severity findings'
+    value: ${{ steps.parse-results.outputs.medium_count }}
+  low_count:
+    description: 'Number of low severity findings'
+    value: ${{ steps.parse-results.outputs.low_count }}
+  license_violations:
+    description: 'Number of license policy violations'
+    value: ${{ steps.parse-results.outputs.license_violations }}
+  total_count:
+    description: 'Total number of vulnerability findings'
+    value: ${{ steps.parse-results.outputs.total_count }}
+  scan_status:
+    description: 'Overall scan status (clean, vulnerable, or skipped)'
+    value: ${{ steps.parse-results.outputs.scan_status }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Check event type
+      id: check-event
+      shell: bash
+      run: |
+        if [ "${{ github.event_name }}" != "pull_request" ] && [ "${{ github.event_name }}" != "pull_request_target" ]; then
+          echo "is_pr=false" >> $GITHUB_OUTPUT
+          echo "::warning title=Dependency Review Skipped::Dependency Review requires a pull_request event. Current event: ${{ github.event_name }}. Use scanner-osv for non-PR dependency scanning."
+        else
+          echo "is_pr=true" >> $GITHUB_OUTPUT
+          echo "✅ Running on pull request event"
+        fi
+
+    - name: Run Dependency Review
+      id: dependency-review
+      if: steps.check-event.outputs.is_pr == 'true'
+      uses: actions/dependency-review-action@v4
+      with:
+        comment-summary-in-pr: never
+        vulnerability-check: ${{ inputs.vulnerability_check }}
+        license-check: ${{ inputs.license_check }}
+        allow-licenses: ${{ inputs.allow_licenses }}
+        deny-licenses: ${{ inputs.deny_licenses }}
+        fail-on-severity: 'low'
+      continue-on-error: true
+
+    - name: Parse results
+      id: parse-results
+      shell: bash
+      run: |
+        echo "::group::Parsing Dependency Review results"
+
+        SCRIPT_DIR="${{ github.action_path }}"
+
+        mkdir -p dependency-review-reports
+
+        CRITICAL=0
+        HIGH=0
+        MEDIUM=0
+        LOW=0
+        TOTAL=0
+        LICENSE_VIOLATIONS=0
+
+        if [ "${{ steps.check-event.outputs.is_pr }}" == "true" ]; then
+          VULN_CHANGES='${{ steps.dependency-review.outputs.vulnerable-changes }}'
+          LICENSE_CHANGES='${{ steps.dependency-review.outputs.invalid-license-changes }}'
+
+          # Default to empty array if outputs are empty
+          if [ -z "$VULN_CHANGES" ]; then
+            VULN_CHANGES="[]"
+          fi
+          if [ -z "$LICENSE_CHANGES" ]; then
+            LICENSE_CHANGES="[]"
+          fi
+
+          # Parse all results
+          RESULTS=$(python3 "$SCRIPT_DIR/scripts/parse_results.py" all \
+            --vulnerable-changes "$VULN_CHANGES" \
+            --license-changes "$LICENSE_CHANGES")
+
+          echo "$RESULTS" > dependency-review-reports/dependency-review-results.json
+
+          CRITICAL=$(echo "$RESULTS" | python3 -c "import sys, json; d=json.load(sys.stdin); print(d['vulnerability_counts']['critical'])")
+          HIGH=$(echo "$RESULTS" | python3 -c "import sys, json; d=json.load(sys.stdin); print(d['vulnerability_counts']['high'])")
+          MEDIUM=$(echo "$RESULTS" | python3 -c "import sys, json; d=json.load(sys.stdin); print(d['vulnerability_counts']['medium'])")
+          LOW=$(echo "$RESULTS" | python3 -c "import sys, json; d=json.load(sys.stdin); print(d['vulnerability_counts']['low'])")
+          TOTAL=$((CRITICAL + HIGH + MEDIUM + LOW))
+          LICENSE_VIOLATIONS=$(echo "$RESULTS" | python3 -c "import sys, json; d=json.load(sys.stdin); print(d['license_violations']['count'])")
+
+          echo "scan_status=$([ $TOTAL -gt 0 ] || [ $LICENSE_VIOLATIONS -gt 0 ] && echo 'vulnerable' || echo 'clean')" >> $GITHUB_OUTPUT
+        else
+          echo '{"vulnerability_counts":{"critical":0,"high":0,"medium":0,"low":0,"total":0},"vulnerabilities":[],"license_violations":{"count":0,"violations":[]}}' > dependency-review-reports/dependency-review-results.json
+          echo "scan_status=skipped" >> $GITHUB_OUTPUT
+        fi
+
+        echo "Results:"
+        echo "  Critical: $CRITICAL"
+        echo "  High: $HIGH"
+        echo "  Medium: $MEDIUM"
+        echo "  Low: $LOW"
+        echo "  Total: $TOTAL"
+        echo "  License Violations: $LICENSE_VIOLATIONS"
+
+        echo "critical_count=$CRITICAL" >> $GITHUB_OUTPUT
+        echo "high_count=$HIGH" >> $GITHUB_OUTPUT
+        echo "medium_count=$MEDIUM" >> $GITHUB_OUTPUT
+        echo "low_count=$LOW" >> $GITHUB_OUTPUT
+        echo "total_count=$TOTAL" >> $GITHUB_OUTPUT
+        echo "license_violations=$LICENSE_VIOLATIONS" >> $GITHUB_OUTPUT
+
+        if [ "$TOTAL" -gt 0 ]; then
+          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+            echo "::warning title=Vulnerable Dependencies::Found $CRITICAL critical and $HIGH high severity vulnerable dependencies in PR"
+          fi
+        fi
+
+        echo "::endgroup::"
+
+    - name: Upload reports
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: dependency-review-reports-${{ inputs.job_id }}
+        path: dependency-review-reports/
+        retention-days: 30
+      continue-on-error: true
+
+    - name: Generate scanner summary
+      if: always()
+      shell: bash
+      run: |
+        mkdir -p scanner-summaries
+
+        SCRIPT_DIR="${{ github.action_path }}"
+        SKIPPED="false"
+        if [ "${{ steps.check-event.outputs.is_pr }}" != "true" ]; then
+          SKIPPED="true"
+        fi
+
+        python3 "$SCRIPT_DIR/scripts/generate_summary.py" \
+          --output-file "scanner-summaries/dependency-review.md" \
+          --is-pr-comment "true" \
+          --skipped "$SKIPPED" \
+          --critical "${{ steps.parse-results.outputs.critical_count }}" \
+          --high "${{ steps.parse-results.outputs.high_count }}" \
+          --medium "${{ steps.parse-results.outputs.medium_count }}" \
+          --low "${{ steps.parse-results.outputs.low_count }}" \
+          --license-violations "${{ steps.parse-results.outputs.license_violations }}" \
+          --results-file "dependency-review-reports/dependency-review-results.json" \
+          --github-server-url "${{ github.server_url }}" \
+          --github-repo "${{ github.repository }}" \
+          --github-run-id "${{ github.run_id }}"
+
+        python3 "$SCRIPT_DIR/scripts/generate_summary.py" \
+          --output-file "$GITHUB_STEP_SUMMARY" \
+          --is-pr-comment "false" \
+          --skipped "$SKIPPED" \
+          --critical "${{ steps.parse-results.outputs.critical_count }}" \
+          --high "${{ steps.parse-results.outputs.high_count }}" \
+          --medium "${{ steps.parse-results.outputs.medium_count }}" \
+          --low "${{ steps.parse-results.outputs.low_count }}" \
+          --license-violations "${{ steps.parse-results.outputs.license_violations }}" \
+          --results-file "dependency-review-reports/dependency-review-results.json" \
+          --github-server-url "${{ github.server_url }}" \
+          --github-repo "${{ github.repository }}" \
+          --github-run-id "${{ github.run_id }}"
+      continue-on-error: true
+
+    - name: Upload scanner summary
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: scanner-summary-dependency-review-${{ inputs.job_id }}
+        path: scanner-summaries/dependency-review.md
+        retention-days: 7
+      continue-on-error: true
+
+    - name: Comment PR with results
+      if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
+      uses: huntridge-labs/argus/.github/actions/comment-pr@0.4.2
+      with:
+        summary_file: scanner-summaries/dependency-review.md
+        comment_marker: dependency-review-comment-marker
+        title: '🔗 Dependency Review Results'
+        fallback_message: 'No dependency review results available'
+
+    - name: Check severity threshold
+      if: steps.check-event.outputs.is_pr == 'true' && inputs.fail_on_severity != 'none' && inputs.fail_on_severity != ''
+      shell: bash
+      run: |
+        CRITICAL=${{ steps.parse-results.outputs.critical_count }}
+        HIGH=${{ steps.parse-results.outputs.high_count }}
+        MEDIUM=${{ steps.parse-results.outputs.medium_count }}
+        LOW=${{ steps.parse-results.outputs.low_count }}
+        THRESHOLD="${{ inputs.fail_on_severity }}"
+
+        SHOULD_FAIL=false
+        case "$THRESHOLD" in
+          critical)
+            [ "$CRITICAL" -gt 0 ] && SHOULD_FAIL=true
+            ;;
+          high)
+            [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ] && SHOULD_FAIL=true
+            ;;
+          medium)
+            [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ] || [ "$MEDIUM" -gt 0 ] && SHOULD_FAIL=true
+            ;;
+          low)
+            [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ] || [ "$MEDIUM" -gt 0 ] || [ "$LOW" -gt 0 ] && SHOULD_FAIL=true
+            ;;
+        esac
+
+        if [ "$SHOULD_FAIL" = true ]; then
+          echo "❌ Found vulnerable dependencies at or above severity threshold: $THRESHOLD"
+          exit 1
+        else
+          echo "✅ No vulnerable dependencies at or above severity threshold: $THRESHOLD"
+        fi

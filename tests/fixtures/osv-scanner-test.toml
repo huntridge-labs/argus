@@ -1,0 +1,57 @@
+# OSV-Scanner config for E2E testing
+# Ignores intentionally vulnerable packages from tests/fixtures/vulnerable-requirements.txt
+# These packages exist solely for scanner testing and are never installed
+
+[[PackageOverrides]]
+name = "django"
+ecosystem = "PyPI"
+ignore = true
+reason = "Intentionally vulnerable test fixture - not a real dependency"
+
+[[PackageOverrides]]
+name = "pillow"
+ecosystem = "PyPI"
+ignore = true
+reason = "Intentionally vulnerable test fixture - not a real dependency"
+
+[[PackageOverrides]]
+name = "sqlalchemy"
+ecosystem = "PyPI"
+ignore = true
+reason = "Intentionally vulnerable test fixture - not a real dependency"
+
+[[PackageOverrides]]
+name = "urllib3"
+ecosystem = "PyPI"
+ignore = true
+reason = "Intentionally vulnerable test fixture - not a real dependency"
+
+[[PackageOverrides]]
+name = "flask"
+ecosystem = "PyPI"
+ignore = true
+reason = "Intentionally vulnerable test fixture - not a real dependency"
+
+[[PackageOverrides]]
+name = "jinja2"
+ecosystem = "PyPI"
+ignore = true
+reason = "Intentionally vulnerable test fixture - not a real dependency"
+
+[[PackageOverrides]]
+name = "requests"
+ecosystem = "PyPI"
+ignore = true
+reason = "Intentionally vulnerable test fixture - not a real dependency"
+
+[[PackageOverrides]]
+name = "werkzeug"
+ecosystem = "PyPI"
+ignore = true
+reason = "Intentionally vulnerable test fixture - not a real dependency"
+
+[[PackageOverrides]]
+name = "basic-ftp"
+ecosystem = "npm"
+ignore = true
+reason = "Transitive dev dependency in commitizen - not runtime"

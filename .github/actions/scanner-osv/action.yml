@@ -1,0 +1,333 @@
+name: 'OSV Dependency Scanner'
+description: |
+  Run Google OSV-Scanner for dependency vulnerability scanning.
+
+  Scans lockfiles and SBOMs for known vulnerabilities using the OSV database.
+  Works on any event trigger (push, PR, schedule). Uses the official
+  google/osv-scanner-action Docker image from ghcr.io.
+
+  Results integrate with security-summary for aggregated reporting.
+
+  **Required Environment Variables:**
+  - GITHUB_TOKEN: GitHub token for API access (set automatically in workflows)
+
+  **Usage Example:**
+  ```yaml
+  - uses: actions/checkout@v6
+  - uses: huntridge-labs/argus/.github/actions/scanner-osv@0.4.2
+    env:
+      GITHUB_TOKEN: (secrets.GITHUB_TOKEN)
+    with:
+      scan_path: '.'
+      fail_on_severity: 'high'
+  ```
+
+author: 'Argus'
+
+branding:
+  icon: 'package'
+  color: 'blue'
+
+inputs:
+  scan_path:
+    description: 'Path to scan for lockfiles and dependency manifests'
+    required: false
+    default: '.'
+  lockfile:
+    description: 'Specific lockfile path to scan (auto-discovers if empty)'
+    required: false
+    default: ''
+  recursive:
+    description: 'Scan subdirectories recursively for lockfiles'
+    required: false
+    default: 'true'
+  enable_code_security:
+    description: 'Whether GitHub Code Security is enabled for this repository (uploads SARIF to Security tab)'
+    required: false
+    default: 'false'
+  post_pr_comment:
+    description: 'Whether to post PR comments'
+    required: false
+    default: 'false'
+  config_file:
+    description: 'Path to osv-scanner.toml config file for filtering (e.g. ignore dev dependencies)'
+    required: false
+    default: ''
+  fail_on_severity:
+    description: 'Fail if findings at or above this severity. Options: none, low, medium, high, critical.'
+    required: false
+    default: 'none'
+  job_id:
+    description: 'Job ID for artifact naming'
+    required: false
+    default: ${{ github.job }}
+
+outputs:
+  critical_count:
+    description: 'Number of critical severity findings'
+    value: ${{ steps.parse-results.outputs.critical_count }}
+  high_count:
+    description: 'Number of high severity findings'
+    value: ${{ steps.parse-results.outputs.high_count }}
+  medium_count:
+    description: 'Number of medium severity findings'
+    value: ${{ steps.parse-results.outputs.medium_count }}
+  low_count:
+    description: 'Number of low severity findings'
+    value: ${{ steps.parse-results.outputs.low_count }}
+  total_count:
+    description: 'Total number of vulnerability findings'
+    value: ${{ steps.parse-results.outputs.total_count }}
+  scan_status:
+    description: 'Overall scan status (clean or vulnerable)'
+    value: ${{ steps.parse-results.outputs.scan_status }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Build scan arguments
+      id: build-args
+      shell: bash
+      run: |
+        mkdir -p osv-reports
+
+        # Build newline-separated scan-args for the official action
+        # JSON scan (primary output for our parser)
+        JSON_ARGS="--format json"
+        JSON_ARGS="${JSON_ARGS}
+        --output osv-reports/osv-results.json"
+
+        if [ -n "${{ inputs.config_file }}" ]; then
+          JSON_ARGS="${JSON_ARGS}
+        --config=${{ inputs.config_file }}"
+        fi
+
+        if [ -n "${{ inputs.lockfile }}" ]; then
+          JSON_ARGS="${JSON_ARGS}
+        -L ${{ inputs.lockfile }}"
+        else
+          if [ "${{ inputs.recursive }}" == "true" ]; then
+            JSON_ARGS="${JSON_ARGS}
+        --recursive"
+          fi
+          JSON_ARGS="${JSON_ARGS}
+        ${{ inputs.scan_path }}"
+        fi
+
+        # SARIF scan args (for GitHub Security tab)
+        SARIF_ARGS="--format sarif"
+        SARIF_ARGS="${SARIF_ARGS}
+        --output osv-reports/osv-results.sarif"
+
+        if [ -n "${{ inputs.config_file }}" ]; then
+          SARIF_ARGS="${SARIF_ARGS}
+        --config=${{ inputs.config_file }}"
+        fi
+
+        if [ -n "${{ inputs.lockfile }}" ]; then
+          SARIF_ARGS="${SARIF_ARGS}
+        -L ${{ inputs.lockfile }}"
+        else
+          if [ "${{ inputs.recursive }}" == "true" ]; then
+            SARIF_ARGS="${SARIF_ARGS}
+        --recursive"
+          fi
+          SARIF_ARGS="${SARIF_ARGS}
+        ${{ inputs.scan_path }}"
+        fi
+
+        # Store args using heredoc to preserve newlines
+        {
+          echo "json_args<<ARGS_EOF"
+          echo "$JSON_ARGS"
+          echo "ARGS_EOF"
+        } >> "$GITHUB_OUTPUT"
+
+        {
+          echo "sarif_args<<ARGS_EOF"
+          echo "$SARIF_ARGS"
+          echo "ARGS_EOF"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Run OSV-Scanner (JSON)
+      id: scan
+      uses: google/osv-scanner-action/osv-scanner-action@v2.3.3
+      with:
+        scan-args: ${{ steps.build-args.outputs.json_args }}
+      continue-on-error: true
+
+    - name: Handle scan result
+      shell: bash
+      run: |
+        EXIT_CODE=${{ steps.scan.outcome == 'success' && '0' || '1' }}
+
+        if [ "$EXIT_CODE" -eq 0 ]; then
+          echo "✅ OSV-Scanner completed"
+        else
+          echo "⚠️  OSV-Scanner found vulnerabilities or encountered an error"
+        fi
+
+        # Ensure results file exists for downstream steps
+        if [ ! -f "osv-reports/osv-results.json" ]; then
+          echo '{"results":[]}' > osv-reports/osv-results.json
+        fi
+
+    - name: Run OSV-Scanner (SARIF)
+      if: inputs.enable_code_security == 'true'
+      uses: google/osv-scanner-action/osv-scanner-action@v2.3.3
+      with:
+        scan-args: ${{ steps.build-args.outputs.sarif_args }}
+      continue-on-error: true
+
+    - name: Parse results
+      id: parse-results
+      shell: bash
+      run: |
+        echo "::group::Parsing OSV-Scanner results"
+
+        SCRIPT_DIR="${{ github.action_path }}"
+        JSON_FILE="osv-reports/osv-results.json"
+
+        CRITICAL=0
+        HIGH=0
+        MEDIUM=0
+        LOW=0
+        TOTAL=0
+
+        if [ -f "$JSON_FILE" ]; then
+          COUNTS=$(python3 "$SCRIPT_DIR/scripts/parse_results.py" counts "$JSON_FILE")
+          CRITICAL=$(echo "$COUNTS" | awk '{print $1}')
+          HIGH=$(echo "$COUNTS" | awk '{print $2}')
+          MEDIUM=$(echo "$COUNTS" | awk '{print $3}')
+          LOW=$(echo "$COUNTS" | awk '{print $4}')
+          TOTAL=$((CRITICAL + HIGH + MEDIUM + LOW))
+
+          # Generate vulnerability details for summary
+          python3 "$SCRIPT_DIR/scripts/parse_results.py" vulnerabilities "$JSON_FILE" > osv-reports/osv-vulnerabilities.json
+        fi
+
+        echo "Results:"
+        echo "  Critical: $CRITICAL"
+        echo "  High: $HIGH"
+        echo "  Medium: $MEDIUM"
+        echo "  Low: $LOW"
+        echo "  Total: $TOTAL"
+
+        echo "critical_count=$CRITICAL" >> $GITHUB_OUTPUT
+        echo "high_count=$HIGH" >> $GITHUB_OUTPUT
+        echo "medium_count=$MEDIUM" >> $GITHUB_OUTPUT
+        echo "low_count=$LOW" >> $GITHUB_OUTPUT
+        echo "total_count=$TOTAL" >> $GITHUB_OUTPUT
+
+        if [ "$TOTAL" -gt 0 ]; then
+          echo "scan_status=vulnerable" >> $GITHUB_OUTPUT
+          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+            echo "::warning title=Dependency Vulnerabilities::Found $CRITICAL critical and $HIGH high severity dependency vulnerabilities"
+          fi
+        else
+          echo "scan_status=clean" >> $GITHUB_OUTPUT
+          echo "✅ No dependency vulnerabilities found"
+        fi
+
+        echo "::endgroup::"
+
+    - name: Upload OSV reports
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: osv-reports-${{ inputs.job_id }}
+        path: osv-reports/
+        retention-days: 30
+      continue-on-error: true
+
+    - name: Upload SARIF to GitHub Security
+      if: inputs.enable_code_security == 'true' && hashFiles('osv-reports/osv-results.sarif') != ''
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: osv-reports/osv-results.sarif
+        category: osv-scanner
+      continue-on-error: true
+
+    - name: Generate scanner summary
+      if: always()
+      shell: bash
+      run: |
+        mkdir -p scanner-summaries
+
+        SCRIPT_DIR="${{ github.action_path }}"
+
+        python3 "$SCRIPT_DIR/scripts/generate_summary.py" \
+          --output-file "scanner-summaries/osv.md" \
+          --is-pr-comment "true" \
+          --results-file "osv-reports/osv-vulnerabilities.json" \
+          --critical "${{ steps.parse-results.outputs.critical_count }}" \
+          --high "${{ steps.parse-results.outputs.high_count }}" \
+          --medium "${{ steps.parse-results.outputs.medium_count }}" \
+          --low "${{ steps.parse-results.outputs.low_count }}" \
+          --github-server-url "${{ github.server_url }}" \
+          --github-repo "${{ github.repository }}" \
+          --github-run-id "${{ github.run_id }}"
+
+        python3 "$SCRIPT_DIR/scripts/generate_summary.py" \
+          --output-file "$GITHUB_STEP_SUMMARY" \
+          --is-pr-comment "false" \
+          --results-file "osv-reports/osv-vulnerabilities.json" \
+          --critical "${{ steps.parse-results.outputs.critical_count }}" \
+          --high "${{ steps.parse-results.outputs.high_count }}" \
+          --medium "${{ steps.parse-results.outputs.medium_count }}" \
+          --low "${{ steps.parse-results.outputs.low_count }}" \
+          --github-server-url "${{ github.server_url }}" \
+          --github-repo "${{ github.repository }}" \
+          --github-run-id "${{ github.run_id }}"
+      continue-on-error: true
+
+    - name: Upload scanner summary
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: scanner-summary-osv-${{ inputs.job_id }}
+        path: scanner-summaries/osv.md
+        retention-days: 7
+      continue-on-error: true
+
+    - name: Comment PR with OSV results
+      if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
+      uses: huntridge-labs/argus/.github/actions/comment-pr@0.4.2
+      with:
+        summary_file: scanner-summaries/osv.md
+        comment_marker: osv-scanner-comment-marker
+        title: '📦 OSV Dependency Scan Results'
+        fallback_message: 'No OSV scan results available'
+
+    - name: Check severity threshold
+      if: inputs.fail_on_severity != 'none' && inputs.fail_on_severity != ''
+      shell: bash
+      run: |
+        CRITICAL=${{ steps.parse-results.outputs.critical_count }}
+        HIGH=${{ steps.parse-results.outputs.high_count }}
+        MEDIUM=${{ steps.parse-results.outputs.medium_count }}
+        LOW=${{ steps.parse-results.outputs.low_count }}
+        THRESHOLD="${{ inputs.fail_on_severity }}"
+
+        SHOULD_FAIL=false
+        case "$THRESHOLD" in
+          critical)
+            [ "$CRITICAL" -gt 0 ] && SHOULD_FAIL=true
+            ;;
+          high)
+            [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ] && SHOULD_FAIL=true
+            ;;
+          medium)
+            [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ] || [ "$MEDIUM" -gt 0 ] && SHOULD_FAIL=true
+            ;;
+          low)
+            [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ] || [ "$MEDIUM" -gt 0 ] || [ "$LOW" -gt 0 ] && SHOULD_FAIL=true
+            ;;
+        esac
+
+        if [ "$SHOULD_FAIL" = true ]; then
+          echo "❌ Found dependency vulnerabilities at or above severity threshold: $THRESHOLD"
+          exit 1
+        else
+          echo "✅ No dependency vulnerabilities at or above severity threshold: $THRESHOLD"
+        fi

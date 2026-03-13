@@ -81,6 +81,18 @@ user_workflows:
           enable_sarif_upload: true
     note: "v3.0 - currently on feature branch, not yet released to main"
 
+  dependency_scanning:
+    description: "Scan dependencies for known vulnerabilities and license compliance"
+    category: scanning
+    when_to_use: "Any event (OSV) or pull requests (dependency-review)"
+    code: |
+      uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@main
+      with:
+        scanners: dependencies
+        fail_on_severity: high
+        enable_code_security: true
+    note: "'dependencies' enables both osv and dependency-review scanners"
+
   infrastructure_scanning:
     description: "Scan Terraform, Kubernetes, CloudFormation"
     category: scanning

@@ -478,3 +478,56 @@ decisions:
         api_base_url: "<optional custom endpoint>"
 
     supersedes: "Refines ADR-010 (which assumed Anthropic-only)"
+
+  - id: ADR-012
+    title: "Dual dependency scanning: OSV-Scanner + dependency-review-action"
+    date: "2026-03-11"
+    status: accepted
+
+    context: |
+      Argus lacked source-code dependency vulnerability scanning. Container-level
+      scanning (Trivy/Grype/Syft) catches OS package vulnerabilities but misses
+      application dependency vulnerabilities in lockfiles (npm, pip, cargo, etc.).
+      Supply chain attacks increasingly target application dependencies.
+
+    decision: |
+      Add two complementary dependency scanners mirroring the Trivy/Grype dual-scanner
+      pattern for containers:
+      1. scanner-osv: Google OSV-Scanner binary — any trigger, GHES-compatible,
+         scans lockfiles against the OSV database
+      2. scanner-dependency-review: GitHub's dependency-review-action — PR-only,
+         compares dependency diffs, supports license compliance checking
+
+    alternatives_considered:
+      - name: "OSV-Scanner only"
+        rejected_because: "Misses PR diff context and license compliance checking"
+
+      - name: "dependency-review-action only"
+        rejected_because: "PR-only limitation; no scheduled or push-triggered scanning"
+
+      - name: "Snyk or commercial tool"
+        rejected_because: "Adds external dependency; violates air-gap constraint"
+
+      - name: "npm audit / pip-audit per-ecosystem"
+        rejected_because: "Fragmented; would need separate actions per ecosystem"
+
+    consequences:
+      positive:
+        - "Complete dependency vulnerability coverage (any trigger + PR diff)"
+        - "License compliance checking via dependency-review-action"
+        - "GHES-compatible via OSV binary install (no marketplace dependency)"
+        - "Zero changes to security-summary (artifact-driven aggregation)"
+        - "Mirrors proven Trivy/Grype dual-scanner pattern"
+      negative:
+        - "Two scanners to maintain for dependency category"
+        - "dependency-review-action limited to PR events only"
+
+    implementation: |
+      New actions:
+        .github/actions/scanner-osv/
+        .github/actions/scanner-dependency-review/
+
+      Both follow established patterns (ADR-009 Python scripts, ADR-007 severity
+      thresholds, ADR-008 flexible PR commenting). scanner-dependency-review
+      emits a warning annotation and zero-count summary on non-PR events for
+      graceful degradation.

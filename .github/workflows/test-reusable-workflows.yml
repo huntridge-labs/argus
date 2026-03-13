@@ -49,6 +49,7 @@ jobs:
       allow_failure: true
       gitleaks_enable_comments: false
       gitleaks_config: '.gitleaks.toml'
+      bandit_config_file: 'pyproject.toml'
     secrets:
       GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 

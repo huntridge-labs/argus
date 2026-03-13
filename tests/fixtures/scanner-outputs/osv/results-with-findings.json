@@ -1,0 +1,320 @@
+{
+  "results": [
+    {
+      "source": {
+        "path": "/workspace/package-lock.json",
+        "type": "lockfile"
+      },
+      "packages": [
+        {
+          "package": {
+            "name": "lodash",
+            "version": "4.17.20",
+            "ecosystem": "npm"
+          },
+          "vulnerabilities": [
+            {
+              "schema_version": "1.6.0",
+              "id": "GHSA-jfh8-c2jp-5v3q",
+              "modified": "2024-06-21T18:26:30Z",
+              "published": "2021-05-06T16:05:17Z",
+              "aliases": [
+                "CVE-2021-23337"
+              ],
+              "summary": "Command Injection in lodash",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "npm",
+                    "name": "lodash",
+                    "purl": "pkg:npm/lodash"
+                  },
+                  "ranges": [
+                    {
+                      "type": "SEMVER",
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "4.17.21"
+                        }
+                      ]
+                    }
+                  ],
+                  "database_specific": {
+                    "severity": "CRITICAL",
+                    "github_reviewed": true
+                  }
+                }
+              ],
+              "database_specific": {
+                "severity": "CRITICAL",
+                "cwe_ids": [
+                  "CWE-77"
+                ]
+              },
+              "references": [
+                {
+                  "type": "ADVISORY",
+                  "url": "https://github.com/advisories/GHSA-jfh8-c2jp-5v3q"
+                }
+              ]
+            }
+          ],
+          "groups": [
+            {
+              "ids": [
+                "GHSA-jfh8-c2jp-5v3q",
+                "CVE-2021-23337"
+              ],
+              "aliases": [
+                "CVE-2021-23337",
+                "GHSA-jfh8-c2jp-5v3q"
+              ]
+            }
+          ]
+        },
+        {
+          "package": {
+            "name": "express",
+            "version": "4.17.1",
+            "ecosystem": "npm"
+          },
+          "vulnerabilities": [
+            {
+              "schema_version": "1.6.0",
+              "id": "GHSA-rv95-896h-c2vc",
+              "modified": "2024-09-03T21:59:18Z",
+              "published": "2024-03-25T19:40:26Z",
+              "aliases": [
+                "CVE-2024-29041"
+              ],
+              "summary": "Express.js Open Redirect in malformed URLs",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "npm",
+                    "name": "express",
+                    "purl": "pkg:npm/express"
+                  },
+                  "ranges": [
+                    {
+                      "type": "SEMVER",
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "4.19.2"
+                        }
+                      ]
+                    }
+                  ],
+                  "database_specific": {
+                    "severity": "HIGH",
+                    "github_reviewed": true
+                  }
+                }
+              ],
+              "database_specific": {
+                "severity": "HIGH",
+                "cwe_ids": [
+                  "CWE-601"
+                ]
+              },
+              "references": [
+                {
+                  "type": "ADVISORY",
+                  "url": "https://github.com/advisories/GHSA-rv95-896h-c2vc"
+                }
+              ]
+            }
+          ],
+          "groups": [
+            {
+              "ids": [
+                "GHSA-rv95-896h-c2vc",
+                "CVE-2024-29041"
+              ],
+              "aliases": [
+                "CVE-2024-29041",
+                "GHSA-rv95-896h-c2vc"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "source": {
+        "path": "/workspace/requirements.txt",
+        "type": "lockfile"
+      },
+      "packages": [
+        {
+          "package": {
+            "name": "requests",
+            "version": "2.28.0",
+            "ecosystem": "PyPI"
+          },
+          "vulnerabilities": [
+            {
+              "schema_version": "1.6.0",
+              "id": "GHSA-j8r2-6x86-q33q",
+              "modified": "2024-02-16T08:18:45Z",
+              "published": "2023-05-26T18:30:21Z",
+              "aliases": [
+                "CVE-2023-32681"
+              ],
+              "summary": "Unintended leak of Proxy-Authorization header in requests",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:N/A:N"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "requests",
+                    "purl": "pkg:pypi/requests"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {
+                          "introduced": "2.3.0"
+                        },
+                        {
+                          "fixed": "2.31.0"
+                        }
+                      ]
+                    }
+                  ],
+                  "database_specific": {
+                    "severity": "MEDIUM",
+                    "github_reviewed": true
+                  }
+                }
+              ],
+              "database_specific": {
+                "severity": "MEDIUM",
+                "cwe_ids": [
+                  "CWE-200"
+                ]
+              },
+              "references": [
+                {
+                  "type": "ADVISORY",
+                  "url": "https://github.com/advisories/GHSA-j8r2-6x86-q33q"
+                }
+              ]
+            }
+          ],
+          "groups": [
+            {
+              "ids": [
+                "GHSA-j8r2-6x86-q33q",
+                "CVE-2023-32681"
+              ],
+              "aliases": [
+                "CVE-2023-32681",
+                "GHSA-j8r2-6x86-q33q"
+              ]
+            }
+          ]
+        },
+        {
+          "package": {
+            "name": "pip",
+            "version": "21.0",
+            "ecosystem": "PyPI"
+          },
+          "vulnerabilities": [
+            {
+              "schema_version": "1.6.0",
+              "id": "GHSA-mq26-g339-26xf",
+              "modified": "2024-02-18T05:31:22Z",
+              "published": "2021-11-19T20:14:00Z",
+              "aliases": [
+                "CVE-2021-3572"
+              ],
+              "summary": "Improper Input Validation in pip",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:N/I:L/A:N"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "pip",
+                    "purl": "pkg:pypi/pip"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "21.1"
+                        }
+                      ]
+                    }
+                  ],
+                  "database_specific": {
+                    "severity": "LOW",
+                    "github_reviewed": true
+                  }
+                }
+              ],
+              "database_specific": {
+                "severity": "LOW",
+                "cwe_ids": [
+                  "CWE-20"
+                ]
+              },
+              "references": [
+                {
+                  "type": "ADVISORY",
+                  "url": "https://github.com/advisories/GHSA-mq26-g339-26xf"
+                }
+              ]
+            }
+          ],
+          "groups": [
+            {
+              "ids": [
+                "GHSA-mq26-g339-26xf",
+                "CVE-2021-3572"
+              ],
+              "aliases": [
+                "CVE-2021-3572",
+                "GHSA-mq26-g339-26xf"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

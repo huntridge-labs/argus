@@ -1,12 +1,12 @@
-# Bandit Python Security Scanner - Reusable Workflow
+# OSV Dependency Scanner - Reusable Workflow
 #
-# THIN WRAPPER: This workflow delegates to the scanner-bandit composite action.
-# All scanning logic is in: .github/actions/scanner-bandit/action.yml
+# THIN WRAPPER: This workflow delegates to the scanner-osv composite action.
+# All scanning logic is in: .github/actions/scanner-osv/action.yml
 #
 # For GHES users: Use the composite action directly instead of this workflow.
 # See: examples/github-enterprise/sast-only.yml
 
-name: Bandit Python Security Scanner
+name: OSV Dependency Scanner
 
 on:
   workflow_dispatch:
@@ -23,20 +23,25 @@ on:
         type: boolean
         default: false
       fail_on_severity:
-        description: 'Fail the job if any issue is found. Bandit does not support severity-based filtering - any value other than "none" will fail on any found issue.'
+        description: 'Fail if findings at or above this severity. Options: none, low, medium, high, critical.'
         required: false
         type: string
         default: 'none'
-      python_version:
-        description: 'Python version to use'
+      scan_path:
+        description: 'Path to scan for lockfiles and dependency manifests'
         required: false
         type: string
-        default: '3.12'
-      bandit_config_file:
-        description: 'Path to Bandit configuration file (e.g. pyproject.toml, .bandit). Passed as bandit -c flag.'
+        default: '.'
+      lockfile:
+        description: 'Specific lockfile path to scan (auto-discovers if empty)'
         required: false
         type: string
         default: ''
+      recursive:
+        description: 'Scan subdirectories recursively for lockfiles'
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -45,8 +50,8 @@ permissions:
   pull-requests: write
 
 jobs:
-  bandit-analysis:
-    name: Bandit Python Security
+  osv-scan:
+    name: OSV Dependency Scan
     runs-on: ubuntu-latest
     timeout-minutes: 15
     continue-on-error: true
@@ -55,11 +60,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Run Bandit Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-bandit@feat/dependency-scanner
+      - name: Run OSV Scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-osv@0.4.2
         with:
           post_pr_comment: ${{ inputs.post_pr_comment }}
           enable_code_security: ${{ inputs.enable_code_security }}
           fail_on_severity: ${{ inputs.fail_on_severity }}
-          python_version: ${{ inputs.python_version }}
-          bandit_config_file: ${{ inputs.bandit_config_file }}
+          scan_path: ${{ inputs.scan_path }}
+          lockfile: ${{ inputs.lockfile }}
+          recursive: ${{ inputs.recursive }}
