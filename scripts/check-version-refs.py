@@ -20,7 +20,7 @@ SKIP_DIRS = {
 }
 SKIP_FILES = {
     'CHANGELOG.md', 'package-lock.json', 'check-version-refs.py',
-    '.release-it.json', 'copilot-instructions.md',
+    '.release-it.json', 'copilot-instructions.md', 'release_output.txt',
 }
 
 # Patterns that represent version references in this repo
