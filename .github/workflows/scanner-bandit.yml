@@ -32,6 +32,11 @@ on:
         required: false
         type: string
         default: '3.12'
+      bandit_config_file:
+        description: 'Path to Bandit configuration file (e.g. pyproject.toml, .bandit). Passed as bandit -c flag.'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -57,3 +62,4 @@ jobs:
           enable_code_security: ${{ inputs.enable_code_security }}
           fail_on_severity: ${{ inputs.fail_on_severity }}
           python_version: ${{ inputs.python_version }}
+          bandit_config_file: ${{ inputs.bandit_config_file }}

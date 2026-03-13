@@ -78,6 +78,11 @@ on:
         required: false
         default: 'high'
         type: string
+      bandit_config_file:
+        description: 'Path to Bandit configuration file (e.g. pyproject.toml, .bandit). Passed as bandit -c flag.'
+        required: false
+        default: ''
+        type: string
       gitleaks_enable_comments:
         description: 'Enable GitLeaks inline PR comments (requires GITLEAKS_LICENSE)'
         required: false
@@ -513,6 +518,7 @@ jobs:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
       fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
+      bandit_config_file: ${{ inputs.bandit_config_file }}
     permissions:
       contents: read
       security-events: write
