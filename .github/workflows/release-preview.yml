@@ -114,7 +114,7 @@ jobs:
               {
                 echo "✅ $(head -1 version_check.txt)"
                 echo ""
-                echo "$(tail -1 version_check.txt)"
+                tail -1 version_check.txt
               } >> preview.md
             else
               {
