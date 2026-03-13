@@ -513,7 +513,7 @@ jobs:
     name: Bandit Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_bandit == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-bandit.yml@0.4.3
+    uses: huntridge-labs/argus/.github/workflows/scanner-bandit.yml@feat/dependency-scanner
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
