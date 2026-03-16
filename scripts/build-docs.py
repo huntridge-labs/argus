@@ -757,8 +757,7 @@ def build_mkdocs_config(version: str, nav: list) -> str:
         "edit_uri": "edit/main/docs/",
         "theme": {
             "name": "material",
-            "logo": "assets/logo.svg",
-            "favicon": "assets/logo.svg",
+            "favicon": "assets/argus-no-bg.png",
             "palette": [
                 {
                     "media": "(prefers-color-scheme: light)",
@@ -811,6 +810,7 @@ def build_mkdocs_config(version: str, nav: list) -> str:
                 {"icon": "fontawesome/brands/github", "link": "https://github.com/huntridge-labs/argus"},
             ],
         },
+        "extra_css": ["assets/custom.css"],
         "nav": nav,
     }
     output = yaml.dump(config, default_flow_style=False, allow_unicode=True, sort_keys=False)
@@ -884,20 +884,27 @@ def build(repo_root: Path, output_dir: Path) -> None:
     # Assets
     assets_dir = docs_out / "assets"
     assets_dir.mkdir()
-    logo_svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <circle cx="50" cy="50" r="45" fill="#1a1a1a"/>
-  <circle cx="50" cy="50" r="20" fill="none" stroke="#ff5722" stroke-width="3"/>
-  <line x1="50" y1="5" x2="50" y2="30" stroke="#ff5722" stroke-width="3"/>
-  <line x1="50" y1="70" x2="50" y2="95" stroke="#ff5722" stroke-width="3"/>
-  <line x1="5" y1="50" x2="30" y2="50" stroke="#ff5722" stroke-width="3"/>
-  <line x1="70" y1="50" x2="95" y2="50" stroke="#ff5722" stroke-width="3"/>
-  <line x1="18" y1="18" x2="36" y2="36" stroke="#ff5722" stroke-width="2.5"/>
-  <line x1="64" y1="64" x2="82" y2="82" stroke="#ff5722" stroke-width="2.5"/>
-  <line x1="82" y1="18" x2="64" y2="36" stroke="#ff5722" stroke-width="2.5"/>
-  <line x1="36" y1="64" x2="18" y2="82" stroke="#ff5722" stroke-width="2.5"/>
-  <circle cx="50" cy="50" r="6" fill="#ff5722"/>
-</svg>"""
-    write(assets_dir / "logo.svg", logo_svg)
+
+    # Custom CSS — slogan under site name
+    write(assets_dir / "custom.css", (
+        ".md-header__topic {\n"
+        "  height: 48px;\n"
+        "  display: flex;\n"
+        "  align-items: center;\n"
+        "}\n"
+        ".md-header__topic .md-ellipsis {\n"
+        "  display: flex;\n"
+        "  flex-direction: column;\n"
+        "  line-height: 1.2;\n"
+        "}\n"
+        ".md-header__topic .md-ellipsis::after {\n"
+        '  content: "Perception is Protection";\n'
+        "  font-size: 0.55em;\n"
+        "  opacity: 0.6;\n"
+        "  font-weight: 400;\n"
+        "  letter-spacing: 0.05em;\n"
+        "}\n"
+    ))
 
     # Copy repo images into assets (for README badge/logo references)
     img_dir = repo_root / "img"
