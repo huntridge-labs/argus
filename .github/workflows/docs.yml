@@ -50,12 +50,9 @@ jobs:
         if: github.event_name == 'release'
         run: |
           VERSION=$(head -1 version.yaml | awk '{print $1}')
-          cd /tmp/argus-docs
           mike deploy --push --update-aliases "$VERSION" latest \
-            --config-file mkdocs.yml \
-            --remote "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
+            --config-file /tmp/argus-docs/mkdocs.yml
           mike set-default --push latest \
-            --config-file mkdocs.yml \
-            --remote "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
+            --config-file /tmp/argus-docs/mkdocs.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
