@@ -101,6 +101,51 @@ CATEGORY_ICONS = {
 }
 
 
+GITHUB_BLOB = "https://github.com/huntridge-labs/argus/blob/main"
+
+
+def rewrite_repo_links(content: str, source_rel: str) -> str:
+    """Rewrite relative markdown links to absolute GitHub URLs.
+
+    Action READMEs contain links like ``../../CHANGELOG.md`` which resolve
+    within the repo but break inside the generated docs tree. This function
+    resolves each relative link against *source_rel* (the file's path inside
+    the repo, e.g. ``.github/actions/scanner-container/README.md``) and, if
+    it escapes the docs tree, rewrites it to a GitHub blob URL.
+    """
+    source_dir = Path(source_rel).parent
+
+    def _rewrite(m: re.Match) -> str:
+        prefix = m.group(1)   # [text](
+        raw = m.group(2)      # the relative path
+        suffix = m.group(3)   # )
+
+        # Skip anchors, absolute URLs, and template expressions
+        if raw.startswith(("#", "http://", "https://", "${{", "mailto:")):
+            return m.group(0)
+
+        # Strip optional anchor from path for resolution
+        anchor = ""
+        if "#" in raw:
+            raw, anchor = raw.rsplit("#", 1)
+            anchor = f"#{anchor}"
+
+        resolved = (source_dir / raw).as_posix()
+        # Normalise away ../ segments
+        parts = []
+        for p in resolved.split("/"):
+            if p == "..":
+                if parts:
+                    parts.pop()
+            elif p and p != ".":
+                parts.append(p)
+        clean = "/".join(parts)
+
+        return f"{prefix}{GITHUB_BLOB}/{clean}{anchor}{suffix}"
+
+    return re.sub(r'(\[[^\]]*\]\()([^)\s]+)(\))', _rewrite, content)
+
+
 def action_category(action_name: str) -> str:
     for cat, members in SCANNER_CATEGORIES.items():
         if action_name in members:
@@ -446,6 +491,8 @@ def make_action_page(action_dir: Path, version: str) -> str:
 
     if readme:
         readme_body = re.sub(r"^#\s+.+\n", "", readme, count=1).strip()
+        source_rel = f".github/actions/{action_name}/README.md"
+        readme_body = rewrite_repo_links(readme_body, source_rel)
         lines.append(readme_body)
         lines.append("")
         return "\n".join(lines)
@@ -630,10 +677,11 @@ def make_workflow_page(workflow_path: Path, actions_dir: Path, version: str, doc
                         lines.append(f"{i}. {name}")
                 lines.append("")
 
-            # Actions cross-links
-            if job["actions_used"]:
+            # Actions cross-links (skip excluded actions)
+            visible_actions = [a for a in job["actions_used"] if a not in EXCLUDED_ACTIONS]
+            if visible_actions:
                 lines.append("**Actions used:**\n")
-                for action_name in job["actions_used"]:
+                for action_name in visible_actions:
                     action_dir = actions_dir / action_name
                     meta_a = parse_action_yml(action_dir / "action.yml") if action_dir.exists() else {}
                     label = meta_a.get("name", action_name)
@@ -642,10 +690,11 @@ def make_workflow_page(workflow_path: Path, actions_dir: Path, version: str, doc
                     lines.append(f"- {icon} [`{action_name}`](../actions/{action_name}.md) — {label}")
                 lines.append("")
 
-    # Summary of all actions used
-    if wf["used_actions"]:
+    # Summary of all actions used (skip excluded actions)
+    visible_used = [a for a in wf["used_actions"] if a not in EXCLUDED_ACTIONS]
+    if visible_used:
         lines.append("## All Composite Actions Referenced\n")
-        for action_name in wf["used_actions"]:
+        for action_name in visible_used:
             action_dir = actions_dir / action_name
             meta_a = parse_action_yml(action_dir / "action.yml") if action_dir.exists() else {}
             label = meta_a.get("name", action_name)
@@ -742,6 +791,8 @@ def make_home(repo_root: Path, version: str) -> str:
     readme = re.sub(r'<div\b([^>]*)>', r'<div markdown\1>', readme)
     # Rewrite local image paths to assets/
     readme = readme.replace('img/', 'assets/')
+    # Rewrite relative links to GitHub blob URLs
+    readme = rewrite_repo_links(readme, "README.md")
     return readme
 
 
@@ -939,6 +990,8 @@ def build(repo_root: Path, output_dir: Path) -> None:
             if rel.parts[0] in EXCLUDED_GUIDE_DIRS:
                 continue
             content = read(md_file)
+            source_rel = f"docs/{rel}"
+            content = rewrite_repo_links(content, source_rel)
             write(docs_out / "guides" / rel, content)
             extra_pages[str(rel)] = f"guides/{rel}"
 
@@ -970,6 +1023,8 @@ def build(repo_root: Path, output_dir: Path) -> None:
     examples_out = docs_out / "examples"
     if examples_dir.exists():
         examples_readme = read(examples_dir / "README.md")
+        if examples_readme:
+            examples_readme = rewrite_repo_links(examples_readme, "examples/README.md")
         write(examples_out / "index.md", examples_readme or "# Examples\n")
         for yml_file in sorted(examples_dir.rglob("*.yml")):
             rel = yml_file.relative_to(examples_dir)
