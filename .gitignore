@@ -82,3 +82,6 @@ vulnerability-dashboard/.env.local
 scan-results/
 local-test-results/
 local-act-artifacts/
+
+# Generated docs site
+site-build/

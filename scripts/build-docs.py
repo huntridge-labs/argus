@@ -808,6 +808,7 @@ def build_mkdocs_config(version: str, nav: list) -> str:
         "edit_uri": "edit/main/docs/",
         "theme": {
             "name": "material",
+            "logo": "assets/HL.png",
             "favicon": "assets/argus-no-bg.png",
             "palette": [
                 {
