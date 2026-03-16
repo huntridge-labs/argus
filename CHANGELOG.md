@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.6.0](https://github.com/huntridge-labs/argus/compare/0.5.0...0.6.0) (2026-03-16)
+
+### Features
+
+* **ai-summary:** add AI-powered executive security summary action ([aa9e3da](https://github.com/huntridge-labs/argus/commit/aa9e3da641e90cb10ff6580421ae62db0d414139))
+
+### Bug Fixes
+
+* **ai-summary:** address PR review comments ([88321c4](https://github.com/huntridge-labs/argus/commit/88321c42a4ca964ee816d0472494ff596f19c293))
+* **release:** add release-it-ignore inline marker for version ref checker ([0c31410](https://github.com/huntridge-labs/argus/commit/0c314106e991761add3b8e585f5b6da721743b44))
+
+### Dependencies
+
+* **deps:** bump @commitlint/cli from 20.4.3 to 20.5.0 ([#41](https://github.com/huntridge-labs/argus/issues/41)) ([fac7497](https://github.com/huntridge-labs/argus/commit/fac749714d6dca5d043dc1eab637d0c481fe40c1))
+* **deps:** bump @commitlint/config-conventional from 20.4.3 to 20.5.0 ([#43](https://github.com/huntridge-labs/argus/issues/43)) ([960218b](https://github.com/huntridge-labs/argus/commit/960218bc0c681157fcbd034373db98d2282a6889))
+* **deps:** bump @release-it/conventional-changelog ([#42](https://github.com/huntridge-labs/argus/issues/42)) ([64c744f](https://github.com/huntridge-labs/argus/commit/64c744fdf49dbbe63d53acb6d4c4c5acd4744715))
+* **deps:** bump actions/download-artifact ([#44](https://github.com/huntridge-labs/argus/issues/44)) ([a9b99b3](https://github.com/huntridge-labs/argus/commit/a9b99b3b64121917384c6c8bc1b3383bffddbe8b))
+
+### Maintenance
+
+* **aicac:** disable TOON migration suggestions ([730744f](https://github.com/huntridge-labs/argus/commit/730744ffdaa4f665a9435042d2a735860ca6e96f))
+
+
+### Documentation
+
+* add auto-generated MkDocs documentation site ([74504f0](https://github.com/huntridge-labs/argus/commit/74504f0ff5d551ea1d48626e32b3454d378e80d5))
+* add versioned docs with mike ([9d976ee](https://github.com/huntridge-labs/argus/commit/9d976ee13b441c354117e03d1d417bb59c25b49c))
+* refactor docsite into modular package with dynamic config ([82dc79a](https://github.com/huntridge-labs/argus/commit/82dc79a02a01a77961a56857405150a45a73810c))
+
+### Tests
+
+* **docsite:** add comprehensive tests for docsite package ([715e9f7](https://github.com/huntridge-labs/argus/commit/715e9f7ea623a02eab5c3830d43812ff95a88d82))
+* **docsite:** add tests for diagrams and pages modules ([02bf410](https://github.com/huntridge-labs/argus/commit/02bf4100accfef39f2eb7c8d29a77a33393f8778))
+
 ## [0.5.0](https://github.com/huntridge-labs/argus/compare/0.4.3...0.5.0) (2026-03-13)
 
 ### Features
