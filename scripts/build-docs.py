@@ -53,6 +53,8 @@ EXCLUDED_WORKFLOWS = {
     "release", "release-preview", "dependabot-auto-merge", "aicac",
     "docs", "security-reusable-demo",
 }
+# Guides subdirectories to exclude — internal project logistics, not user-facing
+EXCLUDED_GUIDE_DIRS = {"developer"}
 
 SCANNER_CATEGORIES = {
     "sast": ["scanner-bandit", "scanner-codeql", "scanner-opengrep"],
@@ -926,6 +928,9 @@ def build(repo_root: Path, output_dir: Path) -> None:
     if existing_docs_dir.exists():
         for md_file in existing_docs_dir.rglob("*.md"):
             rel = md_file.relative_to(existing_docs_dir)
+            # Skip internal logistics directories
+            if rel.parts[0] in EXCLUDED_GUIDE_DIRS:
+                continue
             content = read(md_file)
             write(docs_out / "guides" / rel, content)
             extra_pages[str(rel)] = f"guides/{rel}"
