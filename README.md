@@ -130,6 +130,8 @@ See [examples/github-enterprise/](examples/github-enterprise/) for complete GHES
 
 ## Documentation
 
+**Full documentation:** [huntridge-labs.github.io/argus](https://huntridge-labs.github.io/argus/)
+
 ### User Guides
 
 - [Scanner Reference](docs/scanners.md) - Complete configuration for all scanners
@@ -398,6 +400,7 @@ AGPL v3 License - see [LICENSE.md](LICENSE.md) for details.
 
 ## Support
 
+- **Documentation:** [huntridge-labs.github.io/argus](https://huntridge-labs.github.io/argus/)
 - **Issues:** [GitHub Issues](https://github.com/huntridge-labs/argusissues)
 - **Discussions:** [GitHub Discussions](https://github.com/huntridge-labs/argusdiscussions)
 - **Security:** See [SECURITY.md](SECURITY.md) for vulnerability reporting

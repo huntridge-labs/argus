@@ -256,7 +256,7 @@ elif PROVIDER == "gemini":
     if not api_key:
         print("ERROR: GEMINI_API_KEY not set")
         sys.exit(1)
-    
+
     print(f"::add-mask::{api_key}")
 
     body = json.dumps({

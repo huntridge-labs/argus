@@ -1,0 +1,59 @@
+repo_url: https://github.com/huntridge-labs/argus
+
+input_group_labels:
+  codeql: CodeQL
+  zap: "ZAP (DAST)"
+  osv: "OSV (Dependency)"
+  gitleaks: Gitleaks
+  bandit: Bandit
+  dependency: Dependency Review
+
+categories:
+  sast:
+    label: SAST
+    icon: "🔍"
+  secrets:
+    label: Secrets Detection
+    icon: "🔑"
+  container:
+    label: Container Security
+    icon: "📦"
+  dependency:
+    label: Dependency Scanning
+    icon: "🔗"
+  iac:
+    label: Infrastructure Security
+    icon: "🏗️"
+  compliance:
+    label: Compliance & Change Control
+    icon: "📋"
+  malware:
+    label: Malware Detection
+    icon: "🛡️"
+  dast:
+    label: DAST
+    icon: "🕷️"
+  linting:
+    label: Code Quality & Linting
+    icon: "✅"
+  utility:
+    label: Utility & Reporting
+    icon: "⚙️"
+  ai:
+    label: AI & Reporting
+    icon: "🤖"
+
+excluded_actions:
+  - comment-pr
+  - get-job-id
+
+excluded_workflows:
+  - release
+  - release-preview
+  - dependabot-auto-merge
+  - aicac
+  - docs
+  - security-reusable-demo
+
+excluded_guide_dirs:
+  - developer

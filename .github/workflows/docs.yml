@@ -31,8 +31,11 @@ jobs:
       - name: Install dependencies
         run: pip install 'mkdocs>=1.6,<2' 'mkdocs-material>=9.7,<10' pyyaml
 
+      - name: Validate docsite config
+        run: cd scripts && python -m docsite --validate
+
       - name: Build docs
-        run: python scripts/build-docs.py --output-dir /tmp/argus-docs
+        run: cd scripts && python -m docsite --output-dir /tmp/argus-docs
 
       - name: Build static site
         run: cd /tmp/argus-docs && mkdocs build --strict --site-dir /tmp/site
