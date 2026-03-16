@@ -94,6 +94,7 @@ jobs:
             ["scanner-container-summary"]="Tested as part of scanner-container"
             ["scanner-zap-summary"]="Tested as part of scanner-zap"
             ["security-summary"]="Tested in test-summary job"
+            ["ai-summary"]="Manual-only action - triggered via dedicated ai-summary.yml workflow with user-supplied PR number"
           )
 
           {
