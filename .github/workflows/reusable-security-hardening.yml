@@ -858,14 +858,14 @@ jobs:
 
     - name: Download OSV artifacts
       if: needs.scan-coordinator.outputs.run_osv == 'true'
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         pattern: osv-*
       continue-on-error: true
 
     - name: Download Dependency Review artifacts
       if: needs.scan-coordinator.outputs.run_dependency_review == 'true'
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         pattern: dependency-review-*
       continue-on-error: true
