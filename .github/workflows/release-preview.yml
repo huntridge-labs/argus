@@ -126,6 +126,8 @@ jobs:
                 echo "\`\`\`"
                 tail -n +3 version_check.txt
                 echo "\`\`\`"
+                echo ""
+                echo "> **Tip:** Add a \`# release-it-ignore\` comment to any line to suppress false positives (e.g. template variables, test fixtures)."
                 echo "</details>"
               } >> preview.md
             fi

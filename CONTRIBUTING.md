@@ -31,6 +31,7 @@ Welcome! This guide covers how to contribute composite actions to the security s
 .github/actions/
 ├── scanner-*/                    # Scanner composite actions
 │   ├── action.yml               # Action definition
+│   ├── .docsite.yml             # Docsite category declaration
 │   ├── README.md                # Action documentation
 │   ├── scripts/                 # Bundled Python scripts
 │   │   ├── parse-results.py     # Parse scanner output → JSON
@@ -76,10 +77,10 @@ Create the directory structure for your scanner:
 ```bash
 mkdir -p .github/actions/scanner-example/scripts
 touch .github/actions/scanner-example/action.yml
+touch .github/actions/scanner-example/.docsite.yml
 touch .github/actions/scanner-example/README.md
-touch .github/actions/scanner-example/scripts/parse-results.sh
-touch .github/actions/scanner-example/scripts/generate-summary.sh
-chmod +x .github/actions/scanner-example/scripts/*.sh
+touch .github/actions/scanner-example/scripts/parse-results.py
+touch .github/actions/scanner-example/scripts/generate-summary.py
 ```
 
 ### Step 2: Define action.yml
@@ -292,7 +293,32 @@ Brief description of what this scanner detects.
 - Dependencies
 ```
 
-### Step 6: Update Actions Catalog
+### Step 6: Register with the Documentation Site
+
+Create `.github/actions/scanner-example/.docsite.yml` to declare the action's category:
+
+```yaml
+category: sast  # Must match a category defined in docsite.yml
+```
+
+Available categories are defined in `docsite.yml` at the repo root (e.g., `sast`, `secrets`, `container`, `dast`, `infrastructure`, `malware`, `dependencies`, `linting`, `compliance`, `ai`, `utility`).
+
+To validate your configuration:
+
+```bash
+cd scripts && python -m docsite --validate
+```
+
+This ensures your `.docsite.yml` exists, references a valid category, and that the site will build correctly.
+
+To preview the documentation site locally:
+
+```bash
+cd scripts && python -m docsite --output-dir /tmp/argus-docs
+cd /tmp/argus-docs && mkdocs serve
+```
+
+### Step 7: Update Actions Catalog
 
 Add to `.github/actions/README.md`:
 
@@ -300,7 +326,7 @@ Add to `.github/actions/README.md`:
 | [scanner-example](scanner-example/) | Example scanner description | Languages | [README](scanner-example/README.md) |
 ```
 
-### Step 7: Add to Example Workflows
+### Step 8: Add to Example Workflows
 
 Add your scanner to `examples/composite-actions-example.yml`:
 
@@ -404,9 +430,11 @@ Test infrastructure is complete:
 - [ ] All outputs are set correctly
 - [ ] Parser handles various input formats
 - [ ] Summary markdown is valid
+- [ ] `.docsite.yml` created with valid category
+- [ ] Docsite validation passes: `cd scripts && python -m docsite --validate`
 - [ ] Unit tests added in `.github/actions/*/tests/`
 - [ ] Tests use shared fixtures from `tests/fixtures/`
-- [ ] All tests pass: `npm test`
+- [ ] All tests pass: `pytest`
 - [ ] SARIF upload works (if applicable)
 - [ ] Artifacts upload with correct names
 - [ ] PR comments work
@@ -424,18 +452,22 @@ Every scanner action must include:
    - Complete inputs/outputs tables
    - Requirements
 
-2. **Inline Documentation**
+2. **Docsite Registration**
+   - `.docsite.yml` with valid category (see Step 6 above)
+   - Validate with `cd scripts && python -m docsite --validate`
+
+3. **Inline Documentation**
    - Comments in action.yml
    - Comments in scripts
    - Helpful error messages
 
-3. **Catalog Entry**
+4. **Catalog Entry**
    - Add to `.github/actions/README.md`
 
-4. **Usage Example**
+5. **Usage Example**
    - Add to `examples/composite-actions-example.yml`
 
-5. **Changelog**
+6. **Changelog**
    - Update `CHANGELOG.md`
 
 ---

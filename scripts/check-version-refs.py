@@ -16,12 +16,15 @@ from pathlib import Path
 # Directories and files to skip when scanning
 SKIP_DIRS = {
     'node_modules', '.git', '__pycache__', '.venv', 'venv',
-    'htmlcov', 'coverage', '.tox', '.pytest_cache',
+    'htmlcov', 'coverage', '.tox', '.pytest_cache', 'site-build',
 }
 SKIP_FILES = {
     'CHANGELOG.md', 'package-lock.json', 'check-version-refs.py',
     '.release-it.json', 'copilot-instructions.md', 'release_output.txt',
 }
+
+# Inline marker to suppress version-ref warnings on a specific line
+IGNORE_MARKER = 'release-it-ignore'
 
 # Patterns that represent version references in this repo
 VERSION_REF_PATTERNS = [
@@ -134,6 +137,8 @@ def find_version_refs(repo_root: Path) -> list:
             continue
 
         for line_num, line in enumerate(content.splitlines(), 1):
+            if IGNORE_MARKER in line:
+                continue
             for pattern in VERSION_REF_PATTERNS:
                 for match in pattern.finditer(line):
                     refs.append({

@@ -66,7 +66,7 @@ runs:
           exit 1
         fi
         echo "Found scanner summaries:"
-        find /tmp/scanner-summaries -type f  
+        find /tmp/scanner-summaries -type f
 
     - name: Generate AI summary
       shell: bash

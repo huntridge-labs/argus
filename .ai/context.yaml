@@ -35,6 +35,9 @@ entrypoints:
   v3_actions: ".github/actions/"
   examples: "examples/workflows/"
   documentation: "docs/"
+  docsite: "scripts/docsite/"
+  docsite_config: "docsite.yml"
+  docsite_url: "https://huntridge-labs.github.io/argus/"
 
 common_tasks:
   run_all_scanners: "Call the reusable workflow to run the default scanner suite."

@@ -514,4 +514,3 @@ class TestMissingSummaryDir:
             import runpy
             runpy.run_path(str(SCRIPT_PATH))
         assert exc.value.code == 1
-        

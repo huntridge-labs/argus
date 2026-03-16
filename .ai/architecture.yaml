@@ -59,6 +59,7 @@ components:
     type: action
     structure:
       action.yml: "Inputs, outputs, steps"
+      .docsite.yml: "Category declaration for auto-generated documentation site"
       scripts/parse-results.py: "Scanner output → JSON"
       scripts/generate-summary.py: "JSON → Markdown"
       tests/: "Co-located pytest tests"
@@ -315,10 +316,40 @@ data_flow:
       to: security-summary
       data: "all findings"
 
+docsite:
+  name: docsite
+  location: "scripts/docsite/"
+  purpose: "Auto-generated MkDocs Material documentation site"
+  type: tooling
+  url: "https://huntridge-labs.github.io/argus/"
+  deployment: ".github/workflows/docs.yml → GitHub Pages"
+  structure:
+    __main__.py: "CLI entry point (--validate flag for CI)"
+    config.py: "Loads docsite.yml — no hardcoded defaults"
+    categories.py: "Reads per-action .docsite.yml for category assignment"
+    builder.py: "Main orchestrator — builds all pages and nav tree"
+    pages.py: "Individual action/workflow page generators"
+    indexes.py: "Index pages (actions, workflows, home)"
+    mkdocs_config.py: "MkDocs Material theme configuration"
+    diagrams.py: "Mermaid workflow diagrams with pan/zoom"
+    parsers.py: "action.yml and workflow YAML parsers"
+    helpers.py: "File I/O and link rewriting utilities"
+    validator.py: "Config completeness validator for CI"
+  config_files:
+    "docsite.yml": "Repo-root site config (categories, labels, icons, exclusions)"
+    ".github/actions/*/.docsite.yml": "Per-action category declaration"
+  commands:
+    validate: "cd scripts && python -m docsite --validate"
+    build: "cd scripts && python -m docsite --output-dir /tmp/argus-docs"
+    preview: "cd /tmp/argus-docs && mkdocs serve"
+
 directory_structure:
   ".github/actions/": "v3.0 composite actions"
   ".github/workflows/": "v2.x reusable workflows"
   ".github/actions/*/schemas/": "JSON schemas co-located with each action"
+  ".github/actions/*/.docsite.yml": "Per-action docsite category declaration"
+  "scripts/docsite/": "Auto-generated documentation site package"
+  "docsite.yml": "Documentation site configuration (categories, icons, exclusions)"
   "examples/workflows/": "User-facing workflow examples"
   "examples/configs/": "Configuration file examples"
   "tests/": "Test infrastructure"

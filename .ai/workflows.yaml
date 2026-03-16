@@ -240,6 +240,11 @@ contributor_workflows:
         file: ".github/workflows/reusable-security-hardening.yml"
         pattern: "Add to scanner matrix"
 
+      - action: "Register with docsite"
+        location: ".github/actions/scanner-{name}/.docsite.yml"
+        content: "category: <valid-category>"
+        validate: "cd scripts && python -m docsite --validate"
+
       - action: "Document"
         file: "docs/scanners.md"
         pattern: "Add scanner reference"
@@ -311,3 +316,6 @@ quick_reference:
   lint: "npm run lint"
   release: "npm run release"
   format: "npm run format"
+  docsite_validate: "cd scripts && python -m docsite --validate"
+  docsite_build: "cd scripts && python -m docsite --output-dir /tmp/argus-docs"
+  docsite_preview: "cd scripts && python -m docsite --output-dir /tmp/argus-docs && cd /tmp/argus-docs && mkdocs serve"

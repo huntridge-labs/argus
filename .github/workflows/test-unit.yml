@@ -64,7 +64,7 @@ jobs:
             echo "✅ All tests completed!"
             echo ""
             echo "**Test Coverage:**"
-            echo "- Python tests (utilities & ClamAV)"
+            echo "- Python tests (utilities, ClamAV & docsite)"
             echo "- Action schema validation"
             echo ""
             echo "See detailed coverage reports in artifacts"
