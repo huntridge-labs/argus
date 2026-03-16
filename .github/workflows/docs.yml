@@ -29,7 +29,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install mkdocs mkdocs-material pyyaml
+        run: pip install 'mkdocs>=1.6,<2' 'mkdocs-material>=9.7,<10' pyyaml
 
       - name: Build docs
         run: python scripts/build-docs.py --output-dir /tmp/argus-docs
