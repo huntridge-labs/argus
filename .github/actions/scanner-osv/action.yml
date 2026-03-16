@@ -14,7 +14,7 @@ description: |
   **Usage Example:**
   ```yaml
   - uses: actions/checkout@v6
-  - uses: huntridge-labs/argus/.github/actions/scanner-osv@0.6.0
+  - uses: huntridge-labs/argus/.github/actions/scanner-osv@0.6.1
     env:
       GITHUB_TOKEN: (secrets.GITHUB_TOKEN)
     with:
@@ -292,7 +292,7 @@ runs:
 
     - name: Comment PR with OSV results
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@0.6.0
+      uses: huntridge-labs/argus/.github/actions/comment-pr@0.6.1
       with:
         summary_file: scanner-summaries/osv.md
         comment_marker: osv-scanner-comment-marker

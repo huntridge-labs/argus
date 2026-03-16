@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.6.1](https://github.com/huntridge-labs/argus/compare/0.6.0...0.6.1) (2026-03-16)
+
+### Bug Fixes
+
+* **docs:** run mike from repo root where .git exists ([cc4155d](https://github.com/huntridge-labs/argus/commit/cc4155d247f6876ced409f55907d64a214f4f3bf))
+
 ## [0.6.0](https://github.com/huntridge-labs/argus/compare/0.5.0...0.6.0) (2026-03-16)
 
 ### Features
