@@ -35,7 +35,7 @@ def make_action_page(action_dir: Path, version: str) -> str:
         lines.append(f"{short_desc}\n")
 
     lines.append("```yaml")
-    lines.append(f"uses: huntridge-labs/argus/.github/actions/{action_name}@{version}")
+    lines.append(f"uses: huntridge-labs/argus/.github/actions/{action_name}@{version}")  # release-it-ignore
     lines.append("```\n")
 
     if readme:

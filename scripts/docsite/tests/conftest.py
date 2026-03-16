@@ -114,7 +114,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.5.0
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.5.0  # release-it-ignore
         with:
           scan_path: src
 
@@ -123,7 +123,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.5.0
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.5.0  # release-it-ignore
 
   summary:
     name: Security Summary
