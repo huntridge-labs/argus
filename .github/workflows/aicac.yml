@@ -38,3 +38,4 @@ jobs:
           mode: ${{ steps.check-aicac.outputs.mode }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           update-badge: 'true'
+          suggest-toon: 'false'
