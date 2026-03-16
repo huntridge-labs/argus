@@ -936,19 +936,19 @@ def build(repo_root: Path, output_dir: Path) -> None:
     assets_dir = docs_out / "assets"
     assets_dir.mkdir()
 
-    # Custom CSS — slogan under site name
+    # Custom CSS — slogan under site name (first topic only, not page title)
     write(assets_dir / "custom.css", (
         ".md-header__topic {\n"
         "  height: 48px;\n"
         "  display: flex;\n"
         "  align-items: center;\n"
         "}\n"
-        ".md-header__topic .md-ellipsis {\n"
+        ".md-header__topic:first-child .md-ellipsis {\n"
         "  display: flex;\n"
         "  flex-direction: column;\n"
         "  line-height: 1.2;\n"
         "}\n"
-        ".md-header__topic .md-ellipsis::after {\n"
+        ".md-header__topic:first-child .md-ellipsis::after {\n"
         '  content: "Perception is Protection";\n'
         "  font-size: 0.55em;\n"
         "  opacity: 0.6;\n"
