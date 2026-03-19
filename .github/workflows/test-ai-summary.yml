@@ -1,3 +1,4 @@
+
 name: AI Security Summary
 
 on:
@@ -13,12 +14,12 @@ on:
           - claude
           #  - gemini
       pr_number:
-        description: 'PR number that has a completed security scan run'
+        description: 'PR number that has a completed Test Composite Actions run with scanner artifacts'
         required: true
         type: string
 
-  #pull_request:
-  #  branches: [main]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
@@ -36,25 +37,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Resolve run ID from PR number
+      - name: Resolve run ID
         id: resolve
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ inputs.pr_number }}
         run: |
-          echo "Looking up latest completed test-actions.yml run for PR #${PR_NUMBER}..."
+          echo "Looking up head SHA for PR #${PR_NUMBER}..."
+          HEAD_SHA=$(gh api "/repos/${{ github.repository }}/pulls/${PR_NUMBER}" --jq ".head.sha")
 
-          # shellcheck disable=SC2016
-          JQ_FILTER='[.workflow_runs[] | select(.pull_requests[].number == ($pr | tonumber))] | first | .id'
+          if [ -z "$HEAD_SHA" ] || [ "$HEAD_SHA" == "null" ]; then
+            echo "::error::Could not resolve head SHA for PR #${PR_NUMBER}."
+            exit 1
+          fi
+
+          echo "Found SHA: ${HEAD_SHA}"
+          echo "Looking up completed test-actions.yml run for SHA ${HEAD_SHA}..."
 
           RUN_ID=$(gh api \
-            "/repos/${{ github.repository }}/actions/workflows/test-actions.yml/runs?event=pull_request&status=completed&per_page=20" \
-            --arg pr "${PR_NUMBER}" \
-            --jq "${JQ_FILTER}")
+            "/repos/${{ github.repository }}/actions/workflows/test-actions.yml/runs?status=completed&per_page=50" \
+            --jq "[.workflow_runs[] | select(.head_sha == \"${HEAD_SHA}\")] | first | .id")
 
           if [ -z "$RUN_ID" ] || [ "$RUN_ID" == "null" ]; then
-            echo "::error::No completed test-actions.yml run found for PR #${PR_NUMBER}. Ensure the security scan workflow has run against this PR first."
+            echo "::error::No completed test-actions.yml run found for PR #${PR_NUMBER} (SHA: ${HEAD_SHA}). Ensure the security scan workflow has run against this PR first."
             exit 1
           fi
 
