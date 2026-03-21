@@ -1,0 +1,17 @@
+.md-header__topic {
+  height: 48px;
+  display: flex;
+  align-items: center;
+}
+.md-header__topic:first-child .md-ellipsis {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+.md-header__topic:first-child .md-ellipsis::after {
+  content: "Perception is Protection";
+  font-size: 0.55em;
+  opacity: 0.6;
+  font-weight: 400;
+  letter-spacing: 0.05em;
+}
