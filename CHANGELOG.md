@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.6.2](https://github.com/huntridge-labs/argus/compare/0.6.1...0.6.2) (2026-03-21)
+
+### Security Tools
+
+* **deps:** bump anchore/sbom-action ([#51](https://github.com/huntridge-labs/argus/issues/51)) ([3d7b538](https://github.com/huntridge-labs/argus/commit/3d7b5380278dff28bb8f23202d01535e99eae626))
+* **deps:** bump anchore/sbom-action in /.github/actions/scanner-syft ([#53](https://github.com/huntridge-labs/argus/issues/53)) ([c0b1a12](https://github.com/huntridge-labs/argus/commit/c0b1a12ab7bcfb347e679fb2c4f83571b1731155))
+* **deps:** bump aquasecurity/setup-trivy ([#54](https://github.com/huntridge-labs/argus/issues/54)) ([0a5d093](https://github.com/huntridge-labs/argus/commit/0a5d09363a236603a24c6ae0b29c594314882b96))
+* **deps:** bump aquasecurity/trivy-action ([#52](https://github.com/huntridge-labs/argus/issues/52)) ([539da06](https://github.com/huntridge-labs/argus/commit/539da06d41d6823ddca6f94fdb410ac8cc8c7a5e))
+* **deps:** bump bridgecrewio/checkov-action ([#50](https://github.com/huntridge-labs/argus/issues/50)) ([6cc7c88](https://github.com/huntridge-labs/argus/commit/6cc7c88701e8b32f77c0eafa8bbe43877c9d41bd))
+
+### Dependencies
+
+* **deps:** bump the github-actions-major group across 27 directories with 9 updates ([d868a7d](https://github.com/huntridge-labs/argus/commit/d868a7d5eda009159c0df72b961da3b590e48ec2))
+
+
+### Continuous Integration
+
+* **deps:** update dependabot configuration to support multiple directories for GitHub Actions ([91a89cb](https://github.com/huntridge-labs/argus/commit/91a89cb99c50cab0a7d7918da22f9f3c9b2a9b15))
+
 ## [0.6.1](https://github.com/huntridge-labs/argus/compare/0.6.0...0.6.1) (2026-03-16)
 
 ### Bug Fixes
