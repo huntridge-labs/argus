@@ -238,7 +238,7 @@ runs:
     - name: Run Trivy vulnerability scanner (JSON)
       id: trivy-json
       if: contains(inputs.scanners, 'trivy') && contains(github.server_url, 'github.com')
-      uses: aquasecurity/trivy-action@0.33.1
+      uses: aquasecurity/trivy-action@0.35.0
       continue-on-error: true
       with:
         image-ref: ${{ inputs.image_ref }}
@@ -251,7 +251,7 @@ runs:
     - name: Run Trivy vulnerability scanner (SARIF)
       id: trivy-sarif
       if: contains(inputs.scanners, 'trivy') && contains(github.server_url, 'github.com')
-      uses: aquasecurity/trivy-action@0.33.1
+      uses: aquasecurity/trivy-action@0.35.0
       continue-on-error: true
       with:
         image-ref: ${{ inputs.image_ref }}
@@ -264,7 +264,7 @@ runs:
     - name: Run Trivy vulnerability scanner (Table)
       id: trivy-table
       if: contains(inputs.scanners, 'trivy') && contains(github.server_url, 'github.com')
-      uses: aquasecurity/trivy-action@0.33.1
+      uses: aquasecurity/trivy-action@0.35.0
       continue-on-error: true
       with:
         image-ref: ${{ inputs.image_ref }}
