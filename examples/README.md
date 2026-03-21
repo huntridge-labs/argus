@@ -114,10 +114,10 @@ jobs:
 |--------------|-------------|----------|
 | [`composite-actions-example.yml`](workflows/composite-actions-example.yml) | Full example using composite actions | Most flexible approach |
 | [`use-reusable-workflow.yml`](workflows/use-reusable-workflow.yml) | Simple reusable workflow call | Quick setup |
-| [`individual-scanner-workflows.yml`](individual-scanner-workflows.yml) | Individual scanner workflow calls | Granular control |
+| [`individual-scanner-workflows.yml`](workflows/individual-scanner-workflows.yml) | Individual scanner workflow calls | Granular control |
 | [`container-config.example.yml`](configs/container-config.example.yml) | Container scanning configuration | Container security |
-| [`scanner-zap-podinfo.yml`](scanner-zap-podinfo.yml) | ZAP DAST scanning example | Web app security |
-| [`actions-container-scan-matrix.yml`](actions-container-scan-matrix.yml) | Matrix-based container scanning | Multiple images |
+| [`scanner-zap-podinfo.yml`](workflows/scanner-zap-podinfo.yml) | ZAP DAST scanning example | Web app security |
+| [`actions-container-scan-matrix.yml`](workflows/actions-container-scan-matrix.yml) | Matrix-based container scanning | Multiple images |
 
 ---
 
