@@ -6,7 +6,9 @@ version: 2
 updates:
   # GitHub Actions - grouped by semantic version level
   - package-ecosystem: "github-actions"
-    directory: "/"
+    directories:
+      - "/"
+      - "/.github/actions/*"
     schedule:
       interval: "weekly"
       day: "monday"
