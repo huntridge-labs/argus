@@ -66,7 +66,7 @@ docs/                  # Detailed documentation
 No setup required. Reference workflows directly:
 
 ```yaml
-uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.6.2
+uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.6.3
 with:
   scanners: all
   enable_code_security: true
@@ -359,7 +359,7 @@ on: [push, pull_request]
 
 jobs:
   security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.6.2
+    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.6.3
     with:
       scanners: codeql,bandit,gitleaks
       fail_on_severity: high
@@ -371,7 +371,7 @@ jobs:
 ### Scan Container Images
 
 ```yaml
-uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@0.6.2
+uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@0.6.3
 with:
   config_file: .github/container-config.yml
 ```
@@ -402,7 +402,7 @@ containers:
 ```yaml
 - name: Post PR Comment
   if: github.event_name == 'pull_request'
-  uses: huntridge-labs/argus/.github/actions/comment-pr@0.6.2
+  uses: huntridge-labs/argus/.github/actions/comment-pr@0.6.3
   with:
     comment_file: summary.md
 ```

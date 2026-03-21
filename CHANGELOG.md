@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.6.3](https://github.com/huntridge-labs/argus/compare/0.6.2...0.6.3) (2026-03-21)
+
+### Documentation
+
+* fix incorrect workflow references and broken example links ([7e7b40e](https://github.com/huntridge-labs/argus/commit/7e7b40edb390a7321ed5897df49bf201ca566159))
+
 ## [0.6.2](https://github.com/huntridge-labs/argus/compare/0.6.1...0.6.2) (2026-03-21)
 
 ### Security Tools

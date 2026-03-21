@@ -344,7 +344,7 @@ Most scanner actions support these common inputs:
 ### Individual Scanner
 ```yaml
 - name: Run Bandit Python Scanner
-  uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.6.2
+  uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.6.3
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -362,12 +362,12 @@ See `examples/composite-actions-example.yml` for a full example with:
 
 ### Config-Driven Container Scanning
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/parse-container-config@0.6.2
+- uses: huntridge-labs/argus/.github/actions/parse-container-config@0.6.3
   id: parse
   with:
     config_file: 'container-config.yml'
 
-- uses: huntridge-labs/argus/.github/actions/scanner-container@0.6.2
+- uses: huntridge-labs/argus/.github/actions/scanner-container@0.6.3
   strategy:
     matrix: ${{ fromJson(steps.parse.outputs.matrix) }}
   with:
