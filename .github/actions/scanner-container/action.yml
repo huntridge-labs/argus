@@ -139,7 +139,7 @@ runs:
     # ========================================
     - name: Generate SBOM (Syft)
       if: contains(inputs.scanners, 'syft')
-      uses: anchore/sbom-action@v0.22.1
+      uses: anchore/sbom-action@v0.24.0
       with:
         image: ${{ inputs.image_ref }}
         format: cyclonedx-json
@@ -151,7 +151,7 @@ runs:
 
     - name: Generate SBOM SPDX format
       if: contains(inputs.scanners, 'syft')
-      uses: anchore/sbom-action@v0.22.1
+      uses: anchore/sbom-action@v0.24.0
       with:
         image: ${{ inputs.image_ref }}
         format: spdx-json
