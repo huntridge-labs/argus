@@ -147,7 +147,7 @@ runs:
 
     - name: Upload linter summary
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: linter-summary-json
         path: linter-summaries/json.md
@@ -156,7 +156,7 @@ runs:
 
     - name: Upload raw lint results
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: json-lint-results
         path: /tmp/json_issues.txt

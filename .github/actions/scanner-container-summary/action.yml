@@ -79,7 +79,7 @@ runs:
   using: 'composite'
   steps:
     - name: Download scan artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         pattern: ${{ inputs.artifact_pattern }}
         merge-multiple: false
@@ -107,7 +107,7 @@ runs:
         python3 "${{ github.action_path }}/../scanner-container/scripts/generate_container_summary.py" --combined
 
     - name: Upload combined summary artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: container-scan-summary
         path: scanner-summaries/

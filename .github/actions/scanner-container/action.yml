@@ -276,7 +276,7 @@ runs:
 
     - name: Upload Trivy SARIF to GitHub Security
       if: contains(inputs.scanners, 'trivy') && inputs.enable_code_security == 'true'
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       continue-on-error: true
       with:
         sarif_file: trivy-${{ inputs.container_name }}-results.sarif
@@ -328,7 +328,7 @@ runs:
     # ========================================
     - name: Run Grype vulnerability scanner (JSON)
       if: contains(inputs.scanners, 'grype')
-      uses: anchore/scan-action@v6
+      uses: anchore/scan-action@v7
       id: grype-json
       continue-on-error: true
       with:
@@ -349,7 +349,7 @@ runs:
 
     - name: Run Grype vulnerability scanner (SARIF)
       if: contains(inputs.scanners, 'grype')
-      uses: anchore/scan-action@v6
+      uses: anchore/scan-action@v7
       id: grype-sarif
       continue-on-error: true
       with:
@@ -370,7 +370,7 @@ runs:
 
     - name: Upload Grype SARIF to GitHub Security
       if: contains(inputs.scanners, 'grype') && inputs.enable_code_security == 'true'
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       continue-on-error: true
       with:
         sarif_file: grype-${{ inputs.container_name }}-results.sarif
@@ -597,7 +597,7 @@ runs:
     # ========================================
     - name: Upload scan results
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: container-scan-results-${{ inputs.container_name }}-${{ inputs.scanners }}-${{ steps.job-id.outputs.job-id }}
         path: |

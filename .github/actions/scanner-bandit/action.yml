@@ -172,7 +172,7 @@ runs:
         echo "✅ No issues at or above severity threshold"
 
     - name: Upload Bandit artifacts
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: bandit-reports
         path: bandit-reports/
@@ -325,7 +325,7 @@ runs:
 
     - name: Upload Bandit summary section
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: scanner-summary-bandit
         path: scanner-summaries/bandit.md

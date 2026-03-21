@@ -204,7 +204,7 @@ runs:
         ls -la clamav-reports/ || echo "No files generated"
 
     - name: Upload ClamAV artifacts
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: clamav-reports-${{ inputs.job_id }}
         path: clamav-reports/
@@ -283,7 +283,7 @@ runs:
 
     - name: Upload ClamAV summary section
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: scanner-summary-clamav-${{ inputs.job_id }}
         path: scanner-summaries/clamav.md

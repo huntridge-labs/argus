@@ -265,7 +265,7 @@ runs:
 
     - name: Upload Trivy artifacts
       if: steps.validate.outputs.has_iac == 'true' && always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: trivy-iac-scan-results
         path: |
@@ -308,7 +308,7 @@ runs:
 
     - name: Upload scanner summary section
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: scanner-summary-trivy-iac
         path: scanner-summaries/trivy-iac.md

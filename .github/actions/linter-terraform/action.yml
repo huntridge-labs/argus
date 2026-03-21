@@ -51,7 +51,7 @@ runs:
   using: 'composite'
   steps:
     - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
+      uses: hashicorp/setup-terraform@v4
       with:
         terraform_version: ${{ inputs.terraform_version }}
 
@@ -251,7 +251,7 @@ runs:
 
     - name: Upload linter summary
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: linter-summary-terraform
         path: linter-summaries/terraform.md
@@ -260,7 +260,7 @@ runs:
 
     - name: Upload raw lint results
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: terraform-lint-results
         path: /tmp/terraform_issues.txt

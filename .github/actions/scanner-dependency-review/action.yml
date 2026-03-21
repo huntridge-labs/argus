@@ -190,7 +190,7 @@ runs:
 
     - name: Upload reports
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: dependency-review-reports-${{ inputs.job_id }}
         path: dependency-review-reports/
@@ -240,7 +240,7 @@ runs:
 
     - name: Upload scanner summary
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: scanner-summary-dependency-review-${{ inputs.job_id }}
         path: scanner-summaries/dependency-review.md
