@@ -51,7 +51,7 @@ runs:
   using: 'composite'
   steps:
     - name: Download all linter summaries
-      uses: actions/download-artifact@v6
+      uses: actions/download-artifact@v8
       with:
         pattern: ${{ inputs.summary_pattern }}
         path: linter-summaries

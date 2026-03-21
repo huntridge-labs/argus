@@ -39,7 +39,7 @@ runs:
 
     - name: Set up Node.js
       if: inputs.provider == 'copilot'
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v6
       with:
         node-version: '20'
 
@@ -50,7 +50,7 @@ runs:
 
     - name: Download scanner summaries
       if: inputs.skip_download == 'false'
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         pattern: scanner-summary-*
         path: /tmp/scanner-summaries

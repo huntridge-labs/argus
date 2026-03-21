@@ -210,7 +210,7 @@ runs:
         echo "Found $COMPONENT_COUNT components/packages"
 
     - name: Upload SBOM artifacts
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: sbom-${{ steps.setup.outputs.prefix }}
         path: ${{ steps.setup.outputs.output_dir }}/
@@ -309,7 +309,7 @@ runs:
 
     - name: Upload summary artifact
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: scanner-summary-syft-${{ steps.setup.outputs.prefix }}
         path: scanner-summaries/syft.md

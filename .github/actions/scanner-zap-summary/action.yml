@@ -58,7 +58,7 @@ runs:
   using: 'composite'
   steps:
     - name: Download ZAP report artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         pattern: ${{ inputs.artifact_pattern }}
         path: zap-downloads
@@ -66,7 +66,7 @@ runs:
       continue-on-error: true
 
     - name: Download summary artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         pattern: ${{ inputs.summary_pattern }}
         path: scanner-summaries
@@ -145,7 +145,7 @@ runs:
 
     - name: Upload combined summary
       if: steps.generate.outputs.summary_path != ''
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ${{ inputs.output_name }}
         path: ${{ steps.generate.outputs.summary_path }}

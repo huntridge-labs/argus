@@ -231,7 +231,7 @@ runs:
         echo "::endgroup::"
 
     - name: Upload CodeQL reports
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: codeql-reports-${{ inputs.language }}
         path: codeql-reports/
@@ -287,7 +287,7 @@ runs:
 
     - name: Upload scanner summary
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: scanner-summary-codeql-${{ inputs.language }}
         path: scanner-summaries/codeql-${{ inputs.language }}.md

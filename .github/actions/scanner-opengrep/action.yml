@@ -125,7 +125,7 @@ runs:
         echo "::endgroup::"
 
     - name: Upload OpenGrep reports
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: opengrep-reports
         path: opengrep-reports/
@@ -182,7 +182,7 @@ runs:
 
     - name: Upload scanner summary
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: scanner-summary-opengrep
         path: scanner-summaries/opengrep.md

@@ -201,7 +201,7 @@ runs:
 
     - name: Upload linter summary
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: linter-summary-dockerfile
         path: linter-summaries/dockerfile.md
@@ -219,7 +219,7 @@ runs:
 
     - name: Upload raw lint results
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: dockerfile-lint-results
         path: /tmp/dockerfile_issues.txt

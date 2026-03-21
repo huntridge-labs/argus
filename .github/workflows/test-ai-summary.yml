@@ -62,7 +62,7 @@ jobs:
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
 
       - name: Download scanner summaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: scanner-summary-*
           path: /tmp/scanner-summaries

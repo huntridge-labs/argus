@@ -233,7 +233,7 @@ runs:
 
     - name: Upload OSV reports
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: osv-reports-${{ inputs.job_id }}
         path: osv-reports/
@@ -283,7 +283,7 @@ runs:
 
     - name: Upload scanner summary
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: scanner-summary-osv-${{ inputs.job_id }}
         path: scanner-summaries/osv.md
