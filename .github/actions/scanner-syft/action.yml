@@ -123,7 +123,7 @@ runs:
     - name: Generate SBOM (Path)
       id: sbom-path
       if: steps.setup.outputs.type == 'path'
-      uses: anchore/sbom-action@v0.22.1
+      uses: anchore/sbom-action@v0.24.0
       with:
         path: ${{ steps.setup.outputs.target }}
         format: ${{ inputs.output_format }}
@@ -135,7 +135,7 @@ runs:
     - name: Generate SBOM (Image)
       id: sbom-image
       if: steps.setup.outputs.type == 'image'
-      uses: anchore/sbom-action@v0.22.1
+      uses: anchore/sbom-action@v0.24.0
       with:
         image: ${{ steps.setup.outputs.target }}
         format: ${{ inputs.output_format }}
@@ -219,7 +219,7 @@ runs:
 
     - name: Upload to GitHub Dependency Graph
       if: inputs.enable_code_security == 'true' && steps.setup.outputs.type == 'path'
-      uses: anchore/sbom-action/publish-sbom@v0.21.0
+      uses: anchore/sbom-action/publish-sbom@v0.24.0
       with:
         sbom-artifact-match: sbom-${{ steps.setup.outputs.prefix }}
       continue-on-error: true
