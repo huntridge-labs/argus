@@ -13,7 +13,7 @@ description: |
 
   **Usage Example:**
   ```yaml
-  - uses: actions/checkout@v6
+  - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
   - uses: huntridge-labs/argus/.github/actions/scanner-osv@0.6.3
     env:
       GITHUB_TOKEN: (secrets.GITHUB_TOKEN)
@@ -151,7 +151,7 @@ runs:
 
     - name: Run OSV-Scanner (JSON)
       id: scan
-      uses: google/osv-scanner-action/osv-scanner-action@v2.3.3
+      uses: google/osv-scanner-action/osv-scanner-action@c5996e0193a3df57d695c1b8a1dec2a4c62e8730 # v2.3.3
       with:
         scan-args: ${{ steps.build-args.outputs.json_args }}
       continue-on-error: true
@@ -174,7 +174,7 @@ runs:
 
     - name: Run OSV-Scanner (SARIF)
       if: inputs.enable_code_security == 'true'
-      uses: google/osv-scanner-action/osv-scanner-action@v2.3.3
+      uses: google/osv-scanner-action/osv-scanner-action@c5996e0193a3df57d695c1b8a1dec2a4c62e8730 # v2.3.3
       with:
         scan-args: ${{ steps.build-args.outputs.sarif_args }}
       continue-on-error: true
@@ -233,7 +233,7 @@ runs:
 
     - name: Upload OSV reports
       if: always()
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
       with:
         name: osv-reports-${{ inputs.job_id }}
         path: osv-reports/
@@ -242,7 +242,7 @@ runs:
 
     - name: Upload SARIF to GitHub Security
       if: inputs.enable_code_security == 'true' && hashFiles('osv-reports/osv-results.sarif') != ''
-      uses: github/codeql-action/upload-sarif@v4
+      uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4
       with:
         sarif_file: osv-reports/osv-results.sarif
         category: osv-scanner
@@ -283,7 +283,7 @@ runs:
 
     - name: Upload scanner summary
       if: always()
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
       with:
         name: scanner-summary-osv-${{ inputs.job_id }}
         path: scanner-summaries/osv.md

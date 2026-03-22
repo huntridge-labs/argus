@@ -15,7 +15,7 @@ description: |
           matrix: (( steps.parse.outputs.matrix ))
           has_containers: (( steps.parse.outputs.has_containers ))
         steps:
-          - uses: actions/checkout@v6
+          - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
           - uses: huntridge-labs/argus/.github/actions/parse-container-config@0.6.3
             id: parse
             with:
@@ -62,7 +62,7 @@ runs:
   using: 'composite'
   steps:
     - name: Setup Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
       with:
         python-version: '3.13'
 

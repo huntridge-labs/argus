@@ -45,7 +45,7 @@ jobs:
     name: Gitleaks Secret Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
       - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.6.3
@@ -63,7 +63,7 @@ jobs:
     name: Bandit Python SAST
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.6.3
         with:
           fail_on_severity: 'high'
@@ -75,7 +75,7 @@ jobs:
     name: CodeQL SAST
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: huntridge-labs/argus/.github/actions/scanner-codeql@0.6.3
         with:
           language: 'python'  # Adjust: python, javascript, java, go, etc.
@@ -89,7 +89,7 @@ jobs:
     name: OpenGrep SAST
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: huntridge-labs/argus/.github/actions/scanner-opengrep@0.6.3
         with:
           config: 'auto'
@@ -104,7 +104,7 @@ jobs:
     name: ClamAV Malware Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: huntridge-labs/argus/.github/actions/scanner-clamav@0.6.3
         with:
           scan_path: '.'
@@ -120,7 +120,7 @@ jobs:
     name: Container Security Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Build container image
         run: |
@@ -143,7 +143,7 @@ jobs:
     name: ZAP DAST Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Build and start container
         run: |
@@ -188,7 +188,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download scanner summaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: scanner-summary-*
           path: scanner-summaries

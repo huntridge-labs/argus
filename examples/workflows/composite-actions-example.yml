@@ -47,7 +47,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Bandit Scanner
         uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.6.3
@@ -68,7 +68,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0  # Full history for comprehensive secrets scanning
 
@@ -92,7 +92,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run CodeQL Scanner (Python)
         uses: huntridge-labs/argus/.github/actions/scanner-codeql@0.6.3
@@ -113,7 +113,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run OpenGrep Scanner
         uses: huntridge-labs/argus/.github/actions/scanner-opengrep@0.6.3
@@ -134,7 +134,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Trivy IaC Scanner
         uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@0.6.3
@@ -155,7 +155,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Checkov Scanner
         uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.6.3
@@ -177,7 +177,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run ClamAV Scanner
         uses: huntridge-labs/argus/.github/actions/scanner-clamav@0.6.3
@@ -200,7 +200,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       # Add steps here to start your application
       # Example:
@@ -231,7 +231,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       # Add steps here to build your container image
       # Example:
@@ -255,7 +255,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run OSV-Scanner
         uses: huntridge-labs/argus/.github/actions/scanner-osv@0.6.3
@@ -274,7 +274,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Dependency Review
         uses: huntridge-labs/argus/.github/actions/scanner-dependency-review@0.6.3

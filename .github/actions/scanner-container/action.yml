@@ -139,7 +139,7 @@ runs:
     # ========================================
     - name: Generate SBOM (Syft)
       if: contains(inputs.scanners, 'syft')
-      uses: anchore/sbom-action@v0.24.0
+      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
       with:
         image: ${{ inputs.image_ref }}
         format: cyclonedx-json
@@ -151,7 +151,7 @@ runs:
 
     - name: Generate SBOM SPDX format
       if: contains(inputs.scanners, 'syft')
-      uses: anchore/sbom-action@v0.24.0
+      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
       with:
         image: ${{ inputs.image_ref }}
         format: spdx-json
@@ -238,7 +238,7 @@ runs:
     - name: Run Trivy vulnerability scanner (JSON)
       id: trivy-json
       if: contains(inputs.scanners, 'trivy') && contains(github.server_url, 'github.com')
-      uses: aquasecurity/trivy-action@0.35.0
+      uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
       continue-on-error: true
       with:
         image-ref: ${{ inputs.image_ref }}
@@ -251,7 +251,7 @@ runs:
     - name: Run Trivy vulnerability scanner (SARIF)
       id: trivy-sarif
       if: contains(inputs.scanners, 'trivy') && contains(github.server_url, 'github.com')
-      uses: aquasecurity/trivy-action@0.35.0
+      uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
       continue-on-error: true
       with:
         image-ref: ${{ inputs.image_ref }}
@@ -264,7 +264,7 @@ runs:
     - name: Run Trivy vulnerability scanner (Table)
       id: trivy-table
       if: contains(inputs.scanners, 'trivy') && contains(github.server_url, 'github.com')
-      uses: aquasecurity/trivy-action@0.35.0
+      uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
       continue-on-error: true
       with:
         image-ref: ${{ inputs.image_ref }}
@@ -276,7 +276,7 @@ runs:
 
     - name: Upload Trivy SARIF to GitHub Security
       if: contains(inputs.scanners, 'trivy') && inputs.enable_code_security == 'true'
-      uses: github/codeql-action/upload-sarif@v4
+      uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4
       continue-on-error: true
       with:
         sarif_file: trivy-${{ inputs.container_name }}-results.sarif
@@ -328,7 +328,7 @@ runs:
     # ========================================
     - name: Run Grype vulnerability scanner (JSON)
       if: contains(inputs.scanners, 'grype')
-      uses: anchore/scan-action@v7
+      uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7
       id: grype-json
       continue-on-error: true
       with:
@@ -349,7 +349,7 @@ runs:
 
     - name: Run Grype vulnerability scanner (SARIF)
       if: contains(inputs.scanners, 'grype')
-      uses: anchore/scan-action@v7
+      uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7
       id: grype-sarif
       continue-on-error: true
       with:
@@ -370,7 +370,7 @@ runs:
 
     - name: Upload Grype SARIF to GitHub Security
       if: contains(inputs.scanners, 'grype') && inputs.enable_code_security == 'true'
-      uses: github/codeql-action/upload-sarif@v4
+      uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4
       continue-on-error: true
       with:
         sarif_file: grype-${{ inputs.container_name }}-results.sarif
@@ -597,7 +597,7 @@ runs:
     # ========================================
     - name: Upload scan results
       if: always()
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
       with:
         name: container-scan-results-${{ inputs.container_name }}-${{ inputs.scanners }}-${{ steps.job-id.outputs.job-id }}
         path: |

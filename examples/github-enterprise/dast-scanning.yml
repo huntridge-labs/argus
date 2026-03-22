@@ -45,7 +45,7 @@ jobs:
     if: github.event.inputs.target_url != ''
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run ZAP Scan
         uses: huntridge-labs/argus/.github/actions/scanner-zap@0.6.3
@@ -75,7 +75,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Wait for app to be ready
         run: |
@@ -104,7 +104,7 @@ jobs:
     if: false # Enable this job by changing to 'true' or removing the condition
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       # Start your API (example using docker-compose)
       - name: Start API
