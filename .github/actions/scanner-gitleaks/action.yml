@@ -60,13 +60,13 @@ runs:
   using: 'composite'
   steps:
     - name: Checkout repository
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         fetch-depth: 0
 
     - name: Run Gitleaks Secrets Detection
       id: gitleaks-scan
-      uses: gitleaks/gitleaks-action@v2
+      uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
       env:
         GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
         GITLEAKS_LICENSE: ${{ env.GITLEAKS_LICENSE }}
@@ -92,7 +92,7 @@ runs:
         ls -la gitleaks-reports/ || echo "No files generated"
 
     - name: Upload Gitleaks artifacts
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
       with:
         name: gitleaks-reports
         path: gitleaks-reports/
@@ -100,7 +100,7 @@ runs:
       if: always()
 
     - name: Upload SARIF to GitHub Code Scanning
-      uses: github/codeql-action/upload-sarif@v4
+      uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4
       if: inputs.enable_code_security == 'true' && always() && github.actor != 'nektos/act' && hashFiles('gitleaks-reports/results.sarif') != ''
       with:
         sarif_file: gitleaks-reports/results.sarif
@@ -151,7 +151,7 @@ runs:
 
     - name: Upload GitLeaks summary section
       if: always()
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
       with:
         name: scanner-summary-gitleaks
         path: scanner-summaries/gitleaks.md

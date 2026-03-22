@@ -94,7 +94,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run OSV Scanner
         uses: huntridge-labs/argus/.github/actions/scanner-osv@0.6.3
@@ -116,7 +116,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Dependency Review Scanner
         uses: huntridge-labs/argus/.github/actions/scanner-dependency-review@0.6.3

@@ -219,7 +219,7 @@ runs:
 
     - name: Login to registry
       if: inputs.app_image_ref != '' && steps.validate.outputs.has_registry_password == 'true'
-      uses: docker/login-action@v4
+      uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4
       with:
         username: ${{ inputs.registry_username }}
         password: ${{ inputs.registry_password }}
@@ -335,7 +335,7 @@ runs:
 
     - name: Run ZAP (baseline)
       if: inputs.scan_type == 'baseline'
-      uses: zaproxy/action-baseline@v0.15.0
+      uses: zaproxy/action-baseline@de8ad967d3548d44ef623df22cf95c3b0baf8b25 # v0.15.0
       continue-on-error: ${{ inputs.allow_failure == 'true' }}
       with:
         token: ${{ inputs.post_pr_comment == 'true' && github.token || '' }}
@@ -348,7 +348,7 @@ runs:
 
     - name: Run ZAP (full)
       if: inputs.scan_type == 'full'
-      uses: zaproxy/action-full-scan@v0.13.0
+      uses: zaproxy/action-full-scan@3c58388149901b9a03b7718852c5ba889646c27c # v0.13.0
       continue-on-error: ${{ inputs.allow_failure == 'true' }}
       with:
         token: ${{ inputs.post_pr_comment == 'true' && github.token || '' }}
@@ -361,7 +361,7 @@ runs:
 
     - name: Run ZAP (api)
       if: inputs.scan_type == 'api'
-      uses: zaproxy/action-api-scan@v0.10.0
+      uses: zaproxy/action-api-scan@5158fe4d9d8fcc75ea204db81317cce7f9e5453d # v0.10.0
       continue-on-error: ${{ inputs.allow_failure == 'true' }}
       with:
         token: ${{ inputs.post_pr_comment == 'true' && github.token || '' }}
@@ -485,7 +485,7 @@ runs:
 
     - name: Upload scan summary
       if: always()
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
       with:
         name: scanner-summary-zap-${{ steps.validate.outputs.artifact_prefix }}
         path: scanner-summaries/zap.md

@@ -67,7 +67,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Check action E2E test coverage
         id: coverage
@@ -212,7 +212,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Bandit scanner
         id: scan
@@ -245,7 +245,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Opengrep scanner
         id: scan
@@ -278,7 +278,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run CodeQL scanner (Python)
         id: scan
@@ -313,7 +313,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0  # Full history for comprehensive secrets scanning
 
@@ -358,7 +358,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Trivy IaC scanner
         id: scan
@@ -390,7 +390,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Checkov scanner
         id: scan
@@ -427,7 +427,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0  # Required for SCN detector git diff analysis
 
@@ -503,7 +503,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run container scanner (${{ matrix.tool }})
         id: scan
@@ -546,7 +546,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Syft SBOM generator
         id: scan
@@ -587,7 +587,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Dockerfile linter
         uses: ./.github/actions/linter-dockerfile
@@ -613,7 +613,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Python linter
         uses: ./.github/actions/linter-python
@@ -639,7 +639,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run YAML linter
         uses: ./.github/actions/linter-yaml
@@ -665,7 +665,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run JavaScript linter
         uses: ./.github/actions/linter-javascript
@@ -691,7 +691,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run JSON linter
         uses: ./.github/actions/linter-json
@@ -717,7 +717,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Terraform linter
         uses: ./.github/actions/linter-terraform
@@ -753,7 +753,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Wait for podinfo to be ready
         shell: bash
@@ -810,7 +810,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run ClamAV scanner
         id: scan
@@ -850,7 +850,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run OSV scanner
         id: scan
@@ -891,7 +891,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run dependency-review scanner
         id: scan
@@ -930,7 +930,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run linting-summary action
         id: summary
@@ -959,7 +959,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run container-config parser
         id: parse
@@ -983,7 +983,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run zap-config parser
         id: parse
@@ -1010,10 +1010,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
           node-version: ${{ env.NODE_VERSION }}
 

@@ -14,7 +14,7 @@ description: |
 
   **Usage Example:**
   ```yaml
-  - uses: actions/checkout@v6
+  - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
   - uses: huntridge-labs/argus/.github/actions/scanner-dependency-review@0.6.3
     env:
       GITHUB_TOKEN: (secrets.GITHUB_TOKEN)
@@ -106,7 +106,7 @@ runs:
     - name: Run Dependency Review
       id: dependency-review
       if: steps.check-event.outputs.is_pr == 'true'
-      uses: actions/dependency-review-action@v4
+      uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
       with:
         comment-summary-in-pr: never
         vulnerability-check: ${{ inputs.vulnerability_check }}
@@ -190,7 +190,7 @@ runs:
 
     - name: Upload reports
       if: always()
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
       with:
         name: dependency-review-reports-${{ inputs.job_id }}
         path: dependency-review-reports/
@@ -240,7 +240,7 @@ runs:
 
     - name: Upload scanner summary
       if: always()
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
       with:
         name: scanner-summary-dependency-review-${{ inputs.job_id }}
         path: scanner-summaries/dependency-review.md

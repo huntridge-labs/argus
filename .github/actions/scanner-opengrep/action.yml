@@ -13,7 +13,7 @@ description: |
 
   **Usage Example:**
   ```yaml
-  - uses: actions/checkout@v6
+  - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
   - uses: huntridge-labs/argus/.github/actions/scanner-opengrep@0.6.3
     with:
       fail_on_severity: 'high'
@@ -125,7 +125,7 @@ runs:
         echo "::endgroup::"
 
     - name: Upload OpenGrep reports
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
       with:
         name: opengrep-reports
         path: opengrep-reports/
@@ -135,7 +135,7 @@ runs:
 
     - name: Upload SARIF to GitHub Security
       if: inputs.enable_code_security == 'true' && hashFiles('opengrep-reports/opengrep.sarif') != ''
-      uses: github/codeql-action/upload-sarif@v4
+      uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4
       with:
         sarif_file: opengrep-reports/opengrep.sarif
       continue-on-error: true
@@ -182,7 +182,7 @@ runs:
 
     - name: Upload scanner summary
       if: always()
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
       with:
         name: scanner-summary-opengrep
         path: scanner-summaries/opengrep.md
