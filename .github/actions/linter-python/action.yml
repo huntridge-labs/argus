@@ -9,7 +9,7 @@ description: |
   **Usage Example:**
   ```yaml
   - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-  - uses: huntridge-labs/argus/.github/actions/linter-python@0.6.3
+  - uses: huntridge-labs/argus/.github/actions/linter-python@0.6.4
     with:
       fail_on_issues: false
       max_line_length: '120'
@@ -250,7 +250,7 @@ runs:
 
     - name: Comment PR with Python lint results
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@0.6.3
+      uses: huntridge-labs/argus/.github/actions/comment-pr@0.6.4
       with:
         summary_file: linter-summaries/python.md
         comment_marker: python-linter-comment-marker

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.6.4](https://github.com/huntridge-labs/argus/compare/0.6.3...0.6.4) (2026-03-22)
+
+### Continuous Integration
+
+* pin all external GitHub Actions to commit SHAs ([8bb7a67](https://github.com/huntridge-labs/argus/commit/8bb7a67815d9ded5921b4eca49f6dcd1aeffebcf))
+
 ## [0.6.3](https://github.com/huntridge-labs/argus/compare/0.6.2...0.6.3) (2026-03-21)
 
 ### Documentation

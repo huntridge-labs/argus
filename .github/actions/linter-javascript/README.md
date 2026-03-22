@@ -13,7 +13,7 @@ This action validates JavaScript files for syntax errors and code quality issues
   uses: actions/checkout@v6
 
 - name: Run JavaScript linting
-  uses: huntridge-labs/argus/.github/actions/linter-javascript@0.6.3
+  uses: huntridge-labs/argus/.github/actions/linter-javascript@0.6.4
   with:
     fail_on_issues: false
 ```
