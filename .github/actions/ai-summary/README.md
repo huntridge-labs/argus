@@ -13,7 +13,7 @@ Generates an AI-powered executive security summary from aggregated Argus scanner
 ## Usage
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/ai-summary@0.6.4
+- uses: huntridge-labs/argus/.github/actions/ai-summary@0.6.5
   env:
     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     GITHUB_TOKEN:      ${{ secrets.GITHUB_TOKEN }}
@@ -65,11 +65,11 @@ jobs:
   # ... your scanner jobs ...
 
   scanner-bandit:
-    uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.6.4
+    uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.6.5
     ...
 
   scanner-gitleaks:
-    uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.6.4
+    uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.6.5
     ...
 
   ai-summary:
@@ -80,7 +80,7 @@ jobs:
       issues: write
     steps:
       - uses: actions/checkout@v6
-      - uses: huntridge-labs/argus/.github/actions/ai-summary@0.6.4
+      - uses: huntridge-labs/argus/.github/actions/ai-summary@0.6.5
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN:      ${{ secrets.GITHUB_TOKEN }}

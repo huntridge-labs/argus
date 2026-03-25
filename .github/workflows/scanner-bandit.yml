@@ -56,7 +56,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Bandit Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.6.4
+        uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.6.5
         with:
           post_pr_comment: ${{ inputs.post_pr_comment }}
           enable_code_security: ${{ inputs.enable_code_security }}

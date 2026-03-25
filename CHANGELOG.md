@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.6.5](https://github.com/huntridge-labs/argus/compare/0.6.4...0.6.5) (2026-03-25)
+
+### Bug Fixes
+
+* **ai-summary:** resolve gh api --arg flag error in run lookup ([d395621](https://github.com/huntridge-labs/argus/commit/d395621b8c4ee613221973e178e76b3158f60782))
+
 ## [0.6.4](https://github.com/huntridge-labs/argus/compare/0.6.3...0.6.4) (2026-03-22)
 
 ### Continuous Integration

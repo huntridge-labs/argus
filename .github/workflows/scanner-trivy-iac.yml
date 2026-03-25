@@ -51,7 +51,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Trivy IaC Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@0.6.4
+        uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@0.6.5
         with:
           iac_path: ${{ inputs.iac_path }}
           enable_code_security: ${{ inputs.enable_code_security }}

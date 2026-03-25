@@ -207,7 +207,7 @@ jobs:
 
       - name: Run security scanners
         if: steps.build.outputs.build_success == 'true'
-        uses: huntridge-labs/argus/.github/actions/scanner-container@0.6.4
+        uses: huntridge-labs/argus/.github/actions/scanner-container@0.6.5
         with:
           image_ref: ${{ steps.build.outputs.full_image }}
           container_name: ${{ matrix.container.name }}
@@ -246,7 +246,7 @@ jobs:
           REGISTRY_PASSWORD: ${{ secrets.registry_password }}
 
       - name: Run security scanners
-        uses: huntridge-labs/argus/.github/actions/scanner-container@0.6.4
+        uses: huntridge-labs/argus/.github/actions/scanner-container@0.6.5
         with:
           image_ref: ${{ inputs.image_ref }}
           container_name: ${{ inputs.container_name || 'remote-image' }}
@@ -276,7 +276,7 @@ jobs:
           pattern: ${{ inputs.scan_mode == 'remote' && inputs.container_name != '' && format('container-scan-results-{0}*', inputs.container_name) || 'container-scan-results-*' }}
 
       - name: Generate container summary
-        uses: huntridge-labs/argus/.github/actions/scanner-container-summary@0.6.4
+        uses: huntridge-labs/argus/.github/actions/scanner-container-summary@0.6.5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
