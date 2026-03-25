@@ -65,6 +65,12 @@ jobs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       detected_languages: ${{ steps.set-matrix.outputs.detected_languages }}
     steps:
+
+      - name: Harden the runner
+        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
+        with:
+          egress-policy: audit
+
       - name: Checkout for language detection
         if: inputs.codeql_languages == ''
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -179,6 +185,12 @@ jobs:
       matrix: ${{ fromJson(needs.generate-codeql-matrix.outputs.matrix) }}
 
     steps:
+
+      - name: Harden the runner
+        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
+        with:
+          egress-policy: audit
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 

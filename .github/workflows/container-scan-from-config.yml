@@ -84,6 +84,12 @@ jobs:
       matrix: ${{ steps.parse.outputs.matrix }}
       has_containers: ${{ steps.parse.outputs.has_containers }}
     steps:
+
+      - name: Harden the runner
+        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
+        with:
+          egress-policy: audit
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -103,6 +109,12 @@ jobs:
       max-parallel: 5
       matrix: ${{ fromJson(needs.parse-config.outputs.matrix) }}
     steps:
+
+      - name: Harden the runner
+        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
+        with:
+          egress-policy: audit
+
       - name: Run container security scanners
         uses: huntridge-labs/argus/.github/actions/scanner-container@0.6.4
         with:
@@ -123,6 +135,12 @@ jobs:
     needs: [parse-config, scan-containers]
     if: always()
     steps:
+
+      - name: Harden the runner
+        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
+        with:
+          egress-policy: audit
+
       - name: Generate container scan summary
         uses: huntridge-labs/argus/.github/actions/scanner-container-summary@0.6.4
         with:
