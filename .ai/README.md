@@ -16,13 +16,11 @@ This directory contains structured, machine-optimized documentation for AI codin
 | `workflows.yaml` | Common tasks with exact commands |
 | `decisions.yaml` | Architectural Decision Records (ADRs) |
 | `errors.yaml` | Error patterns → solutions |
-| `prompting.md` | Guide for humans asking questions |
-| `MAINTENANCE.md` | How to keep .ai/ files in sync |
 
 ## For AI Assistants
 
 **IMPORTANT**: After making changes to this project, update the relevant `.ai/` files.
-See `MAINTENANCE.md` for details.
+See the mapping in `CLAUDE.md` or `AGENTS.md` for what to update and when.
 
 **Reading order:**
 1. `context.yaml` - Understand what this project is

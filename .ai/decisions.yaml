@@ -7,39 +7,37 @@ version: "1.0"
 decisions:
 
   - id: ADR-001
-    title: "Dual implementation: workflows + composite actions"
+    title: "Composite actions as primary architecture"
     date: "2024-11-15"
     status: accepted
 
     context: |
       GitHub Enterprise Server doesn't support cross-repository workflow_call
-      for reusable workflows. Users on GHES cannot use v2.x workflows.
+      for reusable workflows. Composite actions are self-contained and work
+      on any GHES with github.com access.
 
-    decision: "Maintain both reusable workflows (v2.x) and composite actions (v3.0)"
+    decision: "Use composite actions as the primary architecture. Maintain reusable workflows as thin backwards-compatible wrappers."
 
     alternatives_considered:
       - name: "Reusable workflows only"
         rejected_because: "Excludes GHES users without github.com access"
-
-      - name: "Composite actions only"
-        rejected_because: "Worse UX for github.com users (more boilerplate)"
 
       - name: "External CI tool (Jenkins, Dagger)"
         rejected_because: "Adds external dependency, less GitHub-native"
 
     consequences:
       positive:
-        - "Supports both github.com and isolated GHES"
-        - "Users can choose implementation that fits their environment"
-        - "No disruption during migration period"
+        - "Supports both github.com and GHES"
+        - "Self-contained actions with bundled scripts"
+        - "Easier to compose and test"
+        - "No cross-repo workflow call overhead"
       negative:
-        - "Higher maintenance burden (two codepaths)"
-        - "Must test both implementations"
-        - "Documentation complexity"
+        - "Reusable workflow wrappers add maintenance burden"
+        - "More boilerplate for github.com users vs single workflow call"
 
     implementation: |
-      v2.x: .github/workflows/
-      v3.0: .github/actions/
+      Primary: .github/actions/
+      Backwards compat: .github/workflows/
 
   - id: ADR-002
     title: "SARIF as universal output format"
@@ -69,12 +67,12 @@ decisions:
         - "Some scanner-specific nuances lost in translation"
         - "Requires parse scripts for each scanner"
 
-    implementation: "Each scanner has scripts/parse.sh that outputs SARIF-compatible JSON"
+    implementation: "Each scanner has scripts/parse-results.py that outputs SARIF-compatible JSON"
 
   - id: ADR-003
     title: "Bash scripts for parsing over Node.js/Python"
     date: "2024-12-01"
-    status: accepted
+    status: superseded
 
     context: |
       Parse scripts run inside GitHub Actions. Need to convert scanner
@@ -103,7 +101,7 @@ decisions:
         - "Limited testing frameworks for bash"
         - "Complex string manipulation harder"
 
-    implementation: ".github/actions/*/scripts/parse.sh"
+    implementation: ".github/actions/*/scripts/parse-results.py"
 
   - id: ADR-004
     title: "Co-located tests with actions"
@@ -349,12 +347,9 @@ decisions:
         - "Python 3.11+ runtime requirement (but pre-installed on ubuntu-latest)"
 
     implementation: |
-      Phase 0: Foundation (.github/actions/_shared/ utilities + pytest.ini)
-      Phase 1: Migrate action scripts (.sh → .py) and tests
-      Phase 2: Migrate config parsers (.js → .py)
-      Phase 3: Clean up (remove old Bash/JS files and coverage tools)
-      Phase 4: Harden testing (edge cases, integration tests)
-      Phase 5: Update documentation
+      All action scripts and tests are Python with pytest.
+      Coverage enforced at 80% via pytest-cov.
+      Node.js remains only for release tooling (release-it, commitlint, husky).
 
     supersedes: "ADR-003 (Bash for scripts with no runtime dependencies)"
 

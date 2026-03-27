@@ -70,8 +70,8 @@ user_workflows:
           tag: v1.2.3
           scanners: [trivy, syft]
 
-  individual_scanner_v3:
-    description: "Use single scanner via composite action (v3.0)"
+  individual_scanner:
+    description: "Use a single scanner via composite action"
     category: scanning
     code: |
       - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.6.5
@@ -79,7 +79,6 @@ user_workflows:
           path: src/
           fail_on_severity: high
           enable_sarif_upload: true
-    note: "v3.0 - currently on feature branch, not yet released to main"
 
   dependency_scanning:
     description: "Scan dependencies for known vulnerabilities and license compliance"
@@ -273,7 +272,7 @@ contributor_workflows:
 
   run_single_action_test:
     description: "Test a specific action locally"
-    command: "cd .github/actions/scanner-{name} && ./tests/test-parse.sh"
+    command: "pytest .github/actions/scanner-{name}/tests/"
 
   validate_schemas:
     description: "Validate config files against JSON schemas"

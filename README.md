@@ -42,6 +42,37 @@ Create `.github/workflows/security.yml`:
 name: Security Scan
 on: [pull_request, push]
 
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+
+jobs:
+  sast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.6.5
+        with:
+          enable_code_security: true
+          fail_on_severity: high
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.6.5
+        with:
+          enable_code_security: true
+          fail_on_severity: high
+```
+
+<details>
+<summary><strong>Legacy: Reusable Workflow (github.com only)</strong></summary>
+
+```yaml
+name: Security Scan
+on: [pull_request, push]
+
 jobs:
   security:
     uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.6.5
@@ -52,6 +83,8 @@ jobs:
       fail_on_severity: high
     secrets: inherit
 ```
+
+</details>
 
 ## Supported Scanners
 
@@ -377,15 +410,6 @@ Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 2. Open repository → "Reopen in Container"
 3. All dependencies ready! Run `npm test`
 
-See [.devcontainer/README.md](.devcontainer/README.md) for details.
-
-- Code of Conduct
-- Development setup
-- Pull request process
-- Commit message format
-
-### Development Setup
-
 ```bash
 # Install dependencies
 npm install
@@ -404,6 +428,6 @@ AGPL v3 License - see [LICENSE.md](LICENSE.md) for details.
 ## Support
 
 - **Documentation:** [huntridge-labs.github.io/argus](https://huntridge-labs.github.io/argus/)
-- **Issues:** [GitHub Issues](https://github.com/huntridge-labs/argusissues)
-- **Discussions:** [GitHub Discussions](https://github.com/huntridge-labs/argusdiscussions)
+- **Issues:** [GitHub Issues](https://github.com/huntridge-labs/argus/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/huntridge-labs/argus/discussions)
 - **Security:** See [SECURITY.md](SECURITY.md) for vulnerability reporting

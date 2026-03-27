@@ -43,15 +43,13 @@ Welcome! This guide covers how to contribute composite actions to the security s
 ├── linter-*/                    # Linter composite actions
 ├── parse-container-config/      # Config parser actions
 ├── security-summary/            # Summary aggregators
-├── _shared/                     # Shared Python utility modules
-│   ├── sarif.py
-│   ├── summary.py
-│   └── severity.py
 └── README.md                    # Actions catalog
 
 examples/
-├── composite-actions-example.yml     # Complete security workflow
-└── composite-linting-example.yml     # Complete linting workflow
+├── workflows/
+│   ├── composite-actions-example.yml     # Complete security workflow
+│   └── actions-linting-example.yml       # Complete linting workflow
+└── README.md
 
 tests/
 ├── fixtures/                    # Shared mock data and test apps
@@ -328,7 +326,7 @@ Add to `.github/actions/README.md`:
 
 ### Step 8: Add to Example Workflows
 
-Add your scanner to `examples/composite-actions-example.yml`:
+Add your scanner to `examples/workflows/composite-actions-example.yml`:
 
 ```yaml
   example-scanner:
@@ -524,16 +522,16 @@ Brief description of the scanner.
 ### Naming Conventions
 
 - **Actions**: `scanner-{tool}` or `linter-{tool}`
-- **Scripts**: `parse-{tool}-results.sh`, `generate-{tool}-summary.sh`
+- **Scripts**: `parse_results.py`, `generate_summary.py`
 - **Artifacts**: `{tool}-reports-{job_id}`, `scanner-summary-{tool}-{job_id}`
 
 ### Script Guidelines
 
-1. Always use `set -euo pipefail`
-2. Validate inputs before processing
-3. Handle missing files gracefully
-4. Provide default values
-5. Use descriptive error messages
+1. Validate inputs before processing
+2. Handle missing files gracefully
+3. Provide default values
+4. Use descriptive error messages
+5. Use `pathlib` for file operations
 
 ### Security
 
@@ -558,7 +556,6 @@ All action scripts and tests are now Python with pytest:
 - ✅ All scripts converted to Python (`*.py`)
 - ✅ All tests migrated to pytest
 - ✅ Unified coverage with pytest-cov
-- ✅ Shared utility modules in `.github/actions/_shared/`
 - ✅ Duplicate scripts eliminated (container-summary, zap-summary)
 
 ---
@@ -568,8 +565,8 @@ All action scripts and tests are now Python with pytest:
 - 📋 Check existing actions for patterns
 - 📖 Review `CLAUDE.md` for architecture
 - 📝 See `tests/TODO.md` for testing
-- 💬 Open a [Discussion](https://github.com/huntridge-labs/argusdiscussions)
-- 🐛 Report via [Issues](https://github.com/huntridge-labs/argusissues)
+- 💬 Open a [Discussion](https://github.com/huntridge-labs/argus/discussions)
+- 🐛 Report via [Issues](https://github.com/huntridge-labs/argus/issues)
 
 ---
 

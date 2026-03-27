@@ -40,7 +40,7 @@ If this PR changes project structure, commands, or behavior, update the relevant
 - [ ] `.ai/errors.yaml` updated (if common error addressed)
 - [ ] N/A - No .ai/ updates needed
 
-See `.ai/MAINTENANCE.md` for guidance.
+See the `.ai/` maintenance table in `CLAUDE.md` for guidance.
 
 ## Checklist
 - [ ] Code follows project style guidelines

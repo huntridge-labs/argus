@@ -7,40 +7,30 @@
 **argus** is a GitHub Actions security scanning framework by Huntridge Labs.
 
 - **What it does**: Orchestrates 14 security scanners (SAST, secrets, containers, IaC, DAST) from a single workflow call
-- **Current version**: 2.12.0
+- **Current version**: 0.6.5
 - **License**: AGPL-3.0
 
 ### One-Liner
-Reusable GitHub Actions workflows + composite actions with unified interface, SARIF upload, and PR comments.
+Composite GitHub Actions that orchestrate 14+ security scanners with unified interface, SARIF upload, and PR comments.
 
 ---
 
 ## Architecture Overview
 
-### Critical: Dual Implementation
+### Architecture
 
-This project has TWO parallel implementations. Always clarify which the user needs:
-
-| v2.x (Production) | v3.0 (In Development) |
-|-------------------|----------------------|
-| Reusable workflows | Composite actions |
-| `.github/workflows/` | `.github/actions/` |
-| Tag: `@v2.12.0` | Tag: `@v3` (future) |
-| Requires github.com | Works on GHES |
-
-**Default assumption**: If user doesn't specify, assume v2.x.
+Composite actions are the primary architecture. Reusable workflows are thin wrappers for backwards compatibility.
 
 ### Directory Structure
 
 ```
 .github/
-├── actions/           # v3.0 composite actions
+├── actions/           # Composite actions (primary)
 │   └── scanner-*/     # Each: action.yml, scripts/, tests/
-├── workflows/         # v2.x reusable workflows
-│   └── reusable-security-hardening.yml  # MAIN ENTRY POINT
-└── schemas/           # JSON schemas for config validation
+├── workflows/         # Reusable workflows (backwards compat)
+│   └── reusable-security-hardening.yml
 
-examples/              # User-facing workflow examples
+examples/workflows/    # User-facing workflow examples
 tests/                 # Test infrastructure
 docs/                  # Detailed documentation
 ```
@@ -51,6 +41,7 @@ docs/                  # Detailed documentation
 |----------|---------|---------|
 | SAST | codeql, bandit, opengrep | Code security analysis |
 | Secrets | gitleaks | Credential detection |
+| Dependencies | osv, dependency-review | Vulnerability & license scanning |
 | Container | trivy, grype, syft | Container scanning |
 | IaC | trivy-iac, checkov | Infrastructure as Code |
 | Malware | clamav | File malware detection |
@@ -449,7 +440,7 @@ permissions:
 
 ### "Scanner X not found in matrix"
 **Cause**: Invalid scanner name
-**Valid names**: `codeql`, `bandit`, `gitleaks`, `opengrep`, `trivy`, `grype`, `syft`, `checkov`, `trivy-iac`, `clamav`, `zap`
+**Valid names**: `codeql`, `bandit`, `gitleaks`, `opengrep`, `trivy`, `grype`, `syft`, `checkov`, `trivy-iac`, `clamav`, `zap`, `osv`, `dependency-review`
 
 ### SARIF Upload Fails
 **Cause**: GitHub Advanced Security not enabled
@@ -528,7 +519,7 @@ How was this tested?
 
 | Decision | Reason |
 |----------|--------|
-| Dual implementation (workflows + actions) | GHES doesn't support cross-repo `workflow_call` |
+| Composite actions as primary architecture | GHES doesn't support cross-repo `workflow_call` |
 | SARIF as output format | GitHub Security tab integration, industry standard |
 | Python for all scripts | Single language, one test framework (pytest), unified coverage |
 | Co-located tests | Tests live next to code they test |
@@ -555,7 +546,6 @@ Tools that support structured context should read files in `.ai/` directory:
 | `.ai/workflows.yaml` | Common tasks with exact commands |
 | `.ai/decisions.yaml` | Architectural Decision Records (ADRs) |
 | `.ai/errors.yaml` | Error patterns → solutions |
-| `.ai/prompting.md` | Guide for humans asking questions |
 
 **Additional reference files:**
 - `CLAUDE.md` - Claude-specific extended context
@@ -574,7 +564,7 @@ Tools that support structured context should read files in `.ai/` directory:
 - "How do I scan X?" → See Common Tasks section
 - "What scanners exist?" → See Supported Scanners table
 - "Why doesn't X work?" → See Error Resolution section
-- "Which implementation?" → v2.x unless user has GHES without github.com access
+- "Which implementation?" → Composite actions (default), reusable workflows for backwards compat
 
 ### CRITICAL: Maintain .ai/ Files
 
@@ -588,7 +578,7 @@ Tools that support structured context should read files in `.ai/` directory:
 | Fix common errors | `.ai/errors.yaml` |
 | Project metadata | `.ai/context.yaml` |
 
-See `.ai/MAINTENANCE.md` for detailed update instructions.
+See the mapping table above for what to update and when.
 
 **Before completing any task**, verify:
 ```

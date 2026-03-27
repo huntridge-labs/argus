@@ -70,6 +70,8 @@ error_patterns:
         - trivy-iac
         - clamav
         - zap
+        - osv
+        - dependency-review
       verification: "Check spelling against valid scanner names"
 
   - pattern: "CodeQL.*unsupported language"
@@ -257,15 +259,15 @@ error_patterns:
 
   - pattern: "workflow_call.*not supported"
     category: ghes
-    context: "Running v2.x workflows on GHES"
+    context: "Running reusable workflows on GHES"
 
     root_cause: "GHES version doesn't support cross-repository workflow_call"
 
     solution:
-      explanation: "v2.x reusable workflows require github.com access"
+      explanation: "Reusable workflows require github.com access"
       alternatives:
-        - description: "Use v3.0 composite actions"
-          how: "Switch to .github/actions/ based implementation"
+        - description: "Use composite actions directly"
+          how: "Switch to .github/actions/ based implementation (recommended)"
         - description: "Enable github.com access"
           how: "Configure GHES to allow github.com workflow calls"
       reference: "See ADR-001 in .ai/decisions.yaml"
@@ -285,7 +287,7 @@ debugging:
 
   common_debug_steps:
     - "Check Actions log for error step"
-    - "Look for parse.sh output (shows JSON conversion)"
+    - "Look for parse-results.py output (shows JSON conversion)"
     - "Verify SARIF file size in artifacts"
     - "Check permissions block in workflow"
 
