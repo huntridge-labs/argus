@@ -19,7 +19,7 @@ def build_mkdocs_config(version: str, nav: list) -> str:
         "theme": {
             "name": "material",
             "logo": "assets/HL.png",
-            "favicon": "assets/argus-no-bg.png",
+            "favicon": "assets/argus_favicon.png",
             "palette": [
                 {
                     "media": "(prefers-color-scheme: light)",
