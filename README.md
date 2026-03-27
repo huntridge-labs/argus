@@ -1,6 +1,9 @@
 <div align="center">
 
-<img src="img/argus-no-bg.png" alt="Argus - Perception is Protection" width="250">
+<a href="http://argus.huntridge.com/"><img src="img/argus_readme_cover.png" alt="Argus - Perception is Protection" ></a>
+<br>
+
+<a href="http://argus.huntridge.com/">Learn more at argus.huntridge.com</a>
 
 <br>
 
