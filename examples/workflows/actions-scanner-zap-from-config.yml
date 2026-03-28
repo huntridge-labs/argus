@@ -28,6 +28,11 @@ jobs:
       scan_count: ${{ steps.parse.outputs.total_scan_count }}
       post_pr_comment: ${{ steps.parse.outputs.post_pr_comment }}
     steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
+        with:
+          egress-policy: audit
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -59,6 +64,11 @@ jobs:
       matrix: ${{ fromJson(needs.parse-config.outputs.matrix) }}
 
     steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
+        with:
+          egress-policy: audit
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -95,6 +105,11 @@ jobs:
     needs: [parse-config, zap-scan]
     if: always()
     steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
+        with:
+          egress-policy: audit
+
       - name: Generate ZAP Summary
         uses: huntridge-labs/argus/.github/actions/scanner-zap-summary@0.6.4
         id: summary

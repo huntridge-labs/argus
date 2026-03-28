@@ -244,6 +244,12 @@ jobs:
       run_any: ${{ steps.resolve.outputs.run_any }}
 
     steps:
+
+    - name: Harden the runner
+      uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
+      with:
+        egress-policy: audit
+
     - name: Resolve scanner selection
       id: resolve
       shell: bash
@@ -772,6 +778,12 @@ jobs:
     if: always()
 
     steps:
+
+    - name: Harden the runner
+      uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
+      with:
+        egress-policy: audit
+
     - name: Download CodeQL artifacts
       if: needs.scan-coordinator.outputs.run_codeql == 'true'
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
