@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.6.6](https://github.com/huntridge-labs/argus/compare/0.6.5...0.6.6) (2026-03-30)
+
+### Bug Fixes
+
+* **ai-summary:** resolve run ID via head SHA lookup ([#61](https://github.com/huntridge-labs/argus/issues/61)) ([b5f4d45](https://github.com/huntridge-labs/argus/commit/b5f4d459948cb7478111385081768f34aa382e98))
+
 ## [0.6.5](https://github.com/huntridge-labs/argus/compare/0.6.4...0.6.5) (2026-03-25)
 
 ### Bug Fixes
