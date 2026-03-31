@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.6.7](https://github.com/huntridge-labs/argus/compare/0.6.6...0.6.7) (2026-03-31)
+
+### Security Tools
+
+* **deps:** bump bridgecrewio/checkov-action ([#69](https://github.com/huntridge-labs/argus/issues/69)) ([82abbf0](https://github.com/huntridge-labs/argus/commit/82abbf0aa86db6ea3864566de2f0d75881e65c0c))
+* **deps:** bump github/codeql-action ([#67](https://github.com/huntridge-labs/argus/issues/67)) ([912db1d](https://github.com/huntridge-labs/argus/commit/912db1d51ec217e79d4654c321b69a2c2eed074b))
+* **deps:** bump github/codeql-action ([#68](https://github.com/huntridge-labs/argus/issues/68)) ([86fb109](https://github.com/huntridge-labs/argus/commit/86fb109a7d5ad31850e6f418c2d8ae83e180c564))
+* **deps:** bump github/codeql-action ([#70](https://github.com/huntridge-labs/argus/issues/70)) ([5faa480](https://github.com/huntridge-labs/argus/commit/5faa4808971b437169d4a174146ae13bebb7838c))
+* **deps:** bump github/codeql-action ([#71](https://github.com/huntridge-labs/argus/issues/71)) ([36b607e](https://github.com/huntridge-labs/argus/commit/36b607e4de5bc53c611ba35b81e7d2846a9b3663))
+* **deps:** bump github/codeql-action ([#72](https://github.com/huntridge-labs/argus/issues/72)) ([f0cba4a](https://github.com/huntridge-labs/argus/commit/f0cba4a5511647a89b121b654bf9ec0fe02c6fa2))
+* **deps:** bump github/codeql-action ([#73](https://github.com/huntridge-labs/argus/issues/73)) ([a955f66](https://github.com/huntridge-labs/argus/commit/a955f663ee021497130b0daaa66b68af09fe1d31))
+* **deps:** bump github/codeql-action ([#76](https://github.com/huntridge-labs/argus/issues/76)) ([58e050a](https://github.com/huntridge-labs/argus/commit/58e050ad443568801f34c92bcef9d29c81d0e892))
+* **deps:** bump github/codeql-action in /.github/actions/scanner-osv ([#75](https://github.com/huntridge-labs/argus/issues/75)) ([573ef18](https://github.com/huntridge-labs/argus/commit/573ef1876a3b61ed3df4a66818bbbea4a303bc5e))
+
+### Dependencies
+
+* **deps:** bump @j-ulrich/release-it-regex-bumper from 5.3.1 to 5.4.0 ([#64](https://github.com/huntridge-labs/argus/issues/64)) ([5120640](https://github.com/huntridge-labs/argus/commit/5120640cf0845af59561b1e5596629e588fbf668))
+* **deps:** bump conventional-changelog-conventionalcommits ([#65](https://github.com/huntridge-labs/argus/issues/65)) ([3c98b18](https://github.com/huntridge-labs/argus/commit/3c98b1809a63505ec3b32a4406ba0a2dad4bab42))
+* **deps:** bump google/osv-scanner-action ([#74](https://github.com/huntridge-labs/argus/issues/74)) ([b3ffb9c](https://github.com/huntridge-labs/argus/commit/b3ffb9c9837be81a2da90f0b53ca41ca66e4c30d))
+* **deps:** bump the github-actions-major group across 1 directory with 2 updates ([#66](https://github.com/huntridge-labs/argus/issues/66)) ([ac15423](https://github.com/huntridge-labs/argus/commit/ac1542389a216e5a2063f8a07975880f14168c96))
+
+
 ## [0.6.6](https://github.com/huntridge-labs/argus/compare/0.6.5...0.6.6) (2026-03-30)
 
 ### Bug Fixes
