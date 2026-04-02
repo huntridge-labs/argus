@@ -18,6 +18,7 @@ def build_mkdocs_config(version: str, nav: list) -> str:
         "edit_uri": "edit/main/docs/",
         "theme": {
             "name": "material",
+            "custom_dir": "overrides",
             "logo": "assets/HL.png",
             "favicon": "assets/argus_favicon.png",
             "palette": [

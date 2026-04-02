@@ -42,6 +42,25 @@ CUSTOM_CSS = (
     "}\n"
 )
 
+# ─── Social Media Meta Tags ──────────────────────────────────────────────────
+
+SOCIAL_META_HTML = '''{% extends "base.html" %}
+
+{% block extrahead %}
+  <!-- OpenGraph metadata for LinkedIn, Facebook, etc. -->
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="{{ config.site_url }}assets/argus_readme_cover.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <!-- Twitter Card metadata -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="{{ config.site_url }}assets/argus_readme_cover.png">
+
+  {{ super() }}
+{% endblock %}
+'''
+
 
 # ─── Build ───────────────────────────────────────────────────────────────────
 
@@ -73,6 +92,11 @@ def build(repo_root: Path, output_dir: Path) -> None:
         for img_file in img_dir.iterdir():
             if img_file.is_file():
                 shutil.copy2(img_file, assets_dir / img_file.name)
+
+    # ── Theme Overrides (for social media meta tags) ────────────────────
+    overrides_dir = output_dir / "overrides"
+    overrides_dir.mkdir(exist_ok=True)
+    write(overrides_dir / "main.html", SOCIAL_META_HTML)
 
     # ── Core pages ───────────────────────────────────────────────────────
     write(docs_out / "index.md", make_home(repo_root, version))
