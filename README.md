@@ -102,20 +102,20 @@ jobs:
 | **Malware** | ClamAV | Open-source antivirus engine |
 | **DAST** | ZAP | Dynamic testing of running web/API endpoints (opt-in) |
 
-For detailed scanner configuration, see [Scanner Reference](https://huntridge-labs.github.io/argus/guides/scanners/).
+For detailed scanner configuration, see [Scanner Reference](docs/scanners.md).
 
 ## Features
 
-- **[Unified interface](https://huntridge-labs.github.io/argus/guides/scanners/)** - One workflow for all scanners
-- **[Flexible scanner selection](https://huntridge-labs.github.io/argus/guides/scanners/)** - Use `all`, scanner groups, or specific scanners
-- **[GitHub Security tab integration](https://huntridge-labs.github.io/argus/actions/scanner-codeql/)** - Upload SARIF results to Code Scanning
+- **[Unified interface](docs/scanners.md)** - One workflow for all scanners
+- **[Flexible scanner selection](docs/scanners.md)** - Use `all`, scanner groups, or specific scanners
+- **[GitHub Security tab integration](.github/actions/scanner-codeql/README.md)** - Upload SARIF results to Code Scanning
 - **PR comments** - Inline feedback on pull requests
-- **[Severity-based failure control](https://huntridge-labs.github.io/argus/guides/failure-control/)** - Set thresholds for workflow failures
-- **[Container configuration](https://huntridge-labs.github.io/argus/guides/container-scanning/)** - Scan multiple containers from a single config file
+- **[Severity-based failure control](docs/failure-control.md)** - Set thresholds for workflow failures
+- **[Container configuration](docs/container-scanning.md)** - Scan multiple containers from a single config file
 - **Matrix execution** - Parallel scanning for multiple targets
 - **Private registry support** - Authenticate to container registries
 - **Environment variable expansion** - Dynamic configuration values
-- **[Optional AI summary](https://huntridge-labs.github.io/argus/actions/ai-summary/)** - Generate executive security summaries from scan results using your own AI provider and API key (Copilot, Claude, or Gemini)
+- **[Optional AI summary](.github/actions/ai-summary/README.md)** - Generate executive security summaries from scan results using your own AI provider and API key (Copilot, Claude, or Gemini)
 
 ## GitHub Enterprise Server (GHES)
 

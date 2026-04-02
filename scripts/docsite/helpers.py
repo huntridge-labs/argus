@@ -39,12 +39,13 @@ def get_version(repo_root: Path) -> str:
 
 
 def rewrite_repo_links(content: str, source_rel: str) -> str:
-    """Rewrite relative markdown links to absolute GitHub blob URLs.
+    """Rewrite relative markdown links for the generated docs site.
 
-    Action READMEs contain links like ``../../CHANGELOG.md`` which resolve
-    within the repo but break inside the generated docs tree.  This resolves
-    each relative link against *source_rel* and, if it escapes the docs tree,
-    rewrites it to a GitHub blob URL.
+    Links that point to content hosted on the docsite (guide pages from
+    ``docs/`` and action READMEs from ``.github/actions/``) are rewritten to
+    site-relative paths so they stay within the versioned docsite.  All other
+    relative links are rewritten to absolute GitHub blob URLs so they still
+    resolve.
     """
     source_dir = Path(source_rel).parent
 
@@ -74,6 +75,36 @@ def rewrite_repo_links(content: str, source_rel: str) -> str:
                 parts.append(p)
         clean = "/".join(parts)
 
+        # Rewrite links to docsite-hosted content as site-relative paths
+        # so they follow the user's selected version.
+        docsite_path = _to_docsite_path(clean)
+        if docsite_path is not None:
+            return f"{prefix}{docsite_path}{anchor}{suffix}"
+
         return f"{prefix}{config.GITHUB_BLOB}/{clean}{anchor}{suffix}"
 
     return re.sub(r'(\[[^\]]*\]\()([^)\s]+)(\))', _rewrite, content)
+
+
+def _to_docsite_path(repo_path: str) -> str | None:
+    """Map a resolved repo-relative path to a docsite-relative path.
+
+    Returns ``None`` when the path doesn't correspond to a docsite page.
+
+    Mappings:
+      ``docs/<name>.md``                    → ``guides/<name>/``
+      ``.github/actions/<name>/README.md``  → ``actions/<name>/``
+    """
+    # docs/*.md → guides/*/
+    docs_match = re.match(r'^docs/([^/]+)\.md$', repo_path)
+    if docs_match:
+        return f"guides/{docs_match.group(1)}/"
+
+    # .github/actions/<name>/README.md → actions/<name>/
+    action_match = re.match(
+        r'^\.github/actions/([^/]+)/README\.md$', repo_path,
+    )
+    if action_match:
+        return f"actions/{action_match.group(1)}/"
+
+    return None
