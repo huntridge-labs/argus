@@ -1,6 +1,9 @@
 <div align="center">
 
-<img src="img/argus-no-bg.png" alt="Argus - Perception is Protection" width="250">
+<a href="http://argus.huntridgelabs.com/"><img src="img/argus_readme_cover.png" alt="Argus - Perception is Protection" ></a>
+<br>
+
+<a href="http://argus.huntridgelabs.com/">Learn more at argus.huntridgelabs.com</a>
 
 <br>
 
@@ -39,6 +42,37 @@ Create `.github/workflows/security.yml`:
 name: Security Scan
 on: [pull_request, push]
 
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+
+jobs:
+  sast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.6.5
+        with:
+          enable_code_security: true
+          fail_on_severity: high
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.6.5
+        with:
+          enable_code_security: true
+          fail_on_severity: high
+```
+
+<details>
+<summary><strong>Legacy: Reusable Workflow (github.com only)</strong></summary>
+
+```yaml
+name: Security Scan
+on: [pull_request, push]
+
 jobs:
   security:
     uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.6.7
@@ -49,6 +83,8 @@ jobs:
       fail_on_severity: high
     secrets: inherit
 ```
+
+</details>
 
 ## Supported Scanners
 
@@ -70,15 +106,16 @@ For detailed scanner configuration, see [Scanner Reference](docs/scanners.md).
 
 ## Features
 
-- **Unified interface** - One workflow for all scanners
-- **Flexible scanner selection** - Use `all`, scanner groups, or specific scanners
-- **GitHub Security tab integration** - Upload SARIF results to Code Scanning
+- **[Unified interface](docs/scanners.md)** - One workflow for all scanners
+- **[Flexible scanner selection](docs/scanners.md)** - Use `all`, scanner groups, or specific scanners
+- **[GitHub Security tab integration](.github/actions/scanner-codeql/README.md)** - Upload SARIF results to Code Scanning
 - **PR comments** - Inline feedback on pull requests
-- **Severity-based failure control** - Set thresholds for workflow failures
-- **Container configuration** - Scan multiple containers from a single config file
+- **[Severity-based failure control](docs/failure-control.md)** - Set thresholds for workflow failures
+- **[Container configuration](docs/container-scanning.md)** - Scan multiple containers from a single config file
 - **Matrix execution** - Parallel scanning for multiple targets
 - **Private registry support** - Authenticate to container registries
 - **Environment variable expansion** - Dynamic configuration values
+- **[Optional AI summary](.github/actions/ai-summary/README.md)** - Generate executive security summaries from scan results using your own AI provider and API key (Copilot, Claude, or Gemini)
 
 ## GitHub Enterprise Server (GHES)
 
@@ -374,15 +411,6 @@ Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 2. Open repository → "Reopen in Container"
 3. All dependencies ready! Run `npm test`
 
-See [.devcontainer/README.md](.devcontainer/README.md) for details.
-
-- Code of Conduct
-- Development setup
-- Pull request process
-- Commit message format
-
-### Development Setup
-
 ```bash
 # Install dependencies
 npm install
@@ -401,6 +429,6 @@ AGPL v3 License - see [LICENSE.md](LICENSE.md) for details.
 ## Support
 
 - **Documentation:** [huntridge-labs.github.io/argus](https://huntridge-labs.github.io/argus/)
-- **Issues:** [GitHub Issues](https://github.com/huntridge-labs/argusissues)
-- **Discussions:** [GitHub Discussions](https://github.com/huntridge-labs/argusdiscussions)
+- **Issues:** [GitHub Issues](https://github.com/huntridge-labs/argus/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/huntridge-labs/argus/discussions)
 - **Security:** See [SECURITY.md](SECURITY.md) for vulnerability reporting

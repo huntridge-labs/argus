@@ -9,6 +9,7 @@ import yaml
 
 from docsite import config
 from docsite.helpers import (
+    _to_docsite_path,
     get_version,
     parse_action_yml,
     read,
@@ -146,3 +147,65 @@ class TestRewriteRepoLinks:
         content = "[a](../x.md) and [b](../y.md)"
         result = rewrite_repo_links(content, "dir/README.md")
         assert result.count("https://github.com/org/repo/blob/main/") == 2
+
+    # ── Docsite path rewriting ───────────────────────────────────────────
+
+    def test_rewrites_docs_link_to_guides(self):
+        content = "[scanners](docs/scanners.md)"
+        result = rewrite_repo_links(content, "README.md")
+        assert result == "[scanners](guides/scanners/)"
+
+    def test_rewrites_action_readme_to_actions(self):
+        content = "[ai](.github/actions/ai-summary/README.md)"
+        result = rewrite_repo_links(content, "README.md")
+        assert result == "[ai](actions/ai-summary/)"
+
+    def test_rewrites_docs_link_preserves_anchor(self):
+        content = "[ctrl](docs/failure-control.md#thresholds)"
+        result = rewrite_repo_links(content, "README.md")
+        assert result == "[ctrl](guides/failure-control/#thresholds)"
+
+    def test_rewrites_nested_action_cross_reference(self):
+        content = "[other](../scanner-codeql/README.md)"
+        result = rewrite_repo_links(
+            content, ".github/actions/scanner-bandit/README.md",
+        )
+        assert result == "[other](actions/scanner-codeql/)"
+
+    def test_does_not_rewrite_non_readme_action_file(self):
+        content = "[script](.github/actions/ai-summary/scripts/gen.py)"
+        result = rewrite_repo_links(content, "README.md")
+        assert "https://github.com/org/repo/blob/main/" in result
+
+    def test_does_not_rewrite_nested_docs_path(self):
+        content = "[dev](docs/developer/setup.md)"
+        result = rewrite_repo_links(content, "README.md")
+        assert "https://github.com/org/repo/blob/main/" in result
+
+    def test_mixed_docsite_and_github_links(self):
+        content = "[guide](docs/scanners.md) and [lic](LICENSE.md)"
+        result = rewrite_repo_links(content, "README.md")
+        assert "guides/scanners/" in result
+        assert "https://github.com/org/repo/blob/main/LICENSE.md" in result
+
+
+class TestToDocsitePath:
+    """Tests for _to_docsite_path()."""
+
+    def test_docs_md_to_guides(self):
+        assert _to_docsite_path("docs/scanners.md") == "guides/scanners/"
+
+    def test_action_readme_to_actions(self):
+        assert (
+            _to_docsite_path(".github/actions/ai-summary/README.md")
+            == "actions/ai-summary/"
+        )
+
+    def test_returns_none_for_non_docsite_path(self):
+        assert _to_docsite_path("CHANGELOG.md") is None
+
+    def test_returns_none_for_nested_docs(self):
+        assert _to_docsite_path("docs/developer/setup.md") is None
+
+    def test_returns_none_for_non_readme_action_file(self):
+        assert _to_docsite_path(".github/actions/ai-summary/action.yml") is None

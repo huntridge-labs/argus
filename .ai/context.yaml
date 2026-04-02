@@ -11,13 +11,13 @@ project:
   purpose: "Automated security scanning orchestration for GitHub Actions"
   primary_language: yaml  # GitHub Actions workflows
   secondary_languages: [python]
-  version: "2.12.0"
+  version: "0.6.5"
   license: "AGPL-3.0"
   repository: "huntridge-labs/argus"
 
   one_liner: >
-    Reusable GitHub Actions workflows + composite actions that orchestrate
-    14 security scanners with unified interface, SARIF upload, PR comments.
+    Composite GitHub Actions that orchestrate 14+ security scanners with
+    unified interface, SARIF upload, and PR comments.
 
   solves:
     - Running multiple security scanners from single workflow call
@@ -31,8 +31,8 @@ project:
     - Security policy enforcement (provides data, not gates)
 
 entrypoints:
-  v2_main: ".github/workflows/reusable-security-hardening.yml"
-  v3_actions: ".github/actions/"
+  actions: ".github/actions/"
+  reusable_workflow: ".github/workflows/reusable-security-hardening.yml"
   examples: "examples/workflows/"
   documentation: "docs/"
   docsite: "scripts/docsite/"
@@ -56,8 +56,7 @@ platforms:
     - github-actions
     - github-enterprise-server
   constraints:
-    - "v2.x requires github.com or GHES with github.com access"
-    - "v3.0 works on isolated GHES"
+    - "Composite actions work on any GHES with github.com access"
     - "Must support air-gapped environments"
 
 context_modules:

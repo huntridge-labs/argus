@@ -4,26 +4,21 @@
 
 version: "1.0"
 
-# CRITICAL: Two parallel implementations exist
-dual_implementation:
-  description: "This project maintains two parallel implementations"
-  default_assumption: "v2_production"
-
-  v2_production:
-    location: ".github/workflows/"
-    pattern: "Reusable workflows"
-    tag: "@v2.12.0"
-    status: production
-    limitation: "Requires github.com (cross-repo calls)"
-    when_to_use: "Default for github.com users"
-
-  v3_development:
+architecture:
+  description: "Composite actions are the core architecture. Reusable workflows are thin wrappers for backwards compatibility."
+  primary:
     location: ".github/actions/"
     pattern: "Composite actions"
-    tag: "@v3 (future)"
-    status: in-development
+    version: "0.6.5"
+    status: production
     advantage: "GHES compatible, self-contained"
-    when_to_use: "GHES without github.com access"
+
+  backwards_compat:
+    location: ".github/workflows/"
+    pattern: "Reusable workflows"
+    status: maintained
+    limitation: "Requires github.com (cross-repo calls)"
+    note: "Thin wrappers around composite actions"
 
 components:
   - name: main-orchestrator
@@ -55,7 +50,7 @@ components:
 
   - name: composite-actions
     location: ".github/actions/scanner-*/"
-    purpose: "Self-contained scanner actions (v3.0)"
+    purpose: "Self-contained scanner actions"
     type: action
     structure:
       action.yml: "Inputs, outputs, steps"
@@ -344,8 +339,8 @@ docsite:
     preview: "cd /tmp/argus-docs && mkdocs serve"
 
 directory_structure:
-  ".github/actions/": "v3.0 composite actions"
-  ".github/workflows/": "v2.x reusable workflows"
+  ".github/actions/": "Composite actions (primary)"
+  ".github/workflows/": "Reusable workflows (backwards compat)"
   ".github/actions/*/schemas/": "JSON schemas co-located with each action"
   ".github/actions/*/.docsite.yml": "Per-action docsite category declaration"
   "scripts/docsite/": "Auto-generated documentation site package"
