@@ -60,7 +60,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Checkov Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.6.7
+        uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.6.8
         env:
           BC_API_KEY: ${{ secrets.BC_API_KEY }}
         with:

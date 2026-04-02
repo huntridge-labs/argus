@@ -13,7 +13,7 @@ This action checks JSON syntax across your repository. It uploads results as art
   uses: actions/checkout@v6
 
 - name: Run JSON validation
-  uses: huntridge-labs/argus/.github/actions/linter-json@0.6.7
+  uses: huntridge-labs/argus/.github/actions/linter-json@0.6.8
   with:
     fail_on_issues: false
 ```

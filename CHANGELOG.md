@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.6.8](https://github.com/huntridge-labs/argus/compare/0.6.7...0.6.8) (2026-04-02)
+
+### Documentation
+
+* **readme:** update banner and add link to site ([#62](https://github.com/huntridge-labs/argus/issues/62)) ([f8e1d5f](https://github.com/huntridge-labs/argus/commit/f8e1d5f4789e34322c80b1305985458f201fc40e))
+
 ## [0.6.7](https://github.com/huntridge-labs/argus/compare/0.6.6...0.6.7) (2026-03-31)
 
 ### Security Tools

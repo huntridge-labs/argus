@@ -258,7 +258,7 @@ Brief description of what this scanner detects.
 
 ### Basic Example
 \`\`\`yaml
-- uses: huntridge-labs/argus/.github/actions/scanner-example@0.6.7
+- uses: huntridge-labs/argus/.github/actions/scanner-example@0.6.8
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -334,7 +334,7 @@ Add your scanner to `examples/workflows/composite-actions-example.yml`:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: huntridge-labs/argus/.github/actions/scanner-example@0.6.7
+      - uses: huntridge-labs/argus/.github/actions/scanner-example@0.6.8
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -511,7 +511,7 @@ Brief description of the scanner.
 
 ### Usage
 \`\`\`yaml
-- uses: huntridge-labs/argus/.github/actions/scanner-example@0.6.7
+- uses: huntridge-labs/argus/.github/actions/scanner-example@0.6.8
 \`\`\`
 ```
 
