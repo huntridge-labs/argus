@@ -67,9 +67,15 @@ runs:
     - name: Install OpenGrep
       shell: bash
       run: |
+        set -euo pipefail
         echo "::group::Installing OpenGrep"
-        curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | bash
-        echo "$HOME/.opengrep/cli/latest" >> $GITHUB_PATH
+        # Pinned version with checksum — updated by .github/workflows/update-pinned-tools.yml
+        OPENGREP_VERSION="1.18.0"
+        OPENGREP_CHECKSUM="65390e16db45db1258967578c73eacac6e4ab9cd20074d7dc1aeb695e2696203"
+        curl -sSfL "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86" -o opengrep
+        echo "${OPENGREP_CHECKSUM}  opengrep" | sha256sum -c --quiet
+        chmod +x opengrep
+        sudo mv opengrep /usr/local/bin/opengrep
         echo "::endgroup::"
 
     - name: Run OpenGrep Analysis
