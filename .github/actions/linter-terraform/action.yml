@@ -59,7 +59,16 @@ runs:
       if: inputs.run_tflint == 'true'
       shell: bash
       run: |
-        curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+        set -euo pipefail
+        # Pinned version with checksum — updated by .github/workflows/update-pinned-tools.yml
+        TFLINT_VERSION="0.61.0"
+        TFLINT_CHECKSUM="ca4e4e8cb7cc3436f2b6979e9c4fd4e2623a66fcca1ad1fe12f8669967636ae2"
+        TFLINT_ZIP="tflint_linux_amd64.zip"
+        curl -sSfL "https://github.com/terraform-linters/tflint/releases/download/v${TFLINT_VERSION}/${TFLINT_ZIP}" -o "${TFLINT_ZIP}"
+        echo "${TFLINT_CHECKSUM}  ${TFLINT_ZIP}" | sha256sum -c --quiet
+        unzip -o "${TFLINT_ZIP}" tflint
+        sudo mv tflint /usr/local/bin/tflint
+        rm -f "${TFLINT_ZIP}"
         tflint --version
 
     - name: Run Terraform linting

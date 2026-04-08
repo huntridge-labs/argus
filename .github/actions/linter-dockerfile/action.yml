@@ -47,7 +47,12 @@ runs:
     - name: Install Hadolint
       shell: bash
       run: |
-        wget -q -O /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
+        set -euo pipefail
+        # Pinned version with checksum — updated by .github/workflows/update-pinned-tools.yml
+        HADOLINT_VERSION="2.14.0"
+        HADOLINT_CHECKSUM="6bf226944684f56c84dd014e8b979d27425c0148f61b3bd99bcc6f39e9dc5a47"
+        curl -sSfL "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64" -o /usr/local/bin/hadolint
+        echo "${HADOLINT_CHECKSUM}  /usr/local/bin/hadolint" | sha256sum -c --quiet
         chmod +x /usr/local/bin/hadolint
         hadolint --version
 

@@ -1,0 +1,315 @@
+name: Update pinned tools
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Weekly Monday 9:00 AM UTC (aligns with Dependabot)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-updates:
+    name: Check for tool updates
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tool: actionlint
+            repo: rhysd/actionlint
+            asset: 'actionlint_${VERSION}_linux_amd64.tar.gz'
+            version_var: ACTIONLINT_VERSION
+            checksum_var: ACTIONLINT_CHECKSUM
+            files: |
+              .github/actions/scanner-supply-chain/action.yml
+              .github/workflows/test-lint-workflows.yml
+
+          - tool: hadolint
+            repo: hadolint/hadolint
+            asset: 'hadolint-Linux-x86_64'
+            version_var: HADOLINT_VERSION
+            checksum_var: HADOLINT_CHECKSUM
+            files: |
+              .github/actions/linter-dockerfile/action.yml
+
+          - tool: tflint
+            repo: terraform-linters/tflint
+            asset: 'tflint_linux_amd64.zip'
+            version_var: TFLINT_VERSION
+            checksum_var: TFLINT_CHECKSUM
+            files: |
+              .github/actions/linter-terraform/action.yml
+
+          - tool: opengrep
+            repo: opengrep/opengrep
+            asset: 'opengrep_manylinux_x86'
+            version_var: OPENGREP_VERSION
+            checksum_var: OPENGREP_CHECKSUM
+            files: |
+              .github/actions/scanner-opengrep/action.yml
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Check for new release
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOOL: ${{ matrix.tool }}
+          REPO: ${{ matrix.repo }}
+          VERSION_VAR: ${{ matrix.version_var }}
+          FILES: ${{ matrix.files }}
+        run: |
+          set -euo pipefail
+
+          # Get current pinned version from first file
+          FIRST_FILE=$(echo "$FILES" | head -1 | tr -d '[:space:]')
+          CURRENT=$(grep "${VERSION_VAR}=" "$FIRST_FILE" | head -1 | sed 's/.*="//' | sed 's/"//')
+          echo "Current ${TOOL} version: $CURRENT"
+
+          # Get latest release from GitHub API
+          RELEASE_JSON=$(gh api "repos/${REPO}/releases/latest")
+          LATEST=$(echo "$RELEASE_JSON" | jq -r '.tag_name' | sed 's/^v//')
+          PUBLISHED=$(echo "$RELEASE_JSON" | jq -r '.published_at')
+          echo "Latest version: $LATEST (published: $PUBLISHED)"
+
+          if [ "$CURRENT" = "$LATEST" ]; then
+            echo "Already up to date"
+            echo "update_needed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Require release to be at least 7 days old before adopting.
+          # This provides a window for the community to detect compromised releases.
+          MIN_AGE_DAYS=7
+          PUBLISHED_EPOCH=$(date -d "$PUBLISHED" +%s)
+          NOW_EPOCH=$(date +%s)
+          AGE_DAYS=$(( (NOW_EPOCH - PUBLISHED_EPOCH) / 86400 ))
+
+          if [ "$AGE_DAYS" -lt "$MIN_AGE_DAYS" ]; then
+            echo "Release v${LATEST} is only ${AGE_DAYS} day(s) old (minimum: ${MIN_AGE_DAYS}). Skipping."
+            echo "update_needed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Update available: $CURRENT → $LATEST (${AGE_DAYS} days old)"
+          {
+            echo "update_needed=true"
+            echo "current=$CURRENT"
+            echo "latest=$LATEST"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Download and checksum new release
+        if: steps.check.outputs.update_needed == 'true'
+        id: checksum
+        env:
+          REPO: ${{ matrix.repo }}
+          ASSET_TEMPLATE: ${{ matrix.asset }}
+          LATEST: ${{ steps.check.outputs.latest }}
+        run: |
+          set -euo pipefail
+
+          ASSET="${ASSET_TEMPLATE//\$\{VERSION\}/$LATEST}"
+          URL="https://github.com/${REPO}/releases/download/v${LATEST}/${ASSET}"
+
+          echo "Downloading $URL"
+          curl -sSfL "$URL" -o "$ASSET"
+
+          CHECKSUM=$(sha256sum "$ASSET" | awk '{print $1}')
+          echo "Checksum: $CHECKSUM"
+          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
+
+          rm -f "$ASSET"
+
+      - name: Update pinned versions
+        if: steps.check.outputs.update_needed == 'true'
+        env:
+          CURRENT: ${{ steps.check.outputs.current }}
+          LATEST: ${{ steps.check.outputs.latest }}
+          CHECKSUM: ${{ steps.checksum.outputs.checksum }}
+          VERSION_VAR: ${{ matrix.version_var }}
+          CHECKSUM_VAR: ${{ matrix.checksum_var }}
+          FILES: ${{ matrix.files }}
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2153  # FILES is an env var, not a misspelling of FILE
+          while IFS= read -r FILE; do
+            FILE=$(echo "$FILE" | tr -d '[:space:]')
+            [ -z "$FILE" ] && continue
+            echo "Updating $FILE"
+            sed -i "s/${VERSION_VAR}=\"${CURRENT}\"/${VERSION_VAR}=\"${LATEST}\"/" "$FILE"
+            sed -i "s/${CHECKSUM_VAR}=\"[a-f0-9]*\"/${CHECKSUM_VAR}=\"${CHECKSUM}\"/" "$FILE"
+            grep -E "${VERSION_VAR}=|${CHECKSUM_VAR}=" "$FILE"
+          done <<< "$FILES"
+
+      - name: Create pull request
+        if: steps.check.outputs.update_needed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOOL: ${{ matrix.tool }}
+          REPO: ${{ matrix.repo }}
+          CURRENT: ${{ steps.check.outputs.current }}
+          LATEST: ${{ steps.check.outputs.latest }}
+          SERVER_URL: ${{ github.server_url }}
+          GH_REPO: ${{ github.repository }}
+          FILES: ${{ matrix.files }}
+        run: |
+          set -euo pipefail
+
+          BRANCH="chore/update-${TOOL}-${LATEST}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+
+          # shellcheck disable=SC2153  # FILES is an env var, not a misspelling of FILE
+          while IFS= read -r FILE; do
+            FILE=$(echo "$FILE" | tr -d '[:space:]')
+            [ -z "$FILE" ] && continue
+            git add "$FILE"
+          done <<< "$FILES"
+
+          git commit -m "chore(deps): bump ${TOOL} from ${CURRENT} to ${LATEST}"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --title "chore(deps): bump ${TOOL} from ${CURRENT} to ${LATEST}" \
+            --body "## Summary
+
+          - Bumps [${TOOL}](https://github.com/${REPO}) from ${CURRENT} to ${LATEST}
+          - SHA256 checksum updated for linux_amd64 asset
+          - Release is 7+ days old (supply chain quarantine policy)
+
+          Release notes: https://github.com/${REPO}/releases/tag/v${LATEST}
+
+          _Auto-generated by the [update-pinned-tools](${SERVER_URL}/${GH_REPO}/actions/workflows/update-pinned-tools.yml) workflow._" \
+            --label "dependencies" \
+            --label "automated"
+
+  # PyPI packages — version-only pins (no binary checksum)
+  check-pypi-updates:
+    name: Check for PyPI tool updates
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tool: zizmor
+            pypi_name: zizmor
+            version_var: ZIZMOR_VERSION
+            files: |
+              .github/actions/scanner-supply-chain/action.yml
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Check for new release
+        id: check
+        env:
+          TOOL: ${{ matrix.tool }}
+          PYPI_NAME: ${{ matrix.pypi_name }}
+          VERSION_VAR: ${{ matrix.version_var }}
+          FILES: ${{ matrix.files }}
+        run: |
+          set -euo pipefail
+
+          FIRST_FILE=$(echo "$FILES" | head -1 | tr -d '[:space:]')
+          CURRENT=$(grep "${VERSION_VAR}=" "$FIRST_FILE" | head -1 | sed 's/.*="//' | sed 's/"//')
+          echo "Current ${TOOL} version: $CURRENT"
+
+          PYPI_JSON=$(curl -sSf "https://pypi.org/pypi/${PYPI_NAME}/json")
+          LATEST=$(echo "$PYPI_JSON" | jq -r '.info.version')
+          echo "Latest version: $LATEST"
+
+          if [ "$CURRENT" = "$LATEST" ]; then
+            echo "Already up to date"
+            echo "update_needed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Get upload time of the latest release for age check
+          UPLOAD_TIME=$(echo "$PYPI_JSON" | jq -r ".releases[\"${LATEST}\"][0].upload_time")
+          echo "Upload time: $UPLOAD_TIME"
+
+          MIN_AGE_DAYS=7
+          UPLOAD_EPOCH=$(date -d "$UPLOAD_TIME" +%s)
+          NOW_EPOCH=$(date +%s)
+          AGE_DAYS=$(( (NOW_EPOCH - UPLOAD_EPOCH) / 86400 ))
+
+          if [ "$AGE_DAYS" -lt "$MIN_AGE_DAYS" ]; then
+            echo "Release ${LATEST} is only ${AGE_DAYS} day(s) old (minimum: ${MIN_AGE_DAYS}). Skipping."
+            echo "update_needed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Update available: $CURRENT → $LATEST (${AGE_DAYS} days old)"
+          {
+            echo "update_needed=true"
+            echo "current=$CURRENT"
+            echo "latest=$LATEST"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Update pinned version
+        if: steps.check.outputs.update_needed == 'true'
+        env:
+          CURRENT: ${{ steps.check.outputs.current }}
+          LATEST: ${{ steps.check.outputs.latest }}
+          VERSION_VAR: ${{ matrix.version_var }}
+          FILES: ${{ matrix.files }}
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2153  # FILES is an env var, not a misspelling of FILE
+          while IFS= read -r FILE; do
+            FILE=$(echo "$FILE" | tr -d '[:space:]')
+            [ -z "$FILE" ] && continue
+            echo "Updating $FILE"
+            sed -i "s/${VERSION_VAR}=\"${CURRENT}\"/${VERSION_VAR}=\"${LATEST}\"/" "$FILE"
+            grep "${VERSION_VAR}=" "$FILE"
+          done <<< "$FILES"
+
+      - name: Create pull request
+        if: steps.check.outputs.update_needed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOOL: ${{ matrix.tool }}
+          PYPI_NAME: ${{ matrix.pypi_name }}
+          CURRENT: ${{ steps.check.outputs.current }}
+          LATEST: ${{ steps.check.outputs.latest }}
+          SERVER_URL: ${{ github.server_url }}
+          GH_REPO: ${{ github.repository }}
+          FILES: ${{ matrix.files }}
+        run: |
+          set -euo pipefail
+
+          BRANCH="chore/update-${TOOL}-${LATEST}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+
+          # shellcheck disable=SC2153  # FILES is an env var, not a misspelling of FILE
+          while IFS= read -r FILE; do
+            FILE=$(echo "$FILE" | tr -d '[:space:]')
+            [ -z "$FILE" ] && continue
+            git add "$FILE"
+          done <<< "$FILES"
+
+          git commit -m "chore(deps): bump ${TOOL} from ${CURRENT} to ${LATEST}"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --title "chore(deps): bump ${TOOL} from ${CURRENT} to ${LATEST}" \
+            --body "## Summary
+
+          - Bumps [${TOOL}](https://pypi.org/project/${PYPI_NAME}/) from ${CURRENT} to ${LATEST}
+          - Release is 7+ days old (supply chain quarantine policy)
+
+          Changelog: https://pypi.org/project/${PYPI_NAME}/${LATEST}/
+
+          _Auto-generated by the [update-pinned-tools](${SERVER_URL}/${GH_REPO}/actions/workflows/update-pinned-tools.yml) workflow._" \
+            --label "dependencies" \
+            --label "automated"
