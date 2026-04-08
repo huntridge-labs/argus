@@ -107,18 +107,18 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github_token }}
         SCAN_PATH: ${{ inputs.scan_path }}
         PERSONA: ${{ inputs.persona }}
-        ZIZMOR_CONFIG: ${{ inputs.zizmor_config }}
+        INPUT_ZIZMOR_CONFIG: ${{ inputs.zizmor_config }}
       run: |
         set -euo pipefail
         mkdir -p supply-chain-reports
 
-        ZIZMOR_ARGS="--format sarif --persona $PERSONA"
-        if [ -n "$ZIZMOR_CONFIG" ] && [ -f "$ZIZMOR_CONFIG" ]; then
-          ZIZMOR_ARGS="$ZIZMOR_ARGS --config $ZIZMOR_CONFIG"
+        ZIZMOR_ARGS=("--format" "sarif" "--persona" "$PERSONA")
+        if [ -n "$INPUT_ZIZMOR_CONFIG" ] && [ -f "$INPUT_ZIZMOR_CONFIG" ]; then
+          ZIZMOR_ARGS+=("--config" "$INPUT_ZIZMOR_CONFIG")
         fi
 
         set +e
-        zizmor $ZIZMOR_ARGS "$SCAN_PATH" > supply-chain-reports/zizmor-results.sarif
+        zizmor "${ZIZMOR_ARGS[@]}" "$SCAN_PATH" > supply-chain-reports/zizmor-results.sarif
         ZIZMOR_EXIT=$?
         set -e
 
