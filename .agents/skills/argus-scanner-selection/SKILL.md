@@ -2,7 +2,7 @@
 name: argus-scanner-selection
 description: Analyze a repository or local change set and choose the right Argus scanners, grouped workflows, and inputs to use. Use when a coding agent needs pre-push security checks during development or wants to align local scans with Argus CI coverage.
 license: AGPL-3.0
-compatibility: Designed for skills-compatible coding agents with file search, file read, shell, git, and GitHub workflow editing access.
+compatibility: Designed for skills-compatible coding agents with file search, file read, shell, git, and GitHub workflow editing access. Local execution guidance assumes `act` and Docker; GHES guidance assumes composite actions or an internal mirror.
 metadata:
   author: huntridge-labs
   repository: huntridge-labs/argus
@@ -28,6 +28,8 @@ Collect or infer these before making recommendations:
 
 - repository path or URL
 - scan scope: staged diff, branch diff, working tree, or full repository
+- hosting environment: github.com, GHES with github.com access, or air-gapped/internal mirror
+- local execution path availability: `act`, container runtime, and network access for pulling actions/images
 - workflow trigger(s): `pull_request`, `push`, `schedule`, `workflow_dispatch`
 - whether GitHub Code Security / GitHub Advanced Security is enabled
 - whether the repo builds or publishes container images
@@ -44,15 +46,20 @@ Infer from the repository first. Ask the user only when a missing detail changes
 3. Build a short evidence list from the files you found. Quote concrete paths and changed files when available.
 4. Choose scanners using the selection rules below.
 5. For local development, prefer the smallest effective scanner set that matches the current changes so feedback arrives before push.
-6. Prefer the reusable workflow `/.github/workflows/reusable-security-hardening.yml` when the user wants repository-wide or CI onboarding. Prefer individual scanner workflows or actions only when the user needs split jobs or special inputs.
+6. Route by platform:
+   - for github.com CI onboarding, prefer `/.github/workflows/reusable-security-hardening.yml`
+   - for GHES or air-gapped environments, prefer direct composite action snippets and `examples/github-enterprise/*`
+   - for local pre-push runs, prefer direct composite action workflows that can be executed with `act`
 7. Prefer an explicit comma-separated `scanners:` list over `all`. The `all` token is convenient, but it does not include every opt-in capability and hides intent in reviews.
 8. Produce:
    - the recommended scanners
    - why each scanner is included
    - what should be run locally now versus what should remain CI-only
+   - which execution path applies locally, on github.com CI, and on GHES if relevant
    - which scanners were intentionally excluded
    - any required inputs, secrets, and permissions
    - the exact workflow or action snippet to use
+   - the exact local execution command when local runs are requested
 9. If the user asked you to implement, edit the workflow files and preserve the repository's existing conventions.
 10. After editing files, validate the YAML and run the repository's relevant validators.
 
@@ -62,6 +69,16 @@ Infer from the repository first. Ask the user only when a missing detail changes
 - Escalate to full-repository recommendations when the changes touch shared configuration, dependency manifests, Dockerfiles, IaC, release workflows, or security-sensitive areas.
 - Keep DAST and compliance scans opt-in unless the local environment clearly provides the required target or policy context.
 - If the repository is not yet using Argus in CI, still return a local pre-push scan plan and then propose the minimal CI workflow that mirrors it.
+- Default local execution to a temporary or checked-in workflow that calls Argus composite actions directly, then run it with `act`.
+- For local runs, set `post_pr_comment: false` and `enable_code_security: false`; PR comments and SARIF uploads are CI concerns and often skip under `act`.
+- If `act` or a compatible local runner is unavailable, still return the exact workflow and hook snippets, but say local execution is pending environment setup.
+
+## Platform routing
+
+- Use reusable workflows for github.com CI when the repo wants simple onboarding and can call cross-repo `workflow_call`.
+- Use composite actions directly for GHES or air-gapped setups because that is Argus' primary portability path.
+- Use the same direct composite action pattern for local runs so the local plan stays close to GHES and works under `act`.
+- When the platform is unclear, ask whether the target repo runs on github.com or GHES before choosing between reusable workflows and direct actions.
 
 ## Selection rules
 
@@ -133,6 +150,8 @@ Return a concise plan with these sections:
 
 ### For reusable workflow onboarding
 
+Use this on github.com when the user wants CI onboarding and cross-repo reusable workflows are available.
+
 Prefer a job shaped like:
 
 ```yaml
@@ -154,6 +173,57 @@ Then add or remove scanners based on the repository signals you found.
   - scanners to run now in the local loop
   - scanners to keep primarily in CI because they are slower, need hosted permissions, or need runtime targets
 - When the repository already has Argus wired into CI, keep the local recommendation aligned with the CI scanner list unless you have a clear reason to trim it for speed.
+- Prefer direct composite action jobs instead of reusable workflows so the same pattern works with `act` and GHES.
+- Include a runnable `act` command whenever the user asks for a pre-push or local development workflow.
+
+### For GHES or air-gapped workflows
+
+- Prefer direct composite action snippets that follow `examples/github-enterprise/*`.
+- Do not default to cross-repo reusable workflows on GHES.
+- If the environment is air-gapped, call out that action references may need to point to an internal mirror.
+
+### For concrete local execution
+
+When the user wants to actually run Argus before push, provide a minimal workflow plus an `act` command. A baseline pattern is:
+
+```yaml
+name: Local Argus Pre-Push
+
+on:
+  workflow_dispatch:
+
+jobs:
+  local-argus:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@<argus-version>
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          post_pr_comment: false
+          enable_code_security: false
+          fail_on_severity: none
+
+      - uses: huntridge-labs/argus/.github/actions/scanner-opengrep@<argus-version>
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          post_pr_comment: false
+          enable_code_security: false
+          fail_on_severity: none
+```
+
+Run it locally with:
+
+```bash
+act workflow_dispatch --workflows .github/workflows/local-argus-pre-push.yml --secret GITHUB_TOKEN=local-test-token
+```
+
+Then add `scanner-bandit`, `scanner-osv`, `scanner-container`, or `scanner-trivy-iac` / `scanner-checkov` based on the selected local scan plan.
 
 ### For DAST
 

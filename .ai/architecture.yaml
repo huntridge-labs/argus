@@ -88,7 +88,7 @@ components:
     type: agent-skill
     structure:
       SKILL.md: "Agent Skills metadata and instructions"
-      references/REFERENCE.md: "Scanner matrix, trigger caveats, and workflow recipes"
+      references/REFERENCE.md: "Scanner matrix, platform routing guidance, local act recipes, trigger caveats, and workflow recipes"
     instances:
       - argus-scanner-selection
 

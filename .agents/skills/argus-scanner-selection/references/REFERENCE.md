@@ -2,6 +2,17 @@
 
 Use this file when you need the detailed mapping from repository signals or local change sets to Argus scanners, workflow structure, and operational caveats.
 
+## Platform routing
+
+| Environment | Preferred Argus integration path | Why |
+| --- | --- | --- |
+| github.com CI | `reusable-security-hardening.yml` or direct composite actions | quickest onboarding when cross-repo reusable workflows are available |
+| GHES with github.com access | direct composite actions | GHES cannot reliably use cross-repo `workflow_call`, but can use composite actions directly |
+| air-gapped GHES / internal mirror | direct composite actions from the internal mirror | same portability model, but refs must point at the mirrored source |
+| local pre-push workflow | direct composite actions executed with `act` | keeps local runs close to GHES-compatible usage and avoids reusable-workflow indirection |
+
+If the target platform is GHES, use `examples/github-enterprise/*` as the starting point instead of the reusable workflow.
+
 ## Scanner matrix
 
 | Repository signal | Evidence to look for | Recommended scanner(s) | Why | Caveats |
@@ -38,6 +49,8 @@ Use this table when the goal is to catch issues before push.
 - Mirror CI where practical, but trim clearly slow or environment-dependent scans from the default pre-push loop.
 - Prefer `osv` over `dependency-review` for local or non-PR checks.
 - Treat `zap`, `clamav`, and `scn-detector` as explicitly justified local checks, not baseline defaults.
+- Default local execution to direct composite action workflows plus `act`.
+- Disable PR comments and SARIF upload in local runs with `post_pr_comment: false` and `enable_code_security: false`.
 
 ## Grouped tokens vs standalone scanners
 
@@ -87,6 +100,60 @@ Use this as the default mental model for a coding agent helping before push:
 
 When the repository already has Argus in CI, prefer keeping the local recommendation compatible with the CI scanner list while still optimizing for faster iteration.
 
+### Concrete local execution recipe
+
+Use a direct composite action workflow for local runs:
+
+```yaml
+name: Local Argus Pre-Push
+
+on:
+  workflow_dispatch:
+
+jobs:
+  local-argus:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@<argus-version>
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          post_pr_comment: false
+          enable_code_security: false
+          fail_on_severity: none
+
+      - uses: huntridge-labs/argus/.github/actions/scanner-opengrep@<argus-version>
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          post_pr_comment: false
+          enable_code_security: false
+          fail_on_severity: none
+```
+
+Run it with:
+
+```bash
+act workflow_dispatch --workflows .github/workflows/local-argus-pre-push.yml --secret GITHUB_TOKEN=local-test-token
+```
+
+Then extend the workflow with `scanner-bandit`, `scanner-osv`, `scanner-container`, `scanner-trivy-iac`, or `scanner-checkov` based on the detected change set.
+
+### Optional pre-push hook pattern
+
+If the user wants automatic enforcement before push, wire the local workflow into a git hook:
+
+```bash
+#!/bin/sh
+act workflow_dispatch --workflows .github/workflows/local-argus-pre-push.yml --secret GITHUB_TOKEN=local-test-token || exit 1
+```
+
+Keep this opt-in. The skill should recommend hooks only when the user explicitly wants automatic blocking behavior.
+
 ### Push or scheduled baseline
 
 Prefer `osv` over `dependencies` unless you want a graceful PR-only skip from `dependency-review`:
@@ -103,6 +170,8 @@ secrets: inherit
 
 ### Containerized service
 
+Use this recipe on github.com CI. For GHES, switch to the equivalent direct composite action pattern from `examples/github-enterprise/`.
+
 ```yaml
 uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@<argus-version>
 with:
@@ -117,6 +186,8 @@ Drop `sbom` if the user does not need inventory artifacts.
 
 ### Python service with GHAS enabled
 
+Use this recipe on github.com CI. On GHES, use direct composite actions and verify Code Security / GHAS availability separately.
+
 ```yaml
 uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@<argus-version>
 with:
@@ -128,6 +199,8 @@ secrets: inherit
 ```
 
 ### Infrastructure repository
+
+Use this recipe on github.com CI. For GHES, use the direct composite action pattern from `examples/github-enterprise/infrastructure-scanning.yml`.
 
 ```yaml
 uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@<argus-version>

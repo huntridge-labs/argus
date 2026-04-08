@@ -184,11 +184,14 @@ user_workflows:
     outputs:
       - "Recommended scanners and rationale"
       - "Local development scan plan"
+      - "Platform-specific routing for github.com CI versus GHES"
       - "Exact workflow or action snippet"
+      - "Concrete local act command when local execution is requested"
       - "Required inputs, secrets, and permissions"
     steps:
-      - "Inspect the target repository or current change set for languages, manifests, Dockerfiles, IaC, web targets, and compliance signals"
+      - "Inspect the target repository or current change set for languages, manifests, Dockerfiles, IaC, web targets, compliance signals, and hosting environment"
       - "Map findings to scanners using .agents/skills/argus-scanner-selection/references/REFERENCE.md"
+      - "Route github.com CI toward reusable workflows and GHES/local usage toward direct composite actions"
       - "Prefer the smallest effective pre-push scanner set locally, then keep CI workflow recommendations aligned"
       - "Prefer an explicit scanners list over 'all' when generating onboarding workflows"
 

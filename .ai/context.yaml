@@ -43,7 +43,7 @@ entrypoints:
 common_tasks:
   run_all_scanners: "Call the reusable workflow to run the default scanner suite."
   run_subset: "Enable a subset of scanners via workflow inputs or config."
-  recommend_scanners: "Use the argus-scanner-selection skill to map a target repository or local change set to the right Argus scanners, pre-push checks, workflow inputs, and implementation plan."
+  recommend_scanners: "Use the argus-scanner-selection skill to map a target repository or local change set to the right Argus scanners, choose the correct github.com versus GHES integration path, and produce pre-push execution plus CI alignment guidance."
   view_reports: "Review SARIF uploads, PR comments, and summary reports."
   update_versions: "Bump scanner or action versions and validate outputs."
   troubleshoot_failures: "Inspect workflow logs and scanner outputs to resolve errors."
