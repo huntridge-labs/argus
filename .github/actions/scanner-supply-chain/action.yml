@@ -165,7 +165,7 @@ runs:
           exit 1
         fi
 
-        ACTIONLINT_ARGS="-format {{json .}}"
+        ACTIONLINT_FORMAT="${{ '{{json .}}' }}"
         # Actionlint only understands workflow files — always target .github/workflows/
         WORKFLOW_DIR=".github/workflows"
 
@@ -179,7 +179,7 @@ runs:
           echo '[]' > supply-chain-reports/actionlint-results.json
         else
           set +e
-          ./actionlint $ACTIONLINT_ARGS "${WORKFLOW_FILES[@]}" > supply-chain-reports/actionlint-results.json
+          ./actionlint -format "$ACTIONLINT_FORMAT" "${WORKFLOW_FILES[@]}" > supply-chain-reports/actionlint-results.json
           ACTIONLINT_EXIT=$?
           set -e
 
