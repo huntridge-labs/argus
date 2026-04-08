@@ -1,0 +1,11 @@
+# zizmor configuration
+# See https://docs.zizmor.sh/configuration/
+
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        # Trust our own org — self-refs use version tags managed by release-it.
+        # SHA pinning isn't possible here because the release commit doesn't
+        # exist when release-it rewrites the version references.
+        huntridge-labs/*: any
