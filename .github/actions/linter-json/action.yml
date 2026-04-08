@@ -49,15 +49,18 @@ runs:
       id: json-lint
       shell: bash
       continue-on-error: true
+      env:
+        PATHS: ${{ inputs.paths }}
+        FAIL_ON_ISSUES: ${{ inputs.fail_on_issues }}
       run: |
         echo "::group::JSON Validation"
-        echo "Searching for JSON files in: ${{ inputs.paths }}"
+        echo "Searching for JSON files in: $PATHS"
 
         ISSUES_FILE="/tmp/json_issues.txt"
         ISSUE_COUNT=0
 
         # Find all JSON files, excluding common directories
-        JSON_FILES=$(find ${{ inputs.paths }} -name "*.json" \
+        JSON_FILES=$(find $PATHS -name "*.json" \
           -not -path "*/node_modules/*" \
           -not -path "*/.git/*" \
           -not -path "*/vendor/*" \
@@ -100,7 +103,7 @@ runs:
         echo "::endgroup::"
 
         # Fail if requested and issues found
-        if [ "${{ inputs.fail_on_issues }}" = "true" ] && [ "$ISSUE_COUNT" -gt 0 ]; then
+        if [ "$FAIL_ON_ISSUES" = "true" ] && [ "$ISSUE_COUNT" -gt 0 ]; then
           echo "::error::JSON validation failed with $ISSUE_COUNT issues"
           exit 1
         fi
@@ -108,9 +111,11 @@ runs:
     - name: Generate linter summary
       if: always()
       shell: bash
+      env:
+        ISSUES_OUTPUT: ${{ steps.json-lint.outputs.issues }}
       run: |
         mkdir -p linter-summaries
-        ISSUES="${{ steps.json-lint.outputs.issues }}"
+        ISSUES="$ISSUES_OUTPUT"
 
         echo "<details>" > linter-summaries/json.md
         echo "<summary>JSON Validation</summary>" >> linter-summaries/json.md

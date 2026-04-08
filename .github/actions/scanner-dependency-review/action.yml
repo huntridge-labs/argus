@@ -259,12 +259,18 @@ runs:
     - name: Check severity threshold
       if: steps.check-event.outputs.is_pr == 'true' && inputs.fail_on_severity != 'none' && inputs.fail_on_severity != ''
       shell: bash
+      env:
+        CRITICAL_COUNT: ${{ steps.parse-results.outputs.critical_count }}
+        HIGH_COUNT: ${{ steps.parse-results.outputs.high_count }}
+        MEDIUM_COUNT: ${{ steps.parse-results.outputs.medium_count }}
+        LOW_COUNT: ${{ steps.parse-results.outputs.low_count }}
+        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
       run: |
-        CRITICAL=${{ steps.parse-results.outputs.critical_count }}
-        HIGH=${{ steps.parse-results.outputs.high_count }}
-        MEDIUM=${{ steps.parse-results.outputs.medium_count }}
-        LOW=${{ steps.parse-results.outputs.low_count }}
-        THRESHOLD="${{ inputs.fail_on_severity }}"
+        CRITICAL=$CRITICAL_COUNT
+        HIGH=$HIGH_COUNT
+        MEDIUM=$MEDIUM_COUNT
+        LOW=$LOW_COUNT
+        THRESHOLD="$FAIL_ON_SEVERITY"
 
         SHOULD_FAIL=false
         case "$THRESHOLD" in

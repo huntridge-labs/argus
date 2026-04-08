@@ -71,14 +71,18 @@ runs:
     - name: Setup scan parameters
       id: setup
       shell: bash
+      env:
+        SCAN_IMAGE: ${{ inputs.scan_image }}
+        SCAN_PATH: ${{ inputs.scan_path }}
+        ARTIFACT_NAME_SUFFIX: ${{ inputs.artifact_name_suffix }}
       run: |
-        if [ -n "${{ inputs.scan_image }}" ]; then
-          TARGET="${{ inputs.scan_image }}"
+        if [ -n "$SCAN_IMAGE" ]; then
+          TARGET="$SCAN_IMAGE"
           TYPE="image"
           # Create safe prefix from image name
           PREFIX=$(echo "$TARGET" | sed 's/:/-/g' | sed 's/\//-/g')
         else
-          TARGET="${{ inputs.scan_path }}"
+          TARGET="$SCAN_PATH"
           TYPE="path"
           # Create safe prefix from path
           if [ "$TARGET" = "." ]; then
@@ -89,8 +93,8 @@ runs:
         fi
 
         # Add suffix if provided
-        if [ -n "${{ inputs.artifact_name_suffix }}" ]; then
-          PREFIX="${PREFIX}-${{ inputs.artifact_name_suffix }}"
+        if [ -n "$ARTIFACT_NAME_SUFFIX" ]; then
+          PREFIX="${PREFIX}-${ARTIFACT_NAME_SUFFIX}"
         fi
 
         mkdir -p syft-reports
@@ -107,16 +111,20 @@ runs:
     - name: Authenticate to container registry
       if: inputs.scan_image != '' && inputs.registry_username != '' && inputs.registry_password != ''
       shell: bash
+      env:
+        SCAN_IMAGE: ${{ inputs.scan_image }}
+        REGISTRY_USERNAME: ${{ inputs.registry_username }}
+        REGISTRY_PASSWORD: ${{ inputs.registry_password }}
       run: |
         echo "Authenticating to container registry..."
-        REGISTRY=$(echo "${{ inputs.scan_image }}" | cut -d'/' -f1)
+        REGISTRY=$(echo "$SCAN_IMAGE" | cut -d'/' -f1)
 
         # Handle Docker Hub (no registry prefix)
         if [[ "$REGISTRY" != *"."* ]] && [[ "$REGISTRY" != *":"* ]]; then
           REGISTRY="docker.io"
         fi
 
-        echo "${{ inputs.registry_password }}" | docker login "$REGISTRY" -u "${{ inputs.registry_username }}" --password-stdin
+        echo "$REGISTRY_PASSWORD" | docker login "$REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
         echo "Successfully authenticated to $REGISTRY"
 
     # Generate SBOM for source path
@@ -149,10 +157,14 @@ runs:
     # Generate human-readable table format
     - name: Generate table format
       shell: bash
+      env:
+        SETUP_PREFIX: ${{ steps.setup.outputs.prefix }}
+        SETUP_TARGET: ${{ steps.setup.outputs.target }}
+        SETUP_OUTPUT_DIR: ${{ steps.setup.outputs.output_dir }}
       run: |
-        PREFIX="${{ steps.setup.outputs.prefix }}"
-        TARGET="${{ steps.setup.outputs.target }}"
-        OUTPUT_DIR="${{ steps.setup.outputs.output_dir }}"
+        PREFIX="$SETUP_PREFIX"
+        TARGET="$SETUP_TARGET"
+        OUTPUT_DIR="$SETUP_OUTPUT_DIR"
 
         echo "Generating human-readable SBOM table..."
 
@@ -169,10 +181,14 @@ runs:
     - name: Set output file path
       id: generate
       shell: bash
+      env:
+        SETUP_PREFIX: ${{ steps.setup.outputs.prefix }}
+        SETUP_OUTPUT_DIR: ${{ steps.setup.outputs.output_dir }}
+        OUTPUT_FORMAT: ${{ inputs.output_format }}
       run: |
-        PREFIX="${{ steps.setup.outputs.prefix }}"
-        OUTPUT_DIR="${{ steps.setup.outputs.output_dir }}"
-        FORMAT="${{ inputs.output_format }}"
+        PREFIX="$SETUP_PREFIX"
+        OUTPUT_DIR="$SETUP_OUTPUT_DIR"
+        FORMAT="$OUTPUT_FORMAT"
 
         # Determine extension based on format
         case "$FORMAT" in
@@ -187,8 +203,10 @@ runs:
     - name: Parse SBOM results
       id: parse
       shell: bash
+      env:
+        GENERATE_SBOM_FILE: ${{ steps.generate.outputs.sbom_file }}
       run: |
-        SBOM_FILE="${{ steps.generate.outputs.sbom_file }}"
+        SBOM_FILE="$GENERATE_SBOM_FILE"
 
         COMPONENT_COUNT=0
         if [ -f "$SBOM_FILE" ]; then
@@ -229,15 +247,25 @@ runs:
       shell: bash
       env:
         HEAD_REF: ${{ github.head_ref || github.ref_name }}
+        SETUP_PREFIX: ${{ steps.setup.outputs.prefix }}
+        SETUP_TARGET: ${{ steps.setup.outputs.target }}
+        SETUP_TYPE: ${{ steps.setup.outputs.type }}
+        PARSE_COMPONENT_COUNT: ${{ steps.parse.outputs.component_count }}
+        GENERATE_SBOM_FILE: ${{ steps.generate.outputs.sbom_file }}
+        SETUP_OUTPUT_DIR: ${{ steps.setup.outputs.output_dir }}
+        OUTPUT_FORMAT: ${{ inputs.output_format }}
+        GITHUB_SERVER_URL_VAL: ${{ github.server_url }}
+        GITHUB_REPO: ${{ github.repository }}
+        GITHUB_RUN_ID_VAL: ${{ github.run_id }}
       run: |
         mkdir -p scanner-summaries
 
-        PREFIX="${{ steps.setup.outputs.prefix }}"
-        TARGET="${{ steps.setup.outputs.target }}"
-        TYPE="${{ steps.setup.outputs.type }}"
-        COMPONENT_COUNT="${{ steps.parse.outputs.component_count }}"
-        SBOM_FILE="${{ steps.generate.outputs.sbom_file }}"
-        OUTPUT_DIR="${{ steps.setup.outputs.output_dir }}"
+        PREFIX="$SETUP_PREFIX"
+        TARGET="$SETUP_TARGET"
+        TYPE="$SETUP_TYPE"
+        COMPONENT_COUNT="$PARSE_COMPONENT_COUNT"
+        SBOM_FILE="$GENERATE_SBOM_FILE"
+        OUTPUT_DIR="$SETUP_OUTPUT_DIR"
 
         # Get Syft version
         SYFT_VERSION=$(syft version 2>/dev/null | grep "^Version:" | awk '{print $2}' || echo "unknown")
@@ -268,7 +296,7 @@ runs:
             echo "| **Target** | \`$TARGET\` |" >> "$output"
             echo "| **Type** | $TYPE |" >> "$output"
             echo "| **Components** | $COMPONENT_COUNT |" >> "$output"
-            echo "| **Format** | ${{ inputs.output_format }} |" >> "$output"
+            echo "| **Format** | $OUTPUT_FORMAT |" >> "$output"
             echo "| **Generator** | Syft v$SYFT_VERSION |" >> "$output"
             echo "" >> "$output"
 
@@ -284,7 +312,7 @@ runs:
               echo "" >> "$output"
             fi
 
-            echo "**📁 Artifacts:** [SBOM Reports](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts)" >> "$output"
+            echo "**📁 Artifacts:** [SBOM Reports](${GITHUB_SERVER_URL_VAL}/${GITHUB_REPO}/actions/runs/${GITHUB_RUN_ID_VAL}#artifacts)" >> "$output"
           else
             if [ "$is_pr_comment" = "true" ]; then
               echo "**Status:** ⚠️ Failed to generate SBOM" >> "$output"

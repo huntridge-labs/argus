@@ -88,8 +88,10 @@ runs:
     - name: Validate scan directory
       id: validate
       shell: bash
+      env:
+        IAC_PATH_INPUT: ${{ inputs.iac_path }}
       run: |
-        IAC_PATH="${{ inputs.iac_path }}"
+        IAC_PATH="$IAC_PATH_INPUT"
         if [ -z "$IAC_PATH" ]; then
           IAC_PATH='infrastructure'
         fi
@@ -268,12 +270,18 @@ runs:
     - name: Check severity threshold
       if: steps.validate.outputs.has_iac == 'true' && inputs.fail_on_severity != 'none' && inputs.fail_on_severity != ''
       shell: bash
+      env:
+        CRITICAL_COUNT: ${{ steps.parse-results.outputs.critical_count }}
+        HIGH_COUNT: ${{ steps.parse-results.outputs.high_count }}
+        MEDIUM_COUNT: ${{ steps.parse-results.outputs.medium_count }}
+        LOW_COUNT: ${{ steps.parse-results.outputs.low_count }}
+        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
       run: |
-        CRITICAL=${{ steps.parse-results.outputs.critical_count }}
-        HIGH=${{ steps.parse-results.outputs.high_count }}
-        MEDIUM=${{ steps.parse-results.outputs.medium_count }}
-        LOW=${{ steps.parse-results.outputs.low_count }}
-        THRESHOLD="${{ inputs.fail_on_severity }}"
+        CRITICAL=$CRITICAL_COUNT
+        HIGH=$HIGH_COUNT
+        MEDIUM=$MEDIUM_COUNT
+        LOW=$LOW_COUNT
+        THRESHOLD="$FAIL_ON_SEVERITY"
 
         SHOULD_FAIL=false
         case "$THRESHOLD" in

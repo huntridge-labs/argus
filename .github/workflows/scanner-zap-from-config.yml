@@ -9,7 +9,6 @@ name: ZAP DAST from Config
 #     security-events: write
 #     actions: read
 #     pull-requests: write
-#     checks: write
 #     id-token: write
 #     packages: read
 #   jobs:
@@ -44,7 +43,6 @@ name: ZAP DAST from Config
 #   security-events: write  - Upload SARIF results to GitHub Security tab
 #   actions: read           - Download artifacts from scanner jobs
 #   pull-requests: write    - Post PR comments with scan results
-#   checks: write           - Create check runs for scan results
 #   id-token: write         - OIDC token for registry authentication
 #   packages: read          - Pull container images from GitHub Packages
 
@@ -69,7 +67,6 @@ permissions:
   security-events: write
   actions: read
   pull-requests: write
-  checks: write
   id-token: write
   packages: read
 

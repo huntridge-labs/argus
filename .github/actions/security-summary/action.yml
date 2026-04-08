@@ -60,6 +60,17 @@ runs:
 
     - name: Generate combined summary
       shell: bash
+      env:
+        SUMMARY_TITLE: ${{ inputs.title }}
+        SHOW_METADATA: ${{ inputs.show_metadata }}
+        SHOW_STATS: ${{ inputs.show_stats }}
+        HEAD_REF: ${{ github.head_ref }}
+        REF_NAME: ${{ github.ref_name }}
+        RUN_NUMBER: ${{ github.run_number }}
+        SERVER_URL: ${{ github.server_url }}
+        REPOSITORY: ${{ github.repository }}
+        RUN_ID: ${{ github.run_id }}
+        COMMIT_SHA: ${{ github.sha }}
       run: |
         # Create output directory for PR comment file
         mkdir -p combined-summaries
@@ -70,22 +81,22 @@ runs:
           local include_title="$2"
 
           if [ "$include_title" = "true" ]; then
-            echo "${{ inputs.title }}" >> "$output"
+            echo "$SUMMARY_TITLE" >> "$output"
             echo "" >> "$output"
           fi
 
           # Show metadata if enabled
-          if [ "${{ inputs.show_metadata }}" = "true" ]; then
-            echo "**Workflow Run:** [${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> "$output"
+          if [ "$SHOW_METADATA" = "true" ]; then
+            echo "**Workflow Run:** [$RUN_NUMBER]($SERVER_URL/$REPOSITORY/actions/runs/$RUN_ID)" >> "$output"
 
             # Use head_ref for PRs (source branch), ref_name for pushes
-            BRANCH_NAME="${{ github.head_ref }}"
+            BRANCH_NAME="$HEAD_REF"
             if [ -z "$BRANCH_NAME" ]; then
-              BRANCH_NAME="${{ github.ref_name }}"
+              BRANCH_NAME="$REF_NAME"
             fi
             echo "**Branch:** \`$BRANCH_NAME\`" >> "$output"
 
-            echo "**Commit:** [\`${GITHUB_SHA:0:7}\`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})" >> "$output"
+            echo "**Commit:** [\`${GITHUB_SHA:0:7}\`]($SERVER_URL/$REPOSITORY/commit/$COMMIT_SHA)" >> "$output"
             echo "" >> "$output"
           fi
 
@@ -94,7 +105,7 @@ runs:
             SCANNER_COUNT=$(find scanner-summaries -name "*.md" -type f | wc -l)
 
             # Show stats if enabled
-            if [ "${{ inputs.show_stats }}" = "true" ]; then
+            if [ "$SHOW_STATS" = "true" ]; then
               echo "**Scanners Executed:** $SCANNER_COUNT" >> "$output"
               echo "" >> "$output"
             fi

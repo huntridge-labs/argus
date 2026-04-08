@@ -330,15 +330,20 @@ runs:
     - name: Check severity threshold
       if: inputs.fail_on_severity != 'none' && inputs.fail_on_severity != ''
       shell: bash
+      env:
+        HIGH_COUNT: ${{ steps.parse-results.outputs.high_count }}
+        MEDIUM_COUNT: ${{ steps.parse-results.outputs.medium_count }}
+        LOW_COUNT: ${{ steps.parse-results.outputs.low_count }}
+        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
       run: |
         set -euo pipefail
-        HIGH="${{ steps.parse-results.outputs.high_count }}"
+        HIGH="${HIGH_COUNT}"
         HIGH="${HIGH:-0}"
-        MEDIUM="${{ steps.parse-results.outputs.medium_count }}"
+        MEDIUM="${MEDIUM_COUNT}"
         MEDIUM="${MEDIUM:-0}"
-        LOW="${{ steps.parse-results.outputs.low_count }}"
+        LOW="${LOW_COUNT}"
         LOW="${LOW:-0}"
-        THRESHOLD="${{ inputs.fail_on_severity }}"
+        THRESHOLD="$FAIL_ON_SEVERITY"
 
         SHOULD_FAIL=false
         case "$THRESHOLD" in

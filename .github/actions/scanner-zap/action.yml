@@ -146,18 +146,32 @@ runs:
     - name: Validate inputs
       id: validate
       shell: bash
+      env:
+        ALL_INPUTS: ${{ toJSON(inputs) }}
+        SCAN_TYPE: ${{ inputs.scan_type }}
+        SCAN_MODE: ${{ inputs.scan_mode }}
+        TARGET_URL: ${{ inputs.target_url }}
+        API_SPEC: ${{ inputs.api_spec }}
+        COMPOSE_FILE: ${{ inputs.compose_file }}
+        APP_IMAGE_REF: ${{ inputs.app_image_ref }}
+        BUILD_CONTEXT: ${{ inputs.app_build_context }}
+        REGISTRY_PASSWORD: ${{ inputs.registry_password }}
+        REGISTRY_USERNAME: ${{ inputs.registry_username }}
+        SCAN_NAME: ${{ inputs.scan_name }}
+        MAX_DURATION_MINUTES: ${{ inputs.max_duration_minutes }}
+        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
       run: |
         set -euo pipefail
 
-        scan_type="${{ inputs.scan_type }}"
-        scan_mode="${{ inputs.scan_mode }}"
-        target_url="${{ inputs.target_url }}"
-        api_spec="${{ inputs.api_spec }}"
-        compose_file="${{ inputs.compose_file }}"
-        app_image_ref="${{ inputs.app_image_ref }}"
-        build_context="${{ inputs.app_build_context }}"
-        registry_password="${{ inputs.registry_password }}"
-        registry_username="${{ inputs.registry_username }}"
+        scan_type="$SCAN_TYPE"
+        scan_mode="$SCAN_MODE"
+        target_url="$TARGET_URL"
+        api_spec="$API_SPEC"
+        compose_file="$COMPOSE_FILE"
+        app_image_ref="$APP_IMAGE_REF"
+        build_context="$BUILD_CONTEXT"
+        registry_password="$REGISTRY_PASSWORD"
+        registry_username="$REGISTRY_USERNAME"
 
         if [[ "$scan_type" == "api" && -z "$api_spec" ]]; then
           echo "❌ Error: api_spec is required for api scans"
@@ -211,11 +225,9 @@ runs:
 
         echo "✅ Scan mode: $scan_mode"
         echo "✅ Scan type: $scan_type"
-        echo "📊 Scan name: ${{ inputs.scan_name }}"
-        echo "⏱️  Max duration: ${{ inputs.max_duration_minutes }} minutes"
-        echo "🎯 Fail threshold: ${{ inputs.fail_on_severity }}"
-      env:
-        ALL_INPUTS: ${{ toJSON(inputs) }}
+        echo "📊 Scan name: $SCAN_NAME"
+        echo "⏱️  Max duration: $MAX_DURATION_MINUTES minutes"
+        echo "🎯 Fail threshold: $FAIL_ON_SEVERITY"
 
     - name: Login to registry
       if: inputs.app_image_ref != '' && steps.validate.outputs.has_registry_password == 'true'
@@ -227,11 +239,15 @@ runs:
     - name: Build target image
       if: inputs.scan_mode == 'docker-run' && inputs.app_build_context != ''
       shell: bash
+      env:
+        BUILD_CONTEXT: ${{ inputs.app_build_context }}
+        APP_DOCKERFILE: ${{ inputs.app_dockerfile }}
+        APP_IMAGE_TAG: ${{ inputs.app_image_tag }}
       run: |
         set -euo pipefail
-        context="${{ inputs.app_build_context }}"
-        dockerfile="${{ inputs.app_dockerfile }}"
-        tag="${{ inputs.app_image_tag }}"
+        context="$BUILD_CONTEXT"
+        dockerfile="$APP_DOCKERFILE"
+        tag="$APP_IMAGE_TAG"
 
         if [[ -z "$tag" ]]; then
           tag="local-dast-app:${GITHUB_SHA}"
@@ -246,21 +262,28 @@ runs:
           docker build -t "$tag" "$context"
         fi
 
-        echo "ZAP_TARGET_IMAGE=$tag" >> "$GITHUB_ENV"
+        {
+          echo "ZAP_TARGET_IMAGE<<GHADELIMITER"
+          echo "$tag"
+          echo "GHADELIMITER"
+        } >> "$GITHUB_ENV"
 
     - name: Start target (docker-run)
       if: inputs.scan_mode == 'docker-run'
       shell: bash
+      env:
+        APP_IMAGE_REF: ${{ inputs.app_image_ref }}
+        APP_PORTS: ${{ inputs.app_ports }}
       run: |
         set -euo pipefail
 
-        image="${ZAP_TARGET_IMAGE:-${{ inputs.app_image_ref }}}"
+        image="${ZAP_TARGET_IMAGE:-$APP_IMAGE_REF}"
         if [[ -z "$image" ]]; then
           echo "❌ Error: app_image_ref required for docker-run mode"
           exit 1
         fi
 
-        ports="${{ inputs.app_ports }}"
+        ports="$APP_PORTS"
         [[ -z "$ports" ]] && ports="8080:8080"
 
         container_name="zap-target-${GITHUB_RUN_ID}"
@@ -275,17 +298,24 @@ runs:
         done
 
         docker run -d --rm --name "$container_name" "${port_args[@]}" "$image"
-        echo "APP_CONTAINER_NAME=$container_name" >> "$GITHUB_ENV"
+        {
+          echo "APP_CONTAINER_NAME<<GHADELIMITER"
+          echo "$container_name"
+          echo "GHADELIMITER"
+        } >> "$GITHUB_ENV"
 
     - name: Start target (compose)
       if: inputs.scan_mode == 'compose'
       shell: bash
+      env:
+        COMPOSE_FILE_PATH: ${{ inputs.compose_file }}
+        COMPOSE_BUILD: ${{ inputs.compose_build }}
       run: |
         set -euo pipefail
-        file="${{ inputs.compose_file }}"
+        file="$COMPOSE_FILE_PATH"
 
         echo "Starting docker compose from $file"
-        if [[ "${{ inputs.compose_build }}" == "true" ]]; then
+        if [[ "$COMPOSE_BUILD" == "true" ]]; then
           docker compose -f "$file" up -d --build
         else
           docker compose -f "$file" up -d
@@ -293,12 +323,15 @@ runs:
 
     - name: Wait for target readiness
       shell: bash
+      env:
+        HEALTHCHECK_URL: ${{ inputs.healthcheck_url }}
+        TARGET_URL: ${{ inputs.target_url }}
       run: |
         set -euo pipefail
 
-        url="${{ inputs.healthcheck_url }}"
+        url="$HEALTHCHECK_URL"
         if [[ -z "$url" ]]; then
-          url="${{ inputs.target_url }}"
+          url="$TARGET_URL"
         fi
 
         if [[ -z "$url" ]]; then
@@ -322,10 +355,13 @@ runs:
     - name: Build ZAP command options
       id: zap_opts
       shell: bash
+      env:
+        MAX_DURATION_MINUTES: ${{ inputs.max_duration_minutes }}
+        CMD_OPTIONS: ${{ inputs.cmd_options }}
       run: |
-        max_dur="${{ inputs.max_duration_minutes }}"
+        max_dur="$MAX_DURATION_MINUTES"
         [[ -z "$max_dur" ]] && max_dur="10"
-        extra_opts="${{ inputs.cmd_options }}"
+        extra_opts="$CMD_OPTIONS"
 
         cmd_opts="-T ${max_dur}"
         [[ -n "$extra_opts" ]] && cmd_opts="$cmd_opts $extra_opts"
@@ -378,11 +414,14 @@ runs:
       if: always()
       continue-on-error: ${{ inputs.allow_failure == 'true' }}
       shell: bash
+      env:
+        PARSER_SCRIPT: ${{ github.action_path }}/scripts/parse_zap_results.py
+        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
       run: |
         set -euo pipefail
 
         report="report_json.json"
-        parser="${{ github.action_path }}/scripts/parse_zap_results.py"
+        parser="$PARSER_SCRIPT"
 
         if [[ ! -f "$report" ]]; then
           echo "⚠️  No ZAP JSON report found"
@@ -422,7 +461,7 @@ runs:
         echo "info_count=$info" >> "$GITHUB_OUTPUT"
 
         # Check severity threshold
-        fail_on="${{ inputs.fail_on_severity }}"
+        fail_on="$FAIL_ON_SEVERITY"
         should_fail=false
 
         case "$fail_on" in
@@ -455,8 +494,10 @@ runs:
       if: always() && inputs.scan_mode == 'compose'
       continue-on-error: true
       shell: bash
+      env:
+        COMPOSE_FILE_PATH: ${{ inputs.compose_file }}
       run: |
-        file="${{ inputs.compose_file }}"
+        file="$COMPOSE_FILE_PATH"
         if [[ -f "$file" ]]; then
           docker compose -f "$file" down -v || true
         fi
@@ -469,19 +510,20 @@ runs:
         ZAP_SCAN_TYPE: ${{ inputs.scan_type }}
         ZAP_SCAN_MODE: ${{ inputs.scan_mode }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
+        SUMMARY_SCRIPT: ${{ github.action_path }}/scripts/generate_zap_summary.py
+        ARTIFACT_PREFIX: ${{ steps.validate.outputs.artifact_prefix }}
       run: |
         set -euo pipefail
 
-        summary_script="${{ github.action_path }}/scripts/generate_zap_summary.py"
-        chmod +x "$summary_script" "$ZAP_PARSER"
+        chmod +x "$SUMMARY_SCRIPT" "$ZAP_PARSER"
 
         # Create zap-downloads structure expected by summary script
-        mkdir -p "zap-downloads/zap-reports-${{ steps.validate.outputs.artifact_prefix }}"
+        mkdir -p "zap-downloads/zap-reports-${ARTIFACT_PREFIX}"
         if [[ -f "report_json.json" ]]; then
-          cp report_json.json "zap-downloads/zap-reports-${{ steps.validate.outputs.artifact_prefix }}/"
+          cp report_json.json "zap-downloads/zap-reports-${ARTIFACT_PREFIX}/"
         fi
 
-        python3 "$summary_script"
+        python3 "$SUMMARY_SCRIPT"
 
     - name: Upload scan summary
       if: always()

@@ -171,6 +171,8 @@ runs:
       id: analyze-findings
       shell: bash
       if: always()
+      env:
+        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
       run: |
         echo "📊 Analyzing Gitleaks scan results..."
 
@@ -191,7 +193,7 @@ runs:
           echo "::warning title=Secrets Detected::Gitleaks found $SECRET_COUNT potential secret(s) in the repository"
 
           # Fail based on fail_on_severity input
-          if [ "${{ inputs.fail_on_severity }}" != "none" ] && [ -n "${{ inputs.fail_on_severity }}" ]; then
+          if [ "$FAIL_ON_SEVERITY" != "none" ] && [ -n "$FAIL_ON_SEVERITY" ]; then
             exit 1
           fi
         else

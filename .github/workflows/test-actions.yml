@@ -43,7 +43,6 @@ permissions:
   security-events: write
   actions: read
   pull-requests: write
-  checks: write
 
 # Cancel in-progress runs when a new commit is pushed
 concurrency:
@@ -748,7 +747,7 @@ jobs:
 
     services:
       podinfo:
-        image: stefanprodan/podinfo:latest
+        image: stefanprodan/podinfo:latest@sha256:187803cdf611a19d4fffbdf6a4260a01be4c09ffe9924b28902424fc0639ceb8
         ports:
           - 9898:9898
 
@@ -1178,6 +1177,10 @@ jobs:
     steps:
       - name: Generate Summary
         shell: bash
+        env:
+          WORKFLOW_NAME: ${{ github.workflow }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           {
             echo "# Composite Actions Test Summary"
@@ -1211,7 +1214,7 @@ jobs:
             echo ""
             echo "---"
             echo ""
-            echo "**Workflow:** ${{ github.workflow }}"
-            echo "**Trigger:** ${{ github.event_name }}"
-            echo "**Branch:** ${{ github.ref_name }}"
+            echo "**Workflow:** $WORKFLOW_NAME"
+            echo "**Trigger:** $EVENT_NAME"
+            echo "**Branch:** $REF_NAME"
           } >> "$GITHUB_STEP_SUMMARY"

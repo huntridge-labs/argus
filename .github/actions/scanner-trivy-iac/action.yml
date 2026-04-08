@@ -70,8 +70,10 @@ runs:
     - name: Validate scan directory
       id: validate
       shell: bash
+      env:
+        IAC_PATH_INPUT: ${{ inputs.iac_path }}
       run: |
-        IAC_PATH="${{ inputs.iac_path }}"
+        IAC_PATH="$IAC_PATH_INPUT"
         if [ -z "$IAC_PATH" ]; then
           IAC_PATH='infrastructure'
         fi
@@ -107,24 +109,27 @@ runs:
       if: steps.validate.outputs.has_iac == 'true'
       shell: bash
       continue-on-error: true
+      env:
+        VALIDATE_IAC_PATH: ${{ steps.validate.outputs.iac_path }}
+        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
       run: |
-        IAC_PATH="${{ steps.validate.outputs.iac_path }}"
+        IAC_PATH="$VALIDATE_IAC_PATH"
         OUTPUT_FILE="$IAC_PATH/security-reports/trivy-results.sarif"
 
-        if [ "${{ inputs.fail_on_severity }}" = "critical" ]; then
+        if [ "$FAIL_ON_SEVERITY" = "critical" ]; then
           SEVERITY="CRITICAL"
-        elif [ "${{ inputs.fail_on_severity }}" = "high" ]; then
+        elif [ "$FAIL_ON_SEVERITY" = "high" ]; then
           SEVERITY="HIGH,CRITICAL"
-        elif [ "${{ inputs.fail_on_severity }}" = "medium" ]; then
+        elif [ "$FAIL_ON_SEVERITY" = "medium" ]; then
           SEVERITY="MEDIUM,HIGH,CRITICAL"
-        elif [ "${{ inputs.fail_on_severity }}" = "low" ]; then
+        elif [ "$FAIL_ON_SEVERITY" = "low" ]; then
           SEVERITY="LOW,MEDIUM,HIGH,CRITICAL"
         else
           SEVERITY="UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL"
         fi
 
         EXIT_CODE=0
-        if [ "${{ inputs.fail_on_severity }}" != "none" ] && [ -n "${{ inputs.fail_on_severity }}" ]; then
+        if [ "$FAIL_ON_SEVERITY" != "none" ] && [ -n "$FAIL_ON_SEVERITY" ]; then
           EXIT_CODE=1
         fi
 
@@ -138,8 +143,10 @@ runs:
     - name: Run Trivy Infrastructure Scan (JSON)
       if: steps.validate.outputs.has_iac == 'true'
       shell: bash
+      env:
+        VALIDATE_IAC_PATH: ${{ steps.validate.outputs.iac_path }}
       run: |
-        IAC_PATH="${{ steps.validate.outputs.iac_path }}"
+        IAC_PATH="$VALIDATE_IAC_PATH"
         trivy config \
           --format json \
           --output "$IAC_PATH/security-reports/trivy-results.json" \
@@ -149,8 +156,10 @@ runs:
     - name: Run Trivy Infrastructure Scan (Table)
       if: steps.validate.outputs.has_iac == 'true'
       shell: bash
+      env:
+        VALIDATE_IAC_PATH: ${{ steps.validate.outputs.iac_path }}
       run: |
-        IAC_PATH="${{ steps.validate.outputs.iac_path }}"
+        IAC_PATH="$VALIDATE_IAC_PATH"
         trivy config \
           --format table \
           --output "$IAC_PATH/security-reports/trivy-results.txt" \
@@ -169,8 +178,11 @@ runs:
       id: check-severity
       if: steps.validate.outputs.has_iac == 'true' && always()
       shell: bash
+      env:
+        VALIDATE_IAC_PATH: ${{ steps.validate.outputs.iac_path }}
+        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
       run: |
-        IAC_PATH="${{ steps.validate.outputs.iac_path }}"
+        IAC_PATH="$VALIDATE_IAC_PATH"
         JSON_FILE="$IAC_PATH/security-reports/trivy-results.json"
 
         if [ ! -f "$JSON_FILE" ]; then
@@ -179,7 +191,7 @@ runs:
         fi
 
         # Check if we should fail based on severity threshold
-        FAIL_ON="${{ inputs.fail_on_severity }}"
+        FAIL_ON="$FAIL_ON_SEVERITY"
         if [ "$FAIL_ON" = "none" ] || [ -z "$FAIL_ON" ]; then
           echo "fail=false" >> "$GITHUB_OUTPUT"
           exit 0
@@ -217,8 +229,10 @@ runs:
       id: parse-results
       if: steps.validate.outputs.has_iac == 'true' && always()
       shell: bash
+      env:
+        VALIDATE_IAC_PATH: ${{ steps.validate.outputs.iac_path }}
       run: |
-        IAC_PATH="${{ steps.validate.outputs.iac_path }}"
+        IAC_PATH="$VALIDATE_IAC_PATH"
         JSON_FILE="$IAC_PATH/security-reports/trivy-results.json"
 
         # Initialize counts
@@ -277,33 +291,39 @@ runs:
       shell: bash
       env:
         HEAD_REF: ${{ github.head_ref || github.ref_name }}
+        ACTION_PATH: ${{ github.action_path }}
+        GITHUB_SERVER_URL_VAL: ${{ github.server_url }}
+        GITHUB_REPO: ${{ github.repository }}
+        GITHUB_RUN_ID_VAL: ${{ github.run_id }}
+        VALIDATE_HAS_IAC: ${{ steps.validate.outputs.has_iac }}
+        VALIDATE_IAC_PATH: ${{ steps.validate.outputs.iac_path }}
       run: |
         mkdir -p scanner-summaries
 
-        SCRIPT_DIR="${{ github.action_path }}"
-        REPO_URL="${{ github.server_url }}/${{ github.repository }}/blob/${HEAD_REF}"
+        SCRIPT_DIR="$ACTION_PATH"
+        REPO_URL="${GITHUB_SERVER_URL_VAL}/${GITHUB_REPO}/blob/${HEAD_REF}"
 
         # Generate PR comment artifact
         python3 "$SCRIPT_DIR/scripts/generate_summary.py" \
           "scanner-summaries/trivy-iac.md" \
           --is-pr-comment "true" \
-          --has-iac "${{ steps.validate.outputs.has_iac }}" \
-          --iac-path "${{ steps.validate.outputs.iac_path }}" \
+          --has-iac "$VALIDATE_HAS_IAC" \
+          --iac-path "$VALIDATE_IAC_PATH" \
           --repo-url "$REPO_URL" \
-          --github-server-url "${{ github.server_url }}" \
-          --github-repo "${{ github.repository }}" \
-          --github-run-id "${{ github.run_id }}"
+          --github-server-url "$GITHUB_SERVER_URL_VAL" \
+          --github-repo "$GITHUB_REPO" \
+          --github-run-id "$GITHUB_RUN_ID_VAL"
 
         # Generate job summary
         python3 "$SCRIPT_DIR/scripts/generate_summary.py" \
           "$GITHUB_STEP_SUMMARY" \
           --is-pr-comment "false" \
-          --has-iac "${{ steps.validate.outputs.has_iac }}" \
-          --iac-path "${{ steps.validate.outputs.iac_path }}" \
+          --has-iac "$VALIDATE_HAS_IAC" \
+          --iac-path "$VALIDATE_IAC_PATH" \
           --repo-url "$REPO_URL" \
-          --github-server-url "${{ github.server_url }}" \
-          --github-repo "${{ github.repository }}" \
-          --github-run-id "${{ github.run_id }}"
+          --github-server-url "$GITHUB_SERVER_URL_VAL" \
+          --github-repo "$GITHUB_REPO" \
+          --github-run-id "$GITHUB_RUN_ID_VAL"
       continue-on-error: true
 
     - name: Upload scanner summary section
@@ -327,10 +347,16 @@ runs:
     - name: Fail job if severity threshold exceeded
       if: steps.check-severity.outputs.fail == 'true'
       shell: bash
+      env:
+        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
+        SEVERITY_CRITICAL: ${{ steps.check-severity.outputs.critical }}
+        SEVERITY_HIGH: ${{ steps.check-severity.outputs.high }}
+        SEVERITY_MEDIUM: ${{ steps.check-severity.outputs.medium }}
+        SEVERITY_LOW: ${{ steps.check-severity.outputs.low }}
       run: |
-        echo "❌ Trivy IaC scan detected misconfigurations at or above '${{ inputs.fail_on_severity }}' severity"
-        echo "Critical: ${{ steps.check-severity.outputs.critical }}"
-        echo "High: ${{ steps.check-severity.outputs.high }}"
-        echo "Medium: ${{ steps.check-severity.outputs.medium }}"
-        echo "Low: ${{ steps.check-severity.outputs.low }}"
+        echo "❌ Trivy IaC scan detected misconfigurations at or above '$FAIL_ON_SEVERITY' severity"
+        echo "Critical: $SEVERITY_CRITICAL"
+        echo "High: $SEVERITY_HIGH"
+        echo "Medium: $SEVERITY_MEDIUM"
+        echo "Low: $SEVERITY_LOW"
         exit 1

@@ -91,22 +91,27 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ env.GITHUB_TOKEN }}
+        ISSUE_LABEL: ${{ inputs.issue_label }}
+        REPO: ${{ github.repository }}
+        PR_NUM: ${{ env.PR_NUMBER || github.event.pull_request.number }}
       run: |
         gh issue create \
-          --title "🔒 Security Summary: PR #${{ env.PR_NUMBER || github.event.pull_request.number }}" \
+          --title "🔒 Security Summary: PR #$PR_NUM" \
           --body-file /tmp/ai-summary.md \
-          --label "${{ inputs.issue_label }}" \
-          --repo "${{ github.repository }}"
+          --label "$ISSUE_LABEL" \
+          --repo "$REPO"
 
     - name: Post as PR comment
       if: inputs.post_pr_comment == 'true' && github.event_name == 'pull_request'
       shell: bash
       env:
         GH_TOKEN: ${{ env.GITHUB_TOKEN }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
       run: |
-        gh pr comment "${{ github.event.pull_request.number }}" \
+        gh pr comment "$PR_NUMBER" \
           --body-file /tmp/ai-summary.md \
-          --repo "${{ github.repository }}"
+          --repo "$REPO"
 
 branding:
   icon: 'shield'
