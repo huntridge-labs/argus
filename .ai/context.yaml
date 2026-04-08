@@ -11,7 +11,7 @@ project:
   purpose: "Automated security scanning orchestration for GitHub Actions"
   primary_language: yaml  # GitHub Actions workflows
   secondary_languages: [python]
-  version: "0.6.5"
+  version: "0.6.8"
   license: "AGPL-3.0"
   repository: "huntridge-labs/argus"
 
@@ -35,6 +35,7 @@ entrypoints:
   reusable_workflow: ".github/workflows/reusable-security-hardening.yml"
   examples: "examples/workflows/"
   documentation: "docs/"
+  agent_skills: ".agents/skills/"
   docsite: "scripts/docsite/"
   docsite_config: "docsite.yml"
   docsite_url: "https://huntridge-labs.github.io/argus/"
@@ -42,6 +43,7 @@ entrypoints:
 common_tasks:
   run_all_scanners: "Call the reusable workflow to run the default scanner suite."
   run_subset: "Enable a subset of scanners via workflow inputs or config."
+  recommend_scanners: "Use the argus-scanner-selection skill to map a target repository or local change set to the right Argus scanners, pre-push checks, workflow inputs, and implementation plan."
   view_reports: "Review SARIF uploads, PR comments, and summary reports."
   update_versions: "Bump scanner or action versions and validate outputs."
   troubleshoot_failures: "Inspect workflow logs and scanner outputs to resolve errors."

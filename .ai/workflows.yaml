@@ -177,6 +177,21 @@ user_workflows:
             fail_on_severity: none  # Report only, don't fail
             enable_code_security: true
 
+  argus_scanner_selection_skill:
+    description: "Use the bundled Agent Skills bundle to analyze a target repository or local change set and choose the right Argus scanners for pre-push checks and CI alignment"
+    category: planning
+    location: ".agents/skills/argus-scanner-selection/SKILL.md"
+    outputs:
+      - "Recommended scanners and rationale"
+      - "Local development scan plan"
+      - "Exact workflow or action snippet"
+      - "Required inputs, secrets, and permissions"
+    steps:
+      - "Inspect the target repository or current change set for languages, manifests, Dockerfiles, IaC, web targets, and compliance signals"
+      - "Map findings to scanners using .agents/skills/argus-scanner-selection/references/REFERENCE.md"
+      - "Prefer the smallest effective pre-push scanner set locally, then keep CI workflow recommendations aligned"
+      - "Prefer an explicit scanners list over 'all' when generating onboarding workflows"
+
 # ==============================================================================
 # CONTRIBUTOR WORKFLOWS - For developers of this project
 # ==============================================================================
