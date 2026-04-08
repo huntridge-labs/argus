@@ -265,6 +265,7 @@ See `CONTRIBUTING.md` for the complete composite actions development guide. Key 
 | **Infrastructure** | scanner-trivy-iac<br>scanner-checkov | Terraform, K8s, etc.<br>Multi-framework |
 | **Container** | scanner-container | Trivy + Grype + Syft |
 | **Malware** | scanner-clamav | File scanning |
+| **Supply Chain** | scanner-supply-chain | GitHub Actions workflow security (zizmor + actionlint) |
 | **DAST** | scanner-zap | Web applications |
 | **Compliance** | scn-detector | FedRAMP SCN detection |
 | **Linting** | linter-yaml<br>linter-json<br>linter-python<br>linter-javascript<br>linter-dockerfile<br>linter-terraform | Syntax & style |

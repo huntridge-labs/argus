@@ -36,6 +36,7 @@ on:
           - linters
           - infrastructure
           - dependencies
+          - supply-chain
 
 permissions:
   contents: read
@@ -835,6 +836,50 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ============================================================================
+  # Supply Chain Scanner
+  # Tests: scanner-supply-chain (zizmor + actionlint)
+  # ============================================================================
+  test-supply-chain:
+    name: Supply Chain / supply-chain
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      (inputs.test_group == 'all' || inputs.test_group == 'supply-chain') ||
+      github.event_name != 'workflow_dispatch'
+    timeout-minutes: 10
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Run supply chain scanner
+        id: scan
+        uses: ./.github/actions/scanner-supply-chain
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          scan_path: '.'
+          persona: 'regular'
+          run_actionlint: 'true'
+          post_pr_comment: 'false'
+          enable_code_security: ${{ env.ENABLE_CODE_SECURITY }}
+          fail_on_severity: 'none'
+
+      - name: Verify scan completed
+        shell: bash
+        run: |
+          {
+            echo "## Supply Chain Scanner Test Results"
+            echo "✅ Supply chain scanner executed successfully"
+            echo ""
+            echo "**High:** ${{ steps.scan.outputs.high_count }}"
+            echo "**Medium:** ${{ steps.scan.outputs.medium_count }}"
+            echo "**Low:** ${{ steps.scan.outputs.low_count }}"
+            echo "**Info:** ${{ steps.scan.outputs.info_count }}"
+            echo "**Status:** ${{ steps.scan.outputs.scan_status }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ============================================================================
   # Dependency Scanners
   # Tests: scanner-osv, scanner-dependency-review
   # ============================================================================
@@ -1121,6 +1166,7 @@ jobs:
       - test-linter-terraform
       - test-zap
       - test-clamav
+      - test-supply-chain
       - test-osv
       - test-dependency-review
       - test-linting-summary
@@ -1155,6 +1201,7 @@ jobs:
             echo "| Terraform Linter | ${{ needs.test-linter-terraform.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-linter-terraform.result }} |"
             echo "| ZAP DAST | ${{ needs.test-zap.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-zap.result }} |"
             echo "| ClamAV Malware | ${{ needs.test-clamav.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-clamav.result }} |"
+            echo "| Supply Chain | ${{ needs.test-supply-chain.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-supply-chain.result }} |"
             echo "| OSV Dependencies | ${{ needs.test-osv.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-osv.result }} |"
             echo "| Dependency Review | ${{ needs.test-dependency-review.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-dependency-review.result }} |"
             echo "| Linting Summary | ${{ needs.test-linting-summary.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-linting-summary.result }} |"
