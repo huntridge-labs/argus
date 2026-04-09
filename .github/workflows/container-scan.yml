@@ -186,7 +186,7 @@ jobs:
         id: build
         continue-on-error: true
         run: |
-          IMAGE_NAME="hardening-test-$(echo '${{ matrix.container.name }}' | tr '/' '-' | tr '[:upper:]' '[:lower:]')"
+          IMAGE_NAME="hardening-test-$(echo '${{ matrix.container.name }}' | tr '/' '-' | tr '.' '-' | tr '[:upper:]' '[:lower:]' | sed 's/^-*//')"
           IMAGE_TAG="scan-$(echo "$GITHUB_SHA" | cut -c1-8)"
           FULL_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
 
