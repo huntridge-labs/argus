@@ -9,7 +9,7 @@ architecture:
   primary:
     location: ".github/actions/"
     pattern: "Composite actions"
-    version: "0.6.5"
+    version: "0.6.8"
     status: production
     advantage: "GHES compatible, self-contained"
 
@@ -81,6 +81,16 @@ components:
     instances:
       - security-summary
       - linting-summary
+
+  - name: agent-skills
+    location: ".agents/skills/"
+    purpose: "Portable Agent Skills bundles that help skills-compatible agents bring Argus into local development workflows and align those checks with CI coverage."
+    type: agent-skill
+    structure:
+      SKILL.md: "Agent Skills metadata and instructions"
+      references/REFERENCE.md: "Scanner matrix, platform routing guidance, local act recipes, trigger caveats, and workflow recipes"
+    instances:
+      - argus-scanner-selection
 
   - name: scn-detector
     location: ".github/actions/scn-detector/"
