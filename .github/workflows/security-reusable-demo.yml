@@ -16,6 +16,8 @@ on:
           - container-only
           - infrastructure-only
 
+permissions: {}
+
 jobs:
   # Use our own reusable workflow to demonstrate it works
   security-reusable:
@@ -33,7 +35,6 @@ jobs:
       security-events: write
       actions: read
       pull-requests: write
-      checks: write
       id-token: write
 
   # Compare results with main workflow (optional manual comparison)

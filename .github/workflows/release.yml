@@ -79,10 +79,11 @@ jobs:
 
       - name: Release (Specific Type)
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.releaseType != 'auto'
-        run: npm run release:ci -- ${{ github.event.inputs.releaseType }}
+        run: npm run release:ci -- "$RELEASE_TYPE"
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
           HUSKY: 0
+          RELEASE_TYPE: ${{ github.event.inputs.releaseType }}
 
   dry-run:
     name: Release Preview (Dry Run)

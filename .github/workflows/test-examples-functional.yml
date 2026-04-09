@@ -17,8 +17,6 @@ concurrency:
 
 permissions:
   contents: read
-  security-events: write
-  actions: read
 
 env:
   PYTHON_VERSION: '3.12'

@@ -58,21 +58,25 @@ runs:
       id: yaml-lint
       shell: bash
       continue-on-error: true
+      env:
+        PATHS: ${{ inputs.paths }}
+        CONFIG_FILE: ${{ inputs.config_file }}
+        FAIL_ON_ISSUES: ${{ inputs.fail_on_issues }}
       run: |
         echo "::group::YAML Linting"
-        echo "Running yamllint on: ${{ inputs.paths }}"
+        echo "Running yamllint on: $PATHS"
 
         ISSUES_FILE="/tmp/yaml_issues.txt"
         CONFIG_ARG=""
 
         # Add config file if specified
-        if [ -n "${{ inputs.config_file }}" ] && [ -f "${{ inputs.config_file }}" ]; then
-          CONFIG_ARG="-c ${{ inputs.config_file }}"
-          echo "Using config file: ${{ inputs.config_file }}"
+        if [ -n "$CONFIG_FILE" ] && [ -f "$CONFIG_FILE" ]; then
+          CONFIG_ARG="-c $CONFIG_FILE"
+          echo "Using config file: $CONFIG_FILE"
         fi
 
         # Run yamllint and capture issues
-        yamllint $CONFIG_ARG ${{ inputs.paths }} --format parsable > "$ISSUES_FILE" 2>&1 || true
+        yamllint $CONFIG_ARG $PATHS --format parsable > "$ISSUES_FILE" 2>&1 || true
 
         # Count issues (non-empty lines)
         ISSUE_COUNT=$(grep -c ":" "$ISSUES_FILE" 2>/dev/null) || ISSUE_COUNT=0
@@ -94,7 +98,7 @@ runs:
         echo "::endgroup::"
 
         # Fail if requested and issues found
-        if [ "${{ inputs.fail_on_issues }}" = "true" ] && [ "$ISSUE_COUNT" -gt 0 ]; then
+        if [ "$FAIL_ON_ISSUES" = "true" ] && [ "$ISSUE_COUNT" -gt 0 ]; then
           echo "::error::YAML linting failed with $ISSUE_COUNT issues"
           exit 1
         fi
@@ -102,9 +106,11 @@ runs:
     - name: Generate linter summary
       if: always()
       shell: bash
+      env:
+        ISSUES_OUTPUT: ${{ steps.yaml-lint.outputs.issues }}
       run: |
         mkdir -p linter-summaries
-        ISSUES="${{ steps.yaml-lint.outputs.issues }}"
+        ISSUES="$ISSUES_OUTPUT"
 
         # Generate PR comment artifact (with <details> wrapper)
         echo "<details>" > linter-summaries/yaml.md

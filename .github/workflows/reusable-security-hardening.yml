@@ -264,6 +264,9 @@ jobs:
     - name: Resolve scanner selection
       id: resolve
       shell: bash
+      env:
+        SCANNERS_INPUT: ${{ inputs.scanners }}
+        SCAN_TYPE_INPUT: ${{ inputs.scan_type }}
       run: |
         set -euo pipefail
 
@@ -399,8 +402,8 @@ jobs:
           esac
         }
 
-        SCANNERS_RAW="${{ inputs.scanners }}"
-        SCAN_TYPE_RAW="$(normalize "${{ inputs.scan_type }}")"
+        SCANNERS_RAW="$SCANNERS_INPUT"
+        SCAN_TYPE_RAW="$(normalize "$SCAN_TYPE_INPUT")"
 
         if [[ -z "$SCANNERS_RAW" || "$SCANNERS_RAW" == "default" ]]; then
           case "$SCAN_TYPE_RAW" in
@@ -976,10 +979,13 @@ jobs:
       continue-on-error: true
 
     - name: Combine scanner summaries into security report
+      env:
+        REPOSITORY: ${{ github.repository }}
+        REF_NAME: ${{ github.ref_name }}
       run: |
         {
-          echo "**Repository:** ${{ github.repository }}"
-          echo "**Branch:** ${{ github.ref_name }}"
+          echo "**Repository:** $REPOSITORY"
+          echo "**Branch:** $REF_NAME"
           echo "**Generated:** $(date)"
           echo ""
         } >> security-hardening-report.md

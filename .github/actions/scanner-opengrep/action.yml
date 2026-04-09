@@ -80,12 +80,15 @@ runs:
 
     - name: Run OpenGrep Analysis
       shell: bash
+      env:
+        CONFIG_INPUT: ${{ inputs.config }}
+        PATHS_INPUT: ${{ inputs.paths }}
       run: |
         echo "::group::Running OpenGrep security analysis"
         mkdir -p opengrep-reports
 
-        CONFIG="${{ inputs.config }}"
-        PATHS="${{ inputs.paths }}"
+        CONFIG="$CONFIG_INPUT"
+        PATHS="$PATHS_INPUT"
 
         echo "Config: $CONFIG"
         echo "Paths: $PATHS"
@@ -207,11 +210,16 @@ runs:
     - name: Check severity threshold
       if: inputs.fail_on_severity != 'none' && inputs.fail_on_severity != ''
       shell: bash
+      env:
+        ERROR_COUNT_VAL: ${{ steps.parse-results.outputs.error_count }}
+        WARNING_COUNT_VAL: ${{ steps.parse-results.outputs.warning_count }}
+        INFO_COUNT_VAL: ${{ steps.parse-results.outputs.info_count }}
+        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
       run: |
-        ERROR_COUNT=${{ steps.parse-results.outputs.error_count }}
-        WARNING_COUNT=${{ steps.parse-results.outputs.warning_count }}
-        INFO_COUNT=${{ steps.parse-results.outputs.info_count }}
-        THRESHOLD="${{ inputs.fail_on_severity }}"
+        ERROR_COUNT=$ERROR_COUNT_VAL
+        WARNING_COUNT=$WARNING_COUNT_VAL
+        INFO_COUNT=$INFO_COUNT_VAL
+        THRESHOLD="$FAIL_ON_SEVERITY"
 
         SHOULD_FAIL=false
         case "$THRESHOLD" in

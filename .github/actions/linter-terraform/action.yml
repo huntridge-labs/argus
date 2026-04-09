@@ -75,9 +75,13 @@ runs:
       id: terraform-lint
       shell: bash
       continue-on-error: true
+      env:
+        PATHS: ${{ inputs.paths }}
+        RUN_TFLINT: ${{ inputs.run_tflint }}
+        FAIL_ON_ISSUES: ${{ inputs.fail_on_issues }}
       run: |
         echo "::group::Terraform Linting"
-        echo "Searching for Terraform files in: ${{ inputs.paths }}"
+        echo "Searching for Terraform files in: $PATHS"
 
         ISSUES_FILE="/tmp/terraform_issues.txt"
         TOTAL_ISSUES=0
@@ -86,7 +90,7 @@ runs:
         TFLINT_ISSUES=0
 
         # Find Terraform files
-        TF_FILES=$(find ${{ inputs.paths }} -name "*.tf" \
+        TF_FILES=$(find $PATHS -name "*.tf" \
           -not -path "*/.git/*" \
           -not -path "*/.terraform/*" \
           -type f 2>/dev/null || true)
@@ -156,7 +160,7 @@ runs:
         fi
 
         # Run TFLint if enabled
-        if [ "${{ inputs.run_tflint }}" = "true" ]; then
+        if [ "$RUN_TFLINT" = "true" ]; then
           echo ""
           echo "=== Running TFLint ===" | tee -a "$ISSUES_FILE"
           for dir in $TF_DIRS; do
@@ -203,7 +207,7 @@ runs:
         echo "::endgroup::"
 
         # Fail if requested and issues found
-        if [ "${{ inputs.fail_on_issues }}" = "true" ] && [ "$TOTAL_ISSUES" -gt 0 ]; then
+        if [ "$FAIL_ON_ISSUES" = "true" ] && [ "$TOTAL_ISSUES" -gt 0 ]; then
           echo "::error::Terraform linting failed with $TOTAL_ISSUES issues"
           exit 1
         fi
@@ -211,12 +215,18 @@ runs:
     - name: Generate linter summary
       if: always()
       shell: bash
+      env:
+        ISSUES_OUTPUT: ${{ steps.terraform-lint.outputs.issues }}
+        FMT_OUTPUT: ${{ steps.terraform-lint.outputs.fmt_issues }}
+        VALIDATE_OUTPUT: ${{ steps.terraform-lint.outputs.validate_issues }}
+        TFLINT_OUTPUT: ${{ steps.terraform-lint.outputs.tflint_issues }}
+        RUN_TFLINT: ${{ inputs.run_tflint }}
       run: |
         mkdir -p linter-summaries
-        ISSUES="${{ steps.terraform-lint.outputs.issues }}"
-        FMT="${{ steps.terraform-lint.outputs.fmt_issues }}"
-        VALIDATE="${{ steps.terraform-lint.outputs.validate_issues }}"
-        TFLINT="${{ steps.terraform-lint.outputs.tflint_issues }}"
+        ISSUES="$ISSUES_OUTPUT"
+        FMT="$FMT_OUTPUT"
+        VALIDATE="$VALIDATE_OUTPUT"
+        TFLINT="$TFLINT_OUTPUT"
 
         echo "<details>" > linter-summaries/terraform.md
         echo "<summary>Terraform Linting</summary>" >> linter-summaries/terraform.md
@@ -233,7 +243,7 @@ runs:
           echo "|-------|--------|" >> linter-summaries/terraform.md
           echo "| Formatting (fmt) | $FMT |" >> linter-summaries/terraform.md
           echo "| Validation | $VALIDATE |" >> linter-summaries/terraform.md
-          if [ "${{ inputs.run_tflint }}" = "true" ]; then
+          if [ "$RUN_TFLINT" = "true" ]; then
             echo "| TFLint | $TFLINT |" >> linter-summaries/terraform.md
           fi
           echo "| **Total** | **$ISSUES** |" >> linter-summaries/terraform.md

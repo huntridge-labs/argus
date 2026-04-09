@@ -9,3 +9,21 @@ rules:
         # SHA pinning isn't possible here because the release commit doesn't
         # exist when release-it rewrites the version references.
         huntridge-labs/*: any
+
+  excessive-permissions:
+    ignore:
+      # These workflows require pull-requests:write for PR comment posting
+      # via the comment-pr composite action. This is the minimum privilege
+      # needed — contents is already read-only.
+      - container-scan-from-config.yml
+      - container-scan.yml
+      - dependency-scan.yml
+      - infrastructure-scan.yml
+      - linting.yml
+      - scanner-codeql.yml
+      - scanner-zap-from-config.yml
+      - test-actions.yml
+      - test-reusable-workflows.yml
+      # update-pinned-tools needs contents:write to push commits and
+      # pull-requests:write to open PRs with updated tool pins.
+      - update-pinned-tools.yml

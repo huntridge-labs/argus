@@ -60,15 +60,20 @@ runs:
       id: dockerfile-lint
       shell: bash
       continue-on-error: true
+      env:
+        PATHS: ${{ inputs.paths }}
+        CONFIG_FILE: ${{ inputs.config_file }}
+        IGNORE_RULES: ${{ inputs.ignore_rules }}
+        FAIL_ON_ISSUES: ${{ inputs.fail_on_issues }}
       run: |
         echo "::group::Dockerfile Linting"
-        echo "Searching for Dockerfiles in: ${{ inputs.paths }}"
+        echo "Searching for Dockerfiles in: $PATHS"
 
         ISSUES_FILE="/tmp/dockerfile_issues.txt"
         TOTAL_ISSUES=0
 
         # Find Dockerfiles
-        DOCKERFILES=$(find ${{ inputs.paths }} -name "Dockerfile*" \
+        DOCKERFILES=$(find $PATHS -name "Dockerfile*" \
           -not -path "*/.git/*" \
           -type f 2>/dev/null || true)
 
@@ -86,17 +91,17 @@ runs:
         HADOLINT_ARGS=""
 
         # Add config file if specified
-        if [ -n "${{ inputs.config_file }}" ] && [ -f "${{ inputs.config_file }}" ]; then
-          HADOLINT_ARGS="$HADOLINT_ARGS --config ${{ inputs.config_file }}"
-          echo "Using config file: ${{ inputs.config_file }}"
+        if [ -n "$CONFIG_FILE" ] && [ -f "$CONFIG_FILE" ]; then
+          HADOLINT_ARGS="$HADOLINT_ARGS --config $CONFIG_FILE"
+          echo "Using config file: $CONFIG_FILE"
         fi
 
         # Add ignore rules if specified
-        if [ -n "${{ inputs.ignore_rules }}" ]; then
-          for rule in $(echo "${{ inputs.ignore_rules }}" | tr ',' ' '); do
+        if [ -n "$IGNORE_RULES" ]; then
+          for rule in $(echo "$IGNORE_RULES" | tr ',' ' '); do
             HADOLINT_ARGS="$HADOLINT_ARGS --ignore $rule"
           done
-          echo "Ignoring rules: ${{ inputs.ignore_rules }}"
+          echo "Ignoring rules: $IGNORE_RULES"
         fi
 
         # Run Hadolint on each Dockerfile
@@ -128,7 +133,7 @@ runs:
         echo "::endgroup::"
 
         # Fail if requested and issues found
-        if [ "${{ inputs.fail_on_issues }}" = "true" ] && [ "$TOTAL_ISSUES" -gt 0 ]; then
+        if [ "$FAIL_ON_ISSUES" = "true" ] && [ "$TOTAL_ISSUES" -gt 0 ]; then
           echo "::error::Dockerfile linting failed with $TOTAL_ISSUES issues"
           exit 1
         fi
@@ -136,9 +141,11 @@ runs:
     - name: Generate linter summary
       if: always()
       shell: bash
+      env:
+        ISSUES_OUTPUT: ${{ steps.dockerfile-lint.outputs.issues }}
       run: |
         mkdir -p linter-summaries
-        ISSUES="${{ steps.dockerfile-lint.outputs.issues }}"
+        ISSUES="$ISSUES_OUTPUT"
 
         # Generate PR comment artifact (with <details> wrapper)
         echo "<details>" > linter-summaries/dockerfile.md
