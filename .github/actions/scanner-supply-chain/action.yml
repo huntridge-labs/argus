@@ -165,7 +165,7 @@ runs:
           exit 1
         fi
 
-        ACTIONLINT_FORMAT="${{ '{{json .}}' }}"
+        ACTIONLINT_FORMAT="{{json .}}"
         # Actionlint only understands workflow files — always target .github/workflows/
         WORKFLOW_DIR=".github/workflows"
 
@@ -289,10 +289,10 @@ runs:
           --output-file "scanner-summaries/supply-chain.md" \
           --is-pr-comment "true" \
           --results-file "supply-chain-reports/findings.json" \
-          --high "${{ steps.parse-results.outputs.high_count }}" \
-          --medium "${{ steps.parse-results.outputs.medium_count }}" \
-          --low "${{ steps.parse-results.outputs.low_count }}" \
-          --info "${{ steps.parse-results.outputs.info_count }}" \
+          --high "${STEPS_PARSE_RESULTS_OUTPUTS_HIGH_COUNT}" \
+          --medium "${STEPS_PARSE_RESULTS_OUTPUTS_MEDIUM_COUNT}" \
+          --low "${STEPS_PARSE_RESULTS_OUTPUTS_LOW_COUNT}" \
+          --info "${STEPS_PARSE_RESULTS_OUTPUTS_INFO_COUNT}" \
           --github-server-url "${{ github.server_url }}" \
           --github-repo "${{ github.repository }}" \
           --github-run-id "${{ github.run_id }}"
@@ -301,13 +301,18 @@ runs:
           --output-file "$GITHUB_STEP_SUMMARY" \
           --is-pr-comment "false" \
           --results-file "supply-chain-reports/findings.json" \
-          --high "${{ steps.parse-results.outputs.high_count }}" \
-          --medium "${{ steps.parse-results.outputs.medium_count }}" \
-          --low "${{ steps.parse-results.outputs.low_count }}" \
-          --info "${{ steps.parse-results.outputs.info_count }}" \
+          --high "${STEPS_PARSE_RESULTS_OUTPUTS_HIGH_COUNT}" \
+          --medium "${STEPS_PARSE_RESULTS_OUTPUTS_MEDIUM_COUNT}" \
+          --low "${STEPS_PARSE_RESULTS_OUTPUTS_LOW_COUNT}" \
+          --info "${STEPS_PARSE_RESULTS_OUTPUTS_INFO_COUNT}" \
           --github-server-url "${{ github.server_url }}" \
           --github-repo "${{ github.repository }}" \
           --github-run-id "${{ github.run_id }}"
+      env:
+        STEPS_PARSE_RESULTS_OUTPUTS_HIGH_COUNT: ${{ steps.parse-results.outputs.high_count }}
+        STEPS_PARSE_RESULTS_OUTPUTS_MEDIUM_COUNT: ${{ steps.parse-results.outputs.medium_count }}
+        STEPS_PARSE_RESULTS_OUTPUTS_LOW_COUNT: ${{ steps.parse-results.outputs.low_count }}
+        STEPS_PARSE_RESULTS_OUTPUTS_INFO_COUNT: ${{ steps.parse-results.outputs.info_count }}
 
     - name: Upload scanner summary
       if: always()

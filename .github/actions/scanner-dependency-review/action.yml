@@ -133,9 +133,9 @@ runs:
         TOTAL=0
         LICENSE_VIOLATIONS=0
 
-        if [ "${{ steps.check-event.outputs.is_pr }}" == "true" ]; then
-          VULN_CHANGES='${{ steps.dependency-review.outputs.vulnerable-changes }}'
-          LICENSE_CHANGES='${{ steps.dependency-review.outputs.invalid-license-changes }}'
+        if [ "${STEPS_CHECK_EVENT_OUTPUTS_IS_PR}" == "true" ]; then
+          VULN_CHANGES='${STEPS_DEPENDENCY_REVIEW_OUTPUTS_VULNERABLE_CHANGES}'
+          LICENSE_CHANGES='${STEPS_DEPENDENCY_REVIEW_OUTPUTS_INVALID_LICENSE_CHANGES}'
 
           # Default to empty array if outputs are empty
           if [ -z "$VULN_CHANGES" ]; then
@@ -187,6 +187,10 @@ runs:
         fi
 
         echo "::endgroup::"
+      env:
+        STEPS_CHECK_EVENT_OUTPUTS_IS_PR: ${{ steps.check-event.outputs.is_pr }}
+        STEPS_DEPENDENCY_REVIEW_OUTPUTS_VULNERABLE_CHANGES: ${{ steps.dependency-review.outputs.vulnerable-changes }}
+        STEPS_DEPENDENCY_REVIEW_OUTPUTS_INVALID_LICENSE_CHANGES: ${{ steps.dependency-review.outputs.invalid-license-changes }}
 
     - name: Upload reports
       if: always()
@@ -205,7 +209,7 @@ runs:
 
         SCRIPT_DIR="${{ github.action_path }}"
         SKIPPED="false"
-        if [ "${{ steps.check-event.outputs.is_pr }}" != "true" ]; then
+        if [ "${STEPS_CHECK_EVENT_OUTPUTS_IS_PR}" != "true" ]; then
           SKIPPED="true"
         fi
 
@@ -213,11 +217,11 @@ runs:
           --output-file "scanner-summaries/dependency-review.md" \
           --is-pr-comment "true" \
           --skipped "$SKIPPED" \
-          --critical "${{ steps.parse-results.outputs.critical_count }}" \
-          --high "${{ steps.parse-results.outputs.high_count }}" \
-          --medium "${{ steps.parse-results.outputs.medium_count }}" \
-          --low "${{ steps.parse-results.outputs.low_count }}" \
-          --license-violations "${{ steps.parse-results.outputs.license_violations }}" \
+          --critical "${STEPS_PARSE_RESULTS_OUTPUTS_CRITICAL_COUNT}" \
+          --high "${STEPS_PARSE_RESULTS_OUTPUTS_HIGH_COUNT}" \
+          --medium "${STEPS_PARSE_RESULTS_OUTPUTS_MEDIUM_COUNT}" \
+          --low "${STEPS_PARSE_RESULTS_OUTPUTS_LOW_COUNT}" \
+          --license-violations "${STEPS_PARSE_RESULTS_OUTPUTS_LICENSE_VIOLATIONS}" \
           --results-file "dependency-review-reports/dependency-review-results.json" \
           --github-server-url "${{ github.server_url }}" \
           --github-repo "${{ github.repository }}" \
@@ -227,16 +231,23 @@ runs:
           --output-file "$GITHUB_STEP_SUMMARY" \
           --is-pr-comment "false" \
           --skipped "$SKIPPED" \
-          --critical "${{ steps.parse-results.outputs.critical_count }}" \
-          --high "${{ steps.parse-results.outputs.high_count }}" \
-          --medium "${{ steps.parse-results.outputs.medium_count }}" \
-          --low "${{ steps.parse-results.outputs.low_count }}" \
-          --license-violations "${{ steps.parse-results.outputs.license_violations }}" \
+          --critical "${STEPS_PARSE_RESULTS_OUTPUTS_CRITICAL_COUNT}" \
+          --high "${STEPS_PARSE_RESULTS_OUTPUTS_HIGH_COUNT}" \
+          --medium "${STEPS_PARSE_RESULTS_OUTPUTS_MEDIUM_COUNT}" \
+          --low "${STEPS_PARSE_RESULTS_OUTPUTS_LOW_COUNT}" \
+          --license-violations "${STEPS_PARSE_RESULTS_OUTPUTS_LICENSE_VIOLATIONS}" \
           --results-file "dependency-review-reports/dependency-review-results.json" \
           --github-server-url "${{ github.server_url }}" \
           --github-repo "${{ github.repository }}" \
           --github-run-id "${{ github.run_id }}"
       continue-on-error: true
+      env:
+        STEPS_CHECK_EVENT_OUTPUTS_IS_PR: ${{ steps.check-event.outputs.is_pr }}
+        STEPS_PARSE_RESULTS_OUTPUTS_CRITICAL_COUNT: ${{ steps.parse-results.outputs.critical_count }}
+        STEPS_PARSE_RESULTS_OUTPUTS_HIGH_COUNT: ${{ steps.parse-results.outputs.high_count }}
+        STEPS_PARSE_RESULTS_OUTPUTS_MEDIUM_COUNT: ${{ steps.parse-results.outputs.medium_count }}
+        STEPS_PARSE_RESULTS_OUTPUTS_LOW_COUNT: ${{ steps.parse-results.outputs.low_count }}
+        STEPS_PARSE_RESULTS_OUTPUTS_LICENSE_VIOLATIONS: ${{ steps.parse-results.outputs.license_violations }}
 
     - name: Upload scanner summary
       if: always()

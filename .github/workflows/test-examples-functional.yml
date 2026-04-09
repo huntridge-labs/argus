@@ -38,6 +38,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Discover example files
         id: discover
@@ -71,6 +73,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
@@ -82,14 +86,16 @@ jobs:
 
       - name: Validate YAML syntax
         run: |
-          echo "Validating: ${{ matrix.example }}"
-          python -c "import yaml; yaml.safe_load(open('${{ matrix.example }}'))"
+          echo "Validating: ${MATRIX_EXAMPLE}"
+          python -c "import yaml; yaml.safe_load(open('${MATRIX_EXAMPLE}'))"
           echo "✅ Valid YAML syntax" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          MATRIX_EXAMPLE: ${{ matrix.example }}
 
       - name: Validate action references
         run: |
           # Extract and validate action paths exist locally
-          REMOTE_ACTIONS=$(grep -oE 'huntridge-labs/argus\.github/actions/[^@[:space:]]+' "${{ matrix.example }}" || true)
+          REMOTE_ACTIONS=$(grep -oE 'huntridge-labs/argus\.github/actions/[^@[:space:]]+' "${MATRIX_EXAMPLE}" || true)
 
           ERRORS=0
           for action in $REMOTE_ACTIONS; do
@@ -107,26 +113,30 @@ jobs:
           fi
 
           echo "✅ All action references valid" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          MATRIX_EXAMPLE: ${{ matrix.example }}
 
       - name: Validate required structure
         run: |
           # Check that workflow has required elements
-          if ! grep -q "name:" "${{ matrix.example }}"; then
+          if ! grep -q "name:" "${MATRIX_EXAMPLE}"; then
             echo "❌ **Missing workflow name**" >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
 
-          if ! grep -q "on:" "${{ matrix.example }}"; then
+          if ! grep -q "on:" "${MATRIX_EXAMPLE}"; then
             echo "❌ **Missing trigger (on:)**" >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
 
-          if ! grep -q "jobs:" "${{ matrix.example }}"; then
+          if ! grep -q "jobs:" "${MATRIX_EXAMPLE}"; then
             echo "❌ **Missing jobs definition**" >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
 
           echo "✅ Required workflow structure present" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          MATRIX_EXAMPLE: ${{ matrix.example }}
 
   # ============================================================================
   # Validate Configuration Examples
@@ -140,6 +150,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
@@ -218,10 +230,13 @@ jobs:
             echo ""
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if [[ "${{ needs.validate-examples.result }}" == "success" && \
-                "${{ needs.validate-configs.result }}" == "success" ]]; then
+          if [[ "${NEEDS_VALIDATE_EXAMPLES_RESULT}" == "success" && \
+                "${NEEDS_VALIDATE_CONFIGS_RESULT}" == "success" ]]; then
             echo "✅ **All examples validated successfully!**" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "❌ **Some validations failed - review above for details**" >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
+        env:
+          NEEDS_VALIDATE_EXAMPLES_RESULT: ${{ needs.validate-examples.result }}
+          NEEDS_VALIDATE_CONFIGS_RESULT: ${{ needs.validate-configs.result }}

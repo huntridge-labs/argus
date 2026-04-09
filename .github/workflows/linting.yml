@@ -53,6 +53,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run YAML Linter
         id: lint
@@ -68,6 +70,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run JSON Linter
         id: lint
@@ -83,6 +87,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run Python Linter
         id: lint
@@ -98,6 +104,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run JavaScript Linter
         id: lint
@@ -113,6 +121,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run Dockerfile Linter
         id: lint
@@ -128,6 +138,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run Terraform Linter
         id: lint
@@ -145,6 +157,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Generate Linting Summary
         id: summary
@@ -157,5 +171,7 @@ jobs:
       - name: Fail if issues found
         if: inputs.fail_on_issues == true && steps.summary.outputs.total_issues != '0'
         run: |
-          echo "::error::Found ${{ steps.summary.outputs.total_issues }} linting issues"
+          echo "::error::Found ${STEPS_SUMMARY_OUTPUTS_TOTAL_ISSUES} linting issues"
           exit 1
+        env:
+          STEPS_SUMMARY_OUTPUTS_TOTAL_ISSUES: ${{ steps.summary.outputs.total_issues }}
