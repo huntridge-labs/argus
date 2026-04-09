@@ -141,6 +141,10 @@ jobs:
               name="${name}-secure"
             fi
 
+            # Sanitize name: replace dots with hyphens, strip invalid characters
+            # Valid characters: a-zA-Z0-9_- (matches parse_container_config.py validation)
+            name=$(echo "$name" | tr '.' '-' | tr -cd 'a-zA-Z0-9_-')
+
             if [ "$first" = true ]; then
               first=false
             else

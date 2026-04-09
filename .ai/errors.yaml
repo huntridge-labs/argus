@@ -146,6 +146,24 @@ error_patterns:
         - "YAML indentation incorrect"
         - "Missing 'containers' key"
 
+  - pattern: "invalid reference format"
+    category: container
+    context: "Container name derived from directory with special characters"
+
+    root_cause: |
+      Directory names containing dots (.) or other special characters
+      are used as container names, causing invalid Docker/artifact references.
+      Example: directory "my.app/Dockerfile" produces invalid name "my.app".
+
+    solution:
+      status: "FIXED in container-scan.yml"
+      explanation: |
+        The discover-containers job now sanitizes names:
+        - Dots (.) are replaced with hyphens (-)
+        - Only valid characters [a-zA-Z0-9_-] are retained
+        - Matches validation in parse_container_config.py
+      verification: "Directory 'my.app' becomes container name 'my-app'"
+
   - pattern: "registry.*authentication.*failed"
     category: container
     context: "Cannot pull container image for scanning"
