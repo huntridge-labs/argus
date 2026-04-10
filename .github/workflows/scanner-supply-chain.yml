@@ -1,0 +1,74 @@
+# Supply Chain Security Scanner - Reusable Workflow
+#
+# THIN WRAPPER: This workflow delegates to the scanner-supply-chain composite action.
+# All scanning logic is in: .github/actions/scanner-supply-chain/action.yml
+#
+# For GHES users: Use the composite action directly instead of this workflow.
+# See: examples/github-enterprise/all-scanners.yml
+
+name: Supply Chain Security Scanner
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      post_pr_comment:
+        description: 'Whether to post PR comments'
+        required: false
+        type: boolean
+        default: true
+      enable_code_security:
+        description: 'Whether GitHub Code Security is enabled for this repository'
+        required: false
+        type: boolean
+        default: false
+      scan_path:
+        description: 'Path to scan for GitHub Actions workflows and actions'
+        required: false
+        type: string
+        default: '.'
+      fail_on_severity:
+        description: 'Fail if findings at or above this severity. Options: none, low, medium, high.'
+        required: false
+        type: string
+        default: 'none'
+      persona:
+        description: 'Zizmor audit strictness: regular (default), pedantic, or auditor'
+        required: false
+        type: string
+        default: 'regular'
+      zizmor_config:
+        description: 'Path to zizmor configuration file'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  pull-requests: write
+
+jobs:
+  supply-chain-scan:
+    name: Supply Chain Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Run Supply Chain Scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-supply-chain@0.6.8
+        with:
+          github_token: ${{ github.token }}
+          post_pr_comment: ${{ inputs.post_pr_comment }}
+          enable_code_security: ${{ inputs.enable_code_security }}
+          scan_path: ${{ inputs.scan_path }}
+          fail_on_severity: ${{ inputs.fail_on_severity }}
+          persona: ${{ inputs.persona }}
+          zizmor_config: ${{ inputs.zizmor_config }}

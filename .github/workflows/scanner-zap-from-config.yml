@@ -9,7 +9,6 @@ name: ZAP DAST from Config
 #     security-events: write
 #     actions: read
 #     pull-requests: write
-#     checks: write
 #     id-token: write
 #     packages: read
 #   jobs:
@@ -44,7 +43,6 @@ name: ZAP DAST from Config
 #   security-events: write  - Upload SARIF results to GitHub Security tab
 #   actions: read           - Download artifacts from scanner jobs
 #   pull-requests: write    - Post PR comments with scan results
-#   checks: write           - Create check runs for scan results
 #   id-token: write         - OIDC token for registry authentication
 #   packages: read          - Pull container images from GitHub Packages
 
@@ -69,7 +67,6 @@ permissions:
   security-events: write
   actions: read
   pull-requests: write
-  checks: write
   id-token: write
   packages: read
 
@@ -89,6 +86,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Parse ZAP config
         id: parse
@@ -112,6 +111,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run ZAP scanner
         uses: huntridge-labs/argus/.github/actions/scanner-zap@0.6.8

@@ -45,6 +45,12 @@ This directory contains reusable composite actions for security scanning. Each a
 | [scanner-osv](scanner-osv/) | OSV dependency vulnerability scanner | All lockfiles | [README](scanner-osv/README.md) |
 | [scanner-dependency-review](scanner-dependency-review/) | PR dependency review & license compliance | All ecosystems | [README](scanner-dependency-review/README.md) |
 
+### Supply Chain Security
+
+| Action | Description | Language/Type | Documentation |
+|--------|-------------|---------------|---------------|
+| [scanner-supply-chain](scanner-supply-chain/) | GitHub Actions workflow security (zizmor + actionlint) | Workflow YAML | [README](scanner-supply-chain/README.md) |
+
 ### Malware Detection
 
 | Action | Description | Language/Type | Documentation |

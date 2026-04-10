@@ -1,0 +1,371 @@
+name: 'Supply Chain Security Scanner'
+description: |
+  Scan GitHub Actions workflows for security issues using zizmor and actionlint.
+
+  Detects template injection, unpinned actions, excessive permissions, impostor commits,
+  credential leakage, cache poisoning, and other supply chain vulnerabilities.
+
+  Results integrate with security-summary for aggregated reporting.
+
+  **Usage Example:**
+  ```yaml
+  - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+  - uses: huntridge-labs/argus/.github/actions/scanner-supply-chain@0.6.8
+    with:
+      github_token: (secrets.GITHUB_TOKEN)
+      scan_path: '.github/'
+      fail_on_severity: 'high'
+  ```
+
+author: 'Argus'
+
+branding:
+  icon: 'link'
+  color: 'purple'
+
+inputs:
+  github_token:
+    description: 'GitHub token for API access (needed for online audits)'
+    required: true
+  scan_path:
+    description: 'Path to scan for workflow YAML files'
+    required: false
+    default: '.'
+  fail_on_severity:
+    description: 'Fail if findings at or above this severity. Options: none, low, medium, high.'
+    required: false
+    default: 'none'
+  enable_code_security:
+    description: 'Whether GitHub Code Security is enabled for this repository (uploads SARIF to Security tab)'
+    required: false
+    default: 'false'
+  post_pr_comment:
+    description: 'Whether to post PR comments'
+    required: false
+    default: 'false'
+  persona:
+    description: 'Zizmor audit strictness: regular (default), pedantic, or auditor'
+    required: false
+    default: 'regular'
+  zizmor_config:
+    description: 'Path to zizmor configuration file'
+    required: false
+    default: ''
+  run_actionlint:
+    description: 'Also run actionlint for workflow syntax checking'
+    required: false
+    default: 'true'
+  job_id:
+    description: 'Job ID for artifact naming'
+    required: false
+    default: ${{ github.job }}
+
+outputs:
+  high_count:
+    description: 'Number of high severity findings'
+    value: ${{ steps.parse-results.outputs.high_count }}
+  medium_count:
+    description: 'Number of medium severity findings'
+    value: ${{ steps.parse-results.outputs.medium_count }}
+  low_count:
+    description: 'Number of low severity findings'
+    value: ${{ steps.parse-results.outputs.low_count }}
+  info_count:
+    description: 'Number of informational findings'
+    value: ${{ steps.parse-results.outputs.info_count }}
+  total_count:
+    description: 'Total number of findings'
+    value: ${{ steps.parse-results.outputs.total_count }}
+  scan_status:
+    description: 'Overall scan status (clean or findings)'
+    value: ${{ steps.parse-results.outputs.scan_status }}
+
+runs:
+  using: 'composite'
+  steps:
+    # IMPORTANT: Caller must checkout the repository before calling this action
+    # Example:
+    #   - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+    #   - uses: ./.github/actions/scanner-supply-chain
+
+    - name: Set up Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      with:
+        python-version: '3.12'
+
+    - name: Install zizmor
+      shell: bash
+      run: |
+        # Pinned version — updated by .github/workflows/update-pinned-tools.yml
+        ZIZMOR_VERSION="1.23.1"
+        pip install --quiet "zizmor==${ZIZMOR_VERSION}"
+
+    - name: Run zizmor scan
+      id: zizmor-scan
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        SCAN_PATH: ${{ inputs.scan_path }}
+        PERSONA: ${{ inputs.persona }}
+        INPUT_ZIZMOR_CONFIG: ${{ inputs.zizmor_config }}
+      run: |
+        set -euo pipefail
+        mkdir -p supply-chain-reports
+
+        ZIZMOR_ARGS=("--format" "sarif" "--persona" "$PERSONA")
+        if [ -n "$INPUT_ZIZMOR_CONFIG" ] && [ -f "$INPUT_ZIZMOR_CONFIG" ]; then
+          ZIZMOR_ARGS+=("--config" "$INPUT_ZIZMOR_CONFIG")
+        fi
+
+        set +e
+        zizmor "${ZIZMOR_ARGS[@]}" "$SCAN_PATH" > supply-chain-reports/zizmor-results.sarif
+        ZIZMOR_EXIT=$?
+        set -e
+
+        if [ $ZIZMOR_EXIT -eq 0 ]; then
+          echo "✅ Zizmor — no findings"
+        elif [ $ZIZMOR_EXIT -eq 14 ]; then
+          echo "⚠️ Zizmor found findings"
+        else
+          echo "::error::Zizmor failed with exit code $ZIZMOR_EXIT"
+          exit 1
+        fi
+
+        if [ ! -s "supply-chain-reports/zizmor-results.sarif" ]; then
+          echo "::error::Zizmor produced no SARIF output"
+          exit 1
+        fi
+
+    - name: Upload SARIF to GitHub Security
+      if: inputs.enable_code_security == 'true'
+      uses: github/codeql-action/upload-sarif@5c8a8a642e79153f5d047b10ec1cba1d1cc65699 # v3
+      with:
+        sarif_file: supply-chain-reports/zizmor-results.sarif
+        category: zizmor
+      continue-on-error: true
+
+    - name: Run actionlint
+      if: inputs.run_actionlint == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "::group::Running actionlint"
+
+        # Install actionlint (pinned version with checksum verification)
+        ACTIONLINT_VERSION="1.7.12"
+        ACTIONLINT_CHECKSUM="8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+        ACTIONLINT_TARBALL="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+        curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${ACTIONLINT_TARBALL}" -o "${ACTIONLINT_TARBALL}"
+        echo "${ACTIONLINT_CHECKSUM}  ${ACTIONLINT_TARBALL}" | sha256sum -c --quiet
+        tar -xzf "${ACTIONLINT_TARBALL}" actionlint
+        rm -f "${ACTIONLINT_TARBALL}"
+
+        if [ ! -x ./actionlint ]; then
+          echo "::error::Failed to install actionlint"
+          exit 1
+        fi
+
+        ACTIONLINT_FORMAT="{{json .}}"
+        # Actionlint only understands workflow files — always target .github/workflows/
+        WORKFLOW_DIR=".github/workflows"
+
+        # Collect workflow files (avoid passing non-matching globs to actionlint)
+        shopt -s nullglob
+        WORKFLOW_FILES=("$WORKFLOW_DIR"/*.yml "$WORKFLOW_DIR"/*.yaml)
+        shopt -u nullglob
+
+        if [ ${#WORKFLOW_FILES[@]} -eq 0 ]; then
+          echo "No workflow files found in $WORKFLOW_DIR"
+          echo '[]' > supply-chain-reports/actionlint-results.json
+        else
+          set +e
+          ./actionlint -format "$ACTIONLINT_FORMAT" "${WORKFLOW_FILES[@]}" > supply-chain-reports/actionlint-results.json
+          ACTIONLINT_EXIT=$?
+          set -e
+
+          if [ $ACTIONLINT_EXIT -eq 0 ]; then
+            echo "✅ Actionlint — no issues found"
+            echo '[]' > supply-chain-reports/actionlint-results.json
+          elif [ $ACTIONLINT_EXIT -eq 1 ]; then
+            echo "⚠️ Actionlint found issues"
+            if [ ! -s "supply-chain-reports/actionlint-results.json" ]; then
+              echo "::error::Actionlint reported issues but produced no output"
+              exit 1
+            fi
+          else
+            echo "::error::Actionlint failed with exit code $ACTIONLINT_EXIT (internal error)"
+            exit 1
+          fi
+        fi
+
+        echo "::endgroup::"
+
+    - name: Parse results
+      id: parse-results
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "::group::Parsing supply chain scan results"
+
+        SCRIPT_DIR="${{ github.action_path }}"
+        ZIZMOR_FILE="supply-chain-reports/zizmor-results.sarif"
+        ACTIONLINT_FILE="supply-chain-reports/actionlint-results.json"
+
+        HIGH=0
+        MEDIUM=0
+        LOW=0
+        INFO=0
+        TOTAL=0
+
+        PARSE_ARGS=("counts" "$ZIZMOR_FILE")
+        if [ -f "$ACTIONLINT_FILE" ]; then
+          PARSE_ARGS+=("--actionlint-file" "$ACTIONLINT_FILE")
+        fi
+
+        if [ -f "$ZIZMOR_FILE" ]; then
+          COUNTS=$(python3 "$SCRIPT_DIR/scripts/parse_results.py" "${PARSE_ARGS[@]}") || {
+            echo "::error::Failed to parse scan results"
+            exit 1
+          }
+          HIGH=$(echo "$COUNTS" | awk '{print $1}')
+          MEDIUM=$(echo "$COUNTS" | awk '{print $2}')
+          LOW=$(echo "$COUNTS" | awk '{print $3}')
+          INFO=$(echo "$COUNTS" | awk '{print $4}')
+          TOTAL=$((HIGH + MEDIUM + LOW + INFO))
+
+          # Generate findings details for summary
+          python3 "$SCRIPT_DIR/scripts/parse_results.py" findings "$ZIZMOR_FILE" \
+            ${ACTIONLINT_FILE:+--actionlint-file "$ACTIONLINT_FILE"} \
+            > supply-chain-reports/findings.json || {
+            echo "::error::Failed to generate findings details"
+            exit 1
+          }
+        fi
+
+        echo "Results:"
+        echo "  High: $HIGH"
+        echo "  Medium: $MEDIUM"
+        echo "  Low: $LOW"
+        echo "  Informational: $INFO"
+        echo "  Total: $TOTAL"
+
+        echo "high_count=$HIGH" >> "$GITHUB_OUTPUT"
+        echo "medium_count=$MEDIUM" >> "$GITHUB_OUTPUT"
+        echo "low_count=$LOW" >> "$GITHUB_OUTPUT"
+        echo "info_count=$INFO" >> "$GITHUB_OUTPUT"
+        echo "total_count=$TOTAL" >> "$GITHUB_OUTPUT"
+
+        if [ "$TOTAL" -gt 0 ]; then
+          echo "scan_status=findings" >> "$GITHUB_OUTPUT"
+          if [ "$HIGH" -gt 0 ]; then
+            echo "::warning title=Supply Chain Findings::Found $HIGH high severity supply chain security findings"
+          fi
+        else
+          echo "scan_status=clean" >> "$GITHUB_OUTPUT"
+          echo "✅ No supply chain security findings"
+        fi
+
+        echo "::endgroup::"
+
+    - name: Upload reports
+      if: always()
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+      with:
+        name: supply-chain-reports-${{ inputs.job_id }}
+        path: supply-chain-reports/
+        retention-days: 30
+      continue-on-error: true
+
+    - name: Generate scanner summary
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p scanner-summaries
+
+        SCRIPT_DIR="${{ github.action_path }}"
+
+        python3 "$SCRIPT_DIR/scripts/generate_summary.py" \
+          --output-file "scanner-summaries/supply-chain.md" \
+          --is-pr-comment "true" \
+          --results-file "supply-chain-reports/findings.json" \
+          --high "${STEPS_PARSE_RESULTS_OUTPUTS_HIGH_COUNT}" \
+          --medium "${STEPS_PARSE_RESULTS_OUTPUTS_MEDIUM_COUNT}" \
+          --low "${STEPS_PARSE_RESULTS_OUTPUTS_LOW_COUNT}" \
+          --info "${STEPS_PARSE_RESULTS_OUTPUTS_INFO_COUNT}" \
+          --github-server-url "${{ github.server_url }}" \
+          --github-repo "${{ github.repository }}" \
+          --github-run-id "${{ github.run_id }}"
+
+        python3 "$SCRIPT_DIR/scripts/generate_summary.py" \
+          --output-file "$GITHUB_STEP_SUMMARY" \
+          --is-pr-comment "false" \
+          --results-file "supply-chain-reports/findings.json" \
+          --high "${STEPS_PARSE_RESULTS_OUTPUTS_HIGH_COUNT}" \
+          --medium "${STEPS_PARSE_RESULTS_OUTPUTS_MEDIUM_COUNT}" \
+          --low "${STEPS_PARSE_RESULTS_OUTPUTS_LOW_COUNT}" \
+          --info "${STEPS_PARSE_RESULTS_OUTPUTS_INFO_COUNT}" \
+          --github-server-url "${{ github.server_url }}" \
+          --github-repo "${{ github.repository }}" \
+          --github-run-id "${{ github.run_id }}"
+      env:
+        STEPS_PARSE_RESULTS_OUTPUTS_HIGH_COUNT: ${{ steps.parse-results.outputs.high_count }}
+        STEPS_PARSE_RESULTS_OUTPUTS_MEDIUM_COUNT: ${{ steps.parse-results.outputs.medium_count }}
+        STEPS_PARSE_RESULTS_OUTPUTS_LOW_COUNT: ${{ steps.parse-results.outputs.low_count }}
+        STEPS_PARSE_RESULTS_OUTPUTS_INFO_COUNT: ${{ steps.parse-results.outputs.info_count }}
+
+    - name: Upload scanner summary
+      if: always()
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+      with:
+        name: scanner-summary-supply-chain-${{ inputs.job_id }}
+        path: scanner-summaries/supply-chain.md
+        retention-days: 7
+      continue-on-error: true
+
+    - name: Comment PR with results
+      if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
+      uses: huntridge-labs/argus/.github/actions/comment-pr@0.6.8
+      with:
+        summary_file: scanner-summaries/supply-chain.md
+        comment_marker: supply-chain-scanner-comment-marker
+        title: '🔗 Supply Chain Security Scan Results'
+        fallback_message: '⚠️ Supply chain scan summary generation failed. Check action logs.'
+
+    - name: Check severity threshold
+      if: inputs.fail_on_severity != 'none' && inputs.fail_on_severity != ''
+      shell: bash
+      env:
+        HIGH_COUNT: ${{ steps.parse-results.outputs.high_count }}
+        MEDIUM_COUNT: ${{ steps.parse-results.outputs.medium_count }}
+        LOW_COUNT: ${{ steps.parse-results.outputs.low_count }}
+        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
+      run: |
+        set -euo pipefail
+        HIGH="${HIGH_COUNT}"
+        HIGH="${HIGH:-0}"
+        MEDIUM="${MEDIUM_COUNT}"
+        MEDIUM="${MEDIUM:-0}"
+        LOW="${LOW_COUNT}"
+        LOW="${LOW:-0}"
+        THRESHOLD="$FAIL_ON_SEVERITY"
+
+        SHOULD_FAIL=false
+        case "$THRESHOLD" in
+          high)
+            [ "$HIGH" -gt 0 ] && SHOULD_FAIL=true
+            ;;
+          medium)
+            [ "$HIGH" -gt 0 ] || [ "$MEDIUM" -gt 0 ] && SHOULD_FAIL=true
+            ;;
+          low)
+            [ "$HIGH" -gt 0 ] || [ "$MEDIUM" -gt 0 ] || [ "$LOW" -gt 0 ] && SHOULD_FAIL=true
+            ;;
+        esac
+
+        if [ "$SHOULD_FAIL" = true ]; then
+          echo "❌ Found supply chain findings at or above severity threshold: $THRESHOLD"
+          exit 1
+        else
+          echo "✅ No supply chain findings at or above severity threshold: $THRESHOLD"
+        fi

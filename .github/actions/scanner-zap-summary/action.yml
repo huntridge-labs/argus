@@ -158,14 +158,17 @@ runs:
         echo "## ZAP DAST Summary" >> "$GITHUB_STEP_SUMMARY"
         echo "" >> "$GITHUB_STEP_SUMMARY"
 
-        SUMMARY_FILE="${{ steps.generate.outputs.summary_path }}"
+        SUMMARY_FILE="${STEPS_GENERATE_OUTPUTS_SUMMARY_PATH}"
         if [[ -n "$SUMMARY_FILE" && -f "$SUMMARY_FILE" ]]; then
           cat "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY"
         else
           echo "No ZAP findings to report" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Scans processed:** ${{ steps.generate.outputs.scan_count }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Scans processed:** ${STEPS_GENERATE_OUTPUTS_SCAN_COUNT}" >> "$GITHUB_STEP_SUMMARY"
         fi
+      env:
+        STEPS_GENERATE_OUTPUTS_SUMMARY_PATH: ${{ steps.generate.outputs.summary_path }}
+        STEPS_GENERATE_OUTPUTS_SCAN_COUNT: ${{ steps.generate.outputs.scan_count }}
 
     - name: Post PR comment
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'

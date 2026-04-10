@@ -15,6 +15,7 @@ name: Security Scanning with Composite Actions
 # - scanner-container: Container image scanning
 # - scanner-osv: Dependency vulnerability scanning (any trigger)
 # - scanner-dependency-review: PR dependency review & license compliance (PR-only)
+# - scanner-supply-chain: GitHub Actions workflow security (zizmor + actionlint)
 #
 # Each scanner runs independently and generates reports that can be uploaded to GitHub Security.
 
@@ -286,11 +287,32 @@ jobs:
           # deny_licenses: 'GPL-3.0'  # Uncomment to deny specific licenses
           fail_on_severity: 'none'
 
+  # Supply Chain Security - Scan workflow files for security issues
+  supply-chain-scan:
+    name: Supply Chain Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Run Supply Chain Scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-supply-chain@0.6.8
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          scan_path: '.'
+          fail_on_severity: 'none'
+          enable_code_security: true
+          run_actionlint: true
+
   # Summary Job - Collect all scanner results
   security-summary:
     name: Security Scan Summary
     runs-on: ubuntu-latest
-    needs: [bandit-scan, gitleaks-scan, codeql-scan, opengrep-scan, trivy-iac-scan, checkov-scan, clamav-scan, osv-scan, dependency-review-scan]
+    needs: [bandit-scan, gitleaks-scan, codeql-scan, opengrep-scan, trivy-iac-scan, checkov-scan, clamav-scan, osv-scan, dependency-review-scan, supply-chain-scan]
     if: always()
 
     steps:
@@ -317,6 +339,7 @@ jobs:
           echo "ClamAV: ${{ needs.clamav-scan.result }}"
           echo "OSV: ${{ needs.osv-scan.result }}"
           echo "Dependency Review: ${{ needs.dependency-review-scan.result }}"
+          echo "Supply Chain: ${{ needs.supply-chain-scan.result }}"
 
           # Optional: Fail if any critical scanners failed
           # Uncomment the following if you want the summary job to fail

@@ -187,6 +187,12 @@ scanners:
       purpose: "Dynamic web application testing"
       output: SARIF
 
+  supply_chain:
+    - name: supply-chain
+      purpose: "GitHub Actions workflow security scanning via zizmor + actionlint"
+      output: JSON/SARIF
+      note: "Uses zizmorcore/zizmor-action and actionlint for comprehensive workflow security"
+
   compliance:
     - name: scn-detector
       purpose: "FedRAMP Significant Change Notification detection and classification"

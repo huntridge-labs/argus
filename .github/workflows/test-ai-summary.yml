@@ -35,6 +35,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Resolve run ID
         id: resolve
@@ -93,15 +95,19 @@ jobs:
 
       - name: Verify summary generated
         shell: bash
+        env:
+          PROVIDER: ${{ inputs.provider }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          RESOLVED_RUN_ID: ${{ steps.resolve.outputs.run_id }}
         run: |
           {
             echo "## AI Security Summary Results"
             if [ -f /tmp/ai-summary.md ]; then
               echo "✅ Summary generated successfully"
               echo ""
-              echo "**Provider:** \`${{ inputs.provider }}\`"
-              echo "**PR:** #${{ inputs.pr_number }}"
-              echo "**Source run:** \`${{ steps.resolve.outputs.run_id }}\`"
+              echo "**Provider:** \`$PROVIDER\`"
+              echo "**PR:** #$PR_NUMBER"
+              echo "**Source run:** \`$RESOLVED_RUN_ID\`"
               LINES=$(wc -l < /tmp/ai-summary.md)
               echo "**Output size:** ${LINES} lines"
             else

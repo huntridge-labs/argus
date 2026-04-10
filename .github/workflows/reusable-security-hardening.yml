@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       scanners:
-        description: 'Comma-separated list of scanners to run (codeql, opengrep, bandit, gitleaks, container, infrastructure, trivy-iac, checkov, trivy-container, grype, lint, clamav, sbom, zap, osv, dependency-review, dependencies, all, sast, secrets, etc.). Note: zap (DAST) is opt-in and is not included in "all" by default.'
+        description: 'Comma-separated list of scanners to run (codeql, opengrep, bandit, gitleaks, container, infrastructure, trivy-iac, checkov, trivy-container, grype, lint, clamav, sbom, zap, osv, dependency-review, supply-chain, dependencies, all, sast, secrets, etc.). Note: zap (DAST) is opt-in and is not included in "all" by default.'
         required: false
         default: 'all'
         type: string
@@ -105,6 +105,22 @@ on:
         type: boolean
       gitleaks_config:
         description: 'Path to a gitleaks configuration file (e.g., "path/to/gitleaks.toml")'
+        required: false
+        default: ''
+        type: string
+
+      supply_chain_scan_path:
+        description: 'Path to scan for GitHub Actions workflows and actions'
+        required: false
+        default: '.'
+        type: string
+      supply_chain_persona:
+        description: 'Zizmor audit strictness: regular (default), pedantic, or auditor'
+        required: false
+        default: 'regular'
+        type: string
+      supply_chain_zizmor_config:
+        description: 'Path to zizmor configuration file'
         required: false
         default: ''
         type: string
@@ -241,12 +257,16 @@ jobs:
       run_zap: ${{ steps.resolve.outputs.run_zap }}
       run_osv: ${{ steps.resolve.outputs.run_osv }}
       run_dependency_review: ${{ steps.resolve.outputs.run_dependency_review }}
+      run_supply_chain: ${{ steps.resolve.outputs.run_supply_chain }}
       run_any: ${{ steps.resolve.outputs.run_any }}
 
     steps:
     - name: Resolve scanner selection
       id: resolve
       shell: bash
+      env:
+        SCANNERS_INPUT: ${{ inputs.scanners }}
+        SCAN_TYPE_INPUT: ${{ inputs.scan_type }}
       run: |
         set -euo pipefail
 
@@ -267,6 +287,7 @@ jobs:
           [zap]=false
           [osv]=false
           [dependency-review]=false
+          [supply-chain]=false
         )
 
         DEFAULT_SCANNERS=(codeql opengrep bandit gitleaks container infrastructure sbom)
@@ -366,6 +387,9 @@ jobs:
             dependency-review|dep-review)
               add_scanner dependency-review
               ;;
+            supply-chain|supply_chain|supplychain|actions-security)
+              add_scanner supply-chain
+              ;;
             dependencies|deps|dependency)
               for key in osv dependency-review; do add_scanner "$key"; done
               ;;
@@ -378,8 +402,8 @@ jobs:
           esac
         }
 
-        SCANNERS_RAW="${{ inputs.scanners }}"
-        SCAN_TYPE_RAW="$(normalize "${{ inputs.scan_type }}")"
+        SCANNERS_RAW="$SCANNERS_INPUT"
+        SCAN_TYPE_RAW="$(normalize "$SCAN_TYPE_INPUT")"
 
         if [[ -z "$SCANNERS_RAW" || "$SCANNERS_RAW" == "default" ]]; then
           case "$SCAN_TYPE_RAW" in
@@ -748,6 +772,25 @@ jobs:
       pull-requests: write
     secrets: inherit
 
+  scanner-supply-chain:
+    name: Supply Chain Scanner
+    needs: scan-coordinator
+    if: needs.scan-coordinator.outputs.run_supply_chain == 'true'
+    uses: huntridge-labs/argus/.github/workflows/scanner-supply-chain.yml@feat/scanner-supply-chain
+    with:
+      post_pr_comment: false
+      enable_code_security: ${{ inputs.enable_code_security }}
+      scan_path: ${{ inputs.supply_chain_scan_path }}
+      fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
+      persona: ${{ inputs.supply_chain_persona }}
+      zizmor_config: ${{ inputs.supply_chain_zizmor_config }}
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+    secrets: inherit
+
   security-summary:
     name: Security Hardening Summary
     runs-on: ubuntu-latest
@@ -769,6 +812,7 @@ jobs:
       - scanner-zap
       - scanner-osv
       - scanner-dependency-review
+      - scanner-supply-chain
     if: always()
 
     steps:
@@ -870,6 +914,13 @@ jobs:
         pattern: dependency-review-*
       continue-on-error: true
 
+    - name: Download Supply Chain artifacts
+      if: needs.scan-coordinator.outputs.run_supply_chain == 'true'
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      with:
+        pattern: supply-chain-*
+      continue-on-error: true
+
     - name: Download Linting artifacts
       if: needs.scan-coordinator.outputs.run_lint == 'true'
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -928,10 +979,13 @@ jobs:
       continue-on-error: true
 
     - name: Combine scanner summaries into security report
+      env:
+        REPOSITORY: ${{ github.repository }}
+        REF_NAME: ${{ github.ref_name }}
       run: |
         {
-          echo "**Repository:** ${{ github.repository }}"
-          echo "**Branch:** ${{ github.ref_name }}"
+          echo "**Repository:** $REPOSITORY"
+          echo "**Branch:** $REF_NAME"
           echo "**Generated:** $(date)"
           echo ""
         } >> security-hardening-report.md
@@ -944,7 +998,7 @@ jobs:
         echo ""
 
         # Combine all scanner summaries in a specific order
-        for scanner in codeql opengrep bandit gitleaks clamav container infrastructure zap sbom trivy-iac checkov trivy-container grype osv dependency-review; do
+        for scanner in codeql opengrep bandit gitleaks clamav container infrastructure zap sbom trivy-iac checkov trivy-container grype osv dependency-review supply-chain; do
           if [ -f "${scanner}.md" ]; then
             echo "✅ Adding ${scanner} summary..."
             cat "${scanner}.md" >> security-hardening-report.md
