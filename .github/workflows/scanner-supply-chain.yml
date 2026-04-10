@@ -63,7 +63,7 @@ jobs:
           persist-credentials: false
 
       - name: Run Supply Chain Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-supply-chain@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-supply-chain@0.7.0
         with:
           github_token: ${{ github.token }}
           post_pr_comment: ${{ inputs.post_pr_comment }}

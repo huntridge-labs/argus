@@ -51,7 +51,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Bandit Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -74,7 +74,7 @@ jobs:
           fetch-depth: 0  # Full history for comprehensive secrets scanning
 
       - name: Run Gitleaks Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Optional: for org features
@@ -96,7 +96,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run CodeQL Scanner (Python)
-        uses: huntridge-labs/argus/.github/actions/scanner-codeql@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-codeql@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -117,7 +117,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run OpenGrep Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-opengrep@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-opengrep@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -138,7 +138,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Trivy IaC Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -159,7 +159,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Checkov Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -181,7 +181,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run ClamAV Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-clamav@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-clamav@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -211,7 +211,7 @@ jobs:
       #     sleep 10
 
       - name: Run ZAP Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-zap@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-zap@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -240,7 +240,7 @@ jobs:
       #   run: docker build -t myapp:test .
 
       - name: Run Container Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-container@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-container@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -259,7 +259,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run OSV-Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-osv@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-osv@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -278,7 +278,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Dependency Review
-        uses: huntridge-labs/argus/.github/actions/scanner-dependency-review@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-dependency-review@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -300,7 +300,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Supply Chain Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-supply-chain@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-supply-chain@0.7.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           scan_path: '.'
@@ -317,7 +317,7 @@ jobs:
 
     steps:
       - name: Generate Combined Security Summary
-        uses: huntridge-labs/argus/.github/actions/security-summary@0.6.8
+        uses: huntridge-labs/argus/.github/actions/security-summary@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

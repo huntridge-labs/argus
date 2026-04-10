@@ -296,13 +296,13 @@ decisions:
     usage_examples:
       standalone: |
         # Individual scanner posts its own PR comment
-        - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.6.8
+        - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.0
           with:
             post_pr_comment: true
 
       reusable: |
         # Only security-summary posts comprehensive comment
-        uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.6.8
+        uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
         with:
           scanners: all
           post_pr_comment: true  # Controls security-summary, not individual scanners

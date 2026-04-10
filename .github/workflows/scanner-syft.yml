@@ -84,7 +84,7 @@ jobs:
           persist-credentials: false
 
       - name: Run Syft SBOM Generator
-        uses: huntridge-labs/argus/.github/actions/scanner-syft@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-syft@0.7.0
         with:
           scan_path: ${{ inputs.scan_path }}
           scan_image: ${{ inputs.scan_image }}

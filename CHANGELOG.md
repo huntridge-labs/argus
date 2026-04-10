@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.7.0](https://github.com/huntridge-labs/argus/compare/0.6.8...0.7.0) (2026-04-10)
+
+### Features
+
+* **scanner-supply-chain:** add GitHub Actions workflow security scanner ([253f128](https://github.com/huntridge-labs/argus/commit/253f12807a37f87b86d9470186847f8acdb33e11))
+* **scanner-supply-chain:** integrate supply chain scanner into reusable workflow ([acd6996](https://github.com/huntridge-labs/argus/commit/acd69966f7d8b3ddf375ea65c3725ee6958a867f))
+* **skills:** add GHES and local act guidance ([f69ab65](https://github.com/huntridge-labs/argus/commit/f69ab6572e726b2835f65e84cb3189953b2cf176))
+* **skills:** add local Argus scanner selection skill ([a74d7a8](https://github.com/huntridge-labs/argus/commit/a74d7a8fb3e4d34fda18adfc9cdd569939dff615))
+
+### Bug Fixes
+
+* **ci:** restore git push credentials for release workflow ([8ceb5d6](https://github.com/huntridge-labs/argus/commit/8ceb5d63839aedd0d6dd1eb4172eccb0058a40b6))
+* **security:** remediate HIGH supply chain findings from zizmor scan ([#85](https://github.com/huntridge-labs/argus/issues/85)) ([8faab89](https://github.com/huntridge-labs/argus/commit/8faab89fcb5b29cf09c287ad668fb156894438ce))
+* **security:** remediate MEDIUM/LOW supply chain findings ([5efdd5d](https://github.com/huntridge-labs/argus/commit/5efdd5db981c8a1aa97046b81ed0a4e86f205b5b))
+
+### Security Tools
+
+* **deps:** bump bridgecrewio/checkov-action ([#81](https://github.com/huntridge-labs/argus/issues/81)) ([4af34c9](https://github.com/huntridge-labs/argus/commit/4af34c98009340663700d7e44c32e08b51a0d2ab))
+
+### Dependencies
+
+* **deps:** bump docker/login-action in /.github/actions/scanner-zap ([#79](https://github.com/huntridge-labs/argus/issues/79)) ([b5db6ee](https://github.com/huntridge-labs/argus/commit/b5db6eecac8d45904eca6ee0cbec29237430d2de))
+
+### Maintenance
+
+* **scanner-supply-chain:** escape actionlint format template for GitHub Actions ([f6fb3a8](https://github.com/huntridge-labs/argus/commit/f6fb3a8e3e92107bd2e238769e3b914fea20c58f))
+
+
+### Documentation
+
+* **ai:** add release git push credential error pattern ([d7ad5e7](https://github.com/huntridge-labs/argus/commit/d7ad5e75fd8743bd05cc2350c702b437ad93259a))
+
 ## [0.6.8](https://github.com/huntridge-labs/argus/compare/0.6.7...0.6.8) (2026-04-02)
 
 ### Documentation
