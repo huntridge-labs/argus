@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #1a1a2e; overflow: hidden; font-family: sans-serif; }
+  #container {
+    width: 100vw; height: 100vh;
+    overflow: hidden; position: relative; cursor: grab;
+  }
+  #container.grabbing { cursor: grabbing; }
+  #diagram { transform-origin: 0 0; position: absolute; }
+  #controls {
+    position: fixed; bottom: 12px; right: 12px; display: flex; gap: 6px; z-index: 10;
+  }
+  #controls button {
+    background: #2d2d44; color: #ccc; border: 1px solid #555;
+    border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 14px;
+  }
+  #controls button:hover { background: #3d3d54; }
+  #legend {
+    position: fixed; top: 12px; left: 12px; z-index: 10;
+    background: #2d2d44; border: 1px solid #555; border-radius: 6px;
+    padding: 10px 14px; color: #ccc; font-size: 12px; line-height: 1.8;
+  }
+  .legend-dot {
+    display: inline-block; width: 10px; height: 10px;
+    border-radius: 2px; margin-right: 6px; vertical-align: middle;
+  }
+</style>
+</head>
+<body>
+<div id="legend">
+  <span class="legend-dot" style="background:#42a5f5"></span>Coordinator<br>
+  <span class="legend-dot" style="background:#7c43bd"></span>Matrix job
+</div>
+<div id="controls">
+  <button onclick="zoomBy(1.3)">+</button>
+  <button onclick="zoomBy(0.7)">&minus;</button>
+  <button onclick="resetView()">Fit</button>
+</div>
+<div id="container">
+  <div id="diagram">
+    <pre class="mermaid">
+flowchart LR
+    check_updates(["Check for tool updates\n⟐ matrix"])
+    check_pypi_updates(["Check for PyPI tool updates\n⟐ matrix"])
+
+
+    classDef matrix fill:#4a148c,stroke:#7c43bd,color:#fff,stroke-width:2px
+    class check_updates,check_pypi_updates matrix
+    classDef coordinator fill:#0d47a1,stroke:#42a5f5,color:#fff,stroke-width:2px
+    class check_updates,check_pypi_updates coordinator
+    </pre>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: 'dark', flowchart: { useMaxWidth: false } });
+
+  let scale = 1, tx = 0, ty = 0, dragging = false, sx, sy;
+  const container = document.getElementById('container');
+  const diagram = document.getElementById('diagram');
+
+  function apply() { diagram.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`; }
+  function zoomBy(f) { scale *= f; apply(); }
+  function resetView() {
+    const svg = diagram.querySelector('svg');
+    if (!svg) return;
+    const cw = container.clientWidth, ch = container.clientHeight;
+    const sw = svg.scrollWidth, sh = svg.scrollHeight;
+    scale = Math.min(cw / sw, ch / sh) * 0.9;
+    tx = (cw - sw * scale) / 2;
+    ty = (ch - sh * scale) / 2;
+    apply();
+  }
+
+  container.addEventListener('wheel', e => {
+    e.preventDefault();
+    const f = e.deltaY < 0 ? 1.1 : 0.9;
+    const rect = container.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    tx = mx - (mx - tx) * f;
+    ty = my - (my - ty) * f;
+    scale *= f;
+    apply();
+  }, { passive: false });
+
+  container.addEventListener('mousedown', e => { dragging = true; sx = e.clientX - tx; sy = e.clientY - ty; container.classList.add('grabbing'); });
+  window.addEventListener('mousemove', e => { if (dragging) { tx = e.clientX - sx; ty = e.clientY - sy; apply(); } });
+  window.addEventListener('mouseup', () => { dragging = false; container.classList.remove('grabbing'); });
+
+  // After Mermaid renders, add stacked-card effect to matrix nodes
+  setTimeout(() => {
+    document.querySelectorAll('.node.matrix').forEach(node => {
+      const rect = node.querySelector('rect, .label-container');
+      if (!rect) return;
+      for (let i = 2; i >= 1; i--) {
+        const shadow = rect.cloneNode(true);
+        shadow.setAttribute('transform', `translate(${i * 4}, ${i * 4})`);
+        shadow.style.opacity = 1 - i * 0.3;
+        node.insertBefore(shadow, node.firstChild);
+      }
+    });
+  }, 400);
+
+  // Auto-fit after render
+  setTimeout(resetView, 500);
+</script>
+</body>
+</html>
