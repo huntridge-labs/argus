@@ -14,7 +14,7 @@ description: |
   **Usage Example:**
   ```yaml
   - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-  - uses: huntridge-labs/argus/.github/actions/scanner-osv@0.6.8
+  - uses: huntridge-labs/argus/.github/actions/scanner-osv@0.7.0
     env:
       GITHUB_TOKEN: (secrets.GITHUB_TOKEN)
     with:
@@ -88,6 +88,11 @@ runs:
     - name: Build scan arguments
       id: build-args
       shell: bash
+      env:
+        CONFIG_FILE: ${{ inputs.config_file }}
+        LOCKFILE: ${{ inputs.lockfile }}
+        RECURSIVE: ${{ inputs.recursive }}
+        SCAN_PATH: ${{ inputs.scan_path }}
       run: |
         mkdir -p osv-reports
 
@@ -97,21 +102,21 @@ runs:
         JSON_ARGS="${JSON_ARGS}
         --output osv-reports/osv-results.json"
 
-        if [ -n "${{ inputs.config_file }}" ]; then
+        if [ -n "$CONFIG_FILE" ]; then
           JSON_ARGS="${JSON_ARGS}
-        --config=${{ inputs.config_file }}"
+        --config=$CONFIG_FILE"
         fi
 
-        if [ -n "${{ inputs.lockfile }}" ]; then
+        if [ -n "$LOCKFILE" ]; then
           JSON_ARGS="${JSON_ARGS}
-        -L ${{ inputs.lockfile }}"
+        -L $LOCKFILE"
         else
-          if [ "${{ inputs.recursive }}" == "true" ]; then
+          if [ "$RECURSIVE" == "true" ]; then
             JSON_ARGS="${JSON_ARGS}
         --recursive"
           fi
           JSON_ARGS="${JSON_ARGS}
-        ${{ inputs.scan_path }}"
+        $SCAN_PATH"
         fi
 
         # SARIF scan args (for GitHub Security tab)
@@ -119,21 +124,21 @@ runs:
         SARIF_ARGS="${SARIF_ARGS}
         --output osv-reports/osv-results.sarif"
 
-        if [ -n "${{ inputs.config_file }}" ]; then
+        if [ -n "$CONFIG_FILE" ]; then
           SARIF_ARGS="${SARIF_ARGS}
-        --config=${{ inputs.config_file }}"
+        --config=$CONFIG_FILE"
         fi
 
-        if [ -n "${{ inputs.lockfile }}" ]; then
+        if [ -n "$LOCKFILE" ]; then
           SARIF_ARGS="${SARIF_ARGS}
-        -L ${{ inputs.lockfile }}"
+        -L $LOCKFILE"
         else
-          if [ "${{ inputs.recursive }}" == "true" ]; then
+          if [ "$RECURSIVE" == "true" ]; then
             SARIF_ARGS="${SARIF_ARGS}
         --recursive"
           fi
           SARIF_ARGS="${SARIF_ARGS}
-        ${{ inputs.scan_path }}"
+        $SCAN_PATH"
         fi
 
         # Store args using heredoc to preserve newlines
@@ -158,8 +163,10 @@ runs:
 
     - name: Handle scan result
       shell: bash
+      env:
+        SCAN_EXIT_CODE: ${{ steps.scan.outcome == 'success' && '0' || '1' }}
       run: |
-        EXIT_CODE=${{ steps.scan.outcome == 'success' && '0' || '1' }}
+        EXIT_CODE=$SCAN_EXIT_CODE
 
         if [ "$EXIT_CODE" -eq 0 ]; then
           echo "✅ OSV-Scanner completed"
@@ -182,10 +189,12 @@ runs:
     - name: Parse results
       id: parse-results
       shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
       run: |
         echo "::group::Parsing OSV-Scanner results"
 
-        SCRIPT_DIR="${{ github.action_path }}"
+        SCRIPT_DIR="$ACTION_PATH"
         JSON_FILE="osv-reports/osv-results.json"
 
         CRITICAL=0
@@ -251,34 +260,43 @@ runs:
     - name: Generate scanner summary
       if: always()
       shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        CRITICAL_COUNT: ${{ steps.parse-results.outputs.critical_count }}
+        HIGH_COUNT: ${{ steps.parse-results.outputs.high_count }}
+        MEDIUM_COUNT: ${{ steps.parse-results.outputs.medium_count }}
+        LOW_COUNT: ${{ steps.parse-results.outputs.low_count }}
+        GITHUB_SERVER_URL_VAL: ${{ github.server_url }}
+        GITHUB_REPO: ${{ github.repository }}
+        GITHUB_RUN_ID_VAL: ${{ github.run_id }}
       run: |
         mkdir -p scanner-summaries
 
-        SCRIPT_DIR="${{ github.action_path }}"
+        SCRIPT_DIR="$ACTION_PATH"
 
         python3 "$SCRIPT_DIR/scripts/generate_summary.py" \
           --output-file "scanner-summaries/osv.md" \
           --is-pr-comment "true" \
           --results-file "osv-reports/osv-vulnerabilities.json" \
-          --critical "${{ steps.parse-results.outputs.critical_count }}" \
-          --high "${{ steps.parse-results.outputs.high_count }}" \
-          --medium "${{ steps.parse-results.outputs.medium_count }}" \
-          --low "${{ steps.parse-results.outputs.low_count }}" \
-          --github-server-url "${{ github.server_url }}" \
-          --github-repo "${{ github.repository }}" \
-          --github-run-id "${{ github.run_id }}"
+          --critical "$CRITICAL_COUNT" \
+          --high "$HIGH_COUNT" \
+          --medium "$MEDIUM_COUNT" \
+          --low "$LOW_COUNT" \
+          --github-server-url "$GITHUB_SERVER_URL_VAL" \
+          --github-repo "$GITHUB_REPO" \
+          --github-run-id "$GITHUB_RUN_ID_VAL"
 
         python3 "$SCRIPT_DIR/scripts/generate_summary.py" \
           --output-file "$GITHUB_STEP_SUMMARY" \
           --is-pr-comment "false" \
           --results-file "osv-reports/osv-vulnerabilities.json" \
-          --critical "${{ steps.parse-results.outputs.critical_count }}" \
-          --high "${{ steps.parse-results.outputs.high_count }}" \
-          --medium "${{ steps.parse-results.outputs.medium_count }}" \
-          --low "${{ steps.parse-results.outputs.low_count }}" \
-          --github-server-url "${{ github.server_url }}" \
-          --github-repo "${{ github.repository }}" \
-          --github-run-id "${{ github.run_id }}"
+          --critical "$CRITICAL_COUNT" \
+          --high "$HIGH_COUNT" \
+          --medium "$MEDIUM_COUNT" \
+          --low "$LOW_COUNT" \
+          --github-server-url "$GITHUB_SERVER_URL_VAL" \
+          --github-repo "$GITHUB_REPO" \
+          --github-run-id "$GITHUB_RUN_ID_VAL"
       continue-on-error: true
 
     - name: Upload scanner summary
@@ -292,7 +310,7 @@ runs:
 
     - name: Comment PR with OSV results
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@0.6.8
+      uses: huntridge-labs/argus/.github/actions/comment-pr@0.7.0
       with:
         summary_file: scanner-summaries/osv.md
         comment_marker: osv-scanner-comment-marker
@@ -302,12 +320,18 @@ runs:
     - name: Check severity threshold
       if: inputs.fail_on_severity != 'none' && inputs.fail_on_severity != ''
       shell: bash
+      env:
+        CRITICAL_COUNT: ${{ steps.parse-results.outputs.critical_count }}
+        HIGH_COUNT: ${{ steps.parse-results.outputs.high_count }}
+        MEDIUM_COUNT: ${{ steps.parse-results.outputs.medium_count }}
+        LOW_COUNT: ${{ steps.parse-results.outputs.low_count }}
+        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
       run: |
-        CRITICAL=${{ steps.parse-results.outputs.critical_count }}
-        HIGH=${{ steps.parse-results.outputs.high_count }}
-        MEDIUM=${{ steps.parse-results.outputs.medium_count }}
-        LOW=${{ steps.parse-results.outputs.low_count }}
-        THRESHOLD="${{ inputs.fail_on_severity }}"
+        CRITICAL=$CRITICAL_COUNT
+        HIGH=$HIGH_COUNT
+        MEDIUM=$MEDIUM_COUNT
+        LOW=$LOW_COUNT
+        THRESHOLD="$FAIL_ON_SEVERITY"
 
         SHOULD_FAIL=false
         case "$THRESHOLD" in

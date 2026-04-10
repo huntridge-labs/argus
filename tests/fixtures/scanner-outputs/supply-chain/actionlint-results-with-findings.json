@@ -1,0 +1,26 @@
+[
+  {
+    "message": "shellcheck reported issue in this script: SC2086:info:1:6: Double quote to prevent globbing and word splitting",
+    "filepath": ".github/workflows/ci.yml",
+    "line": 18,
+    "column": 9,
+    "kind": "shellcheck",
+    "snippet": "        run: echo $FOO"
+  },
+  {
+    "message": "label \"self-hosted\" is unknown. available labels are \"ubuntu-latest\", \"ubuntu-22.04\", ...",
+    "filepath": ".github/workflows/deploy.yml",
+    "line": 8,
+    "column": 14,
+    "kind": "runner-label",
+    "snippet": "    runs-on: self-hosted"
+  },
+  {
+    "message": "workflow command \"set-output\" was deprecated",
+    "filepath": ".github/workflows/release.yml",
+    "line": 25,
+    "column": 9,
+    "kind": "deprecation",
+    "snippet": "        run: echo \"::set-output name=version::1.0\""
+  }
+]

@@ -106,6 +106,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Discover Dockerfiles in repository
         id: discover
@@ -178,6 +180,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4
@@ -211,7 +215,7 @@ jobs:
 
       - name: Run security scanners
         if: steps.build.outputs.build_success == 'true'
-        uses: huntridge-labs/argus/.github/actions/scanner-container@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-container@0.7.0
         with:
           image_ref: ${{ steps.build.outputs.full_image }}
           container_name: ${{ matrix.container.name }}
@@ -231,6 +235,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Authenticate to container registry
         if: inputs.registry_username != ''
@@ -240,17 +246,19 @@ jobs:
             exit 1
           fi
 
-          REGISTRY=$(echo "${{ inputs.image_ref }}" | cut -d'/' -f1)
+          REGISTRY=$(echo "$IMAGE_REF" | cut -d'/' -f1)
           if [[ "$REGISTRY" != *"."* ]] && [[ "$REGISTRY" != *":"* ]]; then
             REGISTRY="docker.io"
           fi
 
-          echo "$REGISTRY_PASSWORD" | docker login "$REGISTRY" -u "${{ inputs.registry_username }}" --password-stdin
+          echo "$REGISTRY_PASSWORD" | docker login "$REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
         env:
           REGISTRY_PASSWORD: ${{ secrets.registry_password }}
+          IMAGE_REF: ${{ inputs.image_ref }}
+          REGISTRY_USERNAME: ${{ inputs.registry_username }}
 
       - name: Run security scanners
-        uses: huntridge-labs/argus/.github/actions/scanner-container@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-container@0.7.0
         with:
           image_ref: ${{ inputs.image_ref }}
           container_name: ${{ inputs.container_name || 'remote-image' }}
@@ -271,6 +279,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Download all scan artifacts
         if: needs.discover-containers.outputs.has_containers == 'true' || inputs.scan_mode == 'remote'
@@ -280,7 +290,7 @@ jobs:
           pattern: ${{ inputs.scan_mode == 'remote' && inputs.container_name != '' && format('container-scan-results-{0}*', inputs.container_name) || 'container-scan-results-*' }}
 
       - name: Generate container summary
-        uses: huntridge-labs/argus/.github/actions/scanner-container-summary@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-container-summary@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

@@ -58,9 +58,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run Checkov Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.7.0
         env:
           BC_API_KEY: ${{ secrets.BC_API_KEY }}
         with:

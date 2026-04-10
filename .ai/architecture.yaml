@@ -187,6 +187,12 @@ scanners:
       purpose: "Dynamic web application testing"
       output: SARIF
 
+  supply_chain:
+    - name: supply-chain
+      purpose: "GitHub Actions workflow security scanning via zizmor + actionlint"
+      output: JSON/SARIF
+      note: "Uses zizmorcore/zizmor-action and actionlint for comprehensive workflow security"
+
   compliance:
     - name: scn-detector
       purpose: "FedRAMP Significant Change Notification detection and classification"
@@ -262,7 +268,7 @@ data_flow:
       control: "Set post_pr_comment: true in action inputs"
       use_case: "Single scanner workflows, focused scanning"
       example: |
-        - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.6.8
+        - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.0
           with:
             post_pr_comment: true  # Posts individual Bandit PR comment
 
@@ -278,7 +284,7 @@ data_flow:
         3. Combines into security-hardening-report.md
         4. Posts single PR comment with all results
       example: |
-        uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.6.8
+        uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
         with:
           scanners: all
           post_pr_comment: true  # Only security-summary posts, not individual scanners

@@ -1,0 +1,184 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "zizmor",
+          "version": "1.7.0",
+          "informationUri": "https://docs.zizmor.sh",
+          "rules": [
+            {
+              "id": "unpinned-uses",
+              "shortDescription": {
+                "text": "unpinned Action reference"
+              },
+              "helpUri": "https://docs.zizmor.sh/audits/unpinned-uses/",
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "security-severity": "5.0"
+              }
+            },
+            {
+              "id": "template-injection",
+              "shortDescription": {
+                "text": "template injection via user-controlled input"
+              },
+              "helpUri": "https://docs.zizmor.sh/audits/template-injection/",
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "security-severity": "9.0"
+              }
+            },
+            {
+              "id": "excessive-permissions",
+              "shortDescription": {
+                "text": "overly broad workflow permissions"
+              },
+              "helpUri": "https://docs.zizmor.sh/audits/excessive-permissions/",
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "security-severity": "6.0"
+              }
+            },
+            {
+              "id": "ref-confusion",
+              "shortDescription": {
+                "text": "symbolic ref used where commit SHA expected"
+              },
+              "helpUri": "https://docs.zizmor.sh/audits/ref-confusion/",
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "security-severity": "3.0"
+              }
+            },
+            {
+              "id": "github-env",
+              "shortDescription": {
+                "text": "GITHUB_ENV usage may allow injection"
+              },
+              "helpUri": "https://docs.zizmor.sh/audits/github-env/",
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "security-severity": "0.0"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "unpinned-uses",
+          "level": "warning",
+          "message": {
+            "text": "unpinned Action reference"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".github/workflows/ci.yml"
+                },
+                "region": {
+                  "startLine": 15,
+                  "startColumn": 14
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "template-injection",
+          "level": "error",
+          "message": {
+            "text": "template injection via user-controlled input"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".github/workflows/pr-title.yml"
+                },
+                "region": {
+                  "startLine": 23,
+                  "startColumn": 8
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "excessive-permissions",
+          "level": "warning",
+          "message": {
+            "text": "overly broad workflow permissions"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".github/workflows/deploy.yml"
+                },
+                "region": {
+                  "startLine": 6,
+                  "startColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "ref-confusion",
+          "level": "note",
+          "message": {
+            "text": "symbolic ref used where commit SHA expected"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".github/workflows/release.yml"
+                },
+                "region": {
+                  "startLine": 31,
+                  "startColumn": 14
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "github-env",
+          "level": "note",
+          "message": {
+            "text": "GITHUB_ENV usage may allow injection"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".github/workflows/ci.yml"
+                },
+                "region": {
+                  "startLine": 46,
+                  "startColumn": 8
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

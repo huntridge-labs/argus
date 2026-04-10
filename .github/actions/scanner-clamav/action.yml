@@ -53,6 +53,8 @@ runs:
   steps:
     - name: Checkout repository
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      with:
+        persist-credentials: false
 
     - name: Install ClamAV
       shell: bash
@@ -111,13 +113,15 @@ runs:
 
     - name: Run ClamAV Malware Scan
       shell: bash
+      env:
+        SCAN_PATH_INPUT: ${{ inputs.scan_path }}
       run: |
         set +e  # Disable exit on error for this step
 
         echo "🔍 Running ClamAV malware analysis..."
         mkdir -p clamav-reports clamav-extracted
 
-        SCAN_PATH="${{ inputs.scan_path }}"
+        SCAN_PATH="$SCAN_PATH_INPUT"
 
         # Check if scan path exists
         if [ ! -e "$SCAN_PATH" ]; then
@@ -292,7 +296,7 @@ runs:
 
     - name: Comment PR with ClamAV results
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@0.6.8
+      uses: huntridge-labs/argus/.github/actions/comment-pr@0.7.0
       with:
         summary_file: scanner-summaries/clamav.md
         comment_marker: clamav-scanner-comment-marker
@@ -303,6 +307,8 @@ runs:
       id: analyze-findings
       shell: bash
       if: always()
+      env:
+        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
       run: |
         echo "📊 Analyzing ClamAV scan results..."
 
@@ -329,7 +335,7 @@ runs:
           echo "⚠️ WARNING: $INFECTED_COUNT infected file(s) detected!"
           echo "::warning title=Malware Detected::ClamAV found $INFECTED_COUNT infected file(s) in the repository"
 
-          if [ "${{ inputs.fail_on_severity }}" != "none" ] && [ -n "${{ inputs.fail_on_severity }}" ]; then
+          if [ "$FAIL_ON_SEVERITY" != "none" ] && [ -n "$FAIL_ON_SEVERITY" ]; then
             exit 1
           fi
         else

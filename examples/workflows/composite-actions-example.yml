@@ -15,6 +15,7 @@ name: Security Scanning with Composite Actions
 # - scanner-container: Container image scanning
 # - scanner-osv: Dependency vulnerability scanning (any trigger)
 # - scanner-dependency-review: PR dependency review & license compliance (PR-only)
+# - scanner-supply-chain: GitHub Actions workflow security (zizmor + actionlint)
 #
 # Each scanner runs independently and generates reports that can be uploaded to GitHub Security.
 
@@ -50,7 +51,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Bandit Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -73,7 +74,7 @@ jobs:
           fetch-depth: 0  # Full history for comprehensive secrets scanning
 
       - name: Run Gitleaks Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Optional: for org features
@@ -95,7 +96,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run CodeQL Scanner (Python)
-        uses: huntridge-labs/argus/.github/actions/scanner-codeql@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-codeql@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -116,7 +117,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run OpenGrep Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-opengrep@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-opengrep@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -137,7 +138,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Trivy IaC Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -158,7 +159,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Checkov Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -180,7 +181,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run ClamAV Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-clamav@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-clamav@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -210,7 +211,7 @@ jobs:
       #     sleep 10
 
       - name: Run ZAP Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-zap@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-zap@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -239,7 +240,7 @@ jobs:
       #   run: docker build -t myapp:test .
 
       - name: Run Container Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-container@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-container@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -258,7 +259,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run OSV-Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-osv@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-osv@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -277,7 +278,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Dependency Review
-        uses: huntridge-labs/argus/.github/actions/scanner-dependency-review@0.6.8
+        uses: huntridge-labs/argus/.github/actions/scanner-dependency-review@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -286,16 +287,37 @@ jobs:
           # deny_licenses: 'GPL-3.0'  # Uncomment to deny specific licenses
           fail_on_severity: 'none'
 
+  # Supply Chain Security - Scan workflow files for security issues
+  supply-chain-scan:
+    name: Supply Chain Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Run Supply Chain Scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-supply-chain@0.7.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          scan_path: '.'
+          fail_on_severity: 'none'
+          enable_code_security: true
+          run_actionlint: true
+
   # Summary Job - Collect all scanner results
   security-summary:
     name: Security Scan Summary
     runs-on: ubuntu-latest
-    needs: [bandit-scan, gitleaks-scan, codeql-scan, opengrep-scan, trivy-iac-scan, checkov-scan, clamav-scan, osv-scan, dependency-review-scan]
+    needs: [bandit-scan, gitleaks-scan, codeql-scan, opengrep-scan, trivy-iac-scan, checkov-scan, clamav-scan, osv-scan, dependency-review-scan, supply-chain-scan]
     if: always()
 
     steps:
       - name: Generate Combined Security Summary
-        uses: huntridge-labs/argus/.github/actions/security-summary@0.6.8
+        uses: huntridge-labs/argus/.github/actions/security-summary@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -317,6 +339,7 @@ jobs:
           echo "ClamAV: ${{ needs.clamav-scan.result }}"
           echo "OSV: ${{ needs.osv-scan.result }}"
           echo "Dependency Review: ${{ needs.dependency-review-scan.result }}"
+          echo "Supply Chain: ${{ needs.supply-chain-scan.result }}"
 
           # Optional: Fail if any critical scanners failed
           # Uncomment the following if you want the summary job to fail

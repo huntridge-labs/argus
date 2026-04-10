@@ -9,7 +9,7 @@ description: |
   **Usage Example:**
   ```yaml
   - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-  - uses: huntridge-labs/argus/.github/actions/linter-javascript@0.6.8
+  - uses: huntridge-labs/argus/.github/actions/linter-javascript@0.7.0
     with:
       fail_on_issues: false
   ```
@@ -55,9 +55,12 @@ runs:
       id: js-lint
       shell: bash
       continue-on-error: true
+      env:
+        PATHS: ${{ inputs.paths }}
+        FAIL_ON_ISSUES: ${{ inputs.fail_on_issues }}
       run: |
         echo "::group::JavaScript Code Quality Checks"
-        echo "Searching for JavaScript files in: ${{ inputs.paths }}"
+        echo "Searching for JavaScript files in: $PATHS"
 
         ISSUES_FILE="/tmp/js_issues.txt"
         TOTAL_ISSUES=0
@@ -65,7 +68,7 @@ runs:
         JSHINT_ISSUES=0
 
         # Find JavaScript files
-        JS_FILES=$(find ${{ inputs.paths }} -name "*.js" \
+        JS_FILES=$(find $PATHS -name "*.js" \
           -not -path "*/node_modules/*" \
           -not -path "*/.git/*" \
           -not -path "*/dist/*" \
@@ -137,7 +140,7 @@ runs:
         echo "::endgroup::"
 
         # Fail if requested and issues found
-        if [ "${{ inputs.fail_on_issues }}" = "true" ] && [ "$TOTAL_ISSUES" -gt 0 ]; then
+        if [ "$FAIL_ON_ISSUES" = "true" ] && [ "$TOTAL_ISSUES" -gt 0 ]; then
           echo "::error::JavaScript linting failed with $TOTAL_ISSUES issues"
           exit 1
         fi
@@ -145,11 +148,15 @@ runs:
     - name: Generate linter summary
       if: always()
       shell: bash
+      env:
+        ISSUES_OUTPUT: ${{ steps.js-lint.outputs.issues }}
+        SYNTAX_OUTPUT: ${{ steps.js-lint.outputs.syntax_issues }}
+        JSHINT_OUTPUT: ${{ steps.js-lint.outputs.jshint_issues }}
       run: |
         mkdir -p linter-summaries
-        ISSUES="${{ steps.js-lint.outputs.issues }}"
-        SYNTAX="${{ steps.js-lint.outputs.syntax_issues }}"
-        JSHINT="${{ steps.js-lint.outputs.jshint_issues }}"
+        ISSUES="$ISSUES_OUTPUT"
+        SYNTAX="$SYNTAX_OUTPUT"
+        JSHINT="$JSHINT_OUTPUT"
 
         echo "<details>" > linter-summaries/javascript.md
         echo "<summary>JavaScript Code Quality</summary>" >> linter-summaries/javascript.md

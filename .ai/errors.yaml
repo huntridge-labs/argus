@@ -211,6 +211,35 @@ error_patterns:
             types: [opened, synchronize, reopened]
 
   # ==============================================================================
+  # RELEASE ERRORS
+  # ==============================================================================
+
+  - pattern: "could not read Username for 'https://github.com'"
+    category: release
+    context: "release-it git push fails during release workflow"
+
+    root_cause: |
+      The checkout step uses persist-credentials: false (supply chain
+      hardening best practice), which removes the token from the git
+      credential store. When release-it runs git push, there are no
+      credentials available for HTTPS authentication.
+
+    solution:
+      steps:
+        - "Add git remote set-url to the Configure Git step"
+        - "Inject the token via env var, not inline ${{ }}"
+      code: |
+        - name: Configure Git
+          run: |
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          env:
+            GITHUB_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+      note: "Do NOT remove persist-credentials: false — fix the remote URL instead"
+      reference: "PR #86"
+
+  # ==============================================================================
   # WORKFLOW ERRORS
   # ==============================================================================
 
@@ -226,7 +255,7 @@ error_patterns:
         - "Verify workflow path matches exactly"
       example: |
         # Correct
-        uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.6.8
+        uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
 
         # Wrong - missing .github prefix
         uses: huntridge-labs/argusworkflows/reusable-security-hardening.yml@main

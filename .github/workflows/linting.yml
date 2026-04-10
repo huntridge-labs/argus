@@ -53,10 +53,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run YAML Linter
         id: lint
-        uses: huntridge-labs/argus/.github/actions/linter-yaml@0.6.8
+        uses: huntridge-labs/argus/.github/actions/linter-yaml@0.7.0
 
   json-lint:
     name: JSON Validation
@@ -68,10 +70,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run JSON Linter
         id: lint
-        uses: huntridge-labs/argus/.github/actions/linter-json@0.6.8
+        uses: huntridge-labs/argus/.github/actions/linter-json@0.7.0
 
   python-lint:
     name: Python Code Quality
@@ -83,10 +87,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run Python Linter
         id: lint
-        uses: huntridge-labs/argus/.github/actions/linter-python@0.6.8
+        uses: huntridge-labs/argus/.github/actions/linter-python@0.7.0
 
   javascript-lint:
     name: JavaScript Code Quality
@@ -98,10 +104,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run JavaScript Linter
         id: lint
-        uses: huntridge-labs/argus/.github/actions/linter-javascript@0.6.8
+        uses: huntridge-labs/argus/.github/actions/linter-javascript@0.7.0
 
   dockerfile-lint:
     name: Dockerfile Linting
@@ -113,10 +121,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run Dockerfile Linter
         id: lint
-        uses: huntridge-labs/argus/.github/actions/linter-dockerfile@0.6.8
+        uses: huntridge-labs/argus/.github/actions/linter-dockerfile@0.7.0
 
   terraform-lint:
     name: Terraform Linting
@@ -128,10 +138,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run Terraform Linter
         id: lint
-        uses: huntridge-labs/argus/.github/actions/linter-terraform@0.6.8
+        uses: huntridge-labs/argus/.github/actions/linter-terraform@0.7.0
 
   linting-summary:
     name: Linting Summary
@@ -145,10 +157,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Generate Linting Summary
         id: summary
-        uses: huntridge-labs/argus/.github/actions/linting-summary@0.6.8
+        uses: huntridge-labs/argus/.github/actions/linting-summary@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -157,5 +171,7 @@ jobs:
       - name: Fail if issues found
         if: inputs.fail_on_issues == true && steps.summary.outputs.total_issues != '0'
         run: |
-          echo "::error::Found ${{ steps.summary.outputs.total_issues }} linting issues"
+          echo "::error::Found ${STEPS_SUMMARY_OUTPUTS_TOTAL_ISSUES} linting issues"
           exit 1
+        env:
+          STEPS_SUMMARY_OUTPUTS_TOTAL_ISSUES: ${{ steps.summary.outputs.total_issues }}

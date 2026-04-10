@@ -36,13 +36,13 @@ on:
           - linters
           - infrastructure
           - dependencies
+          - supply-chain
 
 permissions:
   contents: read
   security-events: write
   actions: read
   pull-requests: write
-  checks: write
 
 # Cancel in-progress runs when a new commit is pushed
 concurrency:
@@ -68,6 +68,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Check action E2E test coverage
         id: coverage
@@ -193,8 +195,10 @@ jobs:
       - name: Fail if missing E2E tests
         if: steps.coverage.outputs.missing != '0'
         run: |
-          echo "::error::${{ steps.coverage.outputs.missing }} actions are missing E2E tests. Add tests or document exceptions."
+          echo "::error::${STEPS_COVERAGE_OUTPUTS_MISSING} actions are missing E2E tests. Add tests or document exceptions."
           exit 1
+        env:
+          STEPS_COVERAGE_OUTPUTS_MISSING: ${{ steps.coverage.outputs.missing }}
 
   # ============================================================================
   # SAST Scanners (Static Application Security Testing)
@@ -213,6 +217,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run Bandit scanner
         id: scan
@@ -246,6 +252,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run Opengrep scanner
         id: scan
@@ -279,6 +287,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run CodeQL scanner (Python)
         id: scan
@@ -315,6 +325,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
+          persist-credentials: false
           fetch-depth: 0  # Full history for comprehensive secrets scanning
 
       - name: Run Gitleaks scanner
@@ -338,9 +349,11 @@ jobs:
             echo "✅ Gitleaks scanner executed successfully"
             echo ""
           } >> "$GITHUB_STEP_SUMMARY"
-          if [ -n "${{ steps.scan.outputs.secrets_count }}" ]; then
-            echo "**Secrets detected:** ${{ steps.scan.outputs.secrets_count }}" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "${STEPS_SCAN_OUTPUTS_SECRETS_COUNT}" ]; then
+            echo "**Secrets detected:** ${STEPS_SCAN_OUTPUTS_SECRETS_COUNT}" >> "$GITHUB_STEP_SUMMARY"
           fi
+        env:
+          STEPS_SCAN_OUTPUTS_SECRETS_COUNT: ${{ steps.scan.outputs.secrets_count }}
 
   # ============================================================================
   # Infrastructure Scanners (IaC)
@@ -359,6 +372,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run Trivy IaC scanner
         id: scan
@@ -391,6 +406,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run Checkov scanner
         id: scan
@@ -429,6 +446,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
+          persist-credentials: false
           fetch-depth: 0  # Required for SCN detector git diff analysis
 
       - name: Create test IaC changes
@@ -471,9 +489,12 @@ jobs:
             echo "## SCN Detector Test Results"
             echo "✅ SCN detector executed successfully"
             echo ""
-            echo "**Change Category:** \`${{ steps.scan.outputs.change_category }}\`"
-            echo "**Has Changes:** \`${{ steps.scan.outputs.has_changes }}\`"
+            echo "**Change Category:** \`${STEPS_SCAN_OUTPUTS_CHANGE_CATEGORY}\`"
+            echo "**Has Changes:** \`${STEPS_SCAN_OUTPUTS_HAS_CHANGES}\`"
           } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          STEPS_SCAN_OUTPUTS_CHANGE_CATEGORY: ${{ steps.scan.outputs.change_category }}
+          STEPS_SCAN_OUTPUTS_HAS_CHANGES: ${{ steps.scan.outputs.has_changes }}
 
   # ============================================================================
   # Container Scanners
@@ -504,6 +525,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run container scanner (${{ matrix.tool }})
         id: scan
@@ -547,6 +570,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run Syft SBOM generator
         id: scan
@@ -567,9 +592,12 @@ jobs:
             echo "✅ SBOM generated successfully"
             echo ""
             echo "**Image:** \`alpine:latest\`"
-            echo "**Components found:** ${{ steps.scan.outputs.component_count }}"
-            echo "**SBOM file:** ${{ steps.scan.outputs.sbom_file }}"
+            echo "**Components found:** ${STEPS_SCAN_OUTPUTS_COMPONENT_COUNT}"
+            echo "**SBOM file:** ${STEPS_SCAN_OUTPUTS_SBOM_FILE}"
           } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          STEPS_SCAN_OUTPUTS_COMPONENT_COUNT: ${{ steps.scan.outputs.component_count }}
+          STEPS_SCAN_OUTPUTS_SBOM_FILE: ${{ steps.scan.outputs.sbom_file }}
 
   # ============================================================================
   # Linters
@@ -588,6 +616,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run Dockerfile linter
         uses: ./.github/actions/linter-dockerfile
@@ -614,6 +644,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run Python linter
         uses: ./.github/actions/linter-python
@@ -640,6 +672,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run YAML linter
         uses: ./.github/actions/linter-yaml
@@ -666,6 +700,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run JavaScript linter
         uses: ./.github/actions/linter-javascript
@@ -692,6 +728,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run JSON linter
         uses: ./.github/actions/linter-json
@@ -718,6 +756,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run Terraform linter
         uses: ./.github/actions/linter-terraform
@@ -747,13 +787,15 @@ jobs:
 
     services:
       podinfo:
-        image: stefanprodan/podinfo:latest
+        image: stefanprodan/podinfo:latest@sha256:187803cdf611a19d4fffbdf6a4260a01be4c09ffe9924b28902424fc0639ceb8
         ports:
           - 9898:9898
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Wait for podinfo to be ready
         shell: bash
@@ -811,6 +853,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run ClamAV scanner
         id: scan
@@ -830,9 +874,64 @@ jobs:
             echo "## ClamAV Test Results"
             echo "✅ ClamAV scanner executed successfully"
             echo ""
-            echo "**Files scanned:** ${{ steps.scan.outputs.scanned_count }}"
-            echo "**Scan status:** ${{ steps.scan.outputs.scan_status }}"
+            echo "**Files scanned:** ${STEPS_SCAN_OUTPUTS_SCANNED_COUNT}"
+            echo "**Scan status:** ${STEPS_SCAN_OUTPUTS_SCAN_STATUS}"
           } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          STEPS_SCAN_OUTPUTS_SCANNED_COUNT: ${{ steps.scan.outputs.scanned_count }}
+          STEPS_SCAN_OUTPUTS_SCAN_STATUS: ${{ steps.scan.outputs.scan_status }}
+
+  # ============================================================================
+  # Supply Chain Scanner
+  # Tests: scanner-supply-chain (zizmor + actionlint)
+  # ============================================================================
+  test-supply-chain:
+    name: Supply Chain / supply-chain
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      (inputs.test_group == 'all' || inputs.test_group == 'supply-chain') ||
+      github.event_name != 'workflow_dispatch'
+    timeout-minutes: 10
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Run supply chain scanner
+        id: scan
+        uses: ./.github/actions/scanner-supply-chain
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          scan_path: '.'
+          persona: 'regular'
+          run_actionlint: 'true'
+          post_pr_comment: 'false'
+          enable_code_security: ${{ env.ENABLE_CODE_SECURITY }}
+          fail_on_severity: 'none'
+
+      - name: Verify scan completed
+        shell: bash
+        run: |
+          {
+            echo "## Supply Chain Scanner Test Results"
+            echo "✅ Supply chain scanner executed successfully"
+            echo ""
+            echo "**High:** ${STEPS_SCAN_OUTPUTS_HIGH_COUNT}"
+            echo "**Medium:** ${STEPS_SCAN_OUTPUTS_MEDIUM_COUNT}"
+            echo "**Low:** ${STEPS_SCAN_OUTPUTS_LOW_COUNT}"
+            echo "**Info:** ${STEPS_SCAN_OUTPUTS_INFO_COUNT}"
+            echo "**Status:** ${STEPS_SCAN_OUTPUTS_SCAN_STATUS}"
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          STEPS_SCAN_OUTPUTS_HIGH_COUNT: ${{ steps.scan.outputs.high_count }}
+          STEPS_SCAN_OUTPUTS_MEDIUM_COUNT: ${{ steps.scan.outputs.medium_count }}
+          STEPS_SCAN_OUTPUTS_LOW_COUNT: ${{ steps.scan.outputs.low_count }}
+          STEPS_SCAN_OUTPUTS_INFO_COUNT: ${{ steps.scan.outputs.info_count }}
+          STEPS_SCAN_OUTPUTS_SCAN_STATUS: ${{ steps.scan.outputs.scan_status }}
 
   # ============================================================================
   # Dependency Scanners
@@ -851,6 +950,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run OSV scanner
         id: scan
@@ -873,11 +974,16 @@ jobs:
             echo "## OSV Scanner Test Results"
             echo "✅ OSV scanner executed successfully"
             echo ""
-            echo "**Critical:** ${{ steps.scan.outputs.critical_count }}"
-            echo "**High:** ${{ steps.scan.outputs.high_count }}"
-            echo "**Medium:** ${{ steps.scan.outputs.medium_count }}"
-            echo "**Low:** ${{ steps.scan.outputs.low_count }}"
+            echo "**Critical:** ${STEPS_SCAN_OUTPUTS_CRITICAL_COUNT}"
+            echo "**High:** ${STEPS_SCAN_OUTPUTS_HIGH_COUNT}"
+            echo "**Medium:** ${STEPS_SCAN_OUTPUTS_MEDIUM_COUNT}"
+            echo "**Low:** ${STEPS_SCAN_OUTPUTS_LOW_COUNT}"
           } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          STEPS_SCAN_OUTPUTS_CRITICAL_COUNT: ${{ steps.scan.outputs.critical_count }}
+          STEPS_SCAN_OUTPUTS_HIGH_COUNT: ${{ steps.scan.outputs.high_count }}
+          STEPS_SCAN_OUTPUTS_MEDIUM_COUNT: ${{ steps.scan.outputs.medium_count }}
+          STEPS_SCAN_OUTPUTS_LOW_COUNT: ${{ steps.scan.outputs.low_count }}
 
   test-dependency-review:
     name: Dependencies / dependency-review
@@ -892,6 +998,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run dependency-review scanner
         id: scan
@@ -912,10 +1020,14 @@ jobs:
             echo "✅ Dependency review scanner executed successfully"
             echo ""
             echo "**Event type:** ${{ github.event_name }}"
-            echo "**Critical:** ${{ steps.scan.outputs.critical_count }}"
-            echo "**High:** ${{ steps.scan.outputs.high_count }}"
-            echo "**License violations:** ${{ steps.scan.outputs.license_violations }}"
+            echo "**Critical:** ${STEPS_SCAN_OUTPUTS_CRITICAL_COUNT}"
+            echo "**High:** ${STEPS_SCAN_OUTPUTS_HIGH_COUNT}"
+            echo "**License violations:** ${STEPS_SCAN_OUTPUTS_LICENSE_VIOLATIONS}"
           } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          STEPS_SCAN_OUTPUTS_CRITICAL_COUNT: ${{ steps.scan.outputs.critical_count }}
+          STEPS_SCAN_OUTPUTS_HIGH_COUNT: ${{ steps.scan.outputs.high_count }}
+          STEPS_SCAN_OUTPUTS_LICENSE_VIOLATIONS: ${{ steps.scan.outputs.license_violations }}
 
   # ============================================================================
   # Summary Generators
@@ -931,6 +1043,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run linting-summary action
         id: summary
@@ -960,6 +1074,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run container-config parser
         id: parse
@@ -984,6 +1100,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Run zap-config parser
         id: parse
@@ -1011,6 +1129,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
@@ -1121,6 +1241,7 @@ jobs:
       - test-linter-terraform
       - test-zap
       - test-clamav
+      - test-supply-chain
       - test-osv
       - test-dependency-review
       - test-linting-summary
@@ -1132,39 +1253,68 @@ jobs:
     steps:
       - name: Generate Summary
         shell: bash
+        env:
+          WORKFLOW_NAME: ${{ github.workflow }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          NEEDS_VALIDATE_E2E_COVERAGE_RESULT: ${{ needs.validate-e2e-coverage.result }}
+          NEEDS_TEST_BANDIT_RESULT: ${{ needs.test-bandit.result }}
+          NEEDS_TEST_OPENGREP_RESULT: ${{ needs.test-opengrep.result }}
+          NEEDS_TEST_CODEQL_RESULT: ${{ needs.test-codeql.result }}
+          NEEDS_TEST_SECRETS_RESULT: ${{ needs.test-secrets.result }}
+          NEEDS_TEST_TRIVY_IAC_RESULT: ${{ needs.test-trivy-iac.result }}
+          NEEDS_TEST_CHECKOV_RESULT: ${{ needs.test-checkov.result }}
+          NEEDS_TEST_CONTAINER_RESULT: ${{ needs.test-container.result }}
+          NEEDS_TEST_SYFT_RESULT: ${{ needs.test-syft.result }}
+          NEEDS_TEST_LINTER_DOCKERFILE_RESULT: ${{ needs.test-linter-dockerfile.result }}
+          NEEDS_TEST_LINTER_PYTHON_RESULT: ${{ needs.test-linter-python.result }}
+          NEEDS_TEST_LINTER_YAML_RESULT: ${{ needs.test-linter-yaml.result }}
+          NEEDS_TEST_LINTER_JAVASCRIPT_RESULT: ${{ needs.test-linter-javascript.result }}
+          NEEDS_TEST_LINTER_JSON_RESULT: ${{ needs.test-linter-json.result }}
+          NEEDS_TEST_LINTER_TERRAFORM_RESULT: ${{ needs.test-linter-terraform.result }}
+          NEEDS_TEST_ZAP_RESULT: ${{ needs.test-zap.result }}
+          NEEDS_TEST_CLAMAV_RESULT: ${{ needs.test-clamav.result }}
+          NEEDS_TEST_SUPPLY_CHAIN_RESULT: ${{ needs.test-supply-chain.result }}
+          NEEDS_TEST_OSV_RESULT: ${{ needs.test-osv.result }}
+          NEEDS_TEST_DEPENDENCY_REVIEW_RESULT: ${{ needs.test-dependency-review.result }}
+          NEEDS_TEST_LINTING_SUMMARY_RESULT: ${{ needs.test-linting-summary.result }}
+          NEEDS_TEST_PARSE_CONTAINER_CONFIG_RESULT: ${{ needs.test-parse-container-config.result }}
+          NEEDS_TEST_PARSE_ZAP_CONFIG_RESULT: ${{ needs.test-parse-zap-config.result }}
+          NEEDS_VALIDATE_EXAMPLES_RESULT: ${{ needs.validate-examples.result }}
         run: |
           {
             echo "# Composite Actions Test Summary"
             echo ""
             echo "| Category | Status |"
             echo "|----------|--------|"
-            echo "| E2E Coverage Validation | ${{ needs.validate-e2e-coverage.result == 'success' && '✅' || '⚠️' }} ${{ needs.validate-e2e-coverage.result }} |"
-            echo "| Bandit (SAST) | ${{ needs.test-bandit.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-bandit.result }} |"
-            echo "| Opengrep (SAST) | ${{ needs.test-opengrep.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-opengrep.result }} |"
-            echo "| CodeQL (SAST) | ${{ needs.test-codeql.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-codeql.result }} |"
-            echo "| Gitleaks (Secrets) | ${{ needs.test-secrets.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-secrets.result }} |"
-            echo "| Trivy IaC | ${{ needs.test-trivy-iac.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-trivy-iac.result }} |"
-            echo "| Checkov IaC | ${{ needs.test-checkov.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-checkov.result }} |"
-            echo "| Container Scanners | ${{ needs.test-container.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-container.result }} |"
-            echo "| Syft SBOM | ${{ needs.test-syft.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-syft.result }} |"
-            echo "| Dockerfile Linter | ${{ needs.test-linter-dockerfile.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-linter-dockerfile.result }} |"
-            echo "| Python Linter | ${{ needs.test-linter-python.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-linter-python.result }} |"
-            echo "| YAML Linter | ${{ needs.test-linter-yaml.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-linter-yaml.result }} |"
-            echo "| JavaScript Linter | ${{ needs.test-linter-javascript.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-linter-javascript.result }} |"
-            echo "| JSON Linter | ${{ needs.test-linter-json.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-linter-json.result }} |"
-            echo "| Terraform Linter | ${{ needs.test-linter-terraform.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-linter-terraform.result }} |"
-            echo "| ZAP DAST | ${{ needs.test-zap.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-zap.result }} |"
-            echo "| ClamAV Malware | ${{ needs.test-clamav.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-clamav.result }} |"
-            echo "| OSV Dependencies | ${{ needs.test-osv.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-osv.result }} |"
-            echo "| Dependency Review | ${{ needs.test-dependency-review.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-dependency-review.result }} |"
-            echo "| Linting Summary | ${{ needs.test-linting-summary.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-linting-summary.result }} |"
-            echo "| Container Config Parser | ${{ needs.test-parse-container-config.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-parse-container-config.result }} |"
-            echo "| ZAP Config Parser | ${{ needs.test-parse-zap-config.result == 'success' && '✅' || '⚠️' }} ${{ needs.test-parse-zap-config.result }} |"
-            echo "| Example Validation | ${{ needs.validate-examples.result == 'success' && '✅' || '⚠️' }} ${{ needs.validate-examples.result }} |"
+            echo "| E2E Coverage Validation | ${{ needs.validate-e2e-coverage.result == 'success' && '✅' || '⚠️' }} ${NEEDS_VALIDATE_E2E_COVERAGE_RESULT} |"
+            echo "| Bandit (SAST) | ${{ needs.test-bandit.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_BANDIT_RESULT} |"
+            echo "| Opengrep (SAST) | ${{ needs.test-opengrep.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_OPENGREP_RESULT} |"
+            echo "| CodeQL (SAST) | ${{ needs.test-codeql.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_CODEQL_RESULT} |"
+            echo "| Gitleaks (Secrets) | ${{ needs.test-secrets.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_SECRETS_RESULT} |"
+            echo "| Trivy IaC | ${{ needs.test-trivy-iac.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_TRIVY_IAC_RESULT} |"
+            echo "| Checkov IaC | ${{ needs.test-checkov.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_CHECKOV_RESULT} |"
+            echo "| Container Scanners | ${{ needs.test-container.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_CONTAINER_RESULT} |"
+            echo "| Syft SBOM | ${{ needs.test-syft.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_SYFT_RESULT} |"
+            echo "| Dockerfile Linter | ${{ needs.test-linter-dockerfile.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_LINTER_DOCKERFILE_RESULT} |"
+            echo "| Python Linter | ${{ needs.test-linter-python.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_LINTER_PYTHON_RESULT} |"
+            echo "| YAML Linter | ${{ needs.test-linter-yaml.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_LINTER_YAML_RESULT} |"
+            echo "| JavaScript Linter | ${{ needs.test-linter-javascript.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_LINTER_JAVASCRIPT_RESULT} |"
+            echo "| JSON Linter | ${{ needs.test-linter-json.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_LINTER_JSON_RESULT} |"
+            echo "| Terraform Linter | ${{ needs.test-linter-terraform.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_LINTER_TERRAFORM_RESULT} |"
+            echo "| ZAP DAST | ${{ needs.test-zap.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_ZAP_RESULT} |"
+            echo "| ClamAV Malware | ${{ needs.test-clamav.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_CLAMAV_RESULT} |"
+            echo "| Supply Chain | ${{ needs.test-supply-chain.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_SUPPLY_CHAIN_RESULT} |"
+            echo "| OSV Dependencies | ${{ needs.test-osv.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_OSV_RESULT} |"
+            echo "| Dependency Review | ${{ needs.test-dependency-review.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_DEPENDENCY_REVIEW_RESULT} |"
+            echo "| Linting Summary | ${{ needs.test-linting-summary.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_LINTING_SUMMARY_RESULT} |"
+            echo "| Container Config Parser | ${{ needs.test-parse-container-config.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_PARSE_CONTAINER_CONFIG_RESULT} |"
+            echo "| ZAP Config Parser | ${{ needs.test-parse-zap-config.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_PARSE_ZAP_CONFIG_RESULT} |"
+            echo "| Example Validation | ${{ needs.validate-examples.result == 'success' && '✅' || '⚠️' }} ${NEEDS_VALIDATE_EXAMPLES_RESULT} |"
             echo ""
             echo "---"
             echo ""
-            echo "**Workflow:** ${{ github.workflow }}"
-            echo "**Trigger:** ${{ github.event_name }}"
-            echo "**Branch:** ${{ github.ref_name }}"
+            echo "**Workflow:** $WORKFLOW_NAME"
+            echo "**Trigger:** $EVENT_NAME"
+            echo "**Branch:** $REF_NAME"
           } >> "$GITHUB_STEP_SUMMARY"

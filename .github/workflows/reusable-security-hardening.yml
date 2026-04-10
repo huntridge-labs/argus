@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       scanners:
-        description: 'Comma-separated list of scanners to run (codeql, opengrep, bandit, gitleaks, container, infrastructure, trivy-iac, checkov, trivy-container, grype, lint, clamav, sbom, zap, osv, dependency-review, dependencies, all, sast, secrets, etc.). Note: zap (DAST) is opt-in and is not included in "all" by default.'
+        description: 'Comma-separated list of scanners to run (codeql, opengrep, bandit, gitleaks, container, infrastructure, trivy-iac, checkov, trivy-container, grype, lint, clamav, sbom, zap, osv, dependency-review, supply-chain, dependencies, all, sast, secrets, etc.). Note: zap (DAST) is opt-in and is not included in "all" by default.'
         required: false
         default: 'all'
         type: string
@@ -105,6 +105,22 @@ on:
         type: boolean
       gitleaks_config:
         description: 'Path to a gitleaks configuration file (e.g., "path/to/gitleaks.toml")'
+        required: false
+        default: ''
+        type: string
+
+      supply_chain_scan_path:
+        description: 'Path to scan for GitHub Actions workflows and actions'
+        required: false
+        default: '.'
+        type: string
+      supply_chain_persona:
+        description: 'Zizmor audit strictness: regular (default), pedantic, or auditor'
+        required: false
+        default: 'regular'
+        type: string
+      supply_chain_zizmor_config:
+        description: 'Path to zizmor configuration file'
         required: false
         default: ''
         type: string
@@ -241,12 +257,16 @@ jobs:
       run_zap: ${{ steps.resolve.outputs.run_zap }}
       run_osv: ${{ steps.resolve.outputs.run_osv }}
       run_dependency_review: ${{ steps.resolve.outputs.run_dependency_review }}
+      run_supply_chain: ${{ steps.resolve.outputs.run_supply_chain }}
       run_any: ${{ steps.resolve.outputs.run_any }}
 
     steps:
     - name: Resolve scanner selection
       id: resolve
       shell: bash
+      env:
+        SCANNERS_INPUT: ${{ inputs.scanners }}
+        SCAN_TYPE_INPUT: ${{ inputs.scan_type }}
       run: |
         set -euo pipefail
 
@@ -267,6 +287,7 @@ jobs:
           [zap]=false
           [osv]=false
           [dependency-review]=false
+          [supply-chain]=false
         )
 
         DEFAULT_SCANNERS=(codeql opengrep bandit gitleaks container infrastructure sbom)
@@ -366,6 +387,9 @@ jobs:
             dependency-review|dep-review)
               add_scanner dependency-review
               ;;
+            supply-chain|supply_chain|supplychain|actions-security)
+              add_scanner supply-chain
+              ;;
             dependencies|deps|dependency)
               for key in osv dependency-review; do add_scanner "$key"; done
               ;;
@@ -378,8 +402,8 @@ jobs:
           esac
         }
 
-        SCANNERS_RAW="${{ inputs.scanners }}"
-        SCAN_TYPE_RAW="$(normalize "${{ inputs.scan_type }}")"
+        SCANNERS_RAW="$SCANNERS_INPUT"
+        SCAN_TYPE_RAW="$(normalize "$SCAN_TYPE_INPUT")"
 
         if [[ -z "$SCANNERS_RAW" || "$SCANNERS_RAW" == "default" ]]; then
           case "$SCAN_TYPE_RAW" in
@@ -465,7 +489,7 @@ jobs:
     name: Code Quality & Linting
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_lint == 'true'
-    uses: huntridge-labs/argus/.github/workflows/linting.yml@claude/feat-sanitize-container-names
+    uses: huntridge-labs/argus/.github/workflows/linting.yml@0.7.0
     with:
       post_pr_comment: false
     permissions:
@@ -479,7 +503,7 @@ jobs:
     name: CodeQL Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_codeql == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-codeql.yml@claude/feat-sanitize-container-names
+    uses: huntridge-labs/argus/.github/workflows/scanner-codeql.yml@0.7.0
     with:
       codeql_languages: ${{ inputs.codeql_languages }}
       config_file: ${{ inputs.codeql_config_file }}
@@ -497,7 +521,7 @@ jobs:
     name: OpenGrep Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_opengrep == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-opengrep.yml@claude/feat-sanitize-container-names
+    uses: huntridge-labs/argus/.github/workflows/scanner-opengrep.yml@0.7.0
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -513,7 +537,7 @@ jobs:
     name: Bandit Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_bandit == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-bandit.yml@claude/feat-sanitize-container-names
+    uses: huntridge-labs/argus/.github/workflows/scanner-bandit.yml@0.7.0
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -530,7 +554,7 @@ jobs:
     name: Gitleaks Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_gitleaks == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-gitleaks.yml@claude/feat-sanitize-container-names
+    uses: huntridge-labs/argus/.github/workflows/scanner-gitleaks.yml@0.7.0
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -552,7 +576,7 @@ jobs:
     name: ClamAV Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_clamav == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-clamav.yml@claude/feat-sanitize-container-names
+    uses: huntridge-labs/argus/.github/workflows/scanner-clamav.yml@0.7.0
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -569,7 +593,7 @@ jobs:
     name: Container Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_container == 'true'
-    uses: huntridge-labs/argus/.github/workflows/container-scan.yml@claude/feat-sanitize-container-names
+    uses: huntridge-labs/argus/.github/workflows/container-scan.yml@0.7.0
     with:
       # Disable individual container PR comments - security-summary job provides comprehensive reporting
       post_pr_comment: false
@@ -587,7 +611,7 @@ jobs:
     name: Infrastructure Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_infrastructure == 'true'
-    uses: huntridge-labs/argus/.github/workflows/infrastructure-scan.yml@claude/feat-sanitize-container-names
+    uses: huntridge-labs/argus/.github/workflows/infrastructure-scan.yml@0.7.0
     with:
       iac_path: ${{ inputs.iac_path }}
       post_pr_comment: false
@@ -604,7 +628,7 @@ jobs:
     name: SBOM Generator
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_sbom == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-syft.yml@claude/feat-sanitize-container-names
+    uses: huntridge-labs/argus/.github/workflows/scanner-syft.yml@0.7.0
     with:
       enable_code_security: ${{ inputs.enable_code_security }}
     permissions:
@@ -619,7 +643,7 @@ jobs:
     name: Trivy IaC Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_trivy_iac == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-iac.yml@claude/feat-sanitize-container-names
+    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-iac.yml@0.7.0
     with:
       iac_path: ${{ inputs.iac_path }}
       post_pr_comment: false
@@ -636,7 +660,7 @@ jobs:
     name: Checkov Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_checkov == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-checkov.yml@claude/feat-sanitize-container-names
+    uses: huntridge-labs/argus/.github/workflows/scanner-checkov.yml@0.7.0
     with:
       iac_path: ${{ inputs.iac_path }}
       post_pr_comment: false
@@ -653,7 +677,7 @@ jobs:
     name: Trivy Container Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_trivy_container == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-container.yml@claude/feat-sanitize-container-names
+    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-container.yml@0.7.0
     with:
       image_ref: 'nginx:latest'
       post_pr_comment: false
@@ -671,7 +695,7 @@ jobs:
     name: Grype Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_grype == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-grype.yml@claude/feat-sanitize-container-names
+    uses: huntridge-labs/argus/.github/workflows/scanner-grype.yml@0.7.0
     with:
       image_ref: 'nginx:latest'
       post_pr_comment: false
@@ -689,7 +713,7 @@ jobs:
     name: ZAP (DAST) Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_zap == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-zap.yml@claude/feat-sanitize-container-names
+    uses: huntridge-labs/argus/.github/workflows/scanner-zap.yml@0.7.0
     with:
       scan_mode: ${{ inputs.zap_scan_mode }}
       scan_type: ${{ inputs.zap_scan_type }}
@@ -713,7 +737,7 @@ jobs:
     name: OSV Dependency Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_osv == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-osv.yml@claude/feat-sanitize-container-names
+    uses: huntridge-labs/argus/.github/workflows/scanner-osv.yml@0.7.0
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -732,7 +756,7 @@ jobs:
     name: Dependency Review Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_dependency_review == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-dependency-review.yml@claude/feat-sanitize-container-names
+    uses: huntridge-labs/argus/.github/workflows/scanner-dependency-review.yml@0.7.0
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -741,6 +765,25 @@ jobs:
       license_check: ${{ inputs.dependency_review_license_check }}
       allow_licenses: ${{ inputs.dependency_review_allow_licenses }}
       deny_licenses: ${{ inputs.dependency_review_deny_licenses }}
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+    secrets: inherit
+
+  scanner-supply-chain:
+    name: Supply Chain Scanner
+    needs: scan-coordinator
+    if: needs.scan-coordinator.outputs.run_supply_chain == 'true'
+    uses: huntridge-labs/argus/.github/workflows/scanner-supply-chain.yml@0.7.0
+    with:
+      post_pr_comment: false
+      enable_code_security: ${{ inputs.enable_code_security }}
+      scan_path: ${{ inputs.supply_chain_scan_path }}
+      fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
+      persona: ${{ inputs.supply_chain_persona }}
+      zizmor_config: ${{ inputs.supply_chain_zizmor_config }}
     permissions:
       contents: read
       security-events: write
@@ -769,6 +812,7 @@ jobs:
       - scanner-zap
       - scanner-osv
       - scanner-dependency-review
+      - scanner-supply-chain
     if: always()
 
     steps:
@@ -870,6 +914,13 @@ jobs:
         pattern: dependency-review-*
       continue-on-error: true
 
+    - name: Download Supply Chain artifacts
+      if: needs.scan-coordinator.outputs.run_supply_chain == 'true'
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      with:
+        pattern: supply-chain-*
+      continue-on-error: true
+
     - name: Download Linting artifacts
       if: needs.scan-coordinator.outputs.run_lint == 'true'
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -928,10 +979,13 @@ jobs:
       continue-on-error: true
 
     - name: Combine scanner summaries into security report
+      env:
+        REPOSITORY: ${{ github.repository }}
+        REF_NAME: ${{ github.ref_name }}
       run: |
         {
-          echo "**Repository:** ${{ github.repository }}"
-          echo "**Branch:** ${{ github.ref_name }}"
+          echo "**Repository:** $REPOSITORY"
+          echo "**Branch:** $REF_NAME"
           echo "**Generated:** $(date)"
           echo ""
         } >> security-hardening-report.md
@@ -944,7 +998,7 @@ jobs:
         echo ""
 
         # Combine all scanner summaries in a specific order
-        for scanner in codeql opengrep bandit gitleaks clamav container infrastructure zap sbom trivy-iac checkov trivy-container grype osv dependency-review; do
+        for scanner in codeql opengrep bandit gitleaks clamav container infrastructure zap sbom trivy-iac checkov trivy-container grype osv dependency-review supply-chain; do
           if [ -f "${scanner}.md" ]; then
             echo "✅ Adding ${scanner} summary..."
             cat "${scanner}.md" >> security-hardening-report.md
@@ -1014,7 +1068,7 @@ jobs:
 
     - name: Get job ID
       id: job_id
-      uses: huntridge-labs/argus/.github/actions/get-job-id@claude/feat-sanitize-container-names
+      uses: huntridge-labs/argus/.github/actions/get-job-id@0.7.0
       with:
         job-name-string: 'Security Hardening Summary'
         fallback-suffix: 'security-hardening-report'

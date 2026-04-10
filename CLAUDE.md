@@ -265,6 +265,7 @@ See `CONTRIBUTING.md` for the complete composite actions development guide. Key 
 | **Infrastructure** | scanner-trivy-iac<br>scanner-checkov | Terraform, K8s, etc.<br>Multi-framework |
 | **Container** | scanner-container | Trivy + Grype + Syft |
 | **Malware** | scanner-clamav | File scanning |
+| **Supply Chain** | scanner-supply-chain | GitHub Actions workflow security (zizmor + actionlint) |
 | **DAST** | scanner-zap | Web applications |
 | **Compliance** | scn-detector | FedRAMP SCN detection |
 | **Linting** | linter-yaml<br>linter-json<br>linter-python<br>linter-javascript<br>linter-dockerfile<br>linter-terraform | Syntax & style |
@@ -297,7 +298,7 @@ Most scanner actions support these common inputs:
 ### Individual Scanner
 ```yaml
 - name: Run Bandit Python Scanner
-  uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.6.8
+  uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -315,12 +316,12 @@ See `examples/composite-actions-example.yml` for a full example with:
 
 ### Config-Driven Container Scanning
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/parse-container-config@0.6.8
+- uses: huntridge-labs/argus/.github/actions/parse-container-config@0.7.0
   id: parse
   with:
     config_file: 'container-config.yml'
 
-- uses: huntridge-labs/argus/.github/actions/scanner-container@0.6.8
+- uses: huntridge-labs/argus/.github/actions/scanner-container@0.7.0
   strategy:
     matrix: ${{ fromJson(steps.parse.outputs.matrix) }}
   with:

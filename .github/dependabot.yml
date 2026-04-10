@@ -49,6 +49,8 @@ updates:
 
     # Allow Dependabot to rebase PRs
     rebase-strategy: "auto"
+    cooldown:
+      default-days: 7
 
   # NPM dependencies - grouped by semantic version level
   - package-ecosystem: "npm"
@@ -82,3 +84,5 @@ updates:
 
     open-pull-requests-limit: 10
     rebase-strategy: "auto"
+    cooldown:
+      default-days: 7

@@ -33,10 +33,21 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Install actionlint
         shell: bash
-        run: bash <(curl -s https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+        run: |
+          set -euo pipefail
+          # Pinned version with checksum — updated by .github/workflows/update-pinned-tools.yml
+          ACTIONLINT_VERSION="1.7.12"
+          ACTIONLINT_CHECKSUM="8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+          ACTIONLINT_TARBALL="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${ACTIONLINT_TARBALL}" -o "${ACTIONLINT_TARBALL}"
+          echo "${ACTIONLINT_CHECKSUM}  ${ACTIONLINT_TARBALL}" | sha256sum -c --quiet
+          tar -xzf "${ACTIONLINT_TARBALL}" actionlint
+          rm -f "${ACTIONLINT_TARBALL}"
 
       - name: Run actionlint
         shell: bash

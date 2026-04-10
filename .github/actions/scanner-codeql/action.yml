@@ -12,7 +12,7 @@ description: |
   **Usage Example (single language):**
   ```yaml
   - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-  - uses: huntridge-labs/argus/.github/actions/scanner-codeql@0.6.8
+  - uses: huntridge-labs/argus/.github/actions/scanner-codeql@0.7.0
     with:
       language: 'python'
       fail_on_severity: 'high'
@@ -25,7 +25,7 @@ description: |
       language: [python, javascript]
   steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-    - uses: huntridge-labs/argus/.github/actions/scanner-codeql@0.6.8
+    - uses: huntridge-labs/argus/.github/actions/scanner-codeql@0.7.0
       with:
         language: (use matrix.language)
   ```
@@ -159,6 +159,8 @@ runs:
     - name: Parse results
       id: parse-results
       shell: bash
+      env:
+        LANGUAGE: ${{ inputs.language }}
       run: |
         echo "::group::Parsing CodeQL results"
 
@@ -215,7 +217,7 @@ runs:
           fi
         done
 
-        echo "Results for ${{ inputs.language }}:"
+        echo "Results for $LANGUAGE:"
         echo "  Critical: $CRITICAL"
         echo "  High: $HIGH"
         echo "  Medium: $MEDIUM"
@@ -296,7 +298,7 @@ runs:
 
     - name: Comment PR with CodeQL results
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@0.6.8
+      uses: huntridge-labs/argus/.github/actions/comment-pr@0.7.0
       with:
         summary_file: scanner-summaries/codeql-${{ inputs.language }}.md
         comment_marker: codeql-${{ inputs.language }}-comment-marker
@@ -306,12 +308,18 @@ runs:
     - name: Check severity threshold
       if: inputs.fail_on_severity != 'none' && inputs.fail_on_severity != ''
       shell: bash
+      env:
+        CRITICAL_COUNT: ${{ steps.parse-results.outputs.critical_count }}
+        HIGH_COUNT: ${{ steps.parse-results.outputs.high_count }}
+        MEDIUM_COUNT: ${{ steps.parse-results.outputs.medium_count }}
+        LOW_COUNT: ${{ steps.parse-results.outputs.low_count }}
+        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
       run: |
-        CRITICAL=${{ steps.parse-results.outputs.critical_count }}
-        HIGH=${{ steps.parse-results.outputs.high_count }}
-        MEDIUM=${{ steps.parse-results.outputs.medium_count }}
-        LOW=${{ steps.parse-results.outputs.low_count }}
-        THRESHOLD="${{ inputs.fail_on_severity }}"
+        CRITICAL=$CRITICAL_COUNT
+        HIGH=$HIGH_COUNT
+        MEDIUM=$MEDIUM_COUNT
+        LOW=$LOW_COUNT
+        THRESHOLD="$FAIL_ON_SEVERITY"
 
         SHOULD_FAIL=false
         case "$THRESHOLD" in

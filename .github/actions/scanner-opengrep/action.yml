@@ -14,7 +14,7 @@ description: |
   **Usage Example:**
   ```yaml
   - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-  - uses: huntridge-labs/argus/.github/actions/scanner-opengrep@0.6.8
+  - uses: huntridge-labs/argus/.github/actions/scanner-opengrep@0.7.0
     with:
       fail_on_severity: 'high'
   ```
@@ -67,19 +67,28 @@ runs:
     - name: Install OpenGrep
       shell: bash
       run: |
+        set -euo pipefail
         echo "::group::Installing OpenGrep"
-        curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | bash
-        echo "$HOME/.opengrep/cli/latest" >> $GITHUB_PATH
+        # Pinned version with checksum — updated by .github/workflows/update-pinned-tools.yml
+        OPENGREP_VERSION="1.18.0"
+        OPENGREP_CHECKSUM="65390e16db45db1258967578c73eacac6e4ab9cd20074d7dc1aeb695e2696203"
+        curl -sSfL "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86" -o opengrep
+        echo "${OPENGREP_CHECKSUM}  opengrep" | sha256sum -c --quiet
+        chmod +x opengrep
+        sudo mv opengrep /usr/local/bin/opengrep
         echo "::endgroup::"
 
     - name: Run OpenGrep Analysis
       shell: bash
+      env:
+        CONFIG_INPUT: ${{ inputs.config }}
+        PATHS_INPUT: ${{ inputs.paths }}
       run: |
         echo "::group::Running OpenGrep security analysis"
         mkdir -p opengrep-reports
 
-        CONFIG="${{ inputs.config }}"
-        PATHS="${{ inputs.paths }}"
+        CONFIG="$CONFIG_INPUT"
+        PATHS="$PATHS_INPUT"
 
         echo "Config: $CONFIG"
         echo "Paths: $PATHS"
@@ -191,7 +200,7 @@ runs:
 
     - name: Comment PR with OpenGrep results
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@0.6.8
+      uses: huntridge-labs/argus/.github/actions/comment-pr@0.7.0
       with:
         summary_file: scanner-summaries/opengrep.md
         comment_marker: opengrep-comment-marker
@@ -201,11 +210,16 @@ runs:
     - name: Check severity threshold
       if: inputs.fail_on_severity != 'none' && inputs.fail_on_severity != ''
       shell: bash
+      env:
+        ERROR_COUNT_VAL: ${{ steps.parse-results.outputs.error_count }}
+        WARNING_COUNT_VAL: ${{ steps.parse-results.outputs.warning_count }}
+        INFO_COUNT_VAL: ${{ steps.parse-results.outputs.info_count }}
+        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
       run: |
-        ERROR_COUNT=${{ steps.parse-results.outputs.error_count }}
-        WARNING_COUNT=${{ steps.parse-results.outputs.warning_count }}
-        INFO_COUNT=${{ steps.parse-results.outputs.info_count }}
-        THRESHOLD="${{ inputs.fail_on_severity }}"
+        ERROR_COUNT=$ERROR_COUNT_VAL
+        WARNING_COUNT=$WARNING_COUNT_VAL
+        INFO_COUNT=$INFO_COUNT_VAL
+        THRESHOLD="$FAIL_ON_SEVERITY"
 
         SHOULD_FAIL=false
         case "$THRESHOLD" in

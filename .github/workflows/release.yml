@@ -40,6 +40,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
+          persist-credentials: false
           fetch-depth: 0
           token: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
 
@@ -68,6 +69,9 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Release (Auto)
         if: github.event_name == 'push' || github.event.inputs.releaseType == 'auto'
@@ -78,10 +82,11 @@ jobs:
 
       - name: Release (Specific Type)
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.releaseType != 'auto'
-        run: npm run release:ci -- ${{ github.event.inputs.releaseType }}
+        run: npm run release:ci -- "$RELEASE_TYPE"
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
           HUSKY: 0
+          RELEASE_TYPE: ${{ github.event.inputs.releaseType }}
 
   dry-run:
     name: Release Preview (Dry Run)
@@ -94,6 +99,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
+          persist-credentials: false
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 

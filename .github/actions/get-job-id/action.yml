@@ -25,7 +25,7 @@ runs:
       uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
       with:
         result-encoding: string
-        script: |
+        script: | # zizmor: ignore[template-injection] — inputs.* in actions/github-script JS context, not a shell run: block
           const { owner, repo } = context.repo;
           const runId = context.runId;
           const attempt = context.runAttempt ?? 1;

@@ -16,7 +16,7 @@ description: |
 
   **Usage Example:**
   ```yaml
-  - uses: huntridge-labs/argus/.github/actions/scn-detector@0.6.8
+  - uses: huntridge-labs/argus/.github/actions/scn-detector@0.7.0
     env:
       GITHUB_TOKEN: (secrets.GITHUB_TOKEN)
       ANTHROPIC_API_KEY: (secrets.ANTHROPIC_API_KEY)
@@ -119,15 +119,19 @@ runs:
     # Step 2: Install dependencies
     - name: Install dependencies
       shell: bash
+      env:
+        ENABLE_AI_FALLBACK: ${{ inputs.enable_ai_fallback }}
+        ANTHROPIC_API_KEY: ${{ env.ANTHROPIC_API_KEY }}
+        OPENAI_API_KEY: ${{ env.OPENAI_API_KEY }}
       run: |
         echo "🔧 Installing Python dependencies..."
         pip install --quiet PyYAML requests
-        if [ "${{ inputs.enable_ai_fallback }}" = "true" ]; then
-          if [ -n "${{ env.ANTHROPIC_API_KEY }}" ]; then
+        if [ "$ENABLE_AI_FALLBACK" = "true" ]; then
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
             echo "🤖 Installing anthropic SDK for AI fallback..."
             pip install --quiet anthropic
           fi
-          if [ -n "${{ env.OPENAI_API_KEY }}" ]; then
+          if [ -n "$OPENAI_API_KEY" ]; then
             echo "🤖 Installing openai SDK for AI fallback..."
             pip install --quiet openai
           fi
@@ -137,12 +141,15 @@ runs:
     - name: Check SCN configuration
       id: check-config
       shell: bash
+      env:
+        INPUT_CONFIG_FILE: ${{ inputs.config_file }}
+        ACTION_PATH: ${{ github.action_path }}
       run: |
-        CONFIG_PATH="${{ inputs.config_file }}"
+        CONFIG_PATH="$INPUT_CONFIG_FILE"
 
         # If no config provided, use built-in FedRAMP Low profile
         if [ -z "$CONFIG_PATH" ]; then
-          CONFIG_PATH="${{ github.action_path }}/profiles/fedramp-low.yml"
+          CONFIG_PATH="${ACTION_PATH}/profiles/fedramp-low.yml"
           echo "📋 Using default FedRAMP Low profile"
         fi
 
@@ -164,10 +171,11 @@ runs:
         CONFIG_FILE: ${{ steps.check-config.outputs.config_path }}
         SCHEMA_FILE: ${{ github.action_path }}/schemas/scn-config.schema.json
         AI_CONFIG_FILE: ${{ inputs.ai_config_file }}
+        VALIDATE_SCRIPT: ${{ github.action_path }}/scripts/validate_scn_config.py
       run: |
         echo "Validating SCN configuration..."
 
-        python3 ${{ github.action_path }}/scripts/validate_scn_config.py
+        python3 "$VALIDATE_SCRIPT"
 
         if [ $? -eq 0 ]; then
           echo "SCN configuration validation passed"
@@ -180,14 +188,18 @@ runs:
     - name: Analyze IaC changes
       id: analyze-changes
       shell: bash
+      env:
+        BASE_REF: ${{ inputs.base_ref }}
+        HEAD_REF: ${{ inputs.head_ref }}
+        ANALYZE_SCRIPT: ${{ github.action_path }}/scripts/analyze_iac_changes.py
       run: |
-        echo "🔍 Analyzing IaC changes between ${{ inputs.base_ref }} and ${{ inputs.head_ref }}..."
+        echo "🔍 Analyzing IaC changes between $BASE_REF and $HEAD_REF..."
 
         mkdir -p scn-reports
 
-        python3 ${{ github.action_path }}/scripts/analyze_iac_changes.py \
-          --base-ref "${{ inputs.base_ref }}" \
-          --head-ref "${{ inputs.head_ref }}" \
+        python3 "$ANALYZE_SCRIPT" \
+          --base-ref "$BASE_REF" \
+          --head-ref "$HEAD_REF" \
           --output scn-reports/iac-changes.json
 
         if [ $? -eq 0 ]; then
@@ -214,14 +226,17 @@ runs:
       env:
         ANTHROPIC_API_KEY: ${{ env.ANTHROPIC_API_KEY }}
         OPENAI_API_KEY: ${{ env.OPENAI_API_KEY }}
+        CONFIG_PATH: ${{ steps.check-config.outputs.config_path }}
+        ENABLE_AI_FALLBACK: ${{ inputs.enable_ai_fallback }}
+        AI_CONFIG_FILE: ${{ inputs.ai_config_file }}
+        CLASSIFY_SCRIPT: ${{ github.action_path }}/scripts/classify_changes.py
       run: |
         echo "🏷️  Classifying changes according to FedRAMP SCN categories..."
 
-        CONFIG_PATH="${{ steps.check-config.outputs.config_path }}"
         echo "📋 Using profile: $CONFIG_PATH"
 
         AI_ARG=""
-        if [ "${{ inputs.enable_ai_fallback }}" = "true" ]; then
+        if [ "$ENABLE_AI_FALLBACK" = "true" ]; then
           if [ -n "$ANTHROPIC_API_KEY" ] || [ -n "$OPENAI_API_KEY" ]; then
             AI_ARG="--enable-ai"
             echo "🤖 AI fallback enabled"
@@ -230,7 +245,6 @@ runs:
           fi
         fi
 
-        AI_CONFIG_FILE="${{ inputs.ai_config_file }}"
         AI_CONFIG_ARG=""
         if [ -n "$AI_CONFIG_FILE" ]; then
           if [ -f "$AI_CONFIG_FILE" ]; then
@@ -242,7 +256,7 @@ runs:
           fi
         fi
 
-        python3 ${{ github.action_path }}/scripts/classify_changes.py \
+        python3 "$CLASSIFY_SCRIPT" \
           --input scn-reports/iac-changes.json \
           --output scn-reports/scn-classifications.json \
           --config "$CONFIG_PATH" \
@@ -275,19 +289,25 @@ runs:
     - name: Generate SCN reports
       if: steps.analyze-changes.outputs.has_changes == 'true'
       shell: bash
+      env:
+        REPORT_SCRIPT: ${{ github.action_path }}/scripts/generate_scn_report.py
+        GITHUB_REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number || 0 }}
+        RUN_ID: ${{ github.run_id }}
+        SERVER_URL: ${{ github.server_url }}
       run: |
         echo "📝 Generating SCN reports..."
 
         mkdir -p scn-summaries
 
-        python3 ${{ github.action_path }}/scripts/generate_scn_report.py \
+        python3 "$REPORT_SCRIPT" \
           --input scn-reports/scn-classifications.json \
           --output-md scn-summaries/scn-report.md \
           --output-json scn-reports/scn-audit-trail.json \
-          --repo "${{ github.repository }}" \
-          --pr-number "${{ github.event.pull_request.number || 0 }}" \
-          --run-id "${{ github.run_id }}" \
-          --server-url "${{ github.server_url }}"
+          --repo "$GITHUB_REPO" \
+          --pr-number "$PR_NUMBER" \
+          --run-id "$RUN_ID" \
+          --server-url "$SERVER_URL"
 
         if [ $? -eq 0 ]; then
           echo "✅ Report generation complete"
@@ -345,7 +365,7 @@ runs:
         github.event_name == 'pull_request' &&
         inputs.post_pr_comment == 'true' &&
         steps.analyze-changes.outputs.has_changes == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@0.6.8
+      uses: huntridge-labs/argus/.github/actions/comment-pr@0.7.0
       env:
         GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
       with:
@@ -364,25 +384,31 @@ runs:
       shell: bash
       env:
         GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
+        DRY_RUN: ${{ inputs.dry_run }}
+        ISSUE_SCRIPT: ${{ github.action_path }}/scripts/create_scn_issue.py
+        GITHUB_REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number || 0 }}
+        RUN_ID: ${{ github.run_id }}
+        SERVER_URL: ${{ github.server_url }}
       run: |
         echo "📋 Creating GitHub Issues for SCN tracking..."
 
         DRY_RUN_ARG=""
-        if [ "${{ inputs.dry_run }}" = "true" ]; then
+        if [ "$DRY_RUN" = "true" ]; then
           DRY_RUN_ARG="--dry-run --dry-run-output scn-reports/dry-run-issues.json"
           echo "🔍 Dry-run mode: simulating issue creation"
         fi
 
-        python3 ${{ github.action_path }}/scripts/create_scn_issue.py \
+        python3 "$ISSUE_SCRIPT" \
           --input scn-reports/scn-classifications.json \
-          --repo "${{ github.repository }}" \
-          --pr-number "${{ github.event.pull_request.number || 0 }}" \
-          --run-id "${{ github.run_id }}" \
-          --server-url "${{ github.server_url }}" \
+          --repo "$GITHUB_REPO" \
+          --pr-number "$PR_NUMBER" \
+          --run-id "$RUN_ID" \
+          --server-url "$SERVER_URL" \
           --output scn-reports/issue-numbers.txt \
           $DRY_RUN_ARG
 
-        if [ "${{ inputs.dry_run }}" = "true" ]; then
+        if [ "$DRY_RUN" = "true" ]; then
           if [ -f scn-reports/dry-run-issues.json ]; then
             TOTAL=$(python3 -c "import json; print(json.load(open('scn-reports/dry-run-issues.json'))['total'])")
             echo "🔍 Dry-run: would have created $TOTAL issue(s)"
@@ -403,6 +429,8 @@ runs:
       id: analyze-scn
       if: always()
       shell: bash
+      env:
+        FAIL_ON_CATEGORY: ${{ inputs.fail_on_category }}
       run: |
         if [ -f scn-reports/scn-classifications.json ]; then
           # Extract counts
@@ -437,7 +465,7 @@ runs:
           echo "has_changes=true" >> $GITHUB_OUTPUT
 
           # Handle fail_on_category
-          FAIL_CATEGORY="${{ inputs.fail_on_category }}"
+          FAIL_CATEGORY="$FAIL_ON_CATEGORY"
 
           if [ "$FAIL_CATEGORY" != "none" ]; then
             case "$FAIL_CATEGORY" in
