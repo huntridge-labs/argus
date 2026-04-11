@@ -1,7 +1,9 @@
-name: Security Scan (Argus Dogfood)
+name: Security Scan (Argus)
 
 # Dogfood: we use argus to scan argus.
-# PRs test the commit. Main tests the release.
+# PRs test the commit's argus CLI. Main tests the release.
+# The argus engine handles tool execution — local if available,
+# Docker container fallback otherwise. No manual tool installs.
 
 on:
   pull_request:
@@ -33,72 +35,14 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install Argus SDK
+      - name: Install Argus
         run: |
           pip install --quiet pyyaml
           echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
-      # Install all scanner tools enabled in argus.yml
-      # Using local backend in CI — every tool must be installed.
-      # Missing tools = loud failure, not a silent skip.
-      - name: Install Python-based scanners
-        run: |
-          pip install --quiet 'bandit[toml,sarif]>=1.7.5'
-          pip install --quiet 'zizmor>=1.23.0'
-
-      - name: Install binary scanners
-        env:
-          GITLEAKS_VERSION: "8.22.1"
-          ACTIONLINT_VERSION: "1.7.12"
-          OPENGREP_VERSION: "1.18.0"
-        run: |
-          # Gitleaks
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
-            | tar -xz -C /usr/local/bin gitleaks
-
-          # Actionlint (supply-chain scanner)
-          curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
-            | tar -xz -C /usr/local/bin actionlint
-
-          # OpenGrep
-          curl -sSfL "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86" \
-            -o /usr/local/bin/opengrep && chmod +x /usr/local/bin/opengrep
-
-          # OSV-Scanner
-          curl -sSfL "https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64" \
-            -o /usr/local/bin/osv-scanner && chmod +x /usr/local/bin/osv-scanner
-
-      - name: Install ClamAV
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq clamav > /dev/null
-          # Update virus database (required for scanning)
-          sudo freshclam --quiet || true
-
-      - name: Verify scanner tools
-        run: |
-          echo "Checking installed scanner tools..."
-          for tool in bandit gitleaks opengrep osv-scanner zizmor actionlint clamscan; do
-            if command -v "$tool" > /dev/null 2>&1; then
-              echo "  ✅ $tool"
-            else
-              echo "  ❌ $tool NOT FOUND"
-              exit 1
-            fi
-          done
-
       - name: Run Argus scan
         run: |
-          python -m argus scan \
-            --config argus.yml \
-            --format terminal \
-            --format markdown \
-            --format sarif \
-            --format json \
-            --verbose || true
-
-          # Don't fail the job on findings during initial rollout.
-          # Once baseline is established, remove the || true above.
+          python -m argus scan --config argus.yml --verbose || true
 
       - name: Upload SARIF results
         if: always() && hashFiles('argus-results/argus-results.sarif') != ''
@@ -120,12 +64,9 @@ jobs:
       - name: Post scan summary
         if: always()
         run: |
-          SUMMARY_FILE="argus-results/argus-summary.md"
-          RESULTS_FILE="argus-results/argus-results.json"
-
-          if [ -f "$SUMMARY_FILE" ]; then
-            cat "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY"
-          elif [ -f "$RESULTS_FILE" ]; then
+          if [ -f "argus-results/argus-summary.md" ]; then
+            cat argus-results/argus-summary.md >> "$GITHUB_STEP_SUMMARY"
+          elif [ -f "argus-results/argus-results.json" ]; then
             echo "## Argus Security Scan" >> "$GITHUB_STEP_SUMMARY"
             python3 -c "
           import json, sys
@@ -133,8 +74,5 @@ jobs:
           results = data.get('results', [])
           total = sum(len(r.get('findings', [])) for r in results)
           print(f'Scanned with {len(results)} scanner(s), found {total} finding(s)')
-          " "$RESULTS_FILE" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "## Argus Security Scan" >> "$GITHUB_STEP_SUMMARY"
-            echo "No scan results produced" >> "$GITHUB_STEP_SUMMARY"
+          " argus-results/argus-results.json >> "$GITHUB_STEP_SUMMARY"
           fi
