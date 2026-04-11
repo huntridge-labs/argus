@@ -95,11 +95,22 @@ class ArgusEngine:
                 return True
 
         # Pull the image (always, or if-not-present and not found)
+        # Try native platform first, fall back to linux/amd64 for ARM Macs
         result = subprocess.run(
             ["docker", "pull", image],
             capture_output=True,
             text=True,
         )
+        if result.returncode != 0:
+            logger.info(
+                "Native pull failed for %s, retrying with --platform linux/amd64",
+                image,
+            )
+            result = subprocess.run(
+                ["docker", "pull", "--platform", "linux/amd64", image],
+                capture_output=True,
+                text=True,
+            )
         return result.returncode == 0
 
     def _resolve_image(self, scanner) -> str:
@@ -141,11 +152,16 @@ class ArgusEngine:
                 "-v", f"{output_dir}:/output",
             ]
 
+            # Override entrypoint if scanner specifies one
+            entrypoint = getattr(scanner, "container_entrypoint", None)
+            if entrypoint:
+                docker_cmd.extend(["--entrypoint", entrypoint])
+
             # Add scanner-specific container args
             container_args = scanner.container_args(config)
             docker_cmd.extend([image] + container_args)
 
-            subprocess.run(
+            proc = subprocess.run(
                 docker_cmd,
                 capture_output=True,
                 text=True,
@@ -156,7 +172,15 @@ class ArgusEngine:
             result_files = (
                 list(output_path.glob("*.json"))
                 + list(output_path.glob("*.txt"))
+                + list(output_path.glob("*.sarif"))
             )
+
+            # If no output files but stdout has content, write it
+            # (some scanners like clamscan output to stdout)
+            if not result_files and proc.stdout.strip():
+                stdout_file = output_path / "stdout.txt"
+                stdout_file.write_text(proc.stdout)
+                result_files = [stdout_file]
 
             findings = []
             if result_files and hasattr(scanner, "parse_results"):

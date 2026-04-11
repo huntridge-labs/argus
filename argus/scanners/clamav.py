@@ -16,13 +16,15 @@ class ClamavScanner:
 
     name = "clamav"
     container_image = get_image("clamav")
+    container_entrypoint = "clamscan"
 
     def container_args(self, config: dict | None = None) -> list[str]:
-        """Return CLI args for running ClamAV in a container."""
-        return [
-            "sh", "-c",
-            "clamscan --recursive /workspace > /output/results.txt 2>&1 || true",
-        ]
+        """Return CLI args for running ClamAV in a container.
+
+        The official clamav/clamav image starts clamd by default.
+        We override the entrypoint to clamscan via container_entrypoint.
+        """
+        return ["--recursive", "/workspace"]
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run ClamAV against the given path and return results."""

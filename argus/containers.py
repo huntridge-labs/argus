@@ -14,7 +14,7 @@ OFFICIAL_IMAGES = {
     "gitleaks": "zricethezav/gitleaks:v8.22.1",
     "clamav": "clamav/clamav:1.4",
     "checkov": "bridgecrew/checkov:3.2.346",
-    "osv-scanner": "ghcr.io/google/osv-scanner:1.9.1",
+    "osv-scanner": "ghcr.io/google/osv-scanner:latest",
     "zap": "ghcr.io/zaproxy/zaproxy:2.16.0",
     "semgrep": "returntocorp/semgrep:1.102.0",
 }

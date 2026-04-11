@@ -17,8 +17,19 @@ class CheckovScanner:
     container_image = get_image("checkov")
 
     def container_args(self, config: dict | None = None) -> list[str]:
-        """Return CLI args for running Checkov in a container."""
-        return ["-d", "/workspace", "-o", "json", "--quiet", "--output-file-path", "/output"]
+        """Build container args from config — mirrors _build_command."""
+        config = config or {}
+        args = ["-d", "/workspace", "-o", "json", "--quiet", "--output-file-path", "/output"]
+        framework = config.get("framework")
+        if framework:
+            args.extend(["--framework", framework])
+        check = config.get("check")
+        if check:
+            args.extend(["--check", check])
+        skip_check = config.get("skip_check")
+        if skip_check:
+            args.extend(["--skip-check", skip_check])
+        return args
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run Checkov against the given path and return results."""

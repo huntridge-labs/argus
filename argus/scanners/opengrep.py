@@ -17,8 +17,17 @@ class OpengrepScanner:
     container_image = get_image("semgrep")
 
     def container_args(self, config: dict | None = None) -> list[str]:
-        """Return CLI args for running semgrep/opengrep in a container."""
-        return ["semgrep", "scan", "--json", "--output", "/output/results.json", "/workspace"]
+        """Build container args from config — mirrors _build_command.
+
+        The semgrep image ENTRYPOINT is not semgrep, so we prefix the command.
+        """
+        config = config or {}
+        args = ["semgrep", "scan", "--json", "--output", "/output/results.json"]
+        rules_config = config.get("config")
+        if rules_config:
+            args.extend(["--config", rules_config])
+        args.append("/workspace")
+        return args
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run OpenGrep against the given path and return results."""

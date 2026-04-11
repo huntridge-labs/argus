@@ -62,13 +62,21 @@ class BanditScanner:
         return "pip install bandit[toml,sarif]"
 
     def container_args(self, config: dict | None = None) -> list[str]:
-        """Return CLI args for running Bandit in a container."""
-        return [
-            "bandit", "-r", "/workspace",
+        """Build container args from config — mirrors _build_command."""
+        config = config or {}
+        args = [
+            "-r", "/workspace",
             "-f", "json",
             "-o", "/output/results.json",
             "--exit-zero",
         ]
+        exclude = config.get("exclude")
+        if exclude:
+            args.extend(["--exclude", exclude])
+        config_file = config.get("config_file")
+        if config_file:
+            args.extend(["-c", f"/workspace/{config_file}"])
+        return args
 
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse Bandit JSON output into findings."""

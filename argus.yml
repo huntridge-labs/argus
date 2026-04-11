@@ -6,6 +6,7 @@ scanners:
     enabled: true
     path: "."
     config_file: "pyproject.toml"
+    exclude: ".venv,.git,node_modules,.claude,__pycache__"
 
   gitleaks:
     enabled: true

@@ -17,13 +17,18 @@ class GitleaksScanner:
     container_image = get_image("gitleaks")
 
     def container_args(self, config: dict | None = None) -> list[str]:
-        """Return CLI args for running Gitleaks in a container."""
-        return [
+        """Build container args from config — mirrors _build_command."""
+        config = config or {}
+        args = [
             "detect", "--source", "/workspace",
             "--report-format", "json",
             "--report-path", "/output/results.json",
             "--exit-code", "0",
         ]
+        config_file = config.get("config_file")
+        if config_file:
+            args.extend(["--config", f"/workspace/{config_file}"])
+        return args
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run Gitleaks against the given path and return results."""

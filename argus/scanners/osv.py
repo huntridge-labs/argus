@@ -17,12 +17,19 @@ class OsvScanner:
     container_image = get_image("osv-scanner")
 
     def container_args(self, config: dict | None = None) -> list[str]:
-        """Return CLI args for running OSV-Scanner in a container."""
-        return [
-            "scan", "--format", "json",
+        """Build container args from config — mirrors _build_command."""
+        config = config or {}
+        args = [
+            "scan", "source",
+            "--recursive",
+            "--format", "json",
             "--output", "/output/results.json",
-            "/workspace",
         ]
+        config_file = config.get("config_file")
+        if config_file:
+            args.extend(["--config", f"/workspace/{config_file}"])
+        args.append("/workspace")
+        return args
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run OSV-Scanner against the given path and return results."""
