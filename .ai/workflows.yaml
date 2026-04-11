@@ -13,67 +13,39 @@ user_workflows:
   basic_security_scan:
     description: "Run all security scanners on a repository"
     category: scanning
+    sdk_command: "python -m argus scan --config argus.yml"
     code: |
-      # .github/workflows/security.yml
-      name: Security Scan
-      on: [push, pull_request]
+      # argus.yml
+      scanners:
+        - gitleaks
+        - bandit
+        - opengrep
+        - osv
+        - trivy-iac
+        - checkov
 
-      jobs:
-        security:
-          uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-          with:
-            scanners: all
-            enable_code_security: true
-            fail_on_severity: high
-          secrets:
-            github_token: ${{ secrets.GITHUB_TOKEN }}
+      scan_path: "."
+      severity_threshold: high
     requirements:
-      - "GitHub Advanced Security enabled (for SARIF upload)"
-    permissions_needed:
-      - "security-events: write"
-      - "contents: read"
+      - "Python 3.11+"
+      - "pyyaml package"
 
   fast_sast_only:
-    description: "Quick SAST scan for rapid feedback on push events"
+    description: "Quick SAST scan for rapid feedback"
     category: scanning
-    when_to_use: "Push events, rapid iteration, development branches"
-    code: |
-      uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-      with:
-        scanners: codeql,bandit,gitleaks,opengrep
-        fail_on_severity: high
-        enable_code_security: true
-      secrets:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
+    when_to_use: "Local development, rapid iteration"
+    sdk_command: "python -m argus scan gitleaks opengrep bandit --severity-threshold high"
 
   container_scanning:
-    description: "Scan container images defined in config file"
+    description: "Scan container images"
     category: scanning
-    code: |
-      uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@0.7.0
-      with:
-        config_file: .github/container-config.yml
-      secrets:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-    requires_config: ".github/container-config.yml"
-    config_example: |
-      version: "1.0"
-      containers:
-        - name: app-frontend
-          registry: ghcr.io
-          image: org/frontend
-          tag: latest
-          scanners: [trivy, grype]
-        - name: app-backend
-          registry: docker.io
-          image: org/backend
-          tag: v1.2.3
-          scanners: [trivy, syft]
+    sdk_command: "python -m argus scan container --severity-threshold high"
 
   individual_scanner:
-    description: "Use a single scanner via composite action"
+    description: "Use a single scanner via SDK or composite action"
     category: scanning
-    code: |
+    sdk_command: "python -m argus scan bandit --severity-threshold high"
+    action_code: |
       - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.0
         with:
           path: src/
@@ -81,26 +53,15 @@ user_workflows:
           enable_sarif_upload: true
 
   dependency_scanning:
-    description: "Scan dependencies for known vulnerabilities and license compliance"
+    description: "Scan dependencies for known vulnerabilities"
     category: scanning
-    when_to_use: "Any event (OSV) or pull requests (dependency-review)"
-    code: |
-      uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-      with:
-        scanners: dependencies
-        fail_on_severity: high
-        enable_code_security: true
-    note: "'dependencies' enables both osv and dependency-review scanners"
+    when_to_use: "Any environment"
+    sdk_command: "python -m argus scan osv --severity-threshold high"
 
   infrastructure_scanning:
     description: "Scan Terraform, Kubernetes, CloudFormation"
     category: scanning
-    code: |
-      uses: huntridge-labs/argus/.github/workflows/infrastructure-scan.yml@0.7.0
-      with:
-        path: terraform/
-        scanners: trivy-iac,checkov
-        fail_on_severity: high
+    sdk_command: "python -m argus scan trivy-iac checkov --severity-threshold high"
 
   fedramp_scn_detection:
     description: "FedRAMP Significant Change Notification detection and tracking"
@@ -163,19 +124,8 @@ user_workflows:
   scheduled_full_scan:
     description: "Nightly comprehensive security scan"
     category: scanning
-    code: |
-      name: Nightly Security Scan
-      on:
-        schedule:
-          - cron: '0 2 * * *'  # 2 AM UTC daily
-
-      jobs:
-        security:
-          uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-          with:
-            scanners: all
-            fail_on_severity: none  # Report only, don't fail
-            enable_code_security: true
+    sdk_command: "python -m argus scan --config argus.yml --severity-threshold none"
+    note: "Schedule via cron, CI scheduler, or GitHub Actions workflow_dispatch"
 
   argus_scanner_selection_skill:
     description: "Use the bundled Agent Skills bundle to analyze a target repository or local change set and choose the right Argus scanners for pre-push checks and CI alignment"
@@ -191,7 +141,7 @@ user_workflows:
     steps:
       - "Inspect the target repository or current change set for languages, manifests, Dockerfiles, IaC, web targets, compliance signals, and hosting environment"
       - "Map findings to scanners using .agents/skills/argus-scanner-selection/references/REFERENCE.md"
-      - "Route github.com CI toward reusable workflows and GHES/local usage toward direct composite actions"
+      - "Route users toward the argus SDK as primary interface, with composite actions for GitHub Actions integration"
       - "Prefer the smallest effective pre-push scanner set locally, then keep CI workflow recommendations aligned"
       - "Prefer an explicit scanners list over 'all' when generating onboarding workflows"
 
@@ -253,9 +203,9 @@ contributor_workflows:
           - "test_parse_results.py"
           - "test_generate_summary.py"
 
-      - action: "Update orchestrator"
-        file: ".github/workflows/reusable-security-hardening.yml"
-        pattern: "Add to scanner matrix"
+      - action: "Add SDK scanner module"
+        location: "argus/scanners/{name}.py"
+        purpose: "Implement Scanner protocol for the new scanner"
 
       - action: "Register with docsite"
         location: ".github/actions/scanner-{name}/.docsite.yml"

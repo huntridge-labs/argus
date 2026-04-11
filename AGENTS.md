@@ -4,14 +4,15 @@
 
 ## Project Identity
 
-**argus** is a GitHub Actions security scanning framework by Huntridge Labs.
+**argus** is a unified security scanning framework by Huntridge Labs.
 
-- **What it does**: Orchestrates 14 security scanners (SAST, secrets, containers, IaC, DAST) from a single workflow call
-- **Current version**: 0.6.5
+- **What it does**: Orchestrates 14 security scanners (SAST, secrets, containers, IaC, DAST) via the argus Python SDK or GitHub Actions composite actions
+- **Primary interface**: `python -m argus scan --config argus.yml`
+- **Current version**: 0.7.0
 - **License**: AGPL-3.0
 
 ### One-Liner
-Composite GitHub Actions that orchestrate 14+ security scanners with unified interface, SARIF upload, and PR comments.
+Python SDK and composite GitHub Actions that orchestrate 14+ security scanners with unified CLI, SARIF upload, and PR comments.
 
 ---
 
@@ -19,16 +20,21 @@ Composite GitHub Actions that orchestrate 14+ security scanners with unified int
 
 ### Architecture
 
-Composite actions are the primary architecture. Reusable workflows are thin wrappers for backwards compatibility.
+The argus Python SDK (`python -m argus scan`) is the primary interface. Composite actions remain available for GitHub Actions users.
 
 ### Directory Structure
 
 ```
+argus/                 # Python SDK (primary interface)
+├── core/              # Models, config, engine
+├── scanners/          # Scanner modules
+├── reporters/         # Output reporters (terminal, markdown, sarif, json)
+└── tests/             # SDK test suite
+
 .github/
-├── actions/           # Composite actions (primary)
+├── actions/           # Composite actions (GitHub Actions interface)
 │   └── scanner-*/     # Each: action.yml, scripts/, tests/
-├── workflows/         # Reusable workflows (backwards compat)
-│   └── reusable-security-hardening.yml
+├── workflows/         # CI/CD and test workflows
 
 examples/workflows/    # User-facing workflow examples
 tests/                 # Test infrastructure
@@ -52,16 +58,24 @@ docs/                  # Detailed documentation
 
 ## Setup & Environment
 
-### For Users (Consuming the Workflows)
+### For Users
 
-No setup required. Reference workflows directly:
+**SDK (recommended):**
+
+```bash
+pip install pyyaml
+python -m argus scan --config argus.yml
+```
+
+**GitHub Actions (composite actions):**
 
 ```yaml
-uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-with:
-  scanners: all
-  enable_code_security: true
-  github_token: ${{ secrets.GITHUB_TOKEN }}
+- uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.7.0
+  with:
+    enable_code_security: true
+    fail_on_severity: high
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ### For Contributors (Developing)
@@ -151,9 +165,9 @@ tests/
 ## Code Conventions
 
 ### File Naming
-- Workflows: `scanner-{name}.yml`, `reusable-{purpose}.yml`
+- SDK modules: `argus/scanners/{name}.py`
 - Actions: `.github/actions/scanner-{name}/`
-- Tests: Co-located in `tests/` subdirectory of each action
+- Tests: Co-located in `tests/` subdirectory of each action or SDK module
 
 ### Action Structure
 
@@ -343,39 +357,60 @@ When integrating external AI APIs (Anthropic, OpenAI, etc.):
 
 ### Add Security Scanning to a Repo
 
+**SDK approach (recommended):**
+
+```bash
+# Create argus.yml
+cat > argus.yml << 'EOF'
+scanners:
+  - gitleaks
+  - bandit
+  - osv
+
+scan_path: "."
+severity_threshold: high
+EOF
+
+# Run scan
+pip install pyyaml
+python -m argus scan --config argus.yml
+```
+
+**GitHub Actions approach (composite actions):**
+
 ```yaml
 # .github/workflows/security.yml
 name: Security Scan
 on: [push, pull_request]
 
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+
 jobs:
-  security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-    with:
-      scanners: codeql,bandit,gitleaks
-      fail_on_severity: high
-      enable_code_security: true
-    secrets:
-      github_token: ${{ secrets.GITHUB_TOKEN }}
+  sast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.7.0
+        with:
+          fail_on_severity: high
+          enable_code_security: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.0
+        with:
+          fail_on_severity: high
+          enable_code_security: true
 ```
 
 ### Scan Container Images
 
-```yaml
-uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@0.7.0
-with:
-  config_file: .github/container-config.yml
-```
-
-Config file format:
-```yaml
-version: "1.0"
-containers:
-  - name: app
-    registry: ghcr.io
-    image: org/app
-    tag: latest
-    scanners: [trivy, grype]
+```bash
+python -m argus scan container --severity-threshold high
 ```
 
 ### Add a New Scanner (Contributors)
@@ -519,7 +554,8 @@ How was this tested?
 
 | Decision | Reason |
 |----------|--------|
-| Composite actions as primary architecture | GHES doesn't support cross-repo `workflow_call` |
+| SDK as primary interface | Platform-independent, works locally and in CI |
+| Composite actions for GitHub Actions | GHES doesn't support cross-repo `workflow_call` |
 | SARIF as output format | GitHub Security tab integration, industry standard |
 | Python for all scripts | Single language, one test framework (pytest), unified coverage |
 | Co-located tests | Tests live next to code they test |
@@ -591,7 +627,10 @@ See the mapping table above for what to update and when.
 
 | Need | Location |
 |------|----------|
-| Main workflow | `.github/workflows/reusable-security-hardening.yml` |
+| SDK entry point | `python -m argus scan` |
+| SDK source | `argus/` |
+| SDK config | `argus.yml` |
+| Composite actions | `.github/actions/scanner-*/` |
 | All scanners | `docs/scanners.md` |
 | Examples | `examples/workflows/` |
 | Container config schema | `.github/actions/parse-container-config/schemas/container-config.schema.json` |

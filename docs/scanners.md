@@ -8,21 +8,22 @@ Complete configuration reference for all available security scanners.
 
 ## Architecture
 
-This project uses an **actions-first architecture**:
+The argus Python SDK (`python -m argus scan`) is the primary interface for running scanners. Composite actions remain available for GitHub Actions users.
 
-- **Composite Actions** (`.github/actions/scanner-*/`) - Single source of truth for all scanner logic
-- **Reusable Workflows** (`.github/workflows/scanner-*.yml`) - Thin wrappers for backwards compatibility
+- **Argus SDK** (`argus/`) - Primary interface, works locally and in any CI
+- **Composite Actions** (`.github/actions/scanner-*/`) - GitHub Actions integration
 - **Example Workflows** (`examples/github-enterprise/`) - Templates for GHES users
 
-**For github.com users**: Use the reusable workflows via `workflow_call` (recommended for simplicity).
+**SDK usage (recommended)**:
 
-**For GHES users**: Use composite actions directly - they work from public github.com repos without mirroring.
+```bash
+pip install pyyaml
+python -m argus scan gitleaks bandit --severity-threshold high
+```
 
-<details>
-<summary><strong>GHES Usage Example</strong></summary>
+**Composite action usage (GitHub Actions)**:
 
 ```yaml
-# Direct composite action usage (GHES compatible)
 jobs:
   security:
     runs-on: ubuntu-latest
@@ -37,9 +38,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-See [examples/github-enterprise/](../examples/github-enterprise/) for complete templates.
-
-</details>
+See [examples/github-enterprise/](../examples/github-enterprise/) for GHES templates.
 
 ---
 
@@ -466,15 +465,24 @@ scans:
     api_spec: https://api.example.com/openapi.json
 ```
 
-**2. Call the workflow**:
+**2. Run the scan**:
+
+```bash
+# Via SDK
+python -m argus scan zap --config argus.yml
+```
+
+Or via composite action in GitHub Actions:
 
 ```yaml
 jobs:
-  security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-    with:
-      scanners: zap
-      zap_config_file: .github/zap-config.yml
+  zap-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: huntridge-labs/argus/.github/actions/scanner-zap@0.7.0
+        with:
+          zap_config_file: .github/zap-config.yml
 ```
 
 ---
@@ -700,14 +708,9 @@ scans:
     fail_on_severity: high
 ```
 
-```yaml
-# .github/workflows/security.yml
-jobs:
-  zap-scan:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-    with:
-      scanners: zap
-      zap_config_file: .github/zap-config.yml
+```bash
+# Via SDK
+python -m argus scan zap --config argus.yml
 ```
 
 ##### Example 2: Container Scan with Build
@@ -788,68 +791,64 @@ This creates two parallel scan pipelines in your GitHub Actions workflow - one f
 
 #### Legacy Input-Based Configuration
 
-For simple single-scan scenarios, you can still use workflow inputs directly (no config file):
+For simple single-scan scenarios via composite actions, you can pass inputs directly (no config file):
 
 **URL-only scan:**
 
 ```yaml
 jobs:
-  security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-    with:
-      scanners: zap
-      zap_scan_mode: url
-      zap_target_urls: https://example.com
-      allow_failure: false
-      severity_threshold: medium
+  zap-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: huntridge-labs/argus/.github/actions/scanner-zap@0.7.0
+        with:
+          zap_scan_mode: url
+          zap_target_urls: https://example.com
+          fail_on_severity: medium
 ```
 
-**Container scan:**
-
-```yaml
-jobs:
-  security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-    with:
-      scanners: zap
-      zap_scan_mode: docker-run
-      zap_app_image_ref: ghcr.io/myorg/app:latest
-      zap_app_ports: "8080:8080"
-      allow_failure: false
-```
-
-> **Note**: Input-based configuration is limited to single scans. Use config files for multiple scans, matrix execution, or advanced features.
+> **Note**: Input-based configuration is limited to single scans. Use config files for multiple scans or advanced features.
 
 </details>
 
 
 ## Common Configuration Patterns
 
-### Enable GitHub Security Tab
+### Enable GitHub Security Tab (Actions)
 
-Upload SARIF results for all scanners:
+Upload SARIF results when using composite actions:
 
 ```yaml
 with:
-  scanners: all
   enable_code_security: true
 ```
 
-### Disable PR Comments
+### Disable PR Comments (Actions)
 
-Useful for scheduled scans:
+Useful for scheduled scans using composite actions:
 
 ```yaml
 with:
-  scanners: all
   post_pr_comment: false
 ```
 
 ### Scanner Selection Patterns
 
-- Full coverage: `scanners: all`
-- SAST only: `scanners: codeql,opengrep,bandit,gitleaks`
-- DAST only: `scanners: zap`
-- Infrastructure only: `scanners: trivy-iac,checkov`
-- Container only: `scanners: trivy-container,grype,sbom`
-- Focused mix: `scanners: container,infrastructure,gitleaks`
+**SDK:**
+
+```bash
+# SAST only
+python -m argus scan codeql opengrep bandit gitleaks
+
+# Infrastructure only
+python -m argus scan trivy-iac checkov
+
+# Container only
+python -m argus scan container
+
+# Focused mix
+python -m argus scan gitleaks trivy-iac checkov
+```
+
+**Composite actions:** Use individual `scanner-*` actions in your workflow steps.

@@ -1,23 +1,15 @@
-name: Test Reusable Workflows
+name: Test Argus SDK Integration
 
-# Tests reusable workflows via ./ relative paths so the feature branch version is tested.
-# Complements test-actions.yml (composite actions) and argus-test (released versions).
-#
-# DESIGN:
-# - Calls reusable workflows with minimal, safe inputs
-# - post_pr_comment: false to avoid noisy duplicate comments on argus PRs
-# - allow_failure: true / fail_on_severity: 'none' — we're testing orchestration, not scan results
-# - No container workflows — too expensive (15-30 min), already covered by test-actions.yml
+# Integration test for the argus Python SDK.
+# Validates that `argus scan` works end-to-end with real scanners.
+# Complements test-unit.yml (unit tests) and test-actions.yml (composite actions).
 
 on:
   pull_request:
     paths:
-      - '.github/workflows/reusable-security-hardening.yml'
-      - '.github/workflows/container-scan.yml'
-      - '.github/workflows/container-scan-from-config.yml'
-      - '.github/workflows/infrastructure-scan.yml'
-      - '.github/workflows/linting.yml'
-      - '.github/workflows/scanner-*.yml'
+      - 'argus/**'
+      - 'argus.yml'
+      - '.github/workflows/security-scan.yml'
       - '.github/workflows/test-reusable-workflows.yml'
   workflow_dispatch:
 
@@ -25,101 +17,80 @@ permissions:
   contents: read
   security-events: write
   actions: read
-  pull-requests: write
-  checks: write
-  id-token: write
-  packages: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: test-argus-sdk-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # ==========================================================================
-  # Security Orchestrator — SAST subset
-  # Validates the coordinator, scanner selection, and security-summary aggregation
-  # ==========================================================================
-  test-orchestrator-sast:
-    name: Orchestrator / SAST subset
-    uses: ./.github/workflows/reusable-security-hardening.yml
-    with:
-      scanners: 'bandit,gitleaks'
-      post_pr_comment: false
-      enable_code_security: false
-      allow_failure: true
-      gitleaks_enable_comments: false
-      gitleaks_config: '.gitleaks.toml'
-      bandit_config_file: 'pyproject.toml'
-    secrets:
-      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
-
-  # ==========================================================================
-  # Infrastructure Scanning — trivy-iac + checkov
-  # ==========================================================================
-  test-infrastructure:
-    name: Infrastructure Scan
-    uses: ./.github/workflows/infrastructure-scan.yml
-    with:
-      iac_path: 'tests/fixtures/iac'
-      post_pr_comment: false
-      enable_code_security: false
-      fail_on_severity: 'none'
-
-  # ==========================================================================
-  # Linting — all linters + linting-summary
-  # ==========================================================================
-  test-linting:
-    name: Linting
-    uses: ./.github/workflows/linting.yml
-    with:
-      fail_on_issues: false
-      post_pr_comment: false
-
-  # ==========================================================================
-  # Summary — collects results from all upstream jobs
-  # ==========================================================================
-  reusable-summary:
-    name: Reusable Workflow Summary
+  test-argus-scan:
+    name: Argus SDK / scan
     runs-on: ubuntu-latest
-    needs:
-      - test-orchestrator-sast
-      - test-infrastructure
-      - test-linting
-    if: always()
+    timeout-minutes: 15
 
     steps:
-      - name: Collect results
-        shell: bash
-        env:
-          ORCHESTRATOR_RESULT: ${{ needs.test-orchestrator-sast.result }}
-          INFRA_RESULT: ${{ needs.test-infrastructure.result }}
-          LINTING_RESULT: ${{ needs.test-linting.result }}
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.13'
+
+      - name: Install Argus SDK
         run: |
-          {
-            echo "# Reusable Workflow Test Summary"
-            echo ""
-            echo "| Workflow | Status |"
-            echo "|----------|--------|"
+          pip install --quiet pyyaml
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
-            for pair in "Security Orchestrator (bandit + gitleaks):$ORCHESTRATOR_RESULT" \
-                        "Infrastructure Scan (trivy-iac + checkov):$INFRA_RESULT" \
-                        "Linting (all linters + summary):$LINTING_RESULT"; do
-              name="${pair%%:*}"
-              result="${pair##*:}"
-              icon="⚠️"
-              if [ "$result" = "success" ]; then icon="✅"; fi
-              echo "| $name | $icon $result |"
-            done
+      - name: Install bandit
+        run: pip install --quiet 'bandit[toml,sarif]>=1.7.5'
 
-            echo ""
-            echo "---"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Fail if any workflow failed
-        env:
-          RESULTS: ${{ join(needs.*.result, ',') }}
+      - name: Test scanner listing
         run: |
-          if echo "$RESULTS" | grep -q "failure"; then
-            echo "::error::One or more reusable workflows failed"
+          python -m argus scan --list
+
+      - name: Test single scanner scan
+        run: |
+          python -m argus scan bandit \
+            --path . \
+            --format terminal \
+            --format json \
+            --output-dir ./test-results \
+            --verbose || true
+          test -f test-results/argus-results.json
+
+      - name: Test config-driven scan
+        run: |
+          python -m argus scan \
+            --config argus.yml \
+            --format sarif \
+            --output-dir ./config-results \
+            --verbose || true
+          test -f config-results/argus-results.sarif
+
+      - name: Verify SARIF structure
+        run: |
+          python3 -c "
+          import json
+          data = json.load(open('config-results/argus-results.sarif'))
+          assert data.get('version') == '2.1.0', 'Bad SARIF version'
+          assert 'runs' in data, 'Missing runs'
+          print('SARIF valid:', len(data['runs']), 'run(s)')
+          "
+
+  test-results:
+    name: SDK Test Results
+    if: always()
+    needs: [test-argus-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        env:
+          RESULT: ${{ needs.test-argus-scan.result }}
+        run: |
+          if [ "$RESULT" = "failure" ]; then
+            echo "Argus SDK integration tests failed"
             exit 1
           fi

@@ -15,13 +15,6 @@ rules:
       # These workflows require pull-requests:write for PR comment posting
       # via the comment-pr composite action. This is the minimum privilege
       # needed — contents is already read-only.
-      - container-scan-from-config.yml
-      - container-scan.yml
-      - dependency-scan.yml
-      - infrastructure-scan.yml
-      - linting.yml
-      - scanner-codeql.yml
-      - scanner-zap-from-config.yml
       - test-actions.yml
       - test-reusable-workflows.yml
       # update-pinned-tools needs contents:write to push commits and

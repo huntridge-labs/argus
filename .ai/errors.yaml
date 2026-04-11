@@ -225,34 +225,22 @@ error_patterns:
   # WORKFLOW ERRORS
   # ==============================================================================
 
-  - pattern: "workflow_call.*not found"
+  - pattern: "action.*not found"
     category: workflow
-    context: "Cannot call reusable workflow"
+    context: "Cannot find composite action"
 
-    root_cause: "Version tag doesn't exist or typo in workflow path"
+    root_cause: "Version tag doesn't exist or typo in action path"
 
     solution:
       verification:
         - "Check tag exists: git ls-remote --tags origin"
-        - "Verify workflow path matches exactly"
+        - "Verify action path matches exactly"
       example: |
         # Correct
-        uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
+        uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.0
 
         # Wrong - missing .github prefix
-        uses: huntridge-labs/argusworkflows/reusable-security-hardening.yml@main
-
-  - pattern: "Maximum.*matrix.*exceeded"
-    category: workflow
-    context: "Too many matrix combinations"
-
-    root_cause: "GitHub Actions limits matrix to 256 jobs"
-
-    solution:
-      options:
-        - "Reduce number of containers in config"
-        - "Split into multiple workflows"
-        - "Use job groups with different configs"
+        uses: huntridge-labs/argus/actions/scanner-bandit@0.7.0
 
   # ==============================================================================
   # LOCAL DEVELOPMENT ERRORS
@@ -288,17 +276,17 @@ error_patterns:
 
   - pattern: "workflow_call.*not supported"
     category: ghes
-    context: "Running reusable workflows on GHES"
+    context: "Running workflows on GHES"
 
     root_cause: "GHES version doesn't support cross-repository workflow_call"
 
     solution:
-      explanation: "Reusable workflows require github.com access"
+      explanation: "Use the argus SDK or composite actions instead"
       alternatives:
+        - description: "Use the argus SDK"
+          how: "pip install pyyaml && python -m argus scan --config argus.yml"
         - description: "Use composite actions directly"
-          how: "Switch to .github/actions/ based implementation (recommended)"
-        - description: "Enable github.com access"
-          how: "Configure GHES to allow github.com workflow calls"
+          how: "Switch to .github/actions/ based implementation"
       reference: "See ADR-001 in .ai/decisions.yaml"
 
 # ==============================================================================

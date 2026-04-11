@@ -8,22 +8,22 @@ schema: "https://aicac.dev/schema/v1"
 project:
   name: argus
   type: security-pipeline
-  purpose: "Automated security scanning orchestration for GitHub Actions"
-  primary_language: yaml  # GitHub Actions workflows
-  secondary_languages: [python]
-  version: "0.6.8"
+  purpose: "Automated security scanning via Python SDK and GitHub Actions"
+  primary_language: python  # SDK and scanner scripts
+  secondary_languages: [yaml]
+  version: "0.7.0"
   license: "AGPL-3.0"
   repository: "huntridge-labs/argus"
 
   one_liner: >
-    Composite GitHub Actions that orchestrate 14+ security scanners with
-    unified interface, SARIF upload, and PR comments.
+    Python SDK and composite GitHub Actions that orchestrate 14+ security
+    scanners with unified CLI, SARIF upload, and PR comments.
 
   solves:
-    - Running multiple security scanners from single workflow call
+    - Running multiple security scanners from a single CLI command or workflow
     - Unified severity thresholds across different scanner outputs
-    - GitHub Enterprise Server compatibility for security scanning
-    - PR feedback with inline code annotations
+    - Platform-independent scanning (local, CI, GHES)
+    - PR feedback with inline code annotations (via composite actions)
 
   does_not_solve:
     - Remediation of found vulnerabilities (reporting only)
@@ -31,8 +31,9 @@ project:
     - Security policy enforcement (provides data, not gates)
 
 entrypoints:
+  sdk: "argus/"
+  sdk_cli: "python -m argus scan --config argus.yml"
   actions: ".github/actions/"
-  reusable_workflow: ".github/workflows/reusable-security-hardening.yml"
   examples: "examples/workflows/"
   documentation: "docs/"
   agent_skills: ".agents/skills/"
@@ -41,12 +42,12 @@ entrypoints:
   docsite_url: "https://huntridge-labs.github.io/argus/"
 
 common_tasks:
-  run_all_scanners: "Call the reusable workflow to run the default scanner suite."
-  run_subset: "Enable a subset of scanners via workflow inputs or config."
-  recommend_scanners: "Use the argus-scanner-selection skill to map a target repository or local change set to the right Argus scanners, choose the correct github.com versus GHES integration path, and produce pre-push execution plus CI alignment guidance."
-  view_reports: "Review SARIF uploads, PR comments, and summary reports."
+  run_all_scanners: "Run the full scanner suite via python -m argus scan --config argus.yml."
+  run_subset: "Run specific scanners via python -m argus scan <scanner1> <scanner2>."
+  recommend_scanners: "Use the argus-scanner-selection skill to map a target repository or local change set to the right Argus scanners."
+  view_reports: "Review terminal, markdown, SARIF, or JSON output from the SDK."
   update_versions: "Bump scanner or action versions and validate outputs."
-  troubleshoot_failures: "Inspect workflow logs and scanner outputs to resolve errors."
+  troubleshoot_failures: "Inspect CLI output or workflow logs to resolve errors."
 
 primary_users:
   - DevSecOps engineers setting up CI/CD pipelines

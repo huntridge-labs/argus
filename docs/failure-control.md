@@ -8,16 +8,35 @@ Configure how workflows handle security findings with severity-based failure thr
 
 ## Overview
 
-By default, security scanners will report findings but not fail the workflow. Use `fail_on_severity` to enforce quality gates based on severity levels.
+By default, security scanners report findings but do not fail. Use `severity_threshold` (SDK) or `fail_on_severity` (composite actions) to enforce quality gates based on severity levels.
 
 ## Configuration
 
-Set the `fail_on_severity` input to specify the minimum severity that should fail the workflow:
+### SDK (argus.yml)
+
+Set `severity_threshold` in your config file or via CLI flag:
 
 ```yaml
-with:
-  scanners: all
-  fail_on_severity: high  # Fail on HIGH or CRITICAL findings
+# argus.yml
+scanners:
+  - gitleaks
+  - bandit
+
+severity_threshold: high  # Fail on HIGH or CRITICAL findings
+```
+
+```bash
+python -m argus scan --config argus.yml --severity-threshold high
+```
+
+### Composite Actions (GitHub Actions)
+
+Set the `fail_on_severity` input on each action:
+
+```yaml
+- uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.0
+  with:
+    fail_on_severity: high  # Fail on HIGH or CRITICAL findings
 ```
 
 ## Severity Levels
@@ -34,10 +53,8 @@ Most scanners use this severity hierarchy:
 
 ### CodeQL
 
-```yaml
-with:
-  scanners: codeql
-  fail_on_severity: high
+```bash
+python -m argus scan codeql --severity-threshold high
 ```
 
 **Severity mapping:**
@@ -47,174 +64,119 @@ with:
 
 ### Gitleaks
 
-```yaml
-with:
-  scanners: gitleaks
-  fail_on_severity: critical
+```bash
+python -m argus scan gitleaks --severity-threshold critical
 ```
 
 **Note:** Any detected secret is considered critical. Setting to `critical` will fail if secrets are found.
 
 ### Bandit
 
-```yaml
-with:
-  scanners: bandit
-  fail_on_severity: medium
+```bash
+python -m argus scan bandit --severity-threshold medium
 ```
 
 **Severity levels:** LOW, MEDIUM, HIGH
 
 ### Trivy (Container & IaC)
 
-```yaml
-with:
-  scanners: trivy-container
-  fail_on_severity: high
+```bash
+python -m argus scan trivy-iac --severity-threshold high
 ```
 
 **Severity levels:** LOW, MEDIUM, HIGH, CRITICAL
 
 ### Grype
 
-```yaml
-with:
-  scanners: grype
-  fail_on_severity: critical
+```bash
+python -m argus scan container --severity-threshold critical
 ```
 
 **Severity levels:** Negligible, Low, Medium, High, Critical
 
 ### Checkov
 
-```yaml
-with:
-  scanners: checkov
-  fail_on_severity: high
+```bash
+python -m argus scan checkov --severity-threshold high
 ```
 
-**Note:** Checkov uses pass/fail checks. Any failed check at or above the threshold will fail the workflow.
+**Note:** Checkov uses pass/fail checks. Any failed check at or above the threshold will fail.
 
 ### ClamAV
 
-```yaml
-with:
-  scanners: clamav
-  fail_on_severity: critical
+```bash
+python -m argus scan clamav --severity-threshold critical
 ```
 
 **Note:** Any malware detection is considered critical.
 
 ## Usage Patterns
 
-### Development Branch (Permissive)
+### Development (Permissive)
 
 Allow developers to iterate without blocking:
 
-```yaml
-on:
-  pull_request:
-    branches: [develop]
-
-jobs:
-  security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-    with:
-      scanners: all
-      fail_on_severity: none  # Report only
-      post_pr_comment: true
+```bash
+python -m argus scan --config argus.yml --severity-threshold none
 ```
 
-### Staging Branch (Moderate)
+### Staging (Moderate)
 
 Block HIGH and CRITICAL issues before production:
 
-```yaml
-on:
-  pull_request:
-    branches: [staging]
-
-jobs:
-  security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-    with:
-      scanners: all
-      fail_on_severity: high
-      post_pr_comment: true
+```bash
+python -m argus scan --config argus.yml --severity-threshold high
 ```
 
-### Production Branch (Strict)
+### Production (Strict)
 
 Zero tolerance for vulnerabilities:
 
-```yaml
-on:
-  pull_request:
-    branches: [main]
-
-jobs:
-  security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-    with:
-      scanners: all
-      fail_on_severity: medium
-      enable_code_security: true
-```
-
-### Scheduled Scans (Monitoring)
-
-Regular scans for visibility without blocking:
-
-```yaml
-on:
-  schedule:
-    - cron: '0 2 * * 1'  # Weekly Monday at 2 AM
-
-jobs:
-  security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-    with:
-      scanners: all
-      fail_on_severity: none
-      enable_code_security: true
-      post_pr_comment: false
+```bash
+python -m argus scan --config argus.yml --severity-threshold medium
 ```
 
 ### Container Scanning (Critical Only)
 
 Fail only on critical container vulnerabilities:
 
-```yaml
-with:
-  scanners: trivy-container,grype
-  image_ref: 'myapp:latest'
-  fail_on_severity: critical
+```bash
+python -m argus scan container --severity-threshold critical
 ```
 
 ## Per-Scanner Thresholds
 
-Configure different thresholds for different scanners by running them in separate jobs:
+Run scanners individually with different thresholds:
+
+```bash
+# Code scanning - high threshold
+python -m argus scan codeql bandit --severity-threshold high
+
+# Secret scanning - critical threshold
+python -m argus scan gitleaks --severity-threshold critical
+
+# Container scanning - medium threshold
+python -m argus scan container --severity-threshold medium
+```
+
+For GitHub Actions, configure different thresholds on each composite action step:
 
 ```yaml
 jobs:
-  code-scan:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-    with:
-      scanners: codeql,bandit
-      fail_on_severity: high
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
 
-  secret-scan:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-    with:
-      scanners: gitleaks
-      fail_on_severity: critical
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.0
+        with:
+          fail_on_severity: high
 
-  container-scan:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-    with:
-      scanners: trivy-container
-      image_ref: 'myapp:latest'
-      fail_on_severity: medium
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.7.0
+        with:
+          fail_on_severity: critical
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ## Exit Codes
@@ -253,23 +215,24 @@ Add `[skip security]` to commit message (if configured in workflow).
 
 ### Temporarily disable
 
-```yaml
-with:
-  scanners: all
-  fail_on_severity: none  # Temporarily permissive
+```bash
+python -m argus scan --config argus.yml --severity-threshold none
 ```
 
 ### Manual approval
 
-Use GitHub branch protection to require manual review:
+Use GitHub branch protection to require manual review for composite action workflows:
 
 ```yaml
 # .github/workflows/security.yml
 jobs:
   security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-    with:
-      fail_on_severity: high
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.0
+        with:
+          fail_on_severity: high
     continue-on-error: true  # Don't block merge
 
   approval:

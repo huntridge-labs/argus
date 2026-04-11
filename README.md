@@ -17,7 +17,7 @@
 
 <br>
 
-Unified security scanning for GitHub Actions — SAST, containers, IaC, secrets, and DAST in a single workflow.
+Unified security scanning — SAST, containers, IaC, secrets, and DAST from a single CLI or GitHub Actions workflow.
 
 </div>
 
@@ -36,7 +36,30 @@ Unified security scanning for GitHub Actions — SAST, containers, IaC, secrets,
 
 ## Quick Start
 
-Create `.github/workflows/security.yml`:
+### Argus SDK (Recommended)
+
+The argus Python SDK is the primary interface for running security scans. It works locally, in CI, and on any platform with Python 3.11+.
+
+```bash
+pip install pyyaml
+python -m argus scan --config argus.yml
+```
+
+Create an `argus.yml` configuration file:
+
+```yaml
+scanners:
+  - gitleaks
+  - bandit
+  - osv
+
+scan_path: "."
+severity_threshold: high
+```
+
+### GitHub Actions (Composite Actions)
+
+For GitHub Actions users, composite actions remain available for direct integration:
 
 ```yaml
 name: Security Scan
@@ -66,26 +89,6 @@ jobs:
           fail_on_severity: high
 ```
 
-<details>
-<summary><strong>Legacy: Reusable Workflow (github.com only)</strong></summary>
-
-```yaml
-name: Security Scan
-on: [pull_request, push]
-
-jobs:
-  security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-    with:
-      scanners: all
-      enable_code_security: true
-      post_pr_comment: true
-      fail_on_severity: high
-    secrets: inherit
-```
-
-</details>
-
 ## Supported Scanners
 
 | Category | Scanner | Description |
@@ -106,8 +109,9 @@ For detailed scanner configuration, see [Scanner Reference](docs/scanners.md).
 
 ## Features
 
-- **[Unified interface](docs/scanners.md)** - One workflow for all scanners
-- **[Flexible scanner selection](docs/scanners.md)** - Use `all`, scanner groups, or specific scanners
+- **[Argus SDK](argus/)** - Run scanners locally or in CI with `python -m argus scan`
+- **[Unified interface](docs/scanners.md)** - One CLI or workflow for all scanners
+- **[Flexible scanner selection](docs/scanners.md)** - Use scanner groups or specific scanners
 - **[GitHub Security tab integration](.github/actions/scanner-codeql/README.md)** - Upload SARIF results to Code Scanning
 - **PR comments** - Inline feedback on pull requests
 - **[Severity-based failure control](docs/failure-control.md)** - Set thresholds for workflow failures
@@ -119,9 +123,9 @@ For detailed scanner configuration, see [Scanner Reference](docs/scanners.md).
 
 ## GitHub Enterprise Server (GHES)
 
-GHES users can use our composite actions directly from github.com - no mirroring required.
+GHES users can use the argus SDK or composite actions directly from github.com - no mirroring required.
 
-**Architecture**: This project uses an actions-first architecture where all scanner logic lives in composite actions. The reusable workflows are thin wrappers for backwards compatibility on github.com.
+**Architecture**: Scanner logic lives in the argus Python SDK and in composite actions. The SDK is the primary interface; composite actions provide GitHub Actions integration.
 
 <details>
 <summary><strong>GHES Quick Start</strong></summary>
@@ -185,18 +189,77 @@ See [examples/github-enterprise/](examples/github-enterprise/) for complete GHES
 ## Usage Examples
 
 <details>
-<summary><strong>All Scanners with GitHub Security</strong></summary>
+<summary><strong>SDK: Full Scan with Config File</strong></summary>
 
 ```yaml
-name: Complete Security Scan
+# argus.yml
+scanners:
+  - gitleaks
+  - bandit
+  - opengrep
+  - osv
+  - trivy-iac
+  - checkov
+
+scan_path: "."
+severity_threshold: high
+```
+
+```bash
+pip install pyyaml
+python -m argus scan --config argus.yml
+```
+
+</details>
+
+<details>
+<summary><strong>SDK: SAST Scanners Only</strong></summary>
+
+```bash
+python -m argus scan bandit opengrep gitleaks --severity-threshold medium
+```
+
+</details>
+
+<details>
+<summary><strong>SDK: Container Scanning</strong></summary>
+
+```bash
+python -m argus scan container --severity-threshold critical
+```
+
+</details>
+
+<details>
+<summary><strong>SDK: Infrastructure as Code</strong></summary>
+
+```yaml
+# argus.yml
+scanners:
+  - trivy-iac
+  - checkov
+
+scan_path: "terraform/"
+severity_threshold: high
+```
+
+```bash
+python -m argus scan --config argus.yml
+```
+
+</details>
+
+<details>
+<summary><strong>GitHub Actions: Composite Actions</strong></summary>
+
+```yaml
+name: Security Scan
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-  schedule:
-    - cron: '0 2 * * 1'  # Weekly Monday at 2 AM
 
 permissions:
   contents: read
@@ -204,180 +267,68 @@ permissions:
   pull-requests: write
 
 jobs:
-  security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-    with:
-      scanners: all
-      enable_code_security: true
-      post_pr_comment: true
-      fail_on_severity: high
-    secrets: inherit
-```
-
-</details>
-
-<details>
-<summary><strong>SAST Scanners Only</strong></summary>
-
-```yaml
-name: SAST Security Scan
-
-on: [pull_request]
-
-jobs:
   sast:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-    with:
-      scanners: codeql,bandit,opengrep,gitleaks
-      codeql_languages: 'python,javascript'
-      enable_code_security: true
-      fail_on_severity: medium
-    secrets:
-      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.7.0
+        with:
+          enable_code_security: true
+          fail_on_severity: high
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.0
+        with:
+          enable_code_security: true
+          fail_on_severity: high
 ```
 
 </details>
 
 <details>
-<summary><strong>Container Scanning</strong></summary>
-
-```yaml
-name: Container Security
-
-on:
-  push:
-    tags: ['v*']
-
-jobs:
-  scan-image:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-    with:
-      scanners: trivy-container,grype,sbom
-      image_ref: 'ghcr.io/myorg/myapp:${{ github.ref_name }}'
-      enable_code_security: true
-      fail_on_severity: critical
-```
-
-</details>
-
-<details>
-<summary><strong>Config-Driven Multiple Containers</strong></summary>
-
-```yaml
-name: Multi-Container Scan
-
-on:
-  push:
-    paths: ['container-config.yml']
-
-jobs:
-  scan:
-    uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@0.7.0
-    with:
-      config_file: container-config.yml
-      enable_code_security: true
-      fail_on_severity: high
-    secrets: inherit
-```
-
-**container-config.yml:**
-
-```yaml
-containers:
-  - name: frontend
-    registry:
-      host: ghcr.io
-      username: ${GITHUB_TRIGGERING_ACTOR}
-      auth_secret: GITHUB_TOKEN
-    image:
-      repository: myorg
-      name: frontend
-      tag: latest
-    scanners:
-      - trivy-container
-      - grype
-
-  - name: backend
-    image: myorg/backend:latest
-    scanners:
-      - trivy-container
-      - sbom
-```
+<summary><strong>GitHub Actions: Config-Driven Container Scanning</strong></summary>
 
 See [Container Scanning Guide](docs/container-scanning.md) for complete documentation.
 
 </details>
 
-<details>
-<summary><strong>Infrastructure as Code</strong></summary>
-
-```yaml
-name: Infrastructure Security
-
-on:
-  pull_request:
-    paths:
-      - 'terraform/**'
-      - 'infrastructure/**'
-
-jobs:
-  iac:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-    with:
-      scanners: trivy-iac,checkov
-      iac_path: 'terraform/'
-      enable_code_security: true
-      fail_on_severity: high
-```
-
-</details>
-
-<details>
-<summary><strong>Branch-Specific Thresholds</strong></summary>
-
-```yaml
-name: Security with Branch Rules
-
-on:
-  pull_request:
-    branches: ['**']
-
-jobs:
-  security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-    with:
-      scanners: all
-      enable_code_security: true
-      post_pr_comment: true
-      fail_on_severity: ${{ github.base_ref == 'main' && 'high' || 'critical' }}
-    secrets: inherit
-```
-
-</details>
-
 ## Configuration
 
-### Scanner Selection
+### SDK Configuration (argus.yml)
 
-- **All scanners:** `scanners: all`
-- **By category:** `scanners: sast`, `scanners: container`, `scanners: infrastructure`
-- **Specific scanners:** `scanners: codeql,trivy-container,gitleaks`
-- **Multiple categories:** `scanners: sast,container`
+```yaml
+scanners:
+  - gitleaks
+  - bandit
+  - osv
+  - trivy-iac
 
-### Common Inputs
+scan_path: "."
+severity_threshold: high
+```
 
-| Input | Description | Default |
-|-------|-------------|---------|
-| `scanners` | Scanners to run (comma-separated or category) | Required |
-| `enable_code_security` | Upload SARIF to GitHub Security tab | `false` |
-| `post_pr_comment` | Post findings as PR comments | `true` |
-| `fail_on_severity` | Fail workflow on severity threshold | `none` |
+### CLI Scanner Selection
+
+```bash
+# Specific scanners
+python -m argus scan gitleaks bandit osv
+
+# With severity threshold
+python -m argus scan --severity-threshold high
+
+# With config file
+python -m argus scan --config argus.yml
+```
 
 **Severity levels:** `none`, `low`, `medium`, `high`, `critical`
 
 See [Failure Control Guide](docs/failure-control.md) for detailed threshold configuration.
 
-### Permissions Required
+### GitHub Actions Permissions
+
+When using composite actions in GitHub Actions workflows:
 
 ```yaml
 permissions:
@@ -389,7 +340,7 @@ permissions:
 
 ### Secrets
 
-Most secrets are optional and inherited via `secrets: inherit`. Scanner-specific secrets:
+Scanner-specific secrets (for GitHub Actions composite action usage):
 
 | Secret | Required For | Description |
 |--------|-------------|-------------|

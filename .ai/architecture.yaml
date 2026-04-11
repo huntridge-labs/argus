@@ -5,48 +5,35 @@
 version: "1.0"
 
 architecture:
-  description: "Composite actions are the core architecture. Reusable workflows are thin wrappers for backwards compatibility."
+  description: "The argus Python SDK is the primary interface. Composite actions provide GitHub Actions integration."
   primary:
+    location: "argus/"
+    pattern: "Python SDK"
+    version: "0.7.0"
+    status: production
+    advantage: "Platform-independent, works locally and in any CI"
+    cli: "python -m argus scan --config argus.yml"
+
+  actions:
     location: ".github/actions/"
     pattern: "Composite actions"
-    version: "0.6.8"
     status: production
-    advantage: "GHES compatible, self-contained"
-
-  backwards_compat:
-    location: ".github/workflows/"
-    pattern: "Reusable workflows"
-    status: maintained
-    limitation: "Requires github.com (cross-repo calls)"
-    note: "Thin wrappers around composite actions"
+    advantage: "GHES compatible, self-contained GitHub Actions integration"
 
 components:
-  - name: main-orchestrator
-    location: ".github/workflows/reusable-security-hardening.yml"
-    purpose: "Single entry point that dispatches to individual scanners"
-    type: entrypoint
-    accepts: "scanners parameter (comma-separated list or 'all')"
-    returns: "Aggregated SARIF, PR comments, job summaries"
-    calls: [scanner-workflows]
-
-  - name: scanner-workflows
-    location: ".github/workflows/scanner-*.yml"
-    purpose: "Individual scanner wrappers with consistent interface"
-    type: workflow
-    pattern: "Run scanner → Parse output → Generate summary → Upload SARIF"
-    instances:
-      - scanner-codeql.yml
-      - scanner-bandit.yml
-      - scanner-gitleaks.yml
-      - scanner-opengrep.yml
-      - scanner-trivy.yml
-      - scanner-grype.yml
-      - scanner-syft.yml
-      - scanner-checkov.yml
-      - scanner-clamav.yml
-      - scanner-zap.yml
-      - scanner-osv.yml
-      - scanner-dependency-review.yml
+  - name: argus-sdk
+    location: "argus/"
+    purpose: "Primary interface for running Argus scanners locally or in CI"
+    type: sdk
+    cli: "python -m argus scan --config argus.yml"
+    structure:
+      "cli.py": "argparse CLI with scan and report subcommands"
+      "core/models.py": "Severity enum, Finding/ScanResult/ScanSummary dataclasses"
+      "core/scanner.py": "Scanner Protocol definition"
+      "core/config.py": "ArgusConfig loading from argus.yml"
+      "core/engine.py": "ArgusEngine orchestrating scanners and aggregating results"
+      "scanners/": "Scanner modules implementing Scanner protocol"
+      "reporters/": "Output reporters (terminal, markdown, sarif, json)"
 
   - name: composite-actions
     location: ".github/actions/scanner-*/"
@@ -248,22 +235,29 @@ dependencies:
 
 data_flow:
   diagram: |
-    User workflow
-      → reusable-security-hardening.yml (dispatcher)
-        → scanner-{name}.yml (parallel matrix)
+    SDK pipeline:
+      python -m argus scan --config argus.yml
+        → ArgusEngine loads config
+        → Scanner modules run in sequence
+          → Run scanner binary
+          → Parse output (→ Finding dataclasses)
+          → Aggregate into ScanResult
+        → Reporter generates output (terminal, markdown, sarif, json)
+
+    Composite action pipeline (GitHub Actions):
+      User workflow step
+        → scanner-{name} composite action
           → Run scanner binary
           → Parse output (→ JSON)
           → Generate summary (→ Markdown)
           → Upload SARIF (→ GitHub Security tab)
-          → [Optional] Post individual PR comment (if post_pr_comment: true)
-        → Aggregate results in security-summary
-      → Single comprehensive PR comment (in reusable workflows)
+          → [Optional] Post individual PR comment
 
   pr_commenting_strategy:
-    description: "Flexible PR commenting architecture supporting both standalone and aggregated usage"
+    description: "PR commenting via composite actions in GitHub Actions workflows"
 
     standalone_scanner:
-      when: "Individual scanner action/workflow used directly"
+      when: "Individual scanner action used in a workflow"
       behavior: "Each scanner can post its own PR comment"
       control: "Set post_pr_comment: true in action inputs"
       use_case: "Single scanner workflows, focused scanning"
@@ -272,23 +266,6 @@ data_flow:
           with:
             post_pr_comment: true  # Posts individual Bandit PR comment
 
-    reusable_workflow:
-      when: "Using reusable-security-hardening.yml with multiple scanners"
-      behavior: "All individual scanners have post_pr_comment: false, only security-summary posts"
-      control: "post_pr_comment: false set in reusable-security-hardening.yml for all scanner jobs"
-      use_case: "Multiple scanners, unified reporting"
-      benefit: "Single comprehensive PR comment instead of spam from each scanner"
-      mechanism: |
-        1. All scanner actions generate markdown summaries
-        2. security-summary job downloads all summaries
-        3. Combines into security-hardening-report.md
-        4. Posts single PR comment with all results
-      example: |
-        uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
-        with:
-          scanners: all
-          post_pr_comment: true  # Only security-summary posts, not individual scanners
-
     implementation:
       comment_action: ".github/actions/comment-pr/action.yml"
       deduplication: "Uses HTML comment markers (e.g., opengrep-comment-marker)"
@@ -296,36 +273,30 @@ data_flow:
       default: "post_pr_comment defaults to 'false' in all scanner actions"
 
   stages:
-    - name: dispatch
-      from: user-workflow
-      to: main-orchestrator
-      data: "scanners list, configuration"
+    - name: configure
+      from: user
+      to: argus-sdk-or-action
+      data: "argus.yml config or action inputs"
 
-    - name: parallel-scan
-      from: main-orchestrator
-      to: scanner-workflows
-      data: "individual scanner config"
-      parallel: true
+    - name: scan
+      from: argus-engine
+      to: scanner-modules
+      data: "scanner config, scan path"
 
     - name: parse
       from: scanner-binary
       to: parse-script
       data: "raw scanner output"
 
-    - name: summarize
-      from: parse-script
-      to: summary-script
-      data: "structured JSON"
+    - name: report
+      from: scan-results
+      to: reporter
+      data: "structured findings"
 
     - name: upload
-      from: scanner-workflow
+      from: composite-action
       to: github-security-tab
-      data: "SARIF file"
-
-    - name: aggregate
-      from: all-scanners
-      to: security-summary
-      data: "all findings"
+      data: "SARIF file (GitHub Actions only)"
 
 docsite:
   name: docsite
@@ -396,15 +367,15 @@ docsite:
       - "argus report <format> --results-dir --output-dir"
 
 directory_structure:
-  ".github/actions/": "Composite actions (primary)"
-  ".github/workflows/": "Reusable workflows (backwards compat)"
-  ".github/actions/*/schemas/": "JSON schemas co-located with each action"
-  ".github/actions/*/.docsite.yml": "Per-action docsite category declaration"
-  "argus/": "Standalone Python SDK (ADR-013)"
+  "argus/": "Standalone Python SDK (primary interface, ADR-013)"
   "argus/core/": "Core models, protocols, config, and engine"
   "argus/scanners/": "Scanner modules (one per scanner)"
   "argus/reporters/": "Output reporters (terminal, markdown, sarif, json)"
   "argus/tests/": "SDK test suite"
+  ".github/actions/": "Composite actions (GitHub Actions interface)"
+  ".github/workflows/": "CI/CD and test workflows"
+  ".github/actions/*/schemas/": "JSON schemas co-located with each action"
+  ".github/actions/*/.docsite.yml": "Per-action docsite category declaration"
   "scripts/docsite/": "Auto-generated documentation site package"
   "docsite.yml": "Documentation site configuration (categories, icons, exclusions)"
   "examples/workflows/": "User-facing workflow examples"

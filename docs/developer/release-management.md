@@ -52,16 +52,15 @@ Due to GitHub security restrictions, the automated release process requires a Pe
 
 #### Why This Token Is Required
 
-The release process automatically updates version references in workflow files (`.github/workflows/reusable-security-hardening.yml`) to keep them in sync with the released version. GitHub's default `GITHUB_TOKEN` cannot modify workflow files for security reasons, so a dedicated token with workflow permissions is required.
+The release process automatically updates version references across documentation and example files to keep them in sync with the released version. GitHub's default `GITHUB_TOKEN` cannot modify workflow files for security reasons, so a dedicated token with workflow permissions is required.
 
 **Without this token:**
-- ❌ Release will fail with permission error
-- ❌ Workflow file versions will not be updated
+- Will fail with permission error
+- Version references will not be updated
 
 **With this token:**
-- ✅ Automated releases work seamlessly
-- ✅ All version references stay synchronized
-- ✅ Workflow files are automatically updated
+- Automated releases work seamlessly
+- All version references stay synchronized
 
 ### Main Configuration
 The release configuration is stored in `.release-it.json`:
