@@ -2,7 +2,7 @@
 
 import pytest
 
-from argus.core.config import ArgusConfig, ScannerConfig, ReportingConfig
+from argus.core.config import ArgusConfig, ExecutionConfig, ScannerConfig, ReportingConfig
 from argus.core.models import Severity
 
 
@@ -160,3 +160,41 @@ class TestReportingConfigDefaults:
         assert rc.formats == ["terminal"]
         assert rc.severity_threshold is None
         assert rc.output_dir == "./argus-results"
+
+
+class TestExecutionConfig:
+    """Test ExecutionConfig defaults and parsing."""
+
+    def test_defaults(self):
+        ec = ExecutionConfig()
+        assert ec.backend == "auto"
+        assert ec.registry == ""
+        assert ec.pull_policy == "if-not-present"
+
+    def test_from_dict(self):
+        data = {
+            "execution": {
+                "backend": "docker",
+                "registry": "registry.internal.corp/argus",
+                "pull_policy": "always",
+            },
+        }
+        config = ArgusConfig.from_dict(data)
+        assert config.execution.backend == "docker"
+        assert config.execution.registry == "registry.internal.corp/argus"
+        assert config.execution.pull_policy == "always"
+
+    def test_non_dict_execution_returns_defaults(self):
+        config = ArgusConfig.from_dict({"execution": "invalid"})
+        assert config.execution.backend == "auto"
+
+    def test_load_execution_from_yaml(self, tmp_path):
+        config_file = tmp_path / "argus.yml"
+        config_file.write_text(
+            "execution:\n"
+            "  backend: local\n"
+            "  pull_policy: never\n"
+        )
+        config = ArgusConfig.load(config_file)
+        assert config.execution.backend == "local"
+        assert config.execution.pull_policy == "never"
