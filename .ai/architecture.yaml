@@ -354,11 +354,57 @@ docsite:
     build: "cd scripts && python -m docsite --output-dir /tmp/argus-docs"
     preview: "cd /tmp/argus-docs && mkdocs serve"
 
+  argus_sdk:
+    name: argus-sdk
+    location: "argus/"
+    purpose: "Standalone Python SDK for running Argus scanners outside GitHub Actions"
+    type: sdk
+    status: phase-1-complete
+    adr: ADR-013
+    description: "Cross-platform Python package with CLI, scanner modules, and reporters"
+    structure:
+      "__init__.py": "Package root (version)"
+      "__main__.py": "CLI entry point (python -m argus)"
+      "cli.py": "argparse CLI with scan and report subcommands"
+      "core/models.py": "Severity enum, Finding/ScanResult/ScanSummary dataclasses"
+      "core/scanner.py": "Scanner Protocol definition"
+      "core/config.py": "ArgusConfig loading from argus.yml"
+      "core/engine.py": "ArgusEngine orchestrating scanners and aggregating results"
+      "scanners/": "Scanner modules implementing Scanner protocol"
+      "reporters/": "Output reporters (terminal, markdown, sarif, json)"
+      "tests/": "Co-located pytest tests (180 tests, 83%+ coverage)"
+    scanners:
+      - bandit
+      - clamav
+      - trivy-iac
+      - gitleaks
+      - osv
+      - checkov
+      - opengrep
+      - supply-chain
+      - zap
+      - container
+    reporters:
+      - terminal
+      - markdown
+      - sarif
+      - json
+    dependencies: "stdlib + pyyaml only"
+    config_file: "argus.yml"
+    cli_commands:
+      - "argus scan [scanner] --path --config --severity-threshold --format"
+      - "argus report <format> --results-dir --output-dir"
+
 directory_structure:
   ".github/actions/": "Composite actions (primary)"
   ".github/workflows/": "Reusable workflows (backwards compat)"
   ".github/actions/*/schemas/": "JSON schemas co-located with each action"
   ".github/actions/*/.docsite.yml": "Per-action docsite category declaration"
+  "argus/": "Standalone Python SDK (ADR-013)"
+  "argus/core/": "Core models, protocols, config, and engine"
+  "argus/scanners/": "Scanner modules (one per scanner)"
+  "argus/reporters/": "Output reporters (terminal, markdown, sarif, json)"
+  "argus/tests/": "SDK test suite"
   "scripts/docsite/": "Auto-generated documentation site package"
   "docsite.yml": "Documentation site configuration (categories, icons, exclusions)"
   "examples/workflows/": "User-facing workflow examples"

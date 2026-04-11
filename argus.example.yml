@@ -1,0 +1,51 @@
+# Argus Security Scanner Configuration
+# Copy to argus.yml and customize for your project
+version: "1.0"
+
+scanners:
+  bandit:
+    enabled: true
+    path: "."
+    # config_file: "pyproject.toml"  # Optional Bandit config
+
+  trivy-iac:
+    enabled: true
+    path: "infrastructure"
+    severity_threshold: medium
+
+  clamav:
+    enabled: true
+    path: "."
+
+  gitleaks:
+    enabled: true
+
+  osv:
+    enabled: true
+
+  checkov:
+    enabled: true
+    path: "infrastructure"
+
+  opengrep:
+    enabled: true
+    path: "src"
+
+  supply-chain:
+    enabled: true
+
+  # container:
+  #   enabled: false
+  #   image_ref: "myapp:latest"
+  #   scanners: "trivy,grype,syft"
+
+  # zap:
+  #   enabled: false
+  #   target_url: "http://localhost:3000"
+
+reporting:
+  formats:
+    - terminal
+    - sarif
+  severity_threshold: high
+  output_dir: "./argus-results"
