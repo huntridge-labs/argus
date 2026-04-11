@@ -136,27 +136,59 @@ jobs:
           fail-build: false
           severity-cutoff: critical
 
+      # Run Trivy again with JSON for severity breakdown
+      - name: Scan with Trivy (JSON)
+        if: always()
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          image-ref: "ghcr.io/huntridge-labs/argus/${{ matrix.image }}:${{ github.sha }}"
+          format: 'json'
+          output: 'trivy-results.json'
+
       - name: Generate scan report
         if: always()
         run: |
           mkdir -p scan-reports
-          python3 -c "
-          import json
+          python3 << 'PYEOF'
+          import json, os
+
+          image_name = os.environ["IMAGE_NAME"]
+          report = {"image": image_name, "critical": 0, "high": 0, "medium": 0, "low": 0, "total": 0, "top_findings": []}
+
+          # Parse Trivy JSON for severity counts and details
           try:
-              sarif = json.load(open('trivy-results.sarif'))
-              results = sarif.get('runs', [{}])[0].get('results', [])
-              report = {
-                  'image': '${IMAGE_NAME}',
-                  'finding_count': len(results),
-                  'findings': [
-                      {'id': r.get('ruleId', ''), 'message': r.get('message', {}).get('text', '')[:100], 'level': r.get('level', '')}
-                      for r in results[:20]
-                  ],
-              }
-          except Exception:
-              report = {'image': '${IMAGE_NAME}', 'finding_count': -1, 'findings': []}
-          json.dump(report, open('scan-reports/${IMAGE_NAME}.json', 'w'))
-          "
+              data = json.load(open("trivy-results.json"))
+              seen = set()
+              for result in data.get("Results", []):
+                  for vuln in result.get("Vulnerabilities", []):
+                      vid = vuln.get("VulnerabilityID", "")
+                      if vid in seen:
+                          continue
+                      seen.add(vid)
+                      sev = vuln.get("Severity", "UNKNOWN").upper()
+                      if sev == "CRITICAL":
+                          report["critical"] += 1
+                      elif sev == "HIGH":
+                          report["high"] += 1
+                      elif sev == "MEDIUM":
+                          report["medium"] += 1
+                      elif sev == "LOW":
+                          report["low"] += 1
+                      report["total"] += 1
+                      if len(report["top_findings"]) < 15:
+                          report["top_findings"].append({
+                              "id": vid,
+                              "severity": sev,
+                              "pkg": vuln.get("PkgName", ""),
+                              "installed": vuln.get("InstalledVersion", ""),
+                              "fixed": vuln.get("FixedVersion", ""),
+                              "title": vuln.get("Title", "")[:80],
+                          })
+          except Exception as e:
+              report["error"] = str(e)
+
+          json.dump(report, open(f"scan-reports/{image_name}.json", "w"), indent=2)
+          PYEOF
         env:
           IMAGE_NAME: ${{ matrix.image }}
 
@@ -302,53 +334,97 @@ jobs:
 
       - name: Generate PR comment
         run: |
-          python3 -c "
+          python3 << 'PYEOF'
           import json, glob, os
 
-          lines = ['## Container Image Scan Results', '']
+          lines = []
+          lines.append("## 🔒 Argus Container Security Scan")
+          lines.append("")
 
-          # Container vulnerability table
-          reports = sorted(glob.glob('scan-reports/*.json'))
-          if reports:
-              lines.append('### Image Vulnerability Scan (Trivy + Grype)')
-              lines.append('')
-              lines.append('| Image | CRITICAL+HIGH | Status |')
-              lines.append('|-------|:---:|--------|')
-              total_vulns = 0
-              for path in reports:
-                  data = json.load(open(path))
-                  name = data['image']
-                  count = data['finding_count']
-                  if count < 0:
-                      emoji, status = ':x:', 'Scan failed'
-                  elif count == 0:
-                      emoji, status = ':white_check_mark:', 'Clean'
-                  else:
-                      emoji, status = ':warning:', f'{count} finding(s)'
-                      total_vulns += count
-                  lines.append(f'| \`{name}\` | {count if count >= 0 else \"N/A\"} | {emoji} {status} |')
-              lines.append('')
+          # ── Overall summary table ──
+          reports = sorted(glob.glob("scan-reports/*.json"))
+          totals = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+          image_data = []
+          for path in reports:
+              data = json.load(open(path))
+              image_data.append(data)
+              for sev in totals:
+                  totals[sev] += data.get(sev, 0)
 
-          # Argus CLI scan summary
-          cli_json = 'cli-results/argus-results.json'
+          lines.append("### 📊 Findings Summary")
+          lines.append("")
+          lines.append("| 🚨 Critical | ⚠️ High | 🟡 Medium | 🔵 Low | 📦 Total |")
+          lines.append("|:-----------:|:-------:|:---------:|:------:|:--------:|")
+          total = sum(totals.values())
+          lines.append(f"| **{totals['critical']}** | **{totals['high']}** | **{totals['medium']}** | **{totals['low']}** | **{total}** |")
+          lines.append("")
+
+          # ── Per-image breakdown ──
+          for data in image_data:
+              name = data["image"]
+              c, h, m, l = data.get("critical", 0), data.get("high", 0), data.get("medium", 0), data.get("low", 0)
+              img_total = c + h + m + l
+
+              if img_total == 0:
+                  lines.append(f"<details>")
+                  lines.append(f"<summary>📦 {name} — ✅ Clean</summary>")
+                  lines.append("")
+                  lines.append("No vulnerabilities found at any severity level.")
+                  lines.append("")
+                  lines.append("</details>")
+              else:
+                  lines.append(f"<details>")
+                  lines.append(f"<summary>📦 {name} — {img_total} finding(s) (🚨{c} ⚠️{h} 🟡{m} 🔵{l})</summary>")
+                  lines.append("")
+                  lines.append("| 🚨 Critical | ⚠️ High | 🟡 Medium | 🔵 Low | Total |")
+                  lines.append("|:-----------:|:-------:|:---------:|:------:|:-----:|")
+                  lines.append(f"| **{c}** | **{h}** | **{m}** | **{l}** | **{img_total}** |")
+                  lines.append("")
+
+                  findings = data.get("top_findings", [])
+                  if findings:
+                      lines.append("| CVE | Severity | Package | Installed | Fixed | Title |")
+                      lines.append("|-----|----------|---------|-----------|-------|-------|")
+                      for f in findings:
+                          sev = f.get("severity", "")
+                          sev_icon = {"CRITICAL": "🚨", "HIGH": "⚠️", "MEDIUM": "🟡", "LOW": "🔵"}.get(sev, "")
+                          lines.append(
+                              f"| {f.get('id', '')} | {sev_icon} {sev} | {f.get('pkg', '')} | {f.get('installed', '')} | {f.get('fixed', 'N/A')} | {f.get('title', '')} |"
+                          )
+                      if img_total > len(findings):
+                          lines.append(f"| | | | | | *...and {img_total - len(findings)} more* |")
+
+                  lines.append("")
+                  lines.append("</details>")
+              lines.append("")
+
+          # ── Argus CLI scan summary ──
+          cli_json = "cli-results/argus-results.json"
           if os.path.exists(cli_json):
               data = json.load(open(cli_json))
-              results = data.get('results', [])
-              scanners = [r['scanner'] for r in results]
-              total = sum(len(r.get('findings', [])) for r in results)
-              lines.append('### Argus CLI Scan')
-              lines.append('')
-              lines.append(f'Scanners executed: **{len(scanners)}** ({', '.join(scanners)})')
-              lines.append(f'Total findings: **{total}**')
-              lines.append('')
+              results = data.get("results", [])
+              scanners = [r["scanner"] for r in results]
+              total_findings = sum(len(r.get("findings", [])) for r in results)
+              lines.append("<details>")
+              lines.append(f"<summary>🔍 Argus CLI Scan — {len(scanners)} scanner(s), {total_findings} finding(s)</summary>")
+              lines.append("")
+              for r in results:
+                  scanner = r["scanner"]
+                  count = len(r.get("findings", []))
+                  icon = "✅" if count == 0 else "⚠️"
+                  lines.append(f"- {icon} **{scanner}**: {count} finding(s)")
+              lines.append("")
+              lines.append("</details>")
+              lines.append("")
 
-          lines.append('---')
-          lines.append('*Container scans: Trivy + Grype. Code scan: Argus CLI. SARIF uploaded to Security tab.*')
+          lines.append("---")
+          lines.append("*Scanned with Trivy + Grype (containers) and Argus CLI (code). SARIF uploaded to Security tab.*")
 
-          with open('comment-body.md', 'w') as f:
-              f.write('\n'.join(lines))
-          print('\n'.join(lines))
-          "
+          body = "\n".join(lines)
+          with open("comment-body.md", "w") as f:
+              f.write(body)
+          print(body)
+          PYEOF
 
       - name: Post PR comment
         env:
