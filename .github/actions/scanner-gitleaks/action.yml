@@ -47,7 +47,7 @@ inputs:
     required: false
     default: 'true'
   gitleaks_config:
-    description: 'Path to a gitleaks configuration file (e.g., "path/to/gitleaks.toml")'
+    description: 'Path to a custom gitleaks configuration file (e.g., "path/to/gitleaks.toml"). Argus rules (Claude session URL detection, etc.) are always included and extend this config.'
     required: false
     default: ''
 
@@ -65,6 +65,40 @@ runs:
         persist-credentials: false
         fetch-depth: 0
 
+    - name: Prepare Argus gitleaks configuration
+      id: prepare-config
+      shell: bash
+      env:
+        USER_CONFIG: ${{ inputs.gitleaks_config }}
+      run: |
+        CONFIG_PATH="${RUNNER_TEMP}/gitleaks-argus.toml"
+
+        # Write Argus-bundled rules. These are always injected regardless of
+        # whether the caller supplies their own config file.
+        cat > "$CONFIG_PATH" << 'TOML'
+        title = "Gitleaks Config (Argus)"
+
+        # Claude AI session URLs are shareable links that can grant unauthorized
+        # remote access to the host machine running Claude Code.
+        # Example: https://claude.ai/code/session_01PiQ6uJGzAux1HJuNZec36x
+        [[rules]]
+        id = "claude-session-url"
+        description = "Claude AI session URL - shareable links that may allow unauthorized remote access to host machines"
+        regex = 'https://claude\.ai/(?:[a-z-]+/)?session[_/]([A-Za-z0-9_\-]{8,})'
+        secretGroup = 1
+        keywords = ["claude.ai"]
+        TOML
+
+        # Extend from the caller's config if provided, otherwise fall back to
+        # the full gitleaks default ruleset so no built-in rules are lost.
+        if [ -n "$USER_CONFIG" ]; then
+          printf '\n[extend]\npath = "%s"\n' "$USER_CONFIG" >> "$CONFIG_PATH"
+        else
+          printf '\n[extend]\nuseDefault = true\n' >> "$CONFIG_PATH"
+        fi
+
+        echo "config_path=$CONFIG_PATH" >> $GITHUB_OUTPUT
+
     - name: Run Gitleaks Secrets Detection
       id: gitleaks-scan
       uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
@@ -75,7 +109,7 @@ runs:
         GITLEAKS_NOTIFY_USER_LIST: ${{ inputs.gitleaks_notify_user_list }}
         GITLEAKS_ENABLE_SUMMARY: ${{ inputs.gitleaks_enable_summary }}
         GITLEAKS_ENABLE_UPLOAD_ARTIFACT: ${{ inputs.gitleaks_enable_upload_artifact }}
-        GITLEAKS_CONFIG: ${{ inputs.gitleaks_config }}
+        GITLEAKS_CONFIG: ${{ steps.prepare-config.outputs.config_path }}
       continue-on-error: true
 
     - name: Organize Gitleaks results
