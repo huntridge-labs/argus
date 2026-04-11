@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
 
 
@@ -13,6 +14,11 @@ class OpengrepScanner:
     """Wraps OpenGrep to scan code for security issues using pattern matching."""
 
     name = "opengrep"
+    container_image = get_image("semgrep")
+
+    def container_args(self, config: dict | None = None) -> list[str]:
+        """Return CLI args for running semgrep/opengrep in a container."""
+        return ["semgrep", "scan", "--json", "--output", "/output/results.json", "/workspace"]
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run OpenGrep against the given path and return results."""

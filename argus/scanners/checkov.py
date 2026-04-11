@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
 
 
@@ -13,6 +14,11 @@ class CheckovScanner:
     """Wraps Checkov to scan IaC files for misconfigurations."""
 
     name = "checkov"
+    container_image = get_image("checkov")
+
+    def container_args(self, config: dict | None = None) -> list[str]:
+        """Return CLI args for running Checkov in a container."""
+        return ["-d", "/workspace", "-o", "json", "--quiet", "--output-file-path", "/output"]
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run Checkov against the given path and return results."""

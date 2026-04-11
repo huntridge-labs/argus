@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
 
 
@@ -13,6 +14,7 @@ class BanditScanner:
     """Wraps Bandit to scan Python code for security issues."""
 
     name = "bandit"
+    container_image = get_image("bandit")
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run Bandit against the given path and return results."""
@@ -58,6 +60,15 @@ class BanditScanner:
     def install_command(self) -> str | None:
         """Return install command for Bandit."""
         return "pip install bandit[toml,sarif]"
+
+    def container_args(self, config: dict | None = None) -> list[str]:
+        """Return CLI args for running Bandit in a container."""
+        return [
+            "bandit", "-r", "/workspace",
+            "-f", "json",
+            "-o", "/output/results.json",
+            "--exit-zero",
+        ]
 
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse Bandit JSON output into findings."""

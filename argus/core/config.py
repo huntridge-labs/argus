@@ -24,6 +24,15 @@ class ScannerConfig:
 
 
 @dataclass
+class ExecutionConfig:
+    """Configuration for scanner execution backend."""
+
+    backend: str = "auto"  # auto | local | docker
+    registry: str = ""  # override for private registries
+    pull_policy: str = "if-not-present"  # always | if-not-present | never
+
+
+@dataclass
 class ReportingConfig:
     """Configuration for result reporting."""
 
@@ -39,6 +48,7 @@ class ArgusConfig:
     version: str = "1.0"
     scanners: dict[str, ScannerConfig] = field(default_factory=dict)
     reporting: ReportingConfig = field(default_factory=ReportingConfig)
+    execution: ExecutionConfig = field(default_factory=ExecutionConfig)
 
     @classmethod
     def load(cls, config_path: str | Path | None = None) -> "ArgusConfig":
@@ -82,8 +92,14 @@ class ArgusConfig:
             scanners[name] = _parse_scanner_config(raw)
 
         reporting = _parse_reporting_config(data.get("reporting", {}))
+        execution = _parse_execution_config(data.get("execution", {}))
 
-        return cls(version=version, scanners=scanners, reporting=reporting)
+        return cls(
+            version=version,
+            scanners=scanners,
+            reporting=reporting,
+            execution=execution,
+        )
 
     def get_scanner_config(self, scanner_name: str) -> ScannerConfig:
         """Return config for *scanner_name*, falling back to defaults."""
@@ -120,4 +136,16 @@ def _parse_reporting_config(raw: dict | None) -> ReportingConfig:
         formats=raw.get("formats", ["terminal"]),
         severity_threshold=_parse_severity(raw.get("severity_threshold")),
         output_dir=raw.get("output_dir", "./argus-results"),
+    )
+
+
+def _parse_execution_config(raw: dict | None) -> ExecutionConfig:
+    """Build an ExecutionConfig from a raw dict."""
+    if not isinstance(raw, dict):
+        return ExecutionConfig()
+
+    return ExecutionConfig(
+        backend=raw.get("backend", "auto"),
+        registry=raw.get("registry", ""),
+        pull_policy=raw.get("pull_policy", "if-not-present"),
     )

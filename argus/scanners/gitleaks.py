@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
 
 
@@ -13,6 +14,16 @@ class GitleaksScanner:
     """Wraps Gitleaks to scan repositories for leaked secrets."""
 
     name = "gitleaks"
+    container_image = get_image("gitleaks")
+
+    def container_args(self, config: dict | None = None) -> list[str]:
+        """Return CLI args for running Gitleaks in a container."""
+        return [
+            "detect", "--source", "/workspace",
+            "--report-format", "json",
+            "--report-path", "/output/results.json",
+            "--exit-code", "0",
+        ]
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run Gitleaks against the given path and return results."""

@@ -5,6 +5,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
 
 _FOUND_PATTERN = re.compile(r"^(.+):\s+(.+)\s+FOUND$")
@@ -14,6 +15,14 @@ class ClamavScanner:
     """Wraps ClamAV (clamscan) to detect malware in files."""
 
     name = "clamav"
+    container_image = get_image("clamav")
+
+    def container_args(self, config: dict | None = None) -> list[str]:
+        """Return CLI args for running ClamAV in a container."""
+        return [
+            "sh", "-c",
+            "clamscan --recursive /workspace > /output/results.txt 2>&1 || true",
+        ]
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run ClamAV against the given path and return results."""

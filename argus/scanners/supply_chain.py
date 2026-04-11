@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
 
 # zizmor security-severity score thresholds
@@ -29,6 +30,15 @@ class SupplyChainScanner:
     """Wraps zizmor and actionlint to scan GitHub Actions workflows."""
 
     name = "supply-chain"
+    container_image = get_image("supply-chain")
+
+    def container_args(self, config: dict | None = None) -> list[str]:
+        """Return CLI args for running zizmor+actionlint in a container."""
+        return [
+            "sh", "-c",
+            "zizmor --format sarif /workspace/.github/ > /output/zizmor.json 2>/dev/null; "
+            "actionlint -format '{{json .}}' /workspace/.github/workflows/ > /output/actionlint.json 2>/dev/null || true",
+        ]
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run zizmor and actionlint against the given path."""

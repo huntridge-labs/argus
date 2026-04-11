@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
 
 
@@ -13,6 +14,15 @@ class OsvScanner:
     """Wraps OSV-Scanner to detect vulnerable dependencies."""
 
     name = "osv"
+    container_image = get_image("osv-scanner")
+
+    def container_args(self, config: dict | None = None) -> list[str]:
+        """Return CLI args for running OSV-Scanner in a container."""
+        return [
+            "scan", "--format", "json",
+            "--output", "/output/results.json",
+            "/workspace",
+        ]
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run OSV-Scanner against the given path and return results."""

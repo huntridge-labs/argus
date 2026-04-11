@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
 
 
@@ -13,6 +14,7 @@ class TrivyIacScanner:
     """Wraps Trivy to scan infrastructure-as-code for misconfigurations."""
 
     name = "trivy-iac"
+    container_image = get_image("trivy")
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run Trivy IaC scan against the given path and return results."""
@@ -69,6 +71,15 @@ class TrivyIacScanner:
     def install_command(self) -> str | None:
         """Return install command for Trivy."""
         return "curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh"
+
+    def container_args(self, config: dict | None = None) -> list[str]:
+        """Return CLI args for running Trivy IaC in a container."""
+        return [
+            "config",
+            "--format", "json",
+            "--output", "/output/results.json",
+            "/workspace",
+        ]
 
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse Trivy IaC JSON output into findings."""

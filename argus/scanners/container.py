@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
 
 
@@ -14,6 +15,13 @@ class ContainerScanner:
     """Wraps Trivy, Grype, and Syft for container image scanning."""
 
     name = "container"
+    # No single container image — orchestrates trivy, grype, syft individually.
+    # Docker execution for sub-scanners uses their respective official images.
+    container_image = ""
+
+    def container_args(self, config: dict | None = None) -> list[str]:
+        """Not applicable — container scanner orchestrates sub-tools directly."""
+        return []
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run enabled sub-scanners against a container image.

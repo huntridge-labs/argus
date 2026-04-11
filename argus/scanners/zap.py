@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
 
 _RISKCODE_MAP = {
@@ -26,6 +27,12 @@ class ZapScanner:
     """Wraps OWASP ZAP to perform dynamic application security testing."""
 
     name = "zap"
+    container_image = get_image("zap")
+
+    def container_args(self, config: dict | None = None) -> list[str]:
+        """Return CLI args for running ZAP in a container."""
+        target = (config or {}).get("target_url", "http://localhost:3000")
+        return ["zap-baseline.py", "-t", target, "-J", "/output/results.json", "-I"]
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run ZAP quick-scan against a target URL and return results.

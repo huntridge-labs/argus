@@ -1,8 +1,9 @@
 """Scanner protocol definition for Argus scanner modules."""
 
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from .models import ScanResult
+from .models import Finding, ScanResult
 
 
 @runtime_checkable
@@ -12,6 +13,11 @@ class Scanner(Protocol):
     Each scanner wraps an external security tool (e.g., Bandit, Trivy,
     Gitleaks) and normalizes its output into Argus Finding/ScanResult
     objects.
+
+    Optional container support:
+        container_image: str  — Docker image for running in a container
+        container_args(config) — CLI args for the containerized invocation
+        parse_results(path) — Parse output file into findings
     """
 
     name: str

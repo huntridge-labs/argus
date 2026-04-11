@@ -2,7 +2,7 @@
 
 from .models import Severity, Finding, ScanResult, ScanSummary
 from .scanner import Scanner
-from .config import ArgusConfig, ScannerConfig, ReportingConfig
+from .config import ArgusConfig, ScannerConfig, ReportingConfig, ExecutionConfig
 from .engine import ArgusEngine
 
 __all__ = [
@@ -14,5 +14,6 @@ __all__ = [
     "ArgusConfig",
     "ScannerConfig",
     "ReportingConfig",
+    "ExecutionConfig",
     "ArgusEngine",
 ]
