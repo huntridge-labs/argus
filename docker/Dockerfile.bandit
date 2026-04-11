@@ -4,6 +4,9 @@ LABEL org.opencontainers.image.source="https://github.com/huntridge-labs/argus"
 LABEL org.opencontainers.image.description="Argus Bandit Python SAST Scanner"
 LABEL org.opencontainers.image.licenses="AGPL-3.0"
 
+# Patch OS-level vulnerabilities before anything else
+RUN apk upgrade --no-cache
+
 RUN adduser -D -u 1000 argus
 RUN pip install --no-cache-dir 'bandit[toml,sarif]==1.9.4'
 

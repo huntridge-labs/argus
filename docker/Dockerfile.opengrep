@@ -13,6 +13,9 @@ LABEL org.opencontainers.image.source="https://github.com/huntridge-labs/argus"
 LABEL org.opencontainers.image.description="Argus OpenGrep SAST Scanner"
 LABEL org.opencontainers.image.licenses="AGPL-3.0"
 
+# Patch OS-level vulnerabilities before anything else
+RUN apk upgrade --no-cache
+
 COPY --from=builder /usr/local/bin/opengrep /usr/local/bin/opengrep
 
 RUN adduser -D -u 1000 argus

@@ -53,11 +53,12 @@ LABEL org.opencontainers.image.licenses="AGPL-3.0"
 
 ARG ZIZMOR_VERSION=1.23.1
 
-# ClamAV requires apk — no official static binary for Alpine
+# Install system packages and patch OS-level vulnerabilities
 RUN apk add --no-cache \
     clamav \
     clamav-libunrar \
-    git
+    git && \
+    apk upgrade --no-cache
 
 # Copy binary tools from builder
 COPY --from=builder /usr/local/bin/trivy      /usr/local/bin/trivy

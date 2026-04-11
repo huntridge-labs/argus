@@ -14,6 +14,9 @@ LABEL org.opencontainers.image.licenses="AGPL-3.0"
 
 ARG ZIZMOR_VERSION=1.23.1
 
+# Patch OS-level vulnerabilities before anything else
+RUN apk upgrade --no-cache
+
 COPY --from=builder /usr/local/bin/actionlint /usr/local/bin/actionlint
 
 RUN pip install --no-cache-dir "zizmor==${ZIZMOR_VERSION}"
