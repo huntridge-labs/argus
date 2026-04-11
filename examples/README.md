@@ -125,21 +125,28 @@ jobs:
 
 The following composite actions are available for direct use:
 
-### Code Security
-- **scanner-bandit** - Python security scanner (SAST)
-- **scanner-codeql** - GitHub's code analysis (coming soon)
-- **scanner-opengrep** - Pattern-based security scanner (coming soon)
+### Code Security (SAST)
+- **scanner-bandit** - Python security scanner
+- **scanner-codeql** - GitHub CodeQL multi-language analysis
+- **scanner-opengrep** - Pattern-based security scanner
 
 ### Secrets Detection
 - **scanner-gitleaks** - Git secrets scanner
 
+### Dependency Security
+- **scanner-osv** - OSV dependency vulnerability scanning (any trigger)
+- **scanner-dependency-review** - PR dependency review and license compliance (PR-only)
+
 ### Infrastructure Security
 - **scanner-trivy-iac** - Terraform, CloudFormation, Kubernetes scanning
-- **scanner-checkov** - Multi-framework IaC scanner (coming soon)
+- **scanner-checkov** - Multi-framework IaC scanner
 
 ### Container Security
-- **scanner-container** - Multi-scanner container security
-- **scanner-trivy-container** - Trivy container scanning (coming soon)
+- **scanner-container** - Multi-scanner container security (Trivy + Grype + Syft)
+
+### Supply Chain Security
+- **scanner-supply-chain** - GitHub Actions workflow security (zizmor + actionlint)
+- **scn-detector** - FedRAMP SCN detection
 
 ### Web Application Security
 - **scanner-zap** - ZAP DAST scanner
@@ -270,4 +277,4 @@ All examples must:
 
 ---
 
-_Last Updated: January 2026_
+_Last Updated: April 2026_

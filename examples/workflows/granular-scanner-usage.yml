@@ -107,7 +107,7 @@ jobs:
   # Example 6: Using individual scanner workflows directly
   direct-codeql-call:
     if: false  # Disabled by default - enable as needed
-    uses: ./.github/workflows/scanners/sast/codeql.yml
+    uses: ./.github/workflows/scanner-codeql.yml
     with:
       codeql_languages: 'python'  # Only scan Python
       post_pr_comment: false
@@ -118,5 +118,13 @@ jobs:
       pull-requests: write
 
   direct-opengrep-call:
-    if: false
+    if: false  # Disabled by default - enable as needed
     uses: ./.github/workflows/scanner-opengrep.yml
+    with:
+      opengrep_config: 'auto'
+      post_pr_comment: false
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
