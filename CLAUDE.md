@@ -1,6 +1,6 @@
 # Argus
 
-Composite actions for comprehensive security scanning, designed for GitHub Enterprise Server (GHES) with github.com access.
+Python SDK and GitHub Actions toolkit for comprehensive security scanning. The **Argus SDK** (`argus/` package) is the primary interface for running scans locally or in CI. **Composite actions** (`.github/actions/`) remain available for GitHub Actions users, designed for GitHub Enterprise Server (GHES) with github.com access.
 
 ---
 
@@ -25,11 +25,11 @@ Composite actions for comprehensive security scanning, designed for GitHub Enter
 
 ## Testing Philosophy
 
-**Just completed migration: ALL action scripts and tests are now Python.**
+**Python everywhere: SDK, action scripts, and all tests are Python.**
 
 ### Standards
 
-- **Single Language**: Python for all action scripts and tests (not Bash, not Node.js for actions)
+- **Single Language**: Python for the SDK, all action scripts, and tests (not Bash, not Node.js for actions)
 - **Single Test Framework**: pytest (not jest, mocha, or other)
 - **Single Coverage Tool**: pytest-cov (with `--cov-fail-under=80` in pytest.ini)
 - **Minimum Coverage**: 80% enforced at all times
@@ -37,10 +37,28 @@ Composite actions for comprehensive security scanning, designed for GitHub Enter
 ### Test Structure
 
 ```
-.github/actions/scanner-{name}/
+argus/                                 # SDK package
+├── tests/
+│   ├── conftest.py
+│   ├── test_cli.py                   # CLI tests
+│   ├── test_config.py                # Config loading tests
+│   ├── test_containers.py            # Docker execution tests
+│   ├── test_engine.py                # Scan engine tests
+│   ├── test_models.py                # Data model tests
+│   ├── scanners/                     # Per-scanner unit tests
+│   │   ├── test_bandit.py
+│   │   ├── test_gitleaks.py
+│   │   └── ...                       # One test file per scanner
+│   └── reporters/                    # Reporter tests
+│       ├── test_terminal.py
+│       ├── test_markdown.py
+│       ├── test_sarif.py
+│       └── test_json_report.py
+
+.github/actions/scanner-{name}/       # Composite action tests
 ├── scripts/
-│   ├── parse-results.py       # Scanner output → JSON
-│   └── generate-summary.py    # JSON → Markdown
+│   ├── parse-results.py              # Scanner output → JSON
+│   └── generate-summary.py           # JSON → Markdown
 └── tests/
     ├── test_parse_results.py
     ├── test_generate_summary.py
@@ -48,7 +66,7 @@ Composite actions for comprehensive security scanning, designed for GitHub Enter
 
 tests/
 ├── fixtures/
-│   └── scanner-outputs/       # Pre-captured real scanner results
+│   └── scanner-outputs/              # Pre-captured real scanner results
 └── (integration tests)
 ```
 
@@ -61,19 +79,25 @@ pytest
 # Fast validation (no coverage)
 pytest --no-cov -q
 
-# Specific action
+# SDK tests only
+pytest argus/tests/
+
+# Specific SDK scanner
+pytest argus/tests/scanners/test_bandit.py
+
+# Specific composite action
 pytest .github/actions/scanner-clamav/tests/
 ```
 
-### Reference Implementation
+### Reference Implementations
 
-**`scanner-clamav`** is the reference pattern for:
+**SDK scanner**: Any scanner in `argus/scanners/` (e.g., `bandit.py`) — implements the `Scanner` protocol with `scan()`, `is_available()`, and `install_command()` methods.
+
+**Composite action**: `scanner-clamav` remains the reference pattern for:
 - Python action script structure
 - Test organization and fixtures
 - Coverage targets (80%+)
 - How to test scanner parsing and summary generation
-
-All new scanner actions should follow this exact pattern.
 
 ---
 
@@ -183,7 +207,47 @@ Copilot reads only this file (via `.github/copilot-instructions.md` symlink). Gl
 
 ## Architecture
 
-Composite actions are the primary architecture. Reusable workflows are maintained as thin backwards-compatible wrappers.
+The project has two interfaces: the **Argus SDK** (primary) and **composite actions** (for GitHub Actions users).
+
+### Argus SDK (`argus/` package)
+
+The SDK is the primary interface. Users run `python -m argus scan --config argus.yml` to execute scans locally or in CI. The engine handles tool installation via Docker containers or local execution.
+
+```
+argus/                                 # Python SDK package
+├── __init__.py                       # Version (0.1.0)
+├── __main__.py                       # Entry point: python -m argus
+├── cli.py                            # CLI (click-based): scan, list, version
+├── containers.py                     # Docker execution backend
+├── core/
+│   ├── config.py                     # YAML config loading (argus.yml)
+│   ├── engine.py                     # Scan orchestration engine
+│   ├── models.py                     # Finding, ScanResult, Severity
+│   └── scanner.py                    # Scanner protocol definition
+├── scanners/                         # Scanner modules (one per tool)
+│   ├── __init__.py                   # SCANNER_REGISTRY + get_scanner()
+│   ├── bandit.py                     # Python SAST
+│   ├── checkov.py                    # IaC scanning
+│   ├── clamav.py                     # Malware scanning
+│   ├── container.py                  # Container image scanning
+│   ├── gitleaks.py                   # Secret detection
+│   ├── opengrep.py                   # Pattern-based SAST
+│   ├── osv.py                        # Dependency vulnerability scanning
+│   ├── supply_chain.py               # GitHub Actions security
+│   ├── trivy_iac.py                  # IaC scanning (Trivy)
+│   └── zap.py                        # DAST web scanning
+├── reporters/                        # Output format handlers
+│   ├── __init__.py                   # REPORTER_REGISTRY
+│   ├── terminal.py                   # Rich terminal output
+│   ├── markdown.py                   # Markdown summary
+│   ├── sarif.py                      # SARIF format
+│   └── json_report.py               # JSON format
+└── tests/                            # 20 test files, comprehensive coverage
+```
+
+### Composite Actions (for GitHub Actions users)
+
+Composite actions remain for users who consume Argus directly in GitHub Actions workflows.
 
 ```
 .github/actions/
@@ -209,7 +273,18 @@ examples/workflows/                   # User-facing workflow examples
 - Easier to compose and customize
 - Faster execution (no cross-repo workflow calls)
 
-## Scanner Action Flow
+## SDK Scan Flow
+
+1. User runs `python -m argus scan --config argus.yml` (or specifies scanners via CLI flags)
+2. Config loaded by `argus.core.config` — resolves scanner list, paths, severity thresholds
+3. Engine (`argus.core.engine`) iterates over requested scanners
+4. Each scanner module implements the `Scanner` protocol: `scan()`, `is_available()`, `install_command()`
+5. Engine checks `is_available()` — if the tool is missing, it can run via Docker container (`containers.py`)
+6. Scanner runs the underlying tool, parses output into `Finding` / `ScanResult` objects
+7. Results passed to reporters (terminal, markdown, SARIF, JSON) based on config
+8. Exit code reflects severity threshold compliance
+
+## Composite Action Flow
 
 1. User configures action inputs (paths, severity thresholds, etc.)
 2. Action runs scanner with appropriate configuration
@@ -220,7 +295,45 @@ examples/workflows/                   # User-facing workflow examples
 7. Optional: PR comment posted
 8. Optional: SARIF uploaded to GitHub Security
 
-## Adding a New Scanner Action
+## Adding a New Scanner
+
+### SDK Scanner Module (preferred)
+
+Create a single Python file implementing the `Scanner` protocol:
+
+1. **Create module** at `argus/scanners/{name}.py`:
+   ```python
+   from argus.core.scanner import Scanner
+   from argus.core.models import ScanResult, Finding, Severity
+
+   class MyScanner:
+       name = "my-scanner"
+
+       def scan(self, path: str, config: dict | None = None) -> ScanResult:
+           # Run the tool, parse output, return ScanResult with findings
+           ...
+
+       def is_available(self) -> bool:
+           # Check if the tool is installed
+           ...
+
+       def install_command(self) -> str | None:
+           # Return install command, or None
+           ...
+   ```
+
+2. **Register** in `argus/scanners/__init__.py`:
+   ```python
+   from .my_scanner import MyScanner
+   # Add to SCANNER_REGISTRY:
+   "my-scanner": MyScanner,
+   ```
+
+3. **Add tests** at `argus/tests/scanners/test_my_scanner.py`
+
+4. **Update documentation** and `.ai/architecture.yaml`
+
+### Composite Action (for GitHub Actions users)
 
 See `CONTRIBUTING.md` for the complete composite actions development guide. Key steps:
 
@@ -275,7 +388,10 @@ See `CONTRIBUTING.md` for the complete composite actions development guide. Key 
 All tests are Python with pytest. Coverage enforced at 80% via pytest-cov.
 
 ```
-.github/actions/scanner-{name}/tests/   # Co-located with each action
+argus/tests/                             # SDK unit tests (20 test files)
+argus/tests/scanners/                    # Per-scanner tests (10 scanners)
+argus/tests/reporters/                   # Reporter tests (4 reporters)
+.github/actions/scanner-{name}/tests/    # Co-located with each action
 tests/fixtures/                          # Shared mock data and test apps
 ```
 
@@ -295,7 +411,40 @@ Most scanner actions support these common inputs:
 
 ## Usage Examples
 
-### Individual Scanner
+### SDK Usage (Primary)
+
+```bash
+# Run all scanners from config file
+python -m argus scan --config argus.yml
+
+# Run specific scanners
+python -m argus scan --scanners bandit,gitleaks --path ./src
+
+# List available scanners
+python -m argus list
+
+# Check version
+python -m argus version
+```
+
+**Config file** (`argus.yml`):
+```yaml
+scanners:
+  - bandit
+  - gitleaks
+  - osv
+scan_path: "."
+fail_on_severity: "high"
+reporters:
+  - terminal
+  - sarif
+```
+
+See `argus.example.yml` for a complete configuration reference.
+
+### Composite Action Usage (GitHub Actions)
+
+#### Individual Scanner
 ```yaml
 - name: Run Bandit Python Scanner
   uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.0
@@ -307,14 +456,14 @@ Most scanner actions support these common inputs:
     enable_code_security: true
 ```
 
-### Complete Security Workflow
+#### Complete Security Workflow
 See `examples/composite-actions-example.yml` for a full example with:
 - Multiple scanners running in parallel
 - security-summary aggregating results
 - PR comments with findings
 - SARIF uploads to GitHub Security
 
-### Config-Driven Container Scanning
+#### Config-Driven Container Scanning
 ```yaml
 - uses: huntridge-labs/argus/.github/actions/parse-container-config@0.7.0
   id: parse
@@ -398,6 +547,14 @@ Examples are automatically validated by `.github/workflows/test-examples-functio
 
 - `CLAUDE.md` - AI assistant reference guide (this file)
 - `AGENTS.md` - Cross-tool AI entry point
+- `argus/` - Python SDK package (primary interface)
+- `argus/core/scanner.py` - Scanner protocol definition
+- `argus/scanners/__init__.py` - Scanner registry
+- `argus/reporters/__init__.py` - Reporter registry
+- `argus.yml` - Project scan configuration
+- `argus.example.yml` - Configuration reference with all options
+- `version.yaml` - Single version source for releases
+- `renovate.yaml` - Dependency update configuration
 - `CONTRIBUTING.md` - Composite actions contributor guide
 - `tests/CONTRIBUTING.md` - How to add tests for actions
 - `examples/README.md` - Example usage patterns and testing info

@@ -1,13 +1,14 @@
 # Contributing to Argus
 
-Welcome! This guide covers how to contribute composite actions to the security scanning toolkit.
+Welcome! This guide covers how to contribute scanners to the security scanning toolkit.
 
-> **Architecture Note**: This project uses an actions-first architecture where scanner logic lives in composite actions (`.github/actions/`). The reusable workflows (`.github/workflows/`) are thin wrappers maintained for backwards compatibility on github.com.
+> **Architecture Note**: The **argus Python SDK** (`argus/` package) is the primary way to add and run scanners. Each scanner is a single Python module implementing the `Scanner` protocol. **Composite actions** (`.github/actions/`) remain available as a secondary path for GitHub Actions users who need direct workflow integration.
 
 ## Table of Contents
 
 - [Getting Started](#getting-started)
-- [Adding a New Scanner Action](#adding-a-new-scanner-action)
+- [Adding a Scanner via the SDK](#adding-a-scanner-via-the-sdk)
+- [Adding a Composite Action (GitHub Actions)](#adding-a-composite-action-github-actions)
 - [Testing Your Changes](#testing-your-changes)
 - [Documentation Requirements](#documentation-requirements)
 - [Pull Request Process](#pull-request-process)
@@ -21,14 +22,30 @@ Welcome! This guide covers how to contribute composite actions to the security s
 
 - Git
 - GitHub account
-- Basic understanding of GitHub Actions
-- Familiarity with bash scripting (for parser scripts)
+- Python 3.11+
+- Familiarity with the `Scanner` protocol (`argus/core/scanner.py`)
 - Knowledge of the scanner tool you're integrating
+- Basic understanding of GitHub Actions (for composite action contributions)
 
 ### Project Structure
 
 ```
-.github/actions/
+argus/                            # Python SDK (primary interface)
+├── core/                         # Models, engine, config, scanner protocol
+│   ├── scanner.py               # Scanner protocol definition
+│   ├── models.py                # Finding, ScanResult, Severity
+│   └── engine.py                # Scan orchestration engine
+├── scanners/                     # Scanner modules (one .py per scanner)
+│   ├── __init__.py              # Scanner registry
+│   ├── bandit.py                # Example: Bandit SAST scanner
+│   └── ...                      # One module per scanner
+├── reporters/                    # Output: terminal, markdown, SARIF, JSON
+├── containers.py                 # Container image manifest
+└── tests/                        # SDK unit tests
+    ├── scanners/                # Per-scanner test files
+    └── ...
+
+.github/actions/                  # Composite actions (GitHub Actions integration)
 ├── scanner-*/                    # Scanner composite actions
 │   ├── action.yml               # Action definition
 │   ├── .docsite.yml             # Docsite category declaration
@@ -53,20 +70,228 @@ examples/
 
 tests/
 ├── fixtures/                    # Shared mock data and test apps
+│   └── scanner-outputs/         # Pre-captured scanner results
 └── unit/actions/                # Action schema validation
 ```
 
 ### Key Concepts
 
-**Composite Actions** vs **Reusable Workflows**:
-- ✅ Self-contained with bundled scripts
-- ✅ Works on GHES with github.com access
-- ✅ Easier to compose and test
-- ✅ No cross-repo workflow call overhead
+**Argus SDK** (primary path):
+- Single Python module per scanner implementing the `Scanner` protocol
+- SDK handles tool execution, Docker fallback, result parsing, and reporting
+- Register once in `argus/scanners/__init__.py` and the scanner is available everywhere
+
+**Composite Actions** (GitHub Actions integration):
+- Self-contained with bundled scripts
+- Works on GHES with github.com access
+- Easier to compose in workflow files
+- Optional wrapper around SDK scanners
 
 ---
 
-## Adding a New Scanner Action
+## Adding a Scanner via the SDK
+
+This is the primary way to add a new scanner. Each scanner is a single Python module that implements the `Scanner` protocol defined in `argus/core/scanner.py`.
+
+### Step 1: Create the Scanner Module
+
+Create `argus/scanners/my_scanner.py` implementing the `Scanner` protocol:
+
+```python
+"""My Scanner - brief description of what it scans."""
+
+import json
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+
+from argus.containers import get_image
+from argus.core.models import Finding, ScanResult, Severity
+
+
+class MyScanner:
+    """Wraps MyTool to scan for security issues."""
+
+    name = "my-scanner"
+    container_image = get_image("my-scanner")
+
+    def scan(self, path: str, config: dict | None = None) -> ScanResult:
+        """Run the scanner against the given path and return results."""
+        config = config or {}
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_file = Path(tmp_dir) / "results.json"
+            cmd = self._build_command(path, output_file, config)
+
+            result = subprocess.run(cmd, capture_output=True, text=True)
+
+            if result.returncode != 0:
+                return ScanResult(
+                    scanner=self.name,
+                    metadata={"error": result.stderr.strip()},
+                )
+
+            if not output_file.exists():
+                return ScanResult(
+                    scanner=self.name,
+                    metadata={"error": "No output file produced"},
+                )
+
+            findings = self.parse_results(output_file)
+            return ScanResult(
+                scanner=self.name,
+                findings=findings,
+                raw_report=output_file,
+            )
+
+    def is_available(self) -> bool:
+        """Check if the underlying tool is installed."""
+        return shutil.which("my-tool") is not None
+
+    def install_command(self) -> str | None:
+        """Return the shell command to install the tool, or None."""
+        return "pip install my-tool"
+
+    def container_args(self, config: dict | None = None) -> list[str]:
+        """Return CLI args for running the tool in a container."""
+        return [
+            "my-tool", "scan", "/workspace",
+            "-f", "json",
+            "-o", "/output/results.json",
+        ]
+
+    def parse_results(self, raw_output_path: Path) -> list[Finding]:
+        """Parse tool output into normalized Finding objects."""
+        data = json.loads(raw_output_path.read_text())
+        return [self._parse_finding(item) for item in data.get("results", [])]
+
+    def _parse_finding(self, item: dict) -> Finding:
+        """Convert a single result into a Finding."""
+        return Finding(
+            id=item.get("rule_id", "UNKNOWN"),
+            severity=Severity.from_string(item.get("severity", "UNKNOWN")),
+            title=item.get("message", ""),
+            description=item.get("message", ""),
+            location=item.get("file", ""),
+            scanner=self.name,
+        )
+
+    def _build_command(
+        self, path: str, output_file: Path, config: dict
+    ) -> list[str]:
+        """Build the CLI command."""
+        return ["my-tool", "scan", path, "-f", "json", "-o", str(output_file)]
+```
+
+**Scanner protocol requirements** (from `argus/core/scanner.py`):
+
+| Attribute/Method | Required | Description |
+|---|---|---|
+| `name: str` | Yes | Unique scanner identifier (e.g., `"bandit"`) |
+| `scan(path, config) -> ScanResult` | Yes | Run the scanner and return normalized results |
+| `is_available() -> bool` | Yes | Check if the tool is installed locally |
+| `install_command() -> str \| None` | Yes | Shell command to install the tool |
+| `container_image: str` | Optional | Docker image for container fallback |
+| `container_args(config) -> list[str]` | Optional | CLI args for containerized execution |
+| `parse_results(path) -> list[Finding]` | Optional | Parse raw output file into findings |
+
+**Reference implementation**: See `argus/scanners/bandit.py` for a complete, well-documented example.
+
+### Step 2: Register in the Scanner Registry
+
+Add your scanner to `argus/scanners/__init__.py`:
+
+```python
+from .my_scanner import MyScanner
+
+# Add to __all__
+__all__ = [
+    # ... existing scanners
+    "MyScanner",
+]
+
+# Add to SCANNER_REGISTRY
+SCANNER_REGISTRY = {
+    # ... existing entries
+    "my-scanner": MyScanner,
+}
+```
+
+### Step 3: Add Container Image (if applicable)
+
+If your scanner uses a container image, add it to `argus/containers.py`:
+
+```python
+# In OFFICIAL_IMAGES (for upstream images) or CUSTOM_IMAGES (for argus-built images)
+OFFICIAL_IMAGES = {
+    # ... existing entries
+    "my-scanner": "author/my-tool:version",
+}
+```
+
+### Step 4: Add Test Fixtures
+
+Add pre-captured scanner output to `tests/fixtures/scanner-outputs/my-scanner/`:
+
+```bash
+mkdir -p tests/fixtures/scanner-outputs/my-scanner
+# Add sample output files (clean scan, findings, error cases)
+```
+
+### Step 5: Add Tests
+
+Create `argus/tests/scanners/test_my_scanner.py`:
+
+```python
+"""Tests for MyScanner."""
+
+import json
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+
+from argus.scanners.my_scanner import MyScanner
+
+
+class TestMyScanner:
+    def setup_method(self):
+        self.scanner = MyScanner()
+
+    def test_name(self):
+        assert self.scanner.name == "my-scanner"
+
+    def test_is_available_when_installed(self):
+        with patch("shutil.which", return_value="/usr/bin/my-tool"):
+            assert self.scanner.is_available() is True
+
+    def test_is_available_when_missing(self):
+        with patch("shutil.which", return_value=None):
+            assert self.scanner.is_available() is False
+
+    def test_parse_results(self, tmp_path):
+        output_file = tmp_path / "results.json"
+        output_file.write_text(json.dumps({
+            "results": [
+                {"rule_id": "R001", "severity": "HIGH", "message": "Issue found"}
+            ]
+        }))
+        findings = self.scanner.parse_results(output_file)
+        assert len(findings) == 1
+        assert findings[0].id == "R001"
+
+    def test_install_command(self):
+        assert self.scanner.install_command() is not None
+```
+
+### Step 6 (Optional): Create Composite Action Wrapper
+
+If GitHub Actions users need a workflow-level integration, create a composite action wrapper. See [Adding a Composite Action](#adding-a-composite-action-github-actions) below.
+
+---
+
+## Adding a Composite Action (GitHub Actions)
 
 ### Step 1: Create Action Structure
 
@@ -354,14 +579,28 @@ Add your scanner to `examples/workflows/composite-actions-example.yml`:
 
 ### Testing Approach
 
-**Co-located tests** - pytest tests live with the actions they validate:
+**SDK tests** live in the `argus/tests/` package:
+```
+argus/tests/
+├── scanners/                   # Per-scanner unit tests
+│   ├── test_bandit.py
+│   ├── test_my_scanner.py
+│   └── ...
+├── reporters/                  # Reporter tests
+├── test_cli.py                 # CLI tests
+├── test_engine.py              # Engine tests
+├── test_models.py              # Model tests
+└── conftest.py
+```
+
+**Action tests** are co-located with the composite actions they validate:
 ```
 .github/actions/scanner-myScanner/
 ├── action.yml
 ├── scripts/
 │   ├── parse-results.py
 │   └── generate-summary.py
-└── tests/                      # ← Tests co-located here
+└── tests/                      # Action-level tests
     ├── test_parse_results.py
     ├── test_generate_summary.py
     └── conftest.py (optional)
@@ -370,23 +609,27 @@ Add your scanner to `examples/workflows/composite-actions-example.yml`:
 **Shared fixtures** - mock data centralized for reuse:
 ```
 tests/fixtures/
-├── scanner-outputs/            # Mock scanner results
+├── scanner-outputs/            # Pre-captured scanner results
 ├── test-apps/                  # Minimal test apps
 └── configs/                    # Test configurations
 ```
 
 **Run tests**:
 ```bash
-pytest                          # All tests with coverage
-pytest --no-cov -q              # Fast mode (no coverage)
+pytest                                    # All tests with coverage
+pytest --no-cov -q                        # Fast mode (no coverage)
+pytest argus/tests/                       # SDK tests only
+pytest argus/tests/ --no-cov -q           # Fast SDK tests
+pytest argus/tests/scanners/test_bandit.py  # Single scanner
 pytest .github/actions/scanner-x/tests/  # Single action tests
 ```
 
 **Key principles**:
-1. Tests co-located with actions they test
-2. Fixtures shared across actions (avoid duplication)
-3. Use synthetic data, not real vulnerabilities
-4. Measure coverage with pytest-cov
+1. SDK scanners tested in `argus/tests/scanners/`
+2. Action scripts tested co-located with their action
+3. Fixtures shared across both SDK and action tests (avoid duplication)
+4. Use synthetic data, not real vulnerabilities
+5. Measure coverage with pytest-cov
 
 See `tests/CONTRIBUTING.md` for detailed pytest guide.
 
@@ -424,6 +667,17 @@ Test infrastructure is complete:
 
 ### Validation Checklist
 
+**SDK scanners:**
+- [ ] Scanner implements all required protocol methods
+- [ ] Scanner registered in `argus/scanners/__init__.py`
+- [ ] Container image added to `argus/containers.py` (if applicable)
+- [ ] `parse_results` handles various input formats
+- [ ] `is_available` correctly detects tool presence
+- [ ] Unit tests in `argus/tests/scanners/`
+- [ ] Test fixtures in `tests/fixtures/scanner-outputs/`
+- [ ] All tests pass: `pytest argus/tests/`
+
+**Composite actions:**
 - [ ] Action runs without errors
 - [ ] All outputs are set correctly
 - [ ] Parser handles various input formats
@@ -442,7 +696,20 @@ Test infrastructure is complete:
 
 ## Documentation Requirements
 
-Every scanner action must include:
+### For SDK Scanners
+
+Every SDK scanner must include:
+
+1. **Module docstring** in `argus/scanners/my_scanner.py` describing what the scanner detects
+2. **Container image entry** in `argus/containers.py` (if the scanner supports container execution)
+3. **Registry entry** in `argus/scanners/__init__.py`
+4. **Test file** in `argus/tests/scanners/test_my_scanner.py`
+5. **Test fixtures** in `tests/fixtures/scanner-outputs/my-scanner/`
+6. **Changelog** entry in `CHANGELOG.md`
+
+### For Composite Actions
+
+Every composite action must include:
 
 1. **Action README.md**
    - Purpose and capabilities
@@ -451,7 +718,7 @@ Every scanner action must include:
    - Requirements
 
 2. **Docsite Registration**
-   - `.docsite.yml` with valid category (see Step 6 above)
+   - `.docsite.yml` with valid category (see composite action Step 6 above)
    - Validate with `cd scripts && python -m docsite --validate`
 
 3. **Inline Documentation**
@@ -476,10 +743,11 @@ Every scanner action must include:
 
 - [ ] Manual testing complete
 - [ ] Documentation complete
-- [ ] Unit tests added in `.github/actions/*/tests/`
+- [ ] SDK scanner tests added in `argus/tests/scanners/` (if SDK scanner)
+- [ ] Action tests added in `.github/actions/*/tests/` (if composite action)
 - [ ] All tests pass: `pytest`
 - [ ] Coverage meets 80% threshold
-- [ ] Follows existing patterns
+- [ ] Follows existing patterns (see `argus/scanners/bandit.py` for SDK reference)
 - [ ] Automated tests pass in CI
 
 ### PR Template
@@ -521,6 +789,9 @@ Brief description of the scanner.
 
 ### Naming Conventions
 
+- **SDK scanner modules**: `argus/scanners/{tool}.py` (snake_case, e.g., `trivy_iac.py`, `supply_chain.py`)
+- **SDK scanner classes**: `PascalCase` + `Scanner` suffix (e.g., `BanditScanner`, `TrivyIacScanner`)
+- **Scanner registry names**: kebab-case (e.g., `"trivy-iac"`, `"supply-chain"`)
 - **Actions**: `scanner-{tool}` or `linter-{tool}`
 - **Scripts**: `parse_results.py`, `generate_summary.py`
 - **Artifacts**: `{tool}-reports-{job_id}`, `scanner-summary-{tool}-{job_id}`
@@ -550,19 +821,22 @@ Brief description of the scanner.
 
 ---
 
-## Migration Complete ✅
+## Architecture Migration Complete
 
-All action scripts and tests are now Python with pytest:
-- ✅ All scripts converted to Python (`*.py`)
-- ✅ All tests migrated to pytest
-- ✅ Unified coverage with pytest-cov
-- ✅ Duplicate scripts eliminated (container-summary, zap-summary)
+- Argus Python SDK (`argus/`) is the primary scanner interface
+- 22 reusable workflow wrappers (`scanner-*.yml`) have been removed
+- All scanner logic consolidated into SDK modules implementing the `Scanner` protocol
+- SDK handles tool execution, Docker container fallback, result parsing, and reporting
+- Composite actions remain for direct GitHub Actions integration
+- All scripts and tests are Python with pytest
+- Unified coverage with pytest-cov
 
 ---
 
 ## Getting Help
 
-- 📋 Check existing actions for patterns
+- 📋 See `argus/scanners/bandit.py` for the SDK reference implementation
+- 📋 Check existing composite actions for action-level patterns
 - 📖 Review `CLAUDE.md` for architecture
 - 📝 See `tests/TODO.md` for testing
 - 💬 Open a [Discussion](https://github.com/huntridge-labs/argus/discussions)
