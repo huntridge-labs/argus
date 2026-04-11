@@ -212,7 +212,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'sast') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 15
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -247,7 +246,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'sast') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 15
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -282,7 +280,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'sast') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 20
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -319,7 +316,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'secrets') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 10
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -367,7 +363,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'infrastructure') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 15
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -401,7 +396,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'infrastructure') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 15
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -440,7 +434,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'infrastructure') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 15
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -508,7 +501,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'container') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 15
-    continue-on-error: true
 
     strategy:
       fail-fast: false
@@ -565,7 +557,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'container') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 15
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -611,7 +602,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'linters') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 10
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -639,7 +629,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'linters') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 10
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -667,7 +656,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'linters') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 10
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -695,7 +683,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'linters') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 10
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -723,7 +710,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'linters') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 10
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -751,7 +737,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'linters') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 10
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -778,12 +763,11 @@ jobs:
   test-zap:
     name: DAST / zap
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.test_group == 'all') ||
-      github.event_name != 'workflow_dispatch'
+    if: >-
+      github.event_name == 'pull_request' ||
+      github.event_name == 'push' ||
+      inputs.test_group == 'all'
     timeout-minutes: 25
-    continue-on-error: true
 
     services:
       podinfo:
@@ -843,12 +827,11 @@ jobs:
   test-clamav:
     name: Malware / clamav
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.test_group == 'all') ||
-      github.event_name != 'workflow_dispatch'
+    if: >-
+      github.event_name == 'pull_request' ||
+      github.event_name == 'push' ||
+      inputs.test_group == 'all'
     timeout-minutes: 20
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -893,7 +876,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'supply-chain') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 10
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -945,7 +927,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'dependencies') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 15
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -993,7 +974,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'dependencies') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 10
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -1038,7 +1018,6 @@ jobs:
     name: Summary / linting-summary
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -1069,7 +1048,6 @@ jobs:
     name: Parser / container-config
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -1095,7 +1073,6 @@ jobs:
     name: Parser / zap-config
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -1318,3 +1295,48 @@ jobs:
             echo "**Trigger:** $EVENT_NAME"
             echo "**Branch:** $REF_NAME"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # ============================================================================
+  # Test Results Gate
+  # Single required status check for branch protection
+  # Fails if ANY test job failed
+  # ============================================================================
+  test-results:
+    name: Test Results
+    if: always()
+    needs:
+      - validate-e2e-coverage
+      - test-bandit
+      - test-opengrep
+      - test-codeql
+      - test-secrets
+      - test-trivy-iac
+      - test-checkov
+      - test-scn-detector
+      - test-container
+      - test-syft
+      - test-linter-dockerfile
+      - test-linter-python
+      - test-linter-yaml
+      - test-linter-javascript
+      - test-linter-json
+      - test-linter-terraform
+      - test-zap
+      - test-clamav
+      - test-supply-chain
+      - test-osv
+      - test-dependency-review
+      - test-linting-summary
+      - test-parse-container-config
+      - test-parse-zap-config
+      - validate-examples
+      - test-summary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check test results
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
+            echo "::error::One or more test jobs failed"
+            exit 1
+          fi
+          echo "All test jobs passed"
