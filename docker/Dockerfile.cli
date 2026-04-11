@@ -8,10 +8,10 @@
 # ---------------------------------------------------------------------------
 FROM alpine:3.21 AS builder
 
-ARG TRIVY_VERSION=0.58.0
-ARG GRYPE_VERSION=0.86.1
-ARG SYFT_VERSION=1.18.1
-ARG GITLEAKS_VERSION=8.22.1
+ARG TRIVY_VERSION=0.69.3
+ARG GRYPE_VERSION=0.111.0
+ARG SYFT_VERSION=1.42.4
+ARG GITLEAKS_VERSION=8.30.1
 ARG ACTIONLINT_VERSION=1.7.12
 ARG OPENGREP_VERSION=1.18.0
 
@@ -68,9 +68,10 @@ COPY --from=builder /usr/local/bin/actionlint /usr/local/bin/actionlint
 COPY --from=builder /usr/local/bin/opengrep   /usr/local/bin/opengrep
 
 # Install Python-based scanning tools (exact pins)
+# Note: checkov excluded — requires Rust compilation on Alpine.
+# The engine falls back to the official bridgecrew/checkov container.
 RUN pip install --no-cache-dir \
     'bandit[toml,sarif]==1.9.4' \
-    'checkov==3.2.346' \
     "zizmor==${ZIZMOR_VERSION}" \
     'pyyaml==6.0.2'
 

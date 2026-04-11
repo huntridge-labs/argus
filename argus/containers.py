@@ -8,10 +8,10 @@ All container image references are centralized here for:
 
 # Official images from tool authors (used directly, not rebuilt by argus)
 OFFICIAL_IMAGES = {
-    "trivy": "aquasec/trivy:0.58.0",
-    "grype": "anchore/grype:0.86.1",
-    "syft": "anchore/syft:1.18.1",
-    "gitleaks": "zricethezav/gitleaks:v8.22.1",
+    "trivy": "aquasec/trivy:0.69.3",
+    "grype": "anchore/grype:0.111.0",
+    "syft": "anchore/syft:1.42.4",
+    "gitleaks": "zricethezav/gitleaks:v8.30.1",
     "clamav": "clamav/clamav:1.4",
     "checkov": "bridgecrew/checkov:3.2.346",
     "osv-scanner": "ghcr.io/google/osv-scanner:latest",
