@@ -151,6 +151,16 @@
             "flags": "g"
           },
           "replace": "${1}/{{version}}${2}"
+        },
+        {
+          "files": [
+            "package.json"
+          ],
+          "search": {
+            "pattern": "(\"version\":\\s*\")[^\"]+\"",
+            "flags": ""
+          },
+          "replace": "${1}{{version}}\""
         }
       ]
     }

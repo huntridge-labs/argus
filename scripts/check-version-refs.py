@@ -17,10 +17,12 @@ from pathlib import Path
 SKIP_DIRS = {
     'node_modules', '.git', '__pycache__', '.venv', 'venv',
     'htmlcov', 'coverage', '.tox', '.pytest_cache', 'site-build',
+    '.claude', '.agents',
 }
 SKIP_FILES = {
     'CHANGELOG.md', 'package-lock.json', 'check-version-refs.py',
     '.release-it.json', 'copilot-instructions.md', 'release_output.txt',
+    'test_check_version_refs.py',
 }
 
 # Inline marker to suppress version-ref warnings on a specific line
