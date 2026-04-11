@@ -1,12 +1,10 @@
 name: Security Scan (Argus)
 
-# Dogfood: we use argus to scan argus.
-# PRs build custom container images from the branch, then scan with them.
-# Main/scheduled scans use published images from GHCR.
+# Argus scans itself using published container images.
+# Runs on push to main (after release publishes images) and weekly.
+# PRs use build-containers.yml which builds images from the branch.
 
 on:
-  pull_request:
-    branches: [main]
   push:
     branches: [main]
   schedule:
@@ -27,7 +25,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          fetch-depth: 0  # Full history for gitleaks
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
@@ -39,26 +37,6 @@ jobs:
           pip install --quiet pyyaml
           echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
-      # Build custom images from this branch so the scan uses the PR's code.
-      # Official images (gitleaks, clamav, osv, trivy, etc.) are pulled from
-      # their authors' registries. Only our custom images need building.
-      - name: Build custom scanner images
-        run: |
-          echo "Building custom argus container images from this branch..."
-          for pair in \
-            "scanner-bandit:docker/Dockerfile.bandit" \
-            "scanner-opengrep:docker/Dockerfile.opengrep" \
-            "scanner-supply-chain:docker/Dockerfile.supply-chain"; do
-            IMAGE="${pair%%:*}"
-            DOCKERFILE="${pair#*:}"
-            TAG="ghcr.io/huntridge-labs/argus/${IMAGE}:1.0.0"
-            echo "  Building ${TAG}..."
-            docker build --quiet --tag "${TAG}" --file "${DOCKERFILE}" . || {
-              echo "::warning::Failed to build ${IMAGE} — scanner will be unavailable"
-            }
-          done
-          echo "Done."
-
       - name: Run Argus scan
         id: scan
         run: |
@@ -68,7 +46,6 @@ jobs:
           set -e
           echo "exit_code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
 
-          # Exit 0 = pass, 1 = findings above threshold (informational), 2 = error
           if [ "$EXIT_CODE" -eq 2 ]; then
             echo "::error::Argus scan failed with error (exit code 2)"
             exit 2

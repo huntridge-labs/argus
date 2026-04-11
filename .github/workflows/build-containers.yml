@@ -1,4 +1,13 @@
-name: Build & Scan Containers
+name: Build, Scan & Test Containers
+
+# Single workflow for container lifecycle on PRs:
+#   1. Build custom images from the branch (once)
+#   2. Scan images with Trivy + Grype
+#   3. Test argus CLI using the built images
+#   4. Post PR comment with aggregated results
+#
+# Images are built ONCE and shared via docker save/load artifacts.
+# No triple-build. No masked failures.
 
 on:
   pull_request:
@@ -7,6 +16,11 @@ on:
       - 'argus/**'
       - 'argus.yml'
       - '.github/workflows/build-containers.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docker/**'
+      - 'argus/**'
   workflow_dispatch:
 
 permissions:
@@ -14,18 +28,18 @@ permissions:
   security-events: write
   pull-requests: write
 
-# Cancel in-progress runs when a new commit is pushed
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: containers-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build-and-scan:
-    name: Build & Scan ${{ matrix.image }}
+  # ── Step 1: Build all custom images ──────────────────────────────────
+  build:
+    name: Build Images
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         include:
           - image: scanner-bandit
@@ -38,30 +52,71 @@ jobs:
             dockerfile: docker/Dockerfile.cli
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          persist-credentials: false
 
       - name: Build image
         run: |
           docker build \
-            --tag "${IMAGE_REGISTRY}/${IMAGE_NAME}:pr-${PR_NUMBER}" \
+            --tag "${IMAGE_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}" \
             --file "${DOCKERFILE}" \
             --label "org.opencontainers.image.revision=${COMMIT_SHA}" \
             .
         env:
           IMAGE_REGISTRY: ghcr.io/huntridge-labs/argus
           IMAGE_NAME: ${{ matrix.image }}
+          IMAGE_TAG: ${{ github.sha }}
           DOCKERFILE: ${{ matrix.dockerfile }}
-          PR_NUMBER: ${{ github.event.pull_request.number || 'local' }}
           COMMIT_SHA: ${{ github.sha }}
 
-      # Scan with Trivy (container vuln scanner)
-      - name: Scan image with Trivy
+      - name: Save image to artifact
+        run: |
+          docker save "${IMAGE_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}" \
+            | gzip > "/tmp/${IMAGE_NAME}.tar.gz"
+        env:
+          IMAGE_REGISTRY: ghcr.io/huntridge-labs/argus
+          IMAGE_NAME: ${{ matrix.image }}
+          IMAGE_TAG: ${{ github.sha }}
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: image-${{ matrix.image }}
+          path: /tmp/${{ matrix.image }}.tar.gz
+          retention-days: 1
+
+  # ── Step 2: Scan each image with Trivy + Grype ──────────────────────
+  scan:
+    name: Scan ${{ matrix.image }}
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: scanner-bandit
+          - image: scanner-opengrep
+          - image: scanner-supply-chain
+          - image: cli
+
+    steps:
+      - name: Download image artifact
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4
+        with:
+          name: image-${{ matrix.image }}
+          path: /tmp
+
+      - name: Load image
+        run: |
+          gunzip -c "/tmp/${IMAGE_NAME}.tar.gz" | docker load
+        env:
+          IMAGE_NAME: ${{ matrix.image }}
+
+      - name: Scan with Trivy
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
-          image-ref: "ghcr.io/huntridge-labs/argus/${{ matrix.image }}:pr-${{ github.event.pull_request.number || 'local' }}"
+          image-ref: "ghcr.io/huntridge-labs/argus/${{ matrix.image }}:${{ github.sha }}"
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
@@ -74,157 +129,247 @@ jobs:
           category: "container-${{ matrix.image }}"
         continue-on-error: true
 
-      # Also scan with Grype for cross-validation
-      - name: Scan image with Grype
+      - name: Scan with Grype
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7
         with:
-          image: "ghcr.io/huntridge-labs/argus/${{ matrix.image }}:pr-${{ github.event.pull_request.number || 'local' }}"
+          image: "ghcr.io/huntridge-labs/argus/${{ matrix.image }}:${{ github.sha }}"
           fail-build: false
           severity-cutoff: critical
 
-      # Generate scan report for aggregation
       - name: Generate scan report
         if: always()
         run: |
           mkdir -p scan-reports
           python3 -c "
           import json
-          sarif_file = 'trivy-results.sarif'
-          image = '${IMAGE_NAME}'
           try:
-              sarif = json.load(open(sarif_file))
+              sarif = json.load(open('trivy-results.sarif'))
               results = sarif.get('runs', [{}])[0].get('results', [])
               report = {
-                  'image': image,
+                  'image': '${IMAGE_NAME}',
                   'finding_count': len(results),
                   'findings': [
-                      {
-                          'id': r.get('ruleId', 'unknown'),
-                          'message': r.get('message', {}).get('text', ''),
-                          'level': r.get('level', 'warning'),
-                      }
-                      for r in results[:20]  # Top 20 findings
+                      {'id': r.get('ruleId', ''), 'message': r.get('message', {}).get('text', '')[:100], 'level': r.get('level', '')}
+                      for r in results[:20]
                   ],
               }
           except Exception:
-              report = {'image': image, 'finding_count': -1, 'findings': []}
-          json.dump(report, open(f'scan-reports/{image}.json', 'w'))
+              report = {'image': '${IMAGE_NAME}', 'finding_count': -1, 'findings': []}
+          json.dump(report, open('scan-reports/${IMAGE_NAME}.json', 'w'))
           "
         env:
           IMAGE_NAME: ${{ matrix.image }}
 
-      - name: Upload scan artifacts
+      - name: Upload scan report
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
-          name: container-scan-${{ matrix.image }}
-          path: |
-            trivy-results.sarif
-            scan-reports/
-          retention-days: 30
+          name: scan-report-${{ matrix.image }}
+          path: scan-reports/
+          retention-days: 7
 
-      - name: Post scan summary
-        if: always()
+  # ── Step 3: Test argus CLI using built images ───────────────────────
+  test-cli:
+    name: Test Argus CLI
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.13'
+
+      - name: Install Argus
         run: |
-          {
-            echo "## Container Scan: ${IMAGE_NAME}"
-            echo ""
-            echo "Image: \`${IMAGE_REGISTRY}/${IMAGE_NAME}:pr-${PR_NUMBER}\`"
-            echo ""
-            echo "### Trivy Results (CRITICAL + HIGH)"
-            echo ""
-            if [ -f trivy-results.sarif ]; then
-              FINDING_COUNT=$(python3 -c "
-          import json
-          sarif = json.load(open('trivy-results.sarif'))
-          print(len(sarif.get('runs', [{}])[0].get('results', [])))
-          " 2>/dev/null || echo "unknown")
-              echo "Total findings: **${FINDING_COUNT}**"
-            else
-              echo "No SARIF results found."
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-        env:
-          IMAGE_REGISTRY: ghcr.io/huntridge-labs/argus
-          IMAGE_NAME: ${{ matrix.image }}
-          PR_NUMBER: ${{ github.event.pull_request.number || 'local' }}
+          pip install --quiet pyyaml
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
-  # Post aggregated container scan results as a PR comment
+      # Load all custom images built in step 1
+      - name: Download all image artifacts
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4
+        with:
+          pattern: image-*
+          merge-multiple: true
+          path: /tmp/images
+
+      - name: Load and retag images
+        run: |
+          for tarball in /tmp/images/*.tar.gz; do
+            gunzip -c "$tarball" | docker load
+          done
+          # Retag from SHA to version tag that containers.py expects
+          for image in scanner-bandit scanner-opengrep scanner-supply-chain cli; do
+            SHA_TAG="ghcr.io/huntridge-labs/argus/${image}:${GITHUB_SHA}"
+            VERSION_TAG="ghcr.io/huntridge-labs/argus/${image}:1.0.0"
+            if docker image inspect "$SHA_TAG" > /dev/null 2>&1; then
+              docker tag "$SHA_TAG" "$VERSION_TAG"
+            fi
+          done
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+
+      - name: Test scanner listing
+        run: |
+          OUTPUT=$(python -m argus scan --list)
+          echo "$OUTPUT"
+          for scanner in bandit clamav trivy-iac gitleaks osv checkov opengrep supply-chain zap container; do
+            echo "$OUTPUT" | grep -q "$scanner" || { echo "FAIL: $scanner not listed"; exit 1; }
+          done
+
+      - name: Run argus scan
+        run: |
+          set +e
+          python -m argus scan \
+            --config argus.yml \
+            --format terminal \
+            --format sarif \
+            --format json \
+            --output-dir ./cli-test-results \
+            --verbose
+          EXIT_CODE=$?
+          set -e
+          if [ "$EXIT_CODE" -eq 2 ]; then
+            echo "::error::Argus scan failed with error (exit code 2)"
+            exit 2
+          fi
+          echo "Scan completed with exit code $EXIT_CODE"
+
+      - name: Verify outputs
+        run: |
+          for f in cli-test-results/argus-results.json cli-test-results/argus-results.sarif; do
+            test -f "$f" || { echo "FAIL: $f not produced"; exit 1; }
+          done
+
+      - name: Validate SARIF
+        run: |
+          python3 -c "
+          import json
+          data = json.load(open('cli-test-results/argus-results.sarif'))
+          assert data.get('version') == '2.1.0', f'Bad SARIF version: {data.get(\"version\")}'
+          assert 'runs' in data, 'Missing runs'
+          print(f'SARIF valid: {len(data[\"runs\"])} run(s)')
+          "
+
+      - name: Validate JSON results
+        run: |
+          python3 -c "
+          import json
+          data = json.load(open('cli-test-results/argus-results.json'))
+          results = data.get('results', [])
+          assert len(results) > 0, 'No scanner results'
+          scanners = [r['scanner'] for r in results]
+          total = sum(len(r.get('findings', [])) for r in results)
+          print(f'Scanners: {scanners}')
+          print(f'Total findings: {total}')
+          "
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: argus-cli-test-results
+          path: cli-test-results/
+          retention-days: 7
+
+  # ── Step 4: Post PR comment with results ────────────────────────────
   comment-pr:
     name: Container Scan Summary
     if: always() && github.event_name == 'pull_request'
-    needs: [build-and-scan]
+    needs: [scan, test-cli]
     runs-on: ubuntu-latest
+
     steps:
-      - name: Download all scan reports
+      - name: Download scan reports
         uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4
         with:
-          pattern: container-scan-*
+          pattern: scan-report-*
           merge-multiple: true
           path: scan-reports
 
+      - name: Download CLI test results
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4
+        with:
+          name: argus-cli-test-results
+          path: cli-results
+        continue-on-error: true
+
       - name: Generate PR comment
-        id: comment
         run: |
           python3 -c "
           import json, glob, os
 
-          reports = sorted(glob.glob('scan-reports/*.json'))
           lines = ['## Container Image Scan Results', '']
-          lines.append('| Image | Findings (CRITICAL+HIGH) | Status |')
-          lines.append('|-------|-------------------------|--------|')
 
-          total = 0
-          for path in reports:
-              data = json.load(open(path))
-              name = data['image']
-              count = data['finding_count']
-              if count < 0:
-                  status = 'Scan failed'
-              elif count == 0:
-                  status = 'Clean'
-              else:
-                  status = f'{count} finding(s)'
-                  total += count
-              icon = 'pass' if count == 0 else ('fail' if count < 0 else 'warning')
-              emoji = {'pass': ':white_check_mark:', 'fail': ':x:', 'warning': ':warning:'}[icon]
-              lines.append(f'| \`{name}\` | {count if count >= 0 else \"N/A\"} | {emoji} {status} |')
+          # Container vulnerability table
+          reports = sorted(glob.glob('scan-reports/*.json'))
+          if reports:
+              lines.append('### Image Vulnerability Scan (Trivy + Grype)')
+              lines.append('')
+              lines.append('| Image | CRITICAL+HIGH | Status |')
+              lines.append('|-------|:---:|--------|')
+              total_vulns = 0
+              for path in reports:
+                  data = json.load(open(path))
+                  name = data['image']
+                  count = data['finding_count']
+                  if count < 0:
+                      emoji, status = ':x:', 'Scan failed'
+                  elif count == 0:
+                      emoji, status = ':white_check_mark:', 'Clean'
+                  else:
+                      emoji, status = ':warning:', f'{count} finding(s)'
+                      total_vulns += count
+                  lines.append(f'| \`{name}\` | {count if count >= 0 else \"N/A\"} | {emoji} {status} |')
+              lines.append('')
 
-          lines.append('')
-          if total > 0:
-              lines.append(f'**Total: {total} finding(s) across all images.** See the Security tab for details.')
-          else:
-              lines.append('All images clean.')
-          lines.append('')
+          # Argus CLI scan summary
+          cli_json = 'cli-results/argus-results.json'
+          if os.path.exists(cli_json):
+              data = json.load(open(cli_json))
+              results = data.get('results', [])
+              scanners = [r['scanner'] for r in results]
+              total = sum(len(r.get('findings', [])) for r in results)
+              lines.append('### Argus CLI Scan')
+              lines.append('')
+              lines.append(f'Scanners executed: **{len(scanners)}** ({', '.join(scanners)})')
+              lines.append(f'Total findings: **{total}**')
+              lines.append('')
+
           lines.append('---')
-          lines.append('*Scanned with Trivy + Grype. SARIF uploaded to Security tab.*')
+          lines.append('*Container scans: Trivy + Grype. Code scan: Argus CLI. SARIF uploaded to Security tab.*')
 
-          body = '\n'.join(lines)
-          # Write to file for gh pr comment
           with open('comment-body.md', 'w') as f:
-              f.write(body)
-          print(body)
+              f.write('\n'.join(lines))
+          print('\n'.join(lines))
           "
 
       - name: Post PR comment
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
         run: |
-          # Update or create the comment using a marker
-          MARKER="<!-- argus-container-scan -->"
           BODY=$(cat comment-body.md)
+          MARKER="<!-- argus-container-scan -->"
+
+          # Find existing comment by marker
+          COMMENT_ID=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" \
+            --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" 2>/dev/null | head -1)
+
           FULL_BODY="${MARKER}
           ${BODY}"
 
-          # Find existing comment
-          COMMENT_ID=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
-            --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" 2>/dev/null | head -1)
-
           if [ -n "$COMMENT_ID" ]; then
-            gh api "repos/${{ github.repository }}/issues/comments/${COMMENT_ID}" \
+            gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" \
               -X PATCH -f body="$FULL_BODY"
           else
-            gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" \
               -f body="$FULL_BODY"
           fi
