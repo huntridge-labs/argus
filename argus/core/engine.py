@@ -195,11 +195,17 @@ class ArgusEngine:
     def _run_scanner(
         self, scanner, path: str, config: dict | None
     ) -> ScanResult:
-        """Run a scanner using the appropriate backend."""
+        """Run a scanner using the appropriate backend.
+
+        Backend selection:
+          local  - use locally installed tools only, fail if not installed
+          auto   - containers first (immutable), local fallback if no image
+          docker - containers only, fail if unavailable
+        """
         backend = self.config.execution.backend
 
-        # Local execution
-        if backend == "local" or (backend == "auto" and scanner.is_available()):
+        # Explicit local: user accepts version risk
+        if backend == "local":
             if not scanner.is_available():
                 raise RuntimeError(
                     f"Scanner '{scanner.name}' not installed locally. "
@@ -207,26 +213,40 @@ class ArgusEngine:
                 )
             return scanner.scan(path, config)
 
-        # Docker execution
-        if backend == "docker" or (backend == "auto" and not scanner.is_available()):
+        # auto or docker: prefer containers for immutable execution
+        if backend in ("auto", "docker"):
             container_image = getattr(scanner, "container_image", "")
-            if not container_image:
+            if container_image and self._is_docker_available():
+                return self._run_in_container(scanner, path, config)
+
+            # docker backend requires containers — fail explicitly
+            if backend == "docker":
+                if not container_image:
+                    raise RuntimeError(
+                        f"Scanner '{scanner.name}' has no container image "
+                        f"and backend is 'docker'."
+                    )
                 raise RuntimeError(
-                    f"Scanner '{scanner.name}' not available locally "
-                    f"and has no container image. "
-                    f"Install: {scanner.install_command()}"
+                    f"Docker not available. "
+                    f"Install Docker: https://docs.docker.com/get-docker/"
                 )
-            if not self._is_docker_available():
-                raise RuntimeError(
-                    f"Scanner '{scanner.name}' not installed locally "
-                    f"and Docker not available. "
-                    f"Install the tool: {scanner.install_command()}\n"
-                    f"Or install Docker: https://docs.docker.com/get-docker/"
+
+            # auto fallback: use local tool if no container image defined
+            if scanner.is_available():
+                logger.info(
+                    "No container image for '%s', using local tool",
+                    scanner.name,
                 )
-            return self._run_in_container(scanner, path, config)
+                return scanner.scan(path, config)
+
+            raise RuntimeError(
+                f"Scanner '{scanner.name}' has no container image "
+                f"and is not installed locally. "
+                f"Install: {scanner.install_command()}"
+            )
 
         raise RuntimeError(
-            f"Cannot run scanner '{scanner.name}': no execution backend available"
+            f"Unknown execution backend '{backend}' for scanner '{scanner.name}'"
         )
 
     # ------------------------------------------------------------------

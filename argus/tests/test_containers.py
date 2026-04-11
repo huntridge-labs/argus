@@ -27,12 +27,12 @@ class TestContainerManifest:
 
     def test_known_official_scanners(self):
         expected = ["trivy", "grype", "syft", "gitleaks", "clamav",
-                    "checkov", "osv-scanner", "zap", "semgrep"]
+                    "checkov", "osv-scanner", "zap"]
         for name in expected:
             assert name in OFFICIAL_IMAGES, f"Missing official image: {name}"
 
     def test_known_custom_scanners(self):
-        expected = ["bandit", "supply-chain", "cli"]
+        expected = ["bandit", "semgrep", "supply-chain", "cli"]
         for name in expected:
             assert name in CUSTOM_IMAGES, f"Missing custom image: {name}"
 

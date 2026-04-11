@@ -1,40 +1,87 @@
-FROM python:3.12-slim
+# =============================================================================
+# Argus CLI — All-in-one security scanning image
+# Multi-stage build: binary downloads in builder, clean runtime
+# =============================================================================
 
-ARG OPENGREP_VERSION=1.18.0
-ARG ZIZMOR_VERSION=1.23.1
+# ---------------------------------------------------------------------------
+# Stage 1: Download and verify binary tools
+# ---------------------------------------------------------------------------
+FROM alpine:3.21 AS builder
+
+ARG TRIVY_VERSION=0.58.0
+ARG GRYPE_VERSION=0.86.1
+ARG SYFT_VERSION=1.18.1
+ARG GITLEAKS_VERSION=8.22.1
 ARG ACTIONLINT_VERSION=1.7.12
+ARG OPENGREP_VERSION=1.18.0
 
-# Install system dependencies and tool binaries
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl clamav clamav-daemon && \
-    # Trivy
-    curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin && \
-    # Grype
-    curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin && \
-    # Syft
-    curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin && \
-    # Gitleaks
-    curl -sSfL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_linux_x64.tar.gz | tar -xz -C /usr/local/bin gitleaks && \
-    # OpenGrep
-    curl -sSfL "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86" \
-      -o /usr/local/bin/opengrep && chmod +x /usr/local/bin/opengrep && \
-    # Actionlint
-    curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
-      | tar -xz -C /usr/local/bin actionlint && \
-    # Cleanup
-    apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache curl tar
 
-# Install Python-based tools and argus
+# Trivy
+RUN curl -sSfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+      | tar -xz -C /usr/local/bin trivy
+
+# Grype
+RUN curl -sSfL "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_linux_amd64.tar.gz" \
+      | tar -xz -C /usr/local/bin grype
+
+# Syft
+RUN curl -sSfL "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz" \
+      | tar -xz -C /usr/local/bin syft
+
+# Gitleaks
+RUN curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+      | tar -xz -C /usr/local/bin gitleaks
+
+# Actionlint
+RUN curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+      | tar -xz -C /usr/local/bin actionlint
+
+# OpenGrep
+RUN curl -sSfL "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86" \
+      -o /usr/local/bin/opengrep && \
+    chmod +x /usr/local/bin/opengrep
+
+# ---------------------------------------------------------------------------
+# Stage 2: Runtime image
+# ---------------------------------------------------------------------------
+FROM python:3.13-alpine
+
+LABEL org.opencontainers.image.source="https://github.com/huntridge-labs/argus"
+LABEL org.opencontainers.image.description="Argus CLI — all-in-one security scanning toolkit"
+LABEL org.opencontainers.image.licenses="AGPL-3.0"
+
+ARG ZIZMOR_VERSION=1.23.1
+
+# ClamAV requires apk — no official static binary for Alpine
+RUN apk add --no-cache \
+    clamav \
+    clamav-libunrar \
+    git
+
+# Copy binary tools from builder
+COPY --from=builder /usr/local/bin/trivy      /usr/local/bin/trivy
+COPY --from=builder /usr/local/bin/grype      /usr/local/bin/grype
+COPY --from=builder /usr/local/bin/syft       /usr/local/bin/syft
+COPY --from=builder /usr/local/bin/gitleaks   /usr/local/bin/gitleaks
+COPY --from=builder /usr/local/bin/actionlint /usr/local/bin/actionlint
+COPY --from=builder /usr/local/bin/opengrep   /usr/local/bin/opengrep
+
+# Install Python-based scanning tools (exact pins)
 RUN pip install --no-cache-dir \
-    'bandit[toml,sarif]>=1.7.5' \
-    'checkov>=3.0' \
+    'bandit[toml,sarif]==1.9.4' \
+    'checkov==3.2.346' \
     "zizmor==${ZIZMOR_VERSION}" \
-    'osv-scanner>=1.9.0' \
-    'pyyaml>=6.0'
+    'pyyaml==6.0.2'
 
-# Install argus SDK (future: pip install argus-security)
+# Create non-root user
+RUN adduser -D -u 1000 argus
+
+# Install argus SDK
 COPY argus/ /opt/argus/argus/
 COPY argus.example.yml /opt/argus/
 ENV PYTHONPATH=/opt/argus
 
+USER argus
+WORKDIR /workspace
 ENTRYPOINT ["python", "-m", "argus"]

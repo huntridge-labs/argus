@@ -6,7 +6,7 @@ All container image references are centralized here for:
 3. Registry override support
 """
 
-# Official images from tool authors
+# Official images from tool authors (used directly, not rebuilt by argus)
 OFFICIAL_IMAGES = {
     "trivy": "aquasec/trivy:0.58.0",
     "grype": "anchore/grype:0.86.1",
@@ -16,14 +16,15 @@ OFFICIAL_IMAGES = {
     "checkov": "bridgecrew/checkov:3.2.346",
     "osv-scanner": "ghcr.io/google/osv-scanner:latest",
     "zap": "ghcr.io/zaproxy/zaproxy:2.16.0",
-    "semgrep": "returntocorp/semgrep:1.102.0",
 }
 
-# Custom images built by Argus (no official image available)
+# Custom images built and published by Argus to ghcr.io/huntridge-labs/argus/
+# Versions managed by release-it regex bumper
 CUSTOM_IMAGES = {
-    "bandit": "ghcr.io/huntridge-labs/argus/scanner-bandit:0.8.0",
-    "supply-chain": "ghcr.io/huntridge-labs/argus/scanner-supply-chain:0.8.0",
-    "cli": "ghcr.io/huntridge-labs/argus/cli:0.8.0",
+    "bandit": "ghcr.io/huntridge-labs/argus/scanner-bandit:1.0.0",
+    "semgrep": "ghcr.io/huntridge-labs/argus/scanner-opengrep:1.0.0",
+    "supply-chain": "ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.0.0",
+    "cli": "ghcr.io/huntridge-labs/argus/cli:1.0.0",
 }
 
 

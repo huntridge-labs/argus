@@ -223,7 +223,8 @@ class TestDockerExecutionBackend:
         summary = engine.run(scanner_names=["bandit"])
         assert len(summary.results) == 0
 
-    def test_auto_backend_prefers_local(self):
+    def test_auto_backend_prefers_container(self, monkeypatch):
+        """auto backend uses containers first when Docker is available."""
         engine = self._make_engine(backend="auto")
         findings = [Finding(id="1", severity=Severity.HIGH, title="f1")]
         scanner = MockScanner(
@@ -232,7 +233,50 @@ class TestDockerExecutionBackend:
         )
         engine.register_scanner(scanner)
 
+        # Simulate Docker available
+        monkeypatch.setattr(engine, "_is_docker_available", lambda: True)
+        monkeypatch.setattr(
+            engine, "_run_in_container",
+            lambda s, p, c: ScanResult(
+                scanner=s.name, findings=s._findings,
+                metadata={"execution": "container"},
+            ),
+        )
+
         summary = engine.run(scanner_names=["bandit"])
         assert len(summary.results) == 1
-        # Should have used local scan, not container
+        # Should have used container, not local scan
+        assert scanner.scan_called_with is None
+        assert summary.results[0].metadata.get("execution") == "container"
+
+    def test_auto_backend_falls_back_to_local_no_image(self):
+        """auto backend falls back to local when no container image is defined."""
+        engine = self._make_engine(backend="auto")
+        findings = [Finding(id="1", severity=Severity.HIGH, title="f1")]
+        scanner = MockScanner(
+            "bandit", findings=findings, available=True,
+            container_image="",
+        )
+        engine.register_scanner(scanner)
+
+        summary = engine.run(scanner_names=["bandit"])
+        assert len(summary.results) == 1
+        # Should have used local scan (no container image available)
+        assert scanner.scan_called_with is not None
+
+    def test_auto_backend_falls_back_to_local_no_docker(self, monkeypatch):
+        """auto backend falls back to local when Docker is not available."""
+        engine = self._make_engine(backend="auto")
+        findings = [Finding(id="1", severity=Severity.HIGH, title="f1")]
+        scanner = MockScanner(
+            "bandit", findings=findings, available=True,
+            container_image="ghcr.io/huntridge-labs/argus/scanner-bandit:0.8.0",
+        )
+        engine.register_scanner(scanner)
+
+        monkeypatch.setattr(engine, "_is_docker_available", lambda: False)
+
+        summary = engine.run(scanner_names=["bandit"])
+        assert len(summary.results) == 1
+        # Docker unavailable, should fall back to local
         assert scanner.scan_called_with is not None

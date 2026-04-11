@@ -1,15 +1,25 @@
-FROM python:3.12-slim
+FROM alpine:3.21 AS builder
 
-ARG ZIZMOR_VERSION=1.23.1
 ARG ACTIONLINT_VERSION=1.7.12
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl && \
-    pip install --no-cache-dir "zizmor==${ZIZMOR_VERSION}" && \
-    ACTIONLINT_TARBALL="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" && \
-    curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${ACTIONLINT_TARBALL}" \
-      -o "/tmp/${ACTIONLINT_TARBALL}" && \
-    tar -xzf "/tmp/${ACTIONLINT_TARBALL}" -C /usr/local/bin actionlint && \
-    rm -f "/tmp/${ACTIONLINT_TARBALL}" && \
-    apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache curl && \
+    curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+      | tar -xz -C /usr/local/bin actionlint
 
+FROM python:3.13-alpine
+
+LABEL org.opencontainers.image.source="https://github.com/huntridge-labs/argus"
+LABEL org.opencontainers.image.description="Argus Supply Chain Scanner (zizmor + actionlint)"
+LABEL org.opencontainers.image.licenses="AGPL-3.0"
+
+ARG ZIZMOR_VERSION=1.23.1
+
+COPY --from=builder /usr/local/bin/actionlint /usr/local/bin/actionlint
+
+RUN pip install --no-cache-dir "zizmor==${ZIZMOR_VERSION}"
+
+RUN adduser -D -u 1000 argus
+
+USER argus
+WORKDIR /workspace
 ENTRYPOINT ["/bin/sh", "-c"]

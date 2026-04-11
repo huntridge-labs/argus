@@ -1,0 +1,117 @@
+name: Build & Scan Containers
+
+on:
+  pull_request:
+    paths:
+      - 'docker/**'
+      - 'argus/**'
+      - 'argus.yml'
+      - '.github/workflows/build-containers.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+# Cancel in-progress runs when a new commit is pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-scan:
+    name: Build & Scan ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: scanner-bandit
+            dockerfile: docker/Dockerfile.bandit
+          - image: scanner-opengrep
+            dockerfile: docker/Dockerfile.opengrep
+          - image: scanner-supply-chain
+            dockerfile: docker/Dockerfile.supply-chain
+          - image: cli
+            dockerfile: docker/Dockerfile.cli
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Build image
+        run: |
+          docker build \
+            --tag "${IMAGE_REGISTRY}/${IMAGE_NAME}:pr-${PR_NUMBER}" \
+            --file "${DOCKERFILE}" \
+            --label "org.opencontainers.image.revision=${COMMIT_SHA}" \
+            .
+        env:
+          IMAGE_REGISTRY: ghcr.io/huntridge-labs/argus
+          IMAGE_NAME: ${{ matrix.image }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          PR_NUMBER: ${{ github.event.pull_request.number || 'local' }}
+          COMMIT_SHA: ${{ github.sha }}
+
+      # Scan with Trivy (container vuln scanner)
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          image-ref: "ghcr.io/huntridge-labs/argus/${{ matrix.image }}:pr-${{ github.event.pull_request.number || 'local' }}"
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
+        with:
+          sarif_file: trivy-results.sarif
+          category: "container-${{ matrix.image }}"
+        continue-on-error: true
+
+      # Also scan with Grype for cross-validation
+      - name: Scan image with Grype
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7
+        with:
+          image: "ghcr.io/huntridge-labs/argus/${{ matrix.image }}:pr-${{ github.event.pull_request.number || 'local' }}"
+          fail-build: false
+          severity-cutoff: critical
+
+      - name: Upload scan artifacts
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: container-scan-${{ matrix.image }}
+          path: |
+            trivy-results.sarif
+          retention-days: 30
+
+      - name: Post scan summary
+        if: always()
+        run: |
+          {
+            echo "## Container Scan: ${IMAGE_NAME}"
+            echo ""
+            echo "Image: \`${IMAGE_REGISTRY}/${IMAGE_NAME}:pr-${PR_NUMBER}\`"
+            echo ""
+            echo "### Trivy Results (CRITICAL + HIGH)"
+            echo ""
+            if [ -f trivy-results.sarif ]; then
+              FINDING_COUNT=$(python3 -c "
+          import json
+          sarif = json.load(open('trivy-results.sarif'))
+          print(len(sarif.get('runs', [{}])[0].get('results', [])))
+          " 2>/dev/null || echo "unknown")
+              echo "Total findings: **${FINDING_COUNT}**"
+            else
+              echo "No SARIF results found."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          IMAGE_REGISTRY: ghcr.io/huntridge-labs/argus
+          IMAGE_NAME: ${{ matrix.image }}
+          PR_NUMBER: ${{ github.event.pull_request.number || 'local' }}

@@ -52,9 +52,9 @@ reporting:
 
 # Execution backend configuration
 execution:
-  # auto: try local tools first, fall back to Docker containers
-  # local: only use locally installed tools
-  # docker: always use containers
+  # auto (default): containers for immutable, reproducible scans
+  # local: use locally installed tools (faster, user accepts version risk)
+  # docker: containers only, fail if unavailable
   backend: auto
 
   # Override container registry for private/air-gapped environments

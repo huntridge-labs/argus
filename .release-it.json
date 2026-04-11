@@ -161,6 +161,16 @@
             "flags": ""
           },
           "replace": "${1}{{version}}\""
+        },
+        {
+          "files": [
+            "argus/containers.py"
+          ],
+          "search": {
+            "pattern": "(ghcr\\.io/huntridge-labs/argus/[^:]+:)[^\"]+",
+            "flags": "g"
+          },
+          "replace": "${1}{{version}}"
         }
       ]
     }

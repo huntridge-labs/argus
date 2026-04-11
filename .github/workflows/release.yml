@@ -158,3 +158,106 @@ jobs:
           fi
         env:
           HUSKY: 0
+
+  publish-containers:
+    name: Publish Container Images
+    runs-on: ubuntu-latest
+    needs: [release]
+    if: needs.release.result == 'success'
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      id-token: write  # For cosign signing
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Get release version
+        id: version
+        run: |
+          VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('version.yaml'))['version'])")
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build and push images
+        run: |
+          for pair in \
+            "scanner-bandit:docker/Dockerfile.bandit" \
+            "scanner-opengrep:docker/Dockerfile.opengrep" \
+            "scanner-supply-chain:docker/Dockerfile.supply-chain" \
+            "cli:docker/Dockerfile.cli"; do
+            IMAGE="${pair%%:*}"
+            DOCKERFILE="${pair#*:}"
+            FULL_TAG="${IMAGE_REGISTRY}/${IMAGE}"
+
+            docker buildx build \
+              --push \
+              --platform linux/amd64 \
+              --tag "${FULL_TAG}:${VERSION}" \
+              --tag "${FULL_TAG}:latest" \
+              --label "org.opencontainers.image.version=${VERSION}" \
+              --label "org.opencontainers.image.revision=${COMMIT_SHA}" \
+              --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+              --file "${DOCKERFILE}" \
+              .
+
+            echo "Pushed ${FULL_TAG}:${VERSION} and ${FULL_TAG}:latest"
+          done
+        env:
+          IMAGE_REGISTRY: ghcr.io/huntridge-labs/argus
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT_SHA: ${{ github.sha }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb # v3
+        continue-on-error: true
+
+      - name: Sign images with cosign
+        if: steps.version.outputs.version != ''
+        run: |
+          for IMAGE in scanner-bandit scanner-opengrep scanner-supply-chain cli; do
+            FULL_TAG="${IMAGE_REGISTRY}/${IMAGE}"
+
+            # Sign the versioned tag
+            cosign sign --yes "${FULL_TAG}:${VERSION}" 2>/dev/null || \
+              echo "Warning: cosign signing failed for ${FULL_TAG}:${VERSION} (non-fatal)"
+
+            # Sign the latest tag
+            cosign sign --yes "${FULL_TAG}:latest" 2>/dev/null || \
+              echo "Warning: cosign signing failed for ${FULL_TAG}:latest (non-fatal)"
+          done
+        env:
+          IMAGE_REGISTRY: ghcr.io/huntridge-labs/argus
+          VERSION: ${{ steps.version.outputs.version }}
+        continue-on-error: true
+
+      - name: Post publish summary
+        run: |
+          {
+            echo "## Container Images Published"
+            echo ""
+            echo "Version: \`${VERSION}\`"
+            echo ""
+            echo "| Image | Tags |"
+            echo "|-------|------|"
+            for IMAGE in scanner-bandit scanner-opengrep scanner-supply-chain cli; do
+              echo "| \`${IMAGE_REGISTRY}/${IMAGE}\` | \`${VERSION}\`, \`latest\` |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          IMAGE_REGISTRY: ghcr.io/huntridge-labs/argus
+          VERSION: ${{ steps.version.outputs.version }}

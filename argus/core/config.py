@@ -25,7 +25,12 @@ class ScannerConfig:
 
 @dataclass
 class ExecutionConfig:
-    """Configuration for scanner execution backend."""
+    """Configuration for scanner execution backend.
+
+    auto (default): containers for immutable execution, local fallback if no image
+    local: use locally installed tools (user accepts version risk)
+    docker: containers only, fail if unavailable
+    """
 
     backend: str = "auto"  # auto | local | docker
     registry: str = ""  # override for private registries
