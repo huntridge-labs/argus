@@ -1,14 +1,16 @@
 name: Test Argus CLI
 
 # Integration test for the argus Python CLI.
-# Validates that `argus scan` works end-to-end.
-# The engine handles tool execution — no manual tool installs here.
+# Builds custom container images from the branch, then validates
+# that argus scan works end-to-end with real scanner execution.
+# Failures here MUST block merge.
 
 on:
   pull_request:
     paths:
       - 'argus/**'
       - 'argus.yml'
+      - 'docker/**'
       - '.github/workflows/security-scan.yml'
       - '.github/workflows/test-reusable-workflows.yml'
   workflow_dispatch:
@@ -26,7 +28,7 @@ jobs:
   test-argus-cli:
     name: Argus CLI
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout code
@@ -44,43 +46,84 @@ jobs:
           pip install --quiet pyyaml
           echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
-      - name: Test --version
-        run: python -m argus scan --version 2>&1 || true
-
-      - name: Test --list
-        run: python -m argus scan --list
-
-      - name: Test scan with config
+      # Build custom images so all scanners can execute
+      - name: Build custom scanner images
         run: |
+          for pair in \
+            "scanner-bandit:docker/Dockerfile.bandit" \
+            "scanner-opengrep:docker/Dockerfile.opengrep" \
+            "scanner-supply-chain:docker/Dockerfile.supply-chain"; do
+            IMAGE="${pair%%:*}"
+            DOCKERFILE="${pair#*:}"
+            TAG="ghcr.io/huntridge-labs/argus/${IMAGE}:1.0.0"
+            docker build --quiet --tag "${TAG}" --file "${DOCKERFILE}" .
+          done
+
+      - name: Test scanner listing
+        run: |
+          OUTPUT=$(python -m argus scan --list)
+          echo "$OUTPUT"
+          # Verify all 10 scanners are registered
+          for scanner in bandit clamav trivy-iac gitleaks osv checkov opengrep supply-chain zap container; do
+            echo "$OUTPUT" | grep -q "$scanner" || { echo "FAIL: $scanner not listed"; exit 1; }
+          done
+
+      - name: Test scan produces output
+        run: |
+          set +e
           python -m argus scan \
             --config argus.yml \
             --format terminal \
             --format sarif \
             --format json \
-            --verbose || true
+            --output-dir ./cli-test-results \
+            --verbose
+          EXIT_CODE=$?
+          set -e
 
-      - name: Verify outputs exist
+          # Exit 0 = pass, 1 = findings above threshold (expected), 2 = error
+          if [ "$EXIT_CODE" -eq 2 ]; then
+            echo "::error::Argus scan failed with error (exit code 2)"
+            exit 2
+          fi
+          echo "Scan completed with exit code $EXIT_CODE"
+
+      - name: Verify output files exist
         run: |
-          echo "Checking output files..."
-          for f in argus-results/argus-results.json argus-results/argus-results.sarif; do
-            if [ -f "$f" ]; then
-              echo "  OK: $f"
-            else
-              echo "  MISSING: $f (expected if no scanners available locally or via Docker)"
-            fi
+          for f in cli-test-results/argus-results.json cli-test-results/argus-results.sarif; do
+            test -f "$f" || { echo "FAIL: $f not produced"; exit 1; }
           done
 
-      - name: Verify SARIF structure if produced
+      - name: Verify SARIF structure
         run: |
-          if [ -f "argus-results/argus-results.sarif" ]; then
-            python3 -c "
-          import json
-          data = json.load(open('argus-results/argus-results.sarif'))
-          assert data.get('version') == '2.1.0', 'Bad SARIF version'
-          assert 'runs' in data, 'Missing runs'
-          print('SARIF valid:', len(data['runs']), 'run(s)')
+          python3 -c "
+          import json, sys
+          data = json.load(open('cli-test-results/argus-results.sarif'))
+          assert data.get('version') == '2.1.0', f'Bad SARIF version: {data.get(\"version\")}'
+          assert 'runs' in data, 'Missing runs in SARIF'
+          print(f'SARIF valid: {len(data[\"runs\"])} run(s)')
           "
-          fi
+
+      - name: Verify JSON structure
+        run: |
+          python3 -c "
+          import json
+          data = json.load(open('cli-test-results/argus-results.json'))
+          results = data.get('results', [])
+          assert len(results) > 0, 'No scanner results produced'
+          scanners = [r['scanner'] for r in results]
+          print(f'Scanners executed: {scanners}')
+          total = sum(len(r.get('findings', [])) for r in results)
+          print(f'Total findings: {total}')
+          "
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: argus-cli-test-results
+          path: cli-test-results/
+          retention-days: 7
 
   test-results:
     name: CLI Test Results
@@ -92,7 +135,7 @@ jobs:
         env:
           RESULT: ${{ needs.test-argus-cli.result }}
         run: |
-          if [ "$RESULT" = "failure" ]; then
-            echo "Argus CLI integration tests failed"
+          if [ "$RESULT" != "success" ]; then
+            echo "Argus CLI integration tests failed: $RESULT"
             exit 1
           fi

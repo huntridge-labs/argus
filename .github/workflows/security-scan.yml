@@ -1,9 +1,8 @@
 name: Security Scan (Argus)
 
 # Dogfood: we use argus to scan argus.
-# PRs test the commit's argus CLI. Main tests the release.
-# The argus engine handles tool execution — local if available,
-# Docker container fallback otherwise. No manual tool installs.
+# PRs build custom container images from the branch, then scan with them.
+# Main/scheduled scans use published images from GHCR.
 
 on:
   pull_request:
@@ -40,9 +39,40 @@ jobs:
           pip install --quiet pyyaml
           echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
-      - name: Run Argus scan
+      # Build custom images from this branch so the scan uses the PR's code.
+      # Official images (gitleaks, clamav, osv, trivy, etc.) are pulled from
+      # their authors' registries. Only our custom images need building.
+      - name: Build custom scanner images
         run: |
-          python -m argus scan --config argus.yml --verbose || true
+          echo "Building custom argus container images from this branch..."
+          for pair in \
+            "scanner-bandit:docker/Dockerfile.bandit" \
+            "scanner-opengrep:docker/Dockerfile.opengrep" \
+            "scanner-supply-chain:docker/Dockerfile.supply-chain"; do
+            IMAGE="${pair%%:*}"
+            DOCKERFILE="${pair#*:}"
+            TAG="ghcr.io/huntridge-labs/argus/${IMAGE}:1.0.0"
+            echo "  Building ${TAG}..."
+            docker build --quiet --tag "${TAG}" --file "${DOCKERFILE}" . || {
+              echo "::warning::Failed to build ${IMAGE} — scanner will be unavailable"
+            }
+          done
+          echo "Done."
+
+      - name: Run Argus scan
+        id: scan
+        run: |
+          set +e
+          python -m argus scan --config argus.yml --verbose
+          EXIT_CODE=$?
+          set -e
+          echo "exit_code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+
+          # Exit 0 = pass, 1 = findings above threshold (informational), 2 = error
+          if [ "$EXIT_CODE" -eq 2 ]; then
+            echo "::error::Argus scan failed with error (exit code 2)"
+            exit 2
+          fi
 
       - name: Upload SARIF results
         if: always() && hashFiles('argus-results/argus-results.sarif') != ''
@@ -67,12 +97,16 @@ jobs:
           if [ -f "argus-results/argus-summary.md" ]; then
             cat argus-results/argus-summary.md >> "$GITHUB_STEP_SUMMARY"
           elif [ -f "argus-results/argus-results.json" ]; then
-            echo "## Argus Security Scan" >> "$GITHUB_STEP_SUMMARY"
-            python3 -c "
+            {
+              echo "## Argus Security Scan"
+              python3 -c "
           import json, sys
           data = json.load(open(sys.argv[1]))
           results = data.get('results', [])
           total = sum(len(r.get('findings', [])) for r in results)
-          print(f'Scanned with {len(results)} scanner(s), found {total} finding(s)')
-          " argus-results/argus-results.json >> "$GITHUB_STEP_SUMMARY"
+          scanners = [r['scanner'] for r in results]
+          print(f'Scanned with {len(results)} scanner(s): {\", \".join(scanners)}')
+          print(f'Total findings: {total}')
+          " argus-results/argus-results.json
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
