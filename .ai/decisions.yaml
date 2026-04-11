@@ -526,3 +526,72 @@ decisions:
       thresholds, ADR-008 flexible PR commenting). scanner-dependency-review
       emits a warning annotation and zero-count summary on non-PR events for
       graceful degradation.
+
+  - id: ADR-013
+    title: "Python SDK + CLI + thin CI adapters for cross-platform portability"
+    date: "2026-04-11"
+    status: proposed
+
+    context: |
+      Argus is tightly coupled to GitHub Actions. All 31 composite actions use
+      GitHub-specific features: $GITHUB_OUTPUT, $GITHUB_STEP_SUMMARY,
+      actions/upload-artifact, actions/github-script (PR comments),
+      github/codeql-action/upload-sarif, and github.* context variables.
+      This limits Argus to GitHub Actions only. Users want to run the same
+      security scanning pipeline in GitLab CI, Jenkins, Azure DevOps, and
+      locally on developer machines.
+
+      Analysis reveals that ~90% of scanner logic (tool installation, execution,
+      result parsing, severity counting) is already portable. Only the reporting
+      phase (Phase 4: artifacts, PR comments, step summaries, SARIF upload) is
+      GitHub-coupled. The existing Python parsers have zero GitHub dependencies.
+
+    decision: |
+      Adopt a layered architecture with four components:
+      1. Argus Core SDK (argus/core/) — Scanner protocol, result models, engine,
+         config loading. Pure Python, zero CI dependencies.
+      2. Scanner Modules (argus/scanners/) — One Python file per scanner
+         implementing the Scanner protocol. Reuses existing parse_*.py logic.
+      3. Reporters (argus/reporters/) — Output plugins per platform: terminal,
+         markdown, SARIF, JSON, GitHub, GitLab, JUnit.
+      4. CI Adapters — Thin wrappers: GitHub composite actions call
+         `argus scan` + `argus report github`; GitLab CI templates call
+         `argus scan` + `argus report gitlab`; CLI for local/Jenkins.
+
+      Migration is incremental over 4 phases:
+        Phase 1: Core SDK + CLI + 2-3 proof-of-concept scanners (no existing changes)
+        Phase 2: Port remaining scanners, build GitHub reporter
+        Phase 3: Simplify composite actions to thin wrappers (backward compatible)
+        Phase 4: Add GitLab/Jenkins reporters, publish to PyPI
+
+    alternatives_considered:
+      - name: "Dagger.io portable pipelines"
+        rejected_because: "Heavy external dependency; ADR-001 rejected external CI tools"
+
+      - name: "Docker-per-scanner containerization"
+        rejected_because: "Docker not available in air-gapped GHES; massive images; slow"
+
+      - name: "Monolithic CLI bundling everything"
+        rejected_because: "Violates scalability requirement; tribal knowledge to modify"
+
+      - name: "Rewrite in Go/Rust"
+        rejected_because: "Abandons Python investment (ADR-009); less accessible to contributors"
+
+    consequences:
+      positive:
+        - "Runs anywhere Python runs (GitHub, GitLab, Jenkins, local, Azure DevOps)"
+        - "Adding a scanner = one Python file implementing Scanner protocol"
+        - "Removing a scanner = delete file or set enabled: false in config"
+        - "Existing GitHub Actions users unaffected until Phase 3"
+        - "Phase 3 composite actions shrink from ~300 lines to ~15 lines"
+        - "Consistent with ADR-009 (Python standardization)"
+        - "argus.yml provides single configuration file for all environments"
+      negative:
+        - "Significant initial investment to build core SDK and CLI"
+        - "Two systems coexist during migration (legacy actions + SDK)"
+        - "Package distribution adds complexity (pip install, PyPI)"
+        - "Some scanners are inherently GitHub-only (dependency-review)"
+
+    implementation: |
+      See docs/developer/portability-research.md for full architecture details,
+      package structure, migration phases, and risk mitigations.
