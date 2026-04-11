@@ -37,11 +37,14 @@ scanners:
 reporting:
   formats:
     - terminal
+    - markdown
     - sarif
     - json
   severity_threshold: high
   output_dir: "./argus-results"
 
 execution:
+  # auto: local tools first, Docker fallback for dev machines
+  # CI sets ARGUS_EXECUTION_BACKEND=local via env override
   backend: auto
   pull_policy: if-not-present
