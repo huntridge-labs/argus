@@ -46,10 +46,18 @@ jobs:
           WORKFLOW_EXAMPLES=$(find examples/workflows -name "*.yml" -type f 2>/dev/null | jq -R -s -c 'split("\n")[:-1]')
           echo "workflow-examples=$WORKFLOW_EXAMPLES" >> "$GITHUB_OUTPUT"
 
+          # Fail if fewer than 3 workflow examples found (prevents silent empty-matrix passes)
+          EXAMPLE_COUNT=$(echo "$WORKFLOW_EXAMPLES" | jq 'length')
+          echo "Found $EXAMPLE_COUNT workflow examples"
+          if [ "$EXAMPLE_COUNT" -lt 3 ]; then
+            echo "::error::Expected at least 3 workflow examples but found $EXAMPLE_COUNT. This may indicate missing or deleted example files."
+            exit 1
+          fi
+
           {
             echo "## Discovered Examples"
             echo ""
-            echo "**Workflow Examples:**"
+            echo "**Workflow Examples:** ($EXAMPLE_COUNT found)"
           } >> "$GITHUB_STEP_SUMMARY"
           echo "$WORKFLOW_EXAMPLES" | jq -r '.[]' | while read -r file; do
             [ -n "$file" ] && echo "- \`$file\`" >> "$GITHUB_STEP_SUMMARY"

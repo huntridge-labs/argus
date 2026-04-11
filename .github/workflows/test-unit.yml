@@ -12,8 +12,11 @@ permissions:
 
 jobs:
   unit-tests:
-    name: All Unit Tests
+    name: Unit Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
 
     steps:
       - name: Checkout code
@@ -24,7 +27,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
-          python-version: '3.13'
+          python-version: ${{ matrix.python-version }}
 
       - name: Install Python dependencies
         run: |
@@ -34,6 +37,10 @@ jobs:
 
       - name: Run all tests
         run: pytest
+
+      - name: Check version reference coverage
+        if: matrix.python-version == '3.13'
+        run: python3 scripts/check-version-refs.py
 
       - name: Check for dead fixtures
         if: always()
@@ -87,7 +94,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
-          name: coverage-reports
+          name: coverage-reports-py${{ matrix.python-version }}
           path: |
             coverage/
             htmlcov/
