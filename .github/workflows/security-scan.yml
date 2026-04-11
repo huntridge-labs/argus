@@ -1,0 +1,110 @@
+name: Security Scan (Argus Dogfood)
+
+# Dogfood: we use argus to scan argus.
+# PRs test the commit. Main tests the release.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 9 * * 1'  # Weekly Monday 9am UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  argus-scan:
+    name: Argus Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0  # Full history for gitleaks
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.13'
+
+      - name: Install Argus SDK
+        run: |
+          pip install --quiet pyyaml
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      # Install scanner tools that are fast to install via pip
+      - name: Install Python-based scanners
+        run: |
+          pip install --quiet 'bandit[toml,sarif]>=1.7.5'
+          pip install --quiet 'zizmor>=1.23.0' || echo "::warning::zizmor install failed"
+
+      # Install binary scanner tools
+      - name: Install binary scanners
+        env:
+          GITLEAKS_VERSION: "8.22.1"
+          ACTIONLINT_VERSION: "1.7.12"
+        run: |
+          # Gitleaks
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+
+          # Actionlint
+          curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            | tar -xz -C /usr/local/bin actionlint
+
+      - name: Run Argus scan
+        run: |
+          python -m argus scan \
+            --config argus.yml \
+            --format terminal \
+            --format sarif \
+            --format json \
+            --verbose || true
+
+          # Don't fail the job on findings during initial rollout.
+          # Once baseline is established, remove the || true above.
+
+      - name: Upload SARIF results
+        if: always() && hashFiles('argus-results/argus-results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
+        with:
+          sarif_file: argus-results/argus-results.sarif
+          category: argus-dogfood
+        continue-on-error: true
+
+      - name: Upload scan artifacts
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: argus-scan-results
+          path: argus-results/
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Post scan summary
+        if: always()
+        run: |
+          SUMMARY_FILE="argus-results/argus-summary.md"
+          RESULTS_FILE="argus-results/argus-results.json"
+
+          if [ -f "$SUMMARY_FILE" ]; then
+            cat "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY"
+          elif [ -f "$RESULTS_FILE" ]; then
+            echo "## Argus Security Scan" >> "$GITHUB_STEP_SUMMARY"
+            python3 -c "
+          import json, sys
+          data = json.load(open(sys.argv[1]))
+          results = data.get('results', [])
+          total = sum(len(r.get('findings', [])) for r in results)
+          print(f'Scanned with {len(results)} scanner(s), found {total} finding(s)')
+          " "$RESULTS_FILE" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## Argus Security Scan" >> "$GITHUB_STEP_SUMMARY"
+            echo "No scan results produced" >> "$GITHUB_STEP_SUMMARY"
+          fi

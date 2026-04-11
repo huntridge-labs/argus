@@ -1,0 +1,47 @@
+# Argus dogfood configuration — we scan ourselves
+version: "1.0"
+
+scanners:
+  bandit:
+    enabled: true
+    path: "."
+    config_file: "pyproject.toml"
+
+  gitleaks:
+    enabled: true
+
+  opengrep:
+    enabled: true
+    path: "."
+
+  clamav:
+    enabled: true
+    path: "."
+
+  osv:
+    enabled: true
+
+  supply-chain:
+    enabled: true
+
+  # Not applicable to this repo
+  trivy-iac:
+    enabled: false
+  checkov:
+    enabled: false
+  container:
+    enabled: false
+  zap:
+    enabled: false
+
+reporting:
+  formats:
+    - terminal
+    - sarif
+    - json
+  severity_threshold: high
+  output_dir: "./argus-results"
+
+execution:
+  backend: auto
+  pull_policy: if-not-present
