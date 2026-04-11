@@ -595,3 +595,60 @@ decisions:
     implementation: |
       See docs/developer/portability-research.md for full architecture details,
       package structure, migration phases, and risk mitigations.
+
+  - id: ADR-014
+    title: "Docker execution backend for portable scanner execution"
+    date: "2026-04-11"
+    status: accepted
+
+    context: |
+      The argus SDK (ADR-013) decouples scanning logic from GitHub Actions,
+      but users still need 10+ scanner tools installed to run all scanners.
+      Installing trivy, grype, gitleaks, clamav, checkov, etc. on a developer
+      laptop is impractical. The SDK needs a way to run scanners without
+      requiring local tool installation.
+
+    decision: |
+      Add a Docker execution backend to ArgusEngine:
+      1. Each scanner declares its official container image (author-published)
+      2. Engine checks is_available() first (local tool), falls back to
+         docker run with volume mounts if tool not installed
+      3. Parsing always runs on host (SDK parses JSON/SARIF output from container)
+      4. Prefer official tool author images (aquasec/trivy, anchore/grype, etc.)
+      5. Only build custom images when no official image exists (bandit, opengrep,
+         supply-chain combined)
+      6. Publish all-in-one image for CI convenience
+      7. Container image versions managed via Dependabot docker ecosystem
+
+    alternatives_considered:
+      - name: "Single fat Docker image only"
+        rejected_because: "2GB+ image, slow to pull, hard to update individual tools"
+
+      - name: "Build custom images for every scanner"
+        rejected_because: "Unnecessary maintenance when official images exist"
+
+      - name: "Nix flakes for reproducible environments"
+        rejected_because: "Nix adoption barrier too high for most users"
+
+      - name: "Install tools on demand (auto pip/curl)"
+        rejected_because: "Modifies host machine, permission issues, not reproducible"
+
+    consequences:
+      positive:
+        - "Users run argus scan with zero tool installation (just Docker)"
+        - "Official images get security updates from tool authors"
+        - "Local tools preferred when available (fastest path)"
+        - "Air-gapped support via private registry + pull_policy: never"
+        - "Dependabot maintains container image versions automatically"
+      negative:
+        - "Requires Docker/Podman for container backend"
+        - "Container execution adds startup overhead vs local tools"
+        - "3 custom Dockerfiles to maintain (bandit, opengrep, supply-chain)"
+
+    implementation: |
+      argus/core/engine.py: _run_in_container() method with docker run
+      argus/core/config.py: ExecutionConfig (backend, registry, pull_policy)
+      argus/scanners/*.py: container_image property on each scanner
+      argus/containers.py: Central image manifest for version tracking
+      docker/: Dockerfiles for custom images (bandit, opengrep, supply-chain, cli)
+      .github/dependabot.yml: docker ecosystem for Dockerfile base images

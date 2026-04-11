@@ -446,3 +446,119 @@ The Python SDK + CLI + thin CI adapters approach is recommended because it:
 3. **Aligns with existing decisions** (ADR-009 Python standardization, ADR-002 SARIF as universal format)
 4. **Solves the extensibility problem** — adding a scanner is creating one file, not understanding the whole system
 5. **Delivers value early** — Phase 1 gives local CLI scanning; GitHub users unaffected
+
+---
+
+## Phase 3: Docker Execution Backend (Detailed Design)
+
+### Problem
+
+Running all 10 scanners requires installing trivy, grype, syft, gitleaks, clamscan, checkov, opengrep, zizmor, actionlint, bandit, osv-scanner, and ZAP. Users shouldn't need to install these on their host machine.
+
+### Solution: Transparent Container Execution
+
+The engine detects whether a tool is locally installed. If not, it transparently runs the scanner in its **official author-published container**. The user runs `argus scan` and it works regardless of what's installed.
+
+```
+argus scan trivy-iac --path ./infrastructure
+
+Engine: is trivy installed locally?
+  YES → subprocess.run(["trivy", "config", ...])
+  NO  → docker run aquasec/trivy config --format json /workspace
+```
+
+### Official Tool Containers (Maximize Reuse)
+
+We use official images published by tool authors wherever possible. Argus only builds custom images when no official image exists or when combining multiple tools.
+
+| Scanner | Official Image | Custom Build? |
+|---------|---------------|---------------|
+| trivy | `aquasec/trivy` | No |
+| grype | `anchore/grype` | No |
+| syft | `anchore/syft` | No |
+| gitleaks | `zricethezav/gitleaks` | No |
+| clamav | `clamav/clamav` | No |
+| checkov | `bridgecrew/checkov` | No |
+| osv-scanner | `ghcr.io/google/osv-scanner` | No |
+| zap | `ghcr.io/zaproxy/zaproxy` | No |
+| bandit | — | Yes (`python:3.12-slim` + pip) |
+| opengrep | — | Yes (binary from GitHub releases) |
+| zizmor + actionlint | — | Yes (combined supply-chain image) |
+
+**Principle**: Layer argus parsing requirements on top of official images only when necessary. Most scanners output JSON/SARIF that the host-side SDK parses directly — no argus code needs to run inside the container.
+
+### Execution Flow
+
+```
+┌─────────────────────────────────┐
+│  argus scan bandit --path ./src │   User command
+└────────────────┬────────────────┘
+                 │
+    ┌────────────▼────────────────┐
+    │  ArgusEngine._run_scanner() │
+    │                             │
+    │  1. scanner.is_available()? │
+    │     YES → local subprocess  │
+    │     NO  → container check   │
+    │                             │
+    │  2. docker available?       │
+    │     YES → docker run        │
+    │     NO  → error + install   │
+    │          instructions       │
+    └────────────┬────────────────┘
+                 │
+    ┌────────────▼────────────────┐
+    │  docker run --rm            │
+    │    -v ./src:/workspace:ro   │
+    │    -v /tmp/out:/output      │
+    │    aquasec/trivy ...        │
+    └────────────┬────────────────┘
+                 │
+    ┌────────────▼────────────────┐
+    │  scanner.parse_results()    │   Runs on host
+    │  → List[Finding]            │   (SDK parses output)
+    └─────────────────────────────┘
+```
+
+### Configuration
+
+```yaml
+# argus.yml
+execution:
+  backend: auto              # auto | local | docker
+  registry: ""               # override for private/air-gapped registries
+  pull_policy: if-not-present # always | if-not-present | never
+```
+
+- `auto` (default): try local tool first, fall back to Docker
+- `local`: only use locally installed tools, fail if missing
+- `docker`: always use containers, even if tool is local
+
+### Published Images
+
+**Per-scanner images** (for users who need one scanner):
+- Most use official images directly — no Argus-built image needed
+- Custom images only for bandit, opengrep, and supply-chain
+
+**All-in-one image** (for CI or users who want everything):
+```
+ghcr.io/huntridge-labs/argus/cli:0.8.0
+```
+Contains argus CLI + all scanner tools. Appropriate for CI where image size doesn't matter.
+
+### Dependency Maintenance
+
+All container image references must be automatically maintained:
+
+1. **Dependabot** (primary): Add `docker` ecosystem to `.github/dependabot.yml` for Dockerfiles
+2. **Dependabot** tracks base image updates (e.g., `aquasec/trivy:0.58.0` → `0.59.0`)
+3. **Pin images by digest** in production Dockerfiles for reproducibility
+4. **Renovate** as fallback if Dependabot can't handle image references in Python source files
+5. Container image versions in scanner modules tracked via a central `argus/containers.py` manifest for single-point updates
+
+### Air-Gapped Environments
+
+- Pre-pull images to internal registry
+- Set `execution.registry` in argus.yml to point at internal mirror
+- `pull_policy: never` with pre-loaded images
+- All official images available on Docker Hub and GHCR
