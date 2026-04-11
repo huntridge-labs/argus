@@ -219,7 +219,7 @@ def cmd_report(args: argparse.Namespace) -> int:
 
 def _list_scanners(engine) -> int:
     """Print registered scanners and return success."""
-    scanners = getattr(engine, "scanners", {})
+    scanners = getattr(engine, "_scanners", {})
     if not scanners:
         print("No scanners registered.")
         print(
