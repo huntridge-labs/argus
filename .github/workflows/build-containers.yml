@@ -12,6 +12,7 @@ on:
 permissions:
   contents: read
   security-events: write
+  pull-requests: write
 
 # Cancel in-progress runs when a new commit is pushed
 concurrency:
@@ -81,6 +82,37 @@ jobs:
           fail-build: false
           severity-cutoff: critical
 
+      # Generate scan report for aggregation
+      - name: Generate scan report
+        if: always()
+        run: |
+          mkdir -p scan-reports
+          python3 -c "
+          import json
+          sarif_file = 'trivy-results.sarif'
+          image = '${IMAGE_NAME}'
+          try:
+              sarif = json.load(open(sarif_file))
+              results = sarif.get('runs', [{}])[0].get('results', [])
+              report = {
+                  'image': image,
+                  'finding_count': len(results),
+                  'findings': [
+                      {
+                          'id': r.get('ruleId', 'unknown'),
+                          'message': r.get('message', {}).get('text', ''),
+                          'level': r.get('level', 'warning'),
+                      }
+                      for r in results[:20]  # Top 20 findings
+                  ],
+              }
+          except Exception:
+              report = {'image': image, 'finding_count': -1, 'findings': []}
+          json.dump(report, open(f'scan-reports/{image}.json', 'w'))
+          "
+        env:
+          IMAGE_NAME: ${{ matrix.image }}
+
       - name: Upload scan artifacts
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
@@ -88,6 +120,7 @@ jobs:
           name: container-scan-${{ matrix.image }}
           path: |
             trivy-results.sarif
+            scan-reports/
           retention-days: 30
 
       - name: Post scan summary
@@ -115,3 +148,83 @@ jobs:
           IMAGE_REGISTRY: ghcr.io/huntridge-labs/argus
           IMAGE_NAME: ${{ matrix.image }}
           PR_NUMBER: ${{ github.event.pull_request.number || 'local' }}
+
+  # Post aggregated container scan results as a PR comment
+  comment-pr:
+    name: Container Scan Summary
+    if: always() && github.event_name == 'pull_request'
+    needs: [build-and-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all scan reports
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4
+        with:
+          pattern: container-scan-*
+          merge-multiple: true
+          path: scan-reports
+
+      - name: Generate PR comment
+        id: comment
+        run: |
+          python3 -c "
+          import json, glob, os
+
+          reports = sorted(glob.glob('scan-reports/*.json'))
+          lines = ['## Container Image Scan Results', '']
+          lines.append('| Image | Findings (CRITICAL+HIGH) | Status |')
+          lines.append('|-------|-------------------------|--------|')
+
+          total = 0
+          for path in reports:
+              data = json.load(open(path))
+              name = data['image']
+              count = data['finding_count']
+              if count < 0:
+                  status = 'Scan failed'
+              elif count == 0:
+                  status = 'Clean'
+              else:
+                  status = f'{count} finding(s)'
+                  total += count
+              icon = 'pass' if count == 0 else ('fail' if count < 0 else 'warning')
+              emoji = {'pass': ':white_check_mark:', 'fail': ':x:', 'warning': ':warning:'}[icon]
+              lines.append(f'| \`{name}\` | {count if count >= 0 else \"N/A\"} | {emoji} {status} |')
+
+          lines.append('')
+          if total > 0:
+              lines.append(f'**Total: {total} finding(s) across all images.** See the Security tab for details.')
+          else:
+              lines.append('All images clean.')
+          lines.append('')
+          lines.append('---')
+          lines.append('*Scanned with Trivy + Grype. SARIF uploaded to Security tab.*')
+
+          body = '\n'.join(lines)
+          # Write to file for gh pr comment
+          with open('comment-body.md', 'w') as f:
+              f.write(body)
+          print(body)
+          "
+
+      - name: Post PR comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          # Update or create the comment using a marker
+          MARKER="<!-- argus-container-scan -->"
+          BODY=$(cat comment-body.md)
+          FULL_BODY="${MARKER}
+          ${BODY}"
+
+          # Find existing comment
+          COMMENT_ID=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" 2>/dev/null | head -1)
+
+          if [ -n "$COMMENT_ID" ]; then
+            gh api "repos/${{ github.repository }}/issues/comments/${COMMENT_ID}" \
+              -X PATCH -f body="$FULL_BODY"
+          else
+            gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+              -f body="$FULL_BODY"
+          fi
