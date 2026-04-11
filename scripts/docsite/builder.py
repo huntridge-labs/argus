@@ -205,27 +205,15 @@ def _build_actions_nav(actions_dir: Path, all_action_dirs: list[Path]) -> list:
 
 def _build_workflows_nav(workflows_dir: Path) -> list:
     """Build the Workflows section of the nav tree."""
-    main_wf = workflows_dir / "reusable-security-hardening.yml"
-    scanner_wfs_nav = [
-        {parse_workflow_meta(p)["name"]: f"workflows/{p.stem}.md"}
-        for p in sorted(workflows_dir.glob("scanner-*.yml"))
-    ]
-    other_wfs_nav = [
-        {parse_workflow_meta(p)["name"]: f"workflows/{p.stem}.md"}
-        for p in sorted(workflows_dir.glob("*.yml"))
-        if p != main_wf
-        and not p.stem.startswith("scanner-")
-        and not p.stem.startswith("test-")
+    public_workflows = [
+        p for p in sorted(workflows_dir.glob("*.yml"))
+        if not p.stem.startswith("test-")
         and p.stem not in config.EXCLUDED_WORKFLOWS
     ]
 
-    nav: list = [
-        {"Overview": "workflows/index.md"},
-        {"Reusable Security Hardening": "workflows/reusable-security-hardening.md"},
-    ]
-    if scanner_wfs_nav:
-        nav.append({"Individual Scanners": scanner_wfs_nav})
-    if other_wfs_nav:
-        nav.append({"Utility Workflows": other_wfs_nav})
+    nav: list = [{"Overview": "workflows/index.md"}]
+    for wf in public_workflows:
+        meta = parse_workflow_meta(wf)
+        nav.append({meta.get("name", wf.stem): f"workflows/{wf.stem}.md"})
 
     return nav
