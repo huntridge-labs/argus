@@ -1,0 +1,91 @@
+# Renovate configuration for dependencies Dependabot can't track.
+# Dependabot handles: GitHub Actions SHAs, npm, pip, Dockerfile FROM.
+# Renovate handles: image tags in Python source, tool versions in shell scripts.
+
+extends:
+  - config:recommended
+
+enabledManagers:
+  - regex
+
+dependencyDashboard: true
+
+labels:
+  - dependencies
+  - automated
+
+commitMessagePrefix: "chore(deps):"
+
+schedule:
+  - before 9am on Monday
+
+timezone: America/New_York
+
+# ──────────────────────────────────────────────────
+# Regex managers — match version strings in non-standard files
+# ──────────────────────────────────────────────────
+
+regexManagers:
+
+  # Official container image tags pinned in argus/containers.py
+  # e.g. "aquasec/trivy:0.58.0" → detects trivy, checks Docker Hub
+  - description: Container image tags in argus/containers.py
+    fileMatch:
+      - argus/containers\.py
+    matchStrings:
+      - '"(?<depName>[a-z0-9./-]+):(?<currentValue>[^"]+)"'
+    datasourceTemplate: docker
+
+  # Tool versions pinned as shell variables in composite actions
+  # e.g. OPENGREP_VERSION=1.18.0, ZIZMOR_VERSION=1.23.1
+  - description: Tool versions pinned in GitHub Actions (TOOL_VERSION= pattern)
+    fileMatch:
+      - \.github/actions/.+/action\.yml
+    matchStrings:
+      - (?<depName>OPENGREP)_VERSION[=:]\s*['"]?(?<currentValue>[\d.]+)['"]?
+      - (?<depName>ACTIONLINT)_VERSION[=:]\s*['"]?(?<currentValue>[\d.]+)['"]?
+      - (?<depName>ZIZMOR)_VERSION[=:]\s*['"]?(?<currentValue>[\d.]+)['"]?
+    datasourceTemplate: github-releases
+    lookupNameTemplate: >-
+      {{#if (equals depName 'OPENGREP')}}opengrep/opengrep{{/if}}
+      {{#if (equals depName 'ACTIONLINT')}}rhysd/actionlint{{/if}}
+      {{#if (equals depName 'ZIZMOR')}}woodruffw/zizmor{{/if}}
+
+  # Tool versions in custom Dockerfiles (ARG pattern)
+  # e.g. ARG OPENGREP_VERSION=1.18.0
+  - description: Tool versions in custom Dockerfiles
+    fileMatch:
+      - docker/Dockerfile\..+
+    matchStrings:
+      - ARG (?<depName>OPENGREP)_VERSION=(?<currentValue>[\d.]+)
+      - ARG (?<depName>ACTIONLINT)_VERSION=(?<currentValue>[\d.]+)
+      - ARG (?<depName>ZIZMOR)_VERSION=(?<currentValue>[\d.]+)
+    datasourceTemplate: github-releases
+    lookupNameTemplate: >-
+      {{#if (equals depName 'OPENGREP')}}opengrep/opengrep{{/if}}
+      {{#if (equals depName 'ACTIONLINT')}}rhysd/actionlint{{/if}}
+      {{#if (equals depName 'ZIZMOR')}}woodruffw/zizmor{{/if}}
+
+# ──────────────────────────────────────────────────
+# Grouping — reduce PR noise
+# ──────────────────────────────────────────────────
+
+packageRules:
+
+  # All container image bumps in a single PR
+  - description: Group all container image updates
+    matchManagers:
+      - regex
+    matchDatasources:
+      - docker
+    groupName: container-images
+    automerge: false
+
+  # All tool version bumps in a single PR
+  - description: Group all tool version updates
+    matchManagers:
+      - regex
+    matchDatasources:
+      - github-releases
+    groupName: tool-versions
+    automerge: false
