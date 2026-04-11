@@ -474,6 +474,49 @@ decisions:
 
     supersedes: "Refines ADR-010 (which assumed Anthropic-only)"
 
+  - id: ADR-013
+    title: "Claude AI session URLs treated as secrets in gitleaks"
+    date: "2026-04-11"
+    status: accepted
+
+    context: |
+      Claude Code supports remote sessions and shareable links in the format
+      https://claude.ai/code/session_<id>. These URLs can grant unauthorized
+      access to the host machine running Claude Code, making them equivalent
+      to credentials or private keys. The default gitleaks ruleset does not
+      detect them.
+
+    decision: |
+      Add a custom gitleaks rule to .gitleaks.toml that detects Claude AI
+      session URLs and treats them as secrets. This rule is picked up
+      automatically by both the gitleaks pre-commit hook (which reads
+      .gitleaks.toml by default) and by any user of the scanner-gitleaks
+      action who supplies this config via the gitleaks_config input.
+
+    alternatives_considered:
+      - name: "Add to .gitleaksignore as a blocked pattern"
+        rejected_because: ".gitleaksignore is for suppressing findings, not adding rules"
+
+      - name: "Rely on default gitleaks ruleset"
+        rejected_because: "Default ruleset has no rule for Claude session URLs"
+
+    consequences:
+      positive:
+        - "Pre-commit hook blocks accidental commit of session URLs"
+        - "scanner-gitleaks users detect leaked session URLs in their own repos"
+        - "Documented rationale so contributors know why URLs are flagged"
+      negative:
+        - "Requires users to supply this .gitleaks.toml via gitleaks_config input
+          to benefit in the scanner-gitleaks action"
+
+    implementation: |
+      .gitleaks.toml:
+        [[rules]]
+        id = "claude-session-url"
+        regex = '''https://claude\.ai/(?:[a-z-]+/)?session[_/]([A-Za-z0-9_\-]{8,})'''
+        secretGroup = 1
+        keywords = ["claude.ai"]
+
   - id: ADR-012
     title: "Dual dependency scanning: OSV-Scanner + dependency-review-action"
     date: "2026-03-11"

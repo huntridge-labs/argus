@@ -3,6 +3,26 @@
 
 title = "Gitleaks Config"
 
+# ==============================================================================
+# CUSTOM RULES
+# ==============================================================================
+
+# Claude AI session URLs are shareable links that can grant unauthorized
+# remote access to the host machine running Claude Code. Treat them as secrets.
+# Example: https://claude.ai/code/session_01PiQ6uJGzAux1HJuNZec36x
+[[rules]]
+id = "claude-session-url"
+description = "Claude AI session URL - shareable links that may allow unauthorized remote access to host machines"
+regex = '''https://claude\.ai/(?:[a-z-]+/)?session[_/]([A-Za-z0-9_\-]{8,})'''
+secretGroup = 1
+keywords = [
+  "claude.ai",
+]
+
+# ==============================================================================
+# ALLOWLIST
+# ==============================================================================
+
 # Allowlist paths that contain mock/test data with fake secrets
 [allowlist]
 description = "Allow test fixtures containing mock secrets for testing"
