@@ -1,6 +1,10 @@
 # Renovate configuration for dependencies Dependabot can't track.
 # Dependabot handles: GitHub Actions SHAs, npm, pip, Dockerfile FROM.
-# Renovate handles: image tags in Python source, tool versions in shell scripts.
+# Renovate handles: image tags in Python source, tool versions in shell scripts/Dockerfiles.
+#
+# SUPPLY CHAIN POLICY: All updates are delayed 7 days after release.
+# This provides a stabilization window to catch compromised releases
+# (ref: Trivy supply chain attack GHSA-69fq-xp46-6x23, March 2026).
 
 extends:
   - config:recommended
@@ -21,14 +25,19 @@ schedule:
 
 timezone: America/New_York
 
+# 7-day stabilization window — do not propose updates until a release
+# has been published for at least 7 days. Reduces exposure to supply
+# chain attacks that are caught and reverted within the first week.
+minimumReleaseAge: 7 days
+
 # ──────────────────────────────────────────────────
 # Regex managers — match version strings in non-standard files
 # ──────────────────────────────────────────────────
 
 regexManagers:
 
-  # Official container image tags pinned in argus/containers.py
-  # e.g. "aquasec/trivy:0.58.0" → detects trivy, checks Docker Hub
+  # Container image tags pinned in argus/containers.py
+  # e.g. "aquasec/trivy:0.69.3" → detects trivy, checks Docker Hub/GHCR
   - description: Container image tags in argus/containers.py
     fileMatch:
       - argus/containers\.py
@@ -36,8 +45,31 @@ regexManagers:
       - '"(?<depName>[a-z0-9./-]+):(?<currentValue>[^"]+)"'
     datasourceTemplate: docker
 
+  # Tool versions pinned as ARG in Dockerfiles
+  # e.g. ARG TRIVY_VERSION=0.69.3
+  - description: Tool versions in Dockerfiles (ARG pattern)
+    fileMatch:
+      - docker/Dockerfile\..+
+    matchStrings:
+      - ARG (?<depName>TRIVY)_VERSION=(?<currentValue>[\d.]+)
+      - ARG (?<depName>GRYPE)_VERSION=(?<currentValue>[\d.]+)
+      - ARG (?<depName>SYFT)_VERSION=(?<currentValue>[\d.]+)
+      - ARG (?<depName>GITLEAKS)_VERSION=(?<currentValue>[\d.]+)
+      - ARG (?<depName>ACTIONLINT)_VERSION=(?<currentValue>[\d.]+)
+      - ARG (?<depName>OPENGREP)_VERSION=(?<currentValue>[\d.]+)
+      - ARG (?<depName>ZIZMOR)_VERSION=(?<currentValue>[\d.]+)
+    datasourceTemplate: github-releases
+    lookupNameTemplate: >-
+      {{#if (equals depName 'TRIVY')}}aquasecurity/trivy{{/if}}
+      {{#if (equals depName 'GRYPE')}}anchore/grype{{/if}}
+      {{#if (equals depName 'SYFT')}}anchore/syft{{/if}}
+      {{#if (equals depName 'GITLEAKS')}}gitleaks/gitleaks{{/if}}
+      {{#if (equals depName 'ACTIONLINT')}}rhysd/actionlint{{/if}}
+      {{#if (equals depName 'OPENGREP')}}opengrep/opengrep{{/if}}
+      {{#if (equals depName 'ZIZMOR')}}woodruffw/zizmor{{/if}}
+
   # Tool versions pinned as shell variables in composite actions
-  # e.g. OPENGREP_VERSION=1.18.0, ZIZMOR_VERSION=1.23.1
+  # e.g. OPENGREP_VERSION=1.18.0
   - description: Tool versions pinned in GitHub Actions (TOOL_VERSION= pattern)
     fileMatch:
       - \.github/actions/.+/action\.yml
@@ -51,23 +83,8 @@ regexManagers:
       {{#if (equals depName 'ACTIONLINT')}}rhysd/actionlint{{/if}}
       {{#if (equals depName 'ZIZMOR')}}woodruffw/zizmor{{/if}}
 
-  # Tool versions in custom Dockerfiles (ARG pattern)
-  # e.g. ARG OPENGREP_VERSION=1.18.0
-  - description: Tool versions in custom Dockerfiles
-    fileMatch:
-      - docker/Dockerfile\..+
-    matchStrings:
-      - ARG (?<depName>OPENGREP)_VERSION=(?<currentValue>[\d.]+)
-      - ARG (?<depName>ACTIONLINT)_VERSION=(?<currentValue>[\d.]+)
-      - ARG (?<depName>ZIZMOR)_VERSION=(?<currentValue>[\d.]+)
-    datasourceTemplate: github-releases
-    lookupNameTemplate: >-
-      {{#if (equals depName 'OPENGREP')}}opengrep/opengrep{{/if}}
-      {{#if (equals depName 'ACTIONLINT')}}rhysd/actionlint{{/if}}
-      {{#if (equals depName 'ZIZMOR')}}woodruffw/zizmor{{/if}}
-
 # ──────────────────────────────────────────────────
-# Grouping — reduce PR noise
+# Grouping and policies
 # ──────────────────────────────────────────────────
 
 packageRules:

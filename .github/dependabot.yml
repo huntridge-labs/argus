@@ -1,6 +1,11 @@
 # Dependabot configuration for automated dependency updates
 # Groups updates by semantic version level (major, minor, patch) to reduce PR noise
 # See: https://docs.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
+#
+# SUPPLY CHAIN POLICY: Weekly schedule provides natural delay. Dependabot lacks
+# minimumReleaseAge (Renovate has this for tool versions). Manual review required
+# before merging — check release age and community reports for new versions.
+# Ref: Trivy supply chain attack GHSA-69fq-xp46-6x23, March 2026.
 
 version: 2
 updates:
