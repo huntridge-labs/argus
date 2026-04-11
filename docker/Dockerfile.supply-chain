@@ -1,0 +1,15 @@
+FROM python:3.12-slim
+
+ARG ZIZMOR_VERSION=1.23.1
+ARG ACTIONLINT_VERSION=1.7.12
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+    pip install --no-cache-dir "zizmor==${ZIZMOR_VERSION}" && \
+    ACTIONLINT_TARBALL="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" && \
+    curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${ACTIONLINT_TARBALL}" \
+      -o "/tmp/${ACTIONLINT_TARBALL}" && \
+    tar -xzf "/tmp/${ACTIONLINT_TARBALL}" -C /usr/local/bin actionlint && \
+    rm -f "/tmp/${ACTIONLINT_TARBALL}" && \
+    apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+
+ENTRYPOINT ["/bin/sh", "-c"]

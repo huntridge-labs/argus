@@ -1,0 +1,11 @@
+FROM python:3.12-slim
+
+ARG OPENGREP_VERSION=1.18.0
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+    curl -sSfL "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86" \
+      -o /usr/local/bin/opengrep && \
+    chmod +x /usr/local/bin/opengrep && \
+    apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+
+ENTRYPOINT ["opengrep"]

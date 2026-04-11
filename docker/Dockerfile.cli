@@ -1,0 +1,40 @@
+FROM python:3.12-slim
+
+ARG OPENGREP_VERSION=1.18.0
+ARG ZIZMOR_VERSION=1.23.1
+ARG ACTIONLINT_VERSION=1.7.12
+
+# Install system dependencies and tool binaries
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl clamav clamav-daemon && \
+    # Trivy
+    curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin && \
+    # Grype
+    curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin && \
+    # Syft
+    curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin && \
+    # Gitleaks
+    curl -sSfL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_linux_x64.tar.gz | tar -xz -C /usr/local/bin gitleaks && \
+    # OpenGrep
+    curl -sSfL "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86" \
+      -o /usr/local/bin/opengrep && chmod +x /usr/local/bin/opengrep && \
+    # Actionlint
+    curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+      | tar -xz -C /usr/local/bin actionlint && \
+    # Cleanup
+    apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+
+# Install Python-based tools and argus
+RUN pip install --no-cache-dir \
+    'bandit[toml,sarif]>=1.7.5' \
+    'checkov>=3.0' \
+    "zizmor==${ZIZMOR_VERSION}" \
+    'osv-scanner>=1.9.0' \
+    'pyyaml>=6.0'
+
+# Install argus SDK (future: pip install argus-security)
+COPY argus/ /opt/argus/argus/
+COPY argus.example.yml /opt/argus/
+ENV PYTHONPATH=/opt/argus
+
+ENTRYPOINT ["python", "-m", "argus"]

@@ -49,3 +49,19 @@ reporting:
     - sarif
   severity_threshold: high
   output_dir: "./argus-results"
+
+# Execution backend configuration
+execution:
+  # auto: try local tools first, fall back to Docker containers
+  # local: only use locally installed tools
+  # docker: always use containers
+  backend: auto
+
+  # Override container registry for private/air-gapped environments
+  # registry: "registry.internal.corp/argus"
+
+  # Container pull policy
+  # always: pull latest on every run
+  # if-not-present: pull only if image not cached locally
+  # never: fail if image not cached (for air-gapped)
+  pull_policy: if-not-present
