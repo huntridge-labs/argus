@@ -113,13 +113,26 @@ jobs:
         env:
           IMAGE_NAME: ${{ matrix.image }}
 
-      - name: Scan with Trivy
+      - name: Checkout (for argus SDK)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.13'
+
+      - name: Install Argus SDK
+        run: |
+          pip install --quiet pyyaml
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      # Scan with ALL severities — perception is protection
+      - name: Scan with Trivy (SARIF)
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           image-ref: "ghcr.io/huntridge-labs/argus/${{ matrix.image }}:${{ github.sha }}"
           format: 'sarif'
           output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH'
 
       - name: Upload Trivy SARIF
         if: always()
@@ -136,7 +149,6 @@ jobs:
           fail-build: false
           severity-cutoff: critical
 
-      # Run Trivy again with JSON for severity breakdown
       - name: Scan with Trivy (JSON)
         if: always()
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
@@ -145,59 +157,51 @@ jobs:
           format: 'json'
           output: 'trivy-results.json'
 
-      - name: Generate scan report
+      # Use argus container scanner parser + markdown reporter
+      - name: Generate report with Argus
         if: always()
         run: |
-          mkdir -p scan-reports
+          mkdir -p scanner-summaries
           python3 << 'PYEOF'
-          import json, os
+          import sys, os
+          sys.path.insert(0, os.environ.get("PYTHONPATH", "."))
+
+          from pathlib import Path
+          from argus.scanners.container import ContainerScanner
+          from argus.core.models import ScanResult, ScanSummary, Severity
+          from argus.reporters.markdown import MarkdownReporter
 
           image_name = os.environ["IMAGE_NAME"]
-          report = {"image": image_name, "critical": 0, "high": 0, "medium": 0, "low": 0, "total": 0, "top_findings": []}
+          trivy_json = Path("trivy-results.json")
 
-          # Parse Trivy JSON for severity counts and details
-          try:
-              data = json.load(open("trivy-results.json"))
-              seen = set()
-              for result in data.get("Results", []):
-                  for vuln in result.get("Vulnerabilities", []):
-                      vid = vuln.get("VulnerabilityID", "")
-                      if vid in seen:
-                          continue
-                      seen.add(vid)
-                      sev = vuln.get("Severity", "UNKNOWN").upper()
-                      if sev == "CRITICAL":
-                          report["critical"] += 1
-                      elif sev == "HIGH":
-                          report["high"] += 1
-                      elif sev == "MEDIUM":
-                          report["medium"] += 1
-                      elif sev == "LOW":
-                          report["low"] += 1
-                      report["total"] += 1
-                      if len(report["top_findings"]) < 15:
-                          report["top_findings"].append({
-                              "id": vid,
-                              "severity": sev,
-                              "pkg": vuln.get("PkgName", ""),
-                              "installed": vuln.get("InstalledVersion", ""),
-                              "fixed": vuln.get("FixedVersion", ""),
-                              "title": vuln.get("Title", "")[:80],
-                          })
-          except Exception as e:
-              report["error"] = str(e)
+          scanner = ContainerScanner()
+          findings = scanner.parse_trivy_results(trivy_json) if trivy_json.exists() else []
 
-          json.dump(report, open(f"scan-reports/{image_name}.json", "w"), indent=2)
+          result = ScanResult(
+              scanner=f"container/{image_name}",
+              findings=findings,
+              metadata={"image": image_name},
+          )
+          summary = ScanSummary(results=[result])
+
+          reporter = MarkdownReporter()
+          reporter.report(summary, "scanner-summaries")
+
+          # Rename to per-image filename for aggregation
+          src = Path("scanner-summaries/argus-summary.md")
+          dst = Path(f"scanner-summaries/{image_name}.md")
+          if src.exists():
+              dst.write_text(src.read_text())
           PYEOF
         env:
           IMAGE_NAME: ${{ matrix.image }}
 
-      - name: Upload scan report
+      - name: Upload scan artifacts
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
-          name: scan-report-${{ matrix.image }}
-          path: scan-reports/
+          name: scanner-summary-container-${{ matrix.image }}
+          path: scanner-summaries/
           retention-days: 7
 
   # ── Step 3: Test argus CLI using built images ───────────────────────
@@ -310,7 +314,7 @@ jobs:
           path: cli-test-results/
           retention-days: 7
 
-  # ── Step 4: Post PR comment with results ────────────────────────────
+  # ── Step 4: Post PR comment using argus markdown + comment-pr action ─
   comment-pr:
     name: Container Scan Summary
     if: always() && github.event_name == 'pull_request'
@@ -318,12 +322,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download scan reports
+      - name: Checkout (for comment-pr action)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      # Download the argus-generated markdown from each scan matrix job
+      - name: Download scanner summaries
         uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4
         with:
-          pattern: scan-report-*
+          pattern: scanner-summary-container-*
           merge-multiple: true
-          path: scan-reports
+          path: scanner-summaries
 
       - name: Download CLI test results
         uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4
@@ -332,120 +340,26 @@ jobs:
           path: cli-results
         continue-on-error: true
 
-      - name: Generate PR comment
+      # Combine per-image argus markdown reports into one file
+      - name: Combine scanner summaries
         run: |
-          python3 << 'PYEOF'
-          import json, glob, os
+          mkdir -p scanner-summaries
+          {
+            for md in scanner-summaries/*.md; do
+              [ -f "$md" ] && cat "$md" && echo ""
+            done
+            if [ -f "cli-results/argus-summary.md" ]; then
+              echo "---"
+              echo ""
+              cat cli-results/argus-summary.md
+            fi
+          } > scanner-summaries/combined-container-scan.md
 
-          lines = []
-          lines.append("## 🔒 Argus Container Security Scan")
-          lines.append("")
-
-          # ── Overall summary table ──
-          reports = sorted(glob.glob("scan-reports/*.json"))
-          totals = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-          image_data = []
-          for path in reports:
-              data = json.load(open(path))
-              image_data.append(data)
-              for sev in totals:
-                  totals[sev] += data.get(sev, 0)
-
-          lines.append("### 📊 Findings Summary")
-          lines.append("")
-          lines.append("| 🚨 Critical | ⚠️ High | 🟡 Medium | 🔵 Low | 📦 Total |")
-          lines.append("|:-----------:|:-------:|:---------:|:------:|:--------:|")
-          total = sum(totals.values())
-          lines.append(f"| **{totals['critical']}** | **{totals['high']}** | **{totals['medium']}** | **{totals['low']}** | **{total}** |")
-          lines.append("")
-
-          # ── Per-image breakdown ──
-          for data in image_data:
-              name = data["image"]
-              c, h, m, l = data.get("critical", 0), data.get("high", 0), data.get("medium", 0), data.get("low", 0)
-              img_total = c + h + m + l
-
-              if img_total == 0:
-                  lines.append(f"<details>")
-                  lines.append(f"<summary>📦 {name} — ✅ Clean</summary>")
-                  lines.append("")
-                  lines.append("No vulnerabilities found at any severity level.")
-                  lines.append("")
-                  lines.append("</details>")
-              else:
-                  lines.append(f"<details>")
-                  lines.append(f"<summary>📦 {name} — {img_total} finding(s) (🚨{c} ⚠️{h} 🟡{m} 🔵{l})</summary>")
-                  lines.append("")
-                  lines.append("| 🚨 Critical | ⚠️ High | 🟡 Medium | 🔵 Low | Total |")
-                  lines.append("|:-----------:|:-------:|:---------:|:------:|:-----:|")
-                  lines.append(f"| **{c}** | **{h}** | **{m}** | **{l}** | **{img_total}** |")
-                  lines.append("")
-
-                  findings = data.get("top_findings", [])
-                  if findings:
-                      lines.append("| CVE | Severity | Package | Installed | Fixed | Title |")
-                      lines.append("|-----|----------|---------|-----------|-------|-------|")
-                      for f in findings:
-                          sev = f.get("severity", "")
-                          sev_icon = {"CRITICAL": "🚨", "HIGH": "⚠️", "MEDIUM": "🟡", "LOW": "🔵"}.get(sev, "")
-                          lines.append(
-                              f"| {f.get('id', '')} | {sev_icon} {sev} | {f.get('pkg', '')} | {f.get('installed', '')} | {f.get('fixed', 'N/A')} | {f.get('title', '')} |"
-                          )
-                      if img_total > len(findings):
-                          lines.append(f"| | | | | | *...and {img_total - len(findings)} more* |")
-
-                  lines.append("")
-                  lines.append("</details>")
-              lines.append("")
-
-          # ── Argus CLI scan summary ──
-          cli_json = "cli-results/argus-results.json"
-          if os.path.exists(cli_json):
-              data = json.load(open(cli_json))
-              results = data.get("results", [])
-              scanners = [r["scanner"] for r in results]
-              total_findings = sum(len(r.get("findings", [])) for r in results)
-              lines.append("<details>")
-              lines.append(f"<summary>🔍 Argus CLI Scan — {len(scanners)} scanner(s), {total_findings} finding(s)</summary>")
-              lines.append("")
-              for r in results:
-                  scanner = r["scanner"]
-                  count = len(r.get("findings", []))
-                  icon = "✅" if count == 0 else "⚠️"
-                  lines.append(f"- {icon} **{scanner}**: {count} finding(s)")
-              lines.append("")
-              lines.append("</details>")
-              lines.append("")
-
-          lines.append("---")
-          lines.append("*Scanned with Trivy + Grype (containers) and Argus CLI (code). SARIF uploaded to Security tab.*")
-
-          body = "\n".join(lines)
-          with open("comment-body.md", "w") as f:
-              f.write(body)
-          print(body)
-          PYEOF
-
-      - name: Post PR comment
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REPO: ${{ github.repository }}
-        run: |
-          BODY=$(cat comment-body.md)
-          MARKER="<!-- argus-container-scan -->"
-
-          # Find existing comment by marker
-          COMMENT_ID=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" \
-            --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" 2>/dev/null | head -1)
-
-          FULL_BODY="${MARKER}
-          ${BODY}"
-
-          if [ -n "$COMMENT_ID" ]; then
-            gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" \
-              -X PATCH -f body="$FULL_BODY"
-          else
-            gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" \
-              -f body="$FULL_BODY"
-          fi
+      # Post using the existing comment-pr composite action
+      - name: Comment PR with scan results
+        uses: ./.github/actions/comment-pr
+        with:
+          summary_file: scanner-summaries/combined-container-scan.md
+          comment_marker: argus-container-scan
+          title: '🔒 Argus Container Security Scan'
+          fallback_message: 'No container scan results available'
