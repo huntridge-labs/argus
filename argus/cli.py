@@ -28,12 +28,57 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
+    _build_init_parser(subparsers)
     _build_scan_parser(subparsers)
     _build_collect_parser(subparsers)
     _build_report_parser(subparsers)
     _build_validate_parser(subparsers)
 
     return parser
+
+
+def _build_init_parser(subparsers: argparse._SubParsersAction) -> None:
+    """Add the 'init' subcommand for project initialization."""
+    init_parser = subparsers.add_parser(
+        "init",
+        help="Initialize argus.yml for the current project",
+        description=(
+            "Detect your project's languages, frameworks, and infrastructure,\n"
+            "then generate a tailored argus.yml with the right scanners enabled.\n\n"
+            "Examples:\n"
+            "  argus init                          # auto-detect and generate argus.yml\n"
+            "  argus init --platform github        # also generate GitHub Actions workflow\n"
+            "  argus init --force                   # overwrite existing argus.yml\n"
+            "  argus init --no-detect               # generate with defaults only\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    init_parser.add_argument(
+        "--platform",
+        choices=["github", "gitlab", "jenkins", "none"],
+        default="none",
+        help="Generate a CI workflow file for the specified platform (default: none)",
+    )
+    init_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing argus.yml file",
+    )
+    init_parser.add_argument(
+        "--no-detect",
+        action="store_true",
+        help="Skip auto-detection and generate a config with defaults only",
+    )
+
+
+def cmd_init(args: argparse.Namespace) -> int:
+    """Execute the init subcommand — generate argus.yml for a project."""
+    from argus.init import run_init
+    return run_init(
+        platform=args.platform,
+        force=args.force,
+        detect=not args.no_detect,
+    )
 
 
 def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -909,6 +954,7 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(EXIT_SUCCESS)
 
     handlers = {
+        "init": cmd_init,
         "scan": cmd_scan,
         "collect": cmd_collect,
         "report": cmd_report,

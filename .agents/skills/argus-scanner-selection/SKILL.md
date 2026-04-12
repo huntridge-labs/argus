@@ -1,6 +1,6 @@
 ---
 name: argus-scanner-selection
-description: Analyze a repository or local change set and choose the right Argus scanners and inputs. Use when a coding agent needs pre-push security checks during development or wants to align local scans with Argus CI coverage. The argus SDK (python -m argus scan) is the primary interface.
+description: Analyze a repository or local change set and choose the right Argus scanners and inputs. Use when a coding agent needs pre-push security checks during development or wants to align local scans with Argus CI coverage. Start with `argus init` for new projects; use `argus scan` as the primary scanning interface, `argus validate` for config checking, and `argus collect` for CI log aggregation.
 license: AGPL-3.0
 compatibility: Designed for skills-compatible coding agents with file search, file read, shell, git, and GitHub workflow editing access. The argus SDK is the primary execution path; composite actions provide GitHub Actions integration.
 metadata:
@@ -41,17 +41,18 @@ Infer from the repository first. Ask the user only when a missing detail changes
 
 ## Working procedure
 
-1. Inspect the current repository state first. If there is a staged diff, branch diff, or working-tree change set, treat that as the primary signal for a local development scan.
-2. Inspect the repository for source languages, lockfiles, manifests, Dockerfiles, compose files, container build or publish workflows, Terraform, Kubernetes, CloudFormation, Helm, installer or binary assets, and web entrypoints.
-3. Build a short evidence list from the files you found. Quote concrete paths and changed files when available.
-4. Choose scanners using the selection rules below.
-5. For local development, prefer the smallest effective scanner set that matches the current changes so feedback arrives before push.
-6. Route by platform:
-   - for local development and pre-push checks, prefer the argus SDK (`python -m argus scan`)
+1. Check if `argus.yml` exists. If not, recommend running `argus init` (which auto-detects the project and generates a tailored config). If it exists, load it to understand the current scanner configuration.
+2. Inspect the current repository state first. If there is a staged diff, branch diff, or working-tree change set, treat that as the primary signal for a local development scan.
+3. Inspect the repository for source languages, lockfiles, manifests, Dockerfiles, compose files, container build or publish workflows, Terraform, Kubernetes, CloudFormation, Helm, installer or binary assets, and web entrypoints.
+4. Build a short evidence list from the files you found. Quote concrete paths and changed files when available.
+5. Choose scanners using the selection rules below.
+6. For local development, prefer the smallest effective scanner set that matches the current changes so feedback arrives before push.
+7. Route by platform:
+   - for local development and pre-push checks, prefer the argus SDK (`argus scan`)
    - for GitHub Actions CI, prefer composite actions from `.github/actions/scanner-*`
    - for GHES or air-gapped environments, prefer composite actions or the SDK
-7. Prefer an explicit scanner list when generating commands or workflows.
-8. Produce:
+8. Prefer an explicit scanner list when generating commands or workflows.
+9. Produce:
    - the recommended scanners
    - why each scanner is included
    - what should be run locally now versus what should remain CI-only
@@ -60,24 +61,25 @@ Infer from the repository first. Ask the user only when a missing detail changes
    - any required inputs, secrets, and permissions
    - the exact workflow or action snippet to use
    - the exact local execution command when local runs are requested
-9. If the user asked you to implement, edit the workflow files and preserve the repository's existing conventions.
-10. After editing files, validate the YAML and run the repository's relevant validators.
+10. If the user asked you to implement, edit the workflow files and preserve the repository's existing conventions.
+11. After editing files, validate with `argus validate` and run the repository's relevant validators.
 
 ## Local development guidance
 
 - Start diff-first. If the change set only touches application code, run the source-focused scanners that match the changed languages and dependency manifests.
 - Escalate to full-repository recommendations when the changes touch shared configuration, dependency manifests, Dockerfiles, IaC, release workflows, or security-sensitive areas.
 - Keep DAST and compliance scans opt-in unless the local environment clearly provides the required target or policy context.
-- Default local execution to the argus SDK: `python -m argus scan <scanners> --severity-threshold <level>`.
-- If the repository is not yet using Argus in CI, still return a local SDK scan plan and then propose the minimal CI workflow (composite actions) that mirrors it.
+- Default local execution to the argus SDK: `argus scan <scanner> --severity-threshold <level>`.
+- If the repository does not have an `argus.yml`, recommend `argus init` to auto-detect and generate one.
+- If the repository is not yet using Argus in CI, still return a local SDK scan plan and then propose the minimal CI workflow (composite actions) that mirrors it. Use `argus init --platform github` to generate a starter workflow.
 - Composite actions with `act` remain an alternative for users who prefer GitHub Actions locally.
 
 ## Platform routing
 
-- Use the argus SDK (`python -m argus scan`) as the primary recommendation for local development and any CI environment with Python.
+- Use the argus CLI (`argus scan`) as the primary recommendation for local development and any CI environment with Python.
 - Use composite actions for GitHub Actions CI workflows (github.com and GHES).
 - For GHES or air-gapped setups, composite actions provide direct GitHub Actions integration without cross-repo dependencies.
-- When the platform is unclear, default to the SDK for local use and composite actions for CI.
+- When the platform is unclear, default to the CLI for local use and composite actions for CI.
 
 ## Selection rules
 
@@ -147,29 +149,69 @@ Return a concise plan with these sections:
 
 ## Implementation guidance
 
+### CLI command surface
+
+The argus CLI provides these commands:
+
+| Command | Purpose |
+| --- | --- |
+| `argus init` | Auto-detect project and generate argus.yml (+ optional CI workflow) |
+| `argus scan` | Run security scanners (all enabled or a specific one) |
+| `argus scan container --discover` | Discover Dockerfiles, build, and scan container images |
+| `argus scan zap --target URL` | DAST scan against a running web application |
+| `argus scan zap --image REF` | DAST scan with automatic container lifecycle |
+| `argus validate` | Validate argus.yml for errors and warnings |
+| `argus collect` | Aggregate results from parallel CI scanner jobs |
+| `argus report <format>` | Generate reports from existing scan results |
+| `argus scan --list` | List available scanners |
+
+### For new projects (recommended starting point)
+
+Use `argus init` to auto-detect the project and generate a tailored config:
+
+```bash
+# Auto-detect and generate argus.yml
+argus init
+
+# Also generate a GitHub Actions workflow
+argus init --platform github
+
+# Validate the generated config
+argus validate
+```
+
 ### For SDK usage (recommended)
 
-Prefer the argus SDK as the primary recommendation:
+Prefer the argus CLI as the primary recommendation:
 
 ```bash
 pip install pyyaml
-python -m argus scan gitleaks opengrep osv --severity-threshold high
+
+# Run all enabled scanners from argus.yml
+argus scan
+
+# Run a specific scanner
+argus scan bandit --severity-threshold high
 ```
 
 Or with a config file:
 
 ```yaml
 # argus.yml
+version: "1.0"
 scanners:
-  - gitleaks
-  - opengrep
-  - osv
-
-severity_threshold: high
+  gitleaks:
+    enabled: true
+  opengrep:
+    enabled: true
+  osv:
+    enabled: true
+reporting:
+  severity_threshold: high
 ```
 
 ```bash
-python -m argus scan --config argus.yml
+argus scan --config argus.yml
 ```
 
 Then add or remove scanners based on the repository signals you found.
@@ -178,10 +220,10 @@ Then add or remove scanners based on the repository signals you found.
 
 - Prioritize the scanners that match the changed files and repository risk profile.
 - Return a pre-push recommendation that distinguishes:
-  - scanners to run now in the local loop via the SDK
+  - scanners to run now in the local loop via the CLI
   - scanners to keep primarily in CI because they are slower, need hosted permissions, or need runtime targets
 - When the repository already has Argus wired into CI, keep the local recommendation aligned with the CI scanner list unless you have a clear reason to trim it for speed.
-- Default to the SDK for local runs.
+- Default to the CLI for local runs.
 
 ### For GitHub Actions CI (composite actions)
 
@@ -197,11 +239,22 @@ When the user wants to actually run Argus before push:
 # Install
 pip install pyyaml
 
-# Run baseline scanners
-python -m argus scan gitleaks opengrep --severity-threshold high
+# Initialize config (first time only)
+argus init
 
-# Add language-specific scanners
-python -m argus scan gitleaks opengrep bandit osv --severity-threshold high
+# Run all enabled scanners
+argus scan
+
+# Run baseline scanners explicitly
+argus scan gitleaks --severity-threshold high
+argus scan opengrep --severity-threshold high
+
+# Container scanning
+argus scan container --discover ./
+
+# DAST scanning
+argus scan zap --target http://localhost:3000
+argus scan zap --image myapp:latest
 ```
 
 For users who prefer GitHub Actions locally with `act`, composite actions still work:
@@ -214,10 +267,11 @@ act workflow_dispatch --workflows .github/workflows/local-argus-pre-push.yml --s
 
 If `zap` is selected, keep it in a dedicated job unless the user explicitly wants it in the shared workflow. Choose one mode:
 
-- `url` for an already-running target
-- `docker-run` for a single container image
-- `compose` for a local compose stack
-- `api` scan type when an OpenAPI or Swagger spec exists
+- `argus scan zap --target URL` for an already-running target
+- `argus scan zap --image REF` for a container image (Argus handles lifecycle: start, discover ports, scan, stop)
+- `argus scan zap --image REF --port 8080` to override the exposed port
+- `argus scan zap --image REF --env DB_HOST=localhost` to pass environment variables
+- `--scan-type baseline|full` controls scan depth (default: baseline)
 
 ### For SCN detection
 
@@ -229,9 +283,10 @@ Before you finish:
 
 1. Confirm the selected scanners match the repository signals you found.
 2. Validate that any referenced workflow inputs actually exist in Argus.
-3. Validate edited YAML files.
-4. Run the target repository's relevant validation commands.
-5. Summarize assumptions that still need human confirmation.
+3. Run `argus validate` to check the generated or edited argus.yml.
+4. Validate edited YAML files.
+5. Run the target repository's relevant validation commands.
+6. Summarize assumptions that still need human confirmation.
 
 ## Escalation points
 
