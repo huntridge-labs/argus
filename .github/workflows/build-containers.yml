@@ -277,6 +277,7 @@ jobs:
           python -m argus scan \
             --config argus.yml \
             --format terminal \
+            --format markdown \
             --format sarif \
             --format json \
             --output-dir ./cli-test-results \
@@ -316,6 +317,55 @@ jobs:
           total = sum(len(r.get('findings', [])) for r in results)
           print(f'Scanners: {scanners}')
           print(f'Total findings: {total}')
+          "
+
+      - name: Validate audit trail
+        run: |
+          echo "Checking audit artifacts..."
+          for f in cli-test-results/argus.log cli-test-results/argus-audit.json cli-test-results/argus-summary.md; do
+            test -f "$f" || { echo "FAIL: $f not produced"; exit 1; }
+            echo "  OK: $f ($(wc -c < "$f") bytes)"
+          done
+
+          # Validate audit manifest structure
+          python3 -c "
+          import json
+          m = json.load(open('cli-test-results/argus-audit.json'))
+          assert m.get('scan_id'), 'Missing scan_id'
+          assert m.get('started_at'), 'Missing started_at'
+          assert m.get('completed_at'), 'Missing completed_at'
+          assert m.get('duration_ms', 0) > 0, 'Invalid duration'
+          assert m.get('platform', {}).get('name'), 'Missing platform'
+          assert m.get('config_hash'), 'Missing config hash'
+          assert len(m.get('artifacts', [])) > 0, 'No artifacts inventoried'
+          print(f'Audit manifest valid: scan_id={m[\"scan_id\"][:8]}...')
+          print(f'  Platform: {m[\"platform\"][\"name\"]}')
+          print(f'  Duration: {m[\"duration_ms\"]}ms')
+          print(f'  Scanners: {m.get(\"scanners_executed\", [])}')
+          print(f'  Artifacts: {len(m[\"artifacts\"])} files')
+
+          # Verify SHA-256 hashes
+          import hashlib
+          for a in m['artifacts']:
+              if a['path'] == 'argus-audit.json':
+                  continue  # Self-referential
+              full = f'cli-test-results/{a[\"path\"]}'
+              actual = hashlib.sha256(open(full, 'rb').read()).hexdigest()
+              assert actual == a['sha256'], f'Hash mismatch for {a[\"path\"]}'
+          print('  Artifact hashes: all verified')
+          "
+
+          # Validate structured log is JSONL
+          python3 -c "
+          import json
+          with open('cli-test-results/argus.log') as f:
+              lines = [line for line in f if line.strip()]
+          for i, line in enumerate(lines):
+              entry = json.loads(line)
+              assert 'timestamp' in entry, f'Line {i}: missing timestamp'
+              assert 'level' in entry, f'Line {i}: missing level'
+              assert 'message' in entry, f'Line {i}: missing message'
+          print(f'Structured log valid: {len(lines)} entries')
           "
 
       - name: Upload test results
