@@ -681,8 +681,72 @@ def _get_version() -> str:
         return "argus (unknown version)"
 
 
+def _show_scanner_help(scanner_name: str) -> None:
+    """Print scanner-specific help by introspecting the scanner module."""
+    try:
+        from argus.scanners import SCANNER_REGISTRY
+        cls = SCANNER_REGISTRY.get(scanner_name)
+        if cls is None:
+            print(f"Unknown scanner: {scanner_name}")
+            print(f"Available scanners: {', '.join(sorted(SCANNER_REGISTRY))}")
+            sys.exit(EXIT_ERROR)
+
+        scanner = cls()
+        print(f"argus scan {scanner_name}")
+        print(f"{'=' * (len(scanner_name) + 11)}")
+        print()
+
+        # Description from docstring
+        doc = (cls.__doc__ or "").strip()
+        if doc:
+            print(doc)
+            print()
+
+        # Key info
+        print(f"  Tool:           {scanner_name}")
+        available = scanner.is_available()
+        print(f"  Installed:      {'yes' if available else 'no'}")
+
+        install = scanner.install_command()
+        if install and not available:
+            print(f"  Install:        {install}")
+
+        image = getattr(scanner, "container_image", "")
+        if image:
+            print(f"  Container:      {image}")
+
+        print()
+        print("Usage:")
+        print(f"  argus scan {scanner_name}                    # scan current directory")
+        print(f"  argus scan {scanner_name} --path src/        # scan specific path")
+        print(f"  argus scan {scanner_name} --config argus.yml # use config file")
+        print(f"  argus scan {scanner_name} --verbose          # debug output")
+        print()
+        print("Common options:")
+        print("  --path, -p PATH                 Path to scan (default: .)")
+        print("  --config, -c FILE               Path to argus.yml config")
+        print("  --output-dir, -o DIR            Output directory (default: ./argus-results)")
+        print("  --severity-threshold, -s LEVEL  Fail threshold (critical/high/medium/low/none)")
+        print("  --format, -f FORMAT             Output format (terminal/markdown/sarif/json)")
+        print("  --verbose, -v                   Enable debug output")
+
+    except ImportError:
+        print(f"Scanner '{scanner_name}' — unable to load scanner module")
+
+    sys.exit(EXIT_SUCCESS)
+
+
 def main(argv: list[str] | None = None) -> None:
     """CLI entry point. Parse arguments and dispatch to the appropriate subcommand."""
+    # Intercept `argus scan <name> --help` before argparse exits
+    raw_args = argv if argv is not None else sys.argv[1:]
+    if (len(raw_args) >= 3
+        and raw_args[0] == "scan"
+        and raw_args[-1] in ("--help", "-h")
+        and raw_args[1] not in ("--help", "-h", "--list")):
+        scanner_name = raw_args[1]
+        _show_scanner_help(scanner_name)
+
     parser = build_parser()
     args = parser.parse_args(argv)
 
