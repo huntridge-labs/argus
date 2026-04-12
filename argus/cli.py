@@ -123,6 +123,43 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Sub-scanners for container scanning: trivy,grype,syft (default: trivy,grype)",
     )
 
+    # ZAP DAST flags (used with: argus scan zap)
+    dast_group = scan_parser.add_argument_group(
+        "DAST scanning",
+        "Flags for dynamic application security testing (use with: argus scan zap)",
+    )
+    dast_group.add_argument(
+        "--target",
+        default=None,
+        metavar="URL",
+        help="URL of a running target to scan (e.g., http://localhost:3000)",
+    )
+    dast_group.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="Override the exposed port when using --image with zap",
+    )
+    dast_group.add_argument(
+        "--env",
+        action="append",
+        dest="env_vars",
+        metavar="KEY=VALUE",
+        help="Environment variable for the target container (can be repeated)",
+    )
+    dast_group.add_argument(
+        "--scan-type",
+        choices=["baseline", "full"],
+        default="baseline",
+        help="ZAP scan type (default: baseline)",
+    )
+    dast_group.add_argument(
+        "--startup-timeout",
+        type=int,
+        default=60,
+        help="Seconds to wait for target container to become healthy (default: 60)",
+    )
+
 
 def _build_report_parser(subparsers: argparse._SubParsersAction) -> None:
     """Add the 'report' subcommand."""
@@ -156,12 +193,17 @@ def _build_report_parser(subparsers: argparse._SubParsersAction) -> None:
 def cmd_scan(args: argparse.Namespace) -> int:
     """Execute the scan subcommand.
 
-    Routes to container scanning lifecycle when scanner is 'container'
-    and --discover or --image flags are used.
+    Routes to specialized lifecycle engines based on scanner name
+    and flags:
+      - container + --discover/--image → container lifecycle
+      - zap + --image/--target → DAST lifecycle
+      - everything else → source code scanning
     """
-    # Route to container lifecycle if applicable
     if args.scanner == "container" and _is_container_lifecycle(args):
         return _cmd_container_scan(args)
+
+    if args.scanner == "zap" and _is_dast_lifecycle(args):
+        return _cmd_dast_scan(args)
 
     return _cmd_source_scan(args)
 
@@ -170,6 +212,14 @@ def _is_container_lifecycle(args: argparse.Namespace) -> bool:
     """Check if container lifecycle flags are present."""
     return bool(
         getattr(args, "discover", None) is not None
+        or getattr(args, "images", None)
+    )
+
+
+def _is_dast_lifecycle(args: argparse.Namespace) -> bool:
+    """Check if DAST lifecycle flags are present."""
+    return bool(
+        getattr(args, "target", None)
         or getattr(args, "images", None)
     )
 
@@ -309,6 +359,156 @@ def _cmd_container_scan(args: argparse.Namespace) -> int:
                 if f.severity >= threshold:
                     return EXIT_FINDINGS
     return EXIT_SUCCESS
+
+
+def _cmd_dast_scan(args: argparse.Namespace) -> int:
+    """Run DAST scanning lifecycle (start target, scan with ZAP, cleanup)."""
+    from argus.dast import DastEngine
+
+    output_dir = args.output_dir or "./argus-results"
+    formats = args.formats or ["terminal", "markdown"]
+
+    # Parse env vars from --env KEY=VALUE flags
+    env = {}
+    for item in (args.env_vars or []):
+        if "=" in item:
+            key, _, val = item.partition("=")
+            env[key] = val
+
+    # Build config
+    if args.target:
+        # Scan an already-running target
+        config = {
+            "targets": [{"url": args.target, "name": "target"}],
+            "scan_type": args.scan_type,
+        }
+    elif args.images:
+        # Auto-discover ports, start containers, scan
+        config = {
+            "targets": [
+                {
+                    "image": img,
+                    "name": img.split(":")[0].split("/")[-1],
+                    "port": args.port,
+                    "env": env,
+                }
+                for img in args.images
+            ],
+            "scan_type": args.scan_type,
+            "startup_timeout": args.startup_timeout,
+        }
+    else:
+        print("Error: argus scan zap requires --target or --image", file=sys.stderr)
+        return EXIT_ERROR
+
+    try:
+        engine = DastEngine(config)
+        summary = engine.run()
+    except Exception as exc:
+        print(f"Error: DAST scan failed: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    # Reports
+    for fmt in formats:
+        if fmt == "terminal":
+            _print_dast_terminal(summary)
+        elif fmt == "markdown":
+            _write_dast_markdown(summary, output_dir)
+        elif fmt == "json":
+            _write_dast_json(summary, output_dir)
+        elif fmt == "sarif":
+            from argus.core.models import ScanResult, ScanSummary
+            from argus.reporters import get_reporter
+            results = [
+                ScanResult(scanner=f"zap/{r.name}", findings=r.findings)
+                for r in summary.results
+            ]
+            get_reporter("sarif").report(ScanSummary(results=results), output_dir)
+
+    # Exit code
+    if args.severity_threshold and args.severity_threshold != "none":
+        from argus.core.models import Severity
+        threshold = Severity.from_string(args.severity_threshold)
+        for r in summary.results:
+            for f in r.findings:
+                if f.severity >= threshold:
+                    return EXIT_FINDINGS
+    return EXIT_SUCCESS
+
+
+def _print_dast_terminal(summary) -> None:
+    """Print DAST scan results to terminal."""
+    print("\n" + "=" * 50)
+    print("  DAST Security Scan Results")
+    print("=" * 50 + "\n")
+    print(f"Targets scanned: {summary.target_count}")
+    print(f"Healthy targets: {summary.healthy_count}")
+    print(f"Total findings:  {summary.total_count}")
+    print()
+    for r in summary.results:
+        if not r.healthy:
+            status = "NOT HEALTHY"
+        elif r.scan_error:
+            status = f"SCAN ERROR: {r.scan_error}"
+        else:
+            status = f"{len(r.findings)} findings"
+        print(f"  {r.name:<20} {r.target_url:<30} {status}")
+    print()
+
+
+def _write_dast_markdown(summary, output_dir) -> None:
+    """Write DAST scan markdown report."""
+    import json
+    dest = Path(output_dir)
+    dest.mkdir(parents=True, exist_ok=True)
+
+    lines = ["# DAST Security Scan Results", ""]
+    lines.append(f"**Targets:** {summary.target_count} | "
+                 f"**Healthy:** {summary.healthy_count} | "
+                 f"**Findings:** {summary.total_count}")
+    lines.append("")
+
+    for r in summary.results:
+        if not r.healthy:
+            lines.append(f"### {r.name} — Target not healthy")
+            lines.append(f"URL: `{r.target_url}`")
+            lines.append("")
+            continue
+
+        lines.append(f"### {r.name} — {len(r.findings)} finding(s)")
+        lines.append(f"URL: `{r.target_url}`")
+        lines.append("")
+        if r.findings:
+            lines.append("| Severity | Finding | Location | CWE |")
+            lines.append("|----------|---------|----------|-----|")
+            for f in sorted(r.findings, key=lambda x: -x.severity._order):
+                sev = f.severity.value.upper()
+                lines.append(f"| {sev} | {f.title} | {f.location or '-'} | {f.cwe or '-'} |")
+            lines.append("")
+
+    (dest / "dast-scan.md").write_text("\n".join(lines))
+
+
+def _write_dast_json(summary, output_dir) -> None:
+    """Write DAST scan JSON report."""
+    import json
+    dest = Path(output_dir)
+    dest.mkdir(parents=True, exist_ok=True)
+    data = {
+        "target_count": summary.target_count,
+        "healthy_count": summary.healthy_count,
+        "total_findings": summary.total_count,
+        "results": [
+            {
+                "name": r.name,
+                "target_url": r.target_url,
+                "healthy": r.healthy,
+                "finding_count": len(r.findings),
+            }
+            for r in summary.results
+        ],
+    }
+    (dest / "dast-scan.json").write_text(json.dumps(data, indent=2))
 
 
 def _print_container_terminal(summary) -> None:
