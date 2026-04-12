@@ -226,6 +226,8 @@ def _is_dast_lifecycle(args: argparse.Namespace) -> bool:
 
 def _cmd_source_scan(args: argparse.Namespace) -> int:
     """Run source code scanning with registered scanner modules."""
+    from argus.audit import get_logger, create_manifest, finalize_manifest
+
     try:
         from argus.core import ArgusConfig, ArgusEngine, Severity
     except ImportError as exc:
@@ -252,6 +254,17 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
     if args.formats:
         config.reporting.formats = args.formats
 
+    # Initialize audit trail
+    output_dir = config.reporting.output_dir
+    log = get_logger("argus", output_dir=output_dir, verbose=args.verbose)
+    manifest = create_manifest(
+        config_path=args.config,
+        scan_targets=[args.path],
+    )
+    manifest.execution_backend = config.execution.backend
+
+    log.info("Argus scan starting")
+
     # Build engine and register scanners
     engine = ArgusEngine(config)
 
@@ -261,7 +274,7 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
             engine.register_scanner(scanner_cls())
     except ImportError:
         if args.verbose:
-            print("Warning: argus.scanners module not found; no scanners registered")
+            log.warning("argus.scanners module not found; no scanners registered")
 
     # List mode
     if args.list:
@@ -270,9 +283,16 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
     # Run the scan
     try:
         scanner_names = [args.scanner] if args.scanner else None
+        log.info("Running scanners: %s", scanner_names or "all enabled")
         summary = engine.run(scanner_names=scanner_names, path=args.path)
+        log.info(
+            "Scan complete: %d scanner(s), %d finding(s)",
+            len(summary.results),
+            summary.total_count,
+        )
     except Exception as exc:
-        print(f"Error: scan failed: {exc}", file=sys.stderr)
+        log.error("Scan failed: %s", exc)
+        finalize_manifest(manifest, exit_code=EXIT_ERROR, output_dir=output_dir)
         return EXIT_ERROR
 
     # Generate reports
@@ -280,12 +300,18 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
         from argus.reporters import get_reporter
         for fmt in config.reporting.formats:
             reporter = get_reporter(fmt)
-            reporter.report(summary, config.reporting.output_dir)
+            reporter.report(summary, output_dir)
+            log.debug("Generated %s report", fmt)
     except ImportError:
         if args.verbose:
-            print("Warning: argus.reporters module not found; skipping report generation")
+            log.warning("argus.reporters module not found; skipping report generation")
 
-    return EXIT_SUCCESS if summary.passed else EXIT_FINDINGS
+    # Finalize audit trail
+    exit_code = EXIT_SUCCESS if summary.passed else EXIT_FINDINGS
+    finalize_manifest(manifest, summary=summary, exit_code=exit_code, output_dir=output_dir)
+    log.info("Audit manifest written to %s/argus-audit.json", output_dir)
+
+    return exit_code
 
 
 def _cmd_container_scan(args: argparse.Namespace) -> int:
