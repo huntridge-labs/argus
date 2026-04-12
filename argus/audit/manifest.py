@@ -152,6 +152,14 @@ def finalize_manifest(
             "low": getattr(summary, "low_count", 0),
             "total": getattr(summary, "total_count", 0),
         }
+        # Capture container image digests from scan metadata
+        for result in summary.results:
+            meta = getattr(result, "metadata", {}) or {}
+            if meta.get("image") and meta.get("digest"):
+                manifest.container_images[result.scanner] = {
+                    "image": meta["image"],
+                    "digest": meta["digest"],
+                }
 
     # Inventory output artifacts (hash each file for integrity)
     dest = Path(output_dir)

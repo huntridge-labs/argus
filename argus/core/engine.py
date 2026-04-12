@@ -104,6 +104,40 @@ class ArgusEngine:
             logger.debug("Docker CLI not found in PATH")
         return available
 
+    def _get_image_digest(self, image: str) -> str:
+        """Get the SHA256 digest of a Docker image.
+
+        This is the immutable identifier — tags can be re-pushed,
+        digests cannot. Critical for supply chain forensics.
+        """
+        try:
+            result = subprocess.run(
+                ["docker", "image", "inspect", image,
+                 "--format", "{{index .RepoDigests 0}}"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                digest = result.stdout.strip()
+                # Extract just the sha256:... part if full ref is returned
+                if "@" in digest:
+                    return digest.split("@", 1)[1]
+                return digest
+            # Fallback to image ID (local builds don't have repo digests)
+            result = subprocess.run(
+                ["docker", "image", "inspect", image,
+                 "--format", "{{.Id}}"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+        except (subprocess.TimeoutExpired, Exception):
+            pass
+        return "unknown"
+
     def _pull_image(self, image: str) -> bool:
         """Pull a container image based on pull policy."""
         policy = self.config.execution.pull_policy
@@ -128,7 +162,12 @@ class ArgusEngine:
                 capture_output=True,
             )
             if result.returncode == 0:
-                logger.debug("Image '%s' found locally — skipping pull", image)
+                digest = self._get_image_digest(image)
+                logger.debug(
+                    "Image '%s' found locally — skipping pull (digest=%s)",
+                    image,
+                    digest,
+                )
                 return True
             logger.debug("Image '%s' not found locally — pulling", image)
 
@@ -159,7 +198,10 @@ class ArgusEngine:
             elapsed = int((time.monotonic() - start) * 1000)
 
         if result.returncode == 0:
-            logger.info("Pulled %s in %dms", image, elapsed)
+            digest = self._get_image_digest(image)
+            logger.info(
+                "Pulled %s in %dms (digest=%s)", image, elapsed, digest,
+            )
         else:
             logger.error(
                 "Failed to pull %s after %dms. stderr: %s",
@@ -191,12 +233,17 @@ class ArgusEngine:
     ) -> ScanResult:
         """Run a scanner in a Docker container."""
         image = self._resolve_image(scanner)
-        logger.info(
-            "Running '%s' in container: %s", scanner.name, image,
-        )
 
         if not self._pull_image(image):
             raise RuntimeError(f"Failed to pull container image: {image}")
+
+        digest = self._get_image_digest(image)
+        logger.info(
+            "Running '%s' in container: %s (digest=%s)",
+            scanner.name,
+            image,
+            digest,
+        )
 
         abs_path = str(Path(path).resolve())
 
@@ -282,7 +329,11 @@ class ArgusEngine:
             return ScanResult(
                 scanner=scanner.name,
                 findings=findings,
-                metadata={"execution": "container", "image": image},
+                metadata={
+                    "execution": "container",
+                    "image": image,
+                    "digest": digest,
+                },
             )
 
     def _run_scanner(
