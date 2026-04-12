@@ -66,6 +66,20 @@ class ArgusEngine:
 
             try:
                 result = self._run_scanner(scanner, scan_path, config_dict)
+
+                # Filter out findings from excluded paths
+                exclude = config_dict.get("exclude", "")
+                if exclude and result.findings:
+                    before = len(result.findings)
+                    result = self._filter_excluded(result, exclude)
+                    filtered = before - len(result.findings)
+                    if filtered:
+                        logger.debug(
+                            "Filtered %d finding(s) from excluded paths for '%s'",
+                            filtered,
+                            name,
+                        )
+
                 elapsed = int((time.monotonic() - start) * 1000)
                 logger.info(
                     "Scanner '%s' completed in %dms: %d finding(s)",
@@ -417,6 +431,34 @@ class ArgusEngine:
             for name in self._scanners
             if self.config.get_scanner_config(name).enabled
         ]
+
+    @staticmethod
+    def _filter_excluded(result: ScanResult, exclude: str) -> ScanResult:
+        """Remove findings whose location matches an excluded path.
+
+        This is the universal exclude mechanism — works for all scanners
+        regardless of whether the tool itself supports path exclusion.
+        Applied post-parse so the scanner still runs on everything, but
+        excluded findings are dropped before reporting.
+        """
+        exclude_parts = [p.strip() for p in exclude.split(",") if p.strip()]
+        if not exclude_parts:
+            return result
+
+        filtered = []
+        for finding in result.findings:
+            location = finding.location or ""
+            if any(exc in location for exc in exclude_parts):
+                continue
+            filtered.append(finding)
+
+        return ScanResult(
+            scanner=result.scanner,
+            findings=filtered,
+            raw_report=result.raw_report,
+            sarif_report=result.sarif_report,
+            metadata=result.metadata,
+        )
 
     @staticmethod
     def _build_scanner_config_dict(scanner_config) -> dict:
