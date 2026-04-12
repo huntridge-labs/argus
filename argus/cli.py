@@ -29,6 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     _build_scan_parser(subparsers)
+    _build_collect_parser(subparsers)
     _build_report_parser(subparsers)
 
     return parser
@@ -158,6 +159,39 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         type=int,
         default=60,
         help="Seconds to wait for target container to become healthy (default: 60)",
+    )
+
+
+def _build_collect_parser(subparsers: argparse._SubParsersAction) -> None:
+    """Add the 'collect' subcommand for aggregating multi-job results."""
+    collect_parser = subparsers.add_parser(
+        "collect",
+        help="Collect and merge results from parallel CI scanner jobs",
+        description=(
+            "Aggregate per-scanner results into a unified audit package.\n\n"
+            "In CI, each scanner job produces its own argus-results/ directory.\n"
+            "This command merges them into one structured directory with:\n"
+            "  - Combined JSONL log (sorted by timestamp)\n"
+            "  - Combined audit manifest (all provenance and findings)\n"
+            "  - Per-scanner subdirectories with individual results\n\n"
+            "Example:\n"
+            "  argus collect ./downloaded-artifacts/ -o ./argus-audit-package/\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    collect_parser.add_argument(
+        "input_dir",
+        help="Directory containing per-scanner result directories (argus-results-*)",
+    )
+    collect_parser.add_argument(
+        "--output-dir", "-o",
+        default="./argus-audit-package",
+        help="Output directory for the combined audit package (default: ./argus-audit-package)",
+    )
+    collect_parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Enable verbose output",
     )
 
 
@@ -693,6 +727,26 @@ def _list_scanners(engine) -> int:
     return EXIT_SUCCESS
 
 
+def cmd_collect(args: argparse.Namespace) -> int:
+    """Execute the collect subcommand — merge parallel CI results."""
+    from argus.collect import collect_results
+    from argus.audit import get_logger
+
+    log = get_logger("argus.collect", verbose=args.verbose)
+    log.info("Collecting results from %s", args.input_dir)
+
+    try:
+        output = collect_results(
+            input_dir=args.input_dir,
+            output_dir=args.output_dir,
+        )
+        log.info("Audit package written to %s", output)
+        return EXIT_SUCCESS
+    except Exception as exc:
+        log.error("Collection failed: %s", exc)
+        return EXIT_ERROR
+
+
 def _get_version() -> str:
     """Return the package version string."""
     try:
@@ -777,6 +831,7 @@ def main(argv: list[str] | None = None) -> None:
 
     handlers = {
         "scan": cmd_scan,
+        "collect": cmd_collect,
         "report": cmd_report,
     }
 
