@@ -1,0 +1,331 @@
+# Container Security Scanning - Reusable Workflow
+#
+# Orchestrates container discovery, building, and scanning via the argus CLI.
+# Scanner implementation: argus/scanners/container.py, argus/container/
+#
+# Supports two modes:
+# - discover: Find and build local Dockerfiles, then scan (argus scan container --discover)
+# - remote: Scan pre-existing images from a registry (argus scan container --image)
+#
+# For GHES users: Use the composite action directly instead of this workflow.
+# See: examples/github-enterprise/container-scanning.yml
+
+name: Container Security Scanning
+
+on:
+  workflow_dispatch:
+    inputs:
+      scan_mode:
+        description: 'Scan mode: "discover" to find and build local Dockerfiles, "remote" to scan pre-existing images'
+        required: false
+        type: choice
+        options:
+          - discover
+          - remote
+        default: 'discover'
+      image_ref:
+        description: 'Remote image reference to scan (only used when scan_mode is "remote")'
+        required: false
+        type: string
+        default: ''
+      container_name:
+        description: 'Name identifier for the container (only used when scan_mode is "remote")'
+        required: false
+        type: string
+        default: ''
+
+  workflow_call:
+    inputs:
+      post_pr_comment:
+        description: 'Whether to post PR comments'
+        required: false
+        type: boolean
+        default: true
+      enable_code_security:
+        description: 'Whether GitHub Code Security is enabled for this repository'
+        required: false
+        type: boolean
+        default: false
+      fail_on_severity:
+        description: 'Fail the job if vulnerabilities at or above this severity are found'
+        required: false
+        type: string
+        default: 'none'
+      scan_mode:
+        description: 'Scan mode: "discover" or "remote"'
+        required: false
+        type: string
+        default: 'discover'
+      image_ref:
+        description: 'Remote image reference to scan (only used when scan_mode is "remote")'
+        required: false
+        type: string
+        default: ''
+      container_name:
+        description: 'Name identifier for the container (only used when scan_mode is "remote")'
+        required: false
+        type: string
+        default: ''
+      registry_username:
+        description: 'Username for authenticating to private container registry'
+        required: false
+        type: string
+        default: ''
+      scanners:
+        description: 'Comma-separated list of scanners to run: trivy,grype,syft'
+        required: false
+        type: string
+        default: 'trivy,grype,syft'
+      allow_failure:
+        description: 'Allow the workflow to continue even if scanning fails'
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      registry_password:
+        description: 'Password or token for authenticating to private container registry'
+        required: false
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  packages: read
+  pull-requests: write
+
+jobs:
+  # Discover containers in this repository (skipped in remote mode)
+  discover-containers:
+    name: Discover Container Images
+    runs-on: ubuntu-latest
+    if: inputs.scan_mode != 'remote'
+    outputs:
+      containers: ${{ steps.discover.outputs.containers }}
+      has_containers: ${{ steps.discover.outputs.has_containers }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.13'
+
+      - name: Install argus dependencies
+        run: |
+          pip install --quiet pyyaml
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Discover Dockerfiles in repository
+        id: discover
+        run: |
+          echo "Discovering Dockerfiles in repository..."
+
+          DOCKERFILES=$(find . -name "Dockerfile*" -not -path "./.git/*" -type f)
+
+          if [ -z "$DOCKERFILES" ]; then
+            echo "No Dockerfiles found in repository"
+            echo "has_containers=false" >> "$GITHUB_OUTPUT"
+            echo "containers=[]" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Found Dockerfiles:"
+          echo "$DOCKERFILES"
+
+          containers="["
+          first=true
+
+          for dockerfile in $DOCKERFILES; do
+            dir=$(dirname "$dockerfile")
+            name=$(basename "$dir")
+
+            if [ "$name" = "." ]; then
+              name=$(basename "$(pwd)")
+            fi
+
+            if [[ "$dockerfile" == *"vulnerable"* ]]; then
+              name="${name}-vulnerable"
+            elif [[ "$dockerfile" == *"secure"* ]]; then
+              name="${name}-secure"
+            fi
+
+            if [ "$first" = true ]; then
+              first=false
+            else
+              containers="$containers,"
+            fi
+
+            containers="$containers{\"dockerfile\":\"$dockerfile\",\"name\":\"$name\",\"context\":\"$dir\"}"
+          done
+
+          containers="$containers]"
+
+          echo "has_containers=true" >> "$GITHUB_OUTPUT"
+          echo "containers=$containers" >> "$GITHUB_OUTPUT"
+
+          echo "Container scan matrix:"
+          echo "$containers" | jq '.'
+
+  build-and-scan:
+    name: Build & Scan - ${{ matrix.container.name }}
+    runs-on: ubuntu-latest
+    needs: discover-containers
+    if: needs.discover-containers.outputs.has_containers == 'true'
+    timeout-minutes: 30
+    continue-on-error: true
+
+    strategy:
+      fail-fast: false
+      matrix:
+        container: ${{ fromJson(needs.discover-containers.outputs.containers) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.13'
+
+      - name: Install argus dependencies
+        run: |
+          pip install --quiet pyyaml
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4
+
+      - name: Build container image
+        id: build
+        continue-on-error: true
+        env:
+          CONTAINER_NAME: ${{ matrix.container.name }}
+          CONTAINER_DOCKERFILE: ${{ matrix.container.dockerfile }}
+          CONTAINER_CONTEXT: ${{ matrix.container.context }}
+        run: |
+          IMAGE_NAME="hardening-test-$(echo "$CONTAINER_NAME" | tr '/' '-' | tr '[:upper:]' '[:lower:]')"
+          IMAGE_TAG="scan-$(echo "$GITHUB_SHA" | cut -c1-8)"
+          FULL_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
+
+          {
+            echo "image_name=$IMAGE_NAME"
+            echo "image_tag=$IMAGE_TAG"
+            echo "full_image=$FULL_IMAGE"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Building image: $FULL_IMAGE"
+
+          if docker build \
+            --tag "$FULL_IMAGE" \
+            --file "$CONTAINER_DOCKERFILE" \
+            "$CONTAINER_CONTEXT"; then
+            echo "Successfully built image: $FULL_IMAGE"
+            echo "build_success=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Failed to build image: $FULL_IMAGE"
+            echo "build_success=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run security scanners via argus CLI
+        if: steps.build.outputs.build_success == 'true'
+        env:
+          ARGUS_IMAGE_REF: ${{ steps.build.outputs.full_image }}
+          ARGUS_SCANNERS: ${{ inputs.scanners || 'trivy,grype,syft' }}
+          ARGUS_FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
+          ARGUS_ENABLE_CODE_SECURITY: ${{ inputs.enable_code_security }}
+          ARGUS_ALLOW_FAILURE: ${{ inputs.allow_failure }}
+        run: |
+          python -m argus scan container \
+            --image "$ARGUS_IMAGE_REF" \
+            --scanners "$ARGUS_SCANNERS" \
+            --severity-threshold "$ARGUS_FAIL_ON_SEVERITY" \
+            --format markdown --format sarif
+
+  scan-remote-image:
+    name: Scan Remote Image
+    runs-on: ubuntu-latest
+    if: inputs.scan_mode == 'remote' && inputs.image_ref != ''
+    timeout-minutes: 30
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.13'
+
+      - name: Install argus dependencies
+        run: |
+          pip install --quiet pyyaml
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Authenticate to container registry
+        if: inputs.registry_username != ''
+        run: |
+          if [ -z "$REGISTRY_PASSWORD" ]; then
+            echo "::error title=Missing Registry Password::registry_username was provided but registry_password secret is missing"
+            exit 1
+          fi
+
+          REGISTRY=$(echo "$IMAGE_REF" | cut -d'/' -f1)
+          if [[ "$REGISTRY" != *"."* ]] && [[ "$REGISTRY" != *":"* ]]; then
+            REGISTRY="docker.io"
+          fi
+
+          echo "$REGISTRY_PASSWORD" | docker login "$REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
+        env:
+          REGISTRY_PASSWORD: ${{ secrets.registry_password }}
+          IMAGE_REF: ${{ inputs.image_ref }}
+          REGISTRY_USERNAME: ${{ inputs.registry_username }}
+
+      - name: Run security scanners via argus CLI
+        env:
+          ARGUS_IMAGE_REF: ${{ inputs.image_ref }}
+          ARGUS_SCANNERS: ${{ inputs.scanners || 'trivy,grype,syft' }}
+          ARGUS_FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
+          ARGUS_ENABLE_CODE_SECURITY: ${{ inputs.enable_code_security }}
+          ARGUS_ALLOW_FAILURE: ${{ inputs.allow_failure }}
+        run: |
+          python -m argus scan container \
+            --image "$ARGUS_IMAGE_REF" \
+            --scanners "$ARGUS_SCANNERS" \
+            --severity-threshold "$ARGUS_FAIL_ON_SEVERITY" \
+            --format markdown --format sarif
+
+  container-scan-summary:
+    name: Container Scan Summary
+    runs-on: ubuntu-latest
+    needs: [discover-containers, build-and-scan, scan-remote-image]
+    if: always()
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Download all scan artifacts
+        if: needs.discover-containers.outputs.has_containers == 'true' || inputs.scan_mode == 'remote'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        continue-on-error: true
+        with:
+          pattern: ${{ inputs.scan_mode == 'remote' && inputs.container_name != '' && format('container-scan-results-{0}*', inputs.container_name) || 'container-scan-results-*' }}
+
+      - name: Generate container summary
+        uses: huntridge-labs/argus/.github/actions/scanner-container-summary@0.7.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          post_pr_comment: ${{ inputs.post_pr_comment }}

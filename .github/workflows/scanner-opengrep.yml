@@ -1,0 +1,105 @@
+# OpenGrep SAST Scanner - Reusable Workflow
+#
+# Runs the OpenGrep scanner via the argus Python CLI.
+# Equivalent to: python -m argus scan opengrep
+#
+# For GHES users: Use the composite action directly instead of this workflow.
+# See: examples/github-enterprise/sast-only.yml
+
+name: OpenGrep Scanner
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      post_pr_comment:
+        description: 'Whether to post PR comments'
+        required: false
+        type: boolean
+        default: true
+      enable_code_security:
+        description: 'Whether GitHub Code Security is enabled for this repository'
+        required: false
+        type: boolean
+        default: false
+      fail_on_severity:
+        description: 'Fail the job if vulnerabilities at or above this severity are found. Options: none, low, medium, high. Set to "none" to never fail.'
+        required: false
+        type: string
+        default: 'none'
+      opengrep_config:
+        description: 'OpenGrep config (e.g., auto, p/default, p/security-audit, or path to custom rules)'
+        required: false
+        type: string
+        default: 'auto'
+      opengrep_paths:
+        description: 'Paths to scan (space-separated)'
+        required: false
+        type: string
+        default: '.'
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  pull-requests: write
+
+jobs:
+  opengrep-analysis:
+    name: OpenGrep SAST
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.13'
+
+      - name: Install Argus
+        run: |
+          pip install --quiet pyyaml
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Run scan
+        run: |
+          python -m argus scan opengrep \
+            --path "$SCAN_PATH" \
+            --severity-threshold "$SEVERITY_THRESHOLD" \
+            --format terminal --format sarif --format json \
+            --output-dir ./argus-results \
+            --verbose
+        env:
+          SCAN_PATH: ${{ inputs.opengrep_paths || '.' }}
+          SEVERITY_THRESHOLD: ${{ inputs.fail_on_severity || 'none' }}
+          OPENGREP_CONFIG: ${{ inputs.opengrep_config || 'auto' }}
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: opengrep-reports
+          path: ./argus-results/
+          retention-days: 30
+
+      - name: Upload SARIF
+        if: inputs.enable_code_security && always() && github.actor != 'nektos/act'
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
+        with:
+          sarif_file: ./argus-results/argus-results.sarif
+        continue-on-error: true
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request' && inputs.post_pr_comment
+        uses: huntridge-labs/argus/.github/actions/comment-pr@0.7.0
+        with:
+          summary_file: ./argus-results/argus-results.md
+          comment_marker: opengrep-comment-marker
+          title: 'OpenGrep SAST Results'
+          fallback_message: 'No OpenGrep results available'

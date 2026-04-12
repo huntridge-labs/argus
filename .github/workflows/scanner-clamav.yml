@@ -1,0 +1,99 @@
+# ClamAV Malware Scanner - Reusable Workflow
+#
+# Runs the ClamAV scanner via the argus Python CLI.
+# Equivalent to: python -m argus scan clamav
+#
+# For GHES users: Use the composite action directly instead of this workflow.
+# See: examples/github-enterprise/all-scanners.yml
+
+name: ClamAV Malware Scanner
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      post_pr_comment:
+        description: 'Whether to post PR comments'
+        required: false
+        type: boolean
+        default: true
+      enable_code_security:
+        description: 'Whether GitHub Code Security is enabled for this repository'
+        required: false
+        type: boolean
+        default: false
+      scan_path:
+        description: 'Path to scan (file, directory, or archive). Defaults to repository root.'
+        required: false
+        type: string
+        default: '.'
+      fail_on_severity:
+        description: 'Fail the job if malware is found. ClamAV does not support severity-based filtering - any value other than "none" will fail if malware is detected.'
+        required: false
+        type: string
+        default: 'none'
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  pull-requests: write
+
+jobs:
+  clamav-scan:
+    name: ClamAV Malware Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.13'
+
+      - name: Install Argus
+        run: |
+          pip install --quiet pyyaml
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Run scan
+        run: |
+          python -m argus scan clamav \
+            --path "$SCAN_PATH" \
+            --severity-threshold "$SEVERITY_THRESHOLD" \
+            --format terminal --format sarif --format json \
+            --output-dir ./argus-results \
+            --verbose
+        env:
+          SCAN_PATH: ${{ inputs.scan_path || '.' }}
+          SEVERITY_THRESHOLD: ${{ inputs.fail_on_severity || 'none' }}
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: clamav-reports
+          path: ./argus-results/
+          retention-days: 30
+
+      - name: Upload SARIF
+        if: inputs.enable_code_security && always() && github.actor != 'nektos/act'
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
+        with:
+          sarif_file: ./argus-results/argus-results.sarif
+        continue-on-error: true
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request' && inputs.post_pr_comment
+        uses: huntridge-labs/argus/.github/actions/comment-pr@0.7.0
+        with:
+          summary_file: ./argus-results/argus-results.md
+          comment_marker: clamav-scanner-comment-marker
+          title: 'ClamAV Malware Scan Results'
+          fallback_message: 'No ClamAV results available'

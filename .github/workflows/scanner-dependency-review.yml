@@ -1,0 +1,82 @@
+# Dependency Review Scanner - Reusable Workflow
+#
+# NOTE: Dependency Review uses GitHub-native actions (actions/dependency-review-action)
+# which argus cannot replace. This workflow keeps the composite action call until
+# argus supports dependency review natively.
+#
+# NOTE: This scanner only works on pull_request events. On other event types
+# it will skip gracefully with a warning annotation and zero-count summary.
+#
+# For GHES users: Use the composite action directly instead of this workflow.
+
+name: Dependency Review Scanner
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      post_pr_comment:
+        description: 'Whether to post PR comments'
+        required: false
+        type: boolean
+        default: true
+      enable_code_security:
+        description: 'Whether GitHub Code Security is enabled for this repository'
+        required: false
+        type: boolean
+        default: false
+      fail_on_severity:
+        description: 'Fail if findings at or above this severity. Options: none, low, medium, high, critical.'
+        required: false
+        type: string
+        default: 'none'
+      vulnerability_check:
+        description: 'Enable vulnerability checking'
+        required: false
+        type: boolean
+        default: true
+      license_check:
+        description: 'Enable license compliance checking'
+        required: false
+        type: boolean
+        default: false
+      allow_licenses:
+        description: 'Comma-separated SPDX license identifiers to allow'
+        required: false
+        type: string
+        default: ''
+      deny_licenses:
+        description: 'Comma-separated SPDX license identifiers to deny'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  pull-requests: write
+
+jobs:
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Run Dependency Review Scanner
+        uses: huntridge-labs/argus/.github/actions/scanner-dependency-review@0.7.0
+        with:
+          post_pr_comment: ${{ inputs.post_pr_comment }}
+          enable_code_security: ${{ inputs.enable_code_security }}
+          fail_on_severity: ${{ inputs.fail_on_severity }}
+          vulnerability_check: ${{ inputs.vulnerability_check }}
+          license_check: ${{ inputs.license_check }}
+          allow_licenses: ${{ inputs.allow_licenses }}
+          deny_licenses: ${{ inputs.deny_licenses }}
