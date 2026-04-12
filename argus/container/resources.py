@@ -1,8 +1,10 @@
 """Resource management for container scanning.
 
-Monitors disk space, cleans up images and temp files between scans
-to prevent resource exhaustion on constrained environments (CI runners,
-local machines with limited disk).
+Cleans up images and temp files between scans to keep disk usage
+bounded on constrained environments (CI runners, local machines).
+
+No hard disk limits — we try the scan and handle failures gracefully
+rather than refusing to run based on arbitrary thresholds.
 """
 
 import logging
@@ -11,34 +13,26 @@ import subprocess
 
 logger = logging.getLogger("argus.container")
 
-# Minimum free disk space (in bytes) required before starting a scan.
-# 2 GB — enough for one image pull + scan output + DB caches.
-MIN_DISK_BYTES = 2 * 1024 * 1024 * 1024
-
-# Warning threshold — emit a warning when free space drops below this.
-# 5 GB — typical CI runner starts with ~14 GB.
-WARN_DISK_BYTES = 5 * 1024 * 1024 * 1024
+# Warning threshold — purely informational, never blocks a scan.
+WARN_DISK_BYTES = 2 * 1024 * 1024 * 1024
 
 
-def check_disk_space(path: str = "/") -> tuple[int, bool]:
-    """Check available disk space.
+def check_disk_space(path: str = "/") -> int:
+    """Check available disk space. Returns free bytes.
 
-    Returns (free_bytes, is_sufficient).
+    Logs a warning if space is low. Never blocks — just informs.
     """
     try:
         usage = shutil.disk_usage(path)
         free = usage.free
-        sufficient = free >= MIN_DISK_BYTES
         if free < WARN_DISK_BYTES:
             logger.warning(
-                "Low disk space: %.1f GB free (%.1f GB recommended)",
+                "Low disk space: %.1f GB free",
                 free / (1024 ** 3),
-                WARN_DISK_BYTES / (1024 ** 3),
             )
-        return free, sufficient
+        return free
     except OSError:
-        # Can't check disk — assume it's fine
-        return 0, True
+        return 0
 
 
 def remove_docker_image(image_ref: str) -> bool:

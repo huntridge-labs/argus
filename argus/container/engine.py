@@ -62,19 +62,12 @@ class ContainerEngine:
         4. Final cleanup (dangling images, build cache)
         5. Return aggregated summary
         """
-        free_bytes, sufficient = check_disk_space()
-        if not sufficient:
-            logger.error(
-                "Insufficient disk space (%.1f GB free). "
-                "Need at least 2 GB to scan containers.",
-                free_bytes / (1024 ** 3),
-            )
-            return ContainerScanSummary()
-
         targets = self._resolve_targets()
         if not targets:
             logger.warning("No container targets found")
             return ContainerScanSummary()
+
+        check_disk_space()  # Informational only
 
         logger.info(
             "Scanning %d container(s) — cleanup=%s",
@@ -87,22 +80,6 @@ class ContainerEngine:
             logger.info(
                 "[%d/%d] Processing %s", i, len(targets), target.name,
             )
-
-            # Pre-scan disk check
-            free_bytes, sufficient = check_disk_space()
-            if not sufficient:
-                logger.error(
-                    "Disk space critically low before scanning %s — "
-                    "aborting remaining scans",
-                    target.name,
-                )
-                results.append(ContainerScanResult(
-                    name=target.name,
-                    image_ref=target.image_ref,
-                    build_success=False,
-                    scan_error="Aborted: insufficient disk space",
-                ))
-                break
 
             result = self._process_target(target)
             results.append(result)
@@ -127,10 +104,20 @@ class ContainerEngine:
         return summary
 
     def _process_target(self, target: ContainerTarget) -> ContainerScanResult:
-        """Build (if needed) and scan a single container target."""
+        """Build (if needed) and scan a single container target.
+
+        Catches disk space errors and other resource failures
+        individually — a failure on one container doesn't stop
+        the rest from being scanned.
+        """
         if target.dockerfile:
             success = build_image(target)
             if not success:
+                error_msg = f"Docker build failed for {target.dockerfile}"
+                # If disk is the likely cause, say so
+                free = check_disk_space()
+                if free < 500 * 1024 * 1024:  # < 500 MB after failure
+                    error_msg += " (possibly out of disk space)"
                 logger.error(
                     "Build failed for %s — skipping scan", target.name,
                 )
@@ -138,7 +125,7 @@ class ContainerEngine:
                     name=target.name,
                     image_ref=target.image_ref,
                     build_success=False,
-                    scan_error=f"Docker build failed for {target.dockerfile}",
+                    scan_error=error_msg,
                 )
             self._built_images.append(target.image_ref)
 
@@ -147,6 +134,16 @@ class ContainerEngine:
                 target,
                 scanners=self._scanners(),
                 sbom=self._sbom_enabled(),
+            )
+        except OSError as exc:
+            # Disk full, permission denied, etc.
+            logger.error(
+                "OS error scanning %s: %s", target.name, exc,
+            )
+            return ContainerScanResult(
+                name=target.name,
+                image_ref=target.image_ref,
+                scan_error=f"OS error: {exc}",
             )
         except Exception:
             logger.exception("Scan failed for %s", target.name)
@@ -181,8 +178,8 @@ class ContainerEngine:
         prune_dangling_images()
 
         # If disk is low after all scans, prune build cache too
-        free_bytes, _ = check_disk_space()
-        if free_bytes < 5 * 1024 * 1024 * 1024:
+        free = check_disk_space()
+        if free < 5 * 1024 * 1024 * 1024:
             prune_docker_build_cache()
 
     def _resolve_targets(self) -> list[ContainerTarget]:
