@@ -199,6 +199,27 @@ def cmd_scan(args: argparse.Namespace) -> int:
       - zap + --image/--target → DAST lifecycle
       - everything else → source code scanning
     """
+    # Validate scanner name against registry
+    if args.scanner and not args.list:
+        try:
+            from argus.scanners import SCANNER_REGISTRY
+            if args.scanner not in SCANNER_REGISTRY:
+                available = sorted(SCANNER_REGISTRY.keys())
+                # Simple "did you mean?" — check for close matches
+                import difflib
+                close = difflib.get_close_matches(args.scanner, available, n=1, cutoff=0.6)
+                hint = f" Did you mean '{close[0]}'?" if close else ""
+                print(
+                    f"Error: unknown scanner '{args.scanner}'.{hint}\n\n"
+                    f"Available scanners:\n"
+                    + "\n".join(f"  - {name}" for name in available)
+                    + "\n\nRun 'argus scan --list' for details.",
+                    file=sys.stderr,
+                )
+                return EXIT_ERROR
+        except ImportError:
+            pass
+
     # Container lifecycle — needs --discover or --image
     if args.scanner == "container":
         if _is_container_lifecycle(args):
