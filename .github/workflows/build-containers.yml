@@ -395,13 +395,6 @@ jobs:
           merge-multiple: true
           path: scanner-summaries
 
-      - name: Download CLI test results
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4
-        with:
-          name: argus-cli-test-results
-          path: cli-results
-        continue-on-error: true
-
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
@@ -458,10 +451,9 @@ jobs:
               summary=summary,
           )
 
-          # Append CLI scan results if available
-          cli_md = Path("cli-results/argus-summary.md")
-          if cli_md.exists():
-              content += "\n---\n\n" + cli_md.read_text()
+          # CLI test results are functional validation, not security findings.
+          # They scan test fixtures with intentional vulnerabilities.
+          # Only container image vulns go in the PR comment.
 
           Path("scanner-summaries/combined-container-scan.md").write_text(content)
           print(f"Combined report: {len(section_files)} container sections")

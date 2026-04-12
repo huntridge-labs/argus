@@ -1,4 +1,7 @@
-# Argus dogfood configuration — we scan ourselves
+# Argus dogfood configuration — we scan our own production code.
+# Test fixtures (tests/fixtures/) are excluded — those contain
+# intentionally vulnerable code for scanner validation, not our
+# actual security posture.
 version: "1.0"
 
 scanners:
@@ -6,7 +9,7 @@ scanners:
     enabled: true
     path: "."
     config_file: "pyproject.toml"
-    exclude: ".venv,.git,node_modules,.claude,__pycache__"
+    exclude: ".venv,.git,node_modules,.claude,__pycache__,tests/fixtures"
 
   gitleaks:
     enabled: true
@@ -14,6 +17,7 @@ scanners:
   opengrep:
     enabled: true
     path: "."
+    exclude: "tests/fixtures"
 
   clamav:
     enabled: true
@@ -21,6 +25,7 @@ scanners:
 
   osv:
     enabled: true
+    exclude: "tests/fixtures"
 
   supply-chain:
     enabled: true
