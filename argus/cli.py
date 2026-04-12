@@ -29,7 +29,6 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     _build_scan_parser(subparsers)
-    _build_container_parser(subparsers)
     _build_report_parser(subparsers)
 
     return parser
@@ -39,14 +38,25 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
     """Add the 'scan' subcommand."""
     scan_parser = subparsers.add_parser(
         "scan",
-        help="Run security scanners against a target path",
-        description="Run one or more security scanners and generate results.",
+        help="Run security scanners against a target path or container images",
+        description=(
+            "Run one or more security scanners and generate results.\n\n"
+            "For source code scanning:\n"
+            "  argus scan                    # all enabled scanners\n"
+            "  argus scan bandit             # specific scanner\n\n"
+            "For container image scanning:\n"
+            "  argus scan container --image nginx:latest\n"
+            "  argus scan container --discover ./\n"
+            "  argus scan container --discover docker/\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     scan_parser.add_argument(
         "scanner",
         nargs="?",
         default=None,
-        help="Specific scanner to run (omit to run all enabled scanners)",
+        help="Specific scanner to run (omit to run all enabled scanners). "
+             "Use 'container' with --discover or --image for container scanning.",
     )
     scan_parser.add_argument(
         "--path", "-p",
@@ -87,24 +97,12 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Enable verbose output",
     )
 
-
-def _build_container_parser(subparsers: argparse._SubParsersAction) -> None:
-    """Add the 'container' subcommand for container image scanning."""
-    container_parser = subparsers.add_parser(
-        "container",
-        help="Scan container images for vulnerabilities",
-        description=(
-            "Discover Dockerfiles, build images, scan with Trivy + Grype, "
-            "deduplicate findings, and generate reports."
-        ),
+    # Container-specific flags (used with: argus scan container)
+    container_group = scan_parser.add_argument_group(
+        "container scanning",
+        "Flags for container image scanning (use with: argus scan container)",
     )
-    container_parser.add_argument(
-        "images",
-        nargs="*",
-        help="Image references to scan (e.g., nginx:latest myapp:v1). "
-             "If omitted, discovers Dockerfiles or reads from config.",
-    )
-    container_parser.add_argument(
+    container_group.add_argument(
         "--discover",
         nargs="?",
         const=".",
@@ -112,37 +110,17 @@ def _build_container_parser(subparsers: argparse._SubParsersAction) -> None:
         metavar="PATH",
         help="Discover Dockerfiles in PATH (default: current directory)",
     )
-    container_parser.add_argument(
-        "--config", "-c",
-        default=None,
-        help="Path to argus.yml config file",
-    )
-    container_parser.add_argument(
-        "--output-dir", "-o",
-        default=None,
-        help="Output directory for reports (default: ./argus-results)",
-    )
-    container_parser.add_argument(
-        "--format", "-f",
-        dest="formats",
+    container_group.add_argument(
+        "--image",
         action="append",
-        choices=["terminal", "markdown", "sarif", "json"],
-        help="Output format (can be repeated). Default: terminal + markdown",
+        dest="images",
+        metavar="REF",
+        help="Container image to scan (can be repeated)",
     )
-    container_parser.add_argument(
-        "--severity-threshold", "-s",
-        choices=SEVERITY_CHOICES,
-        help="Fail threshold (default from config or none)",
-    )
-    container_parser.add_argument(
+    container_group.add_argument(
         "--scanners",
-        default="trivy,grype",
-        help="Comma-separated sub-scanners: trivy,grype,syft (default: trivy,grype)",
-    )
-    container_parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="Enable verbose output",
+        default=None,
+        help="Sub-scanners for container scanning: trivy,grype,syft (default: trivy,grype)",
     )
 
 
@@ -176,7 +154,28 @@ def _build_report_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def cmd_scan(args: argparse.Namespace) -> int:
-    """Execute the scan subcommand."""
+    """Execute the scan subcommand.
+
+    Routes to container scanning lifecycle when scanner is 'container'
+    and --discover or --image flags are used.
+    """
+    # Route to container lifecycle if applicable
+    if args.scanner == "container" and _is_container_lifecycle(args):
+        return _cmd_container_scan(args)
+
+    return _cmd_source_scan(args)
+
+
+def _is_container_lifecycle(args: argparse.Namespace) -> bool:
+    """Check if container lifecycle flags are present."""
+    return bool(
+        getattr(args, "discover", None) is not None
+        or getattr(args, "images", None)
+    )
+
+
+def _cmd_source_scan(args: argparse.Namespace) -> int:
+    """Run source code scanning with registered scanner modules."""
     try:
         from argus.core import ArgusConfig, ArgusEngine, Severity
     except ImportError as exc:
@@ -187,10 +186,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
     try:
         config = ArgusConfig.load(args.config)
     except FileNotFoundError:
-        print(
-            f"Error: config file not found: {args.config}",
-            file=sys.stderr,
-        )
+        print(f"Error: config file not found: {args.config}", file=sys.stderr)
         return EXIT_ERROR
     except Exception as exc:
         print(f"Error: failed to load config: {exc}", file=sys.stderr)
@@ -217,7 +213,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
         if args.verbose:
             print("Warning: argus.scanners module not found; no scanners registered")
 
-    # List mode — print scanners and exit
+    # List mode
     if args.list:
         return _list_scanners(engine)
 
@@ -242,12 +238,12 @@ def cmd_scan(args: argparse.Namespace) -> int:
     return EXIT_SUCCESS if summary.passed else EXIT_FINDINGS
 
 
-def cmd_container(args: argparse.Namespace) -> int:
-    """Execute the container subcommand."""
+def _cmd_container_scan(args: argparse.Namespace) -> int:
+    """Run container image scanning lifecycle (discover, build, scan, report)."""
     from argus.container import ContainerEngine
     from argus.reporters.container_markdown import ContainerMarkdownReporter
 
-    # Build config from args
+    # Build container config from args and config file
     config = {}
 
     if args.config:
@@ -262,7 +258,10 @@ def cmd_container(args: argparse.Namespace) -> int:
 
     # CLI overrides
     if args.images:
-        config["images"] = [{"image": img, "name": img.split(":")[0].split("/")[-1]} for img in args.images]
+        config["images"] = [
+            {"image": img, "name": img.split(":")[0].split("/")[-1]}
+            for img in args.images
+        ]
     if args.discover is not None:
         config["discover"] = True
         config["search_paths"] = [args.discover]
@@ -272,7 +271,7 @@ def cmd_container(args: argparse.Namespace) -> int:
     output_dir = args.output_dir or config.get("output_dir", "./argus-results")
     formats = args.formats or ["terminal", "markdown"]
 
-    # Run the container engine
+    # Run
     try:
         engine = ContainerEngine(config)
         summary = engine.run()
@@ -280,7 +279,7 @@ def cmd_container(args: argparse.Namespace) -> int:
         print(f"Error: container scan failed: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
-    # Generate reports
+    # Reports
     for fmt in formats:
         if fmt == "markdown":
             reporter = ContainerMarkdownReporter()
@@ -292,20 +291,16 @@ def cmd_container(args: argparse.Namespace) -> int:
         elif fmt == "json":
             _write_container_json(summary, output_dir)
         elif fmt == "sarif":
-            # Reuse the generic SARIF reporter with combined findings
             from argus.core.models import ScanResult, ScanSummary
             from argus.reporters import get_reporter
-            results = []
-            for r in summary.results:
-                results.append(ScanResult(
-                    scanner=f"container/{r.name}",
-                    findings=r.combined_findings,
-                ))
-            scan_summary = ScanSummary(results=results)
+            results = [
+                ScanResult(scanner=f"container/{r.name}", findings=r.combined_findings)
+                for r in summary.results
+            ]
             sarif_reporter = get_reporter("sarif")
-            sarif_reporter.report(scan_summary, output_dir)
+            sarif_reporter.report(ScanSummary(results=results), output_dir)
 
-    # Exit code based on severity threshold
+    # Exit code
     if args.severity_threshold and args.severity_threshold != "none":
         from argus.core.models import Severity
         threshold = Severity.from_string(args.severity_threshold)
@@ -365,26 +360,32 @@ def cmd_report(args: argparse.Namespace) -> int:
     """Execute the report subcommand."""
     results_dir = Path(args.results_dir)
     if not results_dir.is_dir():
-        print(
-            f"Error: results directory not found: {results_dir}",
-            file=sys.stderr,
-        )
+        print(f"Error: results directory not found: {results_dir}", file=sys.stderr)
         return EXIT_ERROR
 
-    output_dir = args.output_dir or args.results_dir
+    output_dir = Path(args.output_dir) if args.output_dir else results_dir
 
     try:
         from argus.reporters import get_reporter
-    except ImportError:
-        print(
-            "Error: argus.reporters module not available",
-            file=sys.stderr,
-        )
+        reporter = get_reporter(args.format)
+    except (ImportError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
     try:
-        reporter = get_reporter(args.format)
-        reporter.generate(results_dir=str(results_dir), output_dir=output_dir)
+        import json
+        json_file = results_dir / "argus-results.json"
+        if not json_file.exists():
+            print(f"Error: {json_file} not found", file=sys.stderr)
+            return EXIT_ERROR
+
+        from argus.core.models import ScanSummary
+        data = json.loads(json_file.read_text())
+        summary = ScanSummary.from_dict(data) if hasattr(ScanSummary, "from_dict") else None
+        if summary is None:
+            print("Error: cannot reconstruct ScanSummary from JSON", file=sys.stderr)
+            return EXIT_ERROR
+        reporter.report(summary, str(output_dir))
     except Exception as exc:
         print(f"Error: report generation failed: {exc}", file=sys.stderr)
         return EXIT_ERROR
@@ -435,7 +436,6 @@ def main(argv: list[str] | None = None) -> None:
 
     handlers = {
         "scan": cmd_scan,
-        "container": cmd_container,
         "report": cmd_report,
     }
 

@@ -157,7 +157,7 @@ jobs:
           format: 'json'
           output: 'trivy-results.json'
 
-      # Use argus container scanner parser + markdown reporter
+      # Use argus container scanner parser + container markdown reporter
       - name: Generate report with Argus
         if: always()
         run: |
@@ -168,33 +168,37 @@ jobs:
 
           from pathlib import Path
           from argus.scanners.container import ContainerScanner
-          from argus.core.models import ScanResult, ScanSummary, Severity
-          from argus.reporters.markdown import MarkdownReporter
+          from argus.container.scanner import ContainerScanResult, ContainerScanSummary
+          from argus.reporters.container_markdown import ContainerMarkdownReporter
 
           image_name = os.environ["IMAGE_NAME"]
+          image_tag = os.environ.get("IMAGE_TAG", "latest")
+          image_ref = f"ghcr.io/huntridge-labs/argus/{image_name}:{image_tag}"
+
           trivy_json = Path("trivy-results.json")
-
           scanner = ContainerScanner()
-          findings = scanner.parse_trivy_results(trivy_json) if trivy_json.exists() else []
+          trivy_findings = scanner.parse_trivy_results(trivy_json) if trivy_json.exists() else []
 
-          result = ScanResult(
-              scanner=f"container/{image_name}",
-              findings=findings,
-              metadata={"image": image_name},
+          result = ContainerScanResult(
+              name=image_name,
+              image_ref=image_ref,
+              trivy_findings=trivy_findings,
+              combined_findings=trivy_findings,
           )
-          summary = ScanSummary(results=[result])
+          summary = ContainerScanSummary(results=[result])
 
-          reporter = MarkdownReporter()
+          reporter = ContainerMarkdownReporter()
           reporter.report(summary, "scanner-summaries")
 
-          # Rename to per-image filename for aggregation
-          src = Path("scanner-summaries/argus-summary.md")
+          # Rename for per-image aggregation
+          src = Path("scanner-summaries/container-scan.md")
           dst = Path(f"scanner-summaries/{image_name}.md")
           if src.exists():
               dst.write_text(src.read_text())
           PYEOF
         env:
           IMAGE_NAME: ${{ matrix.image }}
+          IMAGE_TAG: ${{ github.sha }}
 
       - name: Upload scan artifacts
         if: always()
