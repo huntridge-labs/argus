@@ -199,11 +199,41 @@ def cmd_scan(args: argparse.Namespace) -> int:
       - zap + --image/--target → DAST lifecycle
       - everything else → source code scanning
     """
-    if args.scanner == "container" and _is_container_lifecycle(args):
-        return _cmd_container_scan(args)
+    # Container lifecycle — needs --discover or --image
+    if args.scanner == "container":
+        if _is_container_lifecycle(args):
+            return _cmd_container_scan(args)
+        print(
+            "Usage: argus scan container [--discover PATH | --image REF]\n\n"
+            "Container image scanning requires one of:\n"
+            "  --discover PATH   Discover Dockerfiles and scan all images\n"
+            "  --image REF       Scan a specific image (can be repeated)\n\n"
+            "Examples:\n"
+            "  argus scan container --discover ./\n"
+            "  argus scan container --discover docker/\n"
+            "  argus scan container --image nginx:latest\n"
+            "  argus scan container --image myapp:v1 --image worker:v1\n",
+            file=sys.stderr,
+        )
+        return EXIT_ERROR
 
-    if args.scanner == "zap" and _is_dast_lifecycle(args):
-        return _cmd_dast_scan(args)
+    # DAST lifecycle — needs --target or --image
+    if args.scanner == "zap":
+        if _is_dast_lifecycle(args):
+            return _cmd_dast_scan(args)
+        print(
+            "Usage: argus scan zap [--target URL | --image REF]\n\n"
+            "DAST scanning requires one of:\n"
+            "  --target URL   Scan an already-running web application\n"
+            "  --image REF    Start container, discover ports, scan, stop\n\n"
+            "Examples:\n"
+            "  argus scan zap --target http://localhost:3000\n"
+            "  argus scan zap --image myapp:latest\n"
+            "  argus scan zap --image myapp:latest --port 8080\n"
+            "  argus scan zap --image myapp:latest --env DB_HOST=localhost\n",
+            file=sys.stderr,
+        )
+        return EXIT_ERROR
 
     return _cmd_source_scan(args)
 
