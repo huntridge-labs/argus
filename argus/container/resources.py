@@ -110,24 +110,57 @@ def prune_dangling_images() -> None:
         logger.debug("Dangling image prune failed", exc_info=True)
 
 
-def estimate_image_size(image_ref: str) -> int:
-    """Estimate the size of a Docker image in bytes.
+def is_image_local(image_ref: str) -> bool:
+    """Check if an image exists in the local Docker daemon."""
+    if shutil.which("docker") is None:
+        return False
 
-    Returns 0 if the image isn't local or can't be inspected.
+    try:
+        result = subprocess.run(
+            ["docker", "image", "inspect", image_ref],
+            capture_output=True,
+            timeout=10,
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, Exception):
+        return False
+
+
+def get_remote_image_size(image_ref: str) -> int:
+    """Get image size from registry without pulling.
+
+    Uses docker manifest inspect to read the manifest and sum
+    layer sizes. Returns 0 if unavailable.
     """
     if shutil.which("docker") is None:
         return 0
 
     try:
         result = subprocess.run(
-            ["docker", "image", "inspect", image_ref,
-             "--format", "{{.Size}}"],
+            ["docker", "manifest", "inspect", image_ref, "--verbose"],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=30,
         )
-        if result.returncode == 0:
-            return int(result.stdout.strip())
-    except (subprocess.TimeoutExpired, ValueError, Exception):
-        pass
-    return 0
+        if result.returncode != 0:
+            return 0
+
+        import json
+        data = json.loads(result.stdout)
+
+        # Manifest can be a single object or a list
+        if isinstance(data, list):
+            data = data[0]
+
+        # Sum layer sizes from the manifest
+        total = 0
+        layers = data.get("SchemaV2Manifest", {}).get("layers", [])
+        for layer in layers:
+            total += layer.get("size", 0)
+
+        config_size = data.get("SchemaV2Manifest", {}).get("config", {}).get("size", 0)
+        total += config_size
+
+        return total
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception):
+        return 0

@@ -120,23 +120,32 @@ def scan_image(
 ) -> ContainerScanResult:
     """Scan a single container image with trivy and/or grype.
 
-    Reuses parse_trivy_results and parse_grype_results from
-    ContainerScanner for consistent finding normalization.
+    For remote images (not built from a Dockerfile), trivy and grype
+    scan directly from the registry without pulling the full image.
+    This uses minimal disk — only the vulnerability DB and scan output.
+
+    For locally-built images, scanners reference the local Docker daemon.
     """
     trivy_findings: list[Finding] = []
     grype_findings: list[Finding] = []
+
+    # Determine if the image is local (built by us) or remote
+    is_local = target.dockerfile is not None
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
 
         if "trivy" in scanners:
-            trivy_findings = _run_trivy(target.image_ref, tmp_path)
+            trivy_findings = _run_trivy(
+                target.image_ref, tmp_path, local=is_local,
+            )
 
         if "grype" in scanners:
-            grype_findings = _run_grype(target.image_ref, tmp_path)
+            grype_findings = _run_grype(
+                target.image_ref, tmp_path, local=is_local,
+            )
 
         if sbom and "syft" not in scanners:
-            # Generate SBOM as a side effect when sbom=True
             _run_syft(target.image_ref, tmp_path)
 
     combined = deduplicate_findings(trivy_findings, grype_findings)
@@ -181,8 +190,14 @@ def deduplicate_findings(
     return combined
 
 
-def _run_trivy(image_ref: str, tmp_path: Path) -> list[Finding]:
-    """Run trivy and parse results."""
+def _run_trivy(
+    image_ref: str, tmp_path: Path, local: bool = False,
+) -> list[Finding]:
+    """Run trivy and parse results.
+
+    When local=False, trivy scans directly from the registry without
+    pulling the image — minimal disk usage.
+    """
     if shutil.which("trivy") is None:
         logger.warning("trivy not installed — skipping trivy scan")
         return []
@@ -194,11 +209,22 @@ def _run_trivy(image_ref: str, tmp_path: Path) -> list[Finding]:
         "trivy", "image",
         "--format", "json",
         "--output", str(output_file),
-        image_ref,
     ]
 
+    if not local:
+        # Scan from registry without pulling to local Docker
+        cmd.append("--image-src")
+        cmd.append("remote")
+
+    cmd.append(image_ref)
+
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=600,
+        )
+    except subprocess.TimeoutExpired:
+        logger.error("trivy timed out scanning %s", image_ref)
+        return []
     except FileNotFoundError:
         logger.error("trivy binary not found")
         return []
@@ -207,7 +233,7 @@ def _run_trivy(image_ref: str, tmp_path: Path) -> list[Finding]:
         logger.error(
             "trivy produced no output (exit %d): %s",
             result.returncode,
-            result.stderr.strip(),
+            result.stderr.strip()[:500],
         )
         return []
 
@@ -218,8 +244,14 @@ def _run_trivy(image_ref: str, tmp_path: Path) -> list[Finding]:
         return []
 
 
-def _run_grype(image_ref: str, tmp_path: Path) -> list[Finding]:
-    """Run grype and parse results."""
+def _run_grype(
+    image_ref: str, tmp_path: Path, local: bool = False,
+) -> list[Finding]:
+    """Run grype and parse results.
+
+    Grype automatically fetches from registry when the image isn't
+    in local Docker — no special flag needed.
+    """
     if shutil.which("grype") is None:
         logger.warning("grype not installed — skipping grype scan")
         return []
@@ -234,7 +266,12 @@ def _run_grype(image_ref: str, tmp_path: Path) -> list[Finding]:
     ]
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=600,
+        )
+    except subprocess.TimeoutExpired:
+        logger.error("grype timed out scanning %s", image_ref)
+        return []
     except FileNotFoundError:
         logger.error("grype binary not found")
         return []
@@ -243,7 +280,7 @@ def _run_grype(image_ref: str, tmp_path: Path) -> list[Finding]:
         logger.error(
             "grype produced no output (exit %d): %s",
             result.returncode,
-            result.stderr.strip(),
+            result.stderr.strip()[:500],
         )
         return []
 
@@ -270,6 +307,8 @@ def _run_syft(image_ref: str, tmp_path: Path) -> None:
     ]
 
     try:
-        subprocess.run(cmd, capture_output=True, text=True)
+        subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    except subprocess.TimeoutExpired:
+        logger.warning("syft timed out generating SBOM for %s", image_ref)
     except FileNotFoundError:
         logger.debug("syft binary not found")
