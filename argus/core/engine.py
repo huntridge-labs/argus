@@ -4,6 +4,7 @@ import logging
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 from .config import ArgusConfig
@@ -23,36 +24,61 @@ class ArgusEngine:
     def register_scanner(self, scanner: Scanner) -> None:
         """Register a scanner instance for use by the engine."""
         self._scanners[scanner.name] = scanner
+        logger.debug(
+            "Registered scanner: %s (available=%s, image=%s)",
+            scanner.name,
+            scanner.is_available(),
+            getattr(scanner, "container_image", "none"),
+        )
 
     def run(
         self,
         scanner_names: list[str] | None = None,
         path: str | None = None,
     ) -> ScanSummary:
-        """Run scanners and return an aggregated ScanSummary.
-
-        If *scanner_names* is None, all registered scanners whose config
-        has ``enabled=True`` are executed. If *path* is provided it
-        overrides the per-scanner path from config.
-        """
+        """Run scanners and return an aggregated ScanSummary."""
         names_to_run = self._resolve_scanner_names(scanner_names)
+        logger.debug(
+            "Resolved scanners to run: %s (from requested=%s)",
+            names_to_run,
+            scanner_names,
+        )
         results: list[ScanResult] = []
 
         for name in names_to_run:
             scanner = self._scanners.get(name)
             if scanner is None:
-                logger.warning("Scanner '%s' is not registered — skipping", name)
+                logger.warning(
+                    "Scanner '%s' is not registered — skipping. "
+                    "Registered scanners: %s",
+                    name,
+                    list(self._scanners.keys()),
+                )
                 continue
 
             scanner_config = self.config.get_scanner_config(name)
             scan_path = path if path is not None else scanner_config.path
             config_dict = self._build_scanner_config_dict(scanner_config)
 
+            logger.info("Starting scanner: %s (path=%s)", name, scan_path)
+            logger.debug("Scanner config: %s", config_dict)
+            start = time.monotonic()
+
             try:
                 result = self._run_scanner(scanner, scan_path, config_dict)
+                elapsed = int((time.monotonic() - start) * 1000)
+                logger.info(
+                    "Scanner '%s' completed in %dms: %d finding(s)",
+                    name,
+                    elapsed,
+                    result.total_count,
+                )
                 results.append(result)
             except Exception:
-                logger.exception("Scanner '%s' failed", name)
+                elapsed = int((time.monotonic() - start) * 1000)
+                logger.exception(
+                    "Scanner '%s' failed after %dms", name, elapsed,
+                )
 
         return ScanSummary(
             results=results,
@@ -73,18 +99,28 @@ class ArgusEngine:
 
     def _is_docker_available(self) -> bool:
         """Check if docker CLI is available."""
-        return shutil.which("docker") is not None
+        available = shutil.which("docker") is not None
+        if not available:
+            logger.debug("Docker CLI not found in PATH")
+        return available
 
     def _pull_image(self, image: str) -> bool:
         """Pull a container image based on pull policy."""
         policy = self.config.execution.pull_policy
+        logger.debug("Pull policy: %s for image: %s", policy, image)
 
         if policy == "never":
+            logger.debug("Pull policy is 'never' — checking local images only")
             result = subprocess.run(
                 ["docker", "image", "inspect", image],
                 capture_output=True,
             )
-            return result.returncode == 0
+            found = result.returncode == 0
+            if not found:
+                logger.warning(
+                    "Image '%s' not found locally and pull_policy=never", image,
+                )
+            return found
 
         if policy == "if-not-present":
             result = subprocess.run(
@@ -92,24 +128,44 @@ class ArgusEngine:
                 capture_output=True,
             )
             if result.returncode == 0:
+                logger.debug("Image '%s' found locally — skipping pull", image)
                 return True
+            logger.debug("Image '%s' not found locally — pulling", image)
 
-        # Pull the image (always, or if-not-present and not found)
-        # Try native platform first, fall back to linux/amd64 for ARM Macs
+        # Pull the image
+        logger.info("Pulling container image: %s", image)
+        start = time.monotonic()
         result = subprocess.run(
             ["docker", "pull", image],
             capture_output=True,
             text=True,
         )
+        elapsed = int((time.monotonic() - start) * 1000)
+
         if result.returncode != 0:
             logger.info(
-                "Native pull failed for %s, retrying with --platform linux/amd64",
+                "Native pull failed for %s (%dms), retrying with "
+                "--platform linux/amd64. stderr: %s",
                 image,
+                elapsed,
+                result.stderr.strip()[:200],
             )
+            start = time.monotonic()
             result = subprocess.run(
                 ["docker", "pull", "--platform", "linux/amd64", image],
                 capture_output=True,
                 text=True,
+            )
+            elapsed = int((time.monotonic() - start) * 1000)
+
+        if result.returncode == 0:
+            logger.info("Pulled %s in %dms", image, elapsed)
+        else:
+            logger.error(
+                "Failed to pull %s after %dms. stderr: %s",
+                image,
+                elapsed,
+                result.stderr.strip()[:300],
             )
         return result.returncode == 0
 
@@ -121,15 +177,12 @@ class ArgusEngine:
 
         registry = self.config.execution.registry
         if registry:
-            # Replace the registry prefix
-            # e.g., "aquasec/trivy:0.58.0" -> "registry.internal/argus/trivy:0.58.0"
             parts = image.split("/", 1)
             if len(parts) == 2 and ("." in parts[0] or ":" in parts[0]):
-                # Has explicit registry, replace it
                 image = f"{registry}/{parts[1]}"
             else:
-                # Docker Hub shorthand, prefix with registry
                 image = f"{registry}/{image}"
+            logger.debug("Registry override: %s", image)
 
         return image
 
@@ -138,6 +191,9 @@ class ArgusEngine:
     ) -> ScanResult:
         """Run a scanner in a Docker container."""
         image = self._resolve_image(scanner)
+        logger.info(
+            "Running '%s' in container: %s", scanner.name, image,
+        )
 
         if not self._pull_image(image):
             raise RuntimeError(f"Failed to pull container image: {image}")
@@ -145,27 +201,48 @@ class ArgusEngine:
         abs_path = str(Path(path).resolve())
 
         with tempfile.TemporaryDirectory() as output_dir:
-            # Volume mount: scan path as /workspace (read-only), output dir as /output
             docker_cmd = [
                 "docker", "run", "--rm",
                 "-v", f"{abs_path}:/workspace:ro",
                 "-v", f"{output_dir}:/output",
             ]
 
-            # Override entrypoint if scanner specifies one
             entrypoint = getattr(scanner, "container_entrypoint", None)
             if entrypoint:
                 docker_cmd.extend(["--entrypoint", entrypoint])
+                logger.debug("Overriding entrypoint: %s", entrypoint)
 
-            # Add scanner-specific container args
             container_args = scanner.container_args(config)
             docker_cmd.extend([image] + container_args)
 
+            logger.debug(
+                "Docker command: docker run --rm -v ...:/workspace:ro "
+                "-v ...:/output %s %s",
+                image,
+                " ".join(container_args),
+            )
+
+            start = time.monotonic()
             proc = subprocess.run(
                 docker_cmd,
                 capture_output=True,
                 text=True,
             )
+            elapsed = int((time.monotonic() - start) * 1000)
+
+            logger.debug(
+                "Container exited: code=%d, duration=%dms, "
+                "stdout=%d bytes, stderr=%d bytes",
+                proc.returncode,
+                elapsed,
+                len(proc.stdout),
+                len(proc.stderr),
+            )
+
+            if proc.returncode != 0 and proc.stderr.strip():
+                logger.debug(
+                    "Container stderr: %s", proc.stderr.strip()[:500],
+                )
 
             # Parse results from output directory
             output_path = Path(output_dir)
@@ -175,16 +252,32 @@ class ArgusEngine:
                 + list(output_path.glob("*.sarif"))
             )
 
-            # If no output files but stdout has content, write it
-            # (some scanners like clamscan output to stdout)
+            # Capture stdout if no output files
             if not result_files and proc.stdout.strip():
                 stdout_file = output_path / "stdout.txt"
                 stdout_file.write_text(proc.stdout)
                 result_files = [stdout_file]
+                logger.debug("No output files — captured stdout (%d bytes)", len(proc.stdout))
+
+            if result_files:
+                logger.debug(
+                    "Output files: %s",
+                    [f.name for f in result_files],
+                )
+            else:
+                logger.warning(
+                    "Scanner '%s' produced no output files and no stdout",
+                    scanner.name,
+                )
 
             findings = []
             if result_files and hasattr(scanner, "parse_results"):
                 findings = scanner.parse_results(result_files[0])
+                logger.debug(
+                    "Parsed %d finding(s) from %s",
+                    len(findings),
+                    result_files[0].name,
+                )
 
             return ScanResult(
                 scanner=scanner.name,
@@ -211,12 +304,22 @@ class ArgusEngine:
                     f"Scanner '{scanner.name}' not installed locally. "
                     f"Install: {scanner.install_command()}"
                 )
+            logger.debug(
+                "Backend 'local': running '%s' via local tool", scanner.name,
+            )
             return scanner.scan(path, config)
 
         # auto or docker: prefer containers for immutable execution
         if backend in ("auto", "docker"):
             container_image = getattr(scanner, "container_image", "")
+
             if container_image and self._is_docker_available():
+                logger.debug(
+                    "Backend '%s': using container for '%s' (image=%s)",
+                    backend,
+                    scanner.name,
+                    container_image,
+                )
                 return self._run_in_container(scanner, path, config)
 
             # docker backend requires containers — fail explicitly
@@ -234,7 +337,7 @@ class ArgusEngine:
             # auto fallback: use local tool if no container image defined
             if scanner.is_available():
                 logger.info(
-                    "No container image for '%s', using local tool",
+                    "No container for '%s' — falling back to local tool",
                     scanner.name,
                 )
                 return scanner.scan(path, config)
