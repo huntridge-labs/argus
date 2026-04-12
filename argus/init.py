@@ -7,6 +7,31 @@ a tailored argus.yml with the right scanners enabled.
 import sys
 from pathlib import Path
 
+# Banner displayed on init — generated from the Argus logo.
+# Static string, no runtime dependency on ascii_magic.
+_BANNER = """\
+\033[32m                 gXXXPGGGGGGGGZZX\033[0m
+\033[32m             h44EEXbbPPGGGGPGGGGGZZZZ\033[0m
+\033[32m          ShVV4PPEEgXPZ        QddEGG\033[0m
+\033[32m        Vhhh4Ed444     PGGG     pqmmm66p\033[0m
+\033[32m      VghdVhhVV    GZGGGYYGGGZX    6mmqpppp2\033[0m
+\033[32m     hh4hghhh      GGOYZGGZYOGG      m6mmmppF\033[0m
+\033[32m     hhhVVVhg       GZYZGGGYbP       mm6pmmpF\033[0m
+\033[32m       hhhhhVhh5     XGGYYZGG      mmmmqm6pF\033[0m
+\033[32m          dhhhhhhh     GZbb     Sqqqhgmmm5\033[0m
+\033[32m           EXXg4dd44Vph2 nVhggSSqVVqqmm\033[0m
+\033[32m            4EEE444dVVVhhhhhd4VSSSqmh\033[0m
+\033[32m                PE44VVVhhhhhggSgV\033[0m
+
+\033[1;32m  █████╗ ██████╗  ██████╗ ██╗   ██╗███████╗\033[0m
+\033[1;32m  ██╔══██╗██╔══██╗██╔════╝ ██║   ██║██╔════╝\033[0m
+\033[1;32m  ███████║██████╔╝██║  ███╗██║   ██║███████╗\033[0m
+\033[1;32m  ██╔══██║██╔══██╗██║   ██║██║   ██║╚════██║\033[0m
+\033[1;32m  ██║  ██║██║  ██║╚██████╔╝╚██████╔╝███████║\033[0m
+\033[1;32m  ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚══════╝\033[0m
+\033[90m  Security Scanner — See Everything\033[0m
+"""
+
 # Schema URL version is managed by release-it during releases
 _SCHEMA_VERSION = "0.7.0"
 _SCHEMA_URL = (
@@ -32,6 +57,10 @@ def run_init(
     """
     root = Path(target_dir)
     config_path = root / "argus.yml"
+
+    # Show banner on interactive terminals
+    if sys.stderr.isatty():
+        print(_BANNER, file=sys.stderr)
 
     if config_path.exists() and not force:
         print(
