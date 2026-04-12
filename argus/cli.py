@@ -31,6 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
     _build_scan_parser(subparsers)
     _build_collect_parser(subparsers)
     _build_report_parser(subparsers)
+    _build_validate_parser(subparsers)
 
     return parser
 
@@ -192,6 +193,23 @@ def _build_collect_parser(subparsers: argparse._SubParsersAction) -> None:
         "--verbose", "-v",
         action="store_true",
         help="Enable verbose output",
+    )
+
+
+def _build_validate_parser(subparsers: argparse._SubParsersAction) -> None:
+    """Add the 'validate' subcommand for config validation."""
+    validate_parser = subparsers.add_parser(
+        "validate",
+        help="Validate an argus.yml configuration file",
+        description=(
+            "Check an argus.yml config file for errors and warnings.\n"
+            "Catches typos, invalid values, and unknown keys before scanning."
+        ),
+    )
+    validate_parser.add_argument(
+        "--config", "-c",
+        default=None,
+        help="Path to argus.yml config file (default: auto-detect)",
     )
 
 
@@ -727,6 +745,67 @@ def _list_scanners(engine) -> int:
     return EXIT_SUCCESS
 
 
+def cmd_validate(args: argparse.Namespace) -> int:
+    """Execute the validate subcommand — check config file."""
+    import yaml
+    from argus.core.schema import validate_config, ConfigError
+
+    # Find config file
+    config_path = args.config
+    if config_path is None:
+        for name in ["argus.yml", "argus.yaml", ".argus.yml", ".argus.yaml"]:
+            if Path(name).exists():
+                config_path = name
+                break
+
+    if config_path is None:
+        print("No argus.yml found. Create one or specify with --config.", file=sys.stderr)
+        return EXIT_ERROR
+
+    if not Path(config_path).exists():
+        print(f"Config file not found: {config_path}", file=sys.stderr)
+        return EXIT_ERROR
+
+    # Load and validate
+    try:
+        with open(config_path, "r") as fh:
+            data = yaml.safe_load(fh)
+    except yaml.YAMLError as exc:
+        print(f"Invalid YAML in {config_path}: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    if not isinstance(data, dict):
+        print(f"Config must be a YAML mapping, got {type(data).__name__}", file=sys.stderr)
+        return EXIT_ERROR
+
+    errors = validate_config(data)
+    warnings = [e for e in errors if e.level == "warning"]
+    fatal = [e for e in errors if e.level == "error"]
+
+    if not errors:
+        print(f"✅ {config_path} is valid")
+        # Show summary
+        scanners = data.get("scanners", {})
+        enabled = sum(1 for s in scanners.values() if isinstance(s, dict) and s.get("enabled", True))
+        print(f"   Scanners: {len(scanners)} configured, {enabled} enabled")
+        fmt = data.get("reporting", {}).get("formats", ["terminal"])
+        print(f"   Formats: {', '.join(fmt) if isinstance(fmt, list) else fmt}")
+        print(f"   Backend: {data.get('execution', {}).get('backend', 'auto')}")
+        return EXIT_SUCCESS
+
+    for w in warnings:
+        print(f"⚠️  {w}")
+    for e in fatal:
+        print(f"❌ {e}")
+
+    if fatal:
+        print(f"\n{len(fatal)} error(s), {len(warnings)} warning(s). Fix and retry.")
+        return EXIT_ERROR
+
+    print(f"\n✅ {config_path} is valid ({len(warnings)} warning(s))")
+    return EXIT_SUCCESS
+
+
 def cmd_collect(args: argparse.Namespace) -> int:
     """Execute the collect subcommand — merge parallel CI results."""
     from argus.collect import collect_results
@@ -833,6 +912,7 @@ def main(argv: list[str] | None = None) -> None:
         "scan": cmd_scan,
         "collect": cmd_collect,
         "report": cmd_report,
+        "validate": cmd_validate,
     }
 
     handler = handlers.get(args.command)

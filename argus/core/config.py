@@ -78,11 +78,23 @@ class ArgusConfig:
 
     @classmethod
     def _load_file(cls, path: Path) -> "ArgusConfig":
-        """Read and parse a YAML config file."""
+        """Read, validate, and parse a YAML config file."""
         with open(path, "r", encoding="utf-8") as fh:
             data = yaml.safe_load(fh)
         if not isinstance(data, dict):
             return cls()
+
+        # Validate before parsing — catch misconfigurations early
+        from .schema import validate_config, report_validation
+        errors = validate_config(data)
+        if errors:
+            valid = report_validation(errors)
+            if not valid:
+                raise ValueError(
+                    f"Invalid argus config: {sum(1 for e in errors if e.level == 'error')} error(s). "
+                    "See log output for details."
+                )
+
         return cls.from_dict(data)
 
     @classmethod
