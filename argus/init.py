@@ -61,9 +61,12 @@ def run_init(
     root = Path(target_dir)
     config_path = root / "argus.yml"
 
-    # Show banner on interactive terminals
+    # Show banner on interactive terminals with scroll effect
     if sys.stderr.isatty():
-        print(_BANNER, file=sys.stderr)
+        import time
+        for line in _BANNER.splitlines():
+            print(line, file=sys.stderr)
+            time.sleep(0.03)
 
     if config_path.exists() and not force:
         print(
