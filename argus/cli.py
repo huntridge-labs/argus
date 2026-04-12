@@ -13,6 +13,41 @@ SEVERITY_CHOICES = ["critical", "high", "medium", "low", "none"]
 FORMAT_CHOICES = ["terminal", "markdown", "sarif", "json"]
 
 
+def _make_run_dir(base_dir: str) -> str:
+    """Create a timestamped subdirectory for this scan run.
+
+    Each run gets its own directory so previous results are never
+    overwritten. A 'latest' symlink points to the newest run.
+
+    Structure:
+        argus-results/
+        ├── 2026-04-12T07-24-50Z/
+        │   ├── argus.log
+        │   ├── argus-audit.json
+        │   └── ...
+        └── latest -> 2026-04-12T07-24-50Z/
+    """
+    from datetime import datetime, timezone
+
+    base = Path(base_dir)
+    base.mkdir(parents=True, exist_ok=True)
+
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
+    run_dir = base / ts
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    # Update 'latest' symlink
+    latest = base / "latest"
+    try:
+        if latest.is_symlink() or latest.exists():
+            latest.unlink()
+        latest.symlink_to(ts)
+    except OSError:
+        pass  # Symlinks may not work on all platforms
+
+    return str(run_dir)
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the top-level argument parser with scan and report subcommands."""
     parser = argparse.ArgumentParser(
@@ -402,8 +437,9 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
     if args.formats:
         config.reporting.formats = args.formats
 
-    # Initialize audit trail
-    output_dir = config.reporting.output_dir
+    # Initialize audit trail — each run gets a timestamped subdirectory
+    output_dir = _make_run_dir(config.reporting.output_dir)
+    config.reporting.output_dir = output_dir
     log = get_logger("argus", output_dir=output_dir, verbose=args.verbose)
     manifest = create_manifest(
         config_path=args.config,
@@ -492,7 +528,8 @@ def _cmd_container_scan(args: argparse.Namespace) -> int:
     if args.scanners:
         config["scanners"] = [s.strip() for s in args.scanners.split(",")]
 
-    output_dir = args.output_dir or config.get("output_dir", "./argus-results")
+    base_dir = args.output_dir or config.get("output_dir", "./argus-results")
+    output_dir = _make_run_dir(base_dir)
     formats = args.formats or ["terminal", "markdown"]
 
     # Run
@@ -539,7 +576,8 @@ def _cmd_dast_scan(args: argparse.Namespace) -> int:
     """Run DAST scanning lifecycle (start target, scan with ZAP, cleanup)."""
     from argus.dast import DastEngine
 
-    output_dir = args.output_dir or "./argus-results"
+    base_dir = args.output_dir or "./argus-results"
+    output_dir = _make_run_dir(base_dir)
     formats = args.formats or ["terminal", "markdown"]
 
     # Parse env vars from --env KEY=VALUE flags
