@@ -185,16 +185,24 @@ jobs:
               trivy_findings=trivy_findings,
               combined_findings=trivy_findings,
           )
-          summary = ContainerScanSummary(results=[result])
 
+          # Write just this container's detail section (not the full report)
           reporter = ContainerMarkdownReporter()
-          reporter.report(summary, "scanner-summaries")
+          reporter.report_single(result, "scanner-summaries")
 
-          # Rename for per-image aggregation
-          src = Path("scanner-summaries/container-scan.md")
-          dst = Path(f"scanner-summaries/{image_name}.md")
-          if src.exists():
-              dst.write_text(src.read_text())
+          # Also write a JSON summary for the combine step
+          import json
+          json.dump({
+              "name": image_name,
+              "image_ref": image_ref,
+              "critical": result.critical_count,
+              "high": result.high_count,
+              "medium": result.medium_count,
+              "low": result.low_count,
+              "total": result.total_count,
+              "unique": result.unique_count,
+              "build_success": result.build_success,
+          }, open(f"scanner-summaries/{image_name}.json", "w"))
           PYEOF
         env:
           IMAGE_NAME: ${{ matrix.image }}
@@ -344,20 +352,70 @@ jobs:
           path: cli-results
         continue-on-error: true
 
-      # Combine per-image argus markdown reports into one file
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.13'
+
+      - name: Install Argus SDK
+        run: |
+          pip install --quiet pyyaml
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      # Build combined report with summary table + per-container sections
       - name: Combine scanner summaries
         run: |
-          mkdir -p scanner-summaries
-          {
-            for md in scanner-summaries/*.md; do
-              [ -f "$md" ] && cat "$md" && echo ""
-            done
-            if [ -f "cli-results/argus-summary.md" ]; then
-              echo "---"
-              echo ""
-              cat cli-results/argus-summary.md
-            fi
-          } > scanner-summaries/combined-container-scan.md
+          python3 << 'PYEOF'
+          import sys, os, glob, json
+          sys.path.insert(0, os.environ.get("PYTHONPATH", "."))
+
+          from pathlib import Path
+          from argus.container.scanner import ContainerScanResult, ContainerScanSummary
+          from argus.reporters.container_markdown import ContainerMarkdownReporter
+
+          # Load per-image JSON summaries for accurate severity counts
+          results = []
+          for json_file in sorted(Path("scanner-summaries").glob("*.json")):
+              data = json.load(open(json_file))
+              # Create a minimal result with counts (findings list empty —
+              # the per-image markdown sections have the detail)
+              r = ContainerScanResult(
+                  name=data["name"],
+                  image_ref=data.get("image_ref", data["name"]),
+                  build_success=data.get("build_success", True),
+              )
+              # Inject counts via the combined_findings proxy
+              # (ContainerScanResult computes counts from combined_findings)
+              from argus.core.models import Finding, Severity
+              for sev, count in [
+                  (Severity.CRITICAL, data.get("critical", 0)),
+                  (Severity.HIGH, data.get("high", 0)),
+                  (Severity.MEDIUM, data.get("medium", 0)),
+                  (Severity.LOW, data.get("low", 0)),
+              ]:
+                  for _ in range(count):
+                      r.combined_findings.append(
+                          Finding(id="count", severity=sev, title="")
+                      )
+              results.append(r)
+
+          summary = ContainerScanSummary(results=results)
+          section_files = sorted(Path("scanner-summaries").glob("*.md"))
+
+          # Build combined report: summary table + breakdown + per-container sections
+          content = ContainerMarkdownReporter.build_combined_report(
+              section_files=section_files,
+              summary=summary,
+          )
+
+          # Append CLI scan results if available
+          cli_md = Path("cli-results/argus-summary.md")
+          if cli_md.exists():
+              content += "\n---\n\n" + cli_md.read_text()
+
+          Path("scanner-summaries/combined-container-scan.md").write_text(content)
+          print(f"Combined report: {len(section_files)} container sections")
+          PYEOF
 
       # Post using the existing comment-pr composite action
       - name: Comment PR with scan results

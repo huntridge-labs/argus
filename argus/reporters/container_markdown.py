@@ -64,7 +64,7 @@ class ContainerMarkdownReporter:
         return filepath
 
     # ------------------------------------------------------------------
-    # Top-level builder
+    # Top-level builder (full multi-container report)
     # ------------------------------------------------------------------
 
     def _build(self, summary: Any, artifacts_url: str = "") -> str:
@@ -93,6 +93,74 @@ class ContainerMarkdownReporter:
             lines.append("")
 
         lines.append("</details>")
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # Single-container section (for CI matrix jobs)
+    # ------------------------------------------------------------------
+
+    def report_single(
+        self,
+        result: Any,
+        output_dir: Optional[Path] = None,
+    ) -> Path:
+        """Write a single container's detail section to a named file.
+
+        Produces just the per-container ``<details>`` block (no outer
+        wrapper, no combined summary). Designed for CI matrix jobs
+        where each container is scanned in a separate job and the
+        results are combined later by ``build_combined_report``.
+        """
+        dest = Path(output_dir) if output_dir else _DEFAULT_OUTPUT_DIR
+        dest.mkdir(parents=True, exist_ok=True)
+
+        name = getattr(result, "name", "unknown")
+        filepath = dest / f"{name}.md"
+        content = "\n".join(self._build_container_detail(result))
+        filepath.write_text(content, encoding="utf-8")
+        return filepath
+
+    @classmethod
+    def build_combined_report(
+        cls,
+        section_files: list[Path],
+        summary: Any,
+        artifacts_url: str = "",
+    ) -> str:
+        """Combine per-container sections into a full report.
+
+        Call this from the CI combine step after downloading all
+        per-container markdown files from matrix job artifacts.
+
+        Parameters
+        ----------
+        section_files:
+            Paths to per-container markdown files (from ``report_single``).
+        summary:
+            A ``ContainerScanSummary`` with all results for the
+            combined header and breakdown table.
+        """
+        reporter = cls()
+        lines: list[str] = []
+
+        lines.extend(reporter._build_combined_summary(summary))
+        lines.extend(reporter._build_breakdown_table(summary))
+
+        lines.append("### \U0001f50d Detailed Findings by Container")
+        lines.append("")
+
+        for path in sorted(section_files):
+            if path.exists():
+                lines.append(path.read_text(encoding="utf-8"))
+                lines.append("")
+
+        if artifacts_url:
+            lines.append(
+                f"**\U0001f4c1 Artifacts:** "
+                f"[Container Scan Reports]({artifacts_url})"
+            )
+            lines.append("")
+
         return "\n".join(lines)
 
     # ------------------------------------------------------------------
