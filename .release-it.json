@@ -171,6 +171,16 @@
             "flags": "g"
           },
           "replace": "${1}{{version}}"
+        },
+        {
+          "files": [
+            "argus/__init__.py"
+          ],
+          "search": {
+            "pattern": "(__version__\\s*=\\s*\")[^\"]+\"",
+            "flags": ""
+          },
+          "replace": "${1}{{version}}\""
         }
       ]
     }
