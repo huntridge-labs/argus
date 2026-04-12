@@ -29,6 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     _build_scan_parser(subparsers)
+    _build_container_parser(subparsers)
     _build_report_parser(subparsers)
 
     return parser
@@ -81,6 +82,64 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         help="List available scanners and exit",
     )
     scan_parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Enable verbose output",
+    )
+
+
+def _build_container_parser(subparsers: argparse._SubParsersAction) -> None:
+    """Add the 'container' subcommand for container image scanning."""
+    container_parser = subparsers.add_parser(
+        "container",
+        help="Scan container images for vulnerabilities",
+        description=(
+            "Discover Dockerfiles, build images, scan with Trivy + Grype, "
+            "deduplicate findings, and generate reports."
+        ),
+    )
+    container_parser.add_argument(
+        "images",
+        nargs="*",
+        help="Image references to scan (e.g., nginx:latest myapp:v1). "
+             "If omitted, discovers Dockerfiles or reads from config.",
+    )
+    container_parser.add_argument(
+        "--discover",
+        nargs="?",
+        const=".",
+        default=None,
+        metavar="PATH",
+        help="Discover Dockerfiles in PATH (default: current directory)",
+    )
+    container_parser.add_argument(
+        "--config", "-c",
+        default=None,
+        help="Path to argus.yml config file",
+    )
+    container_parser.add_argument(
+        "--output-dir", "-o",
+        default=None,
+        help="Output directory for reports (default: ./argus-results)",
+    )
+    container_parser.add_argument(
+        "--format", "-f",
+        dest="formats",
+        action="append",
+        choices=["terminal", "markdown", "sarif", "json"],
+        help="Output format (can be repeated). Default: terminal + markdown",
+    )
+    container_parser.add_argument(
+        "--severity-threshold", "-s",
+        choices=SEVERITY_CHOICES,
+        help="Fail threshold (default from config or none)",
+    )
+    container_parser.add_argument(
+        "--scanners",
+        default="trivy,grype",
+        help="Comma-separated sub-scanners: trivy,grype,syft (default: trivy,grype)",
+    )
+    container_parser.add_argument(
         "--verbose", "-v",
         action="store_true",
         help="Enable verbose output",
@@ -183,6 +242,125 @@ def cmd_scan(args: argparse.Namespace) -> int:
     return EXIT_SUCCESS if summary.passed else EXIT_FINDINGS
 
 
+def cmd_container(args: argparse.Namespace) -> int:
+    """Execute the container subcommand."""
+    from argus.container import ContainerEngine
+    from argus.reporters.container_markdown import ContainerMarkdownReporter
+
+    # Build config from args
+    config = {}
+
+    if args.config:
+        try:
+            import yaml
+            with open(args.config, "r") as fh:
+                file_config = yaml.safe_load(fh) or {}
+            config = file_config.get("containers", {})
+        except Exception as exc:
+            print(f"Error loading config: {exc}", file=sys.stderr)
+            return EXIT_ERROR
+
+    # CLI overrides
+    if args.images:
+        config["images"] = [{"image": img, "name": img.split(":")[0].split("/")[-1]} for img in args.images]
+    if args.discover is not None:
+        config["discover"] = True
+        config["search_paths"] = [args.discover]
+    if args.scanners:
+        config["scanners"] = [s.strip() for s in args.scanners.split(",")]
+
+    output_dir = args.output_dir or config.get("output_dir", "./argus-results")
+    formats = args.formats or ["terminal", "markdown"]
+
+    # Run the container engine
+    try:
+        engine = ContainerEngine(config)
+        summary = engine.run()
+    except Exception as exc:
+        print(f"Error: container scan failed: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    # Generate reports
+    for fmt in formats:
+        if fmt == "markdown":
+            reporter = ContainerMarkdownReporter()
+            filepath = reporter.report(summary, output_dir)
+            if args.verbose:
+                print(f"Markdown report: {filepath}")
+        elif fmt == "terminal":
+            _print_container_terminal(summary)
+        elif fmt == "json":
+            _write_container_json(summary, output_dir)
+        elif fmt == "sarif":
+            # Reuse the generic SARIF reporter with combined findings
+            from argus.core.models import ScanResult, ScanSummary
+            from argus.reporters import get_reporter
+            results = []
+            for r in summary.results:
+                results.append(ScanResult(
+                    scanner=f"container/{r.name}",
+                    findings=r.combined_findings,
+                ))
+            scan_summary = ScanSummary(results=results)
+            sarif_reporter = get_reporter("sarif")
+            sarif_reporter.report(scan_summary, output_dir)
+
+    # Exit code based on severity threshold
+    if args.severity_threshold and args.severity_threshold != "none":
+        from argus.core.models import Severity
+        threshold = Severity.from_string(args.severity_threshold)
+        for r in summary.results:
+            for f in r.combined_findings:
+                if f.severity >= threshold:
+                    return EXIT_FINDINGS
+    return EXIT_SUCCESS
+
+
+def _print_container_terminal(summary) -> None:
+    """Print container scan results to terminal."""
+    print("\n" + "=" * 50)
+    print("  Container Security Scan Results")
+    print("=" * 50 + "\n")
+    print(f"Containers scanned: {summary.container_count}")
+    print(f"Build failures:     {summary.build_failures}")
+    print(f"Total findings:     {summary.total_count}")
+    print(f"Unique findings:    {summary.unique_count}")
+    print()
+    for r in summary.results:
+        status = "BUILD FAILED" if not r.build_success else f"{r.total_count} findings"
+        print(f"  {r.name:<20} {status}")
+    print()
+
+
+def _write_container_json(summary, output_dir) -> None:
+    """Write container scan results as JSON."""
+    import json
+    dest = Path(output_dir)
+    dest.mkdir(parents=True, exist_ok=True)
+    data = {
+        "container_count": summary.container_count,
+        "build_failures": summary.build_failures,
+        "total_findings": summary.total_count,
+        "unique_findings": summary.unique_count,
+        "results": [
+            {
+                "name": r.name,
+                "image_ref": r.image_ref,
+                "build_success": r.build_success,
+                "critical": r.critical_count,
+                "high": r.high_count,
+                "medium": r.medium_count,
+                "low": r.low_count,
+                "total": r.total_count,
+                "unique": r.unique_count,
+            }
+            for r in summary.results
+        ],
+    }
+    filepath = dest / "container-scan.json"
+    filepath.write_text(json.dumps(data, indent=2))
+
+
 def cmd_report(args: argparse.Namespace) -> int:
     """Execute the report subcommand."""
     results_dir = Path(args.results_dir)
@@ -257,6 +435,7 @@ def main(argv: list[str] | None = None) -> None:
 
     handlers = {
         "scan": cmd_scan,
+        "container": cmd_container,
         "report": cmd_report,
     }
 

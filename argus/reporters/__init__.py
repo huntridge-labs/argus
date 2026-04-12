@@ -2,12 +2,14 @@
 
 from .terminal import TerminalReporter
 from .markdown import MarkdownReporter
+from .container_markdown import ContainerMarkdownReporter
 from .sarif import SarifReporter
 from .json_report import JsonReporter
 
 REPORTER_REGISTRY = {
     'terminal': TerminalReporter,
     'markdown': MarkdownReporter,
+    'container_markdown': ContainerMarkdownReporter,
     'sarif': SarifReporter,
     'json': JsonReporter,
 }
