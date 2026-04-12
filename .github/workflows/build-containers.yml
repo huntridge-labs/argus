@@ -344,15 +344,15 @@ jobs:
           print(f'  Scanners: {m.get(\"scanners_executed\", [])}')
           print(f'  Artifacts: {len(m[\"artifacts\"])} files')
 
-          # Verify SHA-256 hashes
+          # Verify SHA-256 hashes for static artifacts
+          # (argus.log and argus-audit.json are excluded — log is still
+          # active when manifest is written, manifest can't hash itself)
           import hashlib
           for a in m['artifacts']:
-              if a['path'] == 'argus-audit.json':
-                  continue  # Self-referential
               full = f'cli-test-results/{a[\"path\"]}'
               actual = hashlib.sha256(open(full, 'rb').read()).hexdigest()
-              assert actual == a['sha256'], f'Hash mismatch for {a[\"path\"]}'
-          print('  Artifact hashes: all verified')
+              assert actual == a['sha256'], f'Hash mismatch for {a[\"path\"]}: expected {a[\"sha256\"][:16]}... got {actual[:16]}...'
+          print(f'  Artifact hashes: {len(m[\"artifacts\"])} verified')
           "
 
           # Validate structured log is JSONL

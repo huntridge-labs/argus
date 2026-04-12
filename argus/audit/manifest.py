@@ -161,7 +161,18 @@ def finalize_manifest(
                     "digest": meta["digest"],
                 }
 
-    # Inventory output artifacts (hash each file for integrity)
+    # Flush all log handlers so argus.log is complete before hashing.
+    # Without this, the log file hash in the manifest won't match the
+    # final file because the logger writes entries after hashing.
+    import logging
+    for handler in logging.getLogger("argus").handlers:
+        handler.flush()
+
+    # Inventory output artifacts (hash each file for integrity).
+    # Exclude argus-audit.json (self-referential) and argus.log
+    # (still being written to by the active logger).
+    _EXCLUDE_FROM_HASH = {"argus-audit.json", "argus.log"}
+
     dest = Path(output_dir)
     if dest.exists():
         manifest.artifacts = [
@@ -171,7 +182,7 @@ def finalize_manifest(
                 "sha256": hashlib.sha256(f.read_bytes()).hexdigest(),
             }
             for f in sorted(dest.rglob("*"))
-            if f.is_file()
+            if f.is_file() and f.name not in _EXCLUDE_FROM_HASH
         ]
 
     return manifest.save(output_dir)
