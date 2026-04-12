@@ -13,7 +13,7 @@ name: Container Scan from Config
 #     packages: read
 #   jobs:
 #     scan:
-#       uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@0.7.0
+#       uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@feat/argus-portability
 #       with:
 #         config_file: 'containers.yml'
 #       secrets: inherit  # Required for dynamic secret resolution

@@ -13,7 +13,7 @@ name: ZAP DAST from Config
 #     packages: read
 #   jobs:
 #     zap-scan:
-#       uses: huntridge-labs/argus/.github/workflows/scanner-zap-from-config.yml@0.7.0
+#       uses: huntridge-labs/argus/.github/workflows/scanner-zap-from-config.yml@feat/argus-portability
 #       with:
 #         config_file: '.zap/config.yml'
 #       secrets: inherit  # Required for dynamic secret resolution
