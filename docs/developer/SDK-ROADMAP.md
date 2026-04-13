@@ -160,25 +160,34 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 
 ---
 
-## Remaining: Phase 5 — MCP Server (AI Assistant Integration)
+## Remaining: Phase 5 — Agentic Substrate (CLI + MCP + Skill)
 
-Expose Argus as an MCP (Model Context Protocol) server so AI coding assistants can drive scanning natively. Replaces the need for tool-specific skill files with a single, tool-agnostic integration that stays current with the installed Argus version.
+Products that serve developer workflows increasingly need three layers for AI assistant integration. Argus already ships a CLI. Phase 5 adds the MCP server and refines the skill to complete the stack.
 
-### Why MCP over skill files
+### The three layers
 
-We explored three approaches for AI assistant integration:
+| Layer | Role | Context cost | Update mechanism |
+|-------|------|-------------|-----------------|
+| **CLI** | Universal fallback — works everywhere, no AI integration needed | Zero (not loaded into context) | `pip install --upgrade` |
+| **MCP server** | Structured execution — typed tools, JSON responses, deferred loading | Deferred (tool schemas load only when invoked) | Ships with the pip package |
+| **Skill** | Routing — tells the agent *when* to reach for Argus and *how* to reason about security scanning | Minimal (lightweight strategy text, always loaded) | Published to skills.sh or bundled in repo |
 
-1. **Skill file installed by `argus init`** — A markdown file copied into the user's project that teaches AI assistants how to shell out to the Argus CLI. Problems:
-   - Immediately becomes a stale snapshot with no update mechanism
-   - AI tools have no skill registries or update notifications
-   - Must be duplicated per tool (`.claude/commands/`, `.cursorrules`, `.github/copilot-instructions.md`) or the project picks favorites
-   - The AI parses unstructured terminal output, losing information
+**Why all three matter:**
 
-2. **"Inform, don't install"** — `argus init` prints a URL to the skill. Avoids staleness but puts the integration burden entirely on the user, and still has the terminal-parsing problem.
+An MCP server eagerly loads all its tool definitions into the agent's context window. If Argus exposes 5-6 tools, that's token budget consumed in every conversation even when the user isn't doing security scanning. The skill acts as the gatekeeper — a lightweight instruction that tells the agent "when the task involves security scanning, reach for the Argus MCP." Tool schemas only enter context when actually needed. The CLI remains the fallback for environments without MCP support, CI pipelines, and direct human use.
 
-3. **MCP server** — Argus exposes structured tools that any MCP-compatible AI assistant discovers automatically. The assistant calls typed functions and receives structured JSON instead of parsing CLI output. Updates ship with `pip install --upgrade argus`. Tool-agnostic by design (Claude Code, Cursor, Windsurf, VS Code Copilot all support MCP).
+This is the pattern emerging across the industry: CLI for humans and CI, MCP for structured AI execution, skills for AI routing and strategy. Companies from security tools to workflow automation are shipping all three.
 
-### What the MCP server provides
+### Why we initially considered MCP-only (and why that was incomplete)
+
+We explored replacing skills entirely with MCP (see ADR-015 discussion history). The concerns about skills were valid:
+- Copying a full 300-line skill into a project creates a stale snapshot
+- No universal skill format across AI tools
+- Duplicated intelligence between skill and engine
+
+The resolution: **the skill doesn't need to encode implementation details.** With MCP handling execution, the skill shrinks to a routing/strategy layer — when to scan, what Argus is good for, how to interpret results at a high level. That lightweight skill rarely changes because it describes Argus's *purpose*, not its *API surface*. The MCP server self-describes its tools, so the skill doesn't need to.
+
+### MCP server
 
 **Tools:**
 
@@ -197,7 +206,7 @@ We explored three approaches for AI assistant integration:
 | `argus://config` | Current argus.yml parsed as structured data |
 | `argus://results/latest` | Most recent scan results from the last run |
 
-### User setup
+**User setup:**
 
 ```json
 {
@@ -210,7 +219,18 @@ We explored three approaches for AI assistant integration:
 }
 ```
 
-One line of config in any MCP-compatible tool. The AI assistant then has full Argus capabilities without needing to know CLI syntax, parse terminal output, or have a skill file installed.
+### Skill (routing layer)
+
+The existing skill at `.agents/skills/argus-scanner-selection/` is a 300-line reference that encodes scanner selection logic, CLI syntax, and interpretation rules. With MCP handling execution, this gets refactored into a slim routing skill:
+
+- **When** to invoke Argus (code changes, pre-push checks, CI setup, security review)
+- **What** Argus covers (SAST, secrets, dependencies, IaC, containers, DAST, supply chain, malware)
+- **How** to reach for it (prefer MCP tools if available, fall back to CLI)
+- **How** to interpret results (severity thresholds, false positive patterns, remediation guidance)
+
+The scanner selection logic, CLI argument construction, and output parsing move entirely to the MCP server. The skill becomes stable strategy that rarely needs updating.
+
+**Distribution:** Publish to [skills.sh](https://skills.sh/) for discovery. The skill file in `.agents/skills/` remains as the canonical source in the repo.
 
 ### Dependencies and portability considerations
 
@@ -224,6 +244,7 @@ The MCP server is a new interface to the existing engine — it does not change 
 
 ### Implementation tasks
 
+**MCP server:**
 - [ ] `argus/mcp.py` — MCP server module using the MCP Python SDK
 - [ ] `argus mcp` CLI subcommand to start the server (stdio transport)
 - [ ] `argus_detect` tool — wraps `detect_project()` from init module
@@ -238,9 +259,12 @@ The MCP server is a new interface to the existing engine — it does not change 
 - [ ] Documentation: setup instructions per AI tool, example interactions
 - [ ] `argus init` prints MCP setup hint in summary output
 
-### Existing skill file
-
-The skill at `.agents/skills/argus-scanner-selection/` remains as a reference document and works for AI tools that don't support MCP. It is not versioned or synced to releases. Once the MCP server ships, the skill can reference it as the preferred integration path.
+**Skill refactor:**
+- [ ] Slim `.agents/skills/argus-scanner-selection/SKILL.md` to routing/strategy layer
+- [ ] Move scanner selection logic, CLI syntax details, and output parsing guidance to MCP tool descriptions
+- [ ] Add MCP-first instructions: "prefer `argus_scan` tool over CLI when MCP is available"
+- [ ] Publish to [skills.sh](https://skills.sh/)
+- [ ] Add version frontmatter to skill for tracking
 
 ---
 
