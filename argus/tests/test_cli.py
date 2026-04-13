@@ -2,6 +2,7 @@
 
 import pytest
 
+from argus import cli
 from argus.cli import build_parser
 
 
@@ -134,3 +135,48 @@ class TestNoCommand:
         parser = build_parser()
         args = parser.parse_args([])
         assert args.command is None
+
+
+class TestHiddenEasterEgg:
+    """Test hidden CLI easter egg behavior."""
+
+    def test_hidden_logo_not_in_help(self):
+        parser = build_parser()
+        help_text = parser.format_help()
+        assert "__logo" not in help_text
+
+    def test_hidden_logo_trigger_runs(self, monkeypatch):
+        called = {"value": False}
+
+        def fake_show_logo():
+            called["value"] = True
+            return 0
+
+        monkeypatch.setattr(cli, "_show_logo_easter_egg", fake_show_logo)
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli.main(["__logo"])
+
+        assert exc_info.value.code == 0
+        assert called["value"] is True
+
+    def test_inline_logo_trigger_with_scan_runs_then_dispatches(self, monkeypatch):
+        state = {"logo": False, "scan": False}
+
+        def fake_show_logo():
+            state["logo"] = True
+            return 0
+
+        def fake_cmd_scan(_args):
+            state["scan"] = True
+            return 0
+
+        monkeypatch.setattr(cli, "_show_logo_easter_egg", fake_show_logo)
+        monkeypatch.setattr(cli, "cmd_scan", fake_cmd_scan)
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli.main(["scan", "--list", "__logo"])
+
+        assert exc_info.value.code == 0
+        assert state["logo"] is True
+        assert state["scan"] is True

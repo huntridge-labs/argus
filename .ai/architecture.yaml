@@ -28,6 +28,7 @@ components:
     cli: "python -m argus scan --config argus.yml"
     structure:
       "cli.py": "argparse CLI with scan and report subcommands"
+      "init.py": "argus init project bootstrap and banner rendering from img/argus_logo.txt"
       "core/models.py": "Severity enum, Finding/ScanResult/ScanSummary dataclasses"
       "core/scanner.py": "Scanner Protocol definition"
       "core/config.py": "ArgusConfig loading from argus.yml"
