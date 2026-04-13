@@ -179,6 +179,14 @@ contributor_workflows:
       - action: "Install Argus CLI in editable mode"
         command: "pip install -e ."
 
+      - action: "Build local scanner images (when branch images are not published yet)"
+        command: |
+          docker build -f docker/Dockerfile.bandit -t ghcr.io/huntridge-labs/argus/scanner-bandit:1.0.0 .
+          docker build -f docker/Dockerfile.opengrep -t ghcr.io/huntridge-labs/argus/scanner-opengrep:1.0.0 .
+          docker build -f docker/Dockerfile.supply-chain -t ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.0.0 .
+          docker build -f docker/Dockerfile.cli -t ghcr.io/huntridge-labs/argus/cli:1.0.0 .
+        note: "Only required if `argus scan` cannot pull custom ghcr.io/huntridge-labs/argus images."
+
       - action: "Run tests to verify setup"
         command: "pytest"
     alternative: "Use Dev Container (recommended)"
@@ -292,6 +300,7 @@ quick_reference:
   lint: "npm run lint"
   release: "npm run release"
   format: "npm run format"
+  build_custom_images: "docker build -f docker/Dockerfile.bandit -t ghcr.io/huntridge-labs/argus/scanner-bandit:1.0.0 . && docker build -f docker/Dockerfile.opengrep -t ghcr.io/huntridge-labs/argus/scanner-opengrep:1.0.0 . && docker build -f docker/Dockerfile.supply-chain -t ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.0.0 . && docker build -f docker/Dockerfile.cli -t ghcr.io/huntridge-labs/argus/cli:1.0.0 ."
   docsite_validate: "cd scripts && python -m docsite --validate"
   docsite_build: "cd scripts && python -m docsite --output-dir /tmp/argus-docs"
   docsite_preview: "cd scripts && python -m docsite --output-dir /tmp/argus-docs && cd /tmp/argus-docs && mkdocs serve"
