@@ -290,27 +290,48 @@ jobs:
           fi
           echo "Scan completed with exit code $EXIT_CODE"
 
-      - name: Verify outputs
+      - name: Resolve latest run directory
+        id: run-dir
         run: |
-          for f in cli-test-results/argus-results.json cli-test-results/argus-results.sarif; do
+          # Timestamped run directories — resolve the 'latest' symlink
+          RUN_DIR="cli-test-results/latest"
+          if [ -L "$RUN_DIR" ]; then
+            RESOLVED="cli-test-results/$(readlink "$RUN_DIR")"
+            echo "Run directory: $RESOLVED"
+            echo "dir=$RESOLVED" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::No 'latest' symlink in cli-test-results/"
+            ls -la cli-test-results/ || true
+            exit 1
+          fi
+
+      - name: Verify outputs
+        env:
+          RUN_DIR: ${{ steps.run-dir.outputs.dir }}
+        run: |
+          for f in "$RUN_DIR/argus-results.json" "$RUN_DIR/argus-results.sarif"; do
             test -f "$f" || { echo "FAIL: $f not produced"; exit 1; }
           done
 
       - name: Validate SARIF
+        env:
+          RUN_DIR: ${{ steps.run-dir.outputs.dir }}
         run: |
           python3 -c "
-          import json
-          data = json.load(open('cli-test-results/argus-results.sarif'))
+          import json, os
+          data = json.load(open(os.path.join(os.environ['RUN_DIR'], 'argus-results.sarif')))
           assert data.get('version') == '2.1.0', f'Bad SARIF version: {data.get(\"version\")}'
           assert 'runs' in data, 'Missing runs'
           print(f'SARIF valid: {len(data[\"runs\"])} run(s)')
           "
 
       - name: Validate JSON results
+        env:
+          RUN_DIR: ${{ steps.run-dir.outputs.dir }}
         run: |
           python3 -c "
-          import json
-          data = json.load(open('cli-test-results/argus-results.json'))
+          import json, os
+          data = json.load(open(os.path.join(os.environ['RUN_DIR'], 'argus-results.json')))
           results = data.get('results', [])
           assert len(results) > 0, 'No scanner results'
           scanners = [r['scanner'] for r in results]
@@ -320,17 +341,20 @@ jobs:
           "
 
       - name: Validate audit trail
+        env:
+          RUN_DIR: ${{ steps.run-dir.outputs.dir }}
         run: |
           echo "Checking audit artifacts..."
-          for f in cli-test-results/argus.log cli-test-results/argus-audit.json cli-test-results/argus-summary.md; do
+          for f in "$RUN_DIR/argus.log" "$RUN_DIR/argus-audit.json" "$RUN_DIR/argus-summary.md"; do
             test -f "$f" || { echo "FAIL: $f not produced"; exit 1; }
             echo "  OK: $f ($(wc -c < "$f") bytes)"
           done
 
           # Validate audit manifest structure
           python3 -c "
-          import json
-          m = json.load(open('cli-test-results/argus-audit.json'))
+          import json, os, hashlib
+          run_dir = os.environ['RUN_DIR']
+          m = json.load(open(os.path.join(run_dir, 'argus-audit.json')))
           assert m.get('scan_id'), 'Missing scan_id'
           assert m.get('started_at'), 'Missing started_at'
           assert m.get('completed_at'), 'Missing completed_at'
@@ -345,11 +369,8 @@ jobs:
           print(f'  Artifacts: {len(m[\"artifacts\"])} files')
 
           # Verify SHA-256 hashes for static artifacts
-          # (argus.log and argus-audit.json are excluded — log is still
-          # active when manifest is written, manifest can't hash itself)
-          import hashlib
           for a in m['artifacts']:
-              full = f'cli-test-results/{a[\"path\"]}'
+              full = os.path.join(run_dir, a['path'])
               actual = hashlib.sha256(open(full, 'rb').read()).hexdigest()
               assert actual == a['sha256'], f'Hash mismatch for {a[\"path\"]}: expected {a[\"sha256\"][:16]}... got {actual[:16]}...'
           print(f'  Artifact hashes: {len(m[\"artifacts\"])} verified')
@@ -357,8 +378,8 @@ jobs:
 
           # Validate structured log is JSONL
           python3 -c "
-          import json
-          with open('cli-test-results/argus.log') as f:
+          import json, os
+          with open(os.path.join(os.environ['RUN_DIR'], 'argus.log')) as f:
               lines = [line for line in f if line.strip()]
           for i, line in enumerate(lines):
               entry = json.loads(line)
