@@ -440,7 +440,7 @@ reporters:
   - sarif
 ```
 
-See `argus.example.yml` for a complete configuration reference.
+See `argus.example.yml` for a quick-start template, or [Configuration Reference](docs/config-reference.md) for the full specification.
 
 ### Composite Action Usage (GitHub Actions)
 
@@ -552,7 +552,8 @@ Examples are automatically validated by `.github/workflows/test-examples-functio
 - `argus/scanners/__init__.py` - Scanner registry
 - `argus/reporters/__init__.py` - Reporter registry
 - `argus.yml` - Project scan configuration
-- `argus.example.yml` - Configuration reference with all options
+- `argus.example.yml` - Quick-start configuration template
+- `docs/config-reference.md` - Full `argus.yml` specification
 - `version.yaml` - Single version source for releases
 - `renovate.yaml` - Dependency update configuration
 - `CONTRIBUTING.md` - Composite actions contributor guide

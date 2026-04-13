@@ -384,6 +384,8 @@ directory_structure:
   "tests/": "Test infrastructure"
   "tests/fixtures/": "Shared test data"
   "docs/": "Detailed documentation"
+  "docs/config-reference.md": "Full argus.yml configuration specification"
+  "argus-config.schema.json": "JSON Schema for argus.yml validation and IDE support"
   "hardening-dagger/": "Python reporting utility (separate module)"
 
 constraints:

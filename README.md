@@ -175,6 +175,7 @@ See [examples/github-enterprise/](examples/github-enterprise/) for complete GHES
 
 ### User Guides
 
+- [Configuration Reference](docs/config-reference.md) - Full `argus.yml` specification
 - [Scanner Reference](docs/scanners.md) - Complete configuration for all scanners
 - [Container Scanning](docs/container-scanning.md) - Config-driven matrix container scanning
 - [Failure Control](docs/failure-control.md) - Severity-based workflow failure configuration
