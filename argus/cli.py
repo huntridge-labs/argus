@@ -291,6 +291,18 @@ def _build_validate_parser(subparsers: argparse._SubParsersAction) -> None:
         default=None,
         help="Path to argus.yml config file (default: auto-detect)",
     )
+    validate_parser.add_argument(
+        "--check-tools",
+        action="store_true",
+        default=False,
+        help="Also check scanner tool availability (local + Docker)",
+    )
+    validate_parser.add_argument(
+        "--strict",
+        action="store_true",
+        default=False,
+        help="Treat warnings as errors (exit non-zero). Useful in CI.",
+    )
 
 
 def _build_report_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -865,28 +877,116 @@ def cmd_validate(args: argparse.Namespace) -> int:
     warnings = [e for e in errors if e.level == "warning"]
     fatal = [e for e in errors if e.level == "error"]
 
+    strict = getattr(args, "strict", False)
+
     if not errors:
         print(f"✅ {config_path} is valid")
-        # Show summary
-        scanners = data.get("scanners", {})
-        enabled = sum(1 for s in scanners.values() if isinstance(s, dict) and s.get("enabled", True))
-        print(f"   Scanners: {len(scanners)} configured, {enabled} enabled")
-        fmt = data.get("reporting", {}).get("formats", ["terminal"])
-        print(f"   Formats: {', '.join(fmt) if isinstance(fmt, list) else fmt}")
-        print(f"   Backend: {data.get('execution', {}).get('backend', 'auto')}")
-        return EXIT_SUCCESS
+    else:
+        for w in warnings:
+            print(f"⚠️  {w}")
+        for e in fatal:
+            print(f"❌ {e}")
 
-    for w in warnings:
-        print(f"⚠️  {w}")
-    for e in fatal:
-        print(f"❌ {e}")
+        if fatal:
+            print(f"\n{len(fatal)} error(s), {len(warnings)} warning(s). Fix and retry.")
+            return EXIT_ERROR
 
-    if fatal:
-        print(f"\n{len(fatal)} error(s), {len(warnings)} warning(s). Fix and retry.")
-        return EXIT_ERROR
+        if strict and warnings:
+            print(f"\n❌ {len(warnings)} warning(s) treated as errors (--strict)")
+            return EXIT_ERROR
 
-    print(f"\n✅ {config_path} is valid ({len(warnings)} warning(s))")
+        print(f"\n✅ {config_path} is valid ({len(warnings)} warning(s))")
+
+    # Show summary with enabled/disabled breakdown
+    scanners = data.get("scanners", {})
+    enabled_names = []
+    disabled_names = []
+    for name, cfg in scanners.items():
+        if isinstance(cfg, dict) and not cfg.get("enabled", True):
+            disabled_names.append(name)
+        else:
+            enabled_names.append(name)
+    print(f"   Scanners: {len(enabled_names)} enabled, {len(disabled_names)} disabled")
+    if enabled_names:
+        print(f"     enabled:  {', '.join(enabled_names)}")
+    if disabled_names:
+        print(f"     disabled: {', '.join(disabled_names)}")
+    fmt = data.get("reporting", {}).get("formats", ["terminal"])
+    print(f"   Formats: {', '.join(fmt) if isinstance(fmt, list) else fmt}")
+    backend = data.get("execution", {}).get("backend", "auto")
+    print(f"   Backend: {backend}")
+
+    # Tool readiness check
+    if getattr(args, "check_tools", False) and enabled_names:
+        registry = data.get("execution", {}).get("registry", "")
+        unavailable = _check_tool_readiness(enabled_names, backend, registry)
+        if unavailable and strict:
+            print(f"\n❌ {len(unavailable)} scanner(s) unavailable (--strict)")
+            return EXIT_ERROR
+
     return EXIT_SUCCESS
+
+
+def _check_tool_readiness(
+    enabled_names: list[str], backend: str, registry: str = ""
+) -> list[str]:
+    """Check whether enabled scanners can actually run.
+
+    Returns list of scanner names that cannot run.
+    """
+    import shutil
+    from argus.scanners import SCANNER_REGISTRY
+    from argus.containers import get_image
+
+    docker_available = shutil.which("docker") is not None
+    unavailable = []
+
+    def _resolve_image(image: str) -> str:
+        """Apply registry override to an image reference."""
+        if not registry or not image:
+            return image
+        parts = image.split("/", 1)
+        if len(parts) == 2 and ("." in parts[0] or ":" in parts[0]):
+            return f"{registry}/{parts[1]}"
+        return f"{registry}/{image}"
+
+    if registry:
+        print(f"\n   Registry: {registry}")
+    print("\n   Tool readiness:")
+    for name in enabled_names:
+        cls = SCANNER_REGISTRY.get(name)
+        if not cls:
+            print(f"     {name}: ⚠️  unknown scanner (not in registry)")
+            unavailable.append(name)
+            continue
+
+        scanner = cls()
+        local = scanner.is_available()
+        raw_image = get_image(name) or getattr(scanner, "container_image", "")
+        image = _resolve_image(raw_image)
+
+        if local:
+            print(f"     {name}: ✅ installed locally")
+        elif backend == "local":
+            install_cmd = scanner.install_command() or "see docs"
+            print(f"     {name}: ❌ not found (install: {install_cmd})")
+            unavailable.append(name)
+        elif not docker_available:
+            install_cmd = scanner.install_command() or "see docs"
+            print(f"     {name}: ❌ not found, Docker not available (install: {install_cmd})")
+            unavailable.append(name)
+        elif image:
+            print(f"     {name}: 🐳 will use container ({image})")
+        else:
+            install_cmd = scanner.install_command() or "see docs"
+            print(f"     {name}: ❌ not found, no container image (install: {install_cmd})")
+            unavailable.append(name)
+
+    if not docker_available and backend != "local":
+        print("\n   ⚠️  Docker not found — scanners without local installs will fail")
+        print("      Install Docker or set execution.backend: local in argus.yml")
+
+    return unavailable
 
 
 def cmd_collect(args: argparse.Namespace) -> int:
@@ -973,10 +1073,47 @@ def _show_scanner_help(scanner_name: str) -> None:
     sys.exit(EXIT_SUCCESS)
 
 
+def _show_logo_easter_egg() -> int:
+    """Render the Argus logo banner with a scroll effect.
+
+    Hidden trigger: `argus __logo`
+    Not part of argparse, so it stays out of generated docs/help text.
+    """
+    import time
+
+    try:
+        from argus.init import _load_banner
+        lines = _load_banner().splitlines()
+    except Exception:
+        lines = [
+            "\033[1;32mA R G U S\033[0m",
+            "\033[90mPerception is Protection\033[0m",
+        ]
+
+    for line in lines:
+        print(line, file=sys.stderr)
+        time.sleep(0.06 if line.strip() else 0.15)
+    print(file=sys.stderr)
+
+    return EXIT_SUCCESS
+
+
 def main(argv: list[str] | None = None) -> None:
     """CLI entry point. Parse arguments and dispatch to the appropriate subcommand."""
     # Intercept `argus scan <name> --help` before argparse exits
-    raw_args = argv if argv is not None else sys.argv[1:]
+    raw_args = list(argv) if argv is not None else list(sys.argv[1:])
+    if len(raw_args) >= 1 and raw_args[0] == "__logo":
+        sys.exit(_show_logo_easter_egg())
+
+    # Hidden inline trigger: allow `argus <command> ... __logo`.
+    # Keep this out of argparse so it remains undocumented.
+    if "__logo" in raw_args[1:]:
+        _show_logo_easter_egg()
+        raw_args = [
+            token for i, token in enumerate(raw_args)
+            if not (i > 0 and token == "__logo")
+        ]
+
     if (len(raw_args) >= 3
         and raw_args[0] == "scan"
         and raw_args[-1] in ("--help", "-h")
@@ -985,7 +1122,7 @@ def main(argv: list[str] | None = None) -> None:
         _show_scanner_help(scanner_name)
 
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(raw_args)
 
     if args.command is None:
         parser.print_help()
