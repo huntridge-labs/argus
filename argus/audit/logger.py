@@ -115,7 +115,31 @@ def get_logger(
     """
     logger = logging.getLogger(name)
     if logger.handlers:
-        return logger  # Already configured
+        # Existing loggers should still honor a later verbose request,
+        # especially when shared across command flows.
+        for handler in logger.handlers:
+            if isinstance(handler, logging.StreamHandler):
+                desired_level = logging.DEBUG if verbose else logging.INFO
+                if handler.level != desired_level:
+                    handler.setLevel(desired_level)
+
+        # Add file logging if this call requests it and none exists yet.
+        has_file_handler = any(
+            isinstance(handler, logging.FileHandler)
+            for handler in logger.handlers
+        )
+        if output_dir and not has_file_handler:
+            log_dir = Path(output_dir)
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log_path = log_dir / "argus.log"
+            file_handler = logging.FileHandler(
+                log_path, mode="a", encoding="utf-8"
+            )
+            file_handler.setLevel(logging.DEBUG)
+            file_handler.setFormatter(JsonLogFormatter())
+            logger.addHandler(file_handler)
+
+        return logger
 
     logger.setLevel(logging.DEBUG)
 

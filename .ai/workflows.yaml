@@ -297,6 +297,8 @@ quick_reference:
   test_all: "pytest"
   test_fast: "pytest --no-cov -q"
   test_with_coverage: "pytest --cov"
+  scan_verbose: "argus scan --verbose --severity-threshold none"
+  scan_no_spinner: "argus scan --no-spinner --severity-threshold none"
   lint: "npm run lint"
   release: "npm run release"
   format: "npm run format"

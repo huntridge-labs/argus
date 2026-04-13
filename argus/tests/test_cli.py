@@ -21,6 +21,7 @@ class TestScanSubcommand:
         assert args.formats is None
         assert args.list is False
         assert args.verbose is False
+        assert args.no_spinner is False
 
     def test_scan_with_scanner_name(self):
         parser = build_parser()
@@ -84,6 +85,11 @@ class TestScanSubcommand:
         parser = build_parser()
         args = parser.parse_args(["scan", "--verbose"])
         assert args.verbose is True
+
+    def test_scan_no_spinner_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["scan", "--no-spinner"])
+        assert args.no_spinner is True
 
 
 class TestReportSubcommand:

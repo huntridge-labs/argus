@@ -221,3 +221,11 @@ class TestGetLogger:
             h for h in logger.handlers if isinstance(h, logging.StreamHandler)
         )
         assert console_handler.level == logging.INFO
+
+    def test_existing_logger_honors_later_verbose(self):
+        logger = get_logger("argus.test.reconfigure", verbose=False)
+        logger = get_logger("argus.test.reconfigure", verbose=True)
+        console_handler = next(
+            h for h in logger.handlers if isinstance(h, logging.StreamHandler)
+        )
+        assert console_handler.level == logging.DEBUG

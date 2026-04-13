@@ -2,7 +2,10 @@
 
 import argparse
 import sys
+import threading
+import time
 from pathlib import Path
+from typing import TextIO
 
 # Exit codes
 EXIT_SUCCESS = 0
@@ -11,6 +14,79 @@ EXIT_ERROR = 2
 
 SEVERITY_CHOICES = ["critical", "high", "medium", "low", "none"]
 FORMAT_CHOICES = ["terminal", "markdown", "sarif", "json"]
+_SPINNER_STYLES = [
+    ["⠁", "⠂", "⠄", "⡀", "⢀", "⠠", "⠐", "⠈"],
+    ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+    ["⠿", "⣟", "⣯", "⣷", "⣾", "⣽", "⣻", "⢿"],
+]
+
+
+class _TerminalSpinner:
+    """Minimal terminal spinner for long-running CLI operations."""
+
+    def __init__(
+        self,
+        message: str,
+        enabled: bool,
+        stream: TextIO | None = None,
+        interval: float = 0.08,
+    ):
+        self._message = message
+        self._enabled = enabled
+        self._stream = stream or sys.stderr
+        self._interval = interval
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._start_ts = 0.0
+
+    def __enter__(self):
+        self._start_ts = time.monotonic()
+        if self._enabled:
+            self._thread = threading.Thread(target=self._spin, daemon=True)
+            self._thread.start()
+        return self
+
+    def __exit__(self, exc_type, _exc, _tb):
+        elapsed = time.monotonic() - self._start_ts
+        if self._enabled:
+            self._stop_event.set()
+            if self._thread:
+                self._thread.join(timeout=0.2)
+            self._clear_line()
+
+        status = "done" if exc_type is None else "failed"
+        print(f"{self._message} [{status} in {elapsed:.1f}s]", file=self._stream)
+        return False
+
+    def _spin(self) -> None:
+        style_index = 0
+        frame_index = 0
+
+        while not self._stop_event.is_set():
+            frames = _SPINNER_STYLES[style_index]
+            frame = frames[frame_index]
+            self._stream.write(f"\r{self._message} {frame}")
+            self._stream.flush()
+
+            frame_index += 1
+            if frame_index >= len(frames):
+                frame_index = 0
+                style_index = (style_index + 1) % len(_SPINNER_STYLES)
+
+            self._stop_event.wait(self._interval)
+
+    def _clear_line(self) -> None:
+        self._stream.write("\r" + (" " * 80) + "\r")
+        self._stream.flush()
+
+
+def _spinner_enabled(args: argparse.Namespace) -> bool:
+    """Enable spinner for interactive terminals unless explicitly disabled."""
+    if getattr(args, "no_spinner", False):
+        return False
+    if getattr(args, "verbose", False):
+        return False
+    return sys.stderr.isatty()
 
 
 def _make_run_dir(base_dir: str) -> str:
@@ -177,6 +253,11 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         "--verbose", "-v",
         action="store_true",
         help="Enable verbose output",
+    )
+    scan_parser.add_argument(
+        "--no-spinner",
+        action="store_true",
+        help="Disable animated spinner output",
     )
 
     # Container-specific flags (used with: argus scan container)
@@ -480,7 +561,11 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
     try:
         scanner_names = [args.scanner] if args.scanner else None
         log.info("Running scanners: %s", scanner_names or "all enabled")
-        summary = engine.run(scanner_names=scanner_names, path=args.path)
+        with _TerminalSpinner(
+            message="Running scanners",
+            enabled=_spinner_enabled(args),
+        ):
+            summary = engine.run(scanner_names=scanner_names, path=args.path)
         log.info(
             "Scan complete: %d scanner(s), %d finding(s)",
             len(summary.results),
@@ -547,7 +632,11 @@ def _cmd_container_scan(args: argparse.Namespace) -> int:
     # Run
     try:
         engine = ContainerEngine(config)
-        summary = engine.run()
+        with _TerminalSpinner(
+            message="Running container scan",
+            enabled=_spinner_enabled(args),
+        ):
+            summary = engine.run()
     except Exception as exc:
         print(f"Error: container scan failed: {exc}", file=sys.stderr)
         return EXIT_ERROR
@@ -627,7 +716,11 @@ def _cmd_dast_scan(args: argparse.Namespace) -> int:
 
     try:
         engine = DastEngine(config)
-        summary = engine.run()
+        with _TerminalSpinner(
+            message="Running DAST scan",
+            enabled=_spinner_enabled(args),
+        ):
+            summary = engine.run()
     except Exception as exc:
         print(f"Error: DAST scan failed: {exc}", file=sys.stderr)
         return EXIT_ERROR
@@ -1079,8 +1172,6 @@ def _show_logo_easter_egg() -> int:
     Hidden trigger: `argus __logo`
     Not part of argparse, so it stays out of generated docs/help text.
     """
-    import time
-
     try:
         from argus.init import _load_banner
         lines = _load_banner().splitlines()
