@@ -147,10 +147,100 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 - [ ] Progress indicators during scanning and container pulls
 - [ ] `argus report github` — post results as PR comment via GitHub API
 
+### CI Preflight and Config Health
+
+- [ ] CI workflow step: `argus validate --strict --check-tools` as a gate before scan jobs
+- [ ] Living issue (Renovate-style): a single "Argus Config Health" GitHub issue that gets updated (not recreated) when config validation fails on the default branch. Scheduled workflow runs `argus validate --strict --check-tools`, updates the issue body with current status, and auto-closes when healthy. Avoids issue spam — one issue, always current.
+- [ ] `argus validate --check-tools` notes for scanners with runtime network dependencies (e.g., OSV API, ClamAV freshclam, Trivy DB updates) — informational, not blocking
+
 ### CI Templates
 - [ ] GitLab CI template
 - [ ] Jenkins pipeline template
 - [ ] Azure DevOps template
+
+---
+
+## Remaining: Phase 5 — MCP Server (AI Assistant Integration)
+
+Expose Argus as an MCP (Model Context Protocol) server so AI coding assistants can drive scanning natively. Replaces the need for tool-specific skill files with a single, tool-agnostic integration that stays current with the installed Argus version.
+
+### Why MCP over skill files
+
+We explored three approaches for AI assistant integration:
+
+1. **Skill file installed by `argus init`** — A markdown file copied into the user's project that teaches AI assistants how to shell out to the Argus CLI. Problems:
+   - Immediately becomes a stale snapshot with no update mechanism
+   - AI tools have no skill registries or update notifications
+   - Must be duplicated per tool (`.claude/commands/`, `.cursorrules`, `.github/copilot-instructions.md`) or the project picks favorites
+   - The AI parses unstructured terminal output, losing information
+
+2. **"Inform, don't install"** — `argus init` prints a URL to the skill. Avoids staleness but puts the integration burden entirely on the user, and still has the terminal-parsing problem.
+
+3. **MCP server** — Argus exposes structured tools that any MCP-compatible AI assistant discovers automatically. The assistant calls typed functions and receives structured JSON instead of parsing CLI output. Updates ship with `pip install --upgrade argus`. Tool-agnostic by design (Claude Code, Cursor, Windsurf, VS Code Copilot all support MCP).
+
+### What the MCP server provides
+
+**Tools:**
+
+| Tool | Parameters | Returns |
+|------|-----------|---------|
+| `argus_detect` | `path` | Detected project signals (languages, frameworks, IaC, containers) |
+| `argus_scan` | `scanners`, `path`, `severity_threshold` | Structured findings with severity, file, line, rule, message |
+| `argus_validate` | `config_path` | Validation errors and warnings for argus.yml |
+| `argus_list_scanners` | — | Available scanners with install status and descriptions |
+| `argus_init` | `path`, `platform` | Generated config content and file paths |
+
+**Resources:**
+
+| Resource URI | Description |
+|-------------|-------------|
+| `argus://config` | Current argus.yml parsed as structured data |
+| `argus://results/latest` | Most recent scan results from the last run |
+
+### User setup
+
+```json
+{
+  "mcpServers": {
+    "argus": {
+      "command": "argus",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+One line of config in any MCP-compatible tool. The AI assistant then has full Argus capabilities without needing to know CLI syntax, parse terminal output, or have a skill file installed.
+
+### Dependencies and portability considerations
+
+The MCP server is a new interface to the existing engine — it does not change the scanner dependency story. Scanners still require either local binaries or Docker. Key considerations:
+
+- Pure Python scanners (bandit, checkov, osv) work without Docker
+- Binary scanners (gitleaks, trivy, opengrep) need Docker or local install
+- `argus_list_scanners` should clearly report what's available and what's missing
+- Graceful degradation: scans return partial results with clear "unavailable" status per scanner rather than failing entirely
+- Phase 3 (portability) should land first to maximize the set of scanners that work out of the box
+
+### Implementation tasks
+
+- [ ] `argus/mcp.py` — MCP server module using the MCP Python SDK
+- [ ] `argus mcp` CLI subcommand to start the server (stdio transport)
+- [ ] `argus_detect` tool — wraps `detect_project()` from init module
+- [ ] `argus_scan` tool — wraps engine scan, returns structured `ScanResult.to_dict()`
+- [ ] `argus_validate` tool — wraps config validation
+- [ ] `argus_list_scanners` tool — wraps scanner registry with availability status
+- [ ] `argus_init` tool — wraps init workflow, returns generated content
+- [ ] `argus://config` resource — reads and parses argus.yml
+- [ ] `argus://results/latest` resource — reads most recent results from output dir
+- [ ] Add `mcp` extra to pyproject.toml (`pip install argus-security[mcp]`)
+- [ ] Tests for all MCP tools with mock engine
+- [ ] Documentation: setup instructions per AI tool, example interactions
+- [ ] `argus init` prints MCP setup hint in summary output
+
+### Existing skill file
+
+The skill at `.agents/skills/argus-scanner-selection/` remains as a reference document and works for AI tools that don't support MCP. It is not versioned or synced to releases. Once the MCP server ships, the skill can reference it as the preferred integration path.
 
 ---
 

@@ -652,3 +652,82 @@ decisions:
       argus/containers.py: Central image manifest for version tracking
       docker/: Dockerfiles for custom images (bandit, opengrep, supply-chain, cli)
       .github/dependabot.yml: docker ecosystem for Dockerfile base images
+
+  - id: ADR-015
+    title: "MCP server for AI assistant integration instead of skill files"
+    date: "2026-04-12"
+    status: proposed
+
+    context: |
+      AI coding assistants (Claude Code, Cursor, Windsurf, VS Code Copilot) are
+      increasingly used to drive developer workflows. Argus has a curated skill
+      file at .agents/skills/argus-scanner-selection/ that teaches AI assistants
+      how to select and run scanners. However, distributing this skill to users
+      has unsolved problems:
+
+      1. No universal skill format — each AI tool has its own convention
+         (.claude/commands/, .cursorrules, .github/copilot-instructions.md).
+         Picking one means favoring a vendor; supporting all means maintaining
+         duplicates.
+      2. No versioning or update mechanism — copying a skill into a project
+         creates a stale snapshot. AI tools have no skill registries or update
+         notifications. There is no "pip install" for skills.
+      3. Lossy interface — the AI shells out to the CLI and parses unstructured
+         terminal output (including ANSI colors, tables, progress indicators),
+         losing structured information.
+      4. Duplicated intelligence — the skill file re-describes logic that already
+         exists in argus init (project detection) and the engine (scanner
+         selection). Two sources of truth drift over time.
+
+    decision: |
+      Expose Argus as an MCP (Model Context Protocol) server via `argus mcp`.
+      The server provides typed tools (argus_scan, argus_detect, argus_validate,
+      argus_list_scanners, argus_init) that return structured JSON, and resources
+      (argus://config, argus://results/latest) for reading project state.
+
+      MCP is the emerging standard supported by Claude Code, Cursor, Windsurf,
+      and VS Code Copilot. A single implementation works across all tools.
+
+    alternatives_considered:
+      - name: "Skill file installed by argus init"
+        rejected_because: |
+          Creates stale snapshots with no update path. Must choose a tool-specific
+          location or maintain duplicates. AI still parses terminal output.
+
+      - name: "Inform-only (print URL at init)"
+        rejected_because: |
+          Avoids staleness but puts full integration burden on the user. Still
+          has the terminal-parsing problem. No structured data exchange.
+
+      - name: "Publish to AI tool skill registries"
+        rejected_because: |
+          No such registries exist with versioning or update notifications.
+          cursor.directory is community-shared with no version control.
+          Would still require tool-specific formats.
+
+      - name: "Generate tool-specific files for each AI tool"
+        rejected_because: |
+          As OSS, Argus should not favor one tool vendor over another.
+          Maintaining N tool-specific formats is unsustainable.
+
+    consequences:
+      positive:
+        - "Tool-agnostic — one implementation, all MCP-compatible AI tools"
+        - "Structured data — AI receives typed JSON, not terminal output"
+        - "Auto-updating — upgrades ship with pip install --upgrade"
+        - "No vendor favoritism — MCP is an open protocol"
+        - "Single source of truth — MCP tools call the same engine as the CLI"
+        - "Discoverable — AI tools auto-detect available tools from the server"
+      negative:
+        - "Adds MCP Python SDK as optional dependency"
+        - "Users must configure MCP server in their AI tool (one-time setup)"
+        - "MCP adoption is still early — not all tools support it yet"
+        - "Scanner dependency story unchanged — tools still need local bins or Docker"
+
+    implementation: |
+      Phase 5 in SDK-ROADMAP.md. Key files:
+        argus/mcp.py — MCP server module (stdio transport)
+        argus mcp — CLI subcommand to start the server
+      Optional dependency: pip install argus-security[mcp]
+      Existing skill at .agents/skills/ remains as fallback reference.
+      Depends on Phase 3 (portability) for maximum scanner coverage without Docker.
