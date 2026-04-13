@@ -1,3 +1,25 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "argus-security"
+version = "0.7.0"
+description = "Argus unified security scanning SDK and CLI"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "PyYAML>=6.0",
+    "requests>=2.31.0",
+]
+
+[project.scripts]
+argus = "argus.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["argus*"]
+exclude = ["tests*", "img*", "docker*", "coverage*", "node_modules*"]
+
 [tool.bandit]
 # Bandit security scanning configuration
 # Exclude internal tooling directories that are not customer-facing products

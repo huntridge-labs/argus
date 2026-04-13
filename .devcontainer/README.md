@@ -18,7 +18,7 @@ This project includes a dev container configuration for consistent development e
 2. Open this repository in VS Code
 3. Click "Reopen in Container" when prompted (or run command: `Dev Containers: Reopen in Container`)
 4. Wait for the container to build (~2-3 minutes first time)
-5. All dependencies are ready! Run `npm test`
+5. All dependencies are ready! Run `argus --version` then `npm test`
 
 ### Option 2: GitHub Codespaces
 
@@ -56,6 +56,9 @@ pre-commit install
 ```bash
 # All tests
 npm test
+
+# Verify Argus CLI
+argus --version
 
 # With coverage
 npm run test:coverage

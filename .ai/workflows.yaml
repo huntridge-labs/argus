@@ -167,8 +167,17 @@ contributor_workflows:
       - action: "Clone repository"
         command: "git clone <repo-url> && cd argus"
 
+      - action: "Create virtual environment"
+        command: "python3 -m venv .venv"
+
+      - action: "Activate virtual environment"
+        command: "source .venv/bin/activate"
+
       - action: "Install Python dependencies"
         command: "pip install -r requirements.txt"
+
+      - action: "Install Argus CLI in editable mode"
+        command: "pip install -e ."
 
       - action: "Run tests to verify setup"
         command: "pytest"
