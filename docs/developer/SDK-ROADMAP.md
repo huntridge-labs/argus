@@ -96,14 +96,29 @@ Tracks what has been completed and what remains for the argus Python SDK migrati
 - [x] `tests/unit/actions/test_validate_action_schemas.py` — 259 parametrized tests across all actions
 - [x] `tests/integration/test_security_summary.py` — 10 tests for security-summary aggregation
 
+### CI Scripts Restructure
+- [x] `scripts/ci/` package — moved CI gate scripts into importable package
+- [x] `scripts/ci/check_version_refs.py` — renamed from `check-version-refs.py` (valid Python module name)
+- [x] `scripts/ci/gen_cli_docs.py` — generates CLI reference from argparse parser
+- [x] `scripts/ci/check_cli_docs.py` — CLI docs freshness gate (check + fix modes)
+- [x] `tests/unit/test_check_cli_docs.py` — 12 tests for check/fix/stale detection
+- [x] Pre-commit hook + CI step for CLI docs freshness (triggers on `argus/cli.py` changes)
+
+### CLI Enhancements (for Phase 3)
+- [x] `--no-timestamp` flag — flat output directory for CI (no timestamped subdirs)
+- [x] `--no-spinner` flag — disable animated spinner output
+- [x] `docs/cli-reference.md` — regenerated with all subcommands (init, collect, validate)
+- [x] `docs/config-reference.md` — full `argus.yml` configuration specification
+
 ---
 
 ## Remaining: Phase 3 — Composite Action Thin Wrappers
 
-Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions shrink from ~300 lines to ~15 lines. Same inputs, same outputs, same artifacts — backward compatible for external users.
+Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions shrink from ~300 lines to ~170 lines. Same inputs, same outputs, same artifacts — backward compatible for external users.
 
-- [ ] Design shared composite action step pattern (install argus + run scan + upload artifacts)
-- [ ] Refactor `scanner-bandit/action.yml` as proof of concept
+- [x] Add `--no-timestamp` CLI flag for CI-friendly flat output directories
+- [x] Design thin wrapper pattern (generate argus config, run scan, parse JSON for outputs)
+- [x] Refactor `scanner-bandit/action.yml` as proof of concept (350 → 169 lines)
 - [ ] Refactor remaining 9 scanner actions
 - [ ] Refactor 6 linter actions (or add linter modules to SDK first)
 - [ ] Verify backward compatibility: identical outputs, artifacts, SARIF
@@ -292,11 +307,9 @@ The MCP server is a new interface to the existing engine — it does not change 
 - [ ] CLI `--version` flag behavior not fully tested
 
 ### Documentation Gaps
-- [ ] Docsite has no SDK section — needs CLI reference, config reference, scanner module docs
+- [ ] Docsite has no SDK section — needs scanner module docs
 - [ ] No migration guide for users of the deleted reusable workflows
-- [ ] `argus.example.yml` missing documentation for all scanner-specific extra config keys
 - [ ] No troubleshooting guide for Docker execution failures
-- [ ] `--help` text for CLI subcommands could be more detailed
 
 ---
 
