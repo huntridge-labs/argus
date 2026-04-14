@@ -124,8 +124,15 @@ class ArgusConfig:
 
 
 def _parse_severity(value: str | None) -> Optional[Severity]:
-    """Parse a severity string or return None."""
+    """Parse a severity string or return None.
+
+    "none" is treated as no threshold (returns None), not as
+    Severity.UNKNOWN — this matches the CLI semantics where
+    --severity-threshold none means "never fail on findings".
+    """
     if value is None:
+        return None
+    if str(value).strip().lower() == "none":
         return None
     return Severity.from_string(str(value))
 

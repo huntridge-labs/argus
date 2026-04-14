@@ -540,9 +540,12 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
 
     # Override config with CLI arguments
     if args.severity_threshold:
-        config.reporting.severity_threshold = Severity.from_string(
-            args.severity_threshold
-        )
+        if args.severity_threshold == "none":
+            config.reporting.severity_threshold = None
+        else:
+            config.reporting.severity_threshold = Severity.from_string(
+                args.severity_threshold
+            )
     if args.output_dir:
         config.reporting.output_dir = args.output_dir
     if args.formats:
