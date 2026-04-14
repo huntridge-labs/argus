@@ -121,7 +121,6 @@ runs:
         STARTUP_TIMEOUT: ${{ inputs.startup_timeout }}
         FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
       run: |
-        set -euo pipefail
         mkdir -p zap-reports scanner-summaries
 
         # SDK auto-discovers argus.yml if present; works without one too
@@ -155,7 +154,7 @@ runs:
 
         # Pass severity threshold to SDK
         if [ "$FAIL_ON_SEVERITY" != "none" ]; then
-          CMD="$CMD --severity $FAIL_ON_SEVERITY"
+          CMD="$CMD --severity-threshold $FAIL_ON_SEVERITY"
         fi
 
         # Run scan (exit code 1 = findings above threshold)

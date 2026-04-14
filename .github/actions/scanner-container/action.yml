@@ -100,7 +100,7 @@ runs:
         python -m argus scan container \
           --image "$IMAGE_REF" \
           --scanners "$SCANNERS" \
-          --format json markdown sarif \
+          --format json --format markdown --format sarif \
           --output-dir "./$REPORT_DIR" \
           --no-timestamp \
           --severity-threshold "${FAIL_ON_SEVERITY:-none}" \

@@ -352,8 +352,16 @@ class ArgusEngine:
                 )
 
             findings = []
+            metadata_extra = {}
             if result_files and hasattr(scanner, "parse_results"):
-                findings = scanner.parse_results(result_files[0])
+                parsed = scanner.parse_results(result_files[0])
+                # parse_results may return a list or a (list, extra) tuple
+                if isinstance(parsed, tuple):
+                    findings, extra = parsed
+                    if isinstance(extra, int):
+                        metadata_extra["passed_count"] = extra
+                else:
+                    findings = parsed
                 logger.debug(
                     "Parsed %d finding(s) from %s",
                     len(findings),
@@ -367,6 +375,7 @@ class ArgusEngine:
                     "execution": "container",
                     "image": image,
                     "digest": digest,
+                    **metadata_extra,
                 },
             )
 
