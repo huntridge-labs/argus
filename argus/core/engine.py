@@ -202,8 +202,11 @@ class ArgusEngine:
                 return True
             logger.debug("Image '%s' not found locally — pulling", image)
 
-        # Pull the image
-        logger.info("Pulling container image: %s", image)
+        # Pull the image — may take minutes for large images.
+        # Progress is visible via the CLI spinner or audit log.
+        logger.info(
+            "Pulling container image: %s (this may take a moment)", image,
+        )
         start = time.monotonic()
         result = subprocess.run(
             ["docker", "pull", image],

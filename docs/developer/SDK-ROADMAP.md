@@ -293,7 +293,7 @@ The MCP server is a new interface to the existing engine — it does not change 
 ### Engine
 - [ ] Container scanner (`container.py`) has empty `container_image` — can't Docker-fallback the orchestrator (sub-tools need individual execution)
 - [x] `--list` now shows local/container/not-found availability per scanner
-- [ ] No progress output during long-running container pulls
+- [x] Container pull progress — spinner covers interactive use, audit log covers CI; streaming Docker pull output deferred (marginal benefit for high complexity)
 - [x] `--fail-fast` flag — abort on first scanner failure instead of silent continue
 - [x] `--timeout SECONDS` flag — per-scanner wall-clock timeout with thread-based enforcement
 
