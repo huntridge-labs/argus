@@ -2,8 +2,8 @@ name: 'ClamAV Malware Scanner'
 description: |
   Run ClamAV malware scanning and generate reports.
   Delegates to the Argus SDK (`python -m argus scan clamav`) for scanning,
-  parsing, and report generation. The action handles ClamAV installation
-  and virus database updates, then invokes the SDK with `execution.backend: local`.
+  parsing, and report generation. The SDK automatically handles tool sourcing
+  via Docker container when ClamAV is not installed locally (`execution.backend: auto`).
 
   **Required Environment Variables:**
   - GITHUB_TOKEN: GitHub token for API access (set automatically in workflows)
@@ -54,58 +54,15 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    # NOTE: Callers should checkout the repository before calling this action.
-    # This step is kept for backward compatibility but may be removed in a
-    # future major version.
-    - name: Checkout repository
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      with:
-        persist-credentials: false
-
-    - name: Install ClamAV
-      shell: bash
-      run: |
-        echo "Installing ClamAV..."
-        sudo apt-get update
-        sudo apt-get install -y clamav
-
-        echo "Verifying ClamAV installation..."
-        clamscan --version
-      continue-on-error: false
+    # IMPORTANT: Caller must checkout the repository before calling this action
+    # Example:
+    #   - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+    #   - uses: ./.github/actions/scanner-clamav
 
     - name: Set up Python
       uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
       with:
         python-version: '3.12'
-
-    - name: Update ClamAV database with cvdupdate
-      shell: bash
-      run: |
-        echo "Installing cvdupdate (official ClamAV database updater)..."
-        pip install cvdupdate
-
-        echo "Updating ClamAV virus database..."
-        cvdupdate config set --dbdir /var/lib/clamav
-
-        max_attempts=3
-        attempt=1
-        while [ $attempt -le $max_attempts ]; do
-          echo "Attempt $attempt of $max_attempts..."
-          if sudo $(which cvdupdate) update; then
-            echo "Virus database updated successfully"
-            break
-          else
-            echo "cvdupdate attempt $attempt failed"
-            attempt=$((attempt + 1))
-            [ $attempt -le $max_attempts ] && sleep 10
-          fi
-        done
-
-        echo "Database status:"
-        sudo sigtool --info /var/lib/clamav/main.cvd 2>/dev/null || echo "Main database: checking..."
-        sudo sigtool --info /var/lib/clamav/daily.cvd 2>/dev/null || echo "Daily database: checking..."
-        ls -lh /var/lib/clamav/*.cvd 2>/dev/null || echo "Database files present"
-      continue-on-error: false
 
     - name: Install Argus SDK
       shell: bash
@@ -135,7 +92,7 @@ runs:
           severity_threshold: "${FAIL_ON_SEVERITY:-none}"
           output_dir: "./clamav-reports"
         execution:
-          backend: local
+          backend: auto
         ARGUSCFG
 
         # Run argus scan (exit code 1 = findings above threshold)

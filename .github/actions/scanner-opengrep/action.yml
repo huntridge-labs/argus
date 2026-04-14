@@ -74,20 +74,6 @@ runs:
       with:
         python-version: '3.12'
 
-    - name: Install OpenGrep
-      shell: bash
-      run: |
-        set -euo pipefail
-        echo "::group::Installing OpenGrep"
-        # Pinned version with checksum — updated by .github/workflows/update-pinned-tools.yml
-        OPENGREP_VERSION="1.18.0"
-        OPENGREP_CHECKSUM="65390e16db45db1258967578c73eacac6e4ab9cd20074d7dc1aeb695e2696203"
-        curl -sSfL "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86" -o opengrep
-        echo "${OPENGREP_CHECKSUM}  opengrep" | sha256sum -c --quiet
-        chmod +x opengrep
-        sudo mv opengrep /usr/local/bin/opengrep
-        echo "::endgroup::"
-
     - name: Install Argus SDK
       shell: bash
       run: pip install pyyaml
@@ -123,7 +109,7 @@ runs:
           severity_threshold: "${FAIL_ON_SEVERITY:-none}"
           output_dir: "./opengrep-reports"
         execution:
-          backend: local
+          backend: auto
         ARGUSCFG
 
         # Run argus scan (exit code 1 = findings above threshold)

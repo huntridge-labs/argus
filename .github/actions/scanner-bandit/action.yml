@@ -64,7 +64,7 @@ runs:
 
     - name: Install Argus SDK
       shell: bash
-      run: pip install pyyaml 'bandit[toml,sarif]>=1.7.5'
+      run: pip install pyyaml
 
     - name: Run Bandit via Argus SDK
       id: scan
@@ -98,7 +98,7 @@ runs:
           severity_threshold: "${FAIL_ON_SEVERITY:-none}"
           output_dir: "./bandit-reports"
         execution:
-          backend: local
+          backend: auto
         ARGUSCFG
 
         # Run argus scan (exit code 1 = findings above threshold)

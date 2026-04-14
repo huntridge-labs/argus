@@ -117,10 +117,10 @@ runs:
       with:
         python-version: '3.12'
 
-    - name: Install Argus SDK and Checkov
+    - name: Install Argus SDK
       if: steps.validate.outputs.has_iac == 'true'
       shell: bash
-      run: pip install pyyaml checkov
+      run: pip install pyyaml
 
     - name: Run Checkov via Argus SDK
       id: scan
@@ -149,7 +149,7 @@ runs:
           severity_threshold: "${FAIL_ON_SEVERITY:-none}"
           output_dir: "./checkov-reports"
         execution:
-          backend: local
+          backend: auto
         ARGUSCFG
 
         # Run argus scan (exit code 1 = findings above threshold)

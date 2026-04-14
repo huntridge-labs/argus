@@ -99,19 +99,6 @@ runs:
       shell: bash
       run: pip install pyyaml
 
-    - name: Install Trivy (GHES)
-      if: steps.validate.outputs.has_iac == 'true' && !contains(github.server_url, 'github.com')
-      shell: bash
-      run: |
-        echo "Installing Trivy directly (GHES detected)..."
-        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-        trivy --version
-        echo "Trivy installed"
-
-    - name: Install Trivy (github.com)
-      if: steps.validate.outputs.has_iac == 'true' && contains(github.server_url, 'github.com')
-      uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514
-
     - name: Run Trivy IaC via Argus SDK
       id: scan
       if: steps.validate.outputs.has_iac == 'true'
@@ -136,7 +123,7 @@ runs:
           severity_threshold: "${FAIL_ON_SEVERITY:-none}"
           output_dir: "./trivy-iac-reports"
         execution:
-          backend: local
+          backend: auto
         ARGUSCFG
 
         # Run argus scan (exit code 1 = findings above threshold)

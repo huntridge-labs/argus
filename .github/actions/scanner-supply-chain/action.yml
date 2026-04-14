@@ -93,25 +93,9 @@ runs:
       with:
         python-version: '3.12'
 
-    - name: Install dependencies
+    - name: Install Argus SDK
       shell: bash
-      run: |
-        # Pinned version — updated by .github/workflows/update-pinned-tools.yml
-        ZIZMOR_VERSION="1.23.1"
-        pip install --quiet pyyaml "zizmor==${ZIZMOR_VERSION}"
-
-    - name: Install actionlint
-      if: inputs.run_actionlint == 'true'
-      shell: bash
-      run: |
-        ACTIONLINT_VERSION="1.7.12"
-        ACTIONLINT_CHECKSUM="8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
-        ACTIONLINT_TARBALL="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
-        curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${ACTIONLINT_TARBALL}" -o "${ACTIONLINT_TARBALL}"
-        echo "${ACTIONLINT_CHECKSUM}  ${ACTIONLINT_TARBALL}" | sha256sum -c --quiet
-        tar -xzf "${ACTIONLINT_TARBALL}" actionlint
-        rm -f "${ACTIONLINT_TARBALL}"
-        sudo mv actionlint /usr/local/bin/actionlint
+      run: pip install pyyaml
 
     - name: Run supply chain scan via Argus SDK
       id: scan
@@ -150,7 +134,7 @@ runs:
           severity_threshold: "${FAIL_ON_SEVERITY:-none}"
           output_dir: "./supply-chain-reports"
         execution:
-          backend: local
+          backend: auto
         ARGUSCFG
 
         # Run argus scan (exit code 1 = findings above threshold)
