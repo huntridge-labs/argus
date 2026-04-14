@@ -150,13 +150,16 @@ class DastEngine:
         results: list[DastScanResult] = []
 
         for i, target_config in enumerate(targets, 1):
-            image_ref = target_config["image"]
+            target_label = target_config.get("url") or target_config.get("image", "unknown")
             logger.info(
                 "[%d/%d] Processing DAST target: %s",
-                i, len(targets), image_ref,
+                i, len(targets), target_label,
             )
 
-            result = self._process_target(target_config)
+            if "url" in target_config:
+                result = self._scan_url_target(target_config)
+            else:
+                result = self._process_target(target_config)
             results.append(result)
 
         summary = DastScanSummary(results=results)
@@ -190,6 +193,72 @@ class DastEngine:
             target_config["name"] = name
 
         return self._process_target(target_config)
+
+    def _scan_url_target(self, target_config: dict) -> DastScanResult:
+        """Scan an already-running URL target (no container lifecycle)."""
+        url = target_config["url"]
+        name = target_config.get("name", url)
+
+        try:
+            findings = self._run_zap_scan_url(url)
+            return DastScanResult(
+                name=name,
+                image_ref="",
+                target_url=url,
+                port=0,
+                findings=findings,
+                started=True,
+                healthy=True,
+            )
+        except Exception as exc:
+            logger.error("ZAP scan failed for %s: %s", url, exc)
+            return DastScanResult(
+                name=name,
+                image_ref="",
+                target_url=url,
+                port=0,
+                started=True,
+                healthy=True,
+                scan_error=str(exc),
+            )
+
+    def _run_zap_scan_url(self, target_url: str) -> list[Finding]:
+        """Run ZAP against an already-running URL (no Docker network needed)."""
+        if shutil.which("docker") is None:
+            raise RuntimeError("Docker is required to run ZAP scanner")
+
+        from argus.containers import get_image
+        zap_image = get_image("zap")
+        if not zap_image:
+            raise RuntimeError("No ZAP container image configured")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_path = Path(tmp_dir)
+            results_file = output_path / "results.json"
+
+            cmd = [
+                "docker", "run", "--rm",
+                "--network", "host",
+                "-v", f"{output_path}:/zap/wrk:rw",
+                zap_image,
+                "zap-baseline.py" if self._scan_type == "baseline" else "zap-full-scan.py",
+                "-t", target_url,
+                "-J", "results.json",
+                "-I",
+            ]
+
+            logger.info("Running ZAP %s scan against %s", self._scan_type, target_url)
+            proc = subprocess.run(cmd, capture_output=True, text=True)
+
+            if proc.returncode not in (0, 1, 2):
+                logger.error("ZAP failed: %s", proc.stderr[:500])
+                raise RuntimeError(f"ZAP exited with code {proc.returncode}")
+
+            if results_file.exists():
+                from argus.scanners.zap import ZapScanner
+                return ZapScanner().parse_results(results_file)
+
+            return []
 
     def _process_target(self, target_config: dict) -> DastScanResult:
         """Run the full lifecycle for a single target.
