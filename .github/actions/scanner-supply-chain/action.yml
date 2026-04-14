@@ -104,43 +104,16 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github_token }}
         SCAN_PATH: ${{ inputs.scan_path }}
         FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
-        PERSONA: ${{ inputs.persona }}
-        ZIZMOR_CONFIG: ${{ inputs.zizmor_config }}
-        RUN_ACTIONLINT: ${{ inputs.run_actionlint }}
       run: |
         mkdir -p supply-chain-reports scanner-summaries
 
-        # Build a temporary argus config with scanner-specific settings
-        ZIZMOR_CFG=""
-        if [ -n "$ZIZMOR_CONFIG" ] && [ -f "$ZIZMOR_CONFIG" ]; then
-          ZIZMOR_CFG="    zizmor_config: \"${ZIZMOR_CONFIG}\""
-        fi
-
-        cat > /tmp/argus-supply-chain.yml <<ARGUSCFG
-        version: "1.0"
-        scanners:
-          supply-chain:
-            enabled: true
-            path: "${SCAN_PATH}"
-            persona: "${PERSONA}"
-            run_actionlint: "${RUN_ACTIONLINT}"
-            github_token: "${GITHUB_TOKEN}"
-        ${ZIZMOR_CFG}
-        reporting:
-          formats:
-            - sarif
-            - json
-            - markdown
-          severity_threshold: "${FAIL_ON_SEVERITY:-none}"
-          output_dir: "./supply-chain-reports"
-        execution:
-          backend: auto
-        ARGUSCFG
-
-        # Run argus scan (exit code 1 = findings above threshold)
+        # SDK auto-discovers argus.yml if present; works without one too
         SCAN_EXIT=0
         python -m argus scan supply-chain \
-          --config /tmp/argus-supply-chain.yml \
+          --path "${SCAN_PATH}" \
+          --severity-threshold "${FAIL_ON_SEVERITY:-none}" \
+          --format sarif json markdown \
+          --output-dir ./supply-chain-reports \
           --no-timestamp \
           || SCAN_EXIT=$?
 

@@ -69,39 +69,17 @@ runs:
       shell: bash
       env:
         FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
-        GITLEAKS_CONFIG: ${{ inputs.gitleaks_config }}
         SCAN_PATH: ${{ inputs.scan_path }}
       run: |
         mkdir -p gitleaks-reports scanner-summaries
 
-        # Build a temporary argus config
-        CONFIG_EXTRA=""
-        if [ -n "$GITLEAKS_CONFIG" ] && [ -f "$GITLEAKS_CONFIG" ]; then
-          CONFIG_EXTRA="    config_file: \"$GITLEAKS_CONFIG\""
-        fi
-
-        cat > /tmp/argus-gitleaks.yml <<ARGUSCFG
-        version: "1.0"
-        scanners:
-          gitleaks:
-            enabled: true
-            path: "${SCAN_PATH}"
-        ${CONFIG_EXTRA}
-        reporting:
-          formats:
-            - sarif
-            - json
-            - markdown
-          severity_threshold: "${FAIL_ON_SEVERITY:-none}"
-          output_dir: "./gitleaks-reports"
-        execution:
-          backend: auto
-        ARGUSCFG
-
-        # Run argus scan (exit code 1 = findings above threshold)
+        # SDK auto-discovers argus.yml if present; works without one too
         SCAN_EXIT=0
         python -m argus scan gitleaks \
-          --config /tmp/argus-gitleaks.yml \
+          --path "${SCAN_PATH}" \
+          --severity-threshold "${FAIL_ON_SEVERITY:-none}" \
+          --format sarif json markdown \
+          --output-dir ./gitleaks-reports \
           --no-timestamp \
           || SCAN_EXIT=$?
 

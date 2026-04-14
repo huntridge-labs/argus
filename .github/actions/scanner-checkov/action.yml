@@ -128,34 +128,17 @@ runs:
       shell: bash
       env:
         IAC_PATH: ${{ steps.validate.outputs.iac_path }}
-        FRAMEWORK: ${{ inputs.framework }}
         FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
-        BC_API_KEY: ${{ inputs.api_key }}
       run: |
         mkdir -p checkov-reports scanner-summaries
 
-        cat > /tmp/argus-checkov.yml <<ARGUSCFG
-        version: "1.0"
-        scanners:
-          checkov:
-            enabled: true
-            path: "${IAC_PATH}"
-            framework: "${FRAMEWORK}"
-        reporting:
-          formats:
-            - sarif
-            - json
-            - markdown
-          severity_threshold: "${FAIL_ON_SEVERITY:-none}"
-          output_dir: "./checkov-reports"
-        execution:
-          backend: auto
-        ARGUSCFG
-
-        # Run argus scan (exit code 1 = findings above threshold)
+        # SDK auto-discovers argus.yml if present; works without one too
         SCAN_EXIT=0
         python -m argus scan checkov \
-          --config /tmp/argus-checkov.yml \
+          --path "${IAC_PATH}" \
+          --severity-threshold "${FAIL_ON_SEVERITY:-none}" \
+          --format sarif json markdown \
+          --output-dir ./checkov-reports \
           --no-timestamp \
           || SCAN_EXIT=$?
 

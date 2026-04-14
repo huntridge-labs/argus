@@ -124,6 +124,7 @@ runs:
         set -euo pipefail
         mkdir -p zap-reports scanner-summaries
 
+        # SDK auto-discovers argus.yml if present; works without one too
         # Build the argus scan zap command
         CMD="python -m argus scan zap"
         CMD="$CMD --scan-type ${SCAN_TYPE}"

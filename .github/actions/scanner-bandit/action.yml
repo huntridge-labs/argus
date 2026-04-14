@@ -71,40 +71,17 @@ runs:
       shell: bash
       env:
         FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
-        BANDIT_CONFIG_FILE: ${{ inputs.bandit_config_file }}
         SCAN_PATH: ${{ inputs.scan_path }}
       run: |
         mkdir -p bandit-reports scanner-summaries
 
-        # Build a temporary argus config with scanner-specific settings
-        CONFIG_FILE=""
-        if [ -n "$BANDIT_CONFIG_FILE" ] && [ -f "$BANDIT_CONFIG_FILE" ]; then
-          CONFIG_FILE="    config_file: \"$BANDIT_CONFIG_FILE\""
-        fi
-
-        cat > /tmp/argus-bandit.yml <<ARGUSCFG
-        version: "1.0"
-        scanners:
-          bandit:
-            enabled: true
-            path: "${SCAN_PATH}"
-            exclude: ".husky,.github"
-        ${CONFIG_FILE}
-        reporting:
-          formats:
-            - sarif
-            - json
-            - markdown
-          severity_threshold: "${FAIL_ON_SEVERITY:-none}"
-          output_dir: "./bandit-reports"
-        execution:
-          backend: auto
-        ARGUSCFG
-
-        # Run argus scan (exit code 1 = findings above threshold)
+        # SDK auto-discovers argus.yml if present; works without one too
         SCAN_EXIT=0
         python -m argus scan bandit \
-          --config /tmp/argus-bandit.yml \
+          --path "${SCAN_PATH}" \
+          --severity-threshold "${FAIL_ON_SEVERITY:-none}" \
+          --format sarif json markdown \
+          --output-dir ./bandit-reports \
           --no-timestamp \
           || SCAN_EXIT=$?
 

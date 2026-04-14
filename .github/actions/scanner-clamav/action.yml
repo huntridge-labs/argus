@@ -77,28 +77,13 @@ runs:
       run: |
         mkdir -p clamav-reports scanner-summaries
 
-        # Build a temporary argus config with ClamAV settings
-        cat > /tmp/argus-clamav.yml <<ARGUSCFG
-        version: "1.0"
-        scanners:
-          clamav:
-            enabled: true
-            path: "${SCAN_PATH}"
-        reporting:
-          formats:
-            - sarif
-            - json
-            - markdown
-          severity_threshold: "${FAIL_ON_SEVERITY:-none}"
-          output_dir: "./clamav-reports"
-        execution:
-          backend: auto
-        ARGUSCFG
-
-        # Run argus scan (exit code 1 = findings above threshold)
+        # SDK auto-discovers argus.yml if present; works without one too
         SCAN_EXIT=0
         python -m argus scan clamav \
-          --config /tmp/argus-clamav.yml \
+          --path "${SCAN_PATH}" \
+          --severity-threshold "${FAIL_ON_SEVERITY:-none}" \
+          --format sarif json markdown \
+          --output-dir ./clamav-reports \
           --no-timestamp \
           || SCAN_EXIT=$?
 

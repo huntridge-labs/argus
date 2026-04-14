@@ -109,27 +109,13 @@ runs:
       run: |
         mkdir -p trivy-iac-reports scanner-summaries
 
-        cat > /tmp/argus-trivy-iac.yml <<ARGUSCFG
-        version: "1.0"
-        scanners:
-          trivy-iac:
-            enabled: true
-            path: "${IAC_PATH}"
-        reporting:
-          formats:
-            - sarif
-            - json
-            - markdown
-          severity_threshold: "${FAIL_ON_SEVERITY:-none}"
-          output_dir: "./trivy-iac-reports"
-        execution:
-          backend: auto
-        ARGUSCFG
-
-        # Run argus scan (exit code 1 = findings above threshold)
+        # SDK auto-discovers argus.yml if present; works without one too
         SCAN_EXIT=0
         python -m argus scan trivy-iac \
-          --config /tmp/argus-trivy-iac.yml \
+          --path "${IAC_PATH}" \
+          --severity-threshold "${FAIL_ON_SEVERITY:-none}" \
+          --format sarif json markdown \
+          --output-dir ./trivy-iac-reports \
           --no-timestamp \
           || SCAN_EXIT=$?
 

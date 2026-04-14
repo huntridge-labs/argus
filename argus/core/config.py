@@ -61,19 +61,31 @@ class ArgusConfig:
 
         If *config_path* is None, searches the current directory for
         common config filenames. Returns default config when no file
-        is found.
+        is found — individual scanners still work via CLI flags.
         """
+        import logging
+
         if config_path is not None:
             path = Path(config_path)
             if not path.exists():
+                logging.getLogger("argus").warning(
+                    "Config file not found: %s — using defaults", config_path,
+                )
                 return cls()
             return cls._load_file(path)
 
         for name in _DEFAULT_CONFIG_NAMES:
             path = Path(name)
             if path.exists():
+                logging.getLogger("argus").debug(
+                    "Loaded config from %s", path,
+                )
                 return cls._load_file(path)
 
+        logging.getLogger("argus").info(
+            "No argus.yml found — using defaults. "
+            "Run 'argus init' to generate a config.",
+        )
         return cls()
 
     @classmethod

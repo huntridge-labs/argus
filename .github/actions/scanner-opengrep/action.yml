@@ -83,39 +83,17 @@ runs:
       shell: bash
       env:
         FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
-        CONFIG_INPUT: ${{ inputs.config }}
         PATHS_INPUT: ${{ inputs.paths }}
       run: |
         mkdir -p opengrep-reports scanner-summaries
 
-        # Build a temporary argus config with scanner-specific settings
-        CONFIG_EXTRA=""
-        if [ -n "$CONFIG_INPUT" ] && [ "$CONFIG_INPUT" != "auto" ]; then
-          CONFIG_EXTRA="    config: \"$CONFIG_INPUT\""
-        fi
-
-        cat > /tmp/argus-opengrep.yml <<ARGUSCFG
-        version: "1.0"
-        scanners:
-          opengrep:
-            enabled: true
-            path: "${PATHS_INPUT}"
-        ${CONFIG_EXTRA}
-        reporting:
-          formats:
-            - sarif
-            - json
-            - markdown
-          severity_threshold: "${FAIL_ON_SEVERITY:-none}"
-          output_dir: "./opengrep-reports"
-        execution:
-          backend: auto
-        ARGUSCFG
-
-        # Run argus scan (exit code 1 = findings above threshold)
+        # SDK auto-discovers argus.yml if present; works without one too
         SCAN_EXIT=0
         python -m argus scan opengrep \
-          --config /tmp/argus-opengrep.yml \
+          --path "${PATHS_INPUT}" \
+          --severity-threshold "${FAIL_ON_SEVERITY:-none}" \
+          --format sarif json markdown \
+          --output-dir ./opengrep-reports \
           --no-timestamp \
           || SCAN_EXIT=$?
 

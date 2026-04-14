@@ -95,7 +95,7 @@ runs:
         REPORT_DIR="container-reports"
         mkdir -p "$REPORT_DIR" scanner-summaries
 
-        # Run argus container scan via the SDK CLI
+        # SDK auto-discovers argus.yml if present; works without one too
         SCAN_EXIT=0
         python -m argus scan container \
           --image "$IMAGE_REF" \

@@ -104,48 +104,17 @@ runs:
       shell: bash
       env:
         SCAN_PATH: ${{ inputs.scan_path }}
-        LOCKFILE: ${{ inputs.lockfile }}
-        RECURSIVE: ${{ inputs.recursive }}
-        CONFIG_FILE: ${{ inputs.config_file }}
         FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
       run: |
         mkdir -p osv-reports scanner-summaries
 
-        # Build scanner-specific config entries
-        LOCKFILE_CFG=""
-        if [ -n "$LOCKFILE" ]; then
-          LOCKFILE_CFG="    lockfile: \"${LOCKFILE}\""
-        fi
-
-        CONFIG_FILE_CFG=""
-        if [ -n "$CONFIG_FILE" ] && [ -f "$CONFIG_FILE" ]; then
-          CONFIG_FILE_CFG="    config_file: \"${CONFIG_FILE}\""
-        fi
-
-        cat > /tmp/argus-osv.yml <<ARGUSCFG
-        version: "1.0"
-        scanners:
-          osv:
-            enabled: true
-            path: "${SCAN_PATH}"
-            recursive: "${RECURSIVE}"
-        ${LOCKFILE_CFG}
-        ${CONFIG_FILE_CFG}
-        reporting:
-          formats:
-            - sarif
-            - json
-            - markdown
-          severity_threshold: "${FAIL_ON_SEVERITY:-none}"
-          output_dir: "./osv-reports"
-        execution:
-          backend: auto
-        ARGUSCFG
-
-        # Run argus scan (exit code 1 = findings above threshold)
+        # SDK auto-discovers argus.yml if present; works without one too
         SCAN_EXIT=0
         python -m argus scan osv \
-          --config /tmp/argus-osv.yml \
+          --path "${SCAN_PATH}" \
+          --severity-threshold "${FAIL_ON_SEVERITY:-none}" \
+          --format sarif json markdown \
+          --output-dir ./osv-reports \
           --no-timestamp \
           || SCAN_EXIT=$?
 
