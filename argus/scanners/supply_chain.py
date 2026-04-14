@@ -1,6 +1,7 @@
 """Supply chain scanner wrapping zizmor and actionlint."""
 
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -41,10 +42,18 @@ class SupplyChainScanner:
         ]
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
-        """Run zizmor and actionlint against the given path."""
+        """Run zizmor and actionlint against the given path.
+
+        Config keys (passed via ``ScannerConfig.extra``):
+          persona       – zizmor audit strictness (regular | pedantic | auditor)
+          zizmor_config – path to a zizmor configuration file
+          run_actionlint – "true"/"false" to enable/disable actionlint
+          github_token  – token for zizmor online audits (also read from env)
+        """
         config = config or {}
         all_findings: list[Finding] = []
         metadata: dict = {}
+        run_actionlint = str(config.get("run_actionlint", "true")).lower() != "false"
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
@@ -53,13 +62,13 @@ class SupplyChainScanner:
             if shutil.which("zizmor") is not None:
                 zizmor_output = tmp_path / "zizmor-results.json"
                 zizmor_findings, zizmor_meta = self._run_zizmor(
-                    path, zizmor_output
+                    path, zizmor_output, config,
                 )
                 all_findings.extend(zizmor_findings)
                 metadata["zizmor"] = zizmor_meta
 
-            # Run actionlint if available
-            if shutil.which("actionlint") is not None:
+            # Run actionlint if available and enabled
+            if run_actionlint and shutil.which("actionlint") is not None:
                 actionlint_output = tmp_path / "actionlint-results.json"
                 actionlint_findings, actionlint_meta = self._run_actionlint(
                     path, actionlint_output
@@ -136,20 +145,41 @@ class SupplyChainScanner:
         return [self._parse_actionlint_finding(item) for item in data]
 
     def _run_zizmor(
-        self, path: str, output_file: Path
+        self, path: str, output_file: Path, config: dict | None = None,
     ) -> tuple[list[Finding], dict]:
-        """Execute zizmor and return findings plus run metadata."""
+        """Execute zizmor and return findings plus run metadata.
+
+        Respects config keys ``persona``, ``zizmor_config``, and
+        ``github_token`` (also honoured via the ``GITHUB_TOKEN`` env var).
+        """
+        config = config or {}
         github_dir = Path(path) / ".github"
         cmd = [
             "zizmor",
             "--format", "sarif",
-            str(github_dir),
         ]
+
+        persona = config.get("persona")
+        if persona:
+            cmd.extend(["--persona", persona])
+
+        zizmor_config = config.get("zizmor_config")
+        if zizmor_config and Path(zizmor_config).is_file():
+            cmd.extend(["--config", zizmor_config])
+
+        cmd.append(str(github_dir))
+
+        # Pass GITHUB_TOKEN through to zizmor for online audits
+        env = None
+        github_token = config.get("github_token") or os.environ.get("GITHUB_TOKEN")
+        if github_token:
+            env = {**os.environ, "GITHUB_TOKEN": github_token}
 
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
+            env=env,
         )
 
         if result.stdout.strip():

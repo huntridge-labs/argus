@@ -50,20 +50,30 @@ inputs:
 outputs:
   error_count:
     description: 'Number of error severity findings'
-    value: ${{ steps.parse-results.outputs.error_count }}
+    value: ${{ steps.scan.outputs.error_count }}
   warning_count:
     description: 'Number of warning severity findings'
-    value: ${{ steps.parse-results.outputs.warning_count }}
+    value: ${{ steps.scan.outputs.warning_count }}
   info_count:
     description: 'Number of info severity findings'
-    value: ${{ steps.parse-results.outputs.info_count }}
+    value: ${{ steps.scan.outputs.info_count }}
   total_count:
     description: 'Total number of findings'
-    value: ${{ steps.parse-results.outputs.total_count }}
+    value: ${{ steps.scan.outputs.total_count }}
 
 runs:
   using: 'composite'
   steps:
+    # IMPORTANT: Caller must checkout the repository before calling this action
+    # Example:
+    #   - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+    #   - uses: ./.github/actions/scanner-opengrep
+
+    - name: Set up Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      with:
+        python-version: '3.12'
+
     - name: Install OpenGrep
       shell: bash
       run: |
@@ -78,62 +88,78 @@ runs:
         sudo mv opengrep /usr/local/bin/opengrep
         echo "::endgroup::"
 
-    - name: Run OpenGrep Analysis
+    - name: Install Argus SDK
+      shell: bash
+      run: pip install pyyaml
+
+    - name: Run OpenGrep via Argus SDK
+      id: scan
       shell: bash
       env:
+        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
         CONFIG_INPUT: ${{ inputs.config }}
         PATHS_INPUT: ${{ inputs.paths }}
       run: |
-        echo "::group::Running OpenGrep security analysis"
-        mkdir -p opengrep-reports
+        mkdir -p opengrep-reports scanner-summaries
 
-        CONFIG="$CONFIG_INPUT"
-        PATHS="$PATHS_INPUT"
-
-        echo "Config: $CONFIG"
-        echo "Paths: $PATHS"
-
-        # Run with SARIF output for GitHub integration
-        $HOME/.opengrep/cli/latest/opengrep scan --config="$CONFIG" --sarif --output=opengrep-reports/opengrep.sarif $PATHS || true
-
-        # Run with JSON output for detailed parsing
-        $HOME/.opengrep/cli/latest/opengrep scan --config="$CONFIG" --json --output=opengrep-reports/opengrep.json $PATHS || true
-
-        echo "::endgroup::"
-      continue-on-error: true
-
-    - name: Parse results
-      id: parse-results
-      shell: bash
-      run: |
-        echo "::group::Parsing OpenGrep results"
-
-        ERROR_COUNT=0
-        WARNING_COUNT=0
-        INFO_COUNT=0
-        TOTAL=0
-
-        if [ -f "opengrep-reports/opengrep.json" ]; then
-          TOTAL=$(jq -r '[.results[]?] | length' opengrep-reports/opengrep.json 2>/dev/null || echo "0")
-          ERROR_COUNT=$(jq -r '[.results[]? | select(.extra.severity == "ERROR")] | length' opengrep-reports/opengrep.json 2>/dev/null || echo "0")
-          WARNING_COUNT=$(jq -r '[.results[]? | select(.extra.severity == "WARNING")] | length' opengrep-reports/opengrep.json 2>/dev/null || echo "0")
-          INFO_COUNT=$(jq -r '[.results[]? | select(.extra.severity == "INFO")] | length' opengrep-reports/opengrep.json 2>/dev/null || echo "0")
+        # Build a temporary argus config with scanner-specific settings
+        CONFIG_EXTRA=""
+        if [ -n "$CONFIG_INPUT" ] && [ "$CONFIG_INPUT" != "auto" ]; then
+          CONFIG_EXTRA="    config: \"$CONFIG_INPUT\""
         fi
 
-        echo "Results:"
-        echo "  Error: $ERROR_COUNT"
-        echo "  Warning: $WARNING_COUNT"
-        echo "  Info: $INFO_COUNT"
-        echo "  Total: $TOTAL"
+        cat > /tmp/argus-opengrep.yml <<ARGUSCFG
+        version: "1.0"
+        scanners:
+          opengrep:
+            enabled: true
+            path: "${PATHS_INPUT}"
+        ${CONFIG_EXTRA}
+        reporting:
+          formats:
+            - sarif
+            - json
+            - markdown
+          severity_threshold: "${FAIL_ON_SEVERITY:-none}"
+          output_dir: "./opengrep-reports"
+        execution:
+          backend: local
+        ARGUSCFG
 
-        echo "error_count=$ERROR_COUNT" >> $GITHUB_OUTPUT
-        echo "warning_count=$WARNING_COUNT" >> $GITHUB_OUTPUT
-        echo "info_count=$INFO_COUNT" >> $GITHUB_OUTPUT
-        echo "total_count=$TOTAL" >> $GITHUB_OUTPUT
+        # Run argus scan (exit code 1 = findings above threshold)
+        SCAN_EXIT=0
+        python -m argus scan opengrep \
+          --config /tmp/argus-opengrep.yml \
+          --no-timestamp \
+          || SCAN_EXIT=$?
 
-        echo "::endgroup::"
+        # Parse severity counts from JSON output
+        # SDK maps: ERROR→high, WARNING→medium, INFO→low
+        ERROR=0; WARNING=0; INFO=0; TOTAL=0
+        JSON_FILE="opengrep-reports/argus-results.json"
+        if [ -f "$JSON_FILE" ]; then
+          ERROR=$(jq '.results[0].high_count // 0' "$JSON_FILE")
+          WARNING=$(jq '.results[0].medium_count // 0' "$JSON_FILE")
+          INFO=$(jq '.results[0].low_count // 0' "$JSON_FILE")
+          TOTAL=$(jq '.results[0].total_count // 0' "$JSON_FILE")
+        fi
 
-    - name: Upload OpenGrep reports
+        echo "error_count=$ERROR" >> "$GITHUB_OUTPUT"
+        echo "warning_count=$WARNING" >> "$GITHUB_OUTPUT"
+        echo "info_count=$INFO" >> "$GITHUB_OUTPUT"
+        echo "total_count=$TOTAL" >> "$GITHUB_OUTPUT"
+
+        echo "Found: ERROR=$ERROR, WARNING=$WARNING, INFO=$INFO, TOTAL=$TOTAL"
+
+        # Copy markdown summary for PR comment artifact
+        if [ -f "opengrep-reports/argus-summary.md" ]; then
+          cp opengrep-reports/argus-summary.md scanner-summaries/opengrep.md
+          cat opengrep-reports/argus-summary.md >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+        exit $SCAN_EXIT
+
+    - name: Upload OpenGrep artifacts
       uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
       with:
         name: opengrep-reports
@@ -142,51 +168,11 @@ runs:
       if: always()
       continue-on-error: true
 
-    - name: Upload SARIF to GitHub Security
-      if: inputs.enable_code_security == 'true' && hashFiles('opengrep-reports/opengrep.sarif') != ''
+    - name: Upload OpenGrep SARIF
       uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
       with:
-        sarif_file: opengrep-reports/opengrep.sarif
-      continue-on-error: true
-
-    - name: Generate scanner summary
-      if: always()
-      shell: bash
-      env:
-        HEAD_REF: ${{ github.head_ref || github.ref_name }}
-        ERROR_COUNT: ${{ steps.parse-results.outputs.error_count }}
-        WARNING_COUNT: ${{ steps.parse-results.outputs.warning_count }}
-        INFO_COUNT: ${{ steps.parse-results.outputs.info_count }}
-        TOTAL: ${{ steps.parse-results.outputs.total_count }}
-      run: |
-        mkdir -p scanner-summaries
-
-        SCRIPT_DIR="${{ github.action_path }}"
-        REPO_URL="${{ github.server_url }}/${{ github.repository }}/blob/${HEAD_REF}"
-
-        python3 "$SCRIPT_DIR/scripts/generate_summary.py" \
-          "scanner-summaries/opengrep.md" \
-          --is-pr-comment "true" \
-          --error-count "$ERROR_COUNT" \
-          --warning-count "$WARNING_COUNT" \
-          --info-count "$INFO_COUNT" \
-          --total "$TOTAL" \
-          --repo-url "$REPO_URL" \
-          --github-server-url "${{ github.server_url }}" \
-          --github-repo "${{ github.repository }}" \
-          --github-run-id "${{ github.run_id }}"
-
-        python3 "$SCRIPT_DIR/scripts/generate_summary.py" \
-          "$GITHUB_STEP_SUMMARY" \
-          --is-pr-comment "false" \
-          --error-count "$ERROR_COUNT" \
-          --warning-count "$WARNING_COUNT" \
-          --info-count "$INFO_COUNT" \
-          --total "$TOTAL" \
-          --repo-url "$REPO_URL" \
-          --github-server-url "${{ github.server_url }}" \
-          --github-repo "${{ github.repository }}" \
-          --github-run-id "${{ github.run_id }}"
+        sarif_file: opengrep-reports/argus-results.sarif
+      if: inputs.enable_code_security == 'true' && always() && github.actor != 'nektos/act' && hashFiles('opengrep-reports/argus-results.sarif') != ''
       continue-on-error: true
 
     - name: Upload scanner summary
@@ -206,36 +192,3 @@ runs:
         comment_marker: opengrep-comment-marker
         title: '🔍 OpenGrep SAST Results'
         fallback_message: 'No OpenGrep results available'
-
-    - name: Check severity threshold
-      if: inputs.fail_on_severity != 'none' && inputs.fail_on_severity != ''
-      shell: bash
-      env:
-        ERROR_COUNT_VAL: ${{ steps.parse-results.outputs.error_count }}
-        WARNING_COUNT_VAL: ${{ steps.parse-results.outputs.warning_count }}
-        INFO_COUNT_VAL: ${{ steps.parse-results.outputs.info_count }}
-        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
-      run: |
-        ERROR_COUNT=$ERROR_COUNT_VAL
-        WARNING_COUNT=$WARNING_COUNT_VAL
-        INFO_COUNT=$INFO_COUNT_VAL
-        THRESHOLD="$FAIL_ON_SEVERITY"
-
-        SHOULD_FAIL=false
-        case "$THRESHOLD" in
-          high|critical)
-            [ "$ERROR_COUNT" -gt 0 ] && SHOULD_FAIL=true
-            ;;
-          medium)
-            [ $((ERROR_COUNT + WARNING_COUNT)) -gt 0 ] && SHOULD_FAIL=true
-            ;;
-          low)
-            [ $((ERROR_COUNT + WARNING_COUNT + INFO_COUNT)) -gt 0 ] && SHOULD_FAIL=true
-            ;;
-        esac
-
-        if [ "$SHOULD_FAIL" = "true" ]; then
-          echo "::error::OpenGrep found findings at or above '$THRESHOLD' severity"
-          echo "Error: $ERROR_COUNT, Warning: $WARNING_COUNT, Info: $INFO_COUNT"
-          exit 1
-        fi
