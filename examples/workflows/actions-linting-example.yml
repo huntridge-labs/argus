@@ -7,7 +7,7 @@ name: Code Quality with Linting Composite Actions
 # Available Linter Actions:
 # - linter-yaml: YAML syntax and style validation
 # - linter-json: JSON syntax validation
-# - linter-python: Python code quality (flake8 + bandit)
+# - linter-python: Python code quality (flake8)
 # - linter-javascript: JavaScript syntax and quality (JSHint)
 # - linter-dockerfile: Dockerfile best practices (Hadolint)
 # - linter-terraform: Terraform formatting and validation
@@ -30,7 +30,6 @@ permissions:
 
 env:
   PYTHON_VERSION: '3.12'
-  NODE_VERSION: '20'
 
 jobs:
   # YAML Linting
@@ -82,7 +81,7 @@ jobs:
         with:
           fail_on_issues: false
           python_version: ${{ env.PYTHON_VERSION }}
-          max_line_length: '120'
+          # max_line_length: '120'  # Optional: configure in argus.yml
 
   # JavaScript Code Quality
   javascript-lint:
@@ -99,7 +98,6 @@ jobs:
         uses: huntridge-labs/argus/.github/actions/linter-javascript@0.7.0
         with:
           fail_on_issues: false
-          node_version: ${{ env.NODE_VERSION }}
 
   # Dockerfile Linting
   dockerfile-lint:
@@ -133,8 +131,8 @@ jobs:
         uses: huntridge-labs/argus/.github/actions/linter-terraform@0.7.0
         with:
           fail_on_issues: false
-          terraform_version: 'latest'
-          run_tflint: true
+          # terraform_version: 'latest'  # Optional: configure in argus.yml
+          # run_tflint: true             # Optional: configure in argus.yml
 
   # Summary Job - Collect all linter results
   linting-summary:

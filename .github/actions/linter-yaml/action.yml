@@ -1,6 +1,6 @@
 name: 'YAML Linter'
 description: |
-  Run yamllint for YAML file validation and style checking.
+  Run yamllint for YAML file validation and style checking via Argus SDK.
 
   This action validates YAML files for syntax errors and style violations
   using yamllint. Results are uploaded as artifacts and can be aggregated
@@ -21,7 +21,7 @@ inputs:
     required: false
     default: 'false'
   config_file:
-    description: 'Path to yamllint configuration file (optional)'
+    description: 'Path to yamllint configuration file. Configure in argus.yml for SDK-based runs.'
     required: false
     default: ''
   paths:
@@ -40,148 +40,75 @@ inputs:
 outputs:
   issues_count:
     description: 'Number of linting issues found'
-    value: ${{ steps.yaml-lint.outputs.issues }}
+    value: ${{ steps.scan.outputs.issue_count }}
 
 runs:
   using: 'composite'
   steps:
+    # IMPORTANT: Caller must checkout the repository before calling this action
+    # Example:
+    #   - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+    #   - uses: ./.github/actions/linter-yaml
+
     - name: Set up Python
       uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
       with:
         python-version: ${{ inputs.python_version }}
 
-    - name: Install yamllint
+    - name: Install dependencies
       shell: bash
-      run: pip install yamllint
+      run: pip install pyyaml
 
-    - name: Run YAML linting
-      id: yaml-lint
+    - name: Run YAML Linter via Argus SDK
+      id: scan
       shell: bash
-      continue-on-error: true
       env:
-        PATHS: ${{ inputs.paths }}
-        CONFIG_FILE: ${{ inputs.config_file }}
+        SCAN_PATH: ${{ inputs.paths }}
         FAIL_ON_ISSUES: ${{ inputs.fail_on_issues }}
       run: |
-        echo "::group::YAML Linting"
-        echo "Running yamllint on: $PATHS"
+        mkdir -p yaml-lint-reports scanner-summaries
 
-        ISSUES_FILE="/tmp/yaml_issues.txt"
-        CONFIG_ARG=""
-
-        # Add config file if specified
-        if [ -n "$CONFIG_FILE" ] && [ -f "$CONFIG_FILE" ]; then
-          CONFIG_ARG="-c $CONFIG_FILE"
-          echo "Using config file: $CONFIG_FILE"
+        # Map fail_on_issues boolean to severity threshold
+        SEVERITY="none"
+        if [ "$FAIL_ON_ISSUES" = "true" ]; then
+          SEVERITY="info"
         fi
 
-        # Run yamllint and capture issues
-        yamllint $CONFIG_ARG $PATHS --format parsable > "$ISSUES_FILE" 2>&1 || true
+        SCAN_EXIT=0
+        python -m argus scan lint-yaml \
+          --path "${SCAN_PATH}" \
+          --severity-threshold "${SEVERITY}" \
+          --format sarif --format json --format markdown \
+          --output-dir ./yaml-lint-reports \
+          --output-vars ./yaml-lint-reports/counts.env \
+          --no-timestamp \
+          || SCAN_EXIT=$?
 
-        # Count issues (non-empty lines)
-        ISSUE_COUNT=$(grep -c ":" "$ISSUES_FILE" 2>/dev/null) || ISSUE_COUNT=0
+        # Forward counts to GitHub Actions outputs
+        [ -f yaml-lint-reports/counts.env ] && cat yaml-lint-reports/counts.env >> "$GITHUB_OUTPUT"
 
-        echo "issues=$ISSUE_COUNT" >> $GITHUB_OUTPUT
-
-        # Display results
-        if [ "$ISSUE_COUNT" -gt 0 ]; then
-          echo "Found $ISSUE_COUNT YAML linting issues:"
-          cat "$ISSUES_FILE"
-
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            echo "::warning title=YAML Linting Issues::Found $ISSUE_COUNT YAML formatting/syntax issues. See job logs for details."
-          fi
-        else
-          echo "No YAML linting issues found"
+        # Copy markdown summary for PR comment and step summary
+        if [ -f "yaml-lint-reports/argus-summary.md" ]; then
+          cp yaml-lint-reports/argus-summary.md scanner-summaries/yaml-lint.md
+          cat yaml-lint-reports/argus-summary.md >> "$GITHUB_STEP_SUMMARY"
         fi
 
-        echo "::endgroup::"
+        exit $SCAN_EXIT
 
-        # Fail if requested and issues found
-        if [ "$FAIL_ON_ISSUES" = "true" ] && [ "$ISSUE_COUNT" -gt 0 ]; then
-          echo "::error::YAML linting failed with $ISSUE_COUNT issues"
-          exit 1
-        fi
-
-    - name: Generate linter summary
+    - name: Upload YAML lint artifacts
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+      with:
+        name: yaml-lint-reports
+        path: yaml-lint-reports/
+        retention-days: 30
       if: always()
-      shell: bash
-      env:
-        ISSUES_OUTPUT: ${{ steps.yaml-lint.outputs.issues }}
-      run: |
-        mkdir -p linter-summaries
-        ISSUES="$ISSUES_OUTPUT"
 
-        # Generate PR comment artifact (with <details> wrapper)
-        echo "<details>" > linter-summaries/yaml.md
-        echo "<summary>YAML Linting</summary>" >> linter-summaries/yaml.md
-        echo "" >> linter-summaries/yaml.md
-
-        if [ "$ISSUES" -eq 0 ]; then
-          echo "**Status:** Passed" >> linter-summaries/yaml.md
-          echo "" >> linter-summaries/yaml.md
-          echo "No YAML linting issues found." >> linter-summaries/yaml.md
-        else
-          echo "**Status:** Issues Found" >> linter-summaries/yaml.md
-          echo "" >> linter-summaries/yaml.md
-          echo "**Issues Found:** $ISSUES" >> linter-summaries/yaml.md
-          echo "" >> linter-summaries/yaml.md
-
-          if [ -f "/tmp/yaml_issues.txt" ]; then
-            echo "<details>" >> linter-summaries/yaml.md
-            echo "<summary>View Issues</summary>" >> linter-summaries/yaml.md
-            echo "" >> linter-summaries/yaml.md
-            echo '```' >> linter-summaries/yaml.md
-            head -50 /tmp/yaml_issues.txt >> linter-summaries/yaml.md
-            if [ $(wc -l < /tmp/yaml_issues.txt) -gt 50 ]; then
-              echo "... (truncated, see artifacts for full list)" >> linter-summaries/yaml.md
-            fi
-            echo '```' >> linter-summaries/yaml.md
-            echo "" >> linter-summaries/yaml.md
-            echo "</details>" >> linter-summaries/yaml.md
-          fi
-        fi
-
-        echo "" >> linter-summaries/yaml.md
-        echo "</details>" >> linter-summaries/yaml.md
-        echo "" >> linter-summaries/yaml.md
-
-        # Generate job summary (with ## headers, no <details>)
-        echo "## YAML Linting" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-
-        if [ "$ISSUES" -eq 0 ]; then
-          echo "**Status:** ✅ Passed" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "No YAML linting issues found." >> $GITHUB_STEP_SUMMARY
-        else
-          echo "**Status:** ⚠️ Issues Found" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Issues Found:** $ISSUES" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          if [ -f "/tmp/yaml_issues.txt" ]; then
-            echo "<details>" >> $GITHUB_STEP_SUMMARY
-            echo "<summary>View Issues</summary>" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            head -50 /tmp/yaml_issues.txt >> $GITHUB_STEP_SUMMARY
-            if [ $(wc -l < /tmp/yaml_issues.txt) -gt 50 ]; then
-              echo "... (truncated, see artifacts for full list)" >> $GITHUB_STEP_SUMMARY
-            fi
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "</details>" >> $GITHUB_STEP_SUMMARY
-          fi
-        fi
-        echo "" >> $GITHUB_STEP_SUMMARY
-
-    - name: Upload linter summary
+    - name: Upload YAML lint summary section
       if: always()
       uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
       with:
         name: linter-summary-yaml
-        path: linter-summaries/yaml.md
+        path: scanner-summaries/yaml-lint.md
         retention-days: 7
       continue-on-error: true
 
@@ -189,20 +116,10 @@ runs:
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
       uses: huntridge-labs/argus/.github/actions/comment-pr@0.7.0
       with:
-        summary_file: linter-summaries/yaml.md
+        summary_file: scanner-summaries/yaml-lint.md
         comment_marker: yaml-linter-comment-marker
         title: '📄 YAML Linting Results'
         fallback_message: 'No YAML linting results available'
-
-    - name: Upload raw lint results
-      if: always()
-      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
-      with:
-        name: yaml-lint-results
-        path: /tmp/yaml_issues.txt
-        retention-days: 7
-        if-no-files-found: ignore
-      continue-on-error: true
 
 branding:
   icon: 'file-text'

@@ -1,6 +1,6 @@
 name: 'JavaScript Linter'
 description: |
-  Run JavaScript code quality checks using syntax validation and JSHint.
+  Run JavaScript code quality checks using JSHint via Argus SDK.
 
   This action validates JavaScript files for syntax errors and code quality
   issues. Results are uploaded as artifacts and can be aggregated by the
@@ -23,198 +23,98 @@ inputs:
     description: 'Paths to search for JavaScript files (space-separated). Defaults to entire repository.'
     required: false
     default: '.'
-  node_version:
-    description: 'Node.js version to use'
+  python_version:
+    description: 'Python version to use'
     required: false
-    default: '20'
+    default: '3.12'
+  post_pr_comment:
+    description: 'Whether to post PR comments'
+    required: false
+    default: 'false'
 
 outputs:
   issues_count:
     description: 'Total number of linting issues found'
-    value: ${{ steps.js-lint.outputs.issues }}
-  syntax_issues:
-    description: 'Number of syntax errors'
-    value: ${{ steps.js-lint.outputs.syntax_issues }}
-  jshint_issues:
-    description: 'Number of JSHint code quality issues'
-    value: ${{ steps.js-lint.outputs.jshint_issues }}
+    value: ${{ steps.scan.outputs.issue_count }}
 
 runs:
   using: 'composite'
   steps:
-    - name: Set up Node.js
-      uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+    # IMPORTANT: Caller must checkout the repository before calling this action
+    # Example:
+    #   - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+    #   - uses: ./.github/actions/linter-javascript
+
+    - name: Set up Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
       with:
-        node-version: ${{ inputs.node_version }}
+        python-version: ${{ inputs.python_version }}
 
-    - name: Install JavaScript linting tools
+    - name: Install dependencies
       shell: bash
-      run: npm install -g jshint
+      run: pip install pyyaml
 
-    - name: Run JavaScript linting
-      id: js-lint
+    - name: Run JavaScript Linter via Argus SDK
+      id: scan
       shell: bash
-      continue-on-error: true
       env:
-        PATHS: ${{ inputs.paths }}
+        SCAN_PATH: ${{ inputs.paths }}
         FAIL_ON_ISSUES: ${{ inputs.fail_on_issues }}
       run: |
-        echo "::group::JavaScript Code Quality Checks"
-        echo "Searching for JavaScript files in: $PATHS"
+        mkdir -p javascript-lint-reports scanner-summaries
 
-        ISSUES_FILE="/tmp/js_issues.txt"
-        TOTAL_ISSUES=0
-        SYNTAX_ISSUES=0
-        JSHINT_ISSUES=0
-
-        # Find JavaScript files
-        JS_FILES=$(find $PATHS -name "*.js" \
-          -not -path "*/node_modules/*" \
-          -not -path "*/.git/*" \
-          -not -path "*/dist/*" \
-          -not -path "*/build/*" \
-          -not -path "*/vendor/*" \
-          -type f 2>/dev/null || true)
-
-        if [ -z "$JS_FILES" ]; then
-          echo "No JavaScript files found to lint"
-          echo "issues=0" >> $GITHUB_OUTPUT
-          echo "syntax_issues=0" >> $GITHUB_OUTPUT
-          echo "jshint_issues=0" >> $GITHUB_OUTPUT
-          echo "::endgroup::"
-          exit 0
+        # Map fail_on_issues boolean to severity threshold
+        SEVERITY="none"
+        if [ "$FAIL_ON_ISSUES" = "true" ]; then
+          SEVERITY="info"
         fi
 
-        echo "Found JavaScript files to check:"
-        echo "$JS_FILES" | head -20
-        FILE_COUNT=$(echo "$JS_FILES" | wc -l)
-        if [ "$FILE_COUNT" -gt 20 ]; then
-          echo "... and $((FILE_COUNT - 20)) more files"
+        SCAN_EXIT=0
+        python -m argus scan lint-javascript \
+          --path "${SCAN_PATH}" \
+          --severity-threshold "${SEVERITY}" \
+          --format sarif --format json --format markdown \
+          --output-dir ./javascript-lint-reports \
+          --output-vars ./javascript-lint-reports/counts.env \
+          --no-timestamp \
+          || SCAN_EXIT=$?
+
+        # Forward counts to GitHub Actions outputs
+        [ -f javascript-lint-reports/counts.env ] && cat javascript-lint-reports/counts.env >> "$GITHUB_OUTPUT"
+
+        # Copy markdown summary for PR comment and step summary
+        if [ -f "javascript-lint-reports/argus-summary.md" ]; then
+          cp javascript-lint-reports/argus-summary.md scanner-summaries/javascript-lint.md
+          cat javascript-lint-reports/argus-summary.md >> "$GITHUB_STEP_SUMMARY"
         fi
 
-        # Basic syntax check with Node.js
-        echo ""
-        echo "=== Running JavaScript syntax check ===" | tee -a "$ISSUES_FILE"
-        for file in $JS_FILES; do
-          if ! node -c "$file" 2>/dev/null; then
-            echo "Syntax error in: $file" | tee -a "$ISSUES_FILE"
-            node -c "$file" 2>&1 | sed "s/^/  /" | tee -a "$ISSUES_FILE" || true
-            SYNTAX_ISSUES=$((SYNTAX_ISSUES + 1))
-          fi
-        done
+        exit $SCAN_EXIT
 
-        if [ "$SYNTAX_ISSUES" -eq 0 ]; then
-          echo "No syntax errors found" | tee -a "$ISSUES_FILE"
-        fi
-
-        # JSHint for code quality
-        echo ""
-        echo "=== Running JSHint (code quality) ===" | tee -a "$ISSUES_FILE"
-        if jshint $JS_FILES > /tmp/jshint.out 2>&1; then
-          echo "No JSHint issues found" | tee -a "$ISSUES_FILE"
-        else
-          # Count non-empty lines that contain issue information
-          JSHINT_ISSUES=$(grep -c ":" /tmp/jshint.out 2>/dev/null || echo "0")
-          if [ "$JSHINT_ISSUES" -gt 0 ]; then
-            echo "JSHint found $JSHINT_ISSUES code quality issues:" | tee -a "$ISSUES_FILE"
-            cat /tmp/jshint.out | tee -a "$ISSUES_FILE"
-          fi
-        fi
-
-        TOTAL_ISSUES=$((SYNTAX_ISSUES + JSHINT_ISSUES))
-
-        echo "issues=$TOTAL_ISSUES" >> $GITHUB_OUTPUT
-        echo "syntax_issues=$SYNTAX_ISSUES" >> $GITHUB_OUTPUT
-        echo "jshint_issues=$JSHINT_ISSUES" >> $GITHUB_OUTPUT
-
-        if [ "$TOTAL_ISSUES" -gt 0 ]; then
-          echo ""
-          echo "Total JavaScript issues found: $TOTAL_ISSUES"
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            echo "::warning title=JavaScript Code Quality Issues::Found $TOTAL_ISSUES JavaScript linting issues. See job logs for details."
-          fi
-        else
-          echo "No JavaScript code quality issues found"
-        fi
-
-        echo "::endgroup::"
-
-        # Fail if requested and issues found
-        if [ "$FAIL_ON_ISSUES" = "true" ] && [ "$TOTAL_ISSUES" -gt 0 ]; then
-          echo "::error::JavaScript linting failed with $TOTAL_ISSUES issues"
-          exit 1
-        fi
-
-    - name: Generate linter summary
+    - name: Upload JavaScript lint artifacts
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+      with:
+        name: javascript-lint-reports
+        path: javascript-lint-reports/
+        retention-days: 30
       if: always()
-      shell: bash
-      env:
-        ISSUES_OUTPUT: ${{ steps.js-lint.outputs.issues }}
-        SYNTAX_OUTPUT: ${{ steps.js-lint.outputs.syntax_issues }}
-        JSHINT_OUTPUT: ${{ steps.js-lint.outputs.jshint_issues }}
-      run: |
-        mkdir -p linter-summaries
-        ISSUES="$ISSUES_OUTPUT"
-        SYNTAX="$SYNTAX_OUTPUT"
-        JSHINT="$JSHINT_OUTPUT"
 
-        echo "<details>" > linter-summaries/javascript.md
-        echo "<summary>JavaScript Code Quality</summary>" >> linter-summaries/javascript.md
-        echo "" >> linter-summaries/javascript.md
-
-        if [ "$ISSUES" -eq 0 ]; then
-          echo "**Status:** Passed" >> linter-summaries/javascript.md
-          echo "" >> linter-summaries/javascript.md
-          echo "No JavaScript code quality issues found." >> linter-summaries/javascript.md
-        else
-          echo "**Status:** Issues Found" >> linter-summaries/javascript.md
-          echo "" >> linter-summaries/javascript.md
-          echo "| Check | Issues |" >> linter-summaries/javascript.md
-          echo "|-------|--------|" >> linter-summaries/javascript.md
-          echo "| Syntax Errors | $SYNTAX |" >> linter-summaries/javascript.md
-          echo "| JSHint (code quality) | $JSHINT |" >> linter-summaries/javascript.md
-          echo "| **Total** | **$ISSUES** |" >> linter-summaries/javascript.md
-          echo "" >> linter-summaries/javascript.md
-
-          if [ -f "/tmp/js_issues.txt" ]; then
-            echo "<details>" >> linter-summaries/javascript.md
-            echo "<summary>View Issues</summary>" >> linter-summaries/javascript.md
-            echo "" >> linter-summaries/javascript.md
-            echo '```' >> linter-summaries/javascript.md
-            head -50 /tmp/js_issues.txt >> linter-summaries/javascript.md
-            if [ $(wc -l < /tmp/js_issues.txt) -gt 50 ]; then
-              echo "... (truncated, see artifacts for full list)" >> linter-summaries/javascript.md
-            fi
-            echo '```' >> linter-summaries/javascript.md
-            echo "" >> linter-summaries/javascript.md
-            echo "</details>" >> linter-summaries/javascript.md
-          fi
-        fi
-
-        echo "" >> linter-summaries/javascript.md
-        echo "</details>" >> linter-summaries/javascript.md
-        echo "" >> linter-summaries/javascript.md
-
-    - name: Upload linter summary
+    - name: Upload JavaScript lint summary section
       if: always()
       uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
       with:
         name: linter-summary-javascript
-        path: linter-summaries/javascript.md
+        path: scanner-summaries/javascript-lint.md
         retention-days: 7
       continue-on-error: true
 
-    - name: Upload raw lint results
-      if: always()
-      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+    - name: Comment PR with JavaScript lint results
+      if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
+      uses: huntridge-labs/argus/.github/actions/comment-pr@0.7.0
       with:
-        name: javascript-lint-results
-        path: |
-          /tmp/js_issues.txt
-          /tmp/jshint.out
-        retention-days: 7
-        if-no-files-found: ignore
-      continue-on-error: true
+        summary_file: scanner-summaries/javascript-lint.md
+        comment_marker: javascript-linter-comment-marker
+        title: '📜 JavaScript Linting Results'
+        fallback_message: 'No JavaScript linting results available'
 
 branding:
   icon: 'code'
