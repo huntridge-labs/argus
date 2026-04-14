@@ -437,7 +437,18 @@ class ArgusEngine:
                     scanner.name,
                     container_image,
                 )
-                return self._run_in_container(scanner, path, config)
+                try:
+                    return self._run_in_container(scanner, path, config)
+                except RuntimeError as exc:
+                    if backend == "docker":
+                        raise
+                    # auto mode: container failed, try local fallback
+                    logger.warning(
+                        "Container execution failed for '%s': %s — "
+                        "trying local fallback",
+                        scanner.name,
+                        exc,
+                    )
 
             # docker backend requires containers — fail explicitly
             if backend == "docker":
@@ -451,17 +462,16 @@ class ArgusEngine:
                     f"Install Docker: https://docs.docker.com/get-docker/"
                 )
 
-            # auto fallback: use local tool if no container image defined
+            # auto fallback: use local tool
             if scanner.is_available():
                 logger.info(
-                    "No container for '%s' — falling back to local tool",
+                    "Falling back to local tool for '%s'",
                     scanner.name,
                 )
                 return scanner.scan(path, config)
 
             raise RuntimeError(
-                f"Scanner '{scanner.name}' has no container image "
-                f"and is not installed locally. "
+                f"Scanner '{scanner.name}' is not available. "
                 f"Install: {scanner.install_command()}"
             )
 
