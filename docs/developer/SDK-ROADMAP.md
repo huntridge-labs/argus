@@ -124,7 +124,13 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 - [x] Refactor `scanner-trivy-iac/action.yml` (362 → 234 lines)
 - [x] Refactor `scanner-supply-chain/action.yml` (371 → 237 lines)
 - [x] Enhance `supply_chain.py` scanner to accept persona, zizmor_config, run_actionlint, github_token from config
-- [ ] Refactor remaining 5 scanner actions (gitleaks, osv, checkov wrap published actions; container, zap have complex lifecycles)
+- [x] Refactor `scanner-gitleaks/action.yml` (207 → 161 lines, backend: auto/Docker)
+- [x] Refactor `scanner-osv/action.yml` (357 → 222 lines, backend: auto/Docker)
+- [x] Refactor `scanner-checkov/action.yml` (307 → 253 lines, backend: local/pip)
+- [x] Removed published GitHub Action dependencies (gitleaks-action, osv-scanner-action, checkov-action) for portability
+- [x] Enhanced `osv.py` with lockfile/recursive config passthrough
+- [x] Enhanced `checkov.py` parse_results to return passed_count
+- [ ] Refactor remaining 2 scanner actions (container, zap have complex multi-tool lifecycles — needs SDK lifecycle engine)
 - [ ] Refactor 6 linter actions (or add linter modules to SDK first)
 - [ ] Verify backward compatibility: identical outputs, artifacts, SARIF
 - [ ] Update `test-actions.yml` to validate thin wrappers
