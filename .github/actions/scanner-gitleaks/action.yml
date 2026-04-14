@@ -80,22 +80,17 @@ runs:
           --severity-threshold "${FAIL_ON_SEVERITY:-none}" \
           --format sarif json markdown \
           --output-dir ./gitleaks-reports \
+          --output-vars ./gitleaks-reports/counts.env \
           --no-timestamp \
           || SCAN_EXIT=$?
 
-        # Parse severity counts from JSON output
-        HIGH=0; TOTAL=0
-        JSON_FILE="gitleaks-reports/argus-results.json"
-        if [ -f "$JSON_FILE" ]; then
-          HIGH=$(jq '.results[0].high_count // 0' "$JSON_FILE")
-          TOTAL=$(jq '.results[0].total_count // 0' "$JSON_FILE")
+        # Forward counts to GitHub Actions outputs
+        [ -f gitleaks-reports/counts.env ] && cat gitleaks-reports/counts.env >> "$GITHUB_OUTPUT"
+
+        # Remap total_count to secrets_count for backward compatibility
+        if [ -f gitleaks-reports/counts.env ]; then
+          echo "secrets_count=$(grep total_count gitleaks-reports/counts.env | cut -d= -f2)" >> "$GITHUB_OUTPUT"
         fi
-
-        echo "secrets_count=$TOTAL" >> "$GITHUB_OUTPUT"
-        echo "high_count=$HIGH" >> "$GITHUB_OUTPUT"
-        echo "total_count=$TOTAL" >> "$GITHUB_OUTPUT"
-
-        echo "Found: HIGH=$HIGH, TOTAL=$TOTAL"
 
         # Copy markdown summary for PR comment artifact
         if [ -f "gitleaks-reports/argus-summary.md" ]; then

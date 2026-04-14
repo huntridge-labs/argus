@@ -115,36 +115,21 @@ runs:
           --severity-threshold "${FAIL_ON_SEVERITY:-none}" \
           --format sarif json markdown \
           --output-dir ./osv-reports \
+          --output-vars ./osv-reports/counts.env \
           --no-timestamp \
           || SCAN_EXIT=$?
 
-        # Parse severity counts from JSON output
-        CRITICAL=0; HIGH=0; MEDIUM=0; LOW=0; TOTAL=0
-        JSON_FILE="osv-reports/argus-results.json"
-        if [ -f "$JSON_FILE" ]; then
-          CRITICAL=$(jq '.critical_count // 0' "$JSON_FILE")
-          HIGH=$(jq '.high_count // 0' "$JSON_FILE")
-          MEDIUM=$(jq '.medium_count // 0' "$JSON_FILE")
-          LOW=$(jq '.low_count // 0' "$JSON_FILE")
-          TOTAL=$(jq '.total_count // 0' "$JSON_FILE")
-        fi
+        # Forward counts to GitHub Actions outputs
+        [ -f osv-reports/counts.env ] && cat osv-reports/counts.env >> "$GITHUB_OUTPUT"
 
-        echo "critical_count=$CRITICAL" >> "$GITHUB_OUTPUT"
-        echo "high_count=$HIGH" >> "$GITHUB_OUTPUT"
-        echo "medium_count=$MEDIUM" >> "$GITHUB_OUTPUT"
-        echo "low_count=$LOW" >> "$GITHUB_OUTPUT"
-        echo "total_count=$TOTAL" >> "$GITHUB_OUTPUT"
-
-        echo "Results: CRITICAL=$CRITICAL, HIGH=$HIGH, MEDIUM=$MEDIUM, LOW=$LOW, TOTAL=$TOTAL"
-
-        if [ "$TOTAL" -gt 0 ]; then
-          echo "scan_status=vulnerable" >> "$GITHUB_OUTPUT"
-          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
-            echo "::warning title=Dependency Vulnerabilities::Found $CRITICAL critical and $HIGH high severity dependency vulnerabilities"
+        # Derive scan_status from passed flag
+        if [ -f osv-reports/counts.env ]; then
+          PASSED=$(grep '^passed=' osv-reports/counts.env | cut -d= -f2)
+          if [ "$PASSED" = "true" ]; then
+            echo "scan_status=clean" >> "$GITHUB_OUTPUT"
+          else
+            echo "scan_status=vulnerable" >> "$GITHUB_OUTPUT"
           fi
-        else
-          echo "scan_status=clean" >> "$GITHUB_OUTPUT"
-          echo "✅ No dependency vulnerabilities found"
         fi
 
         # Copy markdown summary for PR comment artifact

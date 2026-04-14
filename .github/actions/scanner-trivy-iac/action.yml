@@ -116,27 +116,12 @@ runs:
           --severity-threshold "${FAIL_ON_SEVERITY:-none}" \
           --format sarif json markdown \
           --output-dir ./trivy-iac-reports \
+          --output-vars ./trivy-iac-reports/counts.env \
           --no-timestamp \
           || SCAN_EXIT=$?
 
-        # Parse severity counts from JSON output
-        CRITICAL=0; HIGH=0; MEDIUM=0; LOW=0; TOTAL=0
-        JSON_FILE="trivy-iac-reports/argus-results.json"
-        if [ -f "$JSON_FILE" ]; then
-          CRITICAL=$(jq '.results[0].critical_count // 0' "$JSON_FILE")
-          HIGH=$(jq '.results[0].high_count // 0' "$JSON_FILE")
-          MEDIUM=$(jq '.results[0].medium_count // 0' "$JSON_FILE")
-          LOW=$(jq '.results[0].low_count // 0' "$JSON_FILE")
-          TOTAL=$(jq '.results[0].total_count // 0' "$JSON_FILE")
-        fi
-
-        echo "critical_count=$CRITICAL" >> "$GITHUB_OUTPUT"
-        echo "high_count=$HIGH" >> "$GITHUB_OUTPUT"
-        echo "medium_count=$MEDIUM" >> "$GITHUB_OUTPUT"
-        echo "low_count=$LOW" >> "$GITHUB_OUTPUT"
-        echo "total_count=$TOTAL" >> "$GITHUB_OUTPUT"
-
-        echo "Found: CRITICAL=$CRITICAL, HIGH=$HIGH, MEDIUM=$MEDIUM, LOW=$LOW, TOTAL=$TOTAL"
+        # Forward counts to GitHub Actions outputs
+        [ -f trivy-iac-reports/counts.env ] && cat trivy-iac-reports/counts.env >> "$GITHUB_OUTPUT"
 
         # Copy markdown summary for PR comment artifact
         if [ -f "trivy-iac-reports/argus-summary.md" ]; then

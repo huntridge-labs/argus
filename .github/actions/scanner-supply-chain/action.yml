@@ -114,40 +114,31 @@ runs:
           --severity-threshold "${FAIL_ON_SEVERITY:-none}" \
           --format sarif json markdown \
           --output-dir ./supply-chain-reports \
+          --output-vars ./supply-chain-reports/counts.env \
           --no-timestamp \
           || SCAN_EXIT=$?
 
-        # Parse severity counts from JSON output
+        # Forward counts to GitHub Actions outputs
+        [ -f supply-chain-reports/counts.env ] && cat supply-chain-reports/counts.env >> "$GITHUB_OUTPUT"
+
         # Fold critical into high for backward compatibility (action has no critical_count output)
-        HIGH=0; MEDIUM=0; LOW=0; INFO=0; TOTAL=0
-        JSON_FILE="supply-chain-reports/argus-results.json"
-        if [ -f "$JSON_FILE" ]; then
-          CRITICAL=$(jq '.critical_count // 0' "$JSON_FILE")
-          HIGH_RAW=$(jq '.high_count // 0' "$JSON_FILE")
-          HIGH=$((CRITICAL + HIGH_RAW))
-          MEDIUM=$(jq '.medium_count // 0' "$JSON_FILE")
-          LOW=$(jq '.low_count // 0' "$JSON_FILE")
-          TOTAL=$(jq '.total_count // 0' "$JSON_FILE")
-          INFO=$((TOTAL - HIGH - MEDIUM - LOW))
+        if [ -f supply-chain-reports/counts.env ]; then
+          CRITICAL=$(grep critical_count supply-chain-reports/counts.env | cut -d= -f2)
+          HIGH_RAW=$(grep high_count supply-chain-reports/counts.env | cut -d= -f2)
+          TOTAL=$(grep total_count supply-chain-reports/counts.env | cut -d= -f2)
+          MEDIUM=$(grep medium_count supply-chain-reports/counts.env | cut -d= -f2)
+          LOW=$(grep low_count supply-chain-reports/counts.env | cut -d= -f2)
+          HIGH=$(( ${CRITICAL:-0} + ${HIGH_RAW:-0} ))
+          INFO=$(( ${TOTAL:-0} - HIGH - ${MEDIUM:-0} - ${LOW:-0} ))
           if [ "$INFO" -lt 0 ]; then INFO=0; fi
-        fi
-
-        echo "high_count=$HIGH" >> "$GITHUB_OUTPUT"
-        echo "medium_count=$MEDIUM" >> "$GITHUB_OUTPUT"
-        echo "low_count=$LOW" >> "$GITHUB_OUTPUT"
-        echo "info_count=$INFO" >> "$GITHUB_OUTPUT"
-        echo "total_count=$TOTAL" >> "$GITHUB_OUTPUT"
-
-        echo "Results: HIGH=$HIGH, MEDIUM=$MEDIUM, LOW=$LOW, INFO=$INFO, TOTAL=$TOTAL"
-
-        if [ "$TOTAL" -gt 0 ]; then
-          echo "scan_status=findings" >> "$GITHUB_OUTPUT"
-          if [ "$HIGH" -gt 0 ]; then
-            echo "::warning title=Supply Chain Findings::Found $HIGH high severity supply chain security findings"
+          echo "high_count=$HIGH" >> "$GITHUB_OUTPUT"
+          echo "info_count=$INFO" >> "$GITHUB_OUTPUT"
+          PASSED=$(grep '^passed=' supply-chain-reports/counts.env | cut -d= -f2)
+          if [ "$PASSED" = "true" ]; then
+            echo "scan_status=clean" >> "$GITHUB_OUTPUT"
+          else
+            echo "scan_status=findings" >> "$GITHUB_OUTPUT"
           fi
-        else
-          echo "scan_status=clean" >> "$GITHUB_OUTPUT"
-          echo "✅ No supply chain security findings"
         fi
 
         # Copy markdown summary for PR comment artifact

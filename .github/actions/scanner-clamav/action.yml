@@ -84,18 +84,26 @@ runs:
           --severity-threshold "${FAIL_ON_SEVERITY:-none}" \
           --format sarif json markdown \
           --output-dir ./clamav-reports \
+          --output-vars ./clamav-reports/counts.env \
           --no-timestamp \
           || SCAN_EXIT=$?
 
-        # Parse severity counts from JSON output
+        # Forward counts to GitHub Actions outputs
+        [ -f clamav-reports/counts.env ] && cat clamav-reports/counts.env >> "$GITHUB_OUTPUT"
+
+        # Remap SDK names to ClamAV-specific output names
         INFECTED=0
         SCANNED=0
         SCAN_STATUS="clean"
-        JSON_FILE="clamav-reports/argus-results.json"
 
+        if [ -f clamav-reports/counts.env ]; then
+          INFECTED=$(grep total_count clamav-reports/counts.env | cut -d= -f2)
+          INFECTED=${INFECTED:-0}
+        fi
+
+        # scanned_files lives in the scanner metadata (not in counts.env)
+        JSON_FILE="clamav-reports/argus-results.json"
         if [ -f "$JSON_FILE" ]; then
-          INFECTED=$(jq '.results[0].total_count // 0' "$JSON_FILE")
-          # scanned_files lives in the scanner metadata (from ClamAV summary output)
           SCANNED=$(jq -r '.results[0].metadata.scanned_files // "0"' "$JSON_FILE")
         fi
 
@@ -108,7 +116,6 @@ runs:
         fi
 
         echo "scan_status=$SCAN_STATUS" >> "$GITHUB_OUTPUT"
-        echo "Found: infected=$INFECTED, scanned=$SCANNED, status=$SCAN_STATUS"
 
         # Copy markdown summary for PR comment artifact and step summary
         if [ -f "clamav-reports/argus-summary.md" ]; then

@@ -266,6 +266,14 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
              "Useful in CI where a predictable output path is needed.",
     )
     scan_parser.add_argument(
+        "--output-vars",
+        default=None,
+        metavar="FILE",
+        help="Write scan result counts as key=value pairs to FILE. "
+             "Useful in CI: cat FILE >> $GITHUB_OUTPUT. "
+             "Keys: critical_count, high_count, medium_count, low_count, total_count, passed.",
+    )
+    scan_parser.add_argument(
         "--fail-fast",
         action="store_true",
         help="Abort immediately if any scanner fails instead of continuing.",
@@ -618,6 +626,12 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
         if args.verbose:
             log.warning("argus.reporters module not found; skipping report generation")
 
+    # Write machine-readable output vars (for CI integration)
+    output_vars_path = getattr(args, "output_vars", None)
+    if output_vars_path:
+        _write_output_vars(summary, output_vars_path)
+        log.debug("Output vars written to %s", output_vars_path)
+
     # Finalize audit trail
     exit_code = EXIT_SUCCESS if summary.passed else EXIT_FINDINGS
     finalize_manifest(manifest, summary=summary, exit_code=exit_code, output_dir=output_dir)
@@ -956,6 +970,32 @@ def cmd_report(args: argparse.Namespace) -> int:
         print(f"Report generated: {output_dir}")
 
     return EXIT_SUCCESS
+
+
+def _write_output_vars(summary, filepath: str) -> None:
+    """Write scan result counts as key=value pairs to a file.
+
+    Format is compatible with GitHub Actions ($GITHUB_OUTPUT),
+    GitLab CI (dotenv artifacts), and shell `source`.
+    """
+    lines = [
+        f"critical_count={summary.critical_count}",
+        f"high_count={summary.high_count}",
+        f"medium_count={summary.medium_count}",
+        f"low_count={summary.low_count}",
+        f"total_count={summary.total_count}",
+        f"issue_count={summary.total_count}",
+        f"findings_count={summary.total_count}",
+        f"passed={'true' if summary.passed else 'false'}",
+    ]
+
+    # Per-scanner counts when running a single scanner
+    if len(summary.results) == 1:
+        r = summary.results[0]
+        lines.append(f"scanner={r.scanner}")
+
+    Path(filepath).parent.mkdir(parents=True, exist_ok=True)
+    Path(filepath).write_text("\n".join(lines) + "\n")
 
 
 def _list_scanners(engine) -> int:

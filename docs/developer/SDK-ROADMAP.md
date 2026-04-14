@@ -130,7 +130,11 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 - [x] Removed published GitHub Action dependencies (gitleaks-action, osv-scanner-action, checkov-action) for portability
 - [x] Enhanced `osv.py` with lockfile/recursive config passthrough
 - [x] Enhanced `checkov.py` parse_results to return passed_count
-- [ ] Refactor remaining 2 scanner actions (container, zap have complex multi-tool lifecycles — needs SDK lifecycle engine)
+- [x] Refactor `scanner-container/action.yml` (661 → 190 lines, SDK ContainerEngine)
+- [x] Refactor `scanner-zap/action.yml` (544 → 229 lines, SDK DastEngine)
+- [x] `--output-vars FILE` — machine-readable key=value counts for CI (eliminates jq dependency)
+- [x] SDK auto-discovers argus.yml — actions no longer generate temp configs
+- [x] All actions simplified to `pip install pyyaml` + `python -m argus scan`
 - [ ] Refactor 6 linter actions (or add linter modules to SDK first)
 - [ ] Verify backward compatibility: identical outputs, artifacts, SARIF
 - [ ] Update `test-actions.yml` to validate thin wrappers
@@ -142,7 +146,8 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 ## Remaining: Phase 4 — Distribution + Multi-Platform
 
 ### PyPI Publishing
-- [ ] `pyproject.toml` with package metadata, entry_points for `argus` CLI
+- [ ] `pyproject.toml` with package metadata, entry_points for `argus` CLI, pyyaml bundled
+- [ ] Update scanner actions: `pip install pyyaml` → `pip install argus-security` (deps bundled)
 - [ ] CI workflow to publish `argus-security` to PyPI on GitHub release
 - [ ] Versioned: tied to `version.yaml` via release-it
 

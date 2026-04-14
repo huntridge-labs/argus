@@ -75,36 +75,20 @@ runs:
       run: |
         mkdir -p bandit-reports scanner-summaries
 
-        # SDK auto-discovers argus.yml if present; works without one too
         SCAN_EXIT=0
         python -m argus scan bandit \
           --path "${SCAN_PATH}" \
           --severity-threshold "${FAIL_ON_SEVERITY:-none}" \
           --format sarif json markdown \
           --output-dir ./bandit-reports \
+          --output-vars ./bandit-reports/counts.env \
           --no-timestamp \
           || SCAN_EXIT=$?
 
-        # Parse severity counts from JSON output
-        CRITICAL=0; HIGH=0; MEDIUM=0; LOW=0; TOTAL=0
-        JSON_FILE="bandit-reports/argus-results.json"
-        if [ -f "$JSON_FILE" ]; then
-          CRITICAL=$(jq '.results[0].critical_count // 0' "$JSON_FILE")
-          HIGH=$(jq '.results[0].high_count // 0' "$JSON_FILE")
-          MEDIUM=$(jq '.results[0].medium_count // 0' "$JSON_FILE")
-          LOW=$(jq '.results[0].low_count // 0' "$JSON_FILE")
-          TOTAL=$(jq '.results[0].total_count // 0' "$JSON_FILE")
-        fi
+        # Forward counts to GitHub Actions outputs
+        [ -f bandit-reports/counts.env ] && cat bandit-reports/counts.env >> "$GITHUB_OUTPUT"
 
-        echo "critical_count=$CRITICAL" >> "$GITHUB_OUTPUT"
-        echo "high_count=$HIGH" >> "$GITHUB_OUTPUT"
-        echo "medium_count=$MEDIUM" >> "$GITHUB_OUTPUT"
-        echo "low_count=$LOW" >> "$GITHUB_OUTPUT"
-        echo "issue_count=$TOTAL" >> "$GITHUB_OUTPUT"
-
-        echo "Found: CRITICAL=$CRITICAL, HIGH=$HIGH, MEDIUM=$MEDIUM, LOW=$LOW, TOTAL=$TOTAL"
-
-        # Copy markdown summary for PR comment artifact
+        # Copy markdown summary for PR comment and step summary
         if [ -f "bandit-reports/argus-summary.md" ]; then
           cp bandit-reports/argus-summary.md scanner-summaries/bandit.md
           cat bandit-reports/argus-summary.md >> "$GITHUB_STEP_SUMMARY"

@@ -94,26 +94,19 @@ runs:
           --severity-threshold "${FAIL_ON_SEVERITY:-none}" \
           --format sarif json markdown \
           --output-dir ./opengrep-reports \
+          --output-vars ./opengrep-reports/counts.env \
           --no-timestamp \
           || SCAN_EXIT=$?
 
-        # Parse severity counts from JSON output
-        # SDK maps: ERROR→high, WARNING→medium, INFO→low
-        ERROR=0; WARNING=0; INFO=0; TOTAL=0
-        JSON_FILE="opengrep-reports/argus-results.json"
-        if [ -f "$JSON_FILE" ]; then
-          ERROR=$(jq '.results[0].high_count // 0' "$JSON_FILE")
-          WARNING=$(jq '.results[0].medium_count // 0' "$JSON_FILE")
-          INFO=$(jq '.results[0].low_count // 0' "$JSON_FILE")
-          TOTAL=$(jq '.results[0].total_count // 0' "$JSON_FILE")
+        # Forward counts to GitHub Actions outputs
+        [ -f opengrep-reports/counts.env ] && cat opengrep-reports/counts.env >> "$GITHUB_OUTPUT"
+
+        # Remap SDK severity names to action output names (ERROR→high, WARNING→medium, INFO→low)
+        if [ -f opengrep-reports/counts.env ]; then
+          echo "error_count=$(grep high_count opengrep-reports/counts.env | cut -d= -f2)" >> "$GITHUB_OUTPUT"
+          echo "warning_count=$(grep medium_count opengrep-reports/counts.env | cut -d= -f2)" >> "$GITHUB_OUTPUT"
+          echo "info_count=$(grep low_count opengrep-reports/counts.env | cut -d= -f2)" >> "$GITHUB_OUTPUT"
         fi
-
-        echo "error_count=$ERROR" >> "$GITHUB_OUTPUT"
-        echo "warning_count=$WARNING" >> "$GITHUB_OUTPUT"
-        echo "info_count=$INFO" >> "$GITHUB_OUTPUT"
-        echo "total_count=$TOTAL" >> "$GITHUB_OUTPUT"
-
-        echo "Found: ERROR=$ERROR, WARNING=$WARNING, INFO=$INFO, TOTAL=$TOTAL"
 
         # Copy markdown summary for PR comment artifact
         if [ -f "opengrep-reports/argus-summary.md" ]; then
