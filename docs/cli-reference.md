@@ -176,6 +176,23 @@ argus validate [-h] [--config CONFIG] [--check-tools] [--strict]
 | `--check-tools` | Also check scanner tool availability (local + Docker) | `false` |
 | `--strict` | Treat warnings as errors (exit non-zero). Useful in CI. | `false` |
 
+### `argus completion`
+
+Generate a shell completion script for argus.
+
+Usage:
+  argus completion bash >> ~/.bashrc
+  argus completion zsh >> ~/.zshrc
+  eval "$(argus completion zsh)"    # activate for current session
+
+```
+argus completion [-h] {bash,zsh}
+```
+
+**Arguments:**
+
+- `shell` — Shell type to generate completions for (choices: bash, zsh)
+
 ## Quick Reference
 
 ```bash
