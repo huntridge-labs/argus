@@ -35,8 +35,17 @@ class ArgusEngine:
         self,
         scanner_names: list[str] | None = None,
         path: str | None = None,
+        fail_fast: bool = False,
+        timeout: int | None = None,
     ) -> ScanSummary:
-        """Run scanners and return an aggregated ScanSummary."""
+        """Run scanners and return an aggregated ScanSummary.
+
+        Args:
+            scanner_names: specific scanners to run (None = all enabled)
+            path: override scan path for all scanners
+            fail_fast: abort immediately if any scanner fails
+            timeout: per-scanner timeout in seconds (None = no limit)
+        """
         names_to_run = self._resolve_scanner_names(scanner_names)
         logger.debug(
             "Resolved scanners to run: %s (from requested=%s)",
@@ -65,7 +74,9 @@ class ArgusEngine:
             start = time.monotonic()
 
             try:
-                result = self._run_scanner(scanner, scan_path, config_dict)
+                result = self._run_scanner_with_timeout(
+                    scanner, scan_path, config_dict, timeout,
+                )
 
                 # Filter out findings from excluded paths
                 exclude = config_dict.get("exclude", "")
@@ -93,6 +104,12 @@ class ArgusEngine:
                 logger.exception(
                     "Scanner '%s' failed after %dms", name, elapsed,
                 )
+                if fail_fast:
+                    logger.error(
+                        "Aborting scan — --fail-fast is set and '%s' failed",
+                        name,
+                    )
+                    break
 
         return ScanSummary(
             results=results,
@@ -349,6 +366,29 @@ class ArgusEngine:
                     "digest": digest,
                 },
             )
+
+    def _run_scanner_with_timeout(
+        self, scanner, path: str, config: dict | None,
+        timeout: int | None = None,
+    ) -> ScanResult:
+        """Run a scanner with an optional timeout (seconds).
+
+        Executes _run_scanner in a thread so we can enforce a wall-clock
+        limit without requiring scanners to be timeout-aware.
+        """
+        if timeout is None:
+            return self._run_scanner(scanner, path, config)
+
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(self._run_scanner, scanner, path, config)
+            try:
+                return future.result(timeout=timeout)
+            except concurrent.futures.TimeoutError:
+                raise RuntimeError(
+                    f"Scanner '{scanner.name}' timed out after {timeout}s"
+                )
 
     def _run_scanner(
         self, scanner, path: str, config: dict | None

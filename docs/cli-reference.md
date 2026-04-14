@@ -61,10 +61,10 @@ argus scan [-h] [--path PATH] [--config CONFIG]
                   [--output-dir OUTPUT_DIR]
                   [--severity-threshold {critical,high,medium,low,none}]
                   [--format {terminal,markdown,sarif,json}] [--list]
-                  [--verbose] [--no-spinner] [--no-timestamp]
-                  [--discover [PATH]] [--image REF] [--scanners SCANNERS]
-                  [--target URL] [--port PORT] [--env KEY=VALUE]
-                  [--scan-type {baseline,full}]
+                  [--verbose] [--no-spinner] [--no-timestamp] [--fail-fast]
+                  [--timeout SECONDS] [--discover [PATH]] [--image REF]
+                  [--scanners SCANNERS] [--target URL] [--port PORT]
+                  [--env KEY=VALUE] [--scan-type {baseline,full}]
                   [--startup-timeout STARTUP_TIMEOUT]
                   [scanner]
 ```
@@ -86,6 +86,8 @@ argus scan [-h] [--path PATH] [--config CONFIG]
 | `--verbose`, `-v` | Enable verbose output | `false` |
 | `--no-spinner` | Disable animated spinner output | `false` |
 | `--no-timestamp` | Write output directly to --output-dir without a timestamped subdirectory. Useful in CI where a predictable output path is needed. | `false` |
+| `--fail-fast` | Abort immediately if any scanner fails instead of continuing. | `false` |
+| `--timeout` | Per-scanner timeout in seconds. Scanners exceeding this limit are killed. |  |
 
 **Container Scanning:**
 

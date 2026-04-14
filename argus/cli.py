@@ -265,6 +265,18 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Write output directly to --output-dir without a timestamped subdirectory. "
              "Useful in CI where a predictable output path is needed.",
     )
+    scan_parser.add_argument(
+        "--fail-fast",
+        action="store_true",
+        help="Abort immediately if any scanner fails instead of continuing.",
+    )
+    scan_parser.add_argument(
+        "--timeout",
+        type=int,
+        default=None,
+        metavar="SECONDS",
+        help="Per-scanner timeout in seconds. Scanners exceeding this limit are killed.",
+    )
 
     # Container-specific flags (used with: argus scan container)
     container_group = scan_parser.add_argument_group(
@@ -576,7 +588,12 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
             message="Running scanners",
             enabled=_spinner_enabled(args),
         ):
-            summary = engine.run(scanner_names=scanner_names, path=args.path)
+            summary = engine.run(
+                scanner_names=scanner_names,
+                path=args.path,
+                fail_fast=getattr(args, "fail_fast", False),
+                timeout=getattr(args, "timeout", None),
+            )
         log.info(
             "Scan complete: %d scanner(s), %d finding(s)",
             len(summary.results),
@@ -925,7 +942,10 @@ def cmd_report(args: argparse.Namespace) -> int:
 
 
 def _list_scanners(engine) -> int:
-    """Print registered scanners and return success."""
+    """Print registered scanners with availability status."""
+    import shutil
+    from argus.containers import get_image
+
     scanners = getattr(engine, "_scanners", {})
     if not scanners:
         print("No scanners registered.")
@@ -935,11 +955,30 @@ def _list_scanners(engine) -> int:
         )
         return EXIT_SUCCESS
 
+    docker_ok = shutil.which("docker") is not None
+    backend = engine.config.execution.backend
+
     print("Available scanners:\n")
     for name, scanner in sorted(scanners.items()):
+        local = scanner.is_available()
+        image = get_image(name) or getattr(scanner, "container_image", "")
+
+        if local:
+            status = "local"
+        elif image and docker_ok and backend != "local":
+            status = "container"
+        elif image and not docker_ok:
+            status = "no docker"
+        else:
+            status = "not found"
+
         description = getattr(scanner, "description", "")
-        status = "enabled" if getattr(scanner, "enabled", True) else "disabled"
-        print(f"  {name:<24} [{status}]  {description}")
+        print(f"  {name:<20} [{status:<10}]  {description}")
+
+    print()
+    if not docker_ok and backend != "local":
+        print("  Docker not found — container-only scanners will be unavailable.")
+    print(f"  Backend: {backend}")
 
     return EXIT_SUCCESS
 
