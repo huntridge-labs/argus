@@ -38,28 +38,47 @@ _argus() {
         args)
             case "${words[1]}" in
                 scan)
-                    _arguments \
-                        '1:scanner:($scanners)' \
-                        '(-p --path)'{-p,--path}'[Path to scan]:path:_files -/' \
-                        '(-c --config)'{-c,--config}'[Path to argus.yml]:config:_files' \
-                        '(-o --output-dir)'{-o,--output-dir}'[Output directory]:dir:_files -/' \
-                        '(-s --severity-threshold)'{-s,--severity-threshold}'[Fail threshold]:severity:($severity)' \
-                        '(-f --format)'{-f,--format}'[Output format]:format:($formats)' \
-                        '--output-vars[Write counts to file]:file:_files' \
-                        '--list[List available scanners]' \
-                        '(-v --verbose)'{-v,--verbose}'[Enable verbose output]' \
-                        '--no-spinner[Disable spinner]' \
-                        '--no-timestamp[Flat output directory]' \
-                        '--fail-fast[Abort on first failure]' \
-                        '--timeout[Per-scanner timeout]:seconds:' \
-                        '--image[Container image to scan]:image:' \
-                        '--discover[Discover Dockerfiles]:path:_files -/' \
-                        '--scanners[Sub-scanners for container]:scanners:' \
-                        '--target[URL to scan]:url:' \
-                        '--port[Override exposed port]:port:' \
-                        '--env[Environment variable]:env:' \
-                        '--scan-type[ZAP scan type]:type:(baseline full)' \
+                    local -a scan_common scan_container scan_dast scan_args
+
+                    scan_common=(
+                        '1:scanner:($scanners)'
+                        '(-p --path)'{-p,--path}'[Path to scan]:path:_files -/'
+                        '(-c --config)'{-c,--config}'[Path to argus.yml]:config:_files'
+                        '(-o --output-dir)'{-o,--output-dir}'[Output directory]:dir:_files -/'
+                        '(-s --severity-threshold)'{-s,--severity-threshold}'[Fail threshold]:severity:($severity)'
+                        '(-f --format)'{-f,--format}'[Output format]:format:($formats)'
+                        '--output-vars[Write counts to file]:file:_files'
+                        '--list[List available scanners]'
+                        '(-v --verbose)'{-v,--verbose}'[Enable verbose output]'
+                        '--no-spinner[Disable spinner]'
+                        '--no-timestamp[Flat output directory]'
+                        '--fail-fast[Abort on first failure]'
+                        '--timeout[Per-scanner timeout]:seconds:'
+                    )
+
+                    scan_container=(
+                        '--image[Container image to scan]:image:'
+                        '--discover[Discover Dockerfiles]:path:_files -/'
+                        '--scanners[Sub-scanners (trivy,grype,syft)]:scanners:'
+                    )
+
+                    scan_dast=(
+                        '--target[URL to scan]:url:'
+                        '--image[Container image to scan]:image:'
+                        '--port[Override exposed port]:port:'
+                        '--env[Environment variable]:env:'
+                        '--scan-type[ZAP scan type]:type:(baseline full)'
                         '--startup-timeout[Target startup timeout]:seconds:'
+                    )
+
+                    # Show scanner-specific flags based on selected scanner
+                    scan_args=("${scan_common[@]}")
+                    case "${words[2]}" in
+                        container) scan_args+=("${scan_container[@]}") ;;
+                        zap)       scan_args+=("${scan_dast[@]}") ;;
+                    esac
+
+                    _arguments "${scan_args[@]}"
                     ;;
                 report)
                     _arguments \
