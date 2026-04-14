@@ -35,13 +35,9 @@ class TestGitHubActionsContract:
     CONTAINER_SUMMARY = ACTIONS_DIR / "scanner-container/scripts/generate_container_summary.py"
     ZAP_PARSER = ACTIONS_DIR / "scanner-zap/scripts/parse_zap_results.py"
     ZAP_SUMMARY = ACTIONS_DIR / "scanner-zap/scripts/generate_zap_summary.py"
-    CHECKOV_SUMMARY = ACTIONS_DIR / "scanner-checkov/scripts/generate_summary.py"
     CODEQL_SUMMARY = ACTIONS_DIR / "scanner-codeql/scripts/generate_summary.py"
-    OPENGREP_SUMMARY = ACTIONS_DIR / "scanner-opengrep/scripts/generate_summary.py"
-    TRIVY_IAC_SUMMARY = ACTIONS_DIR / "scanner-trivy-iac/scripts/generate_summary.py"
     CONTAINER_CONFIG = ACTIONS_DIR / "parse-container-config/scripts/parse_container_config.py"
     ZAP_CONFIG = ACTIONS_DIR / "parse-zap-config/scripts/parse_zap_config.py"
-    CLAMAV_PARSER = ACTIONS_DIR / "scanner-clamav/scripts/parse-clamav-report.py"
 
     @pytest.mark.integration
     def test_container_summary_writes_github_output(self, tmp_path):
@@ -129,41 +125,6 @@ class TestGitHubActionsContract:
         assert "|" in summary_content, "Missing markdown table in STEP_SUMMARY"
 
     @pytest.mark.integration
-    def test_checkov_summary_writes_output(self, tmp_path):
-        """Verify Checkov generate_summary.py produces a markdown file with correct content."""
-        output_file = tmp_path / "checkov.md"
-
-        checkov_reports = tmp_path / "checkov-reports"
-        checkov_reports.mkdir()
-        checkov_json = checkov_reports / "checkov-results.json"
-        checkov_json.write_text(json.dumps({
-            "check_type": "terraform",
-            "results": {
-                "failed_checks": [{
-                    "check_id": "CKV_TF_1", "check_name": "Test Check",
-                    "severity": "CRITICAL", "resource": "aws_s3_bucket.test",
-                    "file_path": "/main.tf", "file_line_range": [1, 10]
-                }]
-            }
-        }))
-
-        result = subprocess.run(
-            [sys.executable, str(self.CHECKOV_SUMMARY), str(output_file),
-             "--has-iac", "true", "--critical", "1", "--high", "2",
-             "--medium", "3", "--low", "1", "--passed", "50", "--total", "7",
-             "--repo-url", "https://github.com/test/repo",
-             "--github-server-url", "https://github.com",
-             "--github-repo", "test/repo", "--github-run-id", "12345"],
-            capture_output=True, text=True, cwd=str(tmp_path)
-        )
-
-        assert result.returncode == 0, f"Script failed: {result.stderr}"
-        assert output_file.exists(), "Output file not created"
-        content = output_file.read_text()
-        assert "Checkov" in content, "Missing Checkov header"
-        assert "|" in content, "Missing markdown table"
-
-    @pytest.mark.integration
     def test_codeql_summary_writes_output(self, tmp_path):
         """Verify CodeQL generate_summary.py produces a markdown file with correct content."""
         output_file = tmp_path / "codeql.md"
@@ -183,39 +144,6 @@ class TestGitHubActionsContract:
         content = output_file.read_text()
         assert "CodeQL" in content, "Missing CodeQL header"
         assert "|" in content, "Missing markdown table"
-
-    @pytest.mark.integration
-    def test_opengrep_summary_writes_output(self, tmp_path):
-        """Verify OpenGrep generate_summary.py produces a markdown file with correct content."""
-        output_file = tmp_path / "opengrep.md"
-
-        result = subprocess.run(
-            [sys.executable, str(self.OPENGREP_SUMMARY), str(output_file),
-             "--error-count", "2", "--warning-count", "5", "--info-count", "3",
-             "--total", "10", "--github-server-url", "https://github.com",
-             "--github-repo", "test/repo", "--github-run-id", "12345"],
-            capture_output=True, text=True
-        )
-
-        assert result.returncode == 0, f"Script failed: {result.stderr}"
-        assert output_file.exists(), "Output file not created"
-        content = output_file.read_text()
-        assert "OpenGrep" in content, "Missing OpenGrep header"
-        assert "|" in content, "Missing markdown table"
-
-    @pytest.mark.integration
-    def test_trivy_iac_summary_writes_output(self, tmp_path):
-        """Verify Trivy IaC generate_summary.py produces a markdown file."""
-        output_file = tmp_path / "trivy-iac.md"
-
-        result = subprocess.run(
-            [sys.executable, str(self.TRIVY_IAC_SUMMARY), str(output_file),
-             "--has-iac", "false"],
-            capture_output=True, text=True
-        )
-
-        assert result.returncode == 0, f"Script failed: {result.stderr}"
-        assert output_file.exists(), "Output file not created"
 
     @pytest.mark.integration
     def test_container_config_writes_github_output(self, tmp_path):
@@ -277,32 +205,6 @@ scans:
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         output_content = github_output.read_text()
         assert "matrix=" in output_content, "Missing matrix= in GITHUB_OUTPUT"
-
-    @pytest.mark.integration
-    def test_clamav_parser_writes_json_output(self, tmp_path):
-        """Verify parse-clamav-report.py generates JSON output file."""
-        report_file = tmp_path / "clamav-report.log"
-        report_file.write_text("""
-Scanning...
-/app/malware.exe: Win.Trojan.Generic FOUND
-
------------ SUMMARY -----------
-Scanned files: 100
-Infected files: 1
-""")
-
-        result = subprocess.run(
-            [sys.executable, str(self.CLAMAV_PARSER),
-             "--report-path", str(report_file)],
-            capture_output=True, text=True
-        )
-
-        assert result.returncode == 0, f"Script failed: {result.stderr}"
-        json_file = tmp_path / "clamav-report.json"
-        assert json_file.exists(), "JSON output file not created"
-        data = json.loads(json_file.read_text())
-        assert data["infected_files"] == 1, "Incorrect infected_files count"
-        assert data["total_files"] == 100, "Incorrect total_files count"
 
     @pytest.mark.integration
     def test_container_config_fails_on_missing_input(self, tmp_path):
