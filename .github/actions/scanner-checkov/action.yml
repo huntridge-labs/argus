@@ -117,7 +117,7 @@ runs:
       with:
         python-version: '3.12'
 
-    - name: Install Argus SDK
+    - name: Install dependencies
       if: steps.validate.outputs.has_iac == 'true'
       shell: bash
       run: pip install pyyaml
