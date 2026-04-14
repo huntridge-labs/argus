@@ -280,3 +280,95 @@ class TestDockerExecutionBackend:
         assert len(summary.results) == 1
         # Docker unavailable, should fall back to local
         assert scanner.scan_called_with is not None
+
+
+class TestFailFast:
+    """Test --fail-fast abort-on-first-failure behavior."""
+
+    def _make_engine(self):
+        data = {"scanners": {"a": {"enabled": True}, "b": {"enabled": True}}}
+        return ArgusEngine(ArgusConfig.from_dict(data))
+
+    def test_fail_fast_stops_after_first_failure(self):
+        engine = self._make_engine()
+
+        class FailingScanner:
+            name = "a"
+            def scan(self, path, config=None):
+                raise RuntimeError("boom")
+            def is_available(self):
+                return True
+            def install_command(self):
+                return None
+
+        good = MockScanner("b", findings=[
+            Finding(id="1", severity=Severity.LOW, title="f1"),
+        ])
+        engine.register_scanner(FailingScanner())
+        engine.register_scanner(good)
+
+        summary = engine.run(fail_fast=True)
+        # Scanner "a" fails, "b" should never run
+        assert len(summary.results) == 0
+        assert good.scan_called_with is None
+
+    def test_without_fail_fast_continues_after_failure(self):
+        engine = self._make_engine()
+
+        class FailingScanner:
+            name = "a"
+            def scan(self, path, config=None):
+                raise RuntimeError("boom")
+            def is_available(self):
+                return True
+            def install_command(self):
+                return None
+
+        good = MockScanner("b", findings=[
+            Finding(id="1", severity=Severity.LOW, title="f1"),
+        ])
+        engine.register_scanner(FailingScanner())
+        engine.register_scanner(good)
+
+        summary = engine.run(fail_fast=False)
+        # Scanner "a" fails, "b" still runs
+        assert len(summary.results) == 1
+        assert good.scan_called_with is not None
+
+
+class TestTimeout:
+    """Test per-scanner timeout enforcement."""
+
+    def _make_engine(self):
+        data = {"scanners": {"slow": {"enabled": True}}}
+        return ArgusEngine(ArgusConfig.from_dict(data))
+
+    def test_timeout_raises_on_slow_scanner(self):
+        import time
+
+        engine = self._make_engine()
+
+        class SlowScanner:
+            name = "slow"
+            def scan(self, path, config=None):
+                time.sleep(5)
+                return ScanResult(scanner=self.name)
+            def is_available(self):
+                return True
+            def install_command(self):
+                return None
+
+        engine.register_scanner(SlowScanner())
+        summary = engine.run(timeout=1)
+        # Scanner should time out and produce no results
+        assert len(summary.results) == 0
+
+    def test_no_timeout_allows_completion(self):
+        engine = self._make_engine()
+        scanner = MockScanner("slow", findings=[
+            Finding(id="1", severity=Severity.LOW, title="f1"),
+        ])
+        engine.register_scanner(scanner)
+
+        summary = engine.run(timeout=None)
+        assert len(summary.results) == 1

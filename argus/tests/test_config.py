@@ -64,6 +64,22 @@ class TestArgusConfigFromDict:
         assert config.reporting.severity_threshold == Severity.MEDIUM
         assert config.reporting.output_dir == "/tmp/results"
 
+    def test_severity_threshold_none_string_is_no_threshold(self):
+        """severity_threshold: 'none' in config means no threshold (not UNKNOWN)."""
+        data = {
+            "reporting": {"severity_threshold": "none"},
+        }
+        config = ArgusConfig.from_dict(data)
+        assert config.reporting.severity_threshold is None
+
+    def test_severity_threshold_none_value_is_no_threshold(self):
+        """severity_threshold: null in YAML means no threshold."""
+        data = {
+            "reporting": {"severity_threshold": None},
+        }
+        config = ArgusConfig.from_dict(data)
+        assert config.reporting.severity_threshold is None
+
     def test_non_dict_scanner_entry_skipped(self):
         data = {
             "scanners": {
