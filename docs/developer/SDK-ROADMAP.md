@@ -175,7 +175,7 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 ### Additional Scanner Modules
 - [ ] `codeql.py` — GitHub-specific, needs CodeQL CLI or Action
 - [ ] `dependency_review.py` — GitHub PR-only, needs GitHub API
-- [ ] Linter modules: yaml, json, python, javascript, dockerfile, terraform
+- [x] Linter modules: yaml, json, python, javascript, dockerfile, terraform (done in Phase 3)
 - [ ] `scn_detector.py` — FedRAMP SCN (port rule engine + AI providers from composite action)
 
 ### CLI Enhancements

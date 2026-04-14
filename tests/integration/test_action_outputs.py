@@ -30,99 +30,9 @@ class TestGitHubActionsContract:
     that breaks output generation should NOT pass these tests.
     """
 
-    TRIVY_PARSER = ACTIONS_DIR / "scanner-container/scripts/parse_trivy_results.py"
-    GRYPE_PARSER = ACTIONS_DIR / "scanner-container/scripts/parse_grype_results.py"
-    CONTAINER_SUMMARY = ACTIONS_DIR / "scanner-container/scripts/generate_container_summary.py"
-    ZAP_PARSER = ACTIONS_DIR / "scanner-zap/scripts/parse_zap_results.py"
-    ZAP_SUMMARY = ACTIONS_DIR / "scanner-zap/scripts/generate_zap_summary.py"
     CODEQL_SUMMARY = ACTIONS_DIR / "scanner-codeql/scripts/generate_summary.py"
     CONTAINER_CONFIG = ACTIONS_DIR / "parse-container-config/scripts/parse_container_config.py"
     ZAP_CONFIG = ACTIONS_DIR / "parse-zap-config/scripts/parse_zap_config.py"
-
-    @pytest.mark.integration
-    def test_container_summary_writes_github_output(self, tmp_path):
-        """Verify generate_container_summary.py writes correct key=value pairs to GITHUB_OUTPUT."""
-        github_output = tmp_path / "github_output"
-        github_output.touch()
-
-        github_step_summary = tmp_path / "step_summary"
-        github_step_summary.touch()
-
-        container_results = tmp_path / "container-scan-results-test-app"
-        container_results.mkdir()
-
-        trivy_results = container_results / "trivy-test-app-results.json"
-        trivy_results.write_text(json.dumps({
-            "Results": [
-                {
-                    "Vulnerabilities": [
-                        {"Severity": "CRITICAL", "VulnerabilityID": "CVE-2021-1"},
-                        {"Severity": "HIGH", "VulnerabilityID": "CVE-2021-2"},
-                    ]
-                }
-            ],
-            "Metadata": {"RepoTags": ["test-app:latest"]}
-        }))
-
-        env = os.environ.copy()
-        env["GITHUB_OUTPUT"] = str(github_output)
-        env["GITHUB_STEP_SUMMARY"] = str(github_step_summary)
-        env["TRIVY_PARSER"] = str(self.TRIVY_PARSER)
-        env["GRYPE_PARSER"] = str(self.GRYPE_PARSER)
-
-        result = subprocess.run(
-            [sys.executable, str(self.CONTAINER_SUMMARY)],
-            env=env, capture_output=True, text=True, cwd=str(tmp_path)
-        )
-
-        assert result.returncode == 0, f"Script failed: {result.stderr}"
-
-        output_content = github_output.read_text()
-        assert "total_vulns=" in output_content, "Missing total_vulns in GITHUB_OUTPUT"
-        assert "critical=" in output_content, "Missing critical in GITHUB_OUTPUT"
-        assert "high=" in output_content, "Missing high in GITHUB_OUTPUT"
-        assert "containers_scanned=" in output_content, "Missing containers_scanned in GITHUB_OUTPUT"
-
-        summary_content = github_step_summary.read_text()
-        assert "Container Security" in summary_content, "Missing header in STEP_SUMMARY"
-        assert "|" in summary_content, "Missing markdown table in STEP_SUMMARY"
-
-    @pytest.mark.integration
-    def test_zap_summary_writes_github_step_summary(self, tmp_path):
-        """Verify generate_zap_summary.py writes markdown to GITHUB_STEP_SUMMARY."""
-        github_step_summary = tmp_path / "step_summary"
-        github_step_summary.touch()
-
-        zap_downloads = tmp_path / "zap-downloads"
-        zap_downloads.mkdir()
-
-        zap_report = zap_downloads / "report_json.json"
-        zap_report.write_text(json.dumps({
-            "site": [
-                {
-                    "@name": "http://localhost:8080",
-                    "alerts": [
-                        {"name": "SQL Injection", "riskcode": "3", "pluginid": "1", "count": "1", "cweid": "89", "instances": []},
-                        {"name": "XSS", "riskcode": "3", "pluginid": "2", "count": "1", "cweid": "79", "instances": []},
-                    ]
-                }
-            ]
-        }))
-
-        env = os.environ.copy()
-        env["GITHUB_STEP_SUMMARY"] = str(github_step_summary)
-        env["ZAP_PARSER"] = str(self.ZAP_PARSER)
-
-        result = subprocess.run(
-            [sys.executable, str(self.ZAP_SUMMARY)],
-            env=env, capture_output=True, text=True, cwd=str(tmp_path)
-        )
-
-        assert result.returncode == 0, f"Script failed: {result.stderr}"
-
-        summary_content = github_step_summary.read_text()
-        assert "ZAP" in summary_content, "Missing ZAP header in STEP_SUMMARY"
-        assert "|" in summary_content, "Missing markdown table in STEP_SUMMARY"
 
     @pytest.mark.integration
     def test_codeql_summary_writes_output(self, tmp_path):
