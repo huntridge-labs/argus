@@ -135,7 +135,8 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 - [x] `--output-vars FILE` — machine-readable key=value counts for CI (eliminates jq dependency)
 - [x] SDK auto-discovers argus.yml — actions no longer generate temp configs
 - [x] All actions simplified to `pip install pyyaml` + `python -m argus scan`
-- [ ] Refactor 6 linter actions (or add linter modules to SDK first)
+- [x] Add 6 linter SDK modules: yamllint, jsonlint, flake8, jshint, hadolint, terraform
+- [x] Refactor all 6 linter actions to thin wrappers (1424 → 757 lines, -47%)
 - [ ] Verify backward compatibility: identical outputs, artifacts, SARIF
 - [ ] Update `test-actions.yml` to validate thin wrappers
 - [ ] Delete bundled `scripts/` from refactored actions (logic lives in SDK)
