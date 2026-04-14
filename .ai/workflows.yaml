@@ -236,6 +236,40 @@ contributor_workflows:
     reference_implementation: ".github/actions/scanner-bandit/"
     contributing_guide: "CONTRIBUTING.md"
 
+  add_new_linter:
+    description: "Add a new linter module to the SDK"
+    steps:
+      - action: "Create linter module"
+        location: "argus/linters/{name}.py"
+        purpose: "Implement Scanner protocol with Severity.INFO findings"
+        template: "argus/linters/yamllint.py"
+
+      - action: "Register in LINTER_REGISTRY"
+        location: "argus/linters/__init__.py"
+        purpose: "Add to LINTER_REGISTRY (auto-merges into SCANNER_REGISTRY)"
+
+      - action: "Add tests"
+        location: "argus/tests/linters/test_{name}.py"
+        required_tests:
+          - "test_name (verify lint-<tool> prefix)"
+          - "test_is_available_when_installed"
+          - "test_is_available_when_missing"
+          - "test_findings_use_info_severity"
+          - "test_install_command"
+
+      - action: "Verify registration"
+        command: "argus scan lint-{name} --path . --severity-threshold none"
+        note: "Works immediately after LINTER_REGISTRY registration — no additional wiring needed"
+
+    reference_implementation: "argus/linters/yamllint.py"
+    contributing_guide: "CONTRIBUTING.md"
+    key_points:
+      - "Linters implement the same Scanner protocol as security scanners"
+      - "Findings use Severity.INFO (not security severity levels)"
+      - "LINTER_REGISTRY auto-merges into SCANNER_REGISTRY at import time"
+      - "Shell completions update automatically (dynamic from registry)"
+      - "Tab completion via `argus completion zsh` is always current"
+
   create_release:
     description: "Release a new version"
     command: "npm run release"

@@ -236,6 +236,14 @@ argus/                                 # Python SDK package
 │   ├── supply_chain.py               # GitHub Actions security
 │   ├── trivy_iac.py                  # IaC scanning (Trivy)
 │   └── zap.py                        # DAST web scanning
+├── linters/                          # Linter modules (one per tool)
+│   ├── __init__.py                   # LINTER_REGISTRY (auto-merges into SCANNER_REGISTRY)
+│   ├── yamllint.py                   # YAML linting
+│   ├── jsonlint.py                   # JSON linting
+│   ├── python_lint.py                # Python linting
+│   ├── jshint.py                     # JavaScript linting
+│   ├── hadolint.py                   # Dockerfile linting
+│   └── terraform.py                  # Terraform linting
 ├── reporters/                        # Output format handlers
 │   ├── __init__.py                   # REPORTER_REGISTRY
 │   ├── terminal.py                   # Rich terminal output
@@ -332,6 +340,55 @@ Create a single Python file implementing the `Scanner` protocol:
 3. **Add tests** at `argus/tests/scanners/test_my_scanner.py`
 
 4. **Update documentation** and `.ai/architecture.yaml`
+
+## Adding a New Linter
+
+Linters follow the same `Scanner` protocol as security scanners but live in the `argus/linters/` package and produce findings with `Severity.INFO`. The `LINTER_REGISTRY` auto-merges into `SCANNER_REGISTRY` at import time, so linters are immediately available via `argus scan lint-<name>`.
+
+### SDK Linter Module
+
+1. **Create module** at `argus/linters/{name}.py`:
+   ```python
+   from argus.core.models import Finding, ScanResult, Severity
+
+   class MyLinter:
+       name = "lint-my-tool"
+
+       def scan(self, path: str, config: dict | None = None) -> ScanResult:
+           # Run the linting tool, parse output, return ScanResult
+           # Findings use Severity.INFO
+           ...
+
+       def is_available(self) -> bool:
+           # Check if the tool is installed
+           ...
+
+       def install_command(self) -> str | None:
+           # Return install command, or None
+           ...
+   ```
+
+2. **Register** in `argus/linters/__init__.py`:
+   ```python
+   from .my_linter import MyLinter
+   # Add to LINTER_REGISTRY:
+   "lint-my-tool": MyLinter,
+   ```
+   The `LINTER_REGISTRY` auto-merges into `SCANNER_REGISTRY` (see `argus/scanners/__init__.py`), so `argus scan lint-my-tool` works immediately. Shell completions (`argus completion zsh`) update automatically since they are generated dynamically from the registry.
+
+3. **Add tests** at `argus/tests/linters/test_my_linter.py`
+
+4. **Update documentation** and `.ai/architecture.yaml`
+
+**Key differences from security scanners:**
+- Linters live in `argus/linters/`, not `argus/scanners/`
+- Linter names are prefixed with `lint-` (e.g., `lint-yaml`, `lint-python`)
+- Findings use `Severity.INFO` rather than security severity levels
+- No container image is needed (linters run locally)
+
+**Reference implementation**: See `argus/linters/yamllint.py` for a complete, well-documented example.
+
+**Existing linters**: `lint-yaml`, `lint-json`, `lint-python`, `lint-javascript`, `lint-dockerfile`, `lint-terraform`
 
 ### Composite Action (for GitHub Actions users)
 
@@ -549,7 +606,8 @@ Examples are automatically validated by `.github/workflows/test-examples-functio
 - `AGENTS.md` - Cross-tool AI entry point
 - `argus/` - Python SDK package (primary interface)
 - `argus/core/scanner.py` - Scanner protocol definition
-- `argus/scanners/__init__.py` - Scanner registry
+- `argus/scanners/__init__.py` - Scanner registry (includes linters via auto-merge)
+- `argus/linters/__init__.py` - Linter registry (auto-merges into SCANNER_REGISTRY)
 - `argus/reporters/__init__.py` - Reporter registry
 - `argus.yml` - Project scan configuration
 - `argus.example.yml` - Quick-start configuration template

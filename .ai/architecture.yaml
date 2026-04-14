@@ -33,8 +33,25 @@ components:
       "core/scanner.py": "Scanner Protocol definition"
       "core/config.py": "ArgusConfig loading from argus.yml"
       "core/engine.py": "ArgusEngine orchestrating scanners and aggregating results"
-      "scanners/": "Scanner modules implementing Scanner protocol"
+      "scanners/": "Scanner modules implementing Scanner protocol (SCANNER_REGISTRY includes linters via auto-merge)"
+      "linters/": "Linter modules implementing Scanner protocol (LINTER_REGISTRY auto-merges into SCANNER_REGISTRY)"
       "reporters/": "Output reporters (terminal, markdown, sarif, json)"
+
+  - name: argus-linters
+    location: "argus/linters/"
+    purpose: "Linter modules implementing Scanner protocol for code style and syntax checks"
+    type: sdk-subpackage
+    registry: "LINTER_REGISTRY (auto-merges into SCANNER_REGISTRY at import time)"
+    naming_convention: "lint-<tool> prefix (e.g., lint-yaml, lint-python)"
+    severity: "Severity.INFO for all findings"
+    structure:
+      "__init__.py": "LINTER_REGISTRY + get_linter() + auto-merge into SCANNER_REGISTRY"
+      "yamllint.py": "YAML linting via yamllint"
+      "jsonlint.py": "JSON linting"
+      "python_lint.py": "Python linting"
+      "jshint.py": "JavaScript linting via jshint"
+      "hadolint.py": "Dockerfile linting via hadolint"
+      "terraform.py": "Terraform linting"
 
   - name: composite-actions
     location: ".github/actions/scanner-*/"
@@ -186,6 +203,26 @@ scanners:
       purpose: "FedRAMP Significant Change Notification detection and classification"
       output: "JSON, Markdown, GitHub Issues"
       categories: [routine, adaptive, transformative, impact]
+
+  linting:
+    - name: lint-yaml
+      purpose: "YAML syntax and style linting via yamllint"
+      output: "Finding (Severity.INFO)"
+    - name: lint-json
+      purpose: "JSON syntax linting"
+      output: "Finding (Severity.INFO)"
+    - name: lint-python
+      purpose: "Python code style and syntax linting"
+      output: "Finding (Severity.INFO)"
+    - name: lint-javascript
+      purpose: "JavaScript linting via jshint"
+      output: "Finding (Severity.INFO)"
+    - name: lint-dockerfile
+      purpose: "Dockerfile linting via hadolint"
+      output: "Finding (Severity.INFO)"
+    - name: lint-terraform
+      purpose: "Terraform configuration linting"
+      output: "Finding (Severity.INFO)"
 
 dependencies:
   external:
@@ -342,7 +379,8 @@ docsite:
       "core/scanner.py": "Scanner Protocol definition"
       "core/config.py": "ArgusConfig loading from argus.yml"
       "core/engine.py": "ArgusEngine orchestrating scanners and aggregating results"
-      "scanners/": "Scanner modules implementing Scanner protocol"
+      "scanners/": "Scanner modules implementing Scanner protocol (SCANNER_REGISTRY includes linters via auto-merge)"
+      "linters/": "Linter modules implementing Scanner protocol (LINTER_REGISTRY auto-merges into SCANNER_REGISTRY)"
       "reporters/": "Output reporters (terminal, markdown, sarif, json)"
       "tests/": "Co-located pytest tests (180 tests, 83%+ coverage)"
     scanners:
@@ -356,6 +394,13 @@ docsite:
       - supply-chain
       - zap
       - container
+    linters:
+      - lint-yaml
+      - lint-json
+      - lint-python
+      - lint-javascript
+      - lint-dockerfile
+      - lint-terraform
     reporters:
       - terminal
       - markdown
@@ -370,7 +415,8 @@ docsite:
 directory_structure:
   "argus/": "Standalone Python SDK (primary interface, ADR-013)"
   "argus/core/": "Core models, protocols, config, and engine"
-  "argus/scanners/": "Scanner modules (one per scanner)"
+  "argus/scanners/": "Scanner modules (one per scanner, SCANNER_REGISTRY includes linters)"
+  "argus/linters/": "Linter modules (one per linter, LINTER_REGISTRY auto-merges into SCANNER_REGISTRY)"
   "argus/reporters/": "Output reporters (terminal, markdown, sarif, json)"
   "argus/tests/": "SDK test suite"
   ".github/actions/": "Composite actions (GitHub Actions interface)"

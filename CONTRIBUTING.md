@@ -8,6 +8,7 @@ Welcome! This guide covers how to contribute scanners to the security scanning t
 
 - [Getting Started](#getting-started)
 - [Adding a Scanner via the SDK](#adding-a-scanner-via-the-sdk)
+- [Adding a Linter via the SDK](#adding-a-linter-via-the-sdk)
 - [Adding a Composite Action (GitHub Actions)](#adding-a-composite-action-github-actions)
 - [Testing Your Changes](#testing-your-changes)
 - [Documentation Requirements](#documentation-requirements)
@@ -36,9 +37,13 @@ argus/                            # Python SDK (primary interface)
 │   ├── models.py                # Finding, ScanResult, Severity
 │   └── engine.py                # Scan orchestration engine
 ├── scanners/                     # Scanner modules (one .py per scanner)
-│   ├── __init__.py              # Scanner registry
+│   ├── __init__.py              # Scanner registry (includes linters via auto-merge)
 │   ├── bandit.py                # Example: Bandit SAST scanner
 │   └── ...                      # One module per scanner
+├── linters/                      # Linter modules (one .py per linter)
+│   ├── __init__.py              # LINTER_REGISTRY (auto-merges into SCANNER_REGISTRY)
+│   ├── yamllint.py              # Example: YAML linter
+│   └── ...                      # One module per linter
 ├── reporters/                    # Output: terminal, markdown, SARIF, JSON
 ├── containers.py                 # Container image manifest
 └── tests/                        # SDK unit tests
@@ -288,6 +293,164 @@ class TestMyScanner:
 ### Step 6 (Optional): Create Composite Action Wrapper
 
 If GitHub Actions users need a workflow-level integration, create a composite action wrapper. See [Adding a Composite Action](#adding-a-composite-action-github-actions) below.
+
+---
+
+## Adding a Linter via the SDK
+
+Linters implement the same `Scanner` protocol as security scanners but live in the `argus/linters/` package. They produce findings with `Severity.INFO` and are registered in `LINTER_REGISTRY`, which auto-merges into `SCANNER_REGISTRY` at import time.
+
+### Step 1: Create the Linter Module
+
+Create `argus/linters/my_linter.py` implementing the `Scanner` protocol:
+
+```python
+"""My Linter - brief description of what it lints."""
+
+import shutil
+import subprocess
+from pathlib import Path
+
+from argus.core.models import Finding, ScanResult, Severity
+
+
+class MyLinter:
+    """Wraps my-tool to lint files for style and syntax issues."""
+
+    name = "lint-my-tool"
+
+    def scan(self, path: str, config: dict | None = None) -> ScanResult:
+        """Run the linter against the given path and return results."""
+        config = config or {}
+        cmd = self._build_command(path, config)
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        findings = self._parse_output(result.stdout)
+        return ScanResult(
+            scanner=self.name,
+            findings=findings,
+            metadata={"returncode": result.returncode},
+        )
+
+    def is_available(self) -> bool:
+        """Check if the linting tool is installed."""
+        return shutil.which("my-tool") is not None
+
+    def install_command(self) -> str | None:
+        """Return the shell command to install the tool, or None."""
+        return "pip install my-tool"
+
+    def _build_command(self, path: str, config: dict) -> list[str]:
+        """Build the CLI command."""
+        return ["my-tool", "--format", "parsable", path]
+
+    def _parse_output(self, output: str) -> list[Finding]:
+        """Parse tool output into findings with Severity.INFO."""
+        findings = []
+        for line in output.strip().splitlines():
+            if not line.strip():
+                continue
+            finding = self._parse_line(line)
+            if finding:
+                findings.append(finding)
+        return findings
+
+    def _parse_line(self, line: str) -> Finding | None:
+        """Parse a single output line into a Finding."""
+        # Adapt parsing logic for your linter's output format
+        return Finding(
+            id="my-tool",
+            severity=Severity.INFO,
+            title=line.strip(),
+            description=line.strip(),
+            location="",
+            scanner=self.name,
+        )
+```
+
+**Key differences from security scanners:**
+- Linter names are prefixed with `lint-` (e.g., `lint-yaml`, `lint-python`)
+- Findings use `Severity.INFO` rather than security severity levels
+- No container image is needed (linters run locally)
+
+**Reference implementation**: See `argus/linters/yamllint.py` for a complete, well-documented example.
+
+### Step 2: Register in the Linter Registry
+
+Add your linter to `argus/linters/__init__.py`:
+
+```python
+from .my_linter import MyLinter
+
+# Add to __all__
+__all__ = [
+    # ... existing linters
+    "MyLinter",
+]
+
+# Add to LINTER_REGISTRY
+LINTER_REGISTRY = {
+    # ... existing entries
+    "lint-my-tool": MyLinter,
+}
+```
+
+The `LINTER_REGISTRY` auto-merges into `SCANNER_REGISTRY` (see `argus/scanners/__init__.py`), so `argus scan lint-my-tool` works immediately after registration. Shell completions (`argus completion zsh`) update automatically since they are generated dynamically from the registry.
+
+### Step 3: Add Tests
+
+Create `argus/tests/linters/test_my_linter.py`:
+
+```python
+"""Tests for MyLinter."""
+
+from unittest.mock import patch
+
+import pytest
+
+from argus.linters.my_linter import MyLinter
+from argus.core.models import Severity
+
+
+class TestMyLinter:
+    def setup_method(self):
+        self.linter = MyLinter()
+
+    def test_name(self):
+        assert self.linter.name == "lint-my-tool"
+
+    def test_is_available_when_installed(self):
+        with patch("shutil.which", return_value="/usr/bin/my-tool"):
+            assert self.linter.is_available() is True
+
+    def test_is_available_when_missing(self):
+        with patch("shutil.which", return_value=None):
+            assert self.linter.is_available() is False
+
+    def test_findings_use_info_severity(self):
+        finding = self.linter._parse_line("some lint warning")
+        assert finding is not None
+        assert finding.severity == Severity.INFO
+
+    def test_install_command(self):
+        assert self.linter.install_command() is not None
+```
+
+### Step 4: Update Documentation
+
+1. Update `.ai/architecture.yaml` (linters list)
+2. Update `CLAUDE.md` if the linter introduces a new category
+
+### Validation Checklist (Linters)
+
+- [ ] Linter implements all required protocol methods (`scan`, `is_available`, `install_command`)
+- [ ] Linter registered in `argus/linters/__init__.py`
+- [ ] Linter name uses `lint-` prefix
+- [ ] Findings use `Severity.INFO`
+- [ ] `argus scan lint-<name>` works after registration
+- [ ] Unit tests in `argus/tests/linters/`
+- [ ] All tests pass: `pytest argus/tests/`
 
 ---
 
@@ -792,6 +955,9 @@ Brief description of the scanner.
 - **SDK scanner modules**: `argus/scanners/{tool}.py` (snake_case, e.g., `trivy_iac.py`, `supply_chain.py`)
 - **SDK scanner classes**: `PascalCase` + `Scanner` suffix (e.g., `BanditScanner`, `TrivyIacScanner`)
 - **Scanner registry names**: kebab-case (e.g., `"trivy-iac"`, `"supply-chain"`)
+- **SDK linter modules**: `argus/linters/{tool}.py` (snake_case, e.g., `yamllint.py`, `python_lint.py`)
+- **SDK linter classes**: `PascalCase` + `Linter` suffix (e.g., `YamllintLinter`, `HadolintLinter`)
+- **Linter registry names**: `lint-` prefix + kebab-case (e.g., `"lint-yaml"`, `"lint-python"`)
 - **Actions**: `scanner-{tool}` or `linter-{tool}`
 - **Scripts**: `parse_results.py`, `generate_summary.py`
 - **Artifacts**: `{tool}-reports-{job_id}`, `scanner-summary-{tool}-{job_id}`
