@@ -86,3 +86,6 @@ _argus() {
 }
 
 _argus "$@"
+
+# Register when sourced directly (not via fpath)
+compdef _argus argus 2>/dev/null
