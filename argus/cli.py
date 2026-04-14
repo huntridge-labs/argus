@@ -209,13 +209,22 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    scan_parser.add_argument(
+    scanner_arg = scan_parser.add_argument(
         "scanner",
         nargs="?",
         default=None,
         help="Specific scanner to run (omit to run all enabled scanners). "
              "Use 'container' with --discover or --image for container scanning.",
     )
+    # Tab completion for scanner names (requires argcomplete)
+    try:
+        import argcomplete
+        from argus.scanners import SCANNER_REGISTRY
+        scanner_arg.completer = argcomplete.completers.ChoicesCompleter(
+            sorted(SCANNER_REGISTRY.keys()),
+        )
+    except ImportError:
+        pass
     scan_parser.add_argument(
         "--path", "-p",
         default=".",
@@ -1320,6 +1329,14 @@ def main(argv: list[str] | None = None) -> None:
         _show_scanner_help(scanner_name)
 
     parser = build_parser()
+
+    # Enable shell tab completion (requires: pip install argcomplete)
+    try:
+        import argcomplete
+        argcomplete.autocomplete(parser)
+    except ImportError:
+        pass
+
     args = parser.parse_args(raw_args)
 
     if args.command is None:
