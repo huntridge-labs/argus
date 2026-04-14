@@ -148,9 +148,17 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 
 ### PyPI Publishing
 - [ ] `pyproject.toml` with package metadata, entry_points for `argus` CLI, pyyaml bundled
-- [ ] Update scanner actions: `pip install pyyaml` → `pip install argus-security` (deps bundled)
 - [ ] CI workflow to publish `argus-security` to PyPI on GitHub release
 - [ ] Versioned: tied to `version.yaml` via release-it
+
+### Post-PyPI Cleanup (after `pip install argus-security` works)
+- [ ] Update all 16 action wrappers: `pip install pyyaml` → `pip install argus-security`
+- [ ] Rename action step "Install dependencies" → "Install Argus"
+- [ ] Remove `bin/argus` wrapper (pip creates the entry point)
+- [ ] Ship `completions/` via pyproject.toml data_files for auto-install
+- [ ] Add `argcomplete` as optional extra: `pip install argus-security[completion]`
+- [ ] Register argcomplete global completion in `argus init` output
+- [ ] Update QUICK-START.md and README.md install instructions
 
 ### Container Image Publishing
 - [ ] CI workflow to build and push custom images to GHCR on release
