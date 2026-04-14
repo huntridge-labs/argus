@@ -114,7 +114,7 @@ runs:
         python -m argus scan trivy-iac \
           --path "${IAC_PATH}" \
           --severity-threshold "${FAIL_ON_SEVERITY:-none}" \
-          --format sarif json markdown \
+          --format sarif --format json --format markdown \
           --output-dir ./trivy-iac-reports \
           --output-vars ./trivy-iac-reports/counts.env \
           --no-timestamp \

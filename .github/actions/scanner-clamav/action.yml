@@ -82,7 +82,7 @@ runs:
         python -m argus scan clamav \
           --path "${SCAN_PATH}" \
           --severity-threshold "${FAIL_ON_SEVERITY:-none}" \
-          --format sarif json markdown \
+          --format sarif --format json --format markdown \
           --output-dir ./clamav-reports \
           --output-vars ./clamav-reports/counts.env \
           --no-timestamp \

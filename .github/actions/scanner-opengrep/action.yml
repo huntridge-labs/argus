@@ -92,7 +92,7 @@ runs:
         python -m argus scan opengrep \
           --path "${PATHS_INPUT}" \
           --severity-threshold "${FAIL_ON_SEVERITY:-none}" \
-          --format sarif json markdown \
+          --format sarif --format json --format markdown \
           --output-dir ./opengrep-reports \
           --output-vars ./opengrep-reports/counts.env \
           --no-timestamp \

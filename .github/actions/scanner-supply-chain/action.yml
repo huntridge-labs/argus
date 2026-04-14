@@ -112,7 +112,7 @@ runs:
         python -m argus scan supply-chain \
           --path "${SCAN_PATH}" \
           --severity-threshold "${FAIL_ON_SEVERITY:-none}" \
-          --format sarif json markdown \
+          --format sarif --format json --format markdown \
           --output-dir ./supply-chain-reports \
           --output-vars ./supply-chain-reports/counts.env \
           --no-timestamp \

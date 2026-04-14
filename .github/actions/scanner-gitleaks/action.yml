@@ -78,7 +78,7 @@ runs:
         python -m argus scan gitleaks \
           --path "${SCAN_PATH}" \
           --severity-threshold "${FAIL_ON_SEVERITY:-none}" \
-          --format sarif json markdown \
+          --format sarif --format json --format markdown \
           --output-dir ./gitleaks-reports \
           --output-vars ./gitleaks-reports/counts.env \
           --no-timestamp \
