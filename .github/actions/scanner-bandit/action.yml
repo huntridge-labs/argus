@@ -16,31 +16,38 @@ inputs:
     required: false
     default: 'false'
   fail_on_severity:
-    description: 'Fail the job if any issue is found. Bandit does not support severity-based filtering - any value other than "none" will fail on any found issue.'
+    description: 'Severity threshold — fail if findings meet or exceed this level (critical, high, medium, low, none).'
     required: false
     default: 'none'
   bandit_config_file:
     description: 'Path to Bandit configuration file (e.g. pyproject.toml, .bandit). Passed as bandit -c flag.'
     required: false
     default: ''
+  scan_path:
+    description: 'Path to scan (default: current directory)'
+    required: false
+    default: '.'
   python_version:
     description: 'Python version to use'
     required: false
     default: '3.12'
 
 outputs:
+  critical_count:
+    description: 'Number of critical severity issues found'
+    value: ${{ steps.scan.outputs.critical_count }}
   high_count:
     description: 'Number of high severity issues found'
-    value: ${{ steps.parse-results.outputs.high_count }}
+    value: ${{ steps.scan.outputs.high_count }}
   medium_count:
     description: 'Number of medium severity issues found'
-    value: ${{ steps.parse-results.outputs.medium_count }}
+    value: ${{ steps.scan.outputs.medium_count }}
   low_count:
     description: 'Number of low severity issues found'
-    value: ${{ steps.parse-results.outputs.low_count }}
+    value: ${{ steps.scan.outputs.low_count }}
   issue_count:
     description: 'Total number of issues found'
-    value: ${{ steps.parse-results.outputs.issue_count }}
+    value: ${{ steps.scan.outputs.issue_count }}
 
 runs:
   using: 'composite'
@@ -55,126 +62,78 @@ runs:
       with:
         python-version: ${{ inputs.python_version }}
 
-    - name: Install Bandit
+    - name: Install Argus SDK
       shell: bash
-      run: |
-        python -m pip install --upgrade pip
-        pip install 'bandit[toml,sarif]>=1.7.5'
+      run: pip install pyyaml 'bandit[toml,sarif]>=1.7.5'
 
-    - name: Run Bandit Security Scan
+    - name: Run Bandit via Argus SDK
+      id: scan
       shell: bash
       env:
         FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
         BANDIT_CONFIG_FILE: ${{ inputs.bandit_config_file }}
+        SCAN_PATH: ${{ inputs.scan_path }}
       run: |
-        echo "🔍 Running Bandit Python security analysis..."
-        mkdir -p bandit-reports
+        mkdir -p bandit-reports scanner-summaries
 
-        # Determine exit-zero flag based on fail_on_severity
-        EXIT_ZERO_FLAG=""
-        if [ "$FAIL_ON_SEVERITY" == "none" ] || [ -z "$FAIL_ON_SEVERITY" ]; then
-          EXIT_ZERO_FLAG="--exit-zero"
-        fi
-
-        # Add config file flag if specified
-        CONFIG_ARG=""
+        # Build a temporary argus config with scanner-specific settings
+        CONFIG_FILE=""
         if [ -n "$BANDIT_CONFIG_FILE" ] && [ -f "$BANDIT_CONFIG_FILE" ]; then
-          CONFIG_ARG="-c $BANDIT_CONFIG_FILE"
-          echo "Using config file: $BANDIT_CONFIG_FILE"
+          CONFIG_FILE="    config_file: \"$BANDIT_CONFIG_FILE\""
         fi
 
-        echo "Generating SARIF report..."
-        bandit -r . --exclude .husky,.github $CONFIG_ARG -f sarif -o bandit-reports/bandit-report.sarif $EXIT_ZERO_FLAG || true
+        cat > /tmp/argus-bandit.yml <<ARGUSCFG
+        version: "1.0"
+        scanners:
+          bandit:
+            enabled: true
+            path: "${SCAN_PATH}"
+            exclude: ".husky,.github"
+        ${CONFIG_FILE}
+        reporting:
+          formats:
+            - sarif
+            - json
+            - markdown
+          severity_threshold: "${FAIL_ON_SEVERITY:-none}"
+          output_dir: "./bandit-reports"
+        execution:
+          backend: local
+        ARGUSCFG
 
-        echo "Generating JSON report..."
-        bandit -r . --exclude .husky,.github $CONFIG_ARG -f json -o bandit-reports/bandit-report.json $EXIT_ZERO_FLAG || true
+        # Run argus scan (exit code 1 = findings above threshold)
+        SCAN_EXIT=0
+        python -m argus scan bandit \
+          --config /tmp/argus-bandit.yml \
+          --no-timestamp \
+          || SCAN_EXIT=$?
 
-        echo "Generating text report..."
-        bandit -r . --exclude .husky,.github $CONFIG_ARG -f txt -o bandit-reports/bandit-report.txt $EXIT_ZERO_FLAG || true
-
-        echo "Generated Bandit files:"
-        ls -la bandit-reports/
-
-    - name: Parse results
-      id: parse-results
-      shell: bash
-      run: |
-        # Initialize counts
-        HIGH_COUNT=0
-        MEDIUM_COUNT=0
-        LOW_COUNT=0
-        ISSUE_COUNT=0
-
-        if [ -f "bandit-reports/bandit-report.json" ]; then
-          ISSUE_COUNT=$(jq -r '[.results[]?] | length' bandit-reports/bandit-report.json 2>/dev/null || echo "0")
-          HIGH_COUNT=$(jq -r '[.results[]? | select(.issue_severity == "HIGH")] | length' bandit-reports/bandit-report.json 2>/dev/null || echo "0")
-          MEDIUM_COUNT=$(jq -r '[.results[]? | select(.issue_severity == "MEDIUM")] | length' bandit-reports/bandit-report.json 2>/dev/null || echo "0")
-          LOW_COUNT=$(jq -r '[.results[]? | select(.issue_severity == "LOW")] | length' bandit-reports/bandit-report.json 2>/dev/null || echo "0")
+        # Parse severity counts from JSON output
+        CRITICAL=0; HIGH=0; MEDIUM=0; LOW=0; TOTAL=0
+        JSON_FILE="bandit-reports/argus-results.json"
+        if [ -f "$JSON_FILE" ]; then
+          CRITICAL=$(jq '.results[0].critical_count // 0' "$JSON_FILE")
+          HIGH=$(jq '.results[0].high_count // 0' "$JSON_FILE")
+          MEDIUM=$(jq '.results[0].medium_count // 0' "$JSON_FILE")
+          LOW=$(jq '.results[0].low_count // 0' "$JSON_FILE")
+          TOTAL=$(jq '.results[0].total_count // 0' "$JSON_FILE")
         fi
 
-        echo "high_count=$HIGH_COUNT" >> $GITHUB_OUTPUT
-        echo "medium_count=$MEDIUM_COUNT" >> $GITHUB_OUTPUT
-        echo "low_count=$LOW_COUNT" >> $GITHUB_OUTPUT
-        echo "issue_count=$ISSUE_COUNT" >> $GITHUB_OUTPUT
+        echo "critical_count=$CRITICAL" >> "$GITHUB_OUTPUT"
+        echo "high_count=$HIGH" >> "$GITHUB_OUTPUT"
+        echo "medium_count=$MEDIUM" >> "$GITHUB_OUTPUT"
+        echo "low_count=$LOW" >> "$GITHUB_OUTPUT"
+        echo "issue_count=$TOTAL" >> "$GITHUB_OUTPUT"
 
-        echo "Found: HIGH=$HIGH_COUNT, MEDIUM=$MEDIUM_COUNT, LOW=$LOW_COUNT, TOTAL=$ISSUE_COUNT"
+        echo "Found: CRITICAL=$CRITICAL, HIGH=$HIGH, MEDIUM=$MEDIUM, LOW=$LOW, TOTAL=$TOTAL"
 
-    - name: Check severity threshold
-      if: inputs.fail_on_severity != 'none' && inputs.fail_on_severity != ''
-      shell: bash
-      env:
-        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
-      run: |
-        echo "🔍 Checking Bandit findings against severity threshold: $FAIL_ON_SEVERITY"
-
-        if [ ! -f "bandit-reports/bandit-report.json" ]; then
-          echo "⚠️ No Bandit JSON report found, skipping severity check"
-          exit 0
+        # Copy markdown summary for PR comment artifact
+        if [ -f "bandit-reports/argus-summary.md" ]; then
+          cp bandit-reports/argus-summary.md scanner-summaries/bandit.md
+          cat bandit-reports/argus-summary.md >> "$GITHUB_STEP_SUMMARY"
         fi
 
-        # Parse severity counts from JSON report
-        HIGH_COUNT=$(jq -r '.results[] | select(.issue_severity == "HIGH") | .test_id' bandit-reports/bandit-report.json 2>/dev/null | wc -l | tr -d ' ')
-        MEDIUM_COUNT=$(jq -r '.results[] | select(.issue_severity == "MEDIUM") | .test_id' bandit-reports/bandit-report.json 2>/dev/null | wc -l | tr -d ' ')
-        LOW_COUNT=$(jq -r '.results[] | select(.issue_severity == "LOW") | .test_id' bandit-reports/bandit-report.json 2>/dev/null | wc -l | tr -d ' ')
-
-        echo "Found: HIGH=$HIGH_COUNT, MEDIUM=$MEDIUM_COUNT, LOW=$LOW_COUNT"
-
-        SHOULD_FAIL=false
-        case "$FAIL_ON_SEVERITY" in
-          critical)
-            # Bandit only has HIGH/MEDIUM/LOW - no critical severity exists
-            # Treat HIGH as the equivalent of critical for Bandit
-            if [ "$HIGH_COUNT" -gt 0 ]; then
-              echo "ℹ️ Bandit does not have 'critical' severity - treating HIGH as equivalent"
-              echo "❌ Found $HIGH_COUNT high severity issues (Bandit's highest level)"
-              SHOULD_FAIL=true
-            fi
-            ;;
-          high)
-            if [ "$HIGH_COUNT" -gt 0 ]; then
-              echo "❌ Found $HIGH_COUNT high severity issues"
-              SHOULD_FAIL=true
-            fi
-            ;;
-          medium)
-            if [ "$HIGH_COUNT" -gt 0 ] || [ "$MEDIUM_COUNT" -gt 0 ]; then
-              echo "❌ Found $HIGH_COUNT high and $MEDIUM_COUNT medium severity issues"
-              SHOULD_FAIL=true
-            fi
-            ;;
-          low)
-            if [ "$HIGH_COUNT" -gt 0 ] || [ "$MEDIUM_COUNT" -gt 0 ] || [ "$LOW_COUNT" -gt 0 ]; then
-              echo "❌ Found $HIGH_COUNT high, $MEDIUM_COUNT medium, and $LOW_COUNT low severity issues"
-              SHOULD_FAIL=true
-            fi
-            ;;
-        esac
-
-        if [ "$SHOULD_FAIL" = true ]; then
-          exit 1
-        fi
-
-        echo "✅ No issues at or above severity threshold"
+        exit $SCAN_EXIT
 
     - name: Upload Bandit artifacts
       uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
@@ -187,148 +146,8 @@ runs:
     - name: Upload Bandit SARIF
       uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
       with:
-        sarif_file: bandit-reports/bandit-report.sarif
-      if: inputs.enable_code_security == 'true' && always() && github.actor != 'nektos/act' && hashFiles('bandit-reports/bandit-report.sarif') != ''
-      continue-on-error: true
-
-    - name: Generate Bandit summary section
-      if: always()
-      shell: bash
-      env:
-        HEAD_REF: ${{ github.head_ref || github.ref_name }}
-        GITHUB_SERVER_URL: ${{ github.server_url }}
-        GITHUB_REPO: ${{ github.repository }}
-        GITHUB_RUN_ID_VAL: ${{ github.run_id }}
-      run: |
-        mkdir -p scanner-summaries
-
-        # Function to generate summary for a given output
-        generate_bandit_summary() {
-          local output="$1"
-          local is_pr_comment="$2"
-
-          if [ "$is_pr_comment" = "true" ]; then
-            echo "<details>" >> "$output"
-            echo "<summary>🔍 Bandit Python Security</summary>" >> "$output"
-          else
-            echo "## 🔍 Bandit Python Security Scan Summary" >> "$output"
-          fi
-          echo "" >> "$output"
-
-          if [ -d "bandit-reports" ] && [ "$(ls -A bandit-reports 2>/dev/null)" ]; then
-            if [ "$is_pr_comment" = "true" ]; then
-              echo "**Status:** ✅ Completed" >> "$output"
-              echo "" >> "$output"
-            fi
-
-            # Initialize counts
-            ISSUE_COUNT=0
-            HIGH_COUNT=0
-            MEDIUM_COUNT=0
-            LOW_COUNT=0
-
-            json_file="bandit-reports/bandit-report.json"
-            # Set up repo URL for clickable links
-            REPO_URL="${GITHUB_SERVER_URL}/${GITHUB_REPO}/blob/${HEAD_REF}"
-
-            if [ -f "$json_file" ] && [ -s "$json_file" ] && command -v jq >/dev/null 2>&1; then
-              ISSUE_COUNT=$(jq -r '[.results[]?] | length' "$json_file" 2>/dev/null || echo "0")
-              HIGH_COUNT=$(jq -r '[.results[]? | select(.issue_severity == "HIGH")] | length' "$json_file" 2>/dev/null || echo "0")
-              MEDIUM_COUNT=$(jq -r '[.results[]? | select(.issue_severity == "MEDIUM")] | length' "$json_file" 2>/dev/null || echo "0")
-              LOW_COUNT=$(jq -r '[.results[]? | select(.issue_severity == "LOW")] | length' "$json_file" 2>/dev/null || echo "0")
-            fi
-
-            # Overall Summary Table
-            echo "### 📊 Findings Summary" >> "$output"
-            echo "" >> "$output"
-            echo "| 🔴 High | 🟠 Medium | 🟢 Low | 📦 Total |" >> "$output"
-            echo "|---------|-----------|--------|----------|" >> "$output"
-            echo "| **$HIGH_COUNT** | **$MEDIUM_COUNT** | **$LOW_COUNT** | **$ISSUE_COUNT** |" >> "$output"
-            echo "" >> "$output"
-
-            # Detailed findings with collapsible sections
-            if [ $ISSUE_COUNT -gt 0 ] && [ -f "$json_file" ]; then
-              echo "<details open>" >> "$output"
-              echo "<summary>🔍 Finding Details</summary>" >> "$output"
-              echo "" >> "$output"
-
-              # Show High severity findings first (expanded)
-              if [ $HIGH_COUNT -gt 0 ]; then
-                echo "<details>" >> "$output"
-                echo "<summary>🔴 High Severity Findings ($HIGH_COUNT)</summary>" >> "$output"
-                echo "" >> "$output"
-                echo "| Test ID | Location | CWE | Issue |" >> "$output"
-                echo "|---------|----------|-----|-------|" >> "$output"
-                jq -r --arg repo_url "$REPO_URL" '.results[]? | select(.issue_severity == "HIGH") | (.filename // "N/A" | gsub("^\\./"; "")) as $file | (.line_number // 1) as $line | "| \(.test_id // "N/A") | [\($file)#L\($line)](\($repo_url)/\($file)#L\($line)) | CWE-\(.issue_cwe.id // "N/A") | \(.issue_text // "N/A" | gsub("\n"; " ") | .[0:60]) |"' "$json_file" 2>/dev/null | head -50 >> "$output" || echo "| Error parsing | - | - | - |" >> "$output"
-                if [ $HIGH_COUNT -gt 50 ]; then
-                  echo "" >> "$output"
-                  echo "_...and $((HIGH_COUNT - 50)) more high severity findings_" >> "$output"
-                fi
-                echo "</details>" >> "$output"
-                echo "" >> "$output"
-              fi
-
-              # Show Medium severity findings (expanded)
-              if [ $MEDIUM_COUNT -gt 0 ]; then
-                echo "<details>" >> "$output"
-                echo "<summary>🟠 Medium Severity Findings ($MEDIUM_COUNT)</summary>" >> "$output"
-                echo "" >> "$output"
-                echo "| Test ID | Location | CWE | Issue |" >> "$output"
-                echo "|---------|----------|-----|-------|" >> "$output"
-                jq -r --arg repo_url "$REPO_URL" '.results[]? | select(.issue_severity == "MEDIUM") | (.filename // "N/A" | gsub("^\\./"; "")) as $file | (.line_number // 1) as $line | "| \(.test_id // "N/A") | [\($file)#L\($line)](\($repo_url)/\($file)#L\($line)) | CWE-\(.issue_cwe.id // "N/A") | \(.issue_text // "N/A" | gsub("\n"; " ") | .[0:60]) |"' "$json_file" 2>/dev/null | head -50 >> "$output" || echo "| Error parsing | - | - | - |" >> "$output"
-                if [ $MEDIUM_COUNT -gt 50 ]; then
-                  echo "" >> "$output"
-                  echo "_...and $((MEDIUM_COUNT - 50)) more medium severity findings_" >> "$output"
-                fi
-                echo "</details>" >> "$output"
-                echo "" >> "$output"
-              fi
-
-              # Show Low severity findings in collapsed section
-              if [ $LOW_COUNT -gt 0 ]; then
-                echo "<details>" >> "$output"
-                echo "<summary>🟢 Low Severity Findings ($LOW_COUNT)</summary>" >> "$output"
-                echo "" >> "$output"
-                echo "| Test ID | Location | CWE | Issue |" >> "$output"
-                echo "|---------|----------|-----|-------|" >> "$output"
-                jq -r --arg repo_url "$REPO_URL" '.results[]? | select(.issue_severity == "LOW") | (.filename // "N/A" | gsub("^\\./"; "")) as $file | (.line_number // 1) as $line | "| \(.test_id // "N/A") | [\($file)#L\($line)](\($repo_url)/\($file)#L\($line)) | CWE-\(.issue_cwe.id // "N/A") | \(.issue_text // "N/A" | gsub("\n"; " ") | .[0:60]) |"' "$json_file" 2>/dev/null | head -50 >> "$output" || echo "| Error parsing | - | - | - |" >> "$output"
-                if [ $LOW_COUNT -gt 50 ]; then
-                  echo "" >> "$output"
-                  echo "_...and $((LOW_COUNT - 50)) more low severity findings_" >> "$output"
-                fi
-                echo "" >> "$output"
-                echo "</details>" >> "$output"
-                echo "" >> "$output"
-              fi
-
-              echo "</details>" >> "$output"
-              echo "" >> "$output"
-            elif [ $ISSUE_COUNT -eq 0 ]; then
-              echo "✅ **No security findings detected!**" >> "$output"
-              echo "" >> "$output"
-            fi
-
-            echo "**📁 Artifacts:** [Bandit Reports](${GITHUB_SERVER_URL}/${GITHUB_REPO}/actions/runs/${GITHUB_RUN_ID_VAL}#artifacts)" >> "$output"
-          else
-            if [ "$is_pr_comment" = "true" ]; then
-              echo "**Status:** ⏭️ Skipped" >> "$output"
-            else
-              echo "**Status:** ⏭️ No Bandit results available" >> "$output"
-            fi
-          fi
-
-          if [ "$is_pr_comment" = "true" ]; then
-            echo "" >> "$output"
-            echo "</details>" >> "$output"
-          fi
-          echo "" >> "$output"
-        }
-
-        # Generate PR comment artifact
-        generate_bandit_summary "scanner-summaries/bandit.md" "true"
-
-        # Generate job summary
-        generate_bandit_summary "$GITHUB_STEP_SUMMARY" "false"
+        sarif_file: bandit-reports/argus-results.sarif
+      if: inputs.enable_code_security == 'true' && always() && github.actor != 'nektos/act' && hashFiles('bandit-reports/argus-results.sarif') != ''
       continue-on-error: true
 
     - name: Upload Bandit summary section

@@ -259,6 +259,12 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Disable animated spinner output",
     )
+    scan_parser.add_argument(
+        "--no-timestamp",
+        action="store_true",
+        help="Write output directly to --output-dir without a timestamped subdirectory. "
+             "Useful in CI where a predictable output path is needed.",
+    )
 
     # Container-specific flags (used with: argus scan container)
     container_group = scan_parser.add_argument_group(
@@ -530,8 +536,13 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
     if args.formats:
         config.reporting.formats = args.formats
 
-    # Initialize audit trail — each run gets a timestamped subdirectory
-    output_dir = _make_run_dir(config.reporting.output_dir)
+    # Initialize output directory — timestamped subdirectory by default,
+    # flat directory when --no-timestamp is set (CI/action use case).
+    if getattr(args, "no_timestamp", False):
+        output_dir = config.reporting.output_dir
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+    else:
+        output_dir = _make_run_dir(config.reporting.output_dir)
     config.reporting.output_dir = output_dir
     log = get_logger("argus", output_dir=output_dir, verbose=args.verbose)
     manifest = create_manifest(

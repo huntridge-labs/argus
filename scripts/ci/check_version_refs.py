@@ -20,7 +20,7 @@ SKIP_DIRS = {
     '.claude', '.agents',
 }
 SKIP_FILES = {
-    'CHANGELOG.md', 'package-lock.json', 'check-version-refs.py',
+    'CHANGELOG.md', 'package-lock.json', 'check_version_refs.py',
     '.release-it.json', 'copilot-instructions.md', 'release_output.txt',
     'test_check_version_refs.py',
 }
@@ -154,7 +154,7 @@ def find_version_refs(repo_root: Path) -> list:
 
 
 def main():
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = Path(__file__).resolve().parent.parent.parent
 
     rules = load_release_it_rules(repo_root)
     refs = find_version_refs(repo_root)

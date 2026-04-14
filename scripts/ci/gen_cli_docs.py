@@ -5,9 +5,9 @@ Introspects the parser tree and produces markdown. The CLI IS the
 documentation source — no manual maintenance needed.
 
 Usage:
-    python scripts/gen_cli_docs.py                          # stdout
-    python scripts/gen_cli_docs.py --output docs/cli.md     # file
-    python scripts/gen_cli_docs.py --format mkdocs          # for docsite
+    python -m scripts.ci.gen_cli_docs                          # stdout
+    python -m scripts.ci.gen_cli_docs --output docs/cli.md     # file
+    python -m scripts.ci.gen_cli_docs --format mkdocs          # for docsite
 """
 
 import argparse
@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 # Ensure argus is importable
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
 def generate_cli_docs(output: str | None = None, fmt: str = "markdown") -> str:
@@ -32,7 +32,7 @@ def generate_cli_docs(output: str | None = None, fmt: str = "markdown") -> str:
     lines.append("")
     lines.append(f"> Auto-generated from argparse definitions on "
                  f"{datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')}.")
-    lines.append("> Do not edit manually — run `python scripts/gen_cli_docs.py` to regenerate.")
+    lines.append("> Do not edit manually — run `python -m scripts.ci.gen_cli_docs` to regenerate.")
     lines.append("")
 
     # Top-level description

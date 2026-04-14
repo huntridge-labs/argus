@@ -1,25 +1,17 @@
-"""Tests for scripts/check-version-refs.py.
+"""Tests for scripts/ci/check_version_refs.py.
 
 Covers the core utility functions: _expand_braces, find_version_refs,
 is_ref_covered, and the release-it-ignore marker behaviour.
 """
 
-import importlib.util
-import sys
-from pathlib import Path
-
 import pytest
 
-# Import the module from scripts/ via importlib since the filename has hyphens
-_SCRIPT_PATH = Path(__file__).parent.parent.parent / "scripts" / "check-version-refs.py"
-_spec = importlib.util.spec_from_file_location("check_version_refs", _SCRIPT_PATH)
-check_version_refs = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(check_version_refs)
-
-_expand_braces = check_version_refs._expand_braces
-find_version_refs = check_version_refs.find_version_refs
-is_ref_covered = check_version_refs.is_ref_covered
-IGNORE_MARKER = check_version_refs.IGNORE_MARKER
+from scripts.ci.check_version_refs import (
+    _expand_braces,
+    find_version_refs,
+    is_ref_covered,
+    IGNORE_MARKER,
+)
 
 
 class TestExpandBraces:

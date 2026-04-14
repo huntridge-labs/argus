@@ -63,7 +63,7 @@ Tracks what has been completed and what remains for the argus Python SDK migrati
 - [x] `test-unit.yml` — Python version matrix (3.11, 3.12, 3.13); version ref coverage check
 - [x] `test-examples-functional.yml` — minimum example count gate (prevents empty-matrix passes)
 - [x] `.release-it.json` — added package.json to regex-bumper output
-- [x] `scripts/check-version-refs.py` — added `.claude`, `.agents` to SKIP_DIRS
+- [x] `scripts/ci/check_version_refs.py` — added `.claude`, `.agents` to SKIP_DIRS
 
 ### Deprecated Workflow Removal
 - [x] Removed 15 `scanner-*.yml` thin wrapper workflows
@@ -311,5 +311,5 @@ The MCP server is a new interface to the existing engine — it does not change 
 | Container image tags in Python | Renovate | `renovate.yaml` | Done |
 | Tool versions in action.yml scripts | Renovate | `renovate.yaml` | Done |
 | Tool versions in Dockerfiles (ARG) | Renovate | `renovate.yaml` | Done |
-| Version refs across all files | CI gate | `scripts/check-version-refs.py` in test-unit.yml | Done |
+| Version refs across all files | CI gate | `scripts/ci/check_version_refs.py` in test-unit.yml | Done |
 | package.json version | release-it | `.release-it.json` regex-bumper | Done |

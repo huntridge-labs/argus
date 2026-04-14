@@ -40,7 +40,11 @@ jobs:
 
       - name: Check version reference coverage
         if: matrix.python-version == '3.13'
-        run: python3 scripts/check-version-refs.py
+        run: python -m scripts.ci.check_version_refs
+
+      - name: Check CLI docs are up to date
+        if: matrix.python-version == '3.13'
+        run: python -m scripts.ci.check_cli_docs
 
       - name: Check for dead fixtures
         if: always()

@@ -113,7 +113,7 @@ jobs:
               echo ""
             } >> preview.md
 
-            if python3 scripts/check-version-refs.py > version_check.txt 2>&1; then
+            if python3 -m scripts.ci.check_version_refs > version_check.txt 2>&1; then
               {
                 echo "✅ $(head -1 version_check.txt)"
                 echo ""
