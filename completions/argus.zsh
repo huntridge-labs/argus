@@ -1,7 +1,7 @@
 #compdef argus
 
 # Zsh completion for argus CLI
-# Copy to a directory in your $fpath, or source directly:
+# Source this file or copy to a directory in $fpath:
 #   source completions/argus.zsh
 
 _argus() {
@@ -25,67 +25,71 @@ _argus() {
     severity=(critical high medium low none)
     formats=(terminal markdown sarif json)
 
-    if (( CURRENT == 2 )); then
-        _describe 'command' commands
-        return
-    fi
+    _arguments -C \
+        '--version[Show version]' \
+        '--help[Show help]' \
+        '1:command:->command' \
+        '*::arg:->args'
 
-    case "${words[2]}" in
-        scan)
-            if (( CURRENT == 3 )) && [[ "${words[3]}" != -* ]]; then
-                _describe 'scanner' scanners
-                return
-            fi
-            _arguments \
-                '--path[Path to scan]:path:_files -/' \
-                '--config[Path to argus.yml]:config:_files' \
-                '--output-dir[Output directory]:dir:_files -/' \
-                '--severity-threshold[Fail threshold]:severity:($severity)' \
-                '--format[Output format]:format:($formats)' \
-                '--output-vars[Write counts to file]:file:_files' \
-                '--list[List available scanners]' \
-                '--verbose[Enable verbose output]' \
-                '--no-spinner[Disable spinner]' \
-                '--no-timestamp[Flat output directory]' \
-                '--fail-fast[Abort on first failure]' \
-                '--timeout[Per-scanner timeout]:seconds:' \
-                '--image[Container image to scan]:image:' \
-                '--discover[Discover Dockerfiles]:path:_files -/' \
-                '--target[URL to scan]:url:' \
-                '--scan-type[ZAP scan type]:type:(baseline full)'
+    case "$state" in
+        command)
+            _describe 'command' commands
             ;;
-        report)
-            if (( CURRENT == 3 )); then
-                _describe 'format' formats
-                return
-            fi
-            _arguments \
-                '--results-dir[Results directory]:dir:_files -/' \
-                '--output-dir[Output directory]:dir:_files -/' \
-                '--verbose[Enable verbose output]'
-            ;;
-        validate)
-            _arguments \
-                '--config[Path to argus.yml]:config:_files' \
-                '--check-tools[Check scanner availability]' \
-                '--strict[Treat warnings as errors]'
-            ;;
-        init)
-            _arguments \
-                '--platform[Generate CI workflow]:platform:(github gitlab jenkins none)' \
-                '--force[Overwrite existing config]' \
-                '--no-detect[Skip auto-detection]'
-            ;;
-        collect)
-            _arguments \
-                '1:input directory:_files -/' \
-                '--output-dir[Output directory]:dir:_files -/' \
-                '--verbose[Enable verbose output]'
+        args)
+            case "${words[1]}" in
+                scan)
+                    _arguments \
+                        '1:scanner:($scanners)' \
+                        '(-p --path)'{-p,--path}'[Path to scan]:path:_files -/' \
+                        '(-c --config)'{-c,--config}'[Path to argus.yml]:config:_files' \
+                        '(-o --output-dir)'{-o,--output-dir}'[Output directory]:dir:_files -/' \
+                        '(-s --severity-threshold)'{-s,--severity-threshold}'[Fail threshold]:severity:($severity)' \
+                        '(-f --format)'{-f,--format}'[Output format]:format:($formats)' \
+                        '--output-vars[Write counts to file]:file:_files' \
+                        '--list[List available scanners]' \
+                        '(-v --verbose)'{-v,--verbose}'[Enable verbose output]' \
+                        '--no-spinner[Disable spinner]' \
+                        '--no-timestamp[Flat output directory]' \
+                        '--fail-fast[Abort on first failure]' \
+                        '--timeout[Per-scanner timeout]:seconds:' \
+                        '--image[Container image to scan]:image:' \
+                        '--discover[Discover Dockerfiles]:path:_files -/' \
+                        '--scanners[Sub-scanners for container]:scanners:' \
+                        '--target[URL to scan]:url:' \
+                        '--port[Override exposed port]:port:' \
+                        '--env[Environment variable]:env:' \
+                        '--scan-type[ZAP scan type]:type:(baseline full)' \
+                        '--startup-timeout[Target startup timeout]:seconds:'
+                    ;;
+                report)
+                    _arguments \
+                        '1:format:($formats)' \
+                        '(-r --results-dir)'{-r,--results-dir}'[Results directory]:dir:_files -/' \
+                        '(-o --output-dir)'{-o,--output-dir}'[Output directory]:dir:_files -/' \
+                        '(-v --verbose)'{-v,--verbose}'[Enable verbose output]'
+                    ;;
+                validate)
+                    _arguments \
+                        '(-c --config)'{-c,--config}'[Path to argus.yml]:config:_files' \
+                        '--check-tools[Check scanner availability]' \
+                        '--strict[Treat warnings as errors]'
+                    ;;
+                init)
+                    _arguments \
+                        '--platform[Generate CI workflow]:platform:(github gitlab jenkins none)' \
+                        '--force[Overwrite existing config]' \
+                        '--no-detect[Skip auto-detection]'
+                    ;;
+                collect)
+                    _arguments \
+                        '1:input directory:_files -/' \
+                        '(-o --output-dir)'{-o,--output-dir}'[Output directory]:dir:_files -/' \
+                        '(-v --verbose)'{-v,--verbose}'[Enable verbose output]'
+                    ;;
+            esac
             ;;
     esac
 }
-
-_argus "$@"
 
 # Register when sourced directly (not via fpath)
 compdef _argus argus 2>/dev/null
