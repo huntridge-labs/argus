@@ -119,7 +119,12 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 - [x] Add `--no-timestamp` CLI flag for CI-friendly flat output directories
 - [x] Design thin wrapper pattern (generate argus config, run scan, parse JSON for outputs)
 - [x] Refactor `scanner-bandit/action.yml` as proof of concept (350 → 169 lines)
-- [ ] Refactor remaining 9 scanner actions
+- [x] Refactor `scanner-opengrep/action.yml` (241 → 195 lines)
+- [x] Refactor `scanner-clamav/action.yml` (348 → 214 lines)
+- [x] Refactor `scanner-trivy-iac/action.yml` (362 → 234 lines)
+- [x] Refactor `scanner-supply-chain/action.yml` (371 → 237 lines)
+- [x] Enhance `supply_chain.py` scanner to accept persona, zizmor_config, run_actionlint, github_token from config
+- [ ] Refactor remaining 5 scanner actions (gitleaks, osv, checkov wrap published actions; container, zap have complex lifecycles)
 - [ ] Refactor 6 linter actions (or add linter modules to SDK first)
 - [ ] Verify backward compatibility: identical outputs, artifacts, SARIF
 - [ ] Update `test-actions.yml` to validate thin wrappers
