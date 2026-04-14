@@ -90,12 +90,14 @@ regexManagers:
 packageRules:
 
   # All container image bumps in a single PR
+  # pinDigests appends @sha256:... for immutable references
   - description: Group all container image updates
     matchManagers:
       - regex
     matchDatasources:
       - docker
     groupName: container-images
+    pinDigests: true
     automerge: false
 
   # All tool version bumps in a single PR

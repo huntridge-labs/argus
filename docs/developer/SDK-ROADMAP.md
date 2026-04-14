@@ -299,8 +299,9 @@ The MCP server is a new interface to the existing engine — it does not change 
 
 ### Scanners
 - [ ] ClamAV container requires virus DB update on first run (adds ~60s)
-- [ ] OSV-Scanner image pinned to `latest` — should pin to specific version once available
-- [ ] OpenGrep uses `returntocorp/semgrep` image — verify if opengrep publishes its own
+- [x] OSV-Scanner image pinned to `v2.3.5` (was `latest`)
+- [x] OpenGrep image alias added — `get_image("opengrep")` now resolves via `_ALIASES` (OpenGrep doesn't publish its own images, semgrep image is correct)
+- [x] Added `_ALIASES` dict in containers.py for scanner-name-to-image-key mapping (opengrep→semgrep, trivy-iac→trivy, osv→osv-scanner)
 - [ ] Supply-chain `container_args` uses `sh -c` shell wrapper — fragile on non-Linux
 - [ ] Bandit container ENTRYPOINT means args don't include `bandit` command — documented but could surprise contributors
 
