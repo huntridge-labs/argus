@@ -1,544 +1,229 @@
 name: 'ZAP DAST Scanner'
 description: |
-  Run ZAP (Zed Attack Proxy) DAST scanning and generate reports.
+  Run ZAP (Zed Attack Proxy) DAST scanning via the Argus SDK.
 
-  Supports URL, docker-run, and compose scan modes with baseline, full, or API scan types.
+  Supports two modes:
+  - **URL mode**: Scan an already-running target via --target
+  - **Container mode**: Start a container image, scan it, stop it via --image
 
-  **Required Environment Variables:**
-  - GITHUB_TOKEN: GitHub token for API access (set automatically in workflows)
-
-  **ZAP Native GitHub Integration:**
-  This action wraps the official zaproxy GitHub actions which have built-in PR commenting
-  and Issue creation capabilities:
-  - `post_pr_comment`: Controls both custom summary comments AND ZAP's native PR comments (default: false)
-  - `allow_issue_writing`: Enable/disable ZAP's native GitHub Issue creation (default: false)
+  The SDK's DastEngine handles target lifecycle, health checking, ZAP scanning, and cleanup.
 
   **Usage Example:**
   ```yaml
+  # Scan a running target
   - uses: ./.github/actions/scanner-zap
-    env:
-      GITHUB_TOKEN: (github.token)
     with:
-      scan_type: baseline
       target_url: 'http://localhost:8080'
+      scan_type: baseline
       fail_on_severity: 'high'
-      post_pr_comment: 'true'      # Enable PR comments (both custom and ZAP native)
-      allow_issue_writing: 'false' # Disable ZAP's GitHub Issue creation
+
+  # Start a container, scan it, stop it
+  - uses: ./.github/actions/scanner-zap
+    with:
+      app_image_ref: 'myapp:latest'
+      app_ports: '8080'
+      scan_type: full
   ```
+
+  Note: Compose mode is not yet supported in the SDK. Use url or container mode.
 
 inputs:
   scan_name:
     description: 'Unique scan identifier (for artifact naming)'
     required: false
     default: 'zap-scan'
-  scan_mode:
-    description: 'Target mode: url, docker-run, or compose'
-    required: false
-    default: 'url'
   scan_type:
-    description: 'ZAP scan type: baseline, full, or api'
+    description: 'ZAP scan type: baseline or full'
     required: false
     default: 'baseline'
   target_url:
-    description: 'Target URL for baseline/full scans'
-    required: false
-    default: ''
-  api_spec:
-    description: 'OpenAPI/Swagger spec URL (for api scans)'
-    required: false
-    default: ''
-  healthcheck_url:
-    description: 'URL to poll until target is ready'
+    description: 'Target URL to scan (for url mode — scan an already-running target)'
     required: false
     default: ''
   app_image_ref:
-    description: 'Container image (for docker-run mode)'
-    required: false
-    default: ''
-  app_build_context:
-    description: 'Docker build context (for local builds)'
-    required: false
-    default: ''
-  app_dockerfile:
-    description: 'Dockerfile path (for local builds)'
-    required: false
-    default: ''
-  app_image_tag:
-    description: 'Tag for locally built image'
+    description: 'Container image to start, scan, and stop (for container mode)'
     required: false
     default: ''
   app_ports:
-    description: 'Port mappings (e.g., 8080:8080)'
-    required: false
-    default: '8080:8080'
-  compose_file:
-    description: 'Docker compose file path'
-    required: false
-    default: 'docker-compose.yml'
-  compose_build:
-    description: 'Run docker compose with --build'
-    required: false
-    default: 'true'
-  registry_username:
-    description: 'Registry username (for private images in docker-run mode)'
+    description: 'Port to expose on the target container (e.g., 8080)'
     required: false
     default: ''
-  registry_password:
-    description: 'Registry password/token (for private images in docker-run mode)'
+  app_env:
+    description: 'Environment variables for the target container (KEY=VALUE, one per line)'
     required: false
     default: ''
-  max_duration_minutes:
-    description: 'Max scan duration in minutes'
+  startup_timeout:
+    description: 'Seconds to wait for target container readiness (default: 60)'
     required: false
-    default: '10'
-  rules_file_name:
-    description: 'ZAP rules file to ignore alerts (.tsv)'
-    required: false
-    default: ''
-  cmd_options:
-    description: 'Additional ZAP command-line options'
-    required: false
-    default: ''
+    default: '60'
   fail_on_severity:
-    description: 'Fail threshold: none, low, medium, high, critical (note: ZAP has no critical level, maps to high)'
+    description: 'Fail threshold: none, low, medium, high, critical (default: none)'
     required: false
     default: 'none'
-  allow_failure:
-    description: 'Continue workflow on scan failure'
+  enable_code_security:
+    description: 'Upload SARIF to GitHub Code Security (default: false)'
     required: false
     default: 'false'
   post_pr_comment:
-    description: 'Post results as PR comment (string true/false). Controls both custom summary comments and ZAP native PR comments.'
-    required: false
-    default: 'false'
-  allow_issue_writing:
-    description: 'Enable ZAP native GitHub Issue creation for findings (default: false)'
+    description: 'Post results as PR comment (default: false)'
     required: false
     default: 'false'
   job_id:
     description: 'Job ID for artifact naming'
     required: false
     default: ${{ github.job }}
+  python_version:
+    description: 'Python version to use'
+    required: false
+    default: '3.12'
 
 outputs:
   findings_count:
     description: 'Total number of findings'
-    value: ${{ steps.parse-results.outputs.findings_count }}
+    value: ${{ steps.scan.outputs.findings_count }}
   high_count:
     description: 'Number of high severity findings'
-    value: ${{ steps.parse-results.outputs.high_count }}
+    value: ${{ steps.scan.outputs.high_count }}
   medium_count:
     description: 'Number of medium severity findings'
-    value: ${{ steps.parse-results.outputs.medium_count }}
+    value: ${{ steps.scan.outputs.medium_count }}
   low_count:
     description: 'Number of low severity findings'
-    value: ${{ steps.parse-results.outputs.low_count }}
+    value: ${{ steps.scan.outputs.low_count }}
   info_count:
     description: 'Number of informational findings'
-    value: ${{ steps.parse-results.outputs.info_count }}
+    value: ${{ steps.scan.outputs.info_count }}
   scan_status:
     description: 'Overall scan status (passed or failed)'
-    value: ${{ steps.parse-results.outputs.scan_status }}
+    value: ${{ steps.scan.outputs.scan_status }}
 
 runs:
   using: 'composite'
   steps:
-    - name: Validate inputs
-      id: validate
-      shell: bash
-      env:
-        ALL_INPUTS: ${{ toJSON(inputs) }}
-        SCAN_TYPE: ${{ inputs.scan_type }}
-        SCAN_MODE: ${{ inputs.scan_mode }}
-        TARGET_URL: ${{ inputs.target_url }}
-        API_SPEC: ${{ inputs.api_spec }}
-        COMPOSE_FILE: ${{ inputs.compose_file }}
-        APP_IMAGE_REF: ${{ inputs.app_image_ref }}
-        BUILD_CONTEXT: ${{ inputs.app_build_context }}
-        REGISTRY_PASSWORD: ${{ inputs.registry_password }}
-        REGISTRY_USERNAME: ${{ inputs.registry_username }}
-        SCAN_NAME: ${{ inputs.scan_name }}
-        MAX_DURATION_MINUTES: ${{ inputs.max_duration_minutes }}
-        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
-      run: |
-        set -euo pipefail
-
-        scan_type="$SCAN_TYPE"
-        scan_mode="$SCAN_MODE"
-        target_url="$TARGET_URL"
-        api_spec="$API_SPEC"
-        compose_file="$COMPOSE_FILE"
-        app_image_ref="$APP_IMAGE_REF"
-        build_context="$BUILD_CONTEXT"
-        registry_password="$REGISTRY_PASSWORD"
-        registry_username="$REGISTRY_USERNAME"
-
-        if [[ "$scan_type" == "api" && -z "$api_spec" ]]; then
-          echo "❌ Error: api_spec is required for api scans"
-          exit 1
-        fi
-
-        if [[ "$scan_type" != "api" && -z "$target_url" ]]; then
-          echo "❌ Error: target_url is required for $scan_type scans"
-          exit 1
-        fi
-
-        case "$scan_mode" in
-          url|docker-run|compose) ;;
-          *)
-            echo "❌ Error: scan_mode must be url, docker-run, or compose"
-            exit 1
-            ;;
-        esac
-
-        if [[ "$scan_mode" == "docker-run" ]]; then
-          if [[ -z "$app_image_ref" && -z "$build_context" ]]; then
-            echo "❌ Error: docker-run mode requires app_image_ref or app_build_context"
-            exit 1
-          fi
-        fi
-
-        if [[ "$scan_mode" == "compose" ]]; then
-          if [[ -z "$compose_file" ]]; then
-            echo "❌ Error: compose_file is required for compose mode"
-            exit 1
-          fi
-          if [[ ! -f "$compose_file" ]]; then
-            echo "❌ Error: compose_file '$compose_file' not found"
-            exit 1
-          fi
-        fi
-
-        if [[ -n "$registry_password" && -z "$registry_username" ]]; then
-          echo "❌ Error: registry_username is required when registry_password is provided"
-          exit 1
-        fi
-
-        name_hash=$(echo -n "${ALL_INPUTS}" | sha256sum | cut -c1-8)
-        echo "artifact_prefix=${scan_type}-${name_hash}" >> "$GITHUB_OUTPUT"
-
-        if [[ -n "$registry_password" ]]; then
-          echo "has_registry_password=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "has_registry_password=false" >> "$GITHUB_OUTPUT"
-        fi
-
-        echo "✅ Scan mode: $scan_mode"
-        echo "✅ Scan type: $scan_type"
-        echo "📊 Scan name: $SCAN_NAME"
-        echo "⏱️  Max duration: $MAX_DURATION_MINUTES minutes"
-        echo "🎯 Fail threshold: $FAIL_ON_SEVERITY"
-
-    - name: Login to registry
-      if: inputs.app_image_ref != '' && steps.validate.outputs.has_registry_password == 'true'
-      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
+    - name: Set up Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
       with:
-        username: ${{ inputs.registry_username }}
-        password: ${{ inputs.registry_password }}
+        python-version: ${{ inputs.python_version }}
 
-    - name: Build target image
-      if: inputs.scan_mode == 'docker-run' && inputs.app_build_context != ''
+    - name: Install Argus SDK
+      shell: bash
+      run: pip install pyyaml
+
+    - name: Run ZAP via Argus SDK
+      id: scan
       shell: bash
       env:
-        BUILD_CONTEXT: ${{ inputs.app_build_context }}
-        APP_DOCKERFILE: ${{ inputs.app_dockerfile }}
-        APP_IMAGE_TAG: ${{ inputs.app_image_tag }}
-      run: |
-        set -euo pipefail
-        context="$BUILD_CONTEXT"
-        dockerfile="$APP_DOCKERFILE"
-        tag="$APP_IMAGE_TAG"
-
-        if [[ -z "$tag" ]]; then
-          tag="local-dast-app:${GITHUB_SHA}"
-        fi
-
-        if [[ -n "$dockerfile" ]]; then
-          echo "Building image '$tag' from '$dockerfile' (context: $context)"
-          # Dockerfile path must be relative to context or absolute
-          docker build -f "$context/$dockerfile" -t "$tag" "$context"
-        else
-          echo "Building image '$tag' from default Dockerfile (context: $context)"
-          docker build -t "$tag" "$context"
-        fi
-
-        {
-          echo "ZAP_TARGET_IMAGE<<GHADELIMITER"
-          echo "$tag"
-          echo "GHADELIMITER"
-        } >> "$GITHUB_ENV"
-
-    - name: Start target (docker-run)
-      if: inputs.scan_mode == 'docker-run'
-      shell: bash
-      env:
+        SCAN_TYPE: ${{ inputs.scan_type }}
+        TARGET_URL: ${{ inputs.target_url }}
         APP_IMAGE_REF: ${{ inputs.app_image_ref }}
         APP_PORTS: ${{ inputs.app_ports }}
-      run: |
-        set -euo pipefail
-
-        image="${ZAP_TARGET_IMAGE:-$APP_IMAGE_REF}"
-        if [[ -z "$image" ]]; then
-          echo "❌ Error: app_image_ref required for docker-run mode"
-          exit 1
-        fi
-
-        ports="$APP_PORTS"
-        [[ -z "$ports" ]] && ports="8080:8080"
-
-        container_name="zap-target-${GITHUB_RUN_ID}"
-        echo "Starting container '$container_name' from '$image'"
-
-        port_args=()
-        IFS=',' read -ra mappings <<< "$ports"
-        for m in "${mappings[@]}"; do
-          m="${m// /}"
-          [[ -z "$m" ]] && continue
-          port_args+=( -p "$m" )
-        done
-
-        docker run -d --rm --name "$container_name" "${port_args[@]}" "$image"
-        {
-          echo "APP_CONTAINER_NAME<<GHADELIMITER"
-          echo "$container_name"
-          echo "GHADELIMITER"
-        } >> "$GITHUB_ENV"
-
-    - name: Start target (compose)
-      if: inputs.scan_mode == 'compose'
-      shell: bash
-      env:
-        COMPOSE_FILE_PATH: ${{ inputs.compose_file }}
-        COMPOSE_BUILD: ${{ inputs.compose_build }}
-      run: |
-        set -euo pipefail
-        file="$COMPOSE_FILE_PATH"
-
-        echo "Starting docker compose from $file"
-        if [[ "$COMPOSE_BUILD" == "true" ]]; then
-          docker compose -f "$file" up -d --build
-        else
-          docker compose -f "$file" up -d
-        fi
-
-    - name: Wait for target readiness
-      shell: bash
-      env:
-        HEALTHCHECK_URL: ${{ inputs.healthcheck_url }}
-        TARGET_URL: ${{ inputs.target_url }}
-      run: |
-        set -euo pipefail
-
-        url="$HEALTHCHECK_URL"
-        if [[ -z "$url" ]]; then
-          url="$TARGET_URL"
-        fi
-
-        if [[ -z "$url" ]]; then
-          echo "No readiness URL, skipping"
-          exit 0
-        fi
-
-        echo "Waiting for: $url"
-        end=$((SECONDS + 180))
-        while [[ $SECONDS -lt $end ]]; do
-          if curl -fsS --max-time 3 "$url" >/dev/null 2>&1; then
-            echo "Target is ready"
-            exit 0
-          fi
-          sleep 3
-        done
-
-        echo "Timed out waiting for $url"
-        exit 1
-
-    - name: Build ZAP command options
-      id: zap_opts
-      shell: bash
-      env:
-        MAX_DURATION_MINUTES: ${{ inputs.max_duration_minutes }}
-        CMD_OPTIONS: ${{ inputs.cmd_options }}
-      run: |
-        max_dur="$MAX_DURATION_MINUTES"
-        [[ -z "$max_dur" ]] && max_dur="10"
-        extra_opts="$CMD_OPTIONS"
-
-        cmd_opts="-T ${max_dur}"
-        [[ -n "$extra_opts" ]] && cmd_opts="$cmd_opts $extra_opts"
-
-        echo "cmd_options=$cmd_opts" >> "$GITHUB_OUTPUT"
-        echo "Command options: $cmd_opts"
-
-    - name: Run ZAP (baseline)
-      if: inputs.scan_type == 'baseline'
-      uses: zaproxy/action-baseline@de8ad967d3548d44ef623df22cf95c3b0baf8b25 # v0.15.0
-      continue-on-error: ${{ inputs.allow_failure == 'true' }}
-      with:
-        token: ${{ inputs.post_pr_comment == 'true' && github.token || '' }}
-        allow_issue_writing: ${{ inputs.allow_issue_writing == 'true' }}
-        fail_action: false
-        artifact_name: zap-reports-${{ steps.validate.outputs.artifact_prefix }}
-        target: ${{ inputs.target_url }}
-        rules_file_name: ${{ inputs.rules_file_name }}
-        cmd_options: ${{ steps.zap_opts.outputs.cmd_options }}
-
-    - name: Run ZAP (full)
-      if: inputs.scan_type == 'full'
-      uses: zaproxy/action-full-scan@3c58388149901b9a03b7718852c5ba889646c27c # v0.13.0
-      continue-on-error: ${{ inputs.allow_failure == 'true' }}
-      with:
-        token: ${{ inputs.post_pr_comment == 'true' && github.token || '' }}
-        allow_issue_writing: ${{ inputs.allow_issue_writing == 'true' }}
-        fail_action: false
-        artifact_name: zap-reports-${{ steps.validate.outputs.artifact_prefix }}
-        target: ${{ inputs.target_url }}
-        rules_file_name: ${{ inputs.rules_file_name }}
-        cmd_options: ${{ steps.zap_opts.outputs.cmd_options }}
-
-    - name: Run ZAP (api)
-      if: inputs.scan_type == 'api'
-      uses: zaproxy/action-api-scan@5158fe4d9d8fcc75ea204db81317cce7f9e5453d # v0.10.0
-      continue-on-error: ${{ inputs.allow_failure == 'true' }}
-      with:
-        token: ${{ inputs.post_pr_comment == 'true' && github.token || '' }}
-        allow_issue_writing: ${{ inputs.allow_issue_writing == 'true' }}
-        fail_action: false
-        artifact_name: zap-reports-${{ steps.validate.outputs.artifact_prefix }}
-        format: openapi
-        target: ${{ inputs.api_spec }}
-        rules_file_name: ${{ inputs.rules_file_name }}
-        cmd_options: ${{ steps.zap_opts.outputs.cmd_options }}
-
-    - name: Parse ZAP results and check severity
-      id: parse-results
-      if: always()
-      continue-on-error: ${{ inputs.allow_failure == 'true' }}
-      shell: bash
-      env:
-        PARSER_SCRIPT: ${{ github.action_path }}/scripts/parse_zap_results.py
+        APP_ENV: ${{ inputs.app_env }}
+        STARTUP_TIMEOUT: ${{ inputs.startup_timeout }}
         FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
       run: |
         set -euo pipefail
+        mkdir -p zap-reports scanner-summaries
 
-        report="report_json.json"
-        parser="$PARSER_SCRIPT"
+        # Build the argus scan zap command
+        CMD="python -m argus scan zap"
+        CMD="$CMD --scan-type ${SCAN_TYPE}"
+        CMD="$CMD --format json --format markdown --format sarif"
+        CMD="$CMD --output-dir ./zap-reports --no-timestamp"
 
-        if [[ ! -f "$report" ]]; then
-          echo "⚠️  No ZAP JSON report found"
-          echo "findings_count=0" >> "$GITHUB_OUTPUT"
-          echo "high_count=0" >> "$GITHUB_OUTPUT"
-          echo "medium_count=0" >> "$GITHUB_OUTPUT"
-          echo "low_count=0" >> "$GITHUB_OUTPUT"
-          echo "info_count=0" >> "$GITHUB_OUTPUT"
-          echo "scan_status=skipped" >> "$GITHUB_OUTPUT"
-          exit 0
+        if [ -n "$TARGET_URL" ]; then
+          CMD="$CMD --target $TARGET_URL"
+        elif [ -n "$APP_IMAGE_REF" ]; then
+          CMD="$CMD --image $APP_IMAGE_REF"
+          if [ -n "$APP_PORTS" ]; then
+            CMD="$CMD --port $APP_PORTS"
+          fi
+          CMD="$CMD --startup-timeout $STARTUP_TIMEOUT"
+        else
+          echo "Error: either target_url or app_image_ref is required"
+          exit 1
         fi
 
-        chmod +x "$parser"
+        # Pass environment variables to target container
+        if [ -n "$APP_ENV" ]; then
+          while IFS= read -r line; do
+            line="$(echo "$line" | xargs)"
+            [ -z "$line" ] && continue
+            CMD="$CMD --env $line"
+          done <<< "$APP_ENV"
+        fi
 
-        # Get counts using parser script
-        # ZAP risk codes use 1:1 mapping:
-        #   riskcode 3 (ZAP High)          -> High
-        #   riskcode 2 (ZAP Medium)        -> Medium
-        #   riskcode 1 (ZAP Low)           -> Low
-        #   riskcode 0 (ZAP Informational) -> Informational
-        # Note: ZAP has no "Critical" level. When fail_on_severity=critical, we check High.
-        read crit high medium low info <<< $(python3 "$parser" counts-with-info "$report")
-        total=$((crit + high + medium + low))
+        # Pass severity threshold to SDK
+        if [ "$FAIL_ON_SEVERITY" != "none" ]; then
+          CMD="$CMD --severity $FAIL_ON_SEVERITY"
+        fi
 
-        echo "📊 Scan Results:"
-        echo "   High: $high"
-        echo "   Medium: $medium"
-        echo "   Low: $low"
-        echo "   Info: $info"
-        echo "   Total: $total"
+        # Run scan (exit code 1 = findings above threshold)
+        SCAN_EXIT=0
+        eval "$CMD" || SCAN_EXIT=$?
 
-        # Set outputs
-        echo "findings_count=$total" >> "$GITHUB_OUTPUT"
-        echo "high_count=$high" >> "$GITHUB_OUTPUT"
-        echo "medium_count=$medium" >> "$GITHUB_OUTPUT"
-        echo "low_count=$low" >> "$GITHUB_OUTPUT"
-        echo "info_count=$info" >> "$GITHUB_OUTPUT"
+        # Parse severity counts from JSON output
+        HIGH=0; MEDIUM=0; LOW=0; INFO=0; TOTAL=0
+        JSON_FILE="zap-reports/dast-scan.json"
+        if [ -f "$JSON_FILE" ]; then
+          HIGH=$(python3 -c "import json; d=json.load(open('$JSON_FILE')); print(d.get('high_count', 0))")
+          MEDIUM=$(python3 -c "import json; d=json.load(open('$JSON_FILE')); print(d.get('medium_count', 0))")
+          LOW=$(python3 -c "import json; d=json.load(open('$JSON_FILE')); print(d.get('low_count', 0))")
+          INFO=$(python3 -c "import json; d=json.load(open('$JSON_FILE')); print(d.get('info_count', 0))")
+          TOTAL=$(python3 -c "import json; d=json.load(open('$JSON_FILE')); print(d.get('total_findings', 0))")
+        fi
 
-        # Check severity threshold
-        fail_on="$FAIL_ON_SEVERITY"
-        should_fail=false
+        echo "findings_count=$TOTAL" >> "$GITHUB_OUTPUT"
+        echo "high_count=$HIGH" >> "$GITHUB_OUTPUT"
+        echo "medium_count=$MEDIUM" >> "$GITHUB_OUTPUT"
+        echo "low_count=$LOW" >> "$GITHUB_OUTPUT"
+        echo "info_count=$INFO" >> "$GITHUB_OUTPUT"
 
-        case "$fail_on" in
-          low) [[ $((high + medium + low)) -gt 0 ]] && should_fail=true ;;
-          medium) [[ $((high + medium)) -gt 0 ]] && should_fail=true ;;
-          high) [[ $high -gt 0 ]] && should_fail=true ;;
-          critical) [[ $high -gt 0 ]] && should_fail=true ;;  # ZAP has no critical, check High
-          none) should_fail=false ;;
-        esac
+        echo "ZAP Results: HIGH=$HIGH, MEDIUM=$MEDIUM, LOW=$LOW, INFO=$INFO, TOTAL=$TOTAL"
 
-        if [[ "$should_fail" == "true" ]]; then
+        # Copy markdown summary for PR comment and step summary
+        if [ -f "zap-reports/dast-scan.md" ]; then
+          cp zap-reports/dast-scan.md scanner-summaries/zap.md
+          cat zap-reports/dast-scan.md >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+        if [ "$SCAN_EXIT" -ne 0 ]; then
           echo "scan_status=failed" >> "$GITHUB_OUTPUT"
-          echo "❌ Findings at or above '$fail_on' detected"
-          exit 1
+          exit $SCAN_EXIT
         else
           echo "scan_status=passed" >> "$GITHUB_OUTPUT"
-          echo "✅ No findings at or above '$fail_on'"
         fi
 
-    - name: Stop target (docker-run)
-      if: always() && inputs.scan_mode == 'docker-run'
-      continue-on-error: true
-      shell: bash
-      run: |
-        if [[ -n "${APP_CONTAINER_NAME:-}" ]]; then
-          docker stop "$APP_CONTAINER_NAME" || true
-        fi
-
-    - name: Stop target (compose)
-      if: always() && inputs.scan_mode == 'compose'
-      continue-on-error: true
-      shell: bash
-      env:
-        COMPOSE_FILE_PATH: ${{ inputs.compose_file }}
-      run: |
-        file="$COMPOSE_FILE_PATH"
-        if [[ -f "$file" ]]; then
-          docker compose -f "$file" down -v || true
-        fi
-
-    - name: Generate scan summary
-      if: always()
-      shell: bash
-      env:
-        ZAP_PARSER: ${{ github.action_path }}/scripts/parse_zap_results.py
-        ZAP_SCAN_TYPE: ${{ inputs.scan_type }}
-        ZAP_SCAN_MODE: ${{ inputs.scan_mode }}
-        GITHUB_SERVER_URL: ${{ github.server_url }}
-        SUMMARY_SCRIPT: ${{ github.action_path }}/scripts/generate_zap_summary.py
-        ARTIFACT_PREFIX: ${{ steps.validate.outputs.artifact_prefix }}
-      run: |
-        set -euo pipefail
-
-        chmod +x "$SUMMARY_SCRIPT" "$ZAP_PARSER"
-
-        # Create zap-downloads structure expected by summary script
-        mkdir -p "zap-downloads/zap-reports-${ARTIFACT_PREFIX}"
-        if [[ -f "report_json.json" ]]; then
-          cp report_json.json "zap-downloads/zap-reports-${ARTIFACT_PREFIX}/"
-        fi
-
-        python3 "$SUMMARY_SCRIPT"
-
-    - name: Upload scan summary
+    - name: Upload ZAP artifacts
       if: always()
       uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
       with:
-        name: scanner-summary-zap-${{ steps.validate.outputs.artifact_prefix }}
-        path: scanner-summaries/zap.md
+        name: zap-reports-${{ inputs.job_id }}
+        path: zap-reports/
         retention-days: 30
         if-no-files-found: warn
 
-    - name: Comment PR with ZAP summary
+    - name: Upload ZAP SARIF
+      if: inputs.enable_code_security == 'true' && always() && github.actor != 'nektos/act' && hashFiles('zap-reports/argus-results.sarif') != ''
+      uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
+      with:
+        sarif_file: zap-reports/argus-results.sarif
+      continue-on-error: true
+
+    - name: Upload ZAP summary
+      if: always()
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+      with:
+        name: scanner-summary-zap-${{ inputs.job_id }}
+        path: scanner-summaries/zap.md
+        retention-days: 7
+        if-no-files-found: warn
+      continue-on-error: true
+
+    - name: Comment PR with ZAP results
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
       uses: huntridge-labs/argus/.github/actions/comment-pr@0.7.0
       with:
         summary_file: scanner-summaries/zap.md
-        comment_marker: zap-dast-comment-${{ steps.validate.outputs.artifact_prefix }}
-        title: '🕷️ ZAP DAST Scan Results'
+        comment_marker: zap-dast-comment-${{ inputs.job_id }}
+        title: 'ZAP DAST Scan Results'
         fallback_message: 'No ZAP scan results available'

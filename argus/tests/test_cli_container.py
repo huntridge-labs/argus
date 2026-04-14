@@ -96,6 +96,31 @@ class _DastResult:
         self.scan_error = scan_error
         self.findings = findings or []
 
+    @property
+    def critical_count(self):
+        return sum(1 for f in self.findings if getattr(f, 'severity', None)
+                   and f.severity.value == 'critical')
+
+    @property
+    def high_count(self):
+        return sum(1 for f in self.findings if getattr(f, 'severity', None)
+                   and f.severity.value == 'high')
+
+    @property
+    def medium_count(self):
+        return sum(1 for f in self.findings if getattr(f, 'severity', None)
+                   and f.severity.value == 'medium')
+
+    @property
+    def low_count(self):
+        return sum(1 for f in self.findings if getattr(f, 'severity', None)
+                   and f.severity.value == 'low')
+
+    @property
+    def info_count(self):
+        return sum(1 for f in self.findings if getattr(f, 'severity', None)
+                   and f.severity.value == 'info')
+
 
 class _DastSummary:
     def __init__(self, results=None):
@@ -112,6 +137,26 @@ class _DastSummary:
     @property
     def total_count(self):
         return sum(len(r.findings) for r in self.results)
+
+    @property
+    def critical_count(self):
+        return sum(r.critical_count for r in self.results)
+
+    @property
+    def high_count(self):
+        return sum(r.high_count for r in self.results)
+
+    @property
+    def medium_count(self):
+        return sum(r.medium_count for r in self.results)
+
+    @property
+    def low_count(self):
+        return sum(r.low_count for r in self.results)
+
+    @property
+    def info_count(self):
+        return sum(r.info_count for r in self.results)
 
 
 # =====================================================================

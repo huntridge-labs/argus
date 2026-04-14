@@ -245,13 +245,13 @@ data_flow:
           → Aggregate into ScanResult
         → Reporter generates output (terminal, markdown, sarif, json)
 
-    Composite action pipeline (GitHub Actions):
+    Composite action pipeline (GitHub Actions — thin SDK wrappers):
       User workflow step
         → scanner-{name} composite action
-          → Run scanner binary
-          → Parse output (→ JSON)
-          → Generate summary (→ Markdown)
-          → Upload SARIF (→ GitHub Security tab)
+          → Setup Python, install pyyaml
+          → python -m argus scan {scanner} (SDK handles scanning + reporting)
+          → Parse JSON output for severity counts → GITHUB_OUTPUT
+          → Upload artifacts, SARIF, summary
           → [Optional] Post individual PR comment
 
   pr_commenting_strategy:

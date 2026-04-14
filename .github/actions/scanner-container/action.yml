@@ -1,9 +1,8 @@
 name: 'Container Security Scanner'
 description: |
-  Run container security scanning with Trivy, Grype, and Syft using official published actions.
-  Scans a single container image (local or remote).
-
-  Uses published actions from aquasecurity/trivy-action, anchore/scan-action, and anchore/sbom-action
+  Scan container images for vulnerabilities using Trivy, Grype, and Syft
+  via the Argus SDK. The SDK handles tool execution, CVE deduplication,
+  and report generation.
 
 branding:
   icon: 'package'
@@ -14,7 +13,7 @@ inputs:
     description: 'Container image reference to scan (e.g., nginx:latest, ghcr.io/owner/image:tag)'
     required: true
   container_name:
-    description: 'Name identifier for the container (used in artifacts)'
+    description: 'Name identifier for the container (used in artifacts and reports)'
     required: true
   scanners:
     description: 'Comma-separated list of scanners to run: trivy,grype,syft'
@@ -28,6 +27,10 @@ inputs:
     description: 'Upload SARIF results to GitHub Security tab'
     required: false
     default: 'false'
+  post_pr_comment:
+    description: 'Whether to post PR comments'
+    required: false
+    default: 'false'
   registry_username:
     description: 'Username for authenticating to private container registry'
     required: false
@@ -36,80 +39,36 @@ inputs:
     description: 'Password or token for authenticating to private container registry'
     required: false
     default: ''
-  scan_mode:
-    description: 'Scan mode for summary display: discover or remote'
-    required: false
-    default: 'remote'
-  post_pr_comment:
-    description: 'Whether to post PR comments'
-    required: false
-    default: 'false'
-  allow_failure:
-    description: 'Allow the action to continue even if scanning fails'
-    required: false
-    default: 'false'
-  skip_summary:
-    description: 'Skip generating the job summary (for multi-container scans)'
-    required: false
-    default: 'false'
 
 outputs:
   vulnerabilities_found:
     description: 'Total number of vulnerabilities found'
-    value: ${{ steps.severity-check.outputs.total_vulns }}
+    value: ${{ steps.scan.outputs.total_vulns }}
   critical_count:
     description: 'Number of critical vulnerabilities'
-    value: ${{ steps.severity-check.outputs.critical }}
+    value: ${{ steps.scan.outputs.critical }}
   high_count:
     description: 'Number of high vulnerabilities'
-    value: ${{ steps.severity-check.outputs.high }}
+    value: ${{ steps.scan.outputs.high }}
   scan_status:
     description: 'Overall scan status (pass, fail, or error)'
-    value: ${{ steps.severity-check.outputs.scan_status }}
+    value: ${{ steps.scan.outputs.scan_status }}
   scan_error:
     description: 'Whether a scanner error occurred (true/false)'
-    value: ${{ steps.severity-check.outputs.scan_error }}
+    value: ${{ steps.scan.outputs.scan_error }}
 
 runs:
   using: 'composite'
   steps:
-    # ========================================
-    # Validation
-    # ========================================
-    - name: Validate inputs
-      shell: bash
-      env:
-        IMAGE_REF: ${{ inputs.image_ref }}
-        CONTAINER_NAME: ${{ inputs.container_name }}
-        SCANNERS: ${{ inputs.scanners }}
-      run: |
-        echo "🔍 Validating scanner configuration..."
-        if [ -z "$IMAGE_REF" ]; then
-          echo "❌ Error: image_ref is required"
-          exit 1
-        fi
-        if [ -z "$CONTAINER_NAME" ]; then
-          echo "❌ Error: container_name is required"
-          exit 1
-        fi
-        echo "✅ Inputs validated"
-        echo "Image: $IMAGE_REF"
-        echo "Container: $CONTAINER_NAME"
-        echo "Scanners: $SCANNERS"
-
-    # ========================================
-    # Get Unique Job ID for Artifact Naming
-    # ========================================
-    - name: Get job ID for unique artifact naming
-      id: job-id
-      uses: huntridge-labs/argus/.github/actions/get-job-id@0.7.0
+    - name: Set up Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
       with:
-        job-name-pattern: Scan ${{ inputs.container_name }}[ (/].*${{ inputs.scanners }}
-        fallback-suffix: ${{ inputs.container_name }}-${{ inputs.scanners }}
+        python-version: '3.12'
 
-    # ========================================
-    # Registry Authentication (for docker pull)
-    # ========================================
+    - name: Install dependencies
+      shell: bash
+      run: pip install pyyaml
+
     - name: Authenticate to container registry
       if: inputs.registry_username != '' && inputs.registry_password != ''
       shell: bash
@@ -118,543 +77,114 @@ runs:
         REGISTRY_USERNAME: ${{ inputs.registry_username }}
         REGISTRY_PASSWORD: ${{ inputs.registry_password }}
       run: |
-        echo "🔐 Authenticating to container registry..."
         REGISTRY=$(echo "$IMAGE_REF" | cut -d'/' -f1)
-
-        # Handle special case for Docker Hub (no registry prefix)
         if [[ "$REGISTRY" != *"."* ]] && [[ "$REGISTRY" != *":"* ]]; then
           REGISTRY="docker.io"
         fi
-
-        echo "Registry: $REGISTRY"
         echo "$REGISTRY_PASSWORD" | docker login "$REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
-        echo "✅ Successfully authenticated to $REGISTRY"
 
-    # ========================================
-    # Pull Image (ensures local availability for scanners)
-    # Skip for discover mode - image was built locally
-    # ========================================
-    - name: Pull container image
-      if: inputs.scan_mode != 'discover'
+    - name: Run container scan via Argus SDK
+      id: scan
       shell: bash
       env:
         IMAGE_REF: ${{ inputs.image_ref }}
-      run: |
-        echo "📥 Pulling container image..."
-        docker pull "$IMAGE_REF"
-        echo "✅ Image pulled successfully"
-
-    # ========================================
-    # SBOM Generation (Syft) - Using published action
-    # ========================================
-    - name: Generate SBOM (Syft)
-      if: contains(inputs.scanners, 'syft')
-      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
-      with:
-        image: ${{ inputs.image_ref }}
-        format: cyclonedx-json
-        output-file: sbom-${{ inputs.container_name }}-cyclonedx.json
-        upload-artifact: false
-      env:
-        SYFT_REGISTRY_AUTH_USERNAME: ${{ inputs.registry_username }}
-        SYFT_REGISTRY_AUTH_PASSWORD: ${{ inputs.registry_password }}
-
-    - name: Generate SBOM SPDX format
-      if: contains(inputs.scanners, 'syft')
-      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
-      with:
-        image: ${{ inputs.image_ref }}
-        format: spdx-json
-        output-file: sbom-${{ inputs.container_name }}-spdx.json
-        upload-artifact: false
-      env:
-        SYFT_REGISTRY_AUTH_USERNAME: ${{ inputs.registry_username }}
-        SYFT_REGISTRY_AUTH_PASSWORD: ${{ inputs.registry_password }}
-
-    # ========================================
-    # Trivy Vulnerability Scanner
-    # Uses published action on github.com, direct install on GHES
-    # ========================================
-
-    # GHES: Install Trivy directly (published action requires github.com PAT)
-    - name: Install Trivy (GHES)
-      if: contains(inputs.scanners, 'trivy') && !contains(github.server_url, 'github.com')
-      shell: bash
-      run: |
-        echo "📥 Installing Trivy directly (GHES detected)..."
-        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-        trivy --version
-        echo "✅ Trivy installed"
-
-    - name: Run Trivy scan (GHES)
-      id: trivy-ghes
-      if: contains(inputs.scanners, 'trivy') && !contains(github.server_url, 'github.com')
-      shell: bash
-      continue-on-error: true
-      env:
-        TRIVY_USERNAME: ${{ inputs.registry_username }}
-        TRIVY_PASSWORD: ${{ inputs.registry_password }}
         CONTAINER_NAME: ${{ inputs.container_name }}
-        IMAGE_REF: ${{ inputs.image_ref }}
-      run: |
-        echo "🔍 Running Trivy scan..."
-        TRIVY_FAILED=false
-
-        # JSON format
-        if ! trivy image --format json \
-          --output "trivy-${CONTAINER_NAME}-results.json" \
-          "$IMAGE_REF" 2>/tmp/trivy-json-stderr.txt; then
-          TRIVY_FAILED=true
-          # Capture last non-empty stderr line, strip ISO timestamp prefixes (e.g., 2026-03-03T02:24:09Z)
-          ERROR_MSG=$(grep -v '^\s*$' /tmp/trivy-json-stderr.txt 2>/dev/null | grep -vi '^[0-9T:.Z-]* *INFO' | tail -1 | sed 's/^[0-9T:.Z-]* *//' | head -c 200)
-          [ -z "$ERROR_MSG" ] && ERROR_MSG="scan failed (see job logs for details)"
-          echo "⚠️ Trivy JSON scan failed - creating error marker"
-          python3 -c "
-        import json, sys
-        json.dump({
-            'scan_error': True,
-            'error': 'Trivy scan failed: ' + sys.argv[1],
-            'Results': [],
-            'SchemaVersion': 2,
-            'ArtifactName': sys.argv[2]
-        }, open(sys.argv[3], 'w'))
-        " "${ERROR_MSG}" "${IMAGE_REF}" "trivy-${CONTAINER_NAME}-results.json"
-        fi
-
-        # SARIF format
-        if ! trivy image --format sarif \
-          --output "trivy-${CONTAINER_NAME}-results.sarif" \
-          "$IMAGE_REF" 2>/dev/null; then
-          echo "⚠️ Trivy SARIF scan failed - creating empty results"
-          echo '{"version":"2.1.0","runs":[]}' > "trivy-${CONTAINER_NAME}-results.sarif"
-        fi
-
-        # Table format
-        if ! trivy image --format table \
-          --output "trivy-${CONTAINER_NAME}-results.txt" \
-          "$IMAGE_REF" 2>/dev/null; then
-          echo "⚠️ Trivy table scan failed - creating empty results"
-          echo "Scan failed - unable to access image" > "trivy-${CONTAINER_NAME}-results.txt"
-        fi
-
-        if [ "$TRIVY_FAILED" = "true" ]; then
-          echo "::error::Trivy scan failed for ${CONTAINER_NAME}"
-          exit 1
-        fi
-
-        echo "✅ Trivy scan completed"
-
-    # github.com: Use published action
-    - name: Run Trivy vulnerability scanner (JSON)
-      id: trivy-json
-      if: contains(inputs.scanners, 'trivy') && contains(github.server_url, 'github.com')
-      uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
-      continue-on-error: true
-      with:
-        image-ref: ${{ inputs.image_ref }}
-        format: 'json'
-        output: 'trivy-${{ inputs.container_name }}-results.json'
-      env:
-        TRIVY_USERNAME: ${{ inputs.registry_username }}
-        TRIVY_PASSWORD: ${{ inputs.registry_password }}
-
-    - name: Run Trivy vulnerability scanner (SARIF)
-      id: trivy-sarif
-      if: contains(inputs.scanners, 'trivy') && contains(github.server_url, 'github.com')
-      uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
-      continue-on-error: true
-      with:
-        image-ref: ${{ inputs.image_ref }}
-        format: 'sarif'
-        output: 'trivy-${{ inputs.container_name }}-results.sarif'
-      env:
-        TRIVY_USERNAME: ${{ inputs.registry_username }}
-        TRIVY_PASSWORD: ${{ inputs.registry_password }}
-
-    - name: Run Trivy vulnerability scanner (Table)
-      id: trivy-table
-      if: contains(inputs.scanners, 'trivy') && contains(github.server_url, 'github.com')
-      uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
-      continue-on-error: true
-      with:
-        image-ref: ${{ inputs.image_ref }}
-        format: 'table'
-        output: 'trivy-${{ inputs.container_name }}-results.txt'
-      env:
-        TRIVY_USERNAME: ${{ inputs.registry_username }}
-        TRIVY_PASSWORD: ${{ inputs.registry_password }}
-
-    - name: Upload Trivy SARIF to GitHub Security
-      if: contains(inputs.scanners, 'trivy') && inputs.enable_code_security == 'true'
-      uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
-      continue-on-error: true
-      with:
-        sarif_file: trivy-${{ inputs.container_name }}-results.sarif
-        category: trivy-container-${{ inputs.container_name }}
-
-    # ========================================
-    # Trivy Scan Outcome Check
-    # ========================================
-    - name: Check Trivy scan outcome
-      id: trivy-status
-      if: contains(inputs.scanners, 'trivy') && always()
-      shell: bash
-      env:
-        CONTAINER_NAME: ${{ inputs.container_name }}
-        TRIVY_GHES_OUTCOME: ${{ steps.trivy-ghes.outcome }}
-        TRIVY_JSON_OUTCOME: ${{ steps.trivy-json.outcome }}
-      run: |
-        TRIVY_JSON="trivy-${CONTAINER_NAME}-results.json"
-        TRIVY_ERROR=false
-        ERROR_MSG=""
-
-        # Check GHES path outcome
-        if [ "$TRIVY_GHES_OUTCOME" = "failure" ]; then
-          TRIVY_ERROR=true
-          ERROR_MSG="Trivy GHES scan failed"
-        fi
-
-        # Check github.com path outcome (JSON step is the critical one)
-        if [ "$TRIVY_JSON_OUTCOME" = "failure" ]; then
-          TRIVY_ERROR=true
-          ERROR_MSG="Trivy scan action failed"
-        fi
-
-        # Check if JSON result file has scan_error marker
-        if [ -f "$TRIVY_JSON" ] && python3 -c "import json,sys; d=json.load(open('$TRIVY_JSON')); sys.exit(0 if d.get('scan_error') else 1)" 2>/dev/null; then
-          TRIVY_ERROR=true
-          ERROR_MSG=$(python3 -c "import json; print(json.load(open('$TRIVY_JSON')).get('error','scan failed'))" 2>/dev/null || echo "scan failed")
-        elif [ ! -f "$TRIVY_JSON" ] && [ "$TRIVY_JSON_OUTCOME" != "skipped" ] && [ "$TRIVY_GHES_OUTCOME" != "skipped" ]; then
-          # Expected a result file but none exists
-          TRIVY_ERROR=true
-          ERROR_MSG="No Trivy result file produced"
-        fi
-
-        echo "trivy_error=$TRIVY_ERROR" >> $GITHUB_OUTPUT
-        echo "trivy_error_msg=$ERROR_MSG" >> $GITHUB_OUTPUT
-        if [ "$TRIVY_ERROR" = "true" ]; then
-          echo "::warning::Trivy scan error: $ERROR_MSG"
-        fi
-
-    # ========================================
-    # Grype Vulnerability Scanner - Using published action
-    # ========================================
-    - name: Run Grype vulnerability scanner (JSON)
-      if: contains(inputs.scanners, 'grype')
-      uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7
-      id: grype-json
-      continue-on-error: true
-      with:
-        image: ${{ inputs.image_ref }}
-        fail-build: false
-        output-format: json
-      env:
-        GRYPE_REGISTRY_AUTH_USERNAME: ${{ inputs.registry_username }}
-        GRYPE_REGISTRY_AUTH_PASSWORD: ${{ inputs.registry_password }}
-
-    - name: Move Grype JSON results
-      if: contains(inputs.scanners, 'grype') && steps.grype-json.outputs.json != ''
-      shell: bash
-      env:
-        GRYPE_JSON_OUTPUT: ${{ steps.grype-json.outputs.json }}
-        CONTAINER_NAME: ${{ inputs.container_name }}
-      run: |
-        if [ -f "$GRYPE_JSON_OUTPUT" ]; then
-          cp "$GRYPE_JSON_OUTPUT" "grype-${CONTAINER_NAME}-results.json"
-        fi
-
-    - name: Run Grype vulnerability scanner (SARIF)
-      if: contains(inputs.scanners, 'grype')
-      uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7
-      id: grype-sarif
-      continue-on-error: true
-      with:
-        image: ${{ inputs.image_ref }}
-        fail-build: false
-        output-format: sarif
-      env:
-        GRYPE_REGISTRY_AUTH_USERNAME: ${{ inputs.registry_username }}
-        GRYPE_REGISTRY_AUTH_PASSWORD: ${{ inputs.registry_password }}
-
-    - name: Move Grype SARIF results
-      if: contains(inputs.scanners, 'grype') && steps.grype-sarif.outputs.sarif != ''
-      shell: bash
-      env:
-        GRYPE_SARIF_OUTPUT: ${{ steps.grype-sarif.outputs.sarif }}
-        CONTAINER_NAME: ${{ inputs.container_name }}
-      run: |
-        if [ -f "$GRYPE_SARIF_OUTPUT" ]; then
-          cp "$GRYPE_SARIF_OUTPUT" "grype-${CONTAINER_NAME}-results.sarif"
-        fi
-
-    - name: Upload Grype SARIF to GitHub Security
-      if: contains(inputs.scanners, 'grype') && inputs.enable_code_security == 'true'
-      uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
-      continue-on-error: true
-      with:
-        sarif_file: grype-${{ inputs.container_name }}-results.sarif
-        category: grype-container-${{ inputs.container_name }}
-
-    # ========================================
-    # Grype Scan Outcome Check
-    # ========================================
-    - name: Check Grype scan outcome
-      id: grype-status
-      if: contains(inputs.scanners, 'grype') && always()
-      shell: bash
-      env:
-        CONTAINER_NAME: ${{ inputs.container_name }}
-        GRYPE_JSON_OUTCOME: ${{ steps.grype-json.outcome }}
-      run: |
-        GRYPE_JSON="grype-${CONTAINER_NAME}-results.json"
-        GRYPE_ERROR=false
-        ERROR_MSG=""
-
-        # Check if Grype JSON step failed
-        if [ "$GRYPE_JSON_OUTCOME" = "failure" ]; then
-          GRYPE_ERROR=true
-          ERROR_MSG="Grype JSON scan action failed"
-        fi
-
-        # Check if result file exists (Grype doesn't create a file on failure)
-        if [ ! -f "$GRYPE_JSON" ] && [ "$GRYPE_JSON_OUTCOME" != "skipped" ]; then
-          GRYPE_ERROR=true
-          ERROR_MSG="No Grype result file produced"
-        fi
-
-        echo "grype_error=$GRYPE_ERROR" >> $GITHUB_OUTPUT
-        echo "grype_error_msg=$ERROR_MSG" >> $GITHUB_OUTPUT
-        if [ "$GRYPE_ERROR" = "true" ]; then
-          echo "::warning::Grype scan error: $ERROR_MSG"
-        fi
-
-    # ========================================
-    # Severity Check and Analysis
-    # ========================================
-    - name: Check severity threshold
-      id: severity-check
-      if: always()
-      shell: bash
-      env:
-        CONTAINER_NAME: ${{ inputs.container_name }}
-        FAIL_ON: ${{ inputs.fail_on_severity }}
-        TRIVY_ERROR: ${{ steps.trivy-status.outputs.trivy_error }}
-        GRYPE_ERROR: ${{ steps.grype-status.outputs.grype_error }}
         SCANNERS: ${{ inputs.scanners }}
-        TRIVY_ERR_MSG: ${{ steps.trivy-status.outputs.trivy_error_msg }}
-        GRYPE_ERR_MSG: ${{ steps.grype-status.outputs.grype_error_msg }}
+        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
       run: |
-        echo "📊 Analyzing scan results for ${CONTAINER_NAME}..."
+        REPORT_DIR="container-reports"
+        mkdir -p "$REPORT_DIR" scanner-summaries
 
-        # Check for scanner errors
-        SCANNER_ERROR=false
+        # Run argus container scan via the SDK CLI
+        SCAN_EXIT=0
+        python -m argus scan container \
+          --image "$IMAGE_REF" \
+          --scanners "$SCANNERS" \
+          --format json markdown sarif \
+          --output-dir "./$REPORT_DIR" \
+          --no-timestamp \
+          --severity-threshold "${FAIL_ON_SEVERITY:-none}" \
+          || SCAN_EXIT=$?
 
-        if [[ "$SCANNERS" == *"trivy"* ]] && [ "$TRIVY_ERROR" = "true" ]; then
-          SCANNER_ERROR=true
-        fi
-        if [[ "$SCANNERS" == *"grype"* ]] && [ "$GRYPE_ERROR" = "true" ]; then
-          SCANNER_ERROR=true
-        fi
+        # Parse severity counts from JSON output
+        CRITICAL=0; HIGH=0; MEDIUM=0; LOW=0; TOTAL=0
+        SCAN_ERROR=false; SCAN_STATUS="pass"
 
-        TRIVY_JSON="trivy-${CONTAINER_NAME}-results.json"
-        GRYPE_JSON="grype-${CONTAINER_NAME}-results.json"
+        JSON_FILE="$REPORT_DIR/container-scan.json"
+        if [ -f "$JSON_FILE" ]; then
+          CRITICAL=$(jq '[.results[].critical] | add // 0' "$JSON_FILE")
+          HIGH=$(jq '[.results[].high] | add // 0' "$JSON_FILE")
+          MEDIUM=$(jq '[.results[].medium] | add // 0' "$JSON_FILE")
+          LOW=$(jq '[.results[].low] | add // 0' "$JSON_FILE")
+          TOTAL=$(jq '[.results[].total] | add // 0' "$JSON_FILE")
 
-        # Initialize temp files
-        touch /tmp/trivy_critical.txt /tmp/trivy_high.txt /tmp/trivy_medium.txt /tmp/trivy_low.txt
-        touch /tmp/grype_critical.txt /tmp/grype_high.txt /tmp/grype_medium.txt /tmp/grype_low.txt
-
-        # Extract CVE IDs from Trivy
-        if [ -f "$TRIVY_JSON" ]; then
-          jq -r '.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL") | .VulnerabilityID' "$TRIVY_JSON" 2>/dev/null | sort -u > /tmp/trivy_critical.txt || true
-          jq -r '.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH") | .VulnerabilityID' "$TRIVY_JSON" 2>/dev/null | sort -u > /tmp/trivy_high.txt || true
-          jq -r '.Results[]?.Vulnerabilities[]? | select(.Severity == "MEDIUM") | .VulnerabilityID' "$TRIVY_JSON" 2>/dev/null | sort -u > /tmp/trivy_medium.txt || true
-          jq -r '.Results[]?.Vulnerabilities[]? | select(.Severity == "LOW") | .VulnerabilityID' "$TRIVY_JSON" 2>/dev/null | sort -u > /tmp/trivy_low.txt || true
-          T_CRIT=$(wc -l < /tmp/trivy_critical.txt | tr -d ' ')
-          T_HIGH=$(wc -l < /tmp/trivy_high.txt | tr -d ' ')
-          echo "📊 Trivy found: $T_CRIT critical, $T_HIGH high"
-        fi
-
-        # Extract CVE IDs from Grype
-        if [ -f "$GRYPE_JSON" ]; then
-          jq -r '.matches[]? | select(.vulnerability.severity == "Critical") | .vulnerability.id' "$GRYPE_JSON" 2>/dev/null | sort -u > /tmp/grype_critical.txt || true
-          jq -r '.matches[]? | select(.vulnerability.severity == "High") | .vulnerability.id' "$GRYPE_JSON" 2>/dev/null | sort -u > /tmp/grype_high.txt || true
-          jq -r '.matches[]? | select(.vulnerability.severity == "Medium") | .vulnerability.id' "$GRYPE_JSON" 2>/dev/null | sort -u > /tmp/grype_medium.txt || true
-          jq -r '.matches[]? | select(.vulnerability.severity == "Low") | .vulnerability.id' "$GRYPE_JSON" 2>/dev/null | sort -u > /tmp/grype_low.txt || true
-          G_CRIT=$(wc -l < /tmp/grype_critical.txt | tr -d ' ')
-          G_HIGH=$(wc -l < /tmp/grype_high.txt | tr -d ' ')
-          echo "📊 Grype found: $G_CRIT critical, $G_HIGH high"
-        fi
-
-        # Merge and deduplicate CVE IDs - use wc -l which handles empty files correctly
-        cat /tmp/trivy_critical.txt /tmp/grype_critical.txt 2>/dev/null | sort -u | grep -v '^$' > /tmp/combined_critical.txt || true
-        cat /tmp/trivy_high.txt /tmp/grype_high.txt 2>/dev/null | sort -u | grep -v '^$' > /tmp/combined_high.txt || true
-        cat /tmp/trivy_medium.txt /tmp/grype_medium.txt 2>/dev/null | sort -u | grep -v '^$' > /tmp/combined_medium.txt || true
-        cat /tmp/trivy_low.txt /tmp/grype_low.txt 2>/dev/null | sort -u | grep -v '^$' > /tmp/combined_low.txt || true
-
-        CRITICAL=$(wc -l < /tmp/combined_critical.txt | tr -d ' ')
-        HIGH=$(wc -l < /tmp/combined_high.txt | tr -d ' ')
-        MEDIUM=$(wc -l < /tmp/combined_medium.txt | tr -d ' ')
-        LOW=$(wc -l < /tmp/combined_low.txt | tr -d ' ')
-        TOTAL=$((CRITICAL + HIGH + MEDIUM + LOW))
-
-        echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
-        echo "high=$HIGH" >> $GITHUB_OUTPUT
-        echo "medium=$MEDIUM" >> $GITHUB_OUTPUT
-        echo "low=$LOW" >> $GITHUB_OUTPUT
-        echo "total_vulns=$TOTAL" >> $GITHUB_OUTPUT
-
-        echo "📊 Combined (deduplicated): Critical=$CRITICAL, High=$HIGH, Medium=$MEDIUM, Low=$LOW, Total=$TOTAL"
-
-        # Determine pass/fail
-        SHOULD_FAIL=false
-        case "$FAIL_ON" in
-          critical)
-            [ "$CRITICAL" -gt 0 ] && SHOULD_FAIL=true
-            ;;
-          high)
-            [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ] && SHOULD_FAIL=true
-            ;;
-          medium)
-            [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ] || [ "$MEDIUM" -gt 0 ] && SHOULD_FAIL=true
-            ;;
-          low)
-            [ "$TOTAL" -gt 0 ] && SHOULD_FAIL=true
-            ;;
-          none|"")
-            SHOULD_FAIL=false
-            ;;
-        esac
-
-        if [ "$SCANNER_ERROR" = "true" ]; then
-          echo "scan_status=error" >> $GITHUB_OUTPUT
-          echo "scan_error=true" >> $GITHUB_OUTPUT
-          echo "scan_error_msg=${TRIVY_ERR_MSG} ${GRYPE_ERR_MSG}" >> $GITHUB_OUTPUT
-          echo "::error::One or more scanners failed to execute"
-          echo "❌ Scanner error detected"
-        elif [ "$SHOULD_FAIL" = "true" ]; then
-          echo "scan_status=fail" >> $GITHUB_OUTPUT
-          echo "scan_error=false" >> $GITHUB_OUTPUT
-          echo "❌ Vulnerabilities found at or above $FAIL_ON severity"
-        else
-          echo "scan_status=pass" >> $GITHUB_OUTPUT
-          echo "scan_error=false" >> $GITHUB_OUTPUT
-          echo "✅ Scan passed"
-        fi
-
-    # ========================================
-    # Organize Artifacts (always runs to prepare for upload)
-    # ========================================
-    - name: Organize scan artifacts
-      if: always()
-      shell: bash
-      env:
-        CONTAINER_NAME: ${{ inputs.container_name }}
-        TRIVY_ERROR: ${{ steps.trivy-status.outputs.trivy_error }}
-        GRYPE_ERROR: ${{ steps.grype-status.outputs.grype_error }}
-        TRIVY_MSG: ${{ steps.trivy-status.outputs.trivy_error_msg }}
-        GRYPE_MSG: ${{ steps.grype-status.outputs.grype_error_msg }}
-      run: |
-        echo "📁 Organizing scan artifacts for ${CONTAINER_NAME}..."
-
-        # Create artifact directory
-        mkdir -p "container-scan-results-${CONTAINER_NAME}"
-
-        # Move result files to artifact directory
-        for f in trivy-${CONTAINER_NAME}-results.* grype-${CONTAINER_NAME}-results.* sbom-${CONTAINER_NAME}-*.json; do
-          if [ -f "$f" ]; then
-            mv "$f" "container-scan-results-${CONTAINER_NAME}/"
-            echo "  ✅ Moved $f"
+          # Check for build failures (indicates scanner error)
+          BUILD_FAILURES=$(jq '.build_failures // 0' "$JSON_FILE")
+          if [ "$BUILD_FAILURES" -gt 0 ]; then
+            SCAN_ERROR=true
           fi
-        done
-
-        # Create scan-status.json marker if scanner errors occurred or no results found
-        if [ "$TRIVY_ERROR" = "true" ] || [ "$GRYPE_ERROR" = "true" ]; then
-          python3 -c "
-        import json, sys
-        json.dump({
-            'status': 'error',
-            'container': sys.argv[1],
-            'error': ('Scanner errors: ' + ' '.join(filter(None, [sys.argv[2], sys.argv[3]]))).strip(),
-            'trivy_error': sys.argv[4] == 'true',
-            'grype_error': sys.argv[5] == 'true'
-        }, open(sys.argv[6], 'w'))
-        " "${CONTAINER_NAME}" "${TRIVY_MSG}" "${GRYPE_MSG}" "${TRIVY_ERROR}" "${GRYPE_ERROR}" \
-            "container-scan-results-${CONTAINER_NAME}/scan-status.json"
-          echo "  ⚠️ Scanner errors detected - created status marker"
-        elif [ ! -f "container-scan-results-${CONTAINER_NAME}/trivy-${CONTAINER_NAME}-results.json" ] && \
-             [ ! -f "container-scan-results-${CONTAINER_NAME}/grype-${CONTAINER_NAME}-results.json" ]; then
-          python3 -c "
-        import json, sys
-        json.dump({
-            'status': 'failed',
-            'container': sys.argv[1],
-            'error': 'No scan results produced'
-        }, open(sys.argv[2], 'w'))
-        " "${CONTAINER_NAME}" "container-scan-results-${CONTAINER_NAME}/scan-status.json"
-          echo "  ⚠️ No scan results found - created status marker"
         fi
 
-        # List what we have
-        echo "📦 Artifact contents:"
-        ls -la "container-scan-results-${CONTAINER_NAME}/" 2>/dev/null || echo "  (empty)"
+        # Determine scan status from exit code
+        if [ $SCAN_EXIT -eq 2 ]; then
+          SCAN_STATUS="error"
+          SCAN_ERROR=true
+        elif [ $SCAN_EXIT -eq 1 ]; then
+          SCAN_STATUS="fail"
+        fi
 
-    # ========================================
-    # Job Summary (Rich output using bundled scripts)
-    # ========================================
-    - name: Generate rich job summary
-      if: always() && inputs.skip_summary != 'true'
-      shell: bash
-      env:
-        TRIVY_PARSER: ${{ github.action_path }}/scripts/parse_trivy_results.py
-        GRYPE_PARSER: ${{ github.action_path }}/scripts/parse_grype_results.py
-        GITHUB_REPOSITORY: ${{ github.repository }}
-        GITHUB_RUN_ID: ${{ github.run_id }}
-        GITHUB_SERVER_URL: ${{ github.server_url }}
-        SUMMARY_SCRIPT: ${{ github.action_path }}/scripts/generate_container_summary.py
-      run: |
-        python3 "$SUMMARY_SCRIPT"
+        echo "critical=$CRITICAL" >> "$GITHUB_OUTPUT"
+        echo "high=$HIGH" >> "$GITHUB_OUTPUT"
+        echo "medium=$MEDIUM" >> "$GITHUB_OUTPUT"
+        echo "low=$LOW" >> "$GITHUB_OUTPUT"
+        echo "total_vulns=$TOTAL" >> "$GITHUB_OUTPUT"
+        echo "scan_status=$SCAN_STATUS" >> "$GITHUB_OUTPUT"
+        echo "scan_error=$SCAN_ERROR" >> "$GITHUB_OUTPUT"
 
-    # ========================================
-    # Artifact Upload
-    # ========================================
-    - name: Upload scan results
+        echo "Found: CRITICAL=$CRITICAL, HIGH=$HIGH, MEDIUM=$MEDIUM, LOW=$LOW, TOTAL=$TOTAL"
+
+        # Copy markdown summary for PR comment artifact
+        MD_FILE="$REPORT_DIR/container-scan.md"
+        if [ -f "$MD_FILE" ]; then
+          cp "$MD_FILE" "scanner-summaries/container-${CONTAINER_NAME}.md"
+          cat "$MD_FILE" >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+        exit $SCAN_EXIT
+
+    - name: Upload scan artifacts
       if: always()
       uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
       with:
-        name: container-scan-results-${{ inputs.container_name }}-${{ inputs.scanners }}-${{ steps.job-id.outputs.job-id }}
+        name: container-reports-${{ inputs.container_name }}
         path: |
-          container-scan-results-${{ inputs.container_name }}/
+          container-reports/
           scanner-summaries/
         retention-days: 30
         if-no-files-found: ignore
 
-    # ========================================
-    # PR Comment (Optional)
-    # ========================================
+    - name: Upload SARIF to GitHub Security
+      if: inputs.enable_code_security == 'true' && always() && hashFiles('container-reports/argus-results.sarif') != ''
+      uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
+      with:
+        sarif_file: container-reports/argus-results.sarif
+        category: container-${{ inputs.container_name }}
+      continue-on-error: true
+
+    - name: Upload summary section
+      if: always()
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+      with:
+        name: scanner-summary-container-${{ inputs.container_name }}
+        path: scanner-summaries/container-${{ inputs.container_name }}.md
+        retention-days: 7
+      continue-on-error: true
+
     - name: Comment PR with container scan results
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
       uses: huntridge-labs/argus/.github/actions/comment-pr@0.7.0
       with:
         summary_file: scanner-summaries/container-${{ inputs.container_name }}.md
         comment_marker: container-${{ inputs.container_name }}-comment-marker
-        title: '📦 Container Security Scan: ${{ inputs.container_name }}'
+        title: 'Container Security Scan: ${{ inputs.container_name }}'
         fallback_message: 'No container scan results available'
-
-    # ========================================
-    # Fail Job if Needed
-    # ========================================
-    - name: Fail if vulnerabilities exceed threshold or scanner errors
-      if: always() && inputs.allow_failure != 'true' && (steps.severity-check.outputs.scan_status == 'fail' || steps.severity-check.outputs.scan_status == 'error')
-      shell: bash
-      env:
-        SCAN_STATUS: ${{ steps.severity-check.outputs.scan_status }}
-        CONTAINER_NAME: ${{ inputs.container_name }}
-        SCAN_ERROR_MSG: ${{ steps.severity-check.outputs.scan_error_msg }}
-        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
-      run: |
-        if [ "$SCAN_STATUS" = "error" ]; then
-          echo "::error title=Scanner Error::Container $CONTAINER_NAME scan failed: $SCAN_ERROR_MSG"
-        else
-          echo "::error title=Security Vulnerabilities Found::Container $CONTAINER_NAME has vulnerabilities at or above $FAIL_ON_SEVERITY severity"
-        fi
-        exit 1

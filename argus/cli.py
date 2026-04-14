@@ -709,7 +709,11 @@ def _cmd_dast_scan(args: argparse.Namespace) -> int:
     from argus.dast import DastEngine
 
     base_dir = args.output_dir or "./argus-results"
-    output_dir = _make_run_dir(base_dir)
+    if getattr(args, "no_timestamp", False):
+        output_dir = base_dir
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+    else:
+        output_dir = _make_run_dir(base_dir)
     formats = args.formats or ["terminal", "markdown"]
 
     # Parse env vars from --env KEY=VALUE flags
@@ -846,12 +850,22 @@ def _write_dast_json(summary, output_dir) -> None:
         "target_count": summary.target_count,
         "healthy_count": summary.healthy_count,
         "total_findings": summary.total_count,
+        "critical_count": summary.critical_count,
+        "high_count": summary.high_count,
+        "medium_count": summary.medium_count,
+        "low_count": summary.low_count,
+        "info_count": summary.info_count,
         "results": [
             {
                 "name": r.name,
                 "target_url": r.target_url,
                 "healthy": r.healthy,
                 "finding_count": len(r.findings),
+                "critical_count": r.critical_count,
+                "high_count": r.high_count,
+                "medium_count": r.medium_count,
+                "low_count": r.low_count,
+                "info_count": r.info_count,
             }
             for r in summary.results
         ],

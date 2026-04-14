@@ -57,6 +57,10 @@ class DastScanResult:
         return self._count_severity(Severity.LOW)
 
     @property
+    def info_count(self) -> int:
+        return self._count_severity(Severity.INFO)
+
+    @property
     def total_count(self) -> int:
         return len(self.findings)
 
@@ -85,6 +89,10 @@ class DastScanSummary:
     @property
     def low_count(self) -> int:
         return sum(r.low_count for r in self.results)
+
+    @property
+    def info_count(self) -> int:
+        return sum(r.info_count for r in self.results)
 
     @property
     def total_count(self) -> int:
