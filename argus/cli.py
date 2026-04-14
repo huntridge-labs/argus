@@ -1126,7 +1126,6 @@ _argus() {{
     esac
 }}
 
-_argus "$@"
 compdef _argus argus 2>/dev/null'''
 
 
