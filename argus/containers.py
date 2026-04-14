@@ -16,6 +16,7 @@ OFFICIAL_IMAGES = {
     "checkov": "bridgecrew/checkov:3.2.346",
     "osv-scanner": "ghcr.io/google/osv-scanner:v2.3.5",
     "zap": "ghcr.io/zaproxy/zaproxy:2.16.0",
+    "hadolint": "hadolint/hadolint:v2.12.0",
 }
 
 # Custom images built and published by Argus to ghcr.io/huntridge-labs/argus/

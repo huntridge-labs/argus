@@ -38,19 +38,30 @@ class TestContainerManifest:
 
 
 class TestScannerContainerImages:
-    """Verify all scanner modules have container_image set."""
+    """Verify all security scanner modules have container_image set.
+
+    Linters (lint-*) are lightweight pip/npm tools and do not require
+    container support, so they are excluded from these checks.
+    """
+
+    def _security_scanners(self):
+        """Return only non-linter scanner entries."""
+        from argus.scanners import SCANNER_REGISTRY
+        return {
+            name: cls
+            for name, cls in SCANNER_REGISTRY.items()
+            if not name.startswith("lint-")
+        }
 
     def test_all_scanners_have_container_image(self):
-        from argus.scanners import SCANNER_REGISTRY
-        for name, cls in SCANNER_REGISTRY.items():
+        for name, cls in self._security_scanners().items():
             scanner = cls()
             assert hasattr(scanner, "container_image"), (
                 f"{name} missing container_image"
             )
 
     def test_all_scanners_have_container_args(self):
-        from argus.scanners import SCANNER_REGISTRY
-        for name, cls in SCANNER_REGISTRY.items():
+        for name, cls in self._security_scanners().items():
             scanner = cls()
             assert hasattr(scanner, "container_args"), (
                 f"{name} missing container_args method"

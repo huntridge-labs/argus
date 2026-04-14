@@ -10,6 +10,7 @@ from .osv import OsvScanner
 from .supply_chain import SupplyChainScanner
 from .trivy_iac import TrivyIacScanner
 from .zap import ZapScanner
+from argus.linters import LINTER_REGISTRY
 
 __all__ = [
     "BanditScanner",
@@ -40,6 +41,10 @@ SCANNER_REGISTRY = {
     "zap": ZapScanner,
     "container": ContainerScanner,
 }
+
+# Merge linter modules into the scanner registry so they can be
+# invoked via `argus scan lint-yaml`, `argus scan lint-python`, etc.
+SCANNER_REGISTRY.update(LINTER_REGISTRY)
 
 
 def get_scanner(name: str):
