@@ -408,6 +408,7 @@ class TestCheckovScan:
         assert result.scanner == "checkov"
         assert len(result.findings) == 1
         assert result.findings[0].id == "CKV_AWS_1"
+        assert result.metadata.get("passed_count") == 0
 
     def test_scan_failure(self, monkeypatch):
         scanner = CheckovScanner()

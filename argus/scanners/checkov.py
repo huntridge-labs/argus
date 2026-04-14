@@ -62,11 +62,12 @@ class CheckovScanner:
                     metadata={"error": "No output produced"},
                 )
 
-            findings = self.parse_results(output_file)
+            findings, passed_count = self.parse_results(output_file)
             return ScanResult(
                 scanner=self.name,
                 findings=findings,
                 raw_report=output_file,
+                metadata={"passed_count": passed_count},
             )
 
     def is_available(self) -> bool:
@@ -77,11 +78,11 @@ class CheckovScanner:
         """Return install command for Checkov."""
         return "pip install checkov"
 
-    def parse_results(self, raw_output_path: Path) -> list[Finding]:
-        """Parse Checkov JSON output into findings."""
+    def parse_results(self, raw_output_path: Path) -> tuple[list[Finding], int]:
+        """Parse Checkov JSON output into findings and passed count."""
         text = raw_output_path.read_text().strip()
         if not text:
-            return []
+            return [], 0
 
         data = json.loads(text)
 
@@ -93,14 +94,17 @@ class CheckovScanner:
             check_blocks = [data]
 
         findings = []
+        passed_count = 0
         for block in check_blocks:
             results = block.get("results", {})
             failed_checks = results.get("failed_checks", [])
+            passed_checks = results.get("passed_checks", [])
+            passed_count += len(passed_checks)
             findings.extend(
                 self._parse_check(check) for check in failed_checks
             )
 
-        return findings
+        return findings, passed_count
 
     def _parse_check(self, check: dict) -> Finding:
         """Convert a single Checkov failed check into a Finding."""

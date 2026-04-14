@@ -334,8 +334,7 @@ jobs:
           post_pr_comment: 'false'
           enable_code_security: ${{ env.ENABLE_CODE_SECURITY }}
           fail_on_severity: 'none'
-          gitleaks_enable_comments: 'false'  # Disable in tests
-          gitleaks_config: '.gitleaks.toml'  # Exclude test fixtures with mock secrets
+          gitleaks_config: '.gitleaks.toml'
 
       - name: Verify scan completed
         shell: bash

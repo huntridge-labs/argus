@@ -21,14 +21,21 @@ class OsvScanner:
         config = config or {}
         args = [
             "scan", "source",
-            "--recursive",
             "--format", "json",
             "--output", "/output/results.json",
         ]
         config_file = config.get("config_file")
         if config_file:
             args.extend(["--config", f"/workspace/{config_file}"])
-        args.append("/workspace")
+
+        lockfile = config.get("lockfile")
+        if lockfile:
+            args.extend(["-L", f"/workspace/{lockfile}"])
+        else:
+            recursive = config.get("recursive", True)
+            if str(recursive).lower() not in ("false", "0", "no"):
+                args.append("--recursive")
+            args.append("/workspace")
         return args
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
@@ -172,11 +179,19 @@ class OsvScanner:
             "scan",
             "--format", "json",
             "--output", str(output_file),
-            path,
         ]
 
         config_file = config.get("config_file")
         if config_file:
             cmd.extend(["--config", config_file])
+
+        lockfile = config.get("lockfile")
+        if lockfile:
+            cmd.extend(["-L", lockfile])
+        else:
+            recursive = config.get("recursive", True)
+            if str(recursive).lower() not in ("false", "0", "no"):
+                cmd.append("--recursive")
+            cmd.append(path)
 
         return cmd

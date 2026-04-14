@@ -12,9 +12,10 @@ class TestCheckovParseResults:
     def test_parse_results_with_findings(self, fixtures_dir):
         scanner = CheckovScanner()
         path = fixtures_dir / "checkov" / "results-with-findings.json"
-        findings = scanner.parse_results(path)
+        findings, passed_count = scanner.parse_results(path)
 
         assert len(findings) == 5
+        assert passed_count == 1
 
         severities = [f.severity for f in findings]
         assert severities.count(Severity.HIGH) == 2
@@ -24,14 +25,15 @@ class TestCheckovParseResults:
     def test_parse_results_zero_findings(self, fixtures_dir):
         scanner = CheckovScanner()
         path = fixtures_dir / "checkov" / "results-zero-findings.json"
-        findings = scanner.parse_results(path)
+        findings, passed_count = scanner.parse_results(path)
 
         assert len(findings) == 0
+        assert passed_count == 1
 
     def test_finding_fields(self, fixtures_dir):
         scanner = CheckovScanner()
         path = fixtures_dir / "checkov" / "results-with-findings.json"
-        findings = scanner.parse_results(path)
+        findings, _passed_count = scanner.parse_results(path)
 
         first = findings[0]
         assert first.id == "CKV_AWS_79"
@@ -44,7 +46,7 @@ class TestCheckovParseResults:
     def test_file_path_leading_slash_stripped(self, fixtures_dir):
         scanner = CheckovScanner()
         path = fixtures_dir / "checkov" / "results-with-findings.json"
-        findings = scanner.parse_results(path)
+        findings, _passed_count = scanner.parse_results(path)
 
         for finding in findings:
             if finding.location:
