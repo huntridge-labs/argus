@@ -1,5 +1,8 @@
 """Tests for argus.core.engine — ArgusEngine."""
 
+import subprocess
+from pathlib import Path
+
 import pytest
 
 from argus.core.config import ArgusConfig, ScannerConfig
@@ -372,3 +375,311 @@ class TestTimeout:
 
         summary = engine.run(timeout=None)
         assert len(summary.results) == 1
+
+
+class TestImageDigest:
+    """Test _get_image_digest() subprocess interactions."""
+
+    def _make_engine(self):
+        return ArgusEngine(ArgusConfig.from_dict({}))
+
+    def test_digest_from_repo_digest(self, monkeypatch):
+        engine = self._make_engine()
+        mock_result = subprocess.CompletedProcess(
+            args=[], returncode=0,
+            stdout="registry/image@sha256:abc123\n",
+        )
+        monkeypatch.setattr(subprocess, "run", lambda *a, **kw: mock_result)
+
+        digest = engine._get_image_digest("registry/image:latest")
+        assert digest == "sha256:abc123"
+
+    def test_digest_fallback_to_image_id(self, monkeypatch):
+        engine = self._make_engine()
+        calls = []
+
+        def mock_run(*args, **kwargs):
+            calls.append(args[0])
+            if len(calls) == 1:
+                return subprocess.CompletedProcess(
+                    args=[], returncode=1, stdout="", stderr="",
+                )
+            return subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="sha256:localid\n",
+            )
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        digest = engine._get_image_digest("myimage:dev")
+        assert digest == "sha256:localid"
+        assert len(calls) == 2
+
+    def test_digest_timeout_returns_unknown(self, monkeypatch):
+        engine = self._make_engine()
+
+        def mock_run(*args, **kwargs):
+            raise subprocess.TimeoutExpired(cmd="docker", timeout=10)
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        assert engine._get_image_digest("image:latest") == "unknown"
+
+    def test_digest_failure_returns_unknown(self, monkeypatch):
+        engine = self._make_engine()
+
+        def mock_run(*args, **kwargs):
+            raise OSError("Docker not found")
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        assert engine._get_image_digest("image:latest") == "unknown"
+
+
+class TestPullImage:
+    """Test _pull_image() with various pull policies."""
+
+    def _make_engine(self, pull_policy="if-not-present"):
+        data = {"execution": {"pull_policy": pull_policy}}
+        return ArgusEngine(ArgusConfig.from_dict(data))
+
+    def test_pull_never_policy_found_locally(self, monkeypatch):
+        engine = self._make_engine(pull_policy="never")
+        mock_result = subprocess.CompletedProcess(args=[], returncode=0)
+        monkeypatch.setattr(subprocess, "run", lambda *a, **kw: mock_result)
+
+        assert engine._pull_image("myimage:latest") is True
+
+    def test_pull_never_policy_not_found(self, monkeypatch):
+        engine = self._make_engine(pull_policy="never")
+        mock_result = subprocess.CompletedProcess(
+            args=[], returncode=1, stdout="", stderr="",
+        )
+        monkeypatch.setattr(subprocess, "run", lambda *a, **kw: mock_result)
+
+        assert engine._pull_image("myimage:latest") is False
+
+    def test_pull_if_not_present_found_locally(self, monkeypatch):
+        engine = self._make_engine(pull_policy="if-not-present")
+        calls = []
+
+        def mock_run(cmd, **kwargs):
+            calls.append(cmd)
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="sha256:abc\n",
+            )
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        assert engine._pull_image("myimage:latest") is True
+        # Should inspect but never call docker pull
+        assert not any("pull" in str(c) for c in calls if isinstance(c, list) and "pull" in c)
+
+    def test_pull_if_not_present_pulls_when_missing(self, monkeypatch):
+        engine = self._make_engine(pull_policy="if-not-present")
+        calls = []
+
+        def mock_run(cmd, **kwargs):
+            calls.append(cmd)
+            # First call: docker image inspect -> not found
+            if "inspect" in cmd:
+                return subprocess.CompletedProcess(
+                    args=cmd, returncode=1, stdout="", stderr="",
+                )
+            # Pull call -> success
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="Pulled\n", stderr="",
+            )
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        assert engine._pull_image("myimage:latest") is True
+        pull_calls = [c for c in calls if isinstance(c, list) and "pull" in c]
+        assert len(pull_calls) >= 1
+
+    def test_pull_always_policy_pulls(self, monkeypatch):
+        engine = self._make_engine(pull_policy="always")
+        calls = []
+
+        def mock_run(cmd, **kwargs):
+            calls.append(cmd)
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="sha256:abc\n", stderr="",
+            )
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        assert engine._pull_image("myimage:latest") is True
+        # Should call docker pull directly (no inspect first)
+        first_cmd = calls[0]
+        assert "pull" in first_cmd
+
+    def test_pull_arm64_fallback(self, monkeypatch):
+        engine = self._make_engine(pull_policy="always")
+        calls = []
+
+        def mock_run(cmd, **kwargs):
+            calls.append(cmd)
+            # First pull fails, second (with --platform) succeeds
+            if "pull" in cmd and "--platform" not in cmd:
+                return subprocess.CompletedProcess(
+                    args=cmd, returncode=1, stdout="", stderr="arch mismatch",
+                )
+            if "--platform" in cmd:
+                return subprocess.CompletedProcess(
+                    args=cmd, returncode=0, stdout="Pulled\n", stderr="",
+                )
+            # Digest inspection
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="sha256:abc\n",
+            )
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        assert engine._pull_image("myimage:latest") is True
+        platform_calls = [
+            c for c in calls
+            if isinstance(c, list) and "--platform" in c
+        ]
+        assert len(platform_calls) == 1
+
+
+class TestRunInContainer:
+    """Test _run_in_container() Docker execution path."""
+
+    def _make_engine(self):
+        data = {"execution": {"backend": "docker"}}
+        return ArgusEngine(ArgusConfig.from_dict(data))
+
+    def _make_scanner(self, **overrides):
+        scanner = MockScanner(
+            name=overrides.get("name", "test-scanner"),
+            container_image=overrides.get("container_image", "img:latest"),
+        )
+        if "container_entrypoint" in overrides:
+            scanner.container_entrypoint = overrides["container_entrypoint"]
+        if "parse_results" in overrides:
+            scanner.parse_results = overrides["parse_results"]
+        return scanner
+
+    def test_container_produces_output_file(self, monkeypatch, tmp_path):
+        engine = self._make_engine()
+        expected_findings = [
+            Finding(id="1", severity=Severity.HIGH, title="vuln"),
+        ]
+        scanner = self._make_scanner(
+            parse_results=lambda f: expected_findings,
+        )
+
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+
+        def mock_run(cmd, **kwargs):
+            # Write a fake result file into the output volume
+            for i, arg in enumerate(cmd):
+                if arg == "/output" and i > 0 and cmd[i - 1] == "-v":
+                    break
+            # Extract output dir from -v bind mount
+            for i, arg in enumerate(cmd):
+                if ":/output" in str(arg):
+                    host_dir = arg.split(":")[0]
+                    Path(host_dir).joinpath("results.json").write_text("{}")
+                    break
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="", stderr="",
+            )
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        result = engine._run_in_container(scanner, "/src", {})
+        assert result.scanner == "test-scanner"
+        assert len(result.findings) == 1
+        assert result.metadata["execution"] == "container"
+
+    def test_container_captures_stdout_when_no_files(self, monkeypatch):
+        engine = self._make_engine()
+        captured_file = {}
+
+        def mock_parse(filepath):
+            captured_file["path"] = filepath
+            return [Finding(id="1", severity=Severity.LOW, title="from stdout")]
+
+        scanner = self._make_scanner(parse_results=mock_parse)
+
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+
+        def mock_run(cmd, **kwargs):
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0,
+                stdout="scanner output on stdout\n", stderr="",
+            )
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        result = engine._run_in_container(scanner, "/src", {})
+        assert result.findings[0].title == "from stdout"
+        assert captured_file["path"].name == "stdout.txt"
+
+    def test_container_custom_entrypoint(self, monkeypatch):
+        engine = self._make_engine()
+        scanner = self._make_scanner(container_entrypoint="/bin/custom")
+        captured_cmd = {}
+
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+
+        def mock_run(cmd, **kwargs):
+            captured_cmd["cmd"] = cmd
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="", stderr="",
+            )
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        engine._run_in_container(scanner, "/src", {})
+        assert "--entrypoint" in captured_cmd["cmd"]
+        ep_idx = captured_cmd["cmd"].index("--entrypoint")
+        assert captured_cmd["cmd"][ep_idx + 1] == "/bin/custom"
+
+
+class TestFilterExcluded:
+    """Test _filter_excluded() path exclusion logic."""
+
+    def _make_result(self, locations):
+        findings = [
+            Finding(
+                id=str(i), severity=Severity.LOW,
+                title=f"f{i}", location=loc,
+            )
+            for i, loc in enumerate(locations)
+        ]
+        return ScanResult(scanner="test", findings=findings)
+
+    def test_filter_removes_matching_paths(self):
+        result = self._make_result([
+            "src/main.py",
+            "tests/test_main.py",
+            "src/utils.py",
+        ])
+        filtered = ArgusEngine._filter_excluded(result, "tests/")
+        locations = [f.location for f in filtered.findings]
+        assert "tests/test_main.py" not in locations
+        assert len(filtered.findings) == 2
+
+    def test_filter_empty_exclude_returns_all(self):
+        result = self._make_result(["a.py", "b.py", "c.py"])
+        filtered = ArgusEngine._filter_excluded(result, "")
+        assert len(filtered.findings) == 3
+
+    def test_filter_comma_separated_excludes(self):
+        result = self._make_result([
+            "src/main.py",
+            "vendor/lib.py",
+            "tests/test_main.py",
+            "docs/guide.md",
+        ])
+        filtered = ArgusEngine._filter_excluded(result, "vendor/,tests/")
+        locations = [f.location for f in filtered.findings]
+        assert len(locations) == 2
+        assert "src/main.py" in locations
+        assert "docs/guide.md" in locations

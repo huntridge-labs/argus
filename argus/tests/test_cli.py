@@ -1,9 +1,21 @@
-"""Tests for argus.cli — CLI argument parsing."""
+"""Tests for argus.cli — argument parsing and command handler integration."""
+
+import argparse
+from unittest.mock import MagicMock
 
 import pytest
 
 from argus import cli
-from argus.cli import build_parser
+from argus.cli import (
+    EXIT_ERROR,
+    EXIT_FINDINGS,
+    EXIT_SUCCESS,
+    build_parser,
+    cmd_report,
+    cmd_scan,
+    cmd_validate,
+    _list_scanners,
+)
 
 
 class TestScanSubcommand:
@@ -186,3 +198,518 @@ class TestHiddenEasterEgg:
         assert exc_info.value.code == 0
         assert state["logo"] is True
         assert state["scan"] is True
+
+
+# ---------------------------------------------------------------------------
+# Integration tests — exercise command handler functions directly
+# ---------------------------------------------------------------------------
+
+
+def _make_scan_args(**overrides) -> argparse.Namespace:
+    """Build a Namespace with all attributes expected by cmd_scan."""
+    defaults = {
+        "scanner": None,
+        "path": ".",
+        "config": None,
+        "output_dir": None,
+        "severity_threshold": None,
+        "formats": None,
+        "list": False,
+        "verbose": False,
+        "no_spinner": True,
+        "no_timestamp": True,
+        "fail_fast": False,
+        "timeout": None,
+        "discover": None,
+        "images": None,
+        "scanners": None,
+        "target": None,
+        "port": None,
+        "env_vars": None,
+        "scan_type": "baseline",
+        "startup_timeout": 60,
+    }
+    defaults.update(overrides)
+    return argparse.Namespace(**defaults)
+
+
+class TestCmdScan:
+    """Integration tests for cmd_scan and _cmd_source_scan."""
+
+    def test_scan_unknown_scanner_returns_error(self, monkeypatch, capsys):
+        """Passing an unregistered scanner name should return EXIT_ERROR."""
+        monkeypatch.setattr(
+            "argus.scanners.SCANNER_REGISTRY",
+            {"bandit": object, "gitleaks": object},
+        )
+        args = _make_scan_args(scanner="nonexistent")
+        result = cmd_scan(args)
+
+        assert result == EXIT_ERROR
+        captured = capsys.readouterr()
+        assert "unknown scanner 'nonexistent'" in captured.err
+
+    def test_scan_source_runs_engine(self, monkeypatch, tmp_path):
+        """A valid scan with no findings should call engine.run and return EXIT_SUCCESS."""
+        from argus.core.config import ArgusConfig, ReportingConfig, ExecutionConfig
+        from argus.core.models import ScanSummary
+
+        config = ArgusConfig(
+            reporting=ReportingConfig(
+                output_dir=str(tmp_path),
+                formats=["terminal"],
+                severity_threshold=None,
+            ),
+            execution=ExecutionConfig(),
+        )
+        monkeypatch.setattr(
+            "argus.core.config.ArgusConfig.load",
+            lambda _path: config,
+        )
+
+        summary = ScanSummary(results=[], severity_threshold=None)
+        mock_engine = MagicMock()
+        mock_engine.run.return_value = summary
+        mock_engine.config = config
+
+        monkeypatch.setattr(
+            "argus.core.engine.ArgusEngine.__init__",
+            lambda self, _cfg: setattr(self, "config", config)
+            or setattr(self, "_scanners", {}),
+        )
+        monkeypatch.setattr(
+            "argus.core.engine.ArgusEngine.run",
+            lambda self, **kwargs: summary,
+        )
+        monkeypatch.setattr(
+            "argus.core.engine.ArgusEngine.register_scanner",
+            lambda self, s: None,
+        )
+        monkeypatch.setattr("argus.scanners.get_available_scanners", lambda: [])
+        monkeypatch.setattr(
+            "argus.reporters.get_reporter",
+            lambda fmt: MagicMock(),
+        )
+        # Stub audit module so it doesn't write files to random places
+        monkeypatch.setattr(
+            "argus.audit.get_logger",
+            lambda *a, **kw: MagicMock(),
+        )
+        monkeypatch.setattr(
+            "argus.audit.create_manifest",
+            lambda **kw: MagicMock(execution_backend=None),
+        )
+        monkeypatch.setattr(
+            "argus.audit.finalize_manifest",
+            lambda *a, **kw: None,
+        )
+
+        args = _make_scan_args(output_dir=str(tmp_path))
+        result = cmd_scan(args)
+
+        assert result == EXIT_SUCCESS
+
+    def test_scan_source_returns_findings_exit_code(self, monkeypatch, tmp_path):
+        """When findings exceed the severity threshold, return EXIT_FINDINGS."""
+        from argus.core.config import ArgusConfig, ReportingConfig, ExecutionConfig
+        from argus.core.models import Finding, ScanResult, ScanSummary, Severity
+
+        config = ArgusConfig(
+            reporting=ReportingConfig(
+                output_dir=str(tmp_path),
+                formats=["terminal"],
+                severity_threshold=Severity.HIGH,
+            ),
+            execution=ExecutionConfig(),
+        )
+        monkeypatch.setattr(
+            "argus.core.config.ArgusConfig.load",
+            lambda _path: config,
+        )
+
+        finding = Finding(
+            id="TEST-001",
+            title="Test finding",
+            severity=Severity.HIGH,
+            scanner="bandit",
+        )
+        result = ScanResult(scanner="bandit", findings=[finding])
+        summary = ScanSummary(
+            results=[result],
+            severity_threshold=Severity.HIGH,
+        )
+
+        monkeypatch.setattr(
+            "argus.core.engine.ArgusEngine.__init__",
+            lambda self, _cfg: setattr(self, "config", config)
+            or setattr(self, "_scanners", {}),
+        )
+        monkeypatch.setattr(
+            "argus.core.engine.ArgusEngine.run",
+            lambda self, **kw: summary,
+        )
+        monkeypatch.setattr(
+            "argus.core.engine.ArgusEngine.register_scanner",
+            lambda self, s: None,
+        )
+        monkeypatch.setattr("argus.scanners.get_available_scanners", lambda: [])
+        monkeypatch.setattr(
+            "argus.reporters.get_reporter",
+            lambda fmt: MagicMock(),
+        )
+        monkeypatch.setattr(
+            "argus.audit.get_logger",
+            lambda *a, **kw: MagicMock(),
+        )
+        monkeypatch.setattr(
+            "argus.audit.create_manifest",
+            lambda **kw: MagicMock(execution_backend=None),
+        )
+        monkeypatch.setattr(
+            "argus.audit.finalize_manifest",
+            lambda *a, **kw: None,
+        )
+
+        args = _make_scan_args(output_dir=str(tmp_path))
+        exit_code = cmd_scan(args)
+
+        assert exit_code == EXIT_FINDINGS
+
+    def test_scan_source_severity_none_returns_success(self, monkeypatch, tmp_path):
+        """severity_threshold='none' should mean no threshold — always EXIT_SUCCESS."""
+        from argus.core.config import ArgusConfig, ReportingConfig, ExecutionConfig
+        from argus.core.models import Finding, ScanResult, ScanSummary, Severity
+
+        config = ArgusConfig(
+            reporting=ReportingConfig(
+                output_dir=str(tmp_path),
+                formats=["terminal"],
+                severity_threshold=Severity.HIGH,  # will be overridden
+            ),
+            execution=ExecutionConfig(),
+        )
+        monkeypatch.setattr(
+            "argus.core.config.ArgusConfig.load",
+            lambda _path: config,
+        )
+
+        finding = Finding(
+            id="TEST-001",
+            title="Critical bug",
+            severity=Severity.CRITICAL,
+            scanner="bandit",
+        )
+        result = ScanResult(scanner="bandit", findings=[finding])
+        # severity_threshold=None means passed is always True
+        summary = ScanSummary(results=[result], severity_threshold=None)
+
+        monkeypatch.setattr(
+            "argus.core.engine.ArgusEngine.__init__",
+            lambda self, _cfg: setattr(self, "config", config)
+            or setattr(self, "_scanners", {}),
+        )
+        monkeypatch.setattr(
+            "argus.core.engine.ArgusEngine.run",
+            lambda self, **kw: summary,
+        )
+        monkeypatch.setattr(
+            "argus.core.engine.ArgusEngine.register_scanner",
+            lambda self, s: None,
+        )
+        monkeypatch.setattr("argus.scanners.get_available_scanners", lambda: [])
+        monkeypatch.setattr(
+            "argus.reporters.get_reporter",
+            lambda fmt: MagicMock(),
+        )
+        monkeypatch.setattr(
+            "argus.audit.get_logger",
+            lambda *a, **kw: MagicMock(),
+        )
+        monkeypatch.setattr(
+            "argus.audit.create_manifest",
+            lambda **kw: MagicMock(execution_backend=None),
+        )
+        monkeypatch.setattr(
+            "argus.audit.finalize_manifest",
+            lambda *a, **kw: None,
+        )
+
+        # CLI passes severity_threshold="none" which _cmd_source_scan converts to None
+        args = _make_scan_args(
+            output_dir=str(tmp_path),
+            severity_threshold="none",
+        )
+        exit_code = cmd_scan(args)
+
+        assert exit_code == EXIT_SUCCESS
+
+    def test_scan_list_mode(self, monkeypatch, tmp_path):
+        """--list flag should call _list_scanners and return EXIT_SUCCESS."""
+        from argus.core.config import ArgusConfig, ReportingConfig, ExecutionConfig
+
+        config = ArgusConfig(
+            reporting=ReportingConfig(output_dir=str(tmp_path)),
+            execution=ExecutionConfig(),
+        )
+        monkeypatch.setattr(
+            "argus.core.config.ArgusConfig.load",
+            lambda _path: config,
+        )
+        monkeypatch.setattr(
+            "argus.core.engine.ArgusEngine.__init__",
+            lambda self, _cfg: setattr(self, "config", config)
+            or setattr(self, "_scanners", {}),
+        )
+        monkeypatch.setattr(
+            "argus.core.engine.ArgusEngine.register_scanner",
+            lambda self, s: None,
+        )
+        monkeypatch.setattr("argus.scanners.get_available_scanners", lambda: [])
+        monkeypatch.setattr(
+            "argus.audit.get_logger",
+            lambda *a, **kw: MagicMock(),
+        )
+        monkeypatch.setattr(
+            "argus.audit.create_manifest",
+            lambda **kw: MagicMock(execution_backend=None),
+        )
+        monkeypatch.setattr(
+            "argus.audit.finalize_manifest",
+            lambda *a, **kw: None,
+        )
+
+        args = _make_scan_args(list=True, output_dir=str(tmp_path))
+        exit_code = cmd_scan(args)
+
+        assert exit_code == EXIT_SUCCESS
+
+    def test_scan_no_timestamp_flag(self, monkeypatch, tmp_path):
+        """--no-timestamp should write output directly to output_dir (no subdir)."""
+        from argus.core.config import ArgusConfig, ReportingConfig, ExecutionConfig
+        from argus.core.models import ScanSummary
+
+        out = tmp_path / "flat-output"
+        config = ArgusConfig(
+            reporting=ReportingConfig(
+                output_dir=str(out),
+                formats=["terminal"],
+            ),
+            execution=ExecutionConfig(),
+        )
+        monkeypatch.setattr(
+            "argus.core.config.ArgusConfig.load",
+            lambda _path: config,
+        )
+
+        summary = ScanSummary(results=[], severity_threshold=None)
+        monkeypatch.setattr(
+            "argus.core.engine.ArgusEngine.__init__",
+            lambda self, _cfg: setattr(self, "config", config)
+            or setattr(self, "_scanners", {}),
+        )
+        monkeypatch.setattr(
+            "argus.core.engine.ArgusEngine.run",
+            lambda self, **kw: summary,
+        )
+        monkeypatch.setattr(
+            "argus.core.engine.ArgusEngine.register_scanner",
+            lambda self, s: None,
+        )
+        monkeypatch.setattr("argus.scanners.get_available_scanners", lambda: [])
+        monkeypatch.setattr(
+            "argus.reporters.get_reporter",
+            lambda fmt: MagicMock(),
+        )
+        monkeypatch.setattr(
+            "argus.audit.get_logger",
+            lambda *a, **kw: MagicMock(),
+        )
+        monkeypatch.setattr(
+            "argus.audit.create_manifest",
+            lambda **kw: MagicMock(execution_backend=None),
+        )
+        monkeypatch.setattr(
+            "argus.audit.finalize_manifest",
+            lambda *a, **kw: None,
+        )
+
+        args = _make_scan_args(
+            output_dir=str(out),
+            no_timestamp=True,
+        )
+        cmd_scan(args)
+
+        # With no_timestamp, output_dir itself should exist — no timestamped subdir
+        assert out.is_dir()
+        # No child directories that look like timestamps (YYYY-MM-DDTHH-MM-SSZ)
+        subdirs = [p for p in out.iterdir() if p.is_dir()]
+        assert len(subdirs) == 0
+
+
+class TestCmdValidate:
+    """Integration tests for cmd_validate."""
+
+    def test_validate_valid_config(self, tmp_path, capsys):
+        """A minimal valid config should return EXIT_SUCCESS."""
+        config_file = tmp_path / "argus.yml"
+        config_file.write_text(
+            "scanners:\n"
+            "  bandit:\n"
+            "    enabled: true\n"
+        )
+        args = argparse.Namespace(
+            config=str(config_file),
+            check_tools=False,
+            strict=False,
+        )
+        result = cmd_validate(args)
+
+        assert result == EXIT_SUCCESS
+        captured = capsys.readouterr()
+        assert "valid" in captured.out.lower() or "valid" in captured.out
+
+    def test_validate_missing_config(self, tmp_path, capsys):
+        """A nonexistent config path should return EXIT_ERROR."""
+        args = argparse.Namespace(
+            config=str(tmp_path / "does-not-exist.yml"),
+            check_tools=False,
+            strict=False,
+        )
+        result = cmd_validate(args)
+
+        assert result == EXIT_ERROR
+        captured = capsys.readouterr()
+        assert "not found" in captured.err.lower()
+
+    def test_validate_invalid_yaml(self, tmp_path, capsys):
+        """Malformed YAML should return EXIT_ERROR."""
+        config_file = tmp_path / "argus.yml"
+        config_file.write_text(":\n  - :\n    [bad yaml")
+        args = argparse.Namespace(
+            config=str(config_file),
+            check_tools=False,
+            strict=False,
+        )
+        result = cmd_validate(args)
+
+        assert result == EXIT_ERROR
+        captured = capsys.readouterr()
+        assert "invalid yaml" in captured.err.lower() or "yaml" in captured.err.lower()
+
+    def test_validate_with_warnings(self, tmp_path, capsys):
+        """Unknown keys produce warnings but validation still passes."""
+        config_file = tmp_path / "argus.yml"
+        config_file.write_text(
+            "scanners:\n"
+            "  bandit:\n"
+            "    enabled: true\n"
+            "unknown_key: true\n"
+        )
+        args = argparse.Namespace(
+            config=str(config_file),
+            check_tools=False,
+            strict=False,
+        )
+        result = cmd_validate(args)
+
+        assert result == EXIT_SUCCESS
+
+    def test_validate_strict_fails_on_warnings(self, tmp_path, capsys):
+        """With --strict, warnings should cause EXIT_ERROR."""
+        config_file = tmp_path / "argus.yml"
+        config_file.write_text(
+            "scanners:\n"
+            "  bandit:\n"
+            "    enabled: true\n"
+            "unknown_key: true\n"
+        )
+        args = argparse.Namespace(
+            config=str(config_file),
+            check_tools=False,
+            strict=True,
+        )
+        result = cmd_validate(args)
+
+        assert result == EXIT_ERROR
+        captured = capsys.readouterr()
+        assert "strict" in captured.out.lower() or "warning" in captured.out.lower()
+
+
+class TestCmdReport:
+    """Integration tests for cmd_report."""
+
+    def test_report_missing_results_dir(self, tmp_path, capsys):
+        """A nonexistent results directory should return EXIT_ERROR."""
+        args = argparse.Namespace(
+            format="terminal",
+            results_dir=str(tmp_path / "nonexistent"),
+            output_dir=None,
+            verbose=False,
+        )
+        result = cmd_report(args)
+
+        assert result == EXIT_ERROR
+        captured = capsys.readouterr()
+        assert "not found" in captured.err.lower()
+
+    def test_report_missing_json_file(self, tmp_path, capsys):
+        """Existing dir but no argus-results.json should return EXIT_ERROR."""
+        results_dir = tmp_path / "results"
+        results_dir.mkdir()
+        args = argparse.Namespace(
+            format="terminal",
+            results_dir=str(results_dir),
+            output_dir=None,
+            verbose=False,
+        )
+        result = cmd_report(args)
+
+        assert result == EXIT_ERROR
+        captured = capsys.readouterr()
+        assert "argus-results.json" in captured.err
+
+
+class TestListScanners:
+    """Integration tests for _list_scanners."""
+
+    def test_list_no_scanners(self, capsys):
+        """An engine with no scanners should print a 'no scanners' message."""
+        engine = MagicMock()
+        engine._scanners = {}
+
+        result = _list_scanners(engine)
+
+        assert result == EXIT_SUCCESS
+        captured = capsys.readouterr()
+        assert "no scanners registered" in captured.out.lower()
+
+    def test_list_shows_availability(self, monkeypatch, capsys):
+        """Registered scanners should show local/not-found availability."""
+        local_scanner = MagicMock()
+        local_scanner.is_available.return_value = True
+        local_scanner.description = "Python SAST"
+        local_scanner.container_image = ""
+
+        missing_scanner = MagicMock()
+        missing_scanner.is_available.return_value = False
+        missing_scanner.description = "Secret detection"
+        missing_scanner.container_image = ""
+
+        engine = MagicMock()
+        engine._scanners = {
+            "bandit": local_scanner,
+            "gitleaks": missing_scanner,
+        }
+        engine.config.execution.backend = "local"
+
+        monkeypatch.setattr(
+            "argus.containers.get_image",
+            lambda name: "",
+        )
+
+        result = _list_scanners(engine)
+
+        assert result == EXIT_SUCCESS
+        captured = capsys.readouterr()
+        assert "local" in captured.out
+        assert "not found" in captured.out
