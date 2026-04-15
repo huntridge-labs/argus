@@ -342,7 +342,7 @@ The MCP server is a new interface to the existing engine — it does not change 
 - [ ] CLI `--version` flag behavior not fully tested
 
 ### Documentation Gaps
-- [ ] Docsite has no SDK section — needs scanner module docs
+- [x] SDK docs covered by: cli-reference.md (auto-generated), config-reference.md, scanners.md, failure-control.md, and `argus scan <name> --help`
 - [ ] No migration guide for users of the deleted reusable workflows
 - [ ] No troubleshooting guide for Docker execution failures
 
