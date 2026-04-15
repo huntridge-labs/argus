@@ -144,6 +144,19 @@ class TestArgusEngine:
         assert "trivy-iac" in available
         assert "gitleaks" not in available
 
+    def test_run_records_duration_ms_in_metadata(self):
+        engine = self._make_engine(
+            scanners_config={"bandit": {"enabled": True}}
+        )
+        findings = [Finding(id="1", severity=Severity.HIGH, title="f1")]
+        engine.register_scanner(MockScanner("bandit", findings=findings))
+
+        summary = engine.run(parallel=False)
+        assert len(summary.results) == 1
+        assert "duration_ms" in summary.results[0].metadata
+        assert isinstance(summary.results[0].metadata["duration_ms"], int)
+        assert summary.results[0].metadata["duration_ms"] >= 0
+
     def test_run_handles_scanner_exception(self):
         engine = self._make_engine(
             scanners_config={"bad": {"enabled": True}}
@@ -396,6 +409,20 @@ class TestParallelExecution:
 
         summary = engine.run(parallel=False)
         assert len(summary.results) == 2
+
+    def test_parallel_records_duration_ms_in_metadata(self):
+        engine = self._make_engine(3)
+        for i in range(3):
+            engine.register_scanner(MockScanner(f"s{i}", findings=[
+                Finding(id=str(i), severity=Severity.LOW, title=f"f{i}"),
+            ]))
+
+        summary = engine.run(parallel=True)
+        assert len(summary.results) == 3
+        for result in summary.results:
+            assert "duration_ms" in result.metadata
+            assert isinstance(result.metadata["duration_ms"], int)
+            assert result.metadata["duration_ms"] >= 0
 
     def test_single_scanner_runs_sequential(self):
         """Single scanner skips thread pool overhead."""

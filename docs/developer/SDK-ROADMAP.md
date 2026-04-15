@@ -138,9 +138,9 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 - [x] Add 6 linter SDK modules: yamllint, jsonlint, flake8, jshint, hadolint, terraform
 - [x] Refactor all 6 linter actions to thin wrappers (1424 → 757 lines, -47%)
 - [ ] Verify backward compatibility: identical outputs, artifacts, SARIF
-- [ ] Update `test-actions.yml` to validate thin wrappers
-- [ ] Delete bundled `scripts/` from refactored actions (logic lives in SDK)
-- [ ] Update docsite builder if action README structure changes
+- [x] Update `test-actions.yml` to validate thin wrappers (already clean — no deleted inputs or scripts/ refs)
+- [x] Delete bundled `scripts/` from refactored actions (already done in earlier commits)
+- [x] Update docsite builder if action README structure changes (no changes needed — builder reads action.yml/README.md only)
 
 ---
 
@@ -212,7 +212,7 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 - [ ] Benchmark container vs local tool execution per scanner (overhead of Docker vs native)
 - [ ] Consider pre-warming: pull all scanner images in parallel before scan phase
 - [ ] Investigate lazy image pulls (start scanning available tools while others pull)
-- [ ] Measure and log per-scanner breakdown in audit trail for ongoing performance tracking
+- [x] Measure and log per-scanner breakdown in audit trail for ongoing performance tracking
 - [ ] Progress indicators during scanning and container pulls
 - [ ] `argus report github` — post results as PR comment via GitHub API
 
@@ -366,7 +366,7 @@ The MCP server is a new interface to the existing engine — it does not change 
 
 ### Documentation Gaps
 - [x] SDK docs covered by: cli-reference.md (auto-generated), config-reference.md, scanners.md, failure-control.md, and `argus scan <name> --help`
-- [ ] No migration guide for users of the deleted reusable workflows
+- [x] Migration guide: `docs/developer/migration-from-reusable-workflows.md`
 - [ ] No troubleshooting guide for Docker execution failures
 
 ---

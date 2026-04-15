@@ -84,6 +84,9 @@ class ArgusEngine:
         else:
             results = self._run_parallel(jobs, timeout, fail_fast)
 
+        # TODO: Add total_duration_ms to ScanSummary for audit trail.
+        # Requires a model change (new field on the ScanSummary dataclass).
+        # Per-scanner duration_ms is already recorded in each ScanResult.metadata.
         return ScanSummary(
             results=results,
             severity_threshold=self.config.reporting.severity_threshold,
@@ -182,6 +185,7 @@ class ArgusEngine:
                     scanner, scan_path, config_dict, patterns, timeout,
                 )
                 elapsed = int((time.monotonic() - start) * 1000)
+                result.metadata["duration_ms"] = elapsed
                 logger.info(
                     "Scanner '%s' completed in %dms: %d finding(s)",
                     scanner.name, elapsed, result.total_count,
@@ -210,6 +214,12 @@ class ArgusEngine:
         """Run scanners concurrently using a thread pool."""
         import concurrent.futures
 
+        # PERFORMANCE TODO: Consider pre-warming — pull all scanner images in parallel
+        # before the scan phase. Currently images are pulled on-demand when each scanner
+        # starts, which serializes the first-run pull latency.
+        # Also investigate lazy pulls: start scanning tools that are already available
+        # while others are still pulling.
+
         results: list[ScanResult] = []
         max_workers = min(len(jobs), 8)
 
@@ -218,6 +228,16 @@ class ArgusEngine:
             len(jobs), max_workers,
         )
         start_all = time.monotonic()
+
+        def _timed_run(scanner, scan_path, config_dict, patterns):
+            """Run a single scanner and attach timing metadata."""
+            start = time.monotonic()
+            result = self._run_one_scanner(
+                scanner, scan_path, config_dict, patterns, timeout,
+            )
+            elapsed = int((time.monotonic() - start) * 1000)
+            result.metadata["duration_ms"] = elapsed
+            return result
 
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=max_workers,
@@ -229,8 +249,8 @@ class ArgusEngine:
                     "Submitting scanner: %s (path=%s)", scanner.name, scan_path,
                 )
                 future = pool.submit(
-                    self._run_one_scanner,
-                    scanner, scan_path, config_dict, patterns, timeout,
+                    _timed_run,
+                    scanner, scan_path, config_dict, patterns,
                 )
                 future_to_name[future] = scanner.name
 
@@ -240,8 +260,9 @@ class ArgusEngine:
                 try:
                     result = future.result()
                     logger.info(
-                        "Scanner '%s' finished: %d finding(s)",
-                        name, result.total_count,
+                        "Scanner '%s' finished in %dms: %d finding(s)",
+                        name, result.metadata.get("duration_ms", -1),
+                        result.total_count,
                     )
                     results.append(result)
                 except Exception:
@@ -318,7 +339,12 @@ class ArgusEngine:
         return "unknown"
 
     def _pull_image(self, image: str) -> bool:
-        """Pull a container image based on pull policy."""
+        """Pull a container image based on pull policy.
+
+        # PERFORMANCE TODO: Investigate Docker image layer caching across CI runs.
+        # GitHub Actions cache action could pre-populate the Docker cache.
+        # Also evaluate if pull_policy=if-not-present is effective when runners are ephemeral.
+        """
         policy = self.config.execution.pull_policy
         logger.debug("Pull policy: %s for image: %s", policy, image)
 
@@ -553,6 +579,9 @@ class ArgusEngine:
     def _run_scanner(
         self, scanner, path: str, config: dict | None
     ) -> ScanResult:
+        # PERFORMANCE TODO: Benchmark container vs local tool execution per scanner.
+        # Docker overhead (image pull + container start) vs native tool startup.
+        # Profile to identify if parsing or subprocess is the bottleneck.
         """Run a scanner using the appropriate backend.
 
         Backend selection:
