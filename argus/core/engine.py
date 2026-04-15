@@ -38,6 +38,7 @@ class ArgusEngine:
         fail_fast: bool = False,
         timeout: int | None = None,
         exclude: str = "",
+        parallel: bool = True,
     ) -> ScanSummary:
         """Run scanners and return an aggregated ScanSummary.
 
@@ -47,6 +48,7 @@ class ArgusEngine:
             fail_fast: abort immediately if any scanner fails
             timeout: per-scanner timeout in seconds (None = no limit)
             exclude: comma-separated CLI exclusion patterns
+            parallel: run scanners concurrently (default True)
         """
         from .exclusions import build_exclusion_set, log_exclusion_set
 
@@ -65,8 +67,39 @@ class ArgusEngine:
         )
         log_exclusion_set(exclusion_patterns)
 
-        results: list[ScanResult] = []
+        # Prepare scanner jobs
+        jobs = self._prepare_jobs(
+            names_to_run, path, exclude, exclusion_patterns,
+        )
 
+        if not jobs:
+            return ScanSummary(
+                results=[],
+                severity_threshold=self.config.reporting.severity_threshold,
+            )
+
+        # Run sequentially for single scanner or when parallel disabled
+        if len(jobs) == 1 or not parallel:
+            results = self._run_sequential(jobs, timeout, fail_fast)
+        else:
+            results = self._run_parallel(jobs, timeout, fail_fast)
+
+        return ScanSummary(
+            results=results,
+            severity_threshold=self.config.reporting.severity_threshold,
+        )
+
+    def _prepare_jobs(
+        self,
+        names_to_run: list[str],
+        path: str | None,
+        exclude: str,
+        exclusion_patterns: list[str],
+    ) -> list[tuple]:
+        """Build (scanner, scan_path, config_dict, patterns) tuples."""
+        from .exclusions import build_exclusion_set
+
+        jobs = []
         for name in names_to_run:
             scanner = self._scanners.get(name)
             if scanner is None:
@@ -90,63 +123,146 @@ class ArgusEngine:
                 config_excludes=scanner_exclude,
             ) if scanner_exclude else exclusion_patterns
 
-            # Pass exclusion patterns to scanner via config
             if combined_patterns:
                 config_dict["exclude"] = ",".join(combined_patterns)
 
-            logger.info("Starting scanner: %s (path=%s)", name, scan_path)
-            logger.debug("Scanner config: %s", config_dict)
+            jobs.append((scanner, scan_path, config_dict, combined_patterns))
+
+        return jobs
+
+    def _run_one_scanner(
+        self,
+        scanner,
+        scan_path: str,
+        config_dict: dict,
+        exclusion_patterns: list[str],
+        timeout: int | None,
+    ) -> ScanResult:
+        """Execute a single scanner with exclusion filtering."""
+        result = self._run_scanner_with_timeout(
+            scanner, scan_path, config_dict, timeout,
+        )
+
+        if exclusion_patterns and result.findings:
+            from .exclusions import filter_findings
+            filtered_findings, excluded_count = filter_findings(
+                result.findings, exclusion_patterns,
+            )
+            if excluded_count:
+                logger.info(
+                    "Filtered %d finding(s) from excluded paths for '%s'",
+                    excluded_count,
+                    scanner.name,
+                )
+                result = ScanResult(
+                    scanner=result.scanner,
+                    findings=filtered_findings,
+                    raw_report=result.raw_report,
+                    sarif_report=result.sarif_report,
+                    metadata=result.metadata,
+                )
+
+        return result
+
+    def _run_sequential(
+        self,
+        jobs: list[tuple],
+        timeout: int | None,
+        fail_fast: bool,
+    ) -> list[ScanResult]:
+        """Run scanners one at a time."""
+        results: list[ScanResult] = []
+
+        for scanner, scan_path, config_dict, patterns in jobs:
+            logger.info("Starting scanner: %s (path=%s)", scanner.name, scan_path)
             start = time.monotonic()
 
             try:
-                result = self._run_scanner_with_timeout(
-                    scanner, scan_path, config_dict, timeout,
+                result = self._run_one_scanner(
+                    scanner, scan_path, config_dict, patterns, timeout,
                 )
-
-                # Post-scan safety net — filter findings from excluded paths
-                if combined_patterns and result.findings:
-                    from .exclusions import filter_findings
-                    filtered_findings, excluded_count = filter_findings(
-                        result.findings, combined_patterns,
-                    )
-                    if excluded_count:
-                        logger.info(
-                            "Filtered %d finding(s) from excluded paths for '%s'",
-                            excluded_count,
-                            name,
-                        )
-                        result = ScanResult(
-                            scanner=result.scanner,
-                            findings=filtered_findings,
-                            raw_report=result.raw_report,
-                            sarif_report=result.sarif_report,
-                            metadata=result.metadata,
-                        )
-
                 elapsed = int((time.monotonic() - start) * 1000)
                 logger.info(
                     "Scanner '%s' completed in %dms: %d finding(s)",
-                    name,
-                    elapsed,
-                    result.total_count,
+                    scanner.name, elapsed, result.total_count,
                 )
                 results.append(result)
             except Exception:
                 elapsed = int((time.monotonic() - start) * 1000)
                 logger.exception(
-                    "Scanner '%s' failed after %dms", name, elapsed,
+                    "Scanner '%s' failed after %dms", scanner.name, elapsed,
                 )
                 if fail_fast:
                     logger.error(
                         "Aborting scan — --fail-fast is set and '%s' failed",
-                        name,
+                        scanner.name,
                     )
                     break
 
-        return ScanSummary(
-            results=results,
-            severity_threshold=self.config.reporting.severity_threshold,
+        return results
+
+    def _run_parallel(
+        self,
+        jobs: list[tuple],
+        timeout: int | None,
+        fail_fast: bool,
+    ) -> list[ScanResult]:
+        """Run scanners concurrently using a thread pool."""
+        import concurrent.futures
+
+        results: list[ScanResult] = []
+        max_workers = min(len(jobs), 8)
+
+        logger.info(
+            "Running %d scanner(s) in parallel (max %d workers)",
+            len(jobs), max_workers,
         )
+        start_all = time.monotonic()
+
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=max_workers,
+        ) as pool:
+            # Submit all jobs, preserving order
+            future_to_name = {}
+            for scanner, scan_path, config_dict, patterns in jobs:
+                logger.info(
+                    "Submitting scanner: %s (path=%s)", scanner.name, scan_path,
+                )
+                future = pool.submit(
+                    self._run_one_scanner,
+                    scanner, scan_path, config_dict, patterns, timeout,
+                )
+                future_to_name[future] = scanner.name
+
+            # Collect results as they complete
+            for future in concurrent.futures.as_completed(future_to_name):
+                name = future_to_name[future]
+                try:
+                    result = future.result()
+                    logger.info(
+                        "Scanner '%s' finished: %d finding(s)",
+                        name, result.total_count,
+                    )
+                    results.append(result)
+                except Exception:
+                    logger.exception("Scanner '%s' failed", name)
+                    if fail_fast:
+                        logger.error(
+                            "Aborting scan — --fail-fast and '%s' failed",
+                            name,
+                        )
+                        # Cancel pending futures
+                        for f in future_to_name:
+                            f.cancel()
+                        break
+
+        elapsed = int((time.monotonic() - start_all) * 1000)
+        logger.info(
+            "Parallel scan completed in %dms (%d scanner(s))",
+            elapsed, len(results),
+        )
+
+        return results
 
     def get_available_scanners(self) -> list[str]:
         """Return names of registered scanners that are currently available."""

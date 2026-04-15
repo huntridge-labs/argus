@@ -63,9 +63,10 @@ argus scan [-h] [--path PATH] [--config CONFIG]
                   [--format {terminal,markdown,sarif,json}] [--list]
                   [--verbose] [--no-spinner] [--no-timestamp]
                   [--output-vars FILE] [--exclude PATTERNS] [--fail-fast]
-                  [--timeout SECONDS] [--discover [PATH]] [--image REF]
-                  [--scanners SCANNERS] [--target URL] [--port PORT]
-                  [--env KEY=VALUE] [--scan-type {baseline,full}]
+                  [--timeout SECONDS] [--no-parallel] [--discover [PATH]]
+                  [--image REF] [--scanners SCANNERS] [--target URL]
+                  [--port PORT] [--env KEY=VALUE]
+                  [--scan-type {baseline,full}]
                   [--startup-timeout STARTUP_TIMEOUT]
                   [scanner]
 ```
@@ -91,6 +92,7 @@ argus scan [-h] [--path PATH] [--config CONFIG]
 | `--exclude`, `-e` | Comma-separated paths or patterns to exclude from scanning. Added on top of .gitignore, .dockerignore, and built-in defaults. | `` |
 | `--fail-fast` | Abort immediately if any scanner fails instead of continuing. | `false` |
 | `--timeout` | Per-scanner timeout in seconds. Scanners exceeding this limit are killed. |  |
+| `--no-parallel` | Run scanners sequentially instead of concurrently. | `false` |
 
 **Container Scanning:**
 

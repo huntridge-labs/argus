@@ -302,6 +302,11 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         metavar="SECONDS",
         help="Per-scanner timeout in seconds. Scanners exceeding this limit are killed.",
     )
+    scan_parser.add_argument(
+        "--no-parallel",
+        action="store_true",
+        help="Run scanners sequentially instead of concurrently.",
+    )
 
     # Container-specific flags (used with: argus scan container)
     container_group = scan_parser.add_argument_group(
@@ -643,6 +648,7 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
                 fail_fast=getattr(args, "fail_fast", False),
                 timeout=getattr(args, "timeout", None),
                 exclude=getattr(args, "exclude", ""),
+                parallel=not getattr(args, "no_parallel", False),
             )
         log.info(
             "Scan complete: %d scanner(s), %d finding(s)",

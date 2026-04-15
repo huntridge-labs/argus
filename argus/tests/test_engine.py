@@ -310,8 +310,8 @@ class TestFailFast:
         engine.register_scanner(FailingScanner())
         engine.register_scanner(good)
 
-        summary = engine.run(fail_fast=True)
-        # Scanner "a" fails, "b" should never run
+        summary = engine.run(fail_fast=True, parallel=False)
+        # Scanner "a" fails, "b" should never run (sequential mode)
         assert len(summary.results) == 0
         assert good.scan_called_with is None
 
@@ -337,6 +337,78 @@ class TestFailFast:
         # Scanner "a" fails, "b" still runs
         assert len(summary.results) == 1
         assert good.scan_called_with is not None
+
+
+class TestParallelExecution:
+    """Test parallel scanner execution."""
+
+    def _make_engine(self, count=3):
+        scanners = {f"s{i}": {"enabled": True} for i in range(count)}
+        data = {"scanners": scanners}
+        return ArgusEngine(ArgusConfig.from_dict(data))
+
+    def test_parallel_runs_all_scanners(self):
+        engine = self._make_engine(3)
+        for i in range(3):
+            engine.register_scanner(MockScanner(f"s{i}", findings=[
+                Finding(id=str(i), severity=Severity.LOW, title=f"f{i}"),
+            ]))
+
+        summary = engine.run(parallel=True)
+        assert len(summary.results) == 3
+
+    def test_parallel_faster_than_sequential(self):
+        """Parallel should be faster when scanners have I/O wait."""
+        import time as time_mod
+
+        engine = self._make_engine(3)
+
+        class SlowMockScanner:
+            def __init__(self, name):
+                self.name = name
+            def scan(self, path, config=None):
+                time_mod.sleep(0.2)
+                return ScanResult(scanner=self.name, findings=[
+                    Finding(id="1", severity=Severity.LOW, title="f"),
+                ])
+            def is_available(self):
+                return True
+            def install_command(self):
+                return None
+
+        for i in range(3):
+            engine.register_scanner(SlowMockScanner(f"s{i}"))
+
+        start = time_mod.monotonic()
+        summary = engine.run(parallel=True)
+        parallel_time = time_mod.monotonic() - start
+
+        assert len(summary.results) == 3
+        # 3 scanners x 0.2s each = 0.6s sequential, <0.5s parallel
+        assert parallel_time < 0.5
+
+    def test_sequential_fallback(self):
+        engine = self._make_engine(2)
+        for i in range(2):
+            engine.register_scanner(MockScanner(f"s{i}", findings=[
+                Finding(id=str(i), severity=Severity.LOW, title=f"f{i}"),
+            ]))
+
+        summary = engine.run(parallel=False)
+        assert len(summary.results) == 2
+
+    def test_single_scanner_runs_sequential(self):
+        """Single scanner skips thread pool overhead."""
+        data = {"scanners": {"only": {"enabled": True}}}
+        engine = ArgusEngine(ArgusConfig.from_dict(data))
+        scanner = MockScanner("only", findings=[
+            Finding(id="1", severity=Severity.LOW, title="f1"),
+        ])
+        engine.register_scanner(scanner)
+
+        summary = engine.run(parallel=True)
+        assert len(summary.results) == 1
+        assert scanner.scan_called_with is not None
 
 
 class TestTimeout:
