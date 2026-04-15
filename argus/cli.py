@@ -454,11 +454,12 @@ def cmd_classify(args: argparse.Namespace) -> int:
             print("No IaC changes detected between refs.")
             return EXIT_SUCCESS
 
-        classifier = ChangeClassifier(config)
-        classifications = classifier.classify(
-            iac_analysis,
+        classifier = ChangeClassifier(
+            config=config,
             enable_ai=args.enable_ai,
         )
+        result = classifier.classify_all_changes(iac_analysis)
+        classifications = result.get("classifications", [])
     except Exception as exc:
         print(f"Error: classification failed: {exc}", file=sys.stderr)
         return EXIT_ERROR
@@ -486,12 +487,21 @@ def cmd_classify(args: argparse.Namespace) -> int:
             print(output)
     elif args.output_format == "markdown":
         try:
-            report = generate_report(classifications, category_counts)
+            output_md = None
             if args.output_dir:
                 Path(args.output_dir).mkdir(parents=True, exist_ok=True)
-                (Path(args.output_dir) / "scn-report.md").write_text(report)
-            else:
-                print(report)
+                output_md = str(Path(args.output_dir) / "scn-report.md")
+
+            report_data = generate_report(
+                classifications_data=result,
+                output_md=output_md,
+            )
+
+            if not output_md:
+                # Print the markdown content to stdout
+                md = report_data.get("markdown", "")
+                if md:
+                    print(md)
         except Exception as exc:
             print(f"Error: report generation failed: {exc}", file=sys.stderr)
             return EXIT_ERROR
