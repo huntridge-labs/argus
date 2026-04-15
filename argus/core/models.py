@@ -147,6 +147,29 @@ class ScanResult:
             "total_count": self.total_count,
         }
 
+    @classmethod
+    def from_dict(cls, data: dict) -> "ScanResult":
+        """Reconstruct a ScanResult from a to_dict() output."""
+        findings = [
+            Finding(
+                id=f.get("id", ""),
+                severity=Severity.from_string(f.get("severity", "unknown")),
+                title=f.get("title", ""),
+                description=f.get("description", ""),
+                location=f.get("location"),
+                cwe=f.get("cwe"),
+                cve=f.get("cve"),
+                scanner=f.get("scanner", ""),
+                metadata=f.get("metadata", {}),
+            )
+            for f in data.get("findings", [])
+        ]
+        return cls(
+            scanner=data.get("scanner", ""),
+            findings=findings,
+            metadata=data.get("metadata", {}),
+        )
+
 
 @dataclass
 class ScanSummary:
@@ -202,3 +225,13 @@ class ScanSummary:
             "total_count": self.total_count,
             "passed": self.passed,
         }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ScanSummary":
+        """Reconstruct a ScanSummary from a to_dict() output."""
+        results = [
+            ScanResult.from_dict(r) for r in data.get("results", [])
+        ]
+        threshold_str = data.get("severity_threshold")
+        threshold = Severity.from_string(threshold_str) if threshold_str else None
+        return cls(results=results, severity_threshold=threshold)
