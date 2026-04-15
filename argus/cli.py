@@ -141,6 +141,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     _build_init_parser(subparsers)
     _build_scan_parser(subparsers)
+    _build_classify_parser(subparsers)
     _build_collect_parser(subparsers)
     _build_report_parser(subparsers)
     _build_validate_parser(subparsers)
@@ -362,6 +363,156 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         default=60,
         help="Seconds to wait for target container to become healthy (default: 60)",
     )
+
+
+def _build_classify_parser(subparsers: argparse._SubParsersAction) -> None:
+    """Add the 'classify' subcommand for SCN change classification."""
+    classify_parser = subparsers.add_parser(
+        "classify",
+        help="Classify IaC changes for compliance reporting (FedRAMP SCN)",
+        description=(
+            "Analyze infrastructure-as-code changes between two git refs\n"
+            "and classify them according to compliance rules (FedRAMP SCN).\n\n"
+            "Examples:\n"
+            "  argus classify                              # compare HEAD vs main\n"
+            "  argus classify --base main --head HEAD      # explicit refs\n"
+            "  argus classify --config .github/scn.yml     # custom profile\n"
+            "  argus classify --format json                # JSON output\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    classify_parser.add_argument(
+        "--base",
+        default="main",
+        help="Base git ref for comparison (default: main)",
+    )
+    classify_parser.add_argument(
+        "--head",
+        default="HEAD",
+        help="Head git ref for comparison (default: HEAD)",
+    )
+    classify_parser.add_argument(
+        "--config", "-c",
+        default=None,
+        help="Path to SCN configuration/profile file",
+    )
+    classify_parser.add_argument(
+        "--format", "-f",
+        choices=["terminal", "markdown", "json"],
+        default="terminal",
+        dest="output_format",
+        help="Output format (default: terminal)",
+    )
+    classify_parser.add_argument(
+        "--output-dir", "-o",
+        default=None,
+        help="Output directory for report files",
+    )
+    classify_parser.add_argument(
+        "--output-vars",
+        default=None,
+        metavar="FILE",
+        help="Write classification counts as key=value pairs to FILE",
+    )
+    classify_parser.add_argument(
+        "--enable-ai",
+        action="store_true",
+        help="Use AI for ambiguous change classification (requires API key)",
+    )
+    classify_parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Enable verbose output",
+    )
+
+
+def cmd_classify(args: argparse.Namespace) -> int:
+    """Execute the classify subcommand — SCN change classification."""
+    import subprocess as _subprocess
+
+    try:
+        from argus.scn import ChangeClassifier, load_scn_config, generate_report
+        from argus.scn.diff import analyze_iac_changes
+    except ImportError as exc:
+        print(f"Error: failed to import SCN modules: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    # Load config
+    config = {}
+    if args.config:
+        try:
+            config = load_scn_config(args.config)
+        except Exception as exc:
+            print(f"Error: failed to load SCN config: {exc}", file=sys.stderr)
+            return EXIT_ERROR
+
+    # Analyze IaC changes between refs and classify
+    try:
+        iac_analysis = analyze_iac_changes(args.base, args.head)
+
+        if not iac_analysis.get("changes"):
+            print("No IaC changes detected between refs.")
+            return EXIT_SUCCESS
+
+        classifier = ChangeClassifier(config)
+        classifications = classifier.classify(
+            iac_analysis,
+            enable_ai=args.enable_ai,
+        )
+    except Exception as exc:
+        print(f"Error: classification failed: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    # Count categories
+    category_counts = {}
+    for c in classifications:
+        cat = c.get("category", "UNKNOWN")
+        category_counts[cat] = category_counts.get(cat, 0) + 1
+
+    # Output
+    if args.output_format == "json":
+        import json
+        output = json.dumps({
+            "base_ref": args.base,
+            "head_ref": args.head,
+            "total_changes": len(classifications),
+            "categories": category_counts,
+            "classifications": classifications,
+        }, indent=2)
+        if args.output_dir:
+            Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+            (Path(args.output_dir) / "scn-report.json").write_text(output)
+        else:
+            print(output)
+    elif args.output_format == "markdown":
+        try:
+            report = generate_report(classifications, category_counts)
+            if args.output_dir:
+                Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+                (Path(args.output_dir) / "scn-report.md").write_text(report)
+            else:
+                print(report)
+        except Exception as exc:
+            print(f"Error: report generation failed: {exc}", file=sys.stderr)
+            return EXIT_ERROR
+    else:
+        # Terminal
+        print(f"\nSCN Classification: {args.base}...{args.head}")
+        print(f"{'=' * 50}")
+        print(f"Total changes: {len(classifications)}")
+        for cat, count in sorted(category_counts.items()):
+            print(f"  {cat}: {count}")
+        print()
+
+    # Write output vars for CI
+    if args.output_vars:
+        lines = [f"total_changes={len(classifications)}"]
+        for cat, count in sorted(category_counts.items()):
+            lines.append(f"{cat.lower()}_count={count}")
+        Path(args.output_vars).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.output_vars).write_text("\n".join(lines) + "\n")
+
+    return EXIT_SUCCESS
 
 
 def _build_collect_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -1035,6 +1186,7 @@ _argus() {{
     commands=(
         'init:Initialize argus.yml for the current project'
         'scan:Run security scanners against a target'
+        'classify:Classify IaC changes for compliance reporting'
         'collect:Collect and merge results from parallel CI jobs'
         'report:Generate reports from existing scan results'
         'validate:Validate an argus.yml configuration file'
@@ -1145,7 +1297,7 @@ _argus_completions() {{
     cur="${{COMP_WORDS[COMP_CWORD]}}"
     prev="${{COMP_WORDS[COMP_CWORD-1]}}"
 
-    commands="init scan collect report validate completion"
+    commands="init scan classify collect report validate completion"
     scanners="{scanners}"
     severity="critical high medium low none"
     formats="terminal markdown sarif json"
@@ -1557,6 +1709,7 @@ def main(argv: list[str] | None = None) -> None:
     handlers = {
         "init": cmd_init,
         "scan": cmd_scan,
+        "classify": cmd_classify,
         "collect": cmd_collect,
         "report": cmd_report,
         "validate": cmd_validate,

@@ -109,6 +109,37 @@ argus scan [-h] [--path PATH] [--config CONFIG]
 | `--scan-type` | ZAP scan type (default: baseline) (baseline, full) | `baseline` |
 | `--startup-timeout` | Seconds to wait for target container to become healthy (default: 60) | `60` |
 
+### `argus classify`
+
+Analyze infrastructure-as-code changes between two git refs
+and classify them according to compliance rules (FedRAMP SCN).
+
+Examples:
+  argus classify                              # compare HEAD vs main
+  argus classify --base main --head HEAD      # explicit refs
+  argus classify --config .github/scn.yml     # custom profile
+  argus classify --format json                # JSON output
+
+```
+argus classify [-h] [--base BASE] [--head HEAD] [--config CONFIG]
+                      [--format {terminal,markdown,json}]
+                      [--output-dir OUTPUT_DIR] [--output-vars FILE]
+                      [--enable-ai] [--verbose]
+```
+
+**Options:**
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--base` | Base git ref for comparison (default: main) | `main` |
+| `--head` | Head git ref for comparison (default: HEAD) | `HEAD` |
+| `--config`, `-c` | Path to SCN configuration/profile file |  |
+| `--format`, `-f` | Output format (default: terminal) (terminal, markdown, json) | `terminal` |
+| `--output-dir`, `-o` | Output directory for report files |  |
+| `--output-vars` | Write classification counts as key=value pairs to FILE |  |
+| `--enable-ai` | Use AI for ambiguous change classification (requires API key) | `false` |
+| `--verbose`, `-v` | Enable verbose output | `false` |
+
 ### `argus collect`
 
 Aggregate per-scanner results into a unified audit package.
