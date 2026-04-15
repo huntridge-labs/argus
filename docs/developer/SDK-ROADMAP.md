@@ -183,7 +183,16 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 - [ ] `argus init --platform github|gitlab|jenkins` — generate CI config
 - [ ] `argus install <scanner>` — install scanner tool locally
 - [ ] `--exclude` global CLI flag for path exclusions
-- [ ] Parallel scanner execution (multiprocessing/asyncio)
+- [x] Parallel scanner execution — ThreadPoolExecutor, max 8 workers, 40% speedup measured in CI (51.9s → 31.2s)
+
+### Performance Research
+- [ ] Profile individual scanner execution to identify bottlenecks (Docker pull latency, tool startup, output parsing)
+- [ ] Investigate Docker image layer caching across runs (GitHub Actions cache, pre-pulled images)
+- [ ] Evaluate `pull_policy: if-not-present` effectiveness in CI (image reuse between runs)
+- [ ] Benchmark container vs local tool execution per scanner (overhead of Docker vs native)
+- [ ] Consider pre-warming: pull all scanner images in parallel before scan phase
+- [ ] Investigate lazy image pulls (start scanning available tools while others pull)
+- [ ] Measure and log per-scanner breakdown in audit trail for ongoing performance tracking
 - [ ] Progress indicators during scanning and container pulls
 - [ ] `argus report github` — post results as PR comment via GitHub API
 
