@@ -25,21 +25,18 @@ Detect your project's languages, frameworks, and infrastructure,
 then generate a tailored argus.yml with the right scanners enabled.
 
 Examples:
-  argus init                          # auto-detect and generate argus.yml
-  argus init --platform github        # also generate GitHub Actions workflow
-  argus init --force                   # overwrite existing argus.yml
-  argus init --no-detect               # generate with defaults only
+  argus init                # auto-detect and generate argus.yml
+  argus init --force        # overwrite existing argus.yml
+  argus init --no-detect    # generate with defaults only
 
 ```
-argus init [-h] [--platform {github,gitlab,jenkins,none}] [--force]
-                  [--no-detect]
+argus init [-h] [--force] [--no-detect]
 ```
 
 **Options:**
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--platform` | Generate a CI workflow file for the specified platform (default: none) (github, gitlab, jenkins, none) | `none` |
 | `--force` | Overwrite an existing argus.yml file | `false` |
 | `--no-detect` | Skip auto-detection and generate a config with defaults only | `false` |
 

@@ -41,12 +41,11 @@ EXIT_ERROR = 2
 
 
 def run_init(
-    platform: str = "none",
     force: bool = False,
     detect: bool = True,
     target_dir: str = ".",
 ) -> int:
-    """Run the init workflow: detect, generate config, optionally generate CI.
+    """Run the init workflow: detect project and generate argus.yml.
 
     Returns an exit code (0 = success, 2 = error).
     """
@@ -59,14 +58,13 @@ def run_init(
         lines = _load_banner().splitlines()
         for i, line in enumerate(lines):
             print(line, file=sys.stderr)
-            # Slower for the art (80ms), pause before text (200ms)
             if not line.strip():
-                time.sleep(0.15)  # Breathing room on blank lines
+                time.sleep(0.15)
             elif "A R G U S" in line or "Perception is Protection" in line:
-                time.sleep(0.20)  # Pause on the title
+                time.sleep(0.20)
             else:
-                time.sleep(0.06)  # Art lines
-        print(file=sys.stderr)  # Final blank line after banner
+                time.sleep(0.06)
+        print(file=sys.stderr)
 
     if config_path.exists() and not force:
         print(
@@ -83,84 +81,121 @@ def run_init(
     config_content = generate_config(signals)
     config_path.write_text(config_content, encoding="utf-8")
 
-    # Generate CI workflow if requested
-    ci_created = False
-    if platform == "github":
-        ci_created = _generate_github_workflow(root)
-
-    # Print polished summary
-    _print_summary(signals, config_path, platform, ci_created)
+    _print_summary(signals, config_path)
 
     return EXIT_SUCCESS
 
 
 def detect_project(root: Path) -> dict[str, list[str]]:
-    """Scan the project directory for language and framework signals.
+    """Scan the project directory for language, framework, and tool signals.
 
     Returns a dict mapping signal names to lists of evidence paths.
+    Skips node_modules, .git, __pycache__, .venv, and other build dirs.
     """
     signals: dict[str, list[str]] = {}
+    _skip = {"node_modules", ".git", "__pycache__", ".venv", "venv",
+             ".tox", "htmlcov", "coverage", "dist", "build", ".eggs"}
 
-    python_patterns = list(root.rglob("*.py"))
-    if python_patterns:
-        signals["python"] = [str(p.relative_to(root)) for p in python_patterns[:5]]
+    def _rglob_safe(pattern: str, limit: int = 5) -> list[Path]:
+        """rglob that skips ignored directories."""
+        results = []
+        for p in root.rglob(pattern):
+            if any(skip in p.parts for skip in _skip):
+                continue
+            results.append(p)
+            if len(results) >= limit:
+                break
+        return results
 
+    def _rel(p: Path) -> str:
+        return str(p.relative_to(root))
+
+    # ── Languages ──────────────────────────────────────────
+    python_files = _rglob_safe("*.py")
+    if python_files:
+        signals["python"] = [_rel(p) for p in python_files]
+
+    js_files = _rglob_safe("*.js") + _rglob_safe("*.ts")
+    if js_files:
+        signals["javascript"] = [_rel(p) for p in js_files[:5]]
+
+    go_files = _rglob_safe("*.go")
+    if go_files:
+        signals["go"] = [_rel(p) for p in go_files]
+
+    java_files = _rglob_safe("*.java")
+    if java_files:
+        signals["java"] = [_rel(p) for p in java_files]
+
+    # ── Package managers / dependencies ────────────────────
     for manifest in ["package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"]:
-        matches = list(root.glob(manifest))
-        if matches:
-            signals.setdefault("node", []).extend(
-                str(p.relative_to(root)) for p in matches
-            )
+        for p in root.glob(manifest):
+            signals.setdefault("node", []).append(_rel(p))
 
-    for lockfile in [
+    dep_files = [
         "requirements.txt", "requirements-*.txt", "poetry.lock",
         "Pipfile.lock", "go.sum", "Cargo.lock", "Gemfile.lock",
-        "composer.lock",
-    ]:
-        matches = list(root.glob(lockfile))
-        if matches:
-            signals.setdefault("dependencies", []).extend(
-                str(p.relative_to(root)) for p in matches
-            )
+        "composer.lock", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+    ]
+    for pattern in dep_files:
+        for p in root.glob(pattern):
+            rel = _rel(p)
+            if rel not in signals.get("dependencies", []):
+                signals.setdefault("dependencies", []).append(rel)
 
-    # Also check for package-lock.json as a dependency signal
-    for manifest in ["package-lock.json", "yarn.lock", "pnpm-lock.yaml"]:
-        matches = list(root.glob(manifest))
-        if matches:
-            signals.setdefault("dependencies", []).extend(
-                str(p.relative_to(root)) for p in matches
-                if str(p.relative_to(root)) not in signals.get("dependencies", [])
-            )
+    # ── Containers ─────────────────────────────────────────
+    dockerfiles = _rglob_safe("Dockerfile*")
+    compose_files = _rglob_safe("docker-compose*.yml") + _rglob_safe("docker-compose*.yaml")
+    if dockerfiles or compose_files:
+        signals["container"] = [_rel(p) for p in (dockerfiles + compose_files)[:5]]
 
-    dockerfile_patterns = list(root.rglob("Dockerfile*"))
-    compose_patterns = list(root.rglob("docker-compose*.yml")) + list(
-        root.rglob("docker-compose*.yaml")
-    )
-    if dockerfile_patterns or compose_patterns:
-        signals["container"] = [
-            str(p.relative_to(root))
-            for p in (dockerfile_patterns + compose_patterns)[:5]
-        ]
-
-    tf_files = list(root.rglob("*.tf"))
+    # ── Infrastructure as code ─────────────────────────────
+    tf_files = _rglob_safe("*.tf")
     k8s_dirs = [
         d for d in root.iterdir()
         if d.is_dir() and d.name in ("infrastructure", "terraform", "k8s", "kubernetes", "deploy")
     ]
     if tf_files or k8s_dirs:
-        evidence = [str(p.relative_to(root)) for p in tf_files[:3]]
-        evidence.extend(str(d.relative_to(root)) for d in k8s_dirs)
+        evidence = [_rel(p) for p in tf_files[:3]]
+        evidence.extend(_rel(d) for d in k8s_dirs)
         signals["iac"] = evidence
 
+    # ── CI/CD ──────────────────────────────────────────────
     gh_workflows = root / ".github" / "workflows"
     if gh_workflows.is_dir():
-        workflow_files = list(gh_workflows.glob("*.yml")) + list(
-            gh_workflows.glob("*.yaml")
-        )
-        if workflow_files:
-            signals["github-actions"] = [
-                str(p.relative_to(root)) for p in workflow_files[:5]
-            ]
+        wf = list(gh_workflows.glob("*.yml")) + list(gh_workflows.glob("*.yaml"))
+        if wf:
+            signals["github-actions"] = [_rel(p) for p in wf[:5]]
+
+    gl_ci = root / ".gitlab-ci.yml"
+    if gl_ci.is_file():
+        signals["gitlab-ci"] = [_rel(gl_ci)]
+
+    jenkinsfile = root / "Jenkinsfile"
+    if jenkinsfile.is_file():
+        signals["jenkins"] = [_rel(jenkinsfile)]
+
+    # ── Existing tool configs (reference in generated argus.yml) ──
+    tool_configs = {
+        "pyproject.toml": "python-config",
+        ".bandit": "bandit-config",
+        ".gitleaks.toml": "gitleaks-config",
+        ".gitleaksignore": "gitleaks-config",
+        ".semgrepignore": "opengrep-config",
+        ".trivyignore": "trivy-config",
+        ".checkov.yaml": "checkov-config",
+        ".flake8": "flake8-config",
+        "setup.cfg": "python-config",
+        ".hadolint.yaml": "hadolint-config",
+        ".yamllint.yml": "yamllint-config",
+        ".jshintrc": "jshint-config",
+        "tflint.hcl": "tflint-config",
+        ".tflint.hcl": "tflint-config",
+    }
+    for filename, signal_key in tool_configs.items():
+        p = root / filename
+        if p.is_file():
+            signals.setdefault("tool-configs", []).append(f"{filename} ({signal_key})")
 
     return signals
 
@@ -280,6 +315,55 @@ def generate_config(signals: dict[str, list[str]]) -> str:
     lines.append('  #   path: "."')
     lines.append("")
 
+    # ── Linters ────────────────────────────────────────────
+    lines.append("  # ── Linters ──")
+    lines.append("")
+
+    if "python" in signals:
+        lines.append("  lint-python:")
+        lines.append("    enabled: true")
+        lines.append("")
+    else:
+        lines.append("  # lint-python:")
+        lines.append("  #   enabled: true")
+        lines.append("")
+
+    if "javascript" in signals or "node" in signals:
+        lines.append("  lint-javascript:")
+        lines.append("    enabled: true")
+        lines.append("")
+    else:
+        lines.append("  # lint-javascript:")
+        lines.append("  #   enabled: true")
+        lines.append("")
+
+    if "container" in signals:
+        lines.append("  lint-dockerfile:")
+        lines.append("    enabled: true")
+        lines.append("")
+
+    if "iac" in signals:
+        lines.append("  lint-terraform:")
+        lines.append("    enabled: true")
+        lines.append(f'    path: "{_guess_iac_path(signals)}"')
+        lines.append("")
+
+    lines.append("  lint-yaml:")
+    lines.append("    enabled: true")
+    lines.append("")
+
+    lines.append("  # lint-json:")
+    lines.append("  #   enabled: true")
+    lines.append("")
+
+    # ── Tool config references ─────────────────────────────
+    tool_configs = signals.get("tool-configs", [])
+    if tool_configs:
+        lines.append("# Detected tool configs (referenced automatically by scanners):")
+        for cfg in tool_configs:
+            lines.append(f"#   {cfg}")
+        lines.append("")
+
     # Reporting section
     lines.extend([
         "reporting:",
@@ -310,63 +394,9 @@ def _guess_iac_path(signals: dict[str, list[str]]) -> str:
     return "."
 
 
-def _generate_github_workflow(root: Path) -> bool:
-    """Generate a minimal GitHub Actions security scanning workflow.
-
-    Returns True if the file was created, False if it already exists.
-    Never overwrites an existing workflow file.
-    """
-    workflows_dir = root / ".github" / "workflows"
-    workflow_path = workflows_dir / "security-scan.yml"
-
-    if workflow_path.exists():
-        print(f"  Skipped: {workflow_path} already exists")
-        return False
-
-    workflows_dir.mkdir(parents=True, exist_ok=True)
-
-    content = """\
-# Argus Security Scanning
-# Generated by: argus init
-# Docs: https://huntridge-labs.github.io/argus/
-name: Security Scan
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-jobs:
-  security-scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install Argus
-        run: pip install pyyaml
-
-      - name: Run security scan
-        run: python -m argus scan --severity-threshold high
-"""
-    workflow_path.write_text(content, encoding="utf-8")
-    print(f"Created {workflow_path}")
-    return True
-
-
 def _print_summary(
     signals: dict[str, list[str]],
     config_path: Path,
-    platform: str,
-    ci_created: bool,
 ) -> None:
     """Print a polished summary of what was created and next steps."""
     G = "\033[32m"
@@ -380,11 +410,17 @@ def _print_summary(
         print(f"\n{G}  Detected:{R}")
         signal_labels = {
             "python": "Python source files",
+            "javascript": "JavaScript/TypeScript files",
+            "go": "Go source files",
+            "java": "Java source files",
             "node": "Node.js project",
             "dependencies": "Dependency manifests",
             "container": "Container/Docker files",
             "iac": "Infrastructure as code",
             "github-actions": "GitHub Actions workflows",
+            "gitlab-ci": "GitLab CI configuration",
+            "jenkins": "Jenkinsfile",
+            "tool-configs": "Existing tool configurations",
         }
         for key, evidence in signals.items():
             label = signal_labels.get(key, key)
@@ -394,8 +430,6 @@ def _print_summary(
     print(f"    {B}1.{R} Review argus.yml and adjust scanner settings")
     print(f"    {B}2.{R} Run: {G}argus validate{R}")
     print(f"    {B}3.{R} Run: {G}argus scan{R}")
-    if platform == "github" and ci_created:
-        print(f"    {B}4.{R} Commit .github/workflows/security-scan.yml")
 
     print(f"\n  {D}{_DOCS_URL}{R}")
     print()

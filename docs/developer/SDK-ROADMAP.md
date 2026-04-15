@@ -179,9 +179,10 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 - [ ] `scn_detector.py` — FedRAMP SCN (port rule engine + AI providers from composite action)
 
 ### CLI Enhancements
-- [ ] `argus init` — detect languages/frameworks, generate argus.yml
-- [ ] `argus init --platform github|gitlab|jenkins` — generate CI config
-- [ ] `argus install <scanner>` — install scanner tool locally
+- [x] `argus init` — detect languages/frameworks/linters/tool-configs, generate argus.yml
+- [x] Dropped `--platform` flag — CI config is a one-liner (`argus scan`), not a generated file
+- [x] Enhanced detection: Go, Java, JS/TS, GitLab CI, Jenkins, existing tool configs (.bandit, .gitleaks.toml, etc.)
+- [x] Linter auto-enable: lint-python, lint-javascript, lint-dockerfile, lint-terraform based on signals
 - [ ] `--exclude` global CLI flag for path exclusions
 - [x] Parallel scanner execution — ThreadPoolExecutor, max 8 workers, 40% speedup measured in CI (51.9s → 31.2s)
 
@@ -202,10 +203,13 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 - [ ] Living issue (Renovate-style): a single "Argus Config Health" GitHub issue that gets updated (not recreated) when config validation fails on the default branch. Scheduled workflow runs `argus validate --strict --check-tools`, updates the issue body with current status, and auto-closes when healthy. Avoids issue spam — one issue, always current.
 - [ ] `argus validate --check-tools` notes for scanners with runtime network dependencies (e.g., OSV API, ClamAV freshclam, Trivy DB updates) — informational, not blocking
 
-### CI Templates
-- [ ] GitLab CI template
-- [ ] Jenkins pipeline template
-- [ ] Azure DevOps template
+### CI Examples & PR Feedback
+- [ ] Example workflows with PR comment feedback for each platform (argus produces markdown via `--format markdown`; the CI workflow posts it as a PR/MR comment using platform-native APIs)
+- [ ] GitHub Actions example: uses `actions/github-script` or `comment-pr` action to post argus markdown summary
+- [ ] GitLab CI example: uses GitLab MR notes API to post argus markdown summary
+- [ ] Jenkins example: uses pipeline step to post argus markdown as PR comment
+- [ ] Azure DevOps example: uses Azure Repos PR comment API
+- [ ] Document the pattern: `argus scan --format markdown --output-dir ./results` → platform posts `results/argus-summary.md` as comment
 
 ---
 

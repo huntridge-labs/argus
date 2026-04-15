@@ -158,18 +158,11 @@ def _build_init_parser(subparsers: argparse._SubParsersAction) -> None:
             "Detect your project's languages, frameworks, and infrastructure,\n"
             "then generate a tailored argus.yml with the right scanners enabled.\n\n"
             "Examples:\n"
-            "  argus init                          # auto-detect and generate argus.yml\n"
-            "  argus init --platform github        # also generate GitHub Actions workflow\n"
-            "  argus init --force                   # overwrite existing argus.yml\n"
-            "  argus init --no-detect               # generate with defaults only\n"
+            "  argus init                # auto-detect and generate argus.yml\n"
+            "  argus init --force        # overwrite existing argus.yml\n"
+            "  argus init --no-detect    # generate with defaults only\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    init_parser.add_argument(
-        "--platform",
-        choices=["github", "gitlab", "jenkins", "none"],
-        default="none",
-        help="Generate a CI workflow file for the specified platform (default: none)",
     )
     init_parser.add_argument(
         "--force",
@@ -187,7 +180,6 @@ def cmd_init(args: argparse.Namespace) -> int:
     """Execute the init subcommand — generate argus.yml for a project."""
     from argus.init import run_init
     return run_init(
-        platform=args.platform,
         force=args.force,
         detect=not args.no_detect,
     )

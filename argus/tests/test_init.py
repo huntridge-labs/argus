@@ -7,7 +7,6 @@ from argus.init import (
     detect_project,
     generate_config,
     run_init,
-    _generate_github_workflow,
     _guess_iac_path,
 )
 
@@ -19,25 +18,8 @@ class TestInitParser:
         parser = build_parser()
         args = parser.parse_args(["init"])
         assert args.command == "init"
-        assert args.platform == "none"
         assert args.force is False
         assert args.no_detect is False
-
-    def test_init_with_platform(self):
-        parser = build_parser()
-        args = parser.parse_args(["init", "--platform", "github"])
-        assert args.platform == "github"
-
-    def test_init_platform_choices(self):
-        parser = build_parser()
-        for choice in ["github", "gitlab", "jenkins", "none"]:
-            args = parser.parse_args(["init", "--platform", choice])
-            assert args.platform == choice
-
-    def test_init_invalid_platform_exits(self):
-        parser = build_parser()
-        with pytest.raises(SystemExit):
-            parser.parse_args(["init", "--platform", "invalid"])
 
     def test_init_force_flag(self):
         parser = build_parser()
@@ -250,55 +232,9 @@ class TestRunInit:
         assert "bandit:" in content
         assert "Detected: Python files found" in content
 
-    def test_github_platform_creates_workflow(self, tmp_path):
-        result = run_init(platform="github", target_dir=str(tmp_path))
+    def test_generates_config_only(self, tmp_path):
+        """init generates argus.yml only — no CI workflow files."""
+        result = run_init(target_dir=str(tmp_path))
         assert result == 0
-        workflow = tmp_path / ".github" / "workflows" / "security-scan.yml"
-        assert workflow.exists()
-        content = workflow.read_text()
-        assert "argus scan" in content
-
-    def test_github_platform_skips_existing_workflow(self, tmp_path):
-        workflows = tmp_path / ".github" / "workflows"
-        workflows.mkdir(parents=True)
-        (workflows / "security-scan.yml").write_text("existing")
-        result = run_init(platform="github", target_dir=str(tmp_path))
-        assert result == 0
-        assert (workflows / "security-scan.yml").read_text() == "existing"
-
-    def test_none_platform_skips_workflow(self, tmp_path):
-        result = run_init(platform="none", target_dir=str(tmp_path))
-        assert result == 0
-        assert not (tmp_path / ".github" / "workflows" / "security-scan.yml").exists()
-
-
-class TestGenerateGithubWorkflow:
-    """Test GitHub Actions workflow generation."""
-
-    def test_creates_workflow_file(self, tmp_path):
-        created = _generate_github_workflow(tmp_path)
-        assert created is True
-        path = tmp_path / ".github" / "workflows" / "security-scan.yml"
-        assert path.exists()
-
-    def test_workflow_has_required_fields(self, tmp_path):
-        _generate_github_workflow(tmp_path)
-        content = (tmp_path / ".github" / "workflows" / "security-scan.yml").read_text()
-        assert "name: Security Scan" in content
-        assert "on:" in content
-        assert "permissions:" in content
-        assert "contents: read" in content
-        assert "actions/checkout" in content
-        assert "argus scan" in content
-
-    def test_does_not_overwrite_existing(self, tmp_path):
-        workflows = tmp_path / ".github" / "workflows"
-        workflows.mkdir(parents=True)
-        (workflows / "security-scan.yml").write_text("original")
-        created = _generate_github_workflow(tmp_path)
-        assert created is False
-        assert (workflows / "security-scan.yml").read_text() == "original"
-
-    def test_creates_parent_directories(self, tmp_path):
-        _generate_github_workflow(tmp_path)
-        assert (tmp_path / ".github" / "workflows").is_dir()
+        assert (tmp_path / "argus.yml").exists()
+        assert not (tmp_path / ".github" / "workflows").exists()
