@@ -4,26 +4,73 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "argus-security"
-version = "0.7.0"
-description = "Argus unified security scanning SDK and CLI"
+dynamic = ["version"]
+description = "Comprehensive security scanning SDK and CLI — runs anywhere, integrates everywhere."
 readme = "README.md"
+license = {file = "LICENSE.md"}
 requires-python = ">=3.11"
+authors = [
+    {name = "Huntridge Labs", email = "oss@huntridge-labs.com"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+]
 dependencies = [
     "PyYAML>=6.0",
-    "requests>=2.31.0",
 ]
+
+[project.optional-dependencies]
+# AI classification for SCN detector (argus classify --enable-ai)
+ai = ["anthropic>=0.39.0", "openai>=1.0.0", "requests>=2.31.0"]
+# Shell tab completion
+completion = ["argcomplete>=3.0"]
+# All optional features
+all = ["argus-security[ai,completion]"]
 
 [project.scripts]
 argus = "argus.cli:main"
 
+[project.urls]
+Homepage = "https://github.com/huntridge-labs/argus"
+Documentation = "https://huntridge-labs.github.io/argus/"
+Repository = "https://github.com/huntridge-labs/argus"
+Issues = "https://github.com/huntridge-labs/argus/issues"
+Changelog = "https://github.com/huntridge-labs/argus/blob/main/CHANGELOG.md"
+
+# ── Package contents (whitelist — only these files ship) ──────────
+
+[tool.setuptools.dynamic]
+version = {attr = "argus.__version__"}
+
 [tool.setuptools.packages.find]
-include = ["argus*"]
-exclude = ["tests*", "img*", "docker*", "coverage*", "node_modules*"]
+include = ["argus", "argus.*"]
+# Explicitly exclude tests, fixtures, and non-SDK code
+exclude = [
+    "argus.tests",
+    "argus.tests.*",
+    "tests",
+    "tests.*",
+]
+
+[tool.setuptools.package-data]
+# Include schema files and logo
+argus = ["../argus-config.schema.json", "../img/argus_logo.txt"]
+
+# ── Tool configuration ────────────────────────────────────────────
 
 [tool.bandit]
-# Bandit security scanning configuration
-# Exclude internal tooling directories that are not customer-facing products
-
 exclude_dirs = [
     ".husky",
     ".github",
@@ -31,12 +78,6 @@ exclude_dirs = [
     "docs",
     "__pycache__",
     "venv",
-    "node_modules"
+    "node_modules",
 ]
-
-# Skip certain checks in test environments
 skips = ["B101", "B601"]
-
-# Set confidence level for reporting
-assert_used = "low"
-hardcoded_tmp_directory = "medium"
