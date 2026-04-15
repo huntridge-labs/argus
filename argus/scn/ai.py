@@ -14,7 +14,10 @@ import os
 import sys
 from typing import Dict, Optional
 
-import requests
+try:
+    import requests
+except ImportError:
+    requests = None  # AI features unavailable without requests
 
 from .defaults import DEFAULT_API_BASE_URLS, DEFAULT_AI_CONFIG, merge_config
 
