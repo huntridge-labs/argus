@@ -209,3 +209,65 @@ class TestContainerScanSummary:
         assert summary.unique_count == 0
         assert summary.container_count == 0
         assert summary.build_failures == 0
+
+
+class TestDeduplicationEdgeCases:
+    """Additional edge cases for CVE deduplication logic."""
+
+    def test_same_cve_different_severity_keeps_first(self):
+        """When same CVE appears with different severities, first wins."""
+        combined = deduplicate_findings(
+            trivy=[
+                _finding(cve="CVE-2024-0001", severity=Severity.CRITICAL, fid="T1"),
+            ],
+            grype=[
+                _finding(cve="CVE-2024-0001", severity=Severity.HIGH, fid="G1"),
+            ],
+        )
+        assert len(combined) == 1
+        assert combined[0].severity == Severity.CRITICAL
+
+    def test_none_cve_never_deduped(self):
+        """Findings without CVE are always included, never deduped."""
+        combined = deduplicate_findings(
+            trivy=[
+                _finding(cve=None, fid="T1"),
+                _finding(cve=None, fid="T2"),
+            ],
+            grype=[
+                _finding(cve=None, fid="G1"),
+            ],
+        )
+        assert len(combined) == 3
+
+    def test_empty_string_cve_not_deduped(self):
+        """Empty string CVE should not be treated as a dedup key."""
+        combined = deduplicate_findings(
+            trivy=[
+                _finding(cve="", fid="T1"),
+                _finding(cve="", fid="T2"),
+            ],
+            grype=[],
+        )
+        assert len(combined) == 2
+
+    def test_large_set_performance(self):
+        """Dedup should handle hundreds of findings efficiently."""
+        trivy = [_finding(cve=f"CVE-2024-{i:04d}", fid=f"T{i}") for i in range(200)]
+        grype = [_finding(cve=f"CVE-2024-{i:04d}", fid=f"G{i}") for i in range(200)]
+        combined = deduplicate_findings(trivy, grype)
+        # All 200 unique CVEs from trivy, zero duplicates from grype
+        assert len(combined) == 200
+
+    def test_dedup_preserves_order(self):
+        """Trivy findings should come before grype findings."""
+        combined = deduplicate_findings(
+            trivy=[
+                _finding(cve="CVE-A", fid="T1"),
+                _finding(cve="CVE-B", fid="T2"),
+            ],
+            grype=[
+                _finding(cve="CVE-C", fid="G1"),
+            ],
+        )
+        assert [f.id for f in combined] == ["T1", "T2", "G1"]

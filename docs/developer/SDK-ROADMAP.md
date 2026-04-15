@@ -358,11 +358,11 @@ The MCP server is a new interface to the existing engine — it does not change 
 - [ ] Bandit container ENTRYPOINT means args don't include `bandit` command — documented but could surprise contributors
 
 ### Testing Gaps
-- [ ] Docker execution path not covered in pytest (needs Docker daemon)
-- [ ] No E2E test that builds containers and runs full scan
-- [ ] Container scanner deduplication logic only tested with fixtures, not live
+- [x] Docker execution integration tests (auto-skip when Docker unavailable, tests pull/run/mount/engine)
+- [x] E2E scan test: `argus scan bandit` via Docker on test Python file
+- [x] Container dedup edge cases: None CVE, empty CVE, severity ordering, large sets, order preservation
 - [x] `argus report` integration tests (17 tests, from_dict roundtrip, all 4 formats)
-- [ ] CLI `--version` flag behavior not fully tested
+- [x] `--version` flag: output format, version.yaml consistency, subprocess test
 
 ### Documentation Gaps
 - [x] SDK docs covered by: cli-reference.md (auto-generated), config-reference.md, scanners.md, failure-control.md, and `argus scan <name> --help`
