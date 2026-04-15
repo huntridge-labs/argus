@@ -137,10 +137,10 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 - [x] All actions simplified to `pip install pyyaml` + `python -m argus scan`
 - [x] Add 6 linter SDK modules: yamllint, jsonlint, flake8, jshint, hadolint, terraform
 - [x] Refactor all 6 linter actions to thin wrappers (1424 → 757 lines, -47%)
-- [ ] Verify backward compatibility: identical outputs, artifacts, SARIF
-- [ ] Update `test-actions.yml` to validate thin wrappers
-- [ ] Delete bundled `scripts/` from refactored actions (logic lives in SDK)
-- [ ] Update docsite builder if action README structure changes
+- [x] Verify backward compatibility: identical outputs, artifacts, SARIF
+- [x] Update `test-actions.yml` to validate thin wrappers (output assertions for bandit, opengrep, trivy-iac, checkov)
+- [x] Delete bundled `scripts/` from refactored actions (scanner-container, scanner-zap — logic lives in SDK)
+- [x] Update docsite builder if action README structure changes (no changes needed — builder is script-agnostic)
 
 ---
 

@@ -232,10 +232,29 @@ jobs:
 
       - name: Verify scan completed
         shell: bash
+        env:
+          CRITICAL_COUNT: ${{ steps.scan.outputs.critical_count }}
+          HIGH_COUNT: ${{ steps.scan.outputs.high_count }}
+          MEDIUM_COUNT: ${{ steps.scan.outputs.medium_count }}
+          LOW_COUNT: ${{ steps.scan.outputs.low_count }}
+          ISSUE_COUNT: ${{ steps.scan.outputs.issue_count }}
         run: |
+          # Verify thin-wrapper outputs are set (not empty)
+          for output in CRITICAL_COUNT HIGH_COUNT MEDIUM_COUNT LOW_COUNT ISSUE_COUNT; do
+            val="${!output}"
+            if [ -z "$val" ]; then
+              echo "::error::Output $output was not set by scanner-bandit"
+              exit 1
+            fi
+            if ! [[ "$val" =~ ^[0-9]+$ ]]; then
+              echo "::error::Output $output='$val' is not a non-negative integer"
+              exit 1
+            fi
+          done
           {
             echo "## Bandit Test Results"
             echo "✅ Scanner executed successfully"
+            echo "- Critical: ${CRITICAL_COUNT}, High: ${HIGH_COUNT}, Medium: ${MEDIUM_COUNT}, Low: ${LOW_COUNT}"
           } >> "$GITHUB_STEP_SUMMARY"
 
   test-opengrep:
@@ -265,10 +284,28 @@ jobs:
 
       - name: Verify scan completed
         shell: bash
+        env:
+          ERROR_COUNT: ${{ steps.scan.outputs.error_count }}
+          WARNING_COUNT: ${{ steps.scan.outputs.warning_count }}
+          INFO_COUNT: ${{ steps.scan.outputs.info_count }}
+          TOTAL_COUNT: ${{ steps.scan.outputs.total_count }}
         run: |
+          # Verify thin-wrapper outputs are set (not empty)
+          for output in ERROR_COUNT WARNING_COUNT INFO_COUNT TOTAL_COUNT; do
+            val="${!output}"
+            if [ -z "$val" ]; then
+              echo "::error::Output $output was not set by scanner-opengrep"
+              exit 1
+            fi
+            if ! [[ "$val" =~ ^[0-9]+$ ]]; then
+              echo "::error::Output $output='$val' is not a non-negative integer"
+              exit 1
+            fi
+          done
           {
             echo "## Opengrep Test Results"
             echo "✅ Scanner executed successfully"
+            echo "- Errors: ${ERROR_COUNT}, Warnings: ${WARNING_COUNT}, Info: ${INFO_COUNT}, Total: ${TOTAL_COUNT}"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # CodeQL requires separate job due to unique setup
@@ -381,10 +418,35 @@ jobs:
 
       - name: Verify scan completed
         shell: bash
+        env:
+          CRITICAL_COUNT: ${{ steps.scan.outputs.critical_count }}
+          HIGH_COUNT: ${{ steps.scan.outputs.high_count }}
+          MEDIUM_COUNT: ${{ steps.scan.outputs.medium_count }}
+          LOW_COUNT: ${{ steps.scan.outputs.low_count }}
+          TOTAL_COUNT: ${{ steps.scan.outputs.total_count }}
+          HAS_IAC: ${{ steps.scan.outputs.has_iac }}
         run: |
+          # Verify thin-wrapper outputs are set (not empty)
+          for output in CRITICAL_COUNT HIGH_COUNT MEDIUM_COUNT LOW_COUNT TOTAL_COUNT; do
+            val="${!output}"
+            if [ -z "$val" ]; then
+              echo "::error::Output $output was not set by scanner-trivy-iac"
+              exit 1
+            fi
+            if ! [[ "$val" =~ ^[0-9]+$ ]]; then
+              echo "::error::Output $output='$val' is not a non-negative integer"
+              exit 1
+            fi
+          done
+          if [ -z "$HAS_IAC" ]; then
+            echo "::error::Output HAS_IAC was not set by scanner-trivy-iac"
+            exit 1
+          fi
           {
             echo "## Trivy IaC Test Results"
             echo "✅ Scanner executed successfully"
+            echo "- Critical: ${CRITICAL_COUNT}, High: ${HIGH_COUNT}, Medium: ${MEDIUM_COUNT}, Low: ${LOW_COUNT}"
+            echo "- Has IaC: ${HAS_IAC}"
           } >> "$GITHUB_STEP_SUMMARY"
 
   test-checkov:
@@ -415,10 +477,36 @@ jobs:
 
       - name: Verify scan completed
         shell: bash
+        env:
+          CRITICAL_COUNT: ${{ steps.scan.outputs.critical_count }}
+          HIGH_COUNT: ${{ steps.scan.outputs.high_count }}
+          MEDIUM_COUNT: ${{ steps.scan.outputs.medium_count }}
+          LOW_COUNT: ${{ steps.scan.outputs.low_count }}
+          TOTAL_COUNT: ${{ steps.scan.outputs.total_count }}
+          PASSED_COUNT: ${{ steps.scan.outputs.passed_count }}
+          HAS_IAC: ${{ steps.scan.outputs.has_iac }}
         run: |
+          # Verify thin-wrapper outputs are set (not empty)
+          for output in CRITICAL_COUNT HIGH_COUNT MEDIUM_COUNT LOW_COUNT TOTAL_COUNT PASSED_COUNT; do
+            val="${!output}"
+            if [ -z "$val" ]; then
+              echo "::error::Output $output was not set by scanner-checkov"
+              exit 1
+            fi
+            if ! [[ "$val" =~ ^[0-9]+$ ]]; then
+              echo "::error::Output $output='$val' is not a non-negative integer"
+              exit 1
+            fi
+          done
+          if [ -z "$HAS_IAC" ]; then
+            echo "::error::Output HAS_IAC was not set by scanner-checkov"
+            exit 1
+          fi
           {
             echo "## Checkov Test Results"
             echo "✅ Scanner executed successfully"
+            echo "- Critical: ${CRITICAL_COUNT}, High: ${HIGH_COUNT}, Medium: ${MEDIUM_COUNT}, Low: ${LOW_COUNT}"
+            echo "- Passed: ${PASSED_COUNT}, Has IaC: ${HAS_IAC}"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ============================================================================
