@@ -34,7 +34,14 @@ class SupplyChainScanner:
     container_image = get_image("supply-chain")
 
     def container_args(self, config: dict | None = None) -> list[str]:
-        """Return CLI args for running zizmor+actionlint in a container."""
+        """Return CLI args for running zizmor+actionlint in a container.
+
+        Uses ``sh -c`` to chain two tools in a single container invocation.
+        This is safe because containers always run Linux regardless of the
+        host OS, so POSIX ``sh`` semantics are guaranteed.  The semicolon
+        between commands ensures actionlint runs even if zizmor exits
+        non-zero (findings found).
+        """
         return [
             "sh", "-c",
             "zizmor --format sarif /workspace/.github/ > /output/zizmor.json 2>/dev/null; "

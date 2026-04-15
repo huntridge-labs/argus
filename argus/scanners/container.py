@@ -15,12 +15,20 @@ class ContainerScanner:
     """Wraps Trivy, Grype, and Syft for container image scanning."""
 
     name = "container"
-    # No single container image — orchestrates trivy, grype, syft individually.
-    # Docker execution for sub-scanners uses their respective official images.
+    # This scanner is an orchestrator, not a single-tool wrapper.  It runs
+    # trivy, grype, and syft as separate sub-processes, each with its own
+    # official container image (defined in containers.py).  Because of this
+    # architecture the scanner cannot fall back to a single Docker image;
+    # container_image is empty intentionally and Docker-fallback is handled
+    # per sub-tool by the engine when local binaries are missing.
     container_image = ""
 
     def container_args(self, config: dict | None = None) -> list[str]:
-        """Not applicable — container scanner orchestrates sub-tools directly."""
+        """Not applicable — this scanner orchestrates sub-tools directly.
+
+        Each sub-tool (trivy, grype, syft) is invoked individually with its
+        own container image and args, so a top-level container_args is unused.
+        """
         return []
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:

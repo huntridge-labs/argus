@@ -16,15 +16,24 @@ class ClamavScanner:
 
     name = "clamav"
     container_image = get_image("clamav")
-    container_entrypoint = "clamscan"
+    # The official clamav/clamav image default entrypoint starts clamd as a
+    # daemon, which is not what we want.  Override to /bin/sh so we can run
+    # freshclam (virus DB update) followed by clamscan in a single command.
+    container_entrypoint = "/bin/sh"
 
     def container_args(self, config: dict | None = None) -> list[str]:
         """Return CLI args for running ClamAV in a container.
 
-        The official clamav/clamav image starts clamd by default.
-        We override the entrypoint to clamscan via container_entrypoint.
+        NOTE: The clamav/clamav:1.4 image ships with bundled virus
+        definitions but does NOT auto-run freshclam when the entrypoint
+        is overridden.  We prepend ``freshclam`` to ensure the DB is
+        current before scanning (~60s on first run, cached thereafter).
+        The engine passes these args after ``--entrypoint /bin/sh``.
         """
-        return ["--recursive", "/workspace"]
+        return [
+            "-c",
+            "freshclam --quiet && clamscan --recursive /workspace",
+        ]
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run ClamAV against the given path and return results."""

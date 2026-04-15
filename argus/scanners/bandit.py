@@ -62,7 +62,14 @@ class BanditScanner:
         return "pip install bandit[toml,sarif]"
 
     def container_args(self, config: dict | None = None) -> list[str]:
-        """Build container args from config — mirrors _build_command."""
+        """Build container args from config -- mirrors _build_command.
+
+        NOTE: The custom bandit image (ghcr.io/huntridge-labs/argus/
+        scanner-bandit) uses ENTRYPOINT ["bandit"], so these args are
+        appended directly to the bandit command.  Do NOT include the
+        ``bandit`` executable name here; the container entrypoint
+        already provides it.
+        """
         config = config or {}
         args = [
             "-r", "/workspace",
