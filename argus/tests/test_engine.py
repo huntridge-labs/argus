@@ -642,44 +642,88 @@ class TestRunInContainer:
         assert captured_cmd["cmd"][ep_idx + 1] == "/bin/custom"
 
 
-class TestFilterExcluded:
-    """Test _filter_excluded() path exclusion logic."""
+class TestExclusions:
+    """Test the exclusions module — path filtering and ignore file parsing."""
 
-    def _make_result(self, locations):
-        findings = [
+    def _make_findings(self, locations):
+        return [
             Finding(
                 id=str(i), severity=Severity.LOW,
                 title=f"f{i}", location=loc,
             )
             for i, loc in enumerate(locations)
         ]
-        return ScanResult(scanner="test", findings=findings)
 
     def test_filter_removes_matching_paths(self):
-        result = self._make_result([
+        from argus.core.exclusions import filter_findings
+        findings = self._make_findings([
             "src/main.py",
             "tests/test_main.py",
             "src/utils.py",
         ])
-        filtered = ArgusEngine._filter_excluded(result, "tests/")
-        locations = [f.location for f in filtered.findings]
-        assert "tests/test_main.py" not in locations
-        assert len(filtered.findings) == 2
+        kept, excluded = filter_findings(findings, ["tests"])
+        assert excluded == 1
+        assert len(kept) == 2
 
-    def test_filter_empty_exclude_returns_all(self):
-        result = self._make_result(["a.py", "b.py", "c.py"])
-        filtered = ArgusEngine._filter_excluded(result, "")
-        assert len(filtered.findings) == 3
+    def test_filter_empty_patterns_returns_all(self):
+        from argus.core.exclusions import filter_findings
+        findings = self._make_findings(["a.py", "b.py", "c.py"])
+        kept, excluded = filter_findings(findings, [])
+        assert excluded == 0
+        assert len(kept) == 3
 
-    def test_filter_comma_separated_excludes(self):
-        result = self._make_result([
+    def test_filter_multiple_patterns(self):
+        from argus.core.exclusions import filter_findings
+        findings = self._make_findings([
             "src/main.py",
             "vendor/lib.py",
             "tests/test_main.py",
             "docs/guide.md",
         ])
-        filtered = ArgusEngine._filter_excluded(result, "vendor/,tests/")
-        locations = [f.location for f in filtered.findings]
-        assert len(locations) == 2
-        assert "src/main.py" in locations
-        assert "docs/guide.md" in locations
+        kept, excluded = filter_findings(findings, ["vendor", "tests"])
+        assert excluded == 2
+        assert len(kept) == 2
+
+    def test_filter_glob_patterns(self):
+        from argus.core.exclusions import filter_findings
+        findings = self._make_findings([
+            "src/main.py",
+            "src/main.pyc",
+            "build/output.js",
+        ])
+        kept, excluded = filter_findings(findings, ["*.pyc", "build"])
+        assert excluded == 2
+        assert len(kept) == 1
+
+    def test_build_exclusion_set_includes_builtins(self):
+        from argus.core.exclusions import build_exclusion_set
+        patterns = build_exclusion_set(scan_path="/nonexistent")
+        assert "node_modules" in patterns
+        assert ".git" in patterns
+        assert "__pycache__" in patterns
+
+    def test_build_exclusion_set_adds_cli_excludes(self):
+        from argus.core.exclusions import build_exclusion_set
+        patterns = build_exclusion_set(
+            scan_path="/nonexistent",
+            cli_excludes="mydir,other",
+        )
+        assert "mydir" in patterns
+        assert "other" in patterns
+
+    def test_build_exclusion_set_reads_gitignore(self, tmp_path):
+        from argus.core.exclusions import build_exclusion_set
+        (tmp_path / ".gitignore").write_text("*.log\nsecrets/\n")
+        patterns = build_exclusion_set(scan_path=str(tmp_path))
+        assert "*.log" in patterns
+        assert "secrets" in patterns
+
+    def test_is_excluded_substring_match(self):
+        from argus.core.exclusions import is_excluded
+        assert is_excluded("tests/test_main.py", ["tests"])
+        assert not is_excluded("src/main.py", ["tests"])
+
+    def test_is_excluded_glob_match(self):
+        from argus.core.exclusions import is_excluded
+        assert is_excluded("src/cache.pyc", ["*.pyc"])
+        assert not is_excluded("src/main.py", ["*.pyc"])

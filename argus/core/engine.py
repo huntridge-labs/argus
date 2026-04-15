@@ -37,6 +37,7 @@ class ArgusEngine:
         path: str | None = None,
         fail_fast: bool = False,
         timeout: int | None = None,
+        exclude: str = "",
     ) -> ScanSummary:
         """Run scanners and return an aggregated ScanSummary.
 
@@ -45,13 +46,25 @@ class ArgusEngine:
             path: override scan path for all scanners
             fail_fast: abort immediately if any scanner fails
             timeout: per-scanner timeout in seconds (None = no limit)
+            exclude: comma-separated CLI exclusion patterns
         """
+        from .exclusions import build_exclusion_set, log_exclusion_set
+
         names_to_run = self._resolve_scanner_names(scanner_names)
         logger.debug(
             "Resolved scanners to run: %s (from requested=%s)",
             names_to_run,
             scanner_names,
         )
+
+        # Build unified exclusion set from ignore files + config + CLI
+        scan_root = path or "."
+        exclusion_patterns = build_exclusion_set(
+            scan_path=scan_root,
+            cli_excludes=exclude,
+        )
+        log_exclusion_set(exclusion_patterns)
+
         results: list[ScanResult] = []
 
         for name in names_to_run:
@@ -69,6 +82,18 @@ class ArgusEngine:
             scan_path = path if path is not None else scanner_config.path
             config_dict = self._build_scanner_config_dict(scanner_config)
 
+            # Merge per-scanner excludes with global exclusion set
+            scanner_exclude = config_dict.get("exclude", "")
+            combined_patterns = build_exclusion_set(
+                scan_path=scan_path,
+                cli_excludes=exclude,
+                config_excludes=scanner_exclude,
+            ) if scanner_exclude else exclusion_patterns
+
+            # Pass exclusion patterns to scanner via config
+            if combined_patterns:
+                config_dict["exclude"] = ",".join(combined_patterns)
+
             logger.info("Starting scanner: %s (path=%s)", name, scan_path)
             logger.debug("Scanner config: %s", config_dict)
             start = time.monotonic()
@@ -78,17 +103,24 @@ class ArgusEngine:
                     scanner, scan_path, config_dict, timeout,
                 )
 
-                # Filter out findings from excluded paths
-                exclude = config_dict.get("exclude", "")
-                if exclude and result.findings:
-                    before = len(result.findings)
-                    result = self._filter_excluded(result, exclude)
-                    filtered = before - len(result.findings)
-                    if filtered:
-                        logger.debug(
+                # Post-scan safety net — filter findings from excluded paths
+                if combined_patterns and result.findings:
+                    from .exclusions import filter_findings
+                    filtered_findings, excluded_count = filter_findings(
+                        result.findings, combined_patterns,
+                    )
+                    if excluded_count:
+                        logger.info(
                             "Filtered %d finding(s) from excluded paths for '%s'",
-                            filtered,
+                            excluded_count,
                             name,
+                        )
+                        result = ScanResult(
+                            scanner=result.scanner,
+                            findings=filtered_findings,
+                            raw_report=result.raw_report,
+                            sarif_report=result.sarif_report,
+                            metadata=result.metadata,
                         )
 
                 elapsed = int((time.monotonic() - start) * 1000)
@@ -493,34 +525,6 @@ class ArgusEngine:
             for name in self._scanners
             if self.config.get_scanner_config(name).enabled
         ]
-
-    @staticmethod
-    def _filter_excluded(result: ScanResult, exclude: str) -> ScanResult:
-        """Remove findings whose location matches an excluded path.
-
-        This is the universal exclude mechanism — works for all scanners
-        regardless of whether the tool itself supports path exclusion.
-        Applied post-parse so the scanner still runs on everything, but
-        excluded findings are dropped before reporting.
-        """
-        exclude_parts = [p.strip() for p in exclude.split(",") if p.strip()]
-        if not exclude_parts:
-            return result
-
-        filtered = []
-        for finding in result.findings:
-            location = finding.location or ""
-            if any(exc in location for exc in exclude_parts):
-                continue
-            filtered.append(finding)
-
-        return ScanResult(
-            scanner=result.scanner,
-            findings=filtered,
-            raw_report=result.raw_report,
-            sarif_report=result.sarif_report,
-            metadata=result.metadata,
-        )
 
     @staticmethod
     def _build_scanner_config_dict(scanner_config) -> dict:

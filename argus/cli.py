@@ -284,6 +284,13 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
              "Keys: critical_count, high_count, medium_count, low_count, total_count, passed.",
     )
     scan_parser.add_argument(
+        "--exclude", "-e",
+        default="",
+        metavar="PATTERNS",
+        help="Comma-separated paths or patterns to exclude from scanning. "
+             "Added on top of .gitignore, .dockerignore, and built-in defaults.",
+    )
+    scan_parser.add_argument(
         "--fail-fast",
         action="store_true",
         help="Abort immediately if any scanner fails instead of continuing.",
@@ -635,6 +642,7 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
                 path=args.path,
                 fail_fast=getattr(args, "fail_fast", False),
                 timeout=getattr(args, "timeout", None),
+                exclude=getattr(args, "exclude", ""),
             )
         log.info(
             "Scan complete: %d scanner(s), %d finding(s)",
