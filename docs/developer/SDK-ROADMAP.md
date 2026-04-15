@@ -176,7 +176,20 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 - [ ] `codeql.py` — GitHub-specific, needs CodeQL CLI or Action
 - [ ] `dependency_review.py` — GitHub PR-only, needs GitHub API
 - [x] Linter modules: yaml, json, python, javascript, dockerfile, terraform (done in Phase 3)
-- [ ] `scn_detector.py` — FedRAMP SCN (port rule engine + AI providers from composite action)
+### SCN Detector SDK Port (`argus classify`)
+- [ ] Create `argus/scn/` package — port 9 scripts (2,529 lines) from `.github/actions/scn-detector/scripts/`
+- [ ] `argus/scn/classifier.py` — rule-based change classification engine (from `classify_changes.py`)
+- [ ] `argus/scn/diff.py` — git diff parsing and IaC change analysis (from `diff_helpers.py`, `analyze_iac_changes.py`)
+- [ ] `argus/scn/config.py` — SCN profile loading and validation (from `validate_scn_config.py`, `defaults.py`)
+- [ ] `argus/scn/ai.py` — AI fallback classification with provider abstraction (from `ai_classifier.py`, `ai_providers.py`)
+- [ ] `argus/scn/report.py` — compliance report generation (from `generate_scn_report.py`)
+- [ ] `argus classify` CLI subcommand — takes base/head refs, config profile, outputs classification report
+- [ ] `--format markdown|json` for classification reports
+- [ ] `--output-vars` support for CI integration (category counts)
+- [ ] Optional AI deps: `pip install argus-security[ai]` adds anthropic/openai
+- [ ] Port SCN config schema from `.github/actions/scn-detector/schemas/`
+- [ ] Port tests from `.github/actions/scn-detector/tests/` to `argus/tests/scn/`
+- [ ] Thin wrapper for `.github/actions/scn-detector/action.yml` delegating to `argus classify`
 
 ### CLI Enhancements
 - [x] `argus init` — detect languages/frameworks/linters/tool-configs, generate argus.yml
