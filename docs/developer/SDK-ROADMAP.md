@@ -190,7 +190,7 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 - [ ] Port SCN config schema from `.github/actions/scn-detector/schemas/` to argus package
 
 ### SCN Classifier Improvements
-- [ ] Add GitHub Actions workflow as an IaC category (currently misdetected as kubernetes)
+- [x] Add GitHub Actions workflow as an IaC category (currently misdetected as kubernetes)
 - [ ] Summary table should include Manual Review count (currently omitted)
 - [ ] Resource naming: extract workflow `name:` field instead of defaulting to `unknown.*`
 - [ ] False positive: `routine.pattern:description` rule matches workflow `name:` fields as "description changes"
