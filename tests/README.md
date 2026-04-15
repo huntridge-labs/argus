@@ -36,8 +36,7 @@ tests/
 │   ├── test-apps/         # Minimal test applications
 │   └── configs/           # Test configuration files
 ├── unit/actions/          # Action schema validation tests
-├── CONTRIBUTING.md        # Detailed testing guide
-└── TODO.md                # Testing roadmap and status
+└── CONTRIBUTING.md        # Detailed testing guide
 ```
 
 **Key Design**: Tests are co-located with the actions they test, but share fixtures from `tests/fixtures/` since multiple actions use the same mock data.
@@ -102,7 +101,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidance on:
 
 - **Fixtures**: See [fixtures/README.md](fixtures/README.md) for test data structure
 - **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guide
-- **Status**: See [TODO.md](TODO.md) for implementation roadmap
+- **Status**: See [CONTRIBUTING.md](CONTRIBUTING.md) for testing guide
 
 ---
 

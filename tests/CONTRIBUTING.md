@@ -377,7 +377,7 @@ strategy:
 
 - **See existing tests**: Best examples are in `tests/unit/bash/test-parse-*.sh`
 - **Phase 2 complete docs**: `tests/PHASE2-COMPLETE.md`
-- **Testing strategy**: `tests/TODO.md`
+- **Testing strategy**: `tests/CONTRIBUTING.md` (this file)
 
 ---
 

@@ -274,6 +274,6 @@ Before committing new fixtures:
 
 ## See Also
 
-- [Testing Strategy](../TODO.md) - Overall testing architecture
+- [Testing Strategy](../CONTRIBUTING.md) - Overall testing architecture
 - [Contributing Guide](../../CONTRIBUTING.md) - How to add tests
 - [Scripts Documentation](../../.github/scripts/README.md) - Parser script usage
