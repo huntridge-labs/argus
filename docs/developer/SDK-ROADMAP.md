@@ -189,6 +189,14 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 - [ ] Optional AI deps: `pip install argus-security[ai]` adds anthropic/openai (post-PyPI)
 - [ ] Port SCN config schema from `.github/actions/scn-detector/schemas/` to argus package
 
+### SCN Classifier Improvements
+- [ ] Add GitHub Actions workflow as an IaC category (currently misdetected as kubernetes)
+- [ ] Summary table should include Manual Review count (currently omitted)
+- [ ] Resource naming: extract workflow `name:` field instead of defaulting to `unknown.*`
+- [ ] False positive: `routine.pattern:description` rule matches workflow `name:` fields as "description changes"
+- [ ] Report version should read from `version.yaml`, not hardcoded `v0.3.0`
+- [ ] Report `<details>` wrapper should be optional (PR comments need it, standalone viewing doesn't)
+
 ### CLI Enhancements
 - [x] `argus init` — detect languages/frameworks/linters/tool-configs, generate argus.yml
 - [x] Dropped `--platform` flag — CI config is a one-liner (`argus scan`), not a generated file
