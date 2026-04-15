@@ -6,7 +6,8 @@ This directory contains example workflows and configurations demonstrating diffe
 
 ```
 examples/
-├── workflows/         # Complete workflow examples
+├── workflows/             # GitHub Actions workflow examples
+│   ├── sdk-github-actions.yml
 │   ├── composite-actions-example.yml
 │   ├── actions-linting-example.yml
 │   ├── actions-container-scan-matrix.yml
@@ -14,10 +15,15 @@ examples/
 │   ├── actions-scanner-zap-full-example.yml
 │   ├── scn-detection-example.yml
 │   └── scn-detection-complete.example.yml
-├── configs/          # Configuration file examples
+├── ci-platforms/          # Non-GitHub CI platform examples
+│   ├── gitlab-ci.yml
+│   ├── Jenkinsfile
+│   └── azure-devops.yml
+├── configs/               # Configuration file examples
 │   ├── container-config.example.yml
 │   ├── zap-config.example.yml
 │   └── ...
+├── github-enterprise/     # GHES-specific examples
 └── README.md
 ```
 
@@ -140,10 +146,102 @@ See [`.github/workflows/security-scan.yml`](../.github/workflows/security-scan.y
 
 ---
 
+## CI Integration Pattern
+
+Every CI platform follows the same four-step pattern. Argus produces platform-agnostic output files; your CI pipeline posts them using native APIs.
+
+### How It Works
+
+```
+argus scan
+  │
+  ├── argus-summary.md      ─→  Post as PR/MR comment (platform API)
+  ├── argus-results.sarif    ─→  Upload to security dashboard (Code Security, GitLab SAST, etc.)
+  ├── argus-results.json     ─→  Archive as build artifact
+  └── counts.env             ─→  key=value pairs → CI output variables
+```
+
+1. **`--format markdown`** produces `argus-summary.md` -- a human-readable summary of all findings.
+2. **Your CI posts that file as a PR/MR comment** using the platform's native API (GitHub Script, GitLab Notes API, Azure DevOps Threads API, etc.).
+3. **`--format sarif`** produces `argus-results.sarif` -- upload it to the platform's security dashboard (GitHub Code Security, GitLab SAST, Jenkins Warnings NG).
+4. **`--output-vars`** produces a `counts.env` file with `key=value` lines (`critical_count=0`, `high_count=2`, etc.) that you source into CI output variables for downstream decisions.
+
+### Quick Start by Platform
+
+The core scan command is identical everywhere:
+
+```bash
+pip install pyyaml  # Will become: pip install argus-security
+python -m argus scan \
+  --format sarif --format markdown \
+  --output-dir ./argus-results \
+  --output-vars ./argus-results/counts.env \
+  --no-timestamp
+```
+
+What changes per platform is how you **post the comment** and **upload SARIF**.
+
+#### GitHub Actions
+
+```yaml
+# Post argus-summary.md as PR comment → actions/github-script
+# Upload SARIF → github/codeql-action/upload-sarif
+# Full example: examples/workflows/sdk-github-actions.yml
+```
+
+See [`workflows/sdk-github-actions.yml`](workflows/sdk-github-actions.yml) for the complete workflow including PR comment upsert logic and artifact archiving.
+
+#### GitLab CI
+
+```yaml
+# Post argus-summary.md as MR note → curl to GitLab Notes API
+# Upload SARIF → artifacts.reports.sast (GitLab ingests natively)
+# Full example: examples/ci-platforms/gitlab-ci.yml
+```
+
+See [`ci-platforms/gitlab-ci.yml`](ci-platforms/gitlab-ci.yml). GitLab's `artifacts.reports.sast` key automatically ingests SARIF into the Security Dashboard -- no extra upload step needed.
+
+#### Jenkins
+
+```groovy
+// Post argus-summary.md as PR comment → pullRequest.comment() or HTTP plugin
+// Upload SARIF → recordIssues(tools: [sarif(...)]) via Warnings NG plugin
+// Full example: examples/ci-platforms/Jenkinsfile
+```
+
+See [`ci-platforms/Jenkinsfile`](ci-platforms/Jenkinsfile). Uses the Pipeline Utility Steps plugin for `readFile` and Warnings NG for SARIF ingestion with quality gates.
+
+#### Azure DevOps
+
+```yaml
+# Post argus-summary.md as PR thread → curl to Azure DevOps REST API
+# Counts exported via ##vso[task.setvariable] for downstream steps
+# Full example: examples/ci-platforms/azure-devops.yml
+```
+
+See [`ci-platforms/azure-devops.yml`](ci-platforms/azure-devops.yml). Exports scan counts as pipeline variables using the `##vso` logging commands.
+
+### Output Files Reference
+
+| File | Flag | Purpose |
+|------|------|---------|
+| `argus-summary.md` | `--format markdown` | Human-readable summary for PR comments |
+| `argus-results.sarif` | `--format sarif` | SARIF for security dashboards |
+| `argus-results.json` | `--format json` | Machine-readable full results |
+| `counts.env` | `--output-vars <path>` | `key=value` counts for CI variables |
+
+All files land in the directory specified by `--output-dir`. The `--no-timestamp` flag ensures predictable file names (no run-specific subdirectories).
+
+---
+
 ## Available Examples
 
 | Example File | Description | Approach |
 |--------------|-------------|----------|
+| [`sdk-github-actions.yml`](workflows/sdk-github-actions.yml) | SDK scan with PR comment and SARIF upload | SDK + GitHub Actions |
+| [`gitlab-ci.yml`](ci-platforms/gitlab-ci.yml) | SDK scan with MR comment and GitLab SAST | SDK + GitLab CI |
+| [`Jenkinsfile`](ci-platforms/Jenkinsfile) | SDK scan with Warnings NG and artifacts | SDK + Jenkins |
+| [`azure-devops.yml`](ci-platforms/azure-devops.yml) | SDK scan with PR thread and pipeline vars | SDK + Azure DevOps |
 | [`composite-actions-example.yml`](workflows/composite-actions-example.yml) | Full security scanning with composite actions | Composite Actions |
 | [`actions-linting-example.yml`](workflows/actions-linting-example.yml) | Linting with composite actions | Composite Actions |
 | [`actions-container-scan-matrix.yml`](workflows/actions-container-scan-matrix.yml) | Matrix-based container scanning | Composite Actions |
