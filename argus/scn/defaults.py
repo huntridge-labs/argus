@@ -51,7 +51,7 @@ Classify this change. Respond ONLY with valid JSON in this exact format:
 DEFAULT_RULES = {
     'routine': [
         {'pattern': r'tags.*', 'description': 'Tag changes'},
-        {'pattern': r'description', 'description': 'Description changes'},
+        {'attribute': r'^description$', 'description': 'Description changes'},
     ],
     'adaptive': [
         {'resource': r'aws_ami\..*', 'operation': 'modify', 'description': 'AMI updates'},

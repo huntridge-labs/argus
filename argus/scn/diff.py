@@ -3,7 +3,7 @@
 FedRAMP SCN Detector - Diff Parsing and IaC Change Analysis
 
 Combines diff parsing helpers and IaC change analysis into a single module.
-Supports Terraform, Kubernetes, and CloudFormation formats.
+Supports Terraform, Kubernetes, CloudFormation, and GitHub Actions formats.
 """
 
 import re
@@ -95,15 +95,37 @@ def extract_diff_snippet(diff_content: str, position: int, max_length: int = 300
     return '\n'.join(lines)
 
 
+def _extract_yaml_name(diff_content: str) -> Optional[str]:
+    """Try to extract a top-level `name:` value from YAML diff content."""
+    match = re.search(r'(?:^|\n)[+-]?\s*name:\s*([^\n]+)', diff_content)
+    if match:
+        name = match.group(1).strip().strip('"\'')
+        if name:
+            return name
+    return None
+
+
 def _build_generic_resource(file_path: str, diff_content: str) -> Dict:
     """Build a generic resource entry when no specific pattern matched."""
+    # For GitHub Actions files, prefer the workflow/action name from YAML
+    name = Path(file_path).stem
+    if _is_github_actions_path(file_path):
+        yaml_name = _extract_yaml_name(diff_content)
+        if yaml_name:
+            name = yaml_name
+
     return {
         'type': 'unknown',
-        'name': Path(file_path).stem,
+        'name': name,
         'operation': 'modify',
         'attributes_changed': extract_changed_attributes(diff_content, 0),
         'diff': diff_content[:500]
     }
+
+
+def _is_github_actions_path(file_path: str) -> bool:
+    """Check if a file path looks like a GitHub Actions workflow or action."""
+    return bool(re.search(r'\.github/(workflows|actions)/', file_path))
 
 
 def parse_terraform_diff(file_path: str, diff_content: str) -> Dict:
@@ -228,6 +250,35 @@ def parse_cloudformation_diff(file_path: str, diff_content: str) -> Dict:
     return {'file': file_path, 'format': 'cloudformation', 'resources': resources}
 
 
+def parse_github_actions_diff(file_path: str, diff_content: str) -> Dict:
+    """
+    Parse GitHub Actions workflow/action diff to extract resource changes.
+
+    Args:
+        file_path: Path to the workflow or action file
+        diff_content: Git diff content
+
+    Returns:
+        Dictionary with extracted changes
+    """
+    resources = []
+
+    # Try to extract the workflow/action name from a `name:` field in the diff
+    name_pattern = r'(?:^|\n)[+-]?\s*name:\s*([^\n]+)'
+    name_match = re.search(name_pattern, diff_content)
+    resource_name = name_match.group(1).strip().strip('"\'') if name_match else Path(file_path).stem
+
+    resources.append({
+        'type': 'github-actions',
+        'name': resource_name,
+        'operation': determine_operation(diff_content, 0),
+        'attributes_changed': extract_changed_attributes(diff_content, 0),
+        'diff': extract_diff_snippet(diff_content, 0),
+    })
+
+    return {'file': file_path, 'format': 'github-actions', 'resources': resources}
+
+
 # ---------------------------------------------------------------------------
 # IaC Change Analyzer (ported from analyze_iac_changes.py)
 # ---------------------------------------------------------------------------
@@ -239,6 +290,10 @@ class IaCChangeAnalyzer:
     TERRAFORM_PATTERNS = [r'\.tf$', r'\.tfvars$']
     K8S_PATTERNS = [r'\.ya?ml$']
     CFN_PATTERNS = [r'\.json$', r'\.ya?ml$']
+    GITHUB_ACTIONS_PATTERNS = [
+        r'\.github/workflows/.*\.ya?ml$',
+        r'\.github/actions/.*\.ya?ml$',
+    ]
 
     # Kubernetes resource indicators
     K8S_INDICATORS = ['kind:', 'apiVersion:']
@@ -286,6 +341,10 @@ class IaCChangeAnalyzer:
             print(f"Error getting diff for {file_path}: {e}", file=sys.stderr)
             return None
 
+    def is_github_actions_file(self, file_path: str) -> bool:
+        """Check if file is a GitHub Actions workflow or action definition."""
+        return any(re.search(pattern, file_path) for pattern in self.GITHUB_ACTIONS_PATTERNS)
+
     def is_terraform_file(self, file_path: str) -> bool:
         """Check if file is Terraform."""
         return any(re.search(pattern, file_path) for pattern in self.TERRAFORM_PATTERNS)
@@ -311,8 +370,14 @@ class IaCChangeAnalyzer:
         Determine IaC format of file.
 
         Returns:
-            Format string ('terraform', 'kubernetes', 'cloudformation') or None
+            Format string ('terraform', 'kubernetes', 'cloudformation',
+            'github-actions') or None
         """
+        # GitHub Actions check must come before kubernetes/cloudformation
+        # because workflow YAML files would otherwise match those patterns.
+        if self.is_github_actions_file(file_path):
+            return 'github-actions'
+
         try:
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 content = f.read(1024)
@@ -340,7 +405,8 @@ class IaCChangeAnalyzer:
             'total_files': 0,
             'terraform_files': 0,
             'kubernetes_files': 0,
-            'cloudformation_files': 0
+            'cloudformation_files': 0,
+            'github_actions_files': 0,
         }
 
         # Map formats to parsers
@@ -348,6 +414,7 @@ class IaCChangeAnalyzer:
             'terraform': parse_terraform_diff,
             'kubernetes': parse_kubernetes_diff,
             'cloudformation': parse_cloudformation_diff,
+            'github-actions': parse_github_actions_diff,
         }
 
         for file_path in changed_files:
@@ -367,7 +434,8 @@ class IaCChangeAnalyzer:
 
             change_data = parser(file_path, diff_content)
             changes.append(change_data)
-            summary[f'{iac_format}_files'] += 1
+            summary_key = f'{iac_format.replace("-", "_")}_files'
+            summary[summary_key] = summary.get(summary_key, 0) + 1
             summary['total_files'] += 1
 
         print(f"\nAnalysis Summary:")
@@ -375,6 +443,7 @@ class IaCChangeAnalyzer:
         print(f"  Terraform: {summary['terraform_files']}")
         print(f"  Kubernetes: {summary['kubernetes_files']}")
         print(f"  CloudFormation: {summary['cloudformation_files']}")
+        print(f"  GitHub Actions: {summary['github_actions_files']}")
 
         return {
             'changes': changes,
@@ -395,7 +464,8 @@ def parse_diff(file_path: str, diff_content: str, iac_format: str) -> Dict:
     Args:
         file_path: Path to the IaC file
         diff_content: Git diff content
-        iac_format: One of 'terraform', 'kubernetes', 'cloudformation'
+        iac_format: One of 'terraform', 'kubernetes', 'cloudformation',
+            'github-actions'
 
     Returns:
         Dictionary with extracted changes
@@ -407,6 +477,7 @@ def parse_diff(file_path: str, diff_content: str, iac_format: str) -> Dict:
         'terraform': parse_terraform_diff,
         'kubernetes': parse_kubernetes_diff,
         'cloudformation': parse_cloudformation_diff,
+        'github-actions': parse_github_actions_diff,
     }
     parser = parsers.get(iac_format)
     if not parser:
