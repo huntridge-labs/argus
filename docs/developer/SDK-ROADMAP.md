@@ -183,7 +183,7 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 - [x] Dropped `--platform` flag — CI config is a one-liner (`argus scan`), not a generated file
 - [x] Enhanced detection: Go, Java, JS/TS, GitLab CI, Jenkins, existing tool configs (.bandit, .gitleaks.toml, etc.)
 - [x] Linter auto-enable: lint-python, lint-javascript, lint-dockerfile, lint-terraform based on signals
-- [ ] `--exclude` global CLI flag for path exclusions
+- [x] `--exclude` global CLI flag + auto-respect .gitignore/.dockerignore
 - [x] Parallel scanner execution — ThreadPoolExecutor, max 8 workers, 40% speedup measured in CI (51.9s → 31.2s)
 
 ### Performance Research
@@ -342,7 +342,7 @@ The MCP server is a new interface to the existing engine — it does not change 
 - [ ] Docker execution path not covered in pytest (needs Docker daemon)
 - [ ] No E2E test that builds containers and runs full scan
 - [ ] Container scanner deduplication logic only tested with fixtures, not live
-- [ ] `argus report` subcommand has no integration tests
+- [x] `argus report` integration tests (17 tests, from_dict roundtrip, all 4 formats)
 - [ ] CLI `--version` flag behavior not fully tested
 
 ### Documentation Gaps
