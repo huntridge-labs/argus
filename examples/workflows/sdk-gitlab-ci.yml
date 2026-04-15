@@ -1,0 +1,64 @@
+# Argus Security Scan — GitLab CI
+#
+# Runs argus scan on merge requests and pushes to default branch.
+# Posts scan results as an MR comment and stores artifacts.
+#
+# Prerequisites:
+#   - argus.yml in the repository root (run: argus init)
+#   - Docker available (GitLab runners have Docker by default)
+#   - Python 3.11+ available on the runner
+#
+# Add this file as .gitlab-ci.yml or include it in your pipeline.
+
+stages:
+  - security
+
+argus-scan:
+  stage: security
+  image: python:3.12-slim
+  services:
+    - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+
+  before_script:
+    - pip install pyyaml  # Will become: pip install argus-security
+
+  script:
+    - python -m argus scan
+        --format sarif --format json --format markdown
+        --output-dir ./argus-results
+        --output-vars ./argus-results/counts.env
+        --no-timestamp
+        || true
+
+    # Source counts for downstream use
+    - source argus-results/counts.env 2>/dev/null || true
+    - echo "Findings — Critical:${critical_count:-0} High:${high_count:-0} Medium:${medium_count:-0} Low:${low_count:-0}"
+
+  artifacts:
+    paths:
+      - argus-results/
+    reports:
+      # GitLab natively ingests SARIF for Security Dashboard
+      sast: argus-results/argus-results.sarif
+    expire_in: 30 days
+    when: always
+
+  # Post scan summary as MR comment
+  after_script:
+    - |
+      if [ -n "$CI_MERGE_REQUEST_IID" ] && [ -f "argus-results/argus-summary.md" ]; then
+        SUMMARY=$(cat argus-results/argus-summary.md)
+        BODY=$(jq -n --arg body "## 🔒 Argus Security Scan Results\n\n${SUMMARY}" '{body: $body}')
+        curl --silent --fail \
+          --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+          --header "Content-Type: application/json" \
+          --data "${BODY}" \
+          "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/merge_requests/${CI_MERGE_REQUEST_IID}/notes" \
+          || echo "Failed to post MR comment (check GITLAB_TOKEN permissions)"
+      fi
+
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

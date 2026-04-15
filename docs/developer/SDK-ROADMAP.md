@@ -204,12 +204,12 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 - [ ] `argus validate --check-tools` notes for scanners with runtime network dependencies (e.g., OSV API, ClamAV freshclam, Trivy DB updates) — informational, not blocking
 
 ### CI Examples & PR Feedback
-- [ ] Example workflows with PR comment feedback for each platform (argus produces markdown via `--format markdown`; the CI workflow posts it as a PR/MR comment using platform-native APIs)
-- [ ] GitHub Actions example: uses `actions/github-script` or `comment-pr` action to post argus markdown summary
-- [ ] GitLab CI example: uses GitLab MR notes API to post argus markdown summary
-- [ ] Jenkins example: uses pipeline step to post argus markdown as PR comment
-- [ ] Azure DevOps example: uses Azure Repos PR comment API
-- [ ] Document the pattern: `argus scan --format markdown --output-dir ./results` → platform posts `results/argus-summary.md` as comment
+- [x] Example workflows with PR comment feedback for each platform
+- [x] `examples/workflows/sdk-github-actions.yml` — SARIF upload + PR comment via github-script
+- [x] `examples/workflows/sdk-gitlab-ci.yml` — SARIF to Security Dashboard + MR comment via API
+- [x] `examples/workflows/sdk-jenkins.groovy` — Warnings NG SARIF + artifact archival
+- [x] `examples/workflows/sdk-azure-devops.yml` — PR thread comment via REST API
+- [x] Common pattern: `argus scan --format markdown` → platform posts `argus-summary.md` as comment
 
 ---
 
