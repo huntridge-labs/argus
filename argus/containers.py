@@ -22,10 +22,10 @@ OFFICIAL_IMAGES = {
 # Custom images built and published by Argus to ghcr.io/huntridge-labs/argus/
 # Versions managed by release-it regex bumper
 CUSTOM_IMAGES = {
-    "bandit": "ghcr.io/huntridge-labs/argus/scanner-bandit:1.0.0",
-    "semgrep": "ghcr.io/huntridge-labs/argus/scanner-opengrep:1.0.0",
-    "supply-chain": "ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.0.0",
-    "cli": "ghcr.io/huntridge-labs/argus/cli:1.0.0",
+    "bandit": "ghcr.io/huntridge-labs/argus/scanner-bandit:0.7.0",
+    "semgrep": "ghcr.io/huntridge-labs/argus/scanner-opengrep:0.7.0",
+    "supply-chain": "ghcr.io/huntridge-labs/argus/scanner-supply-chain:0.7.0",
+    "cli": "ghcr.io/huntridge-labs/argus/cli:0.7.0",
 }
 
 
