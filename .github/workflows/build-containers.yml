@@ -234,10 +234,12 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install Argus
+      - name: Build and install Argus wheel
         run: |
-          pip install --quiet pyyaml
-          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+          pip install --quiet build pyyaml
+          python -m build --wheel
+          pip install dist/*.whl
+          echo "Installed: $(argus --version)"
 
       # Load all custom images built in step 1
       - name: Download all image artifacts
@@ -263,9 +265,15 @@ jobs:
         env:
           GITHUB_SHA: ${{ github.sha }}
 
-      - name: Test scanner listing
+      - name: Package safety check
+        run: python -m scripts.ci.check_package
+
+      - name: Verify wheel installation
         run: |
-          OUTPUT=$(python -m argus scan --list)
+          # Verify the installed package works, not the repo checkout
+          which argus
+          argus --version
+          OUTPUT=$(argus scan --list)
           echo "$OUTPUT"
           for scanner in bandit clamav trivy-iac gitleaks osv checkov opengrep supply-chain zap container; do
             echo "$OUTPUT" | grep -q "$scanner" || { echo "FAIL: $scanner not listed"; exit 1; }
@@ -274,13 +282,14 @@ jobs:
       - name: Run argus scan
         run: |
           set +e
-          python -m argus scan \
+          argus scan \
             --config argus.yml \
             --format terminal \
             --format markdown \
             --format sarif \
             --format json \
             --output-dir ./cli-test-results \
+            --output-vars ./cli-test-results/counts.env \
             --verbose
           EXIT_CODE=$?
           set -e
@@ -388,6 +397,17 @@ jobs:
               assert 'message' in entry, f'Line {i}: missing message'
           print(f'Structured log valid: {len(lines)} entries')
           "
+
+      - name: Validate output-vars
+        run: |
+          test -f cli-test-results/counts.env || { echo "FAIL: counts.env not produced"; exit 1; }
+          echo "=== counts.env ==="
+          cat cli-test-results/counts.env
+          # Verify expected keys
+          for key in critical_count high_count medium_count low_count total_count passed; do
+            grep -q "^${key}=" cli-test-results/counts.env || { echo "FAIL: missing ${key}"; exit 1; }
+          done
+          echo "Output vars valid"
 
       - name: Upload test results
         if: always()
