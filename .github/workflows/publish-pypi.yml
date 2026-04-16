@@ -113,6 +113,6 @@ jobs:
           path: dist/
 
       - name: Publish to TestPyPI
-        uses: pypa/gh-action-pypi-publish@76f52bc884231f62b54a53e2c3f5f0e6f5708353 # v1.12.4
+        uses: pypa/gh-action-pypi-publish@4bb033805d9e19112d8c697528791ff53f6c2f74 # v1.12.4
         with:
           repository-url: https://test.pypi.org/legacy/
