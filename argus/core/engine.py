@@ -20,6 +20,7 @@ class ArgusEngine:
     def __init__(self, config: ArgusConfig):
         self.config = config
         self._scanners: dict[str, Scanner] = {}
+        self._allow_local_versions: bool = False
 
     def register_scanner(self, scanner: Scanner) -> None:
         """Register a scanner instance for use by the engine."""
@@ -39,6 +40,7 @@ class ArgusEngine:
         timeout: int | None = None,
         exclude: str = "",
         parallel: bool = True,
+        allow_local_versions: bool = False,
     ) -> ScanSummary:
         """Run scanners and return an aggregated ScanSummary.
 
@@ -49,8 +51,11 @@ class ArgusEngine:
             timeout: per-scanner timeout in seconds (None = no limit)
             exclude: comma-separated CLI exclusion patterns
             parallel: run scanners concurrently (default True)
+            allow_local_versions: skip version enforcement for local tools
         """
         from .exclusions import build_exclusion_set, log_exclusion_set
+
+        self._allow_local_versions = allow_local_versions
 
         names_to_run = self._resolve_scanner_names(scanner_names)
         logger.debug(
@@ -145,6 +150,18 @@ class ArgusEngine:
         result = self._run_scanner_with_timeout(
             scanner, scan_path, config_dict, timeout,
         )
+
+        # Record tool version in metadata for audit trail
+        if result.metadata.get("execution") == "container":
+            from argus.containers import get_expected_version
+            result.metadata.setdefault(
+                "tool_version",
+                get_expected_version(scanner.name) or "unknown",
+            )
+        else:
+            version = self._get_tool_version(scanner)
+            if version:
+                result.metadata["tool_version"] = version
 
         if exclusion_patterns and result.findings:
             from .exclusions import filter_findings
@@ -598,6 +615,7 @@ class ArgusEngine:
                     f"Scanner '{scanner.name}' not installed locally. "
                     f"Install: {scanner.install_command()}"
                 )
+            self._verify_tool_version(scanner)
             logger.debug(
                 "Backend 'local': running '%s' via local tool", scanner.name,
             )
@@ -641,6 +659,7 @@ class ArgusEngine:
 
             # auto fallback: use local tool
             if scanner.is_available():
+                self._verify_tool_version(scanner)
                 logger.info(
                     "Falling back to local tool for '%s'",
                     scanner.name,
@@ -655,6 +674,55 @@ class ArgusEngine:
         raise RuntimeError(
             f"Unknown execution backend '{backend}' for scanner '{scanner.name}'"
         )
+
+    # ------------------------------------------------------------------
+    # Tool version enforcement
+    # ------------------------------------------------------------------
+
+    def _verify_tool_version(self, scanner) -> None:
+        """Verify local tool version matches expected version.
+
+        When ``_allow_local_versions`` is False (the default), raises
+        RuntimeError on mismatch.  When True, logs a WARNING and proceeds.
+        """
+        from argus.containers import get_expected_version
+
+        expected = get_expected_version(scanner.name)
+        if not expected:
+            return  # No expected version defined
+
+        actual = None
+        if hasattr(scanner, "tool_version"):
+            actual = scanner.tool_version()
+
+        if actual is None:
+            return  # Can't determine version, allow
+
+        if actual != expected:
+            if self._allow_local_versions:
+                logger.warning(
+                    "Scanner '%s' version mismatch: installed %s, "
+                    "expected %s (proceeding — --allow-local-versions set)",
+                    scanner.name,
+                    actual,
+                    expected,
+                )
+                return
+
+            raise RuntimeError(
+                f"Scanner '{scanner.name}' version mismatch: "
+                f"installed {actual}, expected {expected}. "
+                f"Use --allow-local-versions to bypass."
+            )
+
+        logger.debug("Version verified: %s %s", scanner.name, actual)
+
+    @staticmethod
+    def _get_tool_version(scanner) -> str | None:
+        """Return the tool version string if the scanner supports it."""
+        if hasattr(scanner, "tool_version"):
+            return scanner.tool_version()
+        return None
 
     # ------------------------------------------------------------------
     # Internal helpers

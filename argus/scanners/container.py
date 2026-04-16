@@ -107,6 +107,10 @@ class ContainerScanner:
             "https://github.com/anchore/syft"
         )
 
+    def tool_version(self) -> str | None:
+        """Return None — this is an orchestrator, not a single tool."""
+        return None
+
     def parse_trivy_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse Trivy container JSON output into findings."""
         data = json.loads(raw_output_path.read_text())

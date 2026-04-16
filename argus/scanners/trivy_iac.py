@@ -72,6 +72,23 @@ class TrivyIacScanner:
         """Return install command for Trivy."""
         return "curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh"
 
+    def tool_version(self) -> str | None:
+        """Return the installed Trivy version, or None if not available."""
+        if not self.is_available():
+            return None
+        try:
+            result = subprocess.run(
+                ["trivy", "--version"],
+                capture_output=True, text=True, timeout=5,
+            )
+            # Output includes "Version: X.Y.Z" among other lines
+            for line in result.stdout.strip().splitlines():
+                if line.startswith("Version:"):
+                    return line.split(":", 1)[1].strip()
+            return None
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            return None
+
     def container_args(self, config: dict | None = None) -> list[str]:
         """Return CLI args for running Trivy IaC in a container."""
         return [

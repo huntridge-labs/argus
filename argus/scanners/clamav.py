@@ -70,6 +70,29 @@ class ClamavScanner:
         """Return install command for ClamAV."""
         return "apt-get install -y clamav"
 
+    def tool_version(self) -> str | None:
+        """Return the installed ClamAV version, or None if not available."""
+        if not self.is_available():
+            return None
+        try:
+            result = subprocess.run(
+                ["clamscan", "--version"],
+                capture_output=True, text=True, timeout=5,
+            )
+            # Output: "ClamAV X.Y.Z/..." or "ClamAV X.Y.Z"
+            text = result.stdout.strip()
+            if not text:
+                return None
+            # Parse "ClamAV X.Y.Z" from first line
+            first_line = text.splitlines()[0]
+            parts = first_line.split()
+            if len(parts) >= 2 and parts[0] == "ClamAV":
+                # Version may have "/dbver" suffix
+                return parts[1].split("/")[0]
+            return None
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            return None
+
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse ClamAV text output file into findings."""
         text = raw_output_path.read_text()

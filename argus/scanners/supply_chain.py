@@ -108,6 +108,30 @@ class SupplyChainScanner:
             "github.com/rhysd/actionlint/cmd/actionlint@latest"
         )
 
+    def tool_version(self) -> str | None:
+        """Return the installed zizmor version, or None if not available.
+
+        Reports the zizmor version since it is the primary tool in this
+        scanner. Actionlint is a secondary companion tool.
+        """
+        if shutil.which("zizmor") is None:
+            return None
+        try:
+            result = subprocess.run(
+                ["zizmor", "--version"],
+                capture_output=True, text=True, timeout=5,
+            )
+            # Output: "zizmor X.Y.Z"
+            text = result.stdout.strip()
+            if not text:
+                return None
+            parts = text.splitlines()[0].split()
+            if len(parts) >= 2 and parts[0] == "zizmor":
+                return parts[1]
+            return None
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            return None
+
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse combined results. Detects format automatically.
 

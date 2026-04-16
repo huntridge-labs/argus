@@ -61,6 +61,24 @@ class BanditScanner:
         """Return install command for Bandit."""
         return "pip install bandit[toml,sarif]"
 
+    def tool_version(self) -> str | None:
+        """Return the installed Bandit version, or None if not available."""
+        if not self.is_available():
+            return None
+        try:
+            result = subprocess.run(
+                ["bandit", "--version"],
+                capture_output=True, text=True, timeout=5,
+            )
+            # Output: "bandit X.Y.Z ..."
+            for line in result.stdout.strip().splitlines():
+                parts = line.split()
+                if len(parts) >= 2 and parts[0] == "bandit":
+                    return parts[1]
+            return None
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            return None
+
     def container_args(self, config: dict | None = None) -> list[str]:
         """Build container args from config -- mirrors _build_command.
 

@@ -826,3 +826,168 @@ class TestExclusions:
         from argus.core.exclusions import is_excluded
         assert is_excluded("src/cache.pyc", ["*.pyc"])
         assert not is_excluded("src/main.py", ["*.pyc"])
+
+
+class TestToolVersionEnforcement:
+    """Test local tool version verification against container-pinned versions."""
+
+    def _make_engine(self, backend="local"):
+        data = {"execution": {"backend": backend}}
+        return ArgusEngine(ArgusConfig.from_dict(data))
+
+    def _make_versioned_scanner(
+        self, name="bandit", version="1.0.0", available=True,
+    ):
+        """Create a mock scanner with a tool_version() method."""
+        scanner = MockScanner(name, available=available)
+        scanner.tool_version = lambda: version
+        return scanner
+
+    def test_version_match_allows_scan(self, monkeypatch):
+        """Matching versions should proceed without error."""
+        engine = self._make_engine(backend="local")
+        scanner = self._make_versioned_scanner("bandit", version="1.0.0")
+        engine.register_scanner(scanner)
+
+        monkeypatch.setattr(
+            "argus.containers.get_expected_version",
+            lambda name: "1.0.0",
+        )
+
+        summary = engine.run(scanner_names=["bandit"])
+        assert len(summary.results) == 1
+        assert scanner.scan_called_with is not None
+
+    def test_version_mismatch_raises_by_default(self, monkeypatch):
+        """Mismatched versions should raise RuntimeError (strict mode)."""
+        engine = self._make_engine(backend="local")
+        scanner = self._make_versioned_scanner("bandit", version="0.9.0")
+        engine.register_scanner(scanner)
+
+        monkeypatch.setattr(
+            "argus.containers.get_expected_version",
+            lambda name: "1.0.0",
+        )
+
+        # Engine catches exceptions — scanner produces no results
+        summary = engine.run(scanner_names=["bandit"])
+        assert len(summary.results) == 0
+
+    def test_version_mismatch_allowed_with_flag(self, monkeypatch):
+        """With allow_local_versions=True, mismatch logs warning but proceeds."""
+        engine = self._make_engine(backend="local")
+        scanner = self._make_versioned_scanner("bandit", version="0.9.0")
+        engine.register_scanner(scanner)
+
+        monkeypatch.setattr(
+            "argus.containers.get_expected_version",
+            lambda name: "1.0.0",
+        )
+
+        summary = engine.run(
+            scanner_names=["bandit"],
+            allow_local_versions=True,
+        )
+        assert len(summary.results) == 1
+        assert scanner.scan_called_with is not None
+
+    def test_no_expected_version_skips_check(self, monkeypatch):
+        """When no expected version exists, skip the check entirely."""
+        engine = self._make_engine(backend="local")
+        scanner = self._make_versioned_scanner("custom", version="2.0.0")
+        engine.register_scanner(scanner)
+
+        monkeypatch.setattr(
+            "argus.containers.get_expected_version",
+            lambda name: None,
+        )
+
+        summary = engine.run(scanner_names=["custom"])
+        assert len(summary.results) == 1
+
+    def test_no_tool_version_method_skips_check(self, monkeypatch):
+        """Scanners without tool_version() should pass version check."""
+        engine = self._make_engine(backend="local")
+        scanner = MockScanner("bandit", available=True)
+        engine.register_scanner(scanner)
+
+        monkeypatch.setattr(
+            "argus.containers.get_expected_version",
+            lambda name: "1.0.0",
+        )
+
+        summary = engine.run(scanner_names=["bandit"])
+        assert len(summary.results) == 1
+
+    def test_tool_version_returns_none_skips_check(self, monkeypatch):
+        """If tool_version() returns None, skip the check."""
+        engine = self._make_engine(backend="local")
+        scanner = self._make_versioned_scanner("bandit", version=None)
+        scanner.tool_version = lambda: None
+        engine.register_scanner(scanner)
+
+        monkeypatch.setattr(
+            "argus.containers.get_expected_version",
+            lambda name: "1.0.0",
+        )
+
+        summary = engine.run(scanner_names=["bandit"])
+        assert len(summary.results) == 1
+
+    def test_auto_backend_local_fallback_checks_version(self, monkeypatch):
+        """auto backend falling back to local should still check version."""
+        engine = self._make_engine(backend="auto")
+        scanner = self._make_versioned_scanner("bandit", version="0.9.0")
+        scanner.container_image = ""  # No container image, forces local
+        engine.register_scanner(scanner)
+
+        monkeypatch.setattr(
+            "argus.containers.get_expected_version",
+            lambda name: "1.0.0",
+        )
+
+        summary = engine.run(scanner_names=["bandit"])
+        # Version mismatch should cause failure
+        assert len(summary.results) == 0
+
+    def test_tool_version_recorded_in_metadata(self, monkeypatch):
+        """Tool version should be recorded in result metadata."""
+        engine = self._make_engine(backend="local")
+        scanner = self._make_versioned_scanner("bandit", version="1.0.0")
+        engine.register_scanner(scanner)
+
+        monkeypatch.setattr(
+            "argus.containers.get_expected_version",
+            lambda name: "1.0.0",
+        )
+
+        summary = engine.run(scanner_names=["bandit"])
+        assert len(summary.results) == 1
+        assert summary.results[0].metadata.get("tool_version") == "1.0.0"
+
+    def test_container_execution_records_expected_version(self, monkeypatch):
+        """Container execution should record version from image tag."""
+        engine = self._make_engine(backend="auto")
+        findings = [Finding(id="1", severity=Severity.HIGH, title="f1")]
+        scanner = MockScanner(
+            "bandit", findings=findings, available=True,
+            container_image="ghcr.io/huntridge-labs/argus/scanner-bandit:1.0.0",
+        )
+        engine.register_scanner(scanner)
+
+        monkeypatch.setattr(engine, "_is_docker_available", lambda: True)
+        monkeypatch.setattr(
+            engine, "_run_in_container",
+            lambda s, p, c: ScanResult(
+                scanner=s.name, findings=s._findings,
+                metadata={"execution": "container"},
+            ),
+        )
+        monkeypatch.setattr(
+            "argus.containers.get_expected_version",
+            lambda name: "1.0.0",
+        )
+
+        summary = engine.run(scanner_names=["bandit"])
+        assert len(summary.results) == 1
+        assert summary.results[0].metadata.get("tool_version") == "1.0.0"

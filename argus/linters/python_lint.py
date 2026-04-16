@@ -33,6 +33,25 @@ class PythonLinter:
         """Return install command for flake8."""
         return "pip install flake8"
 
+    def tool_version(self) -> str | None:
+        """Return the installed flake8 version, or None if not available."""
+        if not self.is_available():
+            return None
+        try:
+            result = subprocess.run(
+                ["flake8", "--version"],
+                capture_output=True, text=True, timeout=5,
+            )
+            # Output: "X.Y.Z (mccabe: ..., pycodestyle: ..., pyflakes: ...)"
+            text = result.stdout.strip()
+            if not text:
+                return None
+            # First token of the first line is the version
+            first_token = text.splitlines()[0].split()[0]
+            return first_token if first_token and first_token[0].isdigit() else None
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            return None
+
     def _build_command(self, path: str, config: dict) -> list[str]:
         """Build the flake8 CLI command."""
         cmd = ["flake8", path, "--format=default"]

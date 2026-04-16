@@ -78,6 +78,33 @@ class CheckovScanner:
         """Return install command for Checkov."""
         return "pip install checkov"
 
+    def tool_version(self) -> str | None:
+        """Return the installed Checkov version, or None if not available."""
+        if not self.is_available():
+            return None
+        try:
+            result = subprocess.run(
+                ["checkov", "--version"],
+                capture_output=True, text=True, timeout=10,
+            )
+            # Output: "X.Y.Z" or "checkov X.Y.Z"
+            version_text = result.stdout.strip()
+            if not version_text:
+                return None
+            # Take the last line in case of extra output
+            last_line = version_text.splitlines()[-1].strip()
+            # If it starts with a digit, it's just the version
+            if last_line and last_line[0].isdigit():
+                return last_line
+            # Otherwise try to extract version after "checkov"
+            parts = last_line.split()
+            for part in parts:
+                if part and part[0].isdigit():
+                    return part
+            return None
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            return None
+
     def parse_results(self, raw_output_path: Path) -> tuple[list[Finding], int]:
         """Parse Checkov JSON output into findings and passed count."""
         text = raw_output_path.read_text().strip()

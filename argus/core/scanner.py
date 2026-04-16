@@ -18,6 +18,9 @@ class Scanner(Protocol):
         container_image: str  — Docker image for running in a container
         container_args(config) — CLI args for the containerized invocation
         parse_results(path) — Parse output file into findings
+
+    Supply-chain integrity:
+        tool_version() — Detect locally installed tool version
     """
 
     name: str
@@ -32,4 +35,8 @@ class Scanner(Protocol):
 
     def install_command(self) -> str | None:
         """Return the shell command to install the scanner, or None."""
+        ...
+
+    def tool_version(self) -> str | None:
+        """Return the installed tool version, or None if not available."""
         ...

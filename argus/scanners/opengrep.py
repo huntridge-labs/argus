@@ -69,6 +69,26 @@ class OpengrepScanner:
         """Return install command for OpenGrep."""
         return "pip install opengrep"
 
+    def tool_version(self) -> str | None:
+        """Return the installed OpenGrep version, or None if not available."""
+        if not self.is_available():
+            return None
+        try:
+            result = subprocess.run(
+                ["opengrep", "--version"],
+                capture_output=True, text=True, timeout=5,
+            )
+            # Parse the version string from output
+            version_text = result.stdout.strip()
+            if not version_text:
+                return None
+            # Take the last token of the first line as the version
+            first_line = version_text.splitlines()[0]
+            parts = first_line.split()
+            return parts[-1] if parts else None
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            return None
+
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse OpenGrep JSON output into findings."""
         data = json.loads(raw_output_path.read_text())

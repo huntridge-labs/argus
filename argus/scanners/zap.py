@@ -86,6 +86,10 @@ class ZapScanner:
         """Return install command for ZAP CLI."""
         return "pip install python-owasp-zap-v2.4"
 
+    def tool_version(self) -> str | None:
+        """Return None — ZAP runs exclusively via Docker container."""
+        return None
+
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse ZAP JSON output into findings."""
         data = json.loads(raw_output_path.read_text())

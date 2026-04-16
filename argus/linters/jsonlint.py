@@ -52,6 +52,10 @@ class JsonlintLinter:
         """Return install command for jsonlint (optional)."""
         return "npm install -g jsonlint"
 
+    def tool_version(self) -> str | None:
+        """Return None — JSON validation uses Python stdlib fallback."""
+        return None
+
     def _validate_with_jsonlint(self, file_path: Path) -> Finding | None:
         """Validate a single JSON file with jsonlint."""
         result = subprocess.run(

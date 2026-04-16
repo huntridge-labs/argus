@@ -103,6 +103,16 @@ class TestScanSubcommand:
         args = parser.parse_args(["scan", "--no-spinner"])
         assert args.no_spinner is True
 
+    def test_scan_allow_local_versions_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["scan", "--allow-local-versions"])
+        assert args.allow_local_versions is True
+
+    def test_scan_allow_local_versions_default_false(self):
+        parser = build_parser()
+        args = parser.parse_args(["scan"])
+        assert args.allow_local_versions is False
+
 
 class TestReportSubcommand:
     """Test parsing of the 'report' subcommand."""
@@ -220,6 +230,7 @@ def _make_scan_args(**overrides) -> argparse.Namespace:
         "no_timestamp": True,
         "fail_fast": False,
         "timeout": None,
+        "allow_local_versions": False,
         "discover": None,
         "images": None,
         "scanners": None,

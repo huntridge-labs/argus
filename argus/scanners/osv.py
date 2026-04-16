@@ -84,6 +84,29 @@ class OsvScanner:
         """Return install command for OSV-Scanner."""
         return "Install from https://github.com/google/osv-scanner"
 
+    def tool_version(self) -> str | None:
+        """Return the installed OSV-Scanner version, or None if not available."""
+        if not self.is_available():
+            return None
+        try:
+            result = subprocess.run(
+                ["osv-scanner", "--version"],
+                capture_output=True, text=True, timeout=5,
+            )
+            # Output varies: "osv-scanner version X.Y.Z" or similar
+            text = result.stdout.strip()
+            if not text:
+                return None
+            # Look for a version-like token (digits and dots)
+            for line in text.splitlines():
+                for part in line.split():
+                    stripped = part.lstrip("v")
+                    if stripped and stripped[0].isdigit() and "." in stripped:
+                        return stripped
+            return None
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            return None
+
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse OSV-Scanner JSON output into findings."""
         text = raw_output_path.read_text().strip()

@@ -33,6 +33,24 @@ class JshintLinter:
         """Return install command for jshint."""
         return "npm install -g jshint"
 
+    def tool_version(self) -> str | None:
+        """Return the installed jshint version, or None if not available."""
+        if not self.is_available():
+            return None
+        try:
+            result = subprocess.run(
+                ["jshint", "--version"],
+                capture_output=True, text=True, timeout=5,
+            )
+            # Output: "jshint vX.Y.Z" or "X.Y.Z"
+            text = result.stdout.strip()
+            if not text:
+                return None
+            version = text.splitlines()[0].strip()
+            return version.lstrip("v") if version else None
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            return None
+
     def _build_command(self, path: str, config: dict) -> list[str]:
         """Build the jshint CLI command."""
         cmd = ["jshint", path, "--reporter=unix"]

@@ -39,6 +39,27 @@ class TerraformLinter:
         """Return install instructions for terraform."""
         return "Install from https://developer.hashicorp.com/terraform/install"
 
+    def tool_version(self) -> str | None:
+        """Return the installed Terraform version, or None if not available."""
+        if not self.is_available():
+            return None
+        try:
+            result = subprocess.run(
+                ["terraform", "--version"],
+                capture_output=True, text=True, timeout=5,
+            )
+            # Output: "Terraform vX.Y.Z\non ..."
+            text = result.stdout.strip()
+            if not text:
+                return None
+            first_line = text.splitlines()[0]
+            parts = first_line.split()
+            if len(parts) >= 2 and parts[0] == "Terraform":
+                return parts[1].lstrip("v")
+            return None
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            return None
+
     def _run_fmt_check(self, path: str) -> list[Finding]:
         """Run terraform fmt -check to find formatting issues."""
         result = subprocess.run(

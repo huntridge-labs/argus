@@ -44,3 +44,28 @@ def get_image(scanner_name: str) -> str:
     """
     key = _ALIASES.get(scanner_name, scanner_name)
     return OFFICIAL_IMAGES.get(key, CUSTOM_IMAGES.get(key, ""))
+
+
+def expected_version(container_image: str) -> str | None:
+    """Extract the expected tool version from a container image tag.
+
+    Parses the tag portion of ``registry/repo:tag`` and strips a leading
+    ``v`` prefix so that the result can be compared directly against the
+    version string returned by a scanner's ``tool_version()`` method.
+
+    Returns ``None`` when the image string is empty or has no tag.
+    """
+    if not container_image or ":" not in container_image:
+        return None
+    tag = container_image.rsplit(":", 1)[1]
+    return tag.lstrip("v") if tag else None
+
+
+def get_expected_version(scanner_name: str) -> str | None:
+    """Extract the pinned tool version from the container image tag for a scanner.
+
+    Convenience wrapper that resolves the scanner name to its container
+    image via :func:`get_image`, then delegates to :func:`expected_version`.
+    """
+    image = get_image(scanner_name)
+    return expected_version(image)

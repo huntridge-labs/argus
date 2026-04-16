@@ -2,7 +2,6 @@
 
 import shutil
 import subprocess
-from pathlib import Path
 
 from argus.core.models import Finding, ScanResult, Severity
 
@@ -33,6 +32,26 @@ class YamllintLinter:
     def install_command(self) -> str | None:
         """Return install command for yamllint."""
         return "pip install yamllint"
+
+    def tool_version(self) -> str | None:
+        """Return the installed yamllint version, or None if not available."""
+        if not self.is_available():
+            return None
+        try:
+            result = subprocess.run(
+                ["yamllint", "--version"],
+                capture_output=True, text=True, timeout=5,
+            )
+            # Output: "yamllint X.Y.Z"
+            text = result.stdout.strip()
+            if not text:
+                return None
+            parts = text.splitlines()[0].split()
+            if len(parts) >= 2 and parts[0] == "yamllint":
+                return parts[1]
+            return None
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            return None
 
     def _build_command(self, path: str, config: dict) -> list[str]:
         """Build the yamllint CLI command."""

@@ -75,6 +75,23 @@ class GitleaksScanner:
         """Return install command for Gitleaks."""
         return "Install from https://github.com/gitleaks/gitleaks"
 
+    def tool_version(self) -> str | None:
+        """Return the installed Gitleaks version, or None if not available."""
+        if not self.is_available():
+            return None
+        try:
+            result = subprocess.run(
+                ["gitleaks", "version"],
+                capture_output=True, text=True, timeout=5,
+            )
+            # Output: "vX.Y.Z" — strip the leading v
+            version_text = result.stdout.strip()
+            if not version_text:
+                return None
+            return version_text.lstrip("v")
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            return None
+
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse Gitleaks JSON output into findings."""
         text = raw_output_path.read_text().strip()

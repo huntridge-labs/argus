@@ -300,6 +300,12 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Run scanners sequentially instead of concurrently.",
     )
+    scan_parser.add_argument(
+        "--allow-local-versions",
+        action="store_true",
+        help="Allow local tool versions that differ from argus-pinned versions. "
+             "Use in airgapped environments where tool updates are constrained.",
+    )
 
     # Container-specific flags (used with: argus scan container)
     container_group = scan_parser.add_argument_group(
@@ -802,6 +808,7 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
                 timeout=getattr(args, "timeout", None),
                 exclude=getattr(args, "exclude", ""),
                 parallel=not getattr(args, "no_parallel", False),
+                allow_local_versions=getattr(args, "allow_local_versions", False),
             )
         log.info(
             "Scan complete: %d scanner(s), %d finding(s)",

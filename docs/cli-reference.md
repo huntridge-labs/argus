@@ -1,6 +1,6 @@
 # Argus CLI Reference (v0.7.0)
 
-> Auto-generated from argparse definitions on 2026-04-15.
+> Auto-generated from argparse definitions on 2026-04-16.
 > Do not edit manually — run `python -m scripts.ci.gen_cli_docs` to regenerate.
 
 Argus Security Scanner — comprehensive security scanning for your codebase
@@ -60,9 +60,9 @@ argus scan [-h] [--path PATH] [--config CONFIG]
                   [--format {terminal,markdown,sarif,json}] [--list]
                   [--verbose] [--no-spinner] [--no-timestamp]
                   [--output-vars FILE] [--exclude PATTERNS] [--fail-fast]
-                  [--timeout SECONDS] [--no-parallel] [--discover [PATH]]
-                  [--image REF] [--scanners SCANNERS] [--target URL]
-                  [--port PORT] [--env KEY=VALUE]
+                  [--timeout SECONDS] [--no-parallel] [--allow-local-versions]
+                  [--discover [PATH]] [--image REF] [--scanners SCANNERS]
+                  [--target URL] [--port PORT] [--env KEY=VALUE]
                   [--scan-type {baseline,full}]
                   [--startup-timeout STARTUP_TIMEOUT]
                   [scanner]
@@ -90,6 +90,7 @@ argus scan [-h] [--path PATH] [--config CONFIG]
 | `--fail-fast` | Abort immediately if any scanner fails instead of continuing. | `false` |
 | `--timeout` | Per-scanner timeout in seconds. Scanners exceeding this limit are killed. |  |
 | `--no-parallel` | Run scanners sequentially instead of concurrently. | `false` |
+| `--allow-local-versions` | Allow local tool versions that differ from argus-pinned versions. Use in airgapped environments where tool updates are constrained. | `false` |
 
 **Container Scanning:**
 
