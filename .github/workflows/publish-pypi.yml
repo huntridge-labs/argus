@@ -33,6 +33,20 @@ jobs:
       - name: Install build tools
         run: pip install build
 
+      - name: Set dev version for TestPyPI
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          # Generate unique dev version: 0.7.0.dev88.1 (PR #88, attempt 1)
+          BASE_VERSION=$(python -c "from argus import __version__; print(__version__)")
+          DEV_VERSION="${BASE_VERSION}.dev${PR_NUMBER}${RUN_ATTEMPT}"
+          echo "Dev version: ${DEV_VERSION}"
+
+          # Temporarily patch __init__.py for the build
+          sed -i "s/__version__ = \"${BASE_VERSION}\"/__version__ = \"${DEV_VERSION}\"/" argus/__init__.py
+          echo "dev_version=${DEV_VERSION}" >> "$GITHUB_OUTPUT"
+
       - name: Build wheel and sdist
         run: python -m build
 
@@ -102,4 +116,3 @@ jobs:
         uses: pypa/gh-action-pypi-publish@76f52bc884231f62b54a53e2c3f5f0e6f5708353 # v1.12.4
         with:
           repository-url: https://test.pypi.org/legacy/
-        continue-on-error: true
