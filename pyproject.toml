@@ -5,19 +5,21 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "argus-security"
 dynamic = ["version"]
-description = "Comprehensive security scanning SDK and CLI — runs anywhere, integrates everywhere."
+description = "Unified security scanning — SAST, containers, IaC, secrets, dependencies, and DAST from a single CLI."
 readme = "README.md"
 license = {file = "LICENSE.md"}
 requires-python = ">=3.11"
+keywords = ["security", "scanning", "sast", "dast", "iac", "secrets", "containers", "compliance", "devsecops"]
 authors = [
-    {name = "Huntridge Labs", email = "oss@huntridge-labs.com"},
+    {name = "Huntridge Labs"},
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Intended Audience :: System Administrators",
-    "License :: OSI Approved :: Apache Software License",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
@@ -26,6 +28,7 @@ classifiers = [
     "Topic :: Security",
     "Topic :: Software Development :: Quality Assurance",
     "Topic :: Software Development :: Testing",
+    "Typing :: Typed",
 ]
 dependencies = [
     "PyYAML>=6.0",
@@ -43,8 +46,8 @@ all = ["argus-security[ai,completion]"]
 argus = "argus.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/huntridge-labs/argus"
-Documentation = "https://huntridge-labs.github.io/argus/"
+Homepage = "https://argus.huntridgelabs.com"
+Documentation = "https://argus.huntridgelabs.com"
 Repository = "https://github.com/huntridge-labs/argus"
 Issues = "https://github.com/huntridge-labs/argus/issues"
 Changelog = "https://github.com/huntridge-labs/argus/blob/main/CHANGELOG.md"
