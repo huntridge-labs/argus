@@ -47,7 +47,7 @@ argus = "argus.cli:main"
 
 [project.urls]
 Homepage = "https://argus.huntridgelabs.com"
-Documentation = "https://argus.huntridgelabs.com"
+Documentation = "https://huntridge-labs.github.io/argus"
 Repository = "https://github.com/huntridge-labs/argus"
 Issues = "https://github.com/huntridge-labs/argus/issues"
 Changelog = "https://github.com/huntridge-labs/argus/blob/main/CHANGELOG.md"
