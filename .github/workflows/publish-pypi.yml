@@ -36,11 +36,11 @@ jobs:
       - name: Set dev version for TestPyPI
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
-          # Generate unique dev version: 0.7.0.dev88.1 (PR #88, attempt 1)
+          # Unique dev version per workflow run: 0.7.0.dev88<run_number>
           BASE_VERSION=$(python -c "from argus import __version__; print(__version__)")
-          DEV_VERSION="${BASE_VERSION}.dev${PR_NUMBER}${RUN_ATTEMPT}"
+          DEV_VERSION="${BASE_VERSION}.dev${PR_NUMBER}${RUN_NUMBER}"
           echo "Dev version: ${DEV_VERSION}"
 
           # Temporarily patch __init__.py for the build
