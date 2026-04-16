@@ -103,7 +103,7 @@ jobs:
 
             docker buildx build \
               --push \
-              --platform linux/amd64 \
+              --platform linux/amd64,linux/arm64 \
               --tag "${FULL_TAG}:${VERSION}" \
               --tag "${FULL_TAG}:latest" \
               --label "org.opencontainers.image.version=${VERSION}" \
