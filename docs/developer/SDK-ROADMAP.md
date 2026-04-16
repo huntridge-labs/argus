@@ -157,10 +157,10 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 - [x] Tool version enforcement: `--allow-local-versions` bypass for airgapped environments
 
 ### Post-PyPI Cleanup (first release)
+- [ ] README.md and QUICK-START.md: remove TestPyPI `--index-url` flags (one line each)
 - [ ] Update all 16 action wrappers: `pip install pyyaml` → `pip install argus-security`
 - [ ] Rename action step "Install dependencies" → "Install Argus"
 - [ ] Remove `bin/argus` wrapper (pip creates the entry point)
-- [ ] Update QUICK-START.md and README.md install instructions
 - [ ] `argus init` summary: show `pip install argus-security` command
 
 ### Container Image Publishing
