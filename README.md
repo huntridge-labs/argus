@@ -41,20 +41,18 @@ Unified security scanning — SAST, containers, IaC, secrets, and DAST from a si
 The argus Python SDK is the primary interface for running security scans. It works locally, in CI, and on any platform with Python 3.11+.
 
 ```bash
-pip install pyyaml
-python -m argus scan --config argus.yml
+# Install from TestPyPI (pre-release — will become: pip install argus-security)
+pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ argus-security
+
+# Initialize config and scan
+argus init
+argus scan
 ```
 
-Create an `argus.yml` configuration file:
+Or scan immediately without a config file:
 
-```yaml
-scanners:
-  - gitleaks
-  - bandit
-  - osv
-
-scan_path: "."
-severity_threshold: high
+```bash
+argus scan bandit gitleaks osv --severity-threshold high
 ```
 
 ### GitHub Actions (Composite Actions)
@@ -109,7 +107,7 @@ For detailed scanner configuration, see [Scanner Reference](docs/scanners.md).
 
 ## Features
 
-- **[Argus SDK](argus/)** - Run scanners locally or in CI with `python -m argus scan`
+- **[Argus SDK](argus/)** - Run scanners locally or in CI with `argus scan`
 - **[Unified interface](docs/scanners.md)** - One CLI or workflow for all scanners
 - **[Flexible scanner selection](docs/scanners.md)** - Use scanner groups or specific scanners
 - **[GitHub Security tab integration](.github/actions/scanner-codeql/README.md)** - Upload SARIF results to Code Scanning
@@ -207,8 +205,7 @@ severity_threshold: high
 ```
 
 ```bash
-pip install pyyaml
-python -m argus scan --config argus.yml
+argus scan --config argus.yml
 ```
 
 </details>
@@ -217,7 +214,7 @@ python -m argus scan --config argus.yml
 <summary><strong>SDK: SAST Scanners Only</strong></summary>
 
 ```bash
-python -m argus scan bandit opengrep gitleaks --severity-threshold medium
+argus scan bandit opengrep gitleaks --severity-threshold medium
 ```
 
 </details>
@@ -226,7 +223,7 @@ python -m argus scan bandit opengrep gitleaks --severity-threshold medium
 <summary><strong>SDK: Container Scanning</strong></summary>
 
 ```bash
-python -m argus scan container --severity-threshold critical
+argus scan container --severity-threshold critical
 ```
 
 </details>
@@ -245,7 +242,7 @@ severity_threshold: high
 ```
 
 ```bash
-python -m argus scan --config argus.yml
+argus scan --config argus.yml
 ```
 
 </details>
@@ -314,13 +311,13 @@ severity_threshold: high
 
 ```bash
 # Specific scanners
-python -m argus scan gitleaks bandit osv
+argus scan gitleaks bandit osv
 
 # With severity threshold
-python -m argus scan --severity-threshold high
+argus scan --severity-threshold high
 
 # With config file
-python -m argus scan --config argus.yml
+argus scan --config argus.yml
 ```
 
 **Severity levels:** `none`, `low`, `medium`, `high`, `critical`

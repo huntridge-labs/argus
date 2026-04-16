@@ -211,12 +211,12 @@ The project has two interfaces: the **Argus SDK** (primary) and **composite acti
 
 ### Argus SDK (`argus/` package)
 
-The SDK is the primary interface. Users run `python -m argus scan --config argus.yml` to execute scans locally or in CI. The engine handles tool installation via Docker containers or local execution.
+The SDK is the primary interface. Users run `argus scan --config argus.yml` to execute scans locally or in CI. The engine handles tool installation via Docker containers or local execution.
 
 ```
 argus/                                 # Python SDK package
 ├── __init__.py                       # Version (0.1.0)
-├── __main__.py                       # Entry point: python -m argus
+├── __main__.py                       # Entry point: argus
 ├── cli.py                            # CLI (click-based): scan, list, version
 ├── containers.py                     # Docker execution backend
 ├── core/
@@ -283,7 +283,7 @@ examples/workflows/                   # User-facing workflow examples
 
 ## SDK Scan Flow
 
-1. User runs `python -m argus scan --config argus.yml` (or specifies scanners via CLI flags)
+1. User runs `argus scan --config argus.yml` (or specifies scanners via CLI flags)
 2. Config loaded by `argus.core.config` — resolves scanner list, paths, severity thresholds
 3. Engine (`argus.core.engine`) iterates over requested scanners
 4. Each scanner module implements the `Scanner` protocol: `scan()`, `is_available()`, `install_command()`
@@ -472,16 +472,16 @@ Most scanner actions support these common inputs:
 
 ```bash
 # Run all scanners from config file
-python -m argus scan --config argus.yml
+argus scan --config argus.yml
 
 # Run specific scanners
-python -m argus scan --scanners bandit,gitleaks --path ./src
+argus scan --scanners bandit,gitleaks --path ./src
 
 # List available scanners
-python -m argus list
+argus list
 
 # Check version
-python -m argus version
+argus version
 ```
 
 **Config file** (`argus.yml`):

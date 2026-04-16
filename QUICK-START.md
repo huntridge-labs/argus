@@ -7,13 +7,14 @@ Get running with Argus in minutes. The argus SDK is the primary interface; compo
 ### Install
 
 ```bash
-pip install pyyaml
+# Install from TestPyPI (pre-release — will become: pip install argus-security)
+pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ argus-security
 ```
 
 ### Fast SAST scan
 
 ```bash
-python -m argus scan gitleaks opengrep bandit
+argus scan gitleaks opengrep bandit
 ```
 
 ### Full scan with config file
@@ -34,7 +35,7 @@ severity_threshold: high
 ```
 
 ```bash
-python -m argus scan --config argus.yml
+argus scan --config argus.yml
 ```
 
 ### Enforcing security gates
@@ -42,7 +43,7 @@ python -m argus scan --config argus.yml
 Fail when vulnerabilities exceed a severity threshold:
 
 ```bash
-python -m argus scan --config argus.yml --severity-threshold high
+argus scan --config argus.yml --severity-threshold high
 ```
 
 **Severity levels:** `low` -> `medium` -> `high` -> `critical`
@@ -50,23 +51,23 @@ python -m argus scan --config argus.yml --severity-threshold high
 ### Targeted scan
 
 ```bash
-python -m argus scan gitleaks container trivy-iac checkov --severity-threshold high
+argus scan gitleaks container trivy-iac checkov --severity-threshold high
 ```
 
 ### Output formats
 
 ```bash
 # Terminal output (default)
-python -m argus scan --config argus.yml
+argus scan --config argus.yml
 
 # Markdown report
-python -m argus scan --config argus.yml --format markdown
+argus scan --config argus.yml --format markdown
 
 # SARIF output
-python -m argus scan --config argus.yml --format sarif
+argus scan --config argus.yml --format sarif
 
 # JSON output
-python -m argus scan --config argus.yml --format json
+argus scan --config argus.yml --format json
 ```
 
 ## GitHub Actions (Composite Actions)
