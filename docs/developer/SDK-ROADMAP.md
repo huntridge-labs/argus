@@ -147,24 +147,27 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 ## Remaining: Phase 4 — Distribution + Multi-Platform
 
 ### PyPI Publishing
-- [ ] `pyproject.toml` with package metadata, entry_points for `argus` CLI, pyyaml bundled
-- [ ] CI workflow to publish `argus-security` to PyPI on GitHub release
-- [ ] Versioned: tied to `version.yaml` via release-it
+- [x] `pyproject.toml` — hardened with whitelist includes, optional extras (ai, completion), AGPL v3
+- [x] CI workflow: `publish-pypi.yml` validates on PR (build + safety check + test install)
+- [x] CI workflow: `publish-release.yml` publishes to PyPI on tag (protected `prod` environment)
+- [x] TestPyPI: unique dev versions per PR (`0.7.0.dev881`), trusted publishing (OIDC)
+- [x] Safety check script: `scripts/ci/check_package.py` blocklist rejects secrets/tests/credentials
+- [x] Package validated on TestPyPI — `pip install argus-security` works
+- [x] Dynamic version from `argus.__version__`, tied to `version.yaml` via release-it
+- [x] Tool version enforcement: `--allow-local-versions` bypass for airgapped environments
 
-### Post-PyPI Cleanup (after `pip install argus-security` works)
+### Post-PyPI Cleanup (first release)
 - [ ] Update all 16 action wrappers: `pip install pyyaml` → `pip install argus-security`
 - [ ] Rename action step "Install dependencies" → "Install Argus"
 - [ ] Remove `bin/argus` wrapper (pip creates the entry point)
-- [ ] Ship `completions/` via pyproject.toml data_files for auto-install
-- [ ] Add `argcomplete` as optional extra: `pip install argus-security[completion]`
-- [ ] Register argcomplete global completion in `argus init` output
 - [ ] Update QUICK-START.md and README.md install instructions
+- [ ] `argus init` summary: show `pip install argus-security` command
 
 ### Container Image Publishing
-- [ ] CI workflow to build and push custom images to GHCR on release
-- [ ] Tag with argus version (e.g., `scanner-bandit:0.8.0`)
-- [ ] Multi-arch builds (amd64 + arm64)
-- [ ] Image signing with cosign/sigstore
+- [x] CI workflow: `publish-release.yml` builds and pushes to GHCR on tag
+- [x] Tags with argus version (e.g., `scanner-bandit:0.8.0`) + `latest`
+- [x] Image signing with cosign/sigstore
+- [ ] Multi-arch builds (amd64 + arm64) — currently amd64 only
 
 ### Additional Reporters
 - [ ] `github.py` — PR comments, SARIF upload, step summary (GitHub-specific)
