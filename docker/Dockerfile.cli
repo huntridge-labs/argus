@@ -14,31 +14,45 @@ ARG SYFT_VERSION=1.42.4
 ARG GITLEAKS_VERSION=8.30.1
 ARG ACTIONLINT_VERSION=1.7.12
 ARG OPENGREP_VERSION=1.18.0
+ARG TARGETARCH
 
 RUN apk add --no-cache curl tar
 
+# Map Docker TARGETARCH to tool-specific arch naming conventions
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+      echo "ARM64" > /tmp/arch_trivy && echo "arm64" > /tmp/arch_go && echo "aarch64" > /tmp/arch_opengrep && echo "arm64" > /tmp/arch_gitleaks; \
+    else \
+      echo "64bit" > /tmp/arch_trivy && echo "amd64" > /tmp/arch_go && echo "x86" > /tmp/arch_opengrep && echo "x64" > /tmp/arch_gitleaks; \
+    fi
+
 # Trivy
-RUN curl -sSfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+RUN ARCH=$(cat /tmp/arch_trivy) && \
+    curl -sSfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-${ARCH}.tar.gz" \
       | tar -xz -C /usr/local/bin trivy
 
 # Grype
-RUN curl -sSfL "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_linux_amd64.tar.gz" \
+RUN ARCH=$(cat /tmp/arch_go) && \
+    curl -sSfL "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_linux_${ARCH}.tar.gz" \
       | tar -xz -C /usr/local/bin grype
 
 # Syft
-RUN curl -sSfL "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz" \
+RUN ARCH=$(cat /tmp/arch_go) && \
+    curl -sSfL "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_${ARCH}.tar.gz" \
       | tar -xz -C /usr/local/bin syft
 
 # Gitleaks
-RUN curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+RUN ARCH=$(cat /tmp/arch_gitleaks) && \
+    curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_${ARCH}.tar.gz" \
       | tar -xz -C /usr/local/bin gitleaks
 
 # Actionlint
-RUN curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+RUN ARCH=$(cat /tmp/arch_go) && \
+    curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_${ARCH}.tar.gz" \
       | tar -xz -C /usr/local/bin actionlint
 
 # OpenGrep
-RUN curl -sSfL "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86" \
+RUN ARCH=$(cat /tmp/arch_opengrep) && \
+    curl -sSfL "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_${ARCH}" \
       -o /usr/local/bin/opengrep && \
     chmod +x /usr/local/bin/opengrep
 

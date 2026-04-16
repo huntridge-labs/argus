@@ -116,10 +116,11 @@ class TestArgusConfigLoad:
         assert "bandit" in config.scanners
         assert config.reporting.formats == ["terminal", "json"]
 
-    def test_load_nonexistent_file_returns_defaults(self):
+    def test_load_nonexistent_file_auto_detects(self):
         config = ArgusConfig.load("/nonexistent/path/argus.yml")
         assert config.version == "1.0"
-        assert config.scanners == {}
+        # Auto-detect generates a tailored config, not empty
+        assert isinstance(config.scanners, dict)
 
     def test_load_none_returns_defaults(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -150,7 +151,19 @@ class TestGetScannerConfig:
         config = ArgusConfig.from_dict({})
         sc = config.get_scanner_config("nonexistent")
         assert isinstance(sc, ScannerConfig)
+        # Empty scanners dict = bare config, defaults to enabled
         assert sc.enabled is True
+
+    def test_unknown_scanner_disabled_when_config_has_entries(self):
+        """When config has explicit scanner entries, unknown scanners are disabled."""
+        config = ArgusConfig.from_dict({
+            "scanners": {
+                "bandit": {"enabled": True},
+                "gitleaks": {"enabled": True},
+            },
+        })
+        sc = config.get_scanner_config("nonexistent")
+        assert sc.enabled is False
         assert sc.path == "."
         assert sc.severity_threshold is None
         assert sc.config_file is None

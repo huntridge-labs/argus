@@ -56,12 +56,33 @@ class ArgusConfig:
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
 
     @classmethod
+    def _auto_detect_config(cls) -> "ArgusConfig":
+        """Auto-detect the project and generate a tailored config.
+
+        Uses the same detection logic as 'argus init' to analyze
+        the project and enable appropriate scanners. Returns a config
+        without writing any files.
+        """
+        try:
+            from argus.init import detect_project, generate_config
+            import yaml as _yaml
+
+            signals = detect_project(Path("."))
+            config_text = generate_config(signals)
+            data = _yaml.safe_load(config_text)
+            if isinstance(data, dict):
+                return cls.from_dict(data)
+        except Exception:
+            pass
+        return cls()
+
+    @classmethod
     def load(cls, config_path: str | Path | None = None) -> "ArgusConfig":
         """Load config from an argus.yml file.
 
         If *config_path* is None, searches the current directory for
-        common config filenames. Returns default config when no file
-        is found — individual scanners still work via CLI flags.
+        common config filenames. When no file is found, auto-detects
+        the project and generates a tailored config on the fly.
         """
         import logging
 
@@ -69,9 +90,10 @@ class ArgusConfig:
             path = Path(config_path)
             if not path.exists():
                 logging.getLogger("argus").warning(
-                    "Config file not found: %s — using defaults", config_path,
+                    "Config file not found: %s — using auto-detected config",
+                    config_path,
                 )
-                return cls()
+                return cls._auto_detect_config()
             return cls._load_file(path)
 
         for name in _DEFAULT_CONFIG_NAMES:
@@ -83,10 +105,10 @@ class ArgusConfig:
                 return cls._load_file(path)
 
         logging.getLogger("argus").info(
-            "No argus.yml found — using defaults. "
-            "Run 'argus init' to generate a config.",
+            "No argus.yml found — auto-detecting project and applying "
+            "tailored config. Run 'argus init' to save it permanently.",
         )
-        return cls()
+        return cls._auto_detect_config()
 
     @classmethod
     def _load_file(cls, path: Path) -> "ArgusConfig":
@@ -131,8 +153,22 @@ class ArgusConfig:
         )
 
     def get_scanner_config(self, scanner_name: str) -> ScannerConfig:
-        """Return config for *scanner_name*, falling back to defaults."""
-        return self.scanners.get(scanner_name, ScannerConfig())
+        """Return config for *scanner_name*, falling back to defaults.
+
+        When the scanner is explicitly named in the config, return its
+        settings. Otherwise return a default — enabled=True if the user
+        provided a config file (they chose to omit it, meaning "use
+        defaults"), enabled=False if the config was auto-generated
+        (only explicitly detected scanners should run).
+        """
+        if scanner_name in self.scanners:
+            return self.scanners[scanner_name]
+        # If scanners dict is populated (auto-detect or user config),
+        # unknown scanners are disabled by default
+        if self.scanners:
+            return ScannerConfig(enabled=False)
+        # Empty dict = bare default config, enable everything
+        return ScannerConfig(enabled=True)
 
 
 def _parse_severity(value: str | None) -> Optional[Severity]:
