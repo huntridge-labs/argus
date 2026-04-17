@@ -13,7 +13,7 @@ name: ZAP DAST from Config
 #     packages: read
 #   jobs:
 #     zap-scan:
-#       uses: huntridge-labs/argus/.github/workflows/scanner-zap-from-config.yml@0.7.0
+#       uses: huntridge-labs/argus/.github/workflows/scanner-zap-from-config.yml@0.7.1
 #       with:
 #         config_file: '.zap/config.yml'
 #       secrets: inherit  # Required for dynamic secret resolution
@@ -72,7 +72,7 @@ permissions:
 
 env:
   # Use current branch/PR when testing in argus repo, otherwise use release tag
-  HRL_REF: ${{ github.repository == 'huntridge-labs/argus' && (github.head_ref || github.ref_name) || '0.7.0' }}
+  HRL_REF: ${{ github.repository == 'huntridge-labs/argus' && (github.head_ref || github.ref_name) || '0.7.1' }}
 
 jobs:
   parse-config:
@@ -91,7 +91,7 @@ jobs:
 
       - name: Parse ZAP config
         id: parse
-        uses: huntridge-labs/argus/.github/actions/parse-zap-config@0.7.0
+        uses: huntridge-labs/argus/.github/actions/parse-zap-config@0.7.1
         with:
           config_file: ${{ inputs.config_file }}
 
@@ -115,7 +115,7 @@ jobs:
           persist-credentials: false
 
       - name: Run ZAP scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-zap@0.7.0
+        uses: huntridge-labs/argus/.github/actions/scanner-zap@0.7.1
         env:
           GITHUB_TOKEN: ${{ github.token }}
           ZAP_AUTH_HEADER: ${{ matrix.auth_header_name }}
@@ -151,6 +151,6 @@ jobs:
     if: always()
     steps:
       - name: Generate ZAP summary
-        uses: huntridge-labs/argus/.github/actions/scanner-zap-summary@0.7.0
+        uses: huntridge-labs/argus/.github/actions/scanner-zap-summary@0.7.1
         with:
           post_pr_comment: ${{ needs.parse-config.outputs.post_pr_comment }}

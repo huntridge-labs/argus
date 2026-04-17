@@ -264,7 +264,7 @@ error_patterns:
         - "Verify workflow path matches exactly"
       example: |
         # Correct
-        uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
+        uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.1
 
         # Wrong - missing .github prefix
         uses: huntridge-labs/argusworkflows/reusable-security-hardening.yml@main

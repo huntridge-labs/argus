@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argus/0.7.0/.github/actions/parse-zap-config/schemas/zap-config.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argus/0.7.1/.github/actions/parse-zap-config/schemas/zap-config.schema.json
 #
 # ZAP DAST Scanner Configuration - Combined Example
 #

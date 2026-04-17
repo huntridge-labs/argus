@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+
+## [0.7.1](https://github.com/huntridge-labs/argus/compare/0.7.0...0.7.1) (2026-04-17)
+
+### Bug Fixes
+
+* add python-slugify ([72f203e](https://github.com/huntridge-labs/argus/commit/72f203e3bcbe50929d2d71aa5a11b140177589dc))
+* add python-slugify dep and CLI tests for coverage ([74583cb](https://github.com/huntridge-labs/argus/commit/74583cbf5a9fb7e259ea63f7814f7b3651524d8f))
+* **ci:** restore git push credentials for docs deployment ([2ff8593](https://github.com/huntridge-labs/argus/commit/2ff859310a1d96d01aad4a040b8e0aeb55616725))
+* **container-scan:** sanitize container names with python-slugify ([98b44c9](https://github.com/huntridge-labs/argus/commit/98b44c9ff478a60b95b0f7d7160aebfa55c8e7ae))
+
 ## [Unreleased]
 
 ### Bug Fixes

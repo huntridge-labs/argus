@@ -53,7 +53,7 @@ jobs:
           persist-credentials: false
 
       - name: Run ClamAV Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-clamav@0.7.0
+        uses: huntridge-labs/argus/.github/actions/scanner-clamav@0.7.1
         with:
           post_pr_comment: ${{ inputs.post_pr_comment }}
           enable_code_security: ${{ inputs.enable_code_security }}

@@ -20,7 +20,7 @@ user_workflows:
 
       jobs:
         security:
-          uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
+          uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.1
           with:
             scanners: all
             enable_code_security: true
@@ -38,7 +38,7 @@ user_workflows:
     category: scanning
     when_to_use: "Push events, rapid iteration, development branches"
     code: |
-      uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
+      uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.1
       with:
         scanners: codeql,bandit,gitleaks,opengrep
         fail_on_severity: high
@@ -50,7 +50,7 @@ user_workflows:
     description: "Scan container images defined in config file"
     category: scanning
     code: |
-      uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@0.7.0
+      uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@0.7.1
       with:
         config_file: .github/container-config.yml
       secrets:
@@ -74,7 +74,7 @@ user_workflows:
     description: "Use a single scanner via composite action"
     category: scanning
     code: |
-      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.0
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.1
         with:
           path: src/
           fail_on_severity: high
@@ -85,7 +85,7 @@ user_workflows:
     category: scanning
     when_to_use: "Any event (OSV) or pull requests (dependency-review)"
     code: |
-      uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
+      uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.1
       with:
         scanners: dependencies
         fail_on_severity: high
@@ -96,7 +96,7 @@ user_workflows:
     description: "Scan Terraform, Kubernetes, CloudFormation"
     category: scanning
     code: |
-      uses: huntridge-labs/argus/.github/workflows/infrastructure-scan.yml@0.7.0
+      uses: huntridge-labs/argus/.github/workflows/infrastructure-scan.yml@0.7.1
       with:
         path: terraform/
         scanners: trivy-iac,checkov
@@ -128,7 +128,7 @@ user_workflows:
               with:
                 fetch-depth: 0  # Required for git diff
 
-            - uses: huntridge-labs/argus/.github/actions/scn-detector@0.7.0
+            - uses: huntridge-labs/argus/.github/actions/scn-detector@0.7.1
               env:
                 GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                 ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -171,7 +171,7 @@ user_workflows:
 
       jobs:
         security:
-          uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.0
+          uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.1
           with:
             scanners: all
             fail_on_severity: none  # Report only, don't fail
