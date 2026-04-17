@@ -143,6 +143,16 @@
         },
         {
           "files": [
+            ".github/workflows/container-scan.yml"
+          ],
+          "search": {
+            "pattern": "(repository: huntridge-labs/argus\\n\\s+ref: )[^\\s]+",
+            "flags": "g"
+          },
+          "replace": "${1}{{version}}"
+        },
+        {
+          "files": [
             "docs/**/*.md",
             "examples/configs/**/*.{yml,yaml,json}"
           ],
