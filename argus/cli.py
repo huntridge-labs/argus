@@ -1401,7 +1401,7 @@ def _list_scanners(engine) -> int:
         )
         return EXIT_SUCCESS
 
-    docker_ok = shutil.which("docker") is not None
+    container_ok = any(shutil.which(r) for r in ("docker", "podman", "nerdctl"))
     backend = engine.config.execution.backend
 
     print("Available scanners:\n")
@@ -1411,9 +1411,9 @@ def _list_scanners(engine) -> int:
 
         if local:
             status = "local"
-        elif image and docker_ok and backend != "local":
+        elif image and container_ok and backend != "local":
             status = "container"
-        elif image and not docker_ok:
+        elif image and not container_ok:
             status = "no docker"
         else:
             status = "not found"
@@ -1422,8 +1422,8 @@ def _list_scanners(engine) -> int:
         print(f"  {name:<20} [{status:<10}]  {description}")
 
     print()
-    if not docker_ok and backend != "local":
-        print("  Docker not found — container-only scanners will be unavailable.")
+    if not container_ok and backend != "local":
+        print("  No container runtime found (docker, podman, or nerdctl) — container-only scanners will be unavailable.")
     print(f"  Backend: {backend}")
 
     return EXIT_SUCCESS
@@ -1527,7 +1527,7 @@ def _check_tool_readiness(
     from argus.scanners import SCANNER_REGISTRY
     from argus.containers import get_image
 
-    docker_available = shutil.which("docker") is not None
+    container_available = any(shutil.which(r) for r in ("docker", "podman", "nerdctl"))
     unavailable = []
 
     def _resolve_image(image: str) -> str:
@@ -1560,7 +1560,7 @@ def _check_tool_readiness(
             install_cmd = scanner.install_command() or "see docs"
             print(f"     {name}: ❌ not found (install: {install_cmd})")
             unavailable.append(name)
-        elif not docker_available:
+        elif not container_available:
             install_cmd = scanner.install_command() or "see docs"
             print(f"     {name}: ❌ not found, Docker not available (install: {install_cmd})")
             unavailable.append(name)
@@ -1571,9 +1571,9 @@ def _check_tool_readiness(
             print(f"     {name}: ❌ not found, no container image (install: {install_cmd})")
             unavailable.append(name)
 
-    if not docker_available and backend != "local":
-        print("\n   ⚠️  Docker not found — scanners without local installs will fail")
-        print("      Install Docker or set execution.backend: local in argus.yml")
+    if not container_available and backend != "local":
+        print("\n   ⚠️  No container runtime found (docker, podman, or nerdctl) — scanners without local installs will fail")
+        print("      Install Docker, Podman, or nerdctl — or set execution.backend: local in argus.yml")
 
     return unavailable
 

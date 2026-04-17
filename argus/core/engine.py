@@ -1,6 +1,7 @@
 """Argus engine — orchestrates scanner execution and result aggregation."""
 
 import logging
+import os
 import shutil
 import subprocess
 import tempfile
@@ -311,15 +312,53 @@ class ArgusEngine:
         ]
 
     # ------------------------------------------------------------------
-    # Docker execution support
+    # Container runtime support (Docker, Podman, nerdctl)
     # ------------------------------------------------------------------
 
+    _container_runtime: str | None = None
+
+    def _detect_runtime(self) -> str | None:
+        """Detect the available container runtime.
+
+        Checks in order:
+        1. ARGUS_CONTAINER_RUNTIME env var (explicit override)
+        2. docker
+        3. podman
+        4. nerdctl
+
+        Docker, Podman, and nerdctl are CLI-compatible — same commands,
+        same arguments. Argus works with any of them.
+        """
+        if self._container_runtime is not None:
+            return self._container_runtime
+
+        # Explicit override
+        override = os.environ.get("ARGUS_CONTAINER_RUNTIME")
+        if override and shutil.which(override):
+            self._container_runtime = override
+            logger.info("Using container runtime: %s (from ARGUS_CONTAINER_RUNTIME)", override)
+            return override
+
+        # Auto-detect
+        for runtime in ("docker", "podman", "nerdctl"):
+            if shutil.which(runtime):
+                self._container_runtime = runtime
+                if runtime != "docker":
+                    logger.info("Using container runtime: %s", runtime)
+                return runtime
+
+        logger.debug("No container runtime found (docker, podman, nerdctl)")
+        self._container_runtime = ""  # Cache negative result
+        return None
+
     def _is_docker_available(self) -> bool:
-        """Check if docker CLI is available."""
-        available = shutil.which("docker") is not None
-        if not available:
-            logger.debug("Docker CLI not found in PATH")
-        return available
+        """Check if a container runtime is available."""
+        return self._detect_runtime() is not None
+
+    @property
+    def _runtime(self) -> str:
+        """Return the container runtime command name."""
+        return self._detect_runtime() or "docker"
 
     def _get_image_digest(self, image: str) -> str:
         """Get the SHA256 digest of a Docker image.
@@ -329,7 +368,7 @@ class ArgusEngine:
         """
         try:
             result = subprocess.run(
-                ["docker", "image", "inspect", image,
+                [self._runtime, "image", "inspect", image,
                  "--format", "{{index .RepoDigests 0}}"],
                 capture_output=True,
                 text=True,
@@ -343,7 +382,7 @@ class ArgusEngine:
                 return digest
             # Fallback to image ID (local builds don't have repo digests)
             result = subprocess.run(
-                ["docker", "image", "inspect", image,
+                [self._runtime, "image", "inspect", image,
                  "--format", "{{.Id}}"],
                 capture_output=True,
                 text=True,
@@ -368,7 +407,7 @@ class ArgusEngine:
         if policy == "never":
             logger.debug("Pull policy is 'never' — checking local images only")
             result = subprocess.run(
-                ["docker", "image", "inspect", image],
+                [self._runtime, "image", "inspect", image],
                 capture_output=True,
             )
             found = result.returncode == 0
@@ -380,7 +419,7 @@ class ArgusEngine:
 
         if policy == "if-not-present":
             result = subprocess.run(
-                ["docker", "image", "inspect", image],
+                [self._runtime, "image", "inspect", image],
                 capture_output=True,
             )
             if result.returncode == 0:
@@ -400,7 +439,7 @@ class ArgusEngine:
         )
         start = time.monotonic()
         result = subprocess.run(
-            ["docker", "pull", image],
+            [self._runtime, "pull", image],
             capture_output=True,
             text=True,
         )
@@ -416,7 +455,7 @@ class ArgusEngine:
             )
             start = time.monotonic()
             result = subprocess.run(
-                ["docker", "pull", "--platform", "linux/amd64", image],
+                [self._runtime, "pull", "--platform", "linux/amd64", image],
                 capture_output=True,
                 text=True,
             )
@@ -474,7 +513,7 @@ class ArgusEngine:
 
         with tempfile.TemporaryDirectory() as output_dir:
             docker_cmd = [
-                "docker", "run", "--rm",
+                self._runtime, "run", "--rm",
                 "-v", f"{abs_path}:/workspace:ro",
                 "-v", f"{output_dir}:/output",
             ]
@@ -654,7 +693,8 @@ class ArgusEngine:
                     )
                 raise RuntimeError(
                     f"Docker not available. "
-                    f"Install Docker: https://docs.docker.com/get-docker/"
+                    f"No container runtime available. "
+                    f"Install Docker, Podman, or nerdctl."
                 )
 
             # auto fallback: use local tool
