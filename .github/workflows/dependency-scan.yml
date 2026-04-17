@@ -99,7 +99,7 @@ jobs:
           persist-credentials: false
 
       - name: Run OSV Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-osv@0.7.1
+        uses: huntridge-labs/argus/.github/actions/scanner-osv@0.7.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -123,7 +123,7 @@ jobs:
           persist-credentials: false
 
       - name: Run Dependency Review Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-dependency-review@0.7.1
+        uses: huntridge-labs/argus/.github/actions/scanner-dependency-review@0.7.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

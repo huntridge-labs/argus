@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.7.2](https://github.com/huntridge-labs/argus/compare/0.7.1...0.7.2) (2026-04-17)
+
+### Bug Fixes
+
+* **container-scan:** update argus checkout ref to 0.7.1 and add ([67f2a9f](https://github.com/huntridge-labs/argus/commit/67f2a9ff3b2af53ece6f43d0d9df748205c60f53))
+
 ## [0.7.1](https://github.com/huntridge-labs/argus/compare/0.7.0...0.7.1) (2026-04-17)
 
 ### Bug Fixes

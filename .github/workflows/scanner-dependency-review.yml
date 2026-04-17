@@ -70,7 +70,7 @@ jobs:
           persist-credentials: false
 
       - name: Run Dependency Review Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-dependency-review@0.7.1
+        uses: huntridge-labs/argus/.github/actions/scanner-dependency-review@0.7.2
         with:
           post_pr_comment: ${{ inputs.post_pr_comment }}
           enable_code_security: ${{ inputs.enable_code_security }}

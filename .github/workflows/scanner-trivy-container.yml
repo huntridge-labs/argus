@@ -87,7 +87,7 @@ jobs:
           persist-credentials: false
 
       - name: Run Trivy Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-container@0.7.1
+        uses: huntridge-labs/argus/.github/actions/scanner-container@0.7.2
         with:
           image_ref: ${{ inputs.image_ref }}
           container_name: ${{ inputs.scan_name || 'trivy-scan' }}

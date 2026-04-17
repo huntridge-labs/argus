@@ -62,7 +62,7 @@ jobs:
           persist-credentials: false
 
       - name: Run Checkov Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.7.1
+        uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.7.2
         env:
           BC_API_KEY: ${{ secrets.BC_API_KEY }}
         with:
