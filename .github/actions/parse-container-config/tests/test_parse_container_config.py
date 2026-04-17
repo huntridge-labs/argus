@@ -739,3 +739,50 @@ class TestMatrixSanitization:
         matrix = generate_scan_matrix(config)
         actual_names = [entry['name'] for entry in matrix['include']]
         assert actual_names == expected_names
+
+
+class TestSanitizeNamesCLI:
+    """Tests for sanitize_names() function and CLI entrypoint."""
+
+    # (input_list, kwargs, expected_output)
+    SANITIZE_NAMES_CASES = [
+        (["my.app", "my@app", "other"], {}, ["my-app", "my-app-2", "other"]),
+        ([], {}, []),
+        (["@#$", "..."], {"fallback": "unknown"}, ["unknown", "unknown-2"]),
+    ]
+
+    @pytest.mark.parametrize("input_list,kwargs,expected", SANITIZE_NAMES_CASES)
+    def test_sanitize_names_function(self, input_list, kwargs, expected):
+        """sanitize_names() handles lists with collision detection."""
+        from sanitize_name import sanitize_names
+        assert sanitize_names(input_list, **kwargs) == expected
+
+    # (argv, expected_output)
+    CLI_SUCCESS_CASES = [
+        (['sanitize_name.py', 'my.app'], "my-app"),
+        (['sanitize_name.py', '--list', 'my.app', 'my@app'], "my-app my-app-2"),
+        (['sanitize_name.py', '--fallback', 'unknown', '@#$'], "unknown"),
+    ]
+
+    @pytest.mark.parametrize("argv,expected", CLI_SUCCESS_CASES)
+    def test_cli_success(self, argv, expected, capsys, monkeypatch):
+        """CLI produces correct output for valid inputs."""
+        import sanitize_name
+        monkeypatch.setattr('sys.argv', argv)
+        sanitize_name.main()
+        assert capsys.readouterr().out.strip() == expected
+
+    # (argv) - all should exit with code 1
+    CLI_ERROR_CASES = [
+        (['sanitize_name.py'],),  # no args
+        (['sanitize_name.py', '--list'],),  # --list with no names
+    ]
+
+    @pytest.mark.parametrize("argv", CLI_ERROR_CASES)
+    def test_cli_errors(self, argv, monkeypatch):
+        """CLI exits with code 1 for invalid inputs."""
+        import sanitize_name
+        monkeypatch.setattr('sys.argv', argv)
+        with pytest.raises(SystemExit) as exc_info:
+            sanitize_name.main()
+        assert exc_info.value.code == 1
