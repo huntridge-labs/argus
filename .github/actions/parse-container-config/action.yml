@@ -68,7 +68,7 @@ runs:
 
     - name: Install dependencies
       shell: bash
-      run: pip install -q pyyaml
+      run: pip install -q pyyaml python-slugify
 
     - name: Parse container config
       id: parse
