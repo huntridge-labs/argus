@@ -25,8 +25,9 @@ from parse_container_config import (
     generate_scan_matrix,
     build_image_reference,
     expand_env_vars,
-    expand_env_vars_in_object
+    expand_env_vars_in_object,
 )
+from sanitize_name import sanitize_container_name
 
 # Paths for fixtures
 REPO_ROOT = Path(__file__).parent.parent.parent.parent.parent
@@ -551,3 +552,190 @@ class TestEdgeCases:
         # Scan matrix should have 2 entries (one per scanner)
         scan_matrix = generate_scan_matrix(config)
         assert len(scan_matrix['include']) == 2
+
+
+class TestSanitizeContainerName:
+    """
+    Tests for container name sanitization.
+    Goal: Every container gets scanned regardless of input name.
+    Output must match: ^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,49}$
+    """
+
+    # (input, expected) - slugify transliterates unicode (ä→a) rather than stripping
+    SANITIZE_TEST_CASES = [
+        # Valid characters preserved
+        ("myapp", "myapp"),                     # lowercase alphanumeric
+        ("MyApp", "MyApp"),                     # uppercase preserved
+        ("myApp123", "myApp123"),               # mixed case with numbers
+        ("my-app", "my-app"),                   # hyphens preserved
+        ("my_app", "my_app"),                   # underscores preserved
+        ("app123", "app123"),                   # numbers preserved
+        ("_app", "_app"),                       # leading underscore valid
+
+        # Dot replacement
+        ("my.app", "my-app"),                   # single dot to hyphen
+        ("my.app.service", "my-app-service"),   # multiple dots to hyphens
+        (".myapp", "myapp"),                    # leading dot stripped
+        ("myapp.", "myapp"),                    # trailing dot stripped
+        (".devcontainer", "devcontainer"),      # .devcontainer directory
+        ("my.app.v2.0", "my-app-v2-0"),         # version-style dots
+
+        # Special characters become hyphens then collapse
+        ("my!app", "my-app"),                   # exclamation
+        ("my@app", "my-app"),                   # at sign
+        ("my#app", "my-app"),                   # hash
+        ("my$app", "my-app"),                   # dollar
+        ("my%app", "my-app"),                   # percent
+        ("my^app", "my-app"),                   # caret
+        ("my&app", "my-app"),                   # ampersand
+        ("my*app", "my-app"),                   # asterisk
+        ("my+app", "my-app"),                   # plus
+        ("my=app", "my-app"),                   # equals
+        ("my~app", "my-app"),                   # tilde
+        ("my`app", "my-app"),                   # backtick
+        ("my(app)", "my-app"),                  # parentheses
+        ("my[app]", "my-app"),                  # brackets
+        ("my{app}", "my-app"),                  # braces
+        ("my<app>", "my-app"),                  # angle brackets
+        ("my'app", "my-app"),                   # single quote
+        ('my"app', "my-app"),                   # double quote
+        ("my/app", "my-app"),                   # forward slash
+        ("my\\app", "my-app"),                  # backslash
+        ("my|app", "my-app"),                   # pipe
+        ("my:app", "my-app"),                   # colon
+        ("my;app", "my-app"),                   # semicolon
+        ("my?app", "my-app"),                   # question mark
+        ("my,app", "my-app"),                   # comma
+
+        # Whitespace becomes hyphen
+        ("my app", "my-app"),                   # space
+        ("my\tapp", "my-app"),                  # tab
+        ("my\napp", "my-app"),                  # newline
+        ("my  app", "my-app"),                  # multiple spaces collapse
+
+        # Unicode transliterated
+        ("myäpp", "myapp"),                     # ä → a
+        ("café", "cafe"),                       # é → e
+        ("my🚀app", "myapp"),                   # emoji stripped
+        ("naïve", "naive"),                     # ï → i
+
+        # Edge cases with fallback
+        ("", "container"),                      # empty string
+        (None, "container"),                    # None input
+        ("...", "container"),                   # only dots
+        ("@#$%", "container"),                  # only special chars
+        ("   ", "container"),                   # only spaces
+        ("my..app", "my-app"),                  # consecutive dots collapse
+
+        # Hyphen handling
+        ("-app", "app"),                        # leading hyphen stripped
+        ("app-", "app"),                        # trailing hyphen stripped
+        ("---app", "app"),                      # multiple leading hyphens
+        ("app---", "app"),                      # multiple trailing hyphens
+        ("my.@app!service#1", "my-app-service-1"),  # mixed special chars
+
+        # Length handling
+        ("a" * 50, "a" * 50),                   # exactly 50 chars preserved
+        ("a" * 60, "a" * 50),                   # over 50 chars truncated
+        ("a" * 49 + "-bbb", "a" * 49),          # truncation strips trailing hyphen
+    ]
+
+    @pytest.mark.parametrize("input_name,expected", SANITIZE_TEST_CASES)
+    def test_sanitize_cases(self, input_name, expected):
+        """Parametrized sanitization tests."""
+        assert sanitize_container_name(input_name) == expected
+
+    def test_custom_fallback(self):
+        """Custom fallback name can be specified."""
+        assert sanitize_container_name("@#$", fallback="unknown") == "unknown"
+
+    def test_all_outputs_match_validation_regex(self):
+        """All sanitized outputs must match combined Docker + schema regex."""
+        import re
+        # Combined regex: first char alphanumeric/underscore (no hyphen), max 50 chars total
+        pattern = re.compile(r'^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,49}$')
+        for input_name, _ in self.SANITIZE_TEST_CASES:
+            result = sanitize_container_name(input_name)
+            assert pattern.match(result), f"'{input_name}' -> '{result}' doesn't match regex"
+
+
+class TestMatrixSanitization:
+    """Tests that matrix generation applies sanitization correctly."""
+
+    def test_generate_matrix_sanitizes_names(self):
+        """Matrix generation sanitizes container names by default."""
+        config = {
+            'containers': [
+                {'name': 'my.app', 'image': 'nginx:latest'}
+            ]
+        }
+        matrix = generate_matrix(config)
+        assert matrix['include'][0]['name'] == 'my-app'
+
+    def test_generate_matrix_sanitization_can_be_disabled(self):
+        """Matrix generation sanitization can be disabled."""
+        config = {
+            'containers': [
+                {'name': 'my-app', 'image': 'nginx:latest'}
+            ]
+        }
+        matrix = generate_matrix(config, sanitize_names=False)
+        assert matrix['include'][0]['name'] == 'my-app'
+
+    def test_generate_scan_matrix_sanitizes_names(self):
+        """Scan matrix generation sanitizes container names by default."""
+        config = {
+            'containers': [
+                {'name': 'my.app', 'image': 'nginx:latest', 'scanners': ['trivy']}
+            ]
+        }
+        matrix = generate_scan_matrix(config)
+        assert matrix['include'][0]['name'] == 'my-app'
+
+    def test_generate_scan_matrix_sanitization_can_be_disabled(self):
+        """Scan matrix generation sanitization can be disabled."""
+        config = {
+            'containers': [
+                {'name': 'my-app', 'image': 'nginx:latest', 'scanners': ['trivy']}
+            ]
+        }
+        matrix = generate_scan_matrix(config, sanitize_names=False)
+        assert matrix['include'][0]['name'] == 'my-app'
+
+    # Collision handling - names that sanitize to the same value get suffixes
+    COLLISION_TEST_CASES = [
+        # (container_names, expected_sanitized_names)
+        (["my.app", "my@app"], ["my-app", "my-app-2"]),              # two collisions
+        (["my.app", "my@app", "my#app"], ["my-app", "my-app-2", "my-app-3"]),  # three
+        (["app", "app"], ["app", "app-2"]),                          # exact duplicates
+        (["my.app", "other", "my@app"], ["my-app", "other", "my-app-2"]),  # non-adjacent
+        (["a.b", "a@b", "a#b", "a$b"], ["a-b", "a-b-2", "a-b-3", "a-b-4"]),  # four collisions
+        # 50-char names truncated to fit suffix
+        (["a" * 50, "a" * 50, "a" * 50], ["a" * 50, "a" * 48 + "-2", "a" * 48 + "-3"]),
+    ]
+
+    @pytest.mark.parametrize("input_names,expected_names", COLLISION_TEST_CASES)
+    def test_generate_matrix_handles_collisions(self, input_names, expected_names):
+        """Matrix generation adds suffixes for sanitized name collisions."""
+        config = {
+            'containers': [
+                {'name': name, 'image': f'{name}:latest'}
+                for name in input_names
+            ]
+        }
+        matrix = generate_matrix(config)
+        actual_names = [entry['name'] for entry in matrix['include']]
+        assert actual_names == expected_names
+
+    @pytest.mark.parametrize("input_names,expected_names", COLLISION_TEST_CASES)
+    def test_generate_scan_matrix_handles_collisions(self, input_names, expected_names):
+        """Scan matrix generation adds suffixes for sanitized name collisions."""
+        config = {
+            'containers': [
+                {'name': name, 'image': f'{name}:latest', 'scanners': ['trivy']}
+                for name in input_names
+            ]
+        }
+        matrix = generate_scan_matrix(config)
+        actual_names = [entry['name'] for entry in matrix['include']]
+        assert actual_names == expected_names
