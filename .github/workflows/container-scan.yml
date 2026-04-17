@@ -109,12 +109,23 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Checkout argus for sanitization script
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          repository: huntridge-labs/argus
+          ref: 0.7.0
+          path: .argus-tools
+          persist-credentials: false
+
+      - name: Install sanitization dependencies
+        run: pip install python-slugify
+
       - name: Discover Dockerfiles in repository
         id: discover
         run: |
           echo "Discovering Dockerfiles in repository..."
 
-          DOCKERFILES=$(find . -name "Dockerfile*" -not -path "./.git/*" -type f)
+          DOCKERFILES=$(find . -name "Dockerfile*" -not -path "./.git/*" -not -path "./.argus-tools/*" -type f)
 
           if [ -z "$DOCKERFILES" ]; then
             echo "No Dockerfiles found in repository"
@@ -126,8 +137,12 @@ jobs:
           echo "Found Dockerfiles:"
           echo "$DOCKERFILES"
 
-          containers="["
-          first=true
+          SANITIZE_SCRIPT=".argus-tools/.github/actions/parse-container-config/scripts/sanitize_name.py"
+
+          # First pass: collect raw names, dockerfiles, and contexts
+          raw_names=()
+          dockerfiles_arr=()
+          contexts_arr=()
 
           for dockerfile in $DOCKERFILES; do
             dir=$(dirname "$dockerfile")
@@ -143,13 +158,26 @@ jobs:
               name="${name}-secure"
             fi
 
+            raw_names+=("$name")
+            dockerfiles_arr+=("$dockerfile")
+            contexts_arr+=("$dir")
+          done
+
+          # Sanitize all names at once (handles collisions)
+          sanitized=$(python3 "$SANITIZE_SCRIPT" --list "${raw_names[@]}")
+          read -ra sanitized_names <<< "$sanitized"
+
+          # Build JSON output
+          containers="["
+          first=true
+
+          for i in "${!dockerfiles_arr[@]}"; do
             if [ "$first" = true ]; then
               first=false
             else
               containers="$containers,"
             fi
-
-            containers="$containers{\"dockerfile\":\"$dockerfile\",\"name\":\"$name\",\"context\":\"$dir\"}"
+            containers="$containers{\"dockerfile\":\"${dockerfiles_arr[$i]}\",\"name\":\"${sanitized_names[$i]}\",\"context\":\"${contexts_arr[$i]}\"}"
           done
 
           containers="$containers]"
@@ -186,7 +214,8 @@ jobs:
         id: build
         continue-on-error: true
         run: |
-          IMAGE_NAME="hardening-test-$(echo '${{ matrix.container.name }}' | tr '/' '-' | tr '[:upper:]' '[:lower:]')"
+          # Container name is already sanitized; just lowercase for Docker image naming
+          IMAGE_NAME="hardening-test-$(echo '${{ matrix.container.name }}' | tr '[:upper:]' '[:lower:]')"
           IMAGE_TAG="scan-$(echo "$GITHUB_SHA" | cut -c1-8)"
           FULL_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
 

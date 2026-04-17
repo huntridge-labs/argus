@@ -18,6 +18,8 @@ from pathlib import Path
 
 import yaml
 
+from sanitize_name import sanitize_container_name, resolve_name_collision
+
 
 def expand_env_vars(value: str) -> str:
     """
@@ -165,12 +167,17 @@ def build_image_reference(image, registry_host: str = 'docker.io') -> str:
     return image
 
 
-def generate_matrix(config: dict) -> dict:
+def generate_matrix(config: dict, sanitize_names: bool = True) -> dict:
     """
     Generate matrix from validated config.
     Creates one matrix entry per container (scanners run sequentially).
+
+    Args:
+        config: Validated configuration dictionary
+        sanitize_names: Whether to sanitize container names (default: True)
     """
     matrix = {'include': []}
+    seen_names = {}
 
     for container in config['containers']:
         scanners = container.get('scanners', ['trivy'])
@@ -179,8 +186,13 @@ def generate_matrix(config: dict) -> dict:
             container.get('registry', {}).get('host')
         )
 
+        name = container['name']
+        if sanitize_names:
+            name = sanitize_container_name(name)
+            name = resolve_name_collision(name, seen_names)
+
         entry = {
-            'name': container['name'],
+            'name': name,
             'scanners': ','.join(scanners),
             'image': image_ref,
             'fail_on_severity': container.get('fail_on_severity', 'high'),
@@ -196,12 +208,17 @@ def generate_matrix(config: dict) -> dict:
     return matrix
 
 
-def generate_scan_matrix(config: dict) -> dict:
+def generate_scan_matrix(config: dict, sanitize_names: bool = True) -> dict:
     """
     Generate scan matrix from validated config.
     Creates one matrix entry per container+scanner combination (for parallel scanning).
+
+    Args:
+        config: Validated configuration dictionary
+        sanitize_names: Whether to sanitize container names (default: True)
     """
     matrix = {'include': []}
+    seen_names = {}
 
     for container in config['containers']:
         scanners = container.get('scanners', ['trivy'])
@@ -210,10 +227,15 @@ def generate_scan_matrix(config: dict) -> dict:
             container.get('registry', {}).get('host')
         )
 
+        name = container['name']
+        if sanitize_names:
+            name = sanitize_container_name(name)
+            name = resolve_name_collision(name, seen_names)
+
         # Create one entry per scanner for this container
         for scanner in scanners:
             entry = {
-                'name': container['name'],
+                'name': name,
                 'scanner': scanner,
                 'image': image_ref,
                 'fail_on_severity': container.get('fail_on_severity', 'high'),

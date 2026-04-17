@@ -162,6 +162,33 @@ error_patterns:
           registry_password: ${{ secrets.REGISTRY_TOKEN }}
       warning: "Never put credentials in config file"
 
+  - pattern: "invalid.*container.*name|name.*invalid format"
+    category: container
+    context: "Container name validation fails or Docker tag invalid"
+
+    root_cause: |
+      Container names must match ^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,49}$
+      Common issues: dots in directory names (e.g., .devcontainer),
+      special characters, or names starting with hyphen.
+
+    solution:
+      explanation: |
+        Container names are now automatically sanitized:
+        - Dots (.) become hyphens (-)
+        - Invalid characters stripped
+        - Leading/trailing hyphens removed
+        - Consecutive hyphens collapsed
+        - Max 50 chars, fallback to "container" if empty
+      examples:
+        - input: "my.app" → output: "my-app"
+        - input: ".devcontainer" → output: "devcontainer"
+        - input: "my@app!" → output: "myapp"
+        - input: "..." → output: "container"
+      locations:
+        - "parse_container_config.py: sanitize_container_name()"
+        - "container-scan.yml: discover-containers step"
+      reference: "PR #88 - Container name sanitization"
+
   # ==============================================================================
   # PR COMMENT ERRORS
   # ==============================================================================
