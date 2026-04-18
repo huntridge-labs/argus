@@ -14,6 +14,9 @@ class TrivyIacScanner:
     """Wraps Trivy to scan infrastructure-as-code for misconfigurations."""
 
     name = "trivy-iac"
+    description = "Infrastructure-as-code scanner — Terraform, Kubernetes, Dockerfile misconfigurations"
+    category = "iac"
+    languages = ["terraform", "kubernetes", "dockerfile"]
     container_image = get_image("trivy")
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:

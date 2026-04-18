@@ -14,6 +14,9 @@ class BanditScanner:
     """Wraps Bandit to scan Python code for security issues."""
 
     name = "bandit"
+    description = "Python security linter — detects common vulnerabilities in Python code"
+    category = "sast"
+    languages = ["python"]
     container_image = get_image("bandit")
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:

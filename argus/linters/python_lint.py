@@ -10,6 +10,9 @@ class PythonLinter:
     """Wraps flake8 to lint Python code for style and quality issues."""
 
     name = "lint-python"
+    description = "Python code style linter (flake8)"
+    category = "linter"
+    languages = ["python"]
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run flake8 against the given path and return results."""

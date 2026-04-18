@@ -101,8 +101,9 @@ components:
     location: "argus/mcp.py"
     purpose: "MCP server for AI assistant integration"
     type: mcp-server
-    tools: [argus_scan, argus_list_scanners, argus_validate, argus_detect, argus_init]
-    resources: ["argus://config", "argus://results/latest"]
+    tools: [argus_scan, argus_list_scanners, argus_validate, argus_detect, argus_init, argus_classify, argus_explain_finding, argus_scan_summary]
+    resources: ["argus://config", "argus://results/latest", "argus://config/schema"]
+    prompts: [security_review, fix_findings, setup_scanning]
     transport: stdio
     install: "pip install argus-security[mcp]"
     configuration:

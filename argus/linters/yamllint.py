@@ -10,6 +10,9 @@ class YamllintLinter:
     """Wraps yamllint to lint YAML files for syntax and style issues."""
 
     name = "lint-yaml"
+    description = "YAML syntax and style linter"
+    category = "linter"
+    languages = ["yaml"]
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run yamllint against the given path and return results."""

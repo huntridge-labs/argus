@@ -14,6 +14,9 @@ class OsvScanner:
     """Wraps OSV-Scanner to detect vulnerable dependencies."""
 
     name = "osv"
+    description = "Dependency vulnerability scanner — checks lockfiles against the OSV database"
+    category = "sca"
+    languages = ["all"]
     container_image = get_image("osv-scanner")
 
     def container_args(self, config: dict | None = None) -> list[str]:

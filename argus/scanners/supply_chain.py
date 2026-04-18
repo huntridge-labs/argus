@@ -31,6 +31,9 @@ class SupplyChainScanner:
     """Wraps zizmor and actionlint to scan GitHub Actions workflows."""
 
     name = "supply-chain"
+    description = "GitHub Actions workflow security — detects template injection, unpinned actions"
+    category = "supply-chain"
+    languages = ["github-actions"]
     container_image = get_image("supply-chain")
 
     def container_args(self, config: dict | None = None) -> list[str]:

@@ -27,6 +27,9 @@ class ZapScanner:
     """Wraps OWASP ZAP to perform dynamic application security testing."""
 
     name = "zap"
+    description = "Dynamic application security testing — web application vulnerability scanning"
+    category = "dast"
+    languages = ["web"]
     container_image = get_image("zap")
 
     def container_args(self, config: dict | None = None) -> list[str]:

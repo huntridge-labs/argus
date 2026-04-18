@@ -10,6 +10,9 @@ class JshintLinter:
     """Wraps jshint to lint JavaScript code for errors and style issues."""
 
     name = "lint-javascript"
+    description = "JavaScript code quality linter"
+    category = "linter"
+    languages = ["javascript"]
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run jshint against the given path and return results."""

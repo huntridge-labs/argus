@@ -15,6 +15,9 @@ class ContainerScanner:
     """Wraps Trivy, Grype, and Syft for container image scanning."""
 
     name = "container"
+    description = "Container image vulnerability scanner — orchestrates Trivy, Grype, and Syft"
+    category = "container"
+    languages = ["docker"]
     # This scanner is an orchestrator, not a single-tool wrapper.  It runs
     # trivy, grype, and syft as separate sub-processes, each with its own
     # official container image (defined in containers.py).  Because of this

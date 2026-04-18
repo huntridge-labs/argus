@@ -15,6 +15,9 @@ class ClamavScanner:
     """Wraps ClamAV (clamscan) to detect malware in files."""
 
     name = "clamav"
+    description = "Malware detection scanner — file-based virus and threat scanning"
+    category = "malware"
+    languages = ["all"]
     container_image = get_image("clamav")
     # The official clamav/clamav image default entrypoint starts clamd as a
     # daemon, which is not what we want.  Override to /bin/sh so we can run

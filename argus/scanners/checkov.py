@@ -14,6 +14,9 @@ class CheckovScanner:
     """Wraps Checkov to scan IaC files for misconfigurations."""
 
     name = "checkov"
+    description = "Infrastructure-as-code policy scanner — multi-framework (Terraform, K8s, CloudFormation)"
+    category = "iac"
+    languages = ["terraform", "kubernetes", "cloudformation"]
     container_image = get_image("checkov")
 
     def container_args(self, config: dict | None = None) -> list[str]:

@@ -13,6 +13,9 @@ class HadolintLinter:
     """Wraps hadolint to lint Dockerfiles for best-practice violations."""
 
     name = "lint-dockerfile"
+    description = "Dockerfile best practice linter"
+    category = "linter"
+    languages = ["dockerfile"]
     container_image = get_image("hadolint")
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:

@@ -16,6 +16,9 @@ class JsonlintLinter:
     """
 
     name = "lint-json"
+    description = "JSON syntax validator"
+    category = "linter"
+    languages = ["json"]
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Find and validate all JSON files under the given path."""

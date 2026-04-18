@@ -14,6 +14,9 @@ class OpengrepScanner:
     """Wraps OpenGrep to scan code for security issues using pattern matching."""
 
     name = "opengrep"
+    description = "Pattern-based SAST — fast multi-language static analysis (semgrep-compatible)"
+    category = "sast"
+    languages = ["python", "javascript", "typescript", "go", "java", "ruby", "c", "cpp"]
     container_image = get_image("semgrep")
 
     def container_args(self, config: dict | None = None) -> list[str]:

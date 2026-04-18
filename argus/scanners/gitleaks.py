@@ -14,6 +14,9 @@ class GitleaksScanner:
     """Wraps Gitleaks to scan repositories for leaked secrets."""
 
     name = "gitleaks"
+    description = "Secret detection — scans git history and files for leaked credentials"
+    category = "secrets"
+    languages = ["all"]
     container_image = get_image("gitleaks")
 
     def container_args(self, config: dict | None = None) -> list[str]:

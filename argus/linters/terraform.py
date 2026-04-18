@@ -12,6 +12,9 @@ class TerraformLinter:
     """Wraps terraform fmt/validate and tflint for Terraform linting."""
 
     name = "lint-terraform"
+    description = "Terraform formatting and validation linter"
+    category = "linter"
+    languages = ["terraform"]
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run terraform fmt check, validate, and optionally tflint."""
