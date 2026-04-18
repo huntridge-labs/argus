@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "argus-security"
 dynamic = ["version"]
 description = "Unified security scanning — SAST, containers, IaC, secrets, dependencies, and DAST from a single CLI."
-readme = "README.md"
+readme = "README_PYPI.md"
 license = {file = "LICENSE.md"}
 requires-python = ">=3.11"
 keywords = ["security", "scanning", "sast", "dast", "iac", "secrets", "containers", "compliance", "devsecops"]

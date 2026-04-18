@@ -346,6 +346,26 @@ Scanner-specific secrets (for GitHub Actions composite action usage):
 | `GITHUB_TOKEN` | PR comments, Security tab | Automatically provided |
 | Registry secrets | Private containers | Token for authentication |
 
+## MCP Server (AI Integration)
+
+Argus includes an MCP server for seamless AI assistant integration. AI tools like Claude, Copilot, and Cursor can run scans, validate configs, and detect project characteristics directly.
+
+```bash
+pip install argus-security[mcp]
+```
+
+Add to your AI tool's MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "argus": {"command": "argus", "args": ["mcp"]}
+  }
+}
+```
+
+Available tools: `argus_scan`, `argus_detect`, `argus_validate`, `argus_list_scanners`, `argus_init`
+
 ## Contributing
 
 Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.

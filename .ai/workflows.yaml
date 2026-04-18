@@ -121,6 +121,36 @@ user_workflows:
           - attribute: ".*encryption.*"
             operation: "delete|modify"
 
+  setup_mcp_server:
+    description: "Set up Argus MCP server for AI assistant integration"
+    category: integration
+    when_to_use: "Connecting AI tools (Claude, Copilot, Cursor) to Argus for automated scanning"
+    steps:
+      - action: "Install Argus with MCP support"
+        command: "pip install argus-security[mcp]"
+
+      - action: "Add MCP server to AI tool configuration"
+        config: |
+          {
+            "mcpServers": {
+              "argus": {"command": "argus", "args": ["mcp"]}
+            }
+          }
+        note: "Add this to your AI tool's MCP configuration file (e.g., claude_desktop_config.json)"
+
+      - action: "Verify MCP server starts"
+        command: "argus mcp"
+        note: "The server communicates via stdio transport. Press Ctrl+C to stop."
+    available_tools:
+      - "argus_scan: Run security scans"
+      - "argus_list_scanners: List available scanners"
+      - "argus_validate: Validate argus.yml configuration"
+      - "argus_detect: Detect project characteristics and recommend scanners"
+      - "argus_init: Initialize a new argus.yml config"
+    available_resources:
+      - "argus://config: Current argus.yml configuration"
+      - "argus://results/latest: Most recent scan results"
+
   scheduled_full_scan:
     description: "Nightly comprehensive security scan"
     category: scanning

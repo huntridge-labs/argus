@@ -33,6 +33,8 @@ project:
 entrypoints:
   sdk: "argus/"
   sdk_cli: "python -m argus scan --config argus.yml"
+  mcp_server: "argus mcp"
+  mcp_install: "pip install argus-security[mcp]"
   actions: ".github/actions/"
   examples: "examples/workflows/"
   documentation: "docs/"

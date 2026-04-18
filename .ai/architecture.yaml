@@ -97,6 +97,20 @@ components:
     instances:
       - argus-scanner-selection
 
+  - name: argus-mcp
+    location: "argus/mcp.py"
+    purpose: "MCP server for AI assistant integration"
+    type: mcp-server
+    tools: [argus_scan, argus_list_scanners, argus_validate, argus_detect, argus_init]
+    resources: ["argus://config", "argus://results/latest"]
+    transport: stdio
+    install: "pip install argus-security[mcp]"
+    configuration:
+      mcpServers:
+        argus:
+          command: argus
+          args: ["mcp"]
+
   - name: scn-detector
     location: ".github/actions/scn-detector/"
     purpose: "FedRAMP Significant Change Notification detection and classification"
