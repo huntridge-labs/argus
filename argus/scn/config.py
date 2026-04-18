@@ -16,6 +16,7 @@ from typing import Dict, List, Optional
 import yaml
 
 from .defaults import DEFAULT_RULES, DEFAULT_AI_CONFIG, merge_config, get_default_config
+from .schemas import get_schema_path
 
 
 VALID_CATEGORIES = {'routine', 'adaptive', 'transformative', 'impact'}
@@ -325,7 +326,8 @@ def validate_scn_config(file_path: str, schema_path: Optional[str] = None) -> di
 
     Args:
         file_path: Path to the SCN config file
-        schema_path: Optional path to JSON schema (for reference)
+        schema_path: Optional path to JSON schema.  When *None* the bundled
+            schema shipped with the ``argus.scn`` package is used automatically.
 
     Returns:
         Validated config dictionary
@@ -338,6 +340,10 @@ def validate_scn_config(file_path: str, schema_path: Optional[str] = None) -> di
     schema = {}
     if schema_path:
         with open(schema_path, 'r', encoding='utf-8') as f:
+            schema = json.load(f)
+    else:
+        bundled = get_schema_path("scn-config")
+        with open(bundled, 'r', encoding='utf-8') as f:
             schema = json.load(f)
 
     validate_config_structure(config, schema)

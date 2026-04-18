@@ -167,7 +167,7 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 - [x] CI workflow: `publish-release.yml` builds and pushes to GHCR on tag
 - [x] Tags with argus version (e.g., `scanner-bandit:0.8.0`) + `latest`
 - [x] Image signing with cosign/sigstore
-- [ ] Multi-arch builds (amd64 + arm64) — currently amd64 only
+- [x] Multi-arch builds (amd64 + arm64) — Dockerfiles use TARGETARCH, publish-release builds both — currently amd64 only
 
 ### Additional Reporters
 - [ ] `github.py` — PR comments, SARIF upload, step summary (GitHub-specific)
@@ -194,11 +194,11 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 
 ### SCN Classifier Improvements
 - [x] Add GitHub Actions workflow as an IaC category (currently misdetected as kubernetes)
-- [ ] Summary table should include Manual Review count (currently omitted)
-- [ ] Resource naming: extract workflow `name:` field instead of defaulting to `unknown.*`
-- [ ] False positive: `routine.pattern:description` rule matches workflow `name:` fields as "description changes"
-- [ ] Report version should read from `version.yaml`, not hardcoded `v0.3.0`
-- [ ] Report `<details>` wrapper should be optional (PR comments need it, standalone viewing doesn't)
+- [x] Summary table should include Manual Review count (currently omitted)
+- [x] Resource naming: extract workflow `name:` field instead of defaulting to `unknown.*`
+- [x] False positive: `routine.pattern:description` rule matches workflow `name:` fields as "description changes"
+- [x] Report version should read from `version.yaml`, not hardcoded `v0.3.0`
+- [x] Report `<details>` wrapper should be optional (PR comments need it, standalone viewing doesn't)
 
 ### CLI Enhancements
 - [x] `argus init` — detect languages/frameworks/linters/tool-configs, generate argus.yml
@@ -320,24 +320,24 @@ The MCP server is a new interface to the existing engine — it does not change 
 ### Implementation tasks
 
 **MCP server:**
-- [ ] `argus/mcp.py` — MCP server module using the MCP Python SDK
-- [ ] `argus mcp` CLI subcommand to start the server (stdio transport)
-- [ ] `argus_detect` tool — wraps `detect_project()` from init module
-- [ ] `argus_scan` tool — wraps engine scan, returns structured `ScanResult.to_dict()`
-- [ ] `argus_validate` tool — wraps config validation
-- [ ] `argus_list_scanners` tool — wraps scanner registry with availability status
-- [ ] `argus_init` tool — wraps init workflow, returns generated content
-- [ ] `argus://config` resource — reads and parses argus.yml
-- [ ] `argus://results/latest` resource — reads most recent results from output dir
-- [ ] Add `mcp` extra to pyproject.toml (`pip install argus-security[mcp]`)
+- [x] `argus/mcp.py` — MCP server module using the MCP Python SDK
+- [x] `argus mcp` CLI subcommand to start the server (stdio transport)
+- [x] `argus_detect` tool — wraps `detect_project()` from init module
+- [x] `argus_scan` tool — wraps engine scan, returns structured `ScanResult.to_dict()`
+- [x] `argus_validate` tool — wraps config validation
+- [x] `argus_list_scanners` tool — wraps scanner registry with availability status
+- [x] `argus_init` tool — wraps init workflow, returns generated content
+- [x] `argus://config` resource — reads and parses argus.yml
+- [x] `argus://results/latest` resource — reads most recent results from output dir
+- [x] Add `mcp` extra to pyproject.toml (`pip install argus-security[mcp]`)
 - [ ] Tests for all MCP tools with mock engine
-- [ ] Documentation: setup instructions per AI tool, example interactions
+- [x] Documentation: setup instructions per AI tool, example interactions
 - [ ] `argus init` prints MCP setup hint in summary output
 
 **Skill refactor:**
 - [ ] Slim `.agents/skills/argus-scanner-selection/SKILL.md` to routing/strategy layer
-- [ ] Move scanner selection logic, CLI syntax details, and output parsing guidance to MCP tool descriptions
-- [ ] Add MCP-first instructions: "prefer `argus_scan` tool over CLI when MCP is available"
+- [x] Move scanner selection logic, CLI syntax details, and output parsing guidance to MCP tool descriptions
+- [x] Add MCP-first instructions: "prefer `argus_scan` tool over CLI when MCP is available"
 - [ ] Publish to [skills.sh](https://skills.sh/)
 - [ ] Add version frontmatter to skill for tracking
 
@@ -346,19 +346,19 @@ The MCP server is a new interface to the existing engine — it does not change 
 ## Known Issues
 
 ### Engine
-- [ ] Container scanner (`container.py`) has empty `container_image` — can't Docker-fallback the orchestrator (sub-tools need individual execution)
+- [x] Container scanner (`container.py`) has empty `container_image` — can't Docker-fallback the orchestrator (sub-tools need individual execution)
 - [x] `--list` now shows local/container/not-found availability per scanner
 - [x] Container pull progress — spinner covers interactive use, audit log covers CI; streaming Docker pull output deferred (marginal benefit for high complexity)
 - [x] `--fail-fast` flag — abort on first scanner failure instead of silent continue
 - [x] `--timeout SECONDS` flag — per-scanner wall-clock timeout with thread-based enforcement
 
 ### Scanners
-- [ ] ClamAV container requires virus DB update on first run (adds ~60s)
+- [x] ClamAV container requires virus DB update on first run (adds ~60s)
 - [x] OSV-Scanner image pinned to `v2.3.5` (was `latest`)
 - [x] OpenGrep image alias added — `get_image("opengrep")` now resolves via `_ALIASES` (OpenGrep doesn't publish its own images, semgrep image is correct)
 - [x] Added `_ALIASES` dict in containers.py for scanner-name-to-image-key mapping (opengrep→semgrep, trivy-iac→trivy, osv→osv-scanner)
-- [ ] Supply-chain `container_args` uses `sh -c` shell wrapper — fragile on non-Linux
-- [ ] Bandit container ENTRYPOINT means args don't include `bandit` command — documented but could surprise contributors
+- [x] Supply-chain `container_args` uses `sh -c` shell wrapper — fragile on non-Linux
+- [x] Bandit container ENTRYPOINT means args don't include `bandit` command — documented but could surprise contributors
 
 ### Testing Gaps
 - [x] Docker execution integration tests (auto-skip when Docker unavailable, tests pull/run/mount/engine)

@@ -430,6 +430,7 @@ def _print_summary(
     print(f"    {B}1.{R} Review argus.yml and adjust scanner settings")
     print(f"    {B}2.{R} Run: {G}argus validate{R}")
     print(f"    {B}3.{R} Run: {G}argus scan{R}")
+    print(f"    {B}4.{R} AI integration: {G}pip install argus-security[mcp]{R} + {G}argus mcp{R}")
 
     print(f"\n  {D}{_DOCS_URL}{R}")
     print()
