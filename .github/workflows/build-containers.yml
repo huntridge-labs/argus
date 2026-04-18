@@ -27,6 +27,7 @@ permissions:
   contents: read
   security-events: write
   pull-requests: write
+  packages: read
 
 concurrency:
   group: containers-${{ github.ref }}

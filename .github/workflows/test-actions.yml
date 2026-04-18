@@ -43,6 +43,7 @@ permissions:
   security-events: write
   actions: read
   pull-requests: write
+  packages: read
 
 # Cancel in-progress runs when a new commit is pushed
 concurrency:
