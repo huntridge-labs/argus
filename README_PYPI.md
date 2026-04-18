@@ -1,6 +1,10 @@
-# Argus Security Scanner
+<div align="center">
 
-Unified security scanning -- SAST, containers, IaC, secrets, dependencies, and DAST from a single CLI.
+<img src="https://raw.githubusercontent.com/huntridge-labs/argus/main/img/argus_readme_cover.png" alt="Argus — Perception is Protection" width="600">
+
+**Unified security scanning — SAST, containers, IaC, secrets, dependencies, and DAST from a single CLI.**
+
+</div>
 
 ## Install
 
