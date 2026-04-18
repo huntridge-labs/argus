@@ -9,6 +9,9 @@ python-slugify>=8.0
 # SCN Detector dependencies
 requests>=2.31.0
 
+# MCP server (optional at runtime, required for full test coverage)
+mcp>=1.0.0
+
 # Optional: AI fallback for SCN Detector (not required for rule-based classification)
 # Install with: pip install anthropic>=0.39.0
 # Required only when enable_ai_fallback: true AND ANTHROPIC_API_KEY is set

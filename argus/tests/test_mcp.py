@@ -11,7 +11,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from argus.mcp import (
+# MCP is an optional dependency — skip entire module when not installed
+pytest.importorskip("mcp", reason="mcp package not installed (pip install argus-security[mcp])")
+
+from argus.mcp import (  # noqa: E402
     argus_classify,
     argus_detect,
     argus_explain_finding,
