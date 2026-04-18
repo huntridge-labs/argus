@@ -189,8 +189,8 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 - [x] `argus classify` CLI subcommand with --base/--head/--config/--format/--output-vars
 - [x] Port tests to `argus/tests/scn/` (191 tests, 173 passing)
 - [x] Thin wrapper for scn-detector action (505 → 285 lines)
-- [ ] Optional AI deps: `pip install argus-security[ai]` adds anthropic/openai (post-PyPI)
-- [ ] Port SCN config schema from `.github/actions/scn-detector/schemas/` to argus package
+- [x] Optional AI deps: `pip install argus-security[ai]` adds anthropic/openai/requests
+- [x] Port SCN config schema from `.github/actions/scn-detector/schemas/` to `argus/scn/schemas/`
 
 ### SCN Classifier Improvements
 - [x] Add GitHub Actions workflow as an IaC category (currently misdetected as kubernetes)
@@ -218,7 +218,6 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 - [ ] Investigate lazy image pulls (start scanning available tools while others pull)
 - [x] Measure and log per-scanner breakdown in audit trail for ongoing performance tracking
 - [ ] Progress indicators during scanning and container pulls
-- [ ] `argus report github` — post results as PR comment via GitHub API
 
 ### CI Preflight and Config Health
 
@@ -331,16 +330,16 @@ The MCP server is a new interface to the existing engine — it does not change 
 - [x] `argus://config` resource — reads and parses argus.yml
 - [x] `argus://results/latest` resource — reads most recent results from output dir
 - [x] Add `mcp` extra to pyproject.toml (`pip install argus-security[mcp]`)
-- [ ] Tests for all MCP tools with mock engine
+- [x] Tests for all MCP tools with mock engine (69 tests across 11 test classes in `test_mcp.py`)
 - [x] Documentation: setup instructions per AI tool, example interactions
-- [ ] `argus init` prints MCP setup hint in summary output
+- [x] `argus init` prints MCP setup hint in summary output (step 4: `pip install argus-security[mcp]` + `argus mcp`)
 
 **Skill refactor:**
-- [ ] Slim `.agents/skills/argus-scanner-selection/SKILL.md` to routing/strategy layer
+- [x] Slim `.agents/skills/argus-scanner-selection/SKILL.md` to routing/strategy layer (300 → 66 lines)
 - [x] Move scanner selection logic, CLI syntax details, and output parsing guidance to MCP tool descriptions
 - [x] Add MCP-first instructions: "prefer `argus_scan` tool over CLI when MCP is available"
 - [ ] Publish to [skills.sh](https://skills.sh/)
-- [ ] Add version frontmatter to skill for tracking
+- [x] Add version frontmatter to skill for tracking (version: 0.7.2)
 
 ---
 
