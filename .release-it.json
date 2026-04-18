@@ -134,7 +134,8 @@
         },
         {
           "files": [
-            ".github/actions/**/schemas/*.json"
+            ".github/actions/**/schemas/*.json",
+            "argus/**/schemas/*.json"
           ],
           "search": {
             "pattern": "(\"\\$id\": \"https://raw\\.githubusercontent\\.com/huntridge-labs/argus)/[^/]+(/.github/)"
