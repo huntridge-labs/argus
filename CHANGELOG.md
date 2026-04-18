@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.7.2](https://github.com/huntridge-labs/argus/compare/0.7.1...0.7.2) (2026-04-17)
+
+### Bug Fixes
+
+* **container-scan:** update argus checkout ref to 0.7.1 and add ([67f2a9f](https://github.com/huntridge-labs/argus/commit/67f2a9ff3b2af53ece6f43d0d9df748205c60f53))
+
+## [0.7.1](https://github.com/huntridge-labs/argus/compare/0.7.0...0.7.1) (2026-04-17)
+
+### Bug Fixes
+
+* add python-slugify ([72f203e](https://github.com/huntridge-labs/argus/commit/72f203e3bcbe50929d2d71aa5a11b140177589dc))
+* add python-slugify dep and CLI tests for coverage ([74583cb](https://github.com/huntridge-labs/argus/commit/74583cbf5a9fb7e259ea63f7814f7b3651524d8f))
+* **ci:** restore git push credentials for docs deployment ([2ff8593](https://github.com/huntridge-labs/argus/commit/2ff859310a1d96d01aad4a040b8e0aeb55616725))
+* **container-scan:** sanitize container names with python-slugify ([98b44c9](https://github.com/huntridge-labs/argus/commit/98b44c9ff478a60b95b0f7d7160aebfa55c8e7ae))
+
+## [Unreleased]
+
+### Bug Fixes
+
+* **container-scan:** sanitize container names with python-slugify to handle problematic directory names (`.devcontainer`, special chars, unicode)
+
 ## [0.7.0](https://github.com/huntridge-labs/argus/compare/0.6.8...0.7.0) (2026-04-10)
 
 ### Features

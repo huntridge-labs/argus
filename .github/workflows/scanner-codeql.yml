@@ -186,7 +186,7 @@ jobs:
           persist-credentials: false
 
       - name: Run CodeQL Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-codeql@0.7.0
+        uses: huntridge-labs/argus/.github/actions/scanner-codeql@0.7.2
         with:
           language: ${{ matrix.language }}
           config_file: ${{ inputs.config_file }}
