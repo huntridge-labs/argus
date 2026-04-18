@@ -1,6 +1,6 @@
 # Argus CLI Reference (v0.7.0)
 
-> Auto-generated from argparse definitions on 2026-04-17.
+> Auto-generated from argparse definitions on 2026-04-18.
 > Do not edit manually — run `python -m scripts.ci.gen_cli_docs` to regenerate.
 
 Argus Security Scanner — comprehensive security scanning for your codebase
@@ -207,6 +207,22 @@ argus validate [-h] [--config CONFIG] [--check-tools] [--strict]
 | `--config`, `-c` | Path to argus.yml config file (default: auto-detect) |  |
 | `--check-tools` | Also check scanner tool availability (local + Docker) | `false` |
 | `--strict` | Treat warnings as errors (exit non-zero). Useful in CI. | `false` |
+
+### `argus mcp`
+
+Start the Argus MCP (Model Context Protocol) server.
+
+The server communicates via stdio and provides tools for
+AI assistants (Claude, Copilot, Cursor) to run security scans,
+validate configs, and detect project characteristics.
+
+Setup in Claude Code:
+  Add to .claude/settings.json mcpServers:
+    "argus": {"command": "argus", "args": ["mcp"]}
+
+```
+argus mcp [-h]
+```
 
 ### `argus completion`
 

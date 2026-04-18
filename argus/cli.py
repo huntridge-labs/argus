@@ -145,6 +145,7 @@ def build_parser() -> argparse.ArgumentParser:
     _build_collect_parser(subparsers)
     _build_report_parser(subparsers)
     _build_validate_parser(subparsers)
+    _build_mcp_parser(subparsers)
     _build_completion_parser(subparsers)
 
     return parser
@@ -590,6 +591,24 @@ def _build_validate_parser(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         default=False,
         help="Treat warnings as errors (exit non-zero). Useful in CI.",
+    )
+
+
+def _build_mcp_parser(subparsers: argparse._SubParsersAction) -> None:
+    """Add the 'mcp' subcommand to start the MCP server."""
+    subparsers.add_parser(
+        "mcp",
+        help="Start the MCP server for AI assistant integration",
+        description=(
+            "Start the Argus MCP (Model Context Protocol) server.\n\n"
+            "The server communicates via stdio and provides tools for\n"
+            "AI assistants (Claude, Copilot, Cursor) to run security scans,\n"
+            "validate configs, and detect project characteristics.\n\n"
+            "Setup in Claude Code:\n"
+            '  Add to .claude/settings.json mcpServers:\n'
+            '    "argus": {"command": "argus", "args": ["mcp"]}\n'
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
 
@@ -1192,6 +1211,23 @@ def cmd_completion(args: argparse.Namespace) -> int:
     return EXIT_SUCCESS
 
 
+def cmd_mcp(args: argparse.Namespace) -> int:
+    """Start the MCP server for AI assistant integration."""
+    try:
+        from argus.mcp import create_server
+    except ImportError:
+        print(
+            "Error: MCP dependencies not installed.\n"
+            "Install with: pip install argus-security[mcp]",
+            file=sys.stderr,
+        )
+        return EXIT_ERROR
+
+    server = create_server()
+    server.run(transport="stdio")
+    return EXIT_SUCCESS
+
+
 def _generate_zsh_completion(scanners: str) -> str:
     """Generate zsh completion script from current scanner registry."""
     return f'''#compdef argus
@@ -1207,6 +1243,7 @@ _argus() {{
         'collect:Collect and merge results from parallel CI jobs'
         'report:Generate reports from existing scan results'
         'validate:Validate an argus.yml configuration file'
+        'mcp:Start the MCP server for AI assistant integration'
         'completion:Generate shell completion script'
     )
 
@@ -1314,7 +1351,7 @@ _argus_completions() {{
     cur="${{COMP_WORDS[COMP_CWORD]}}"
     prev="${{COMP_WORDS[COMP_CWORD-1]}}"
 
-    commands="init scan classify collect report validate completion"
+    commands="init scan classify collect report validate mcp completion"
     scanners="{scanners}"
     severity="critical high medium low none"
     formats="terminal markdown sarif json"
@@ -1730,6 +1767,7 @@ def main(argv: list[str] | None = None) -> None:
         "collect": cmd_collect,
         "report": cmd_report,
         "validate": cmd_validate,
+        "mcp": cmd_mcp,
         "completion": cmd_completion,
     }
 
