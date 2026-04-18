@@ -724,3 +724,53 @@ class TestListScanners:
         captured = capsys.readouterr()
         assert "local" in captured.out
         assert "not found" in captured.out
+
+
+class TestCacheSubcommand:
+    """Test parsing and execution of the 'cache' subcommand."""
+
+    def test_cache_command_parses(self):
+        parser = build_parser()
+        args = parser.parse_args(["cache", "info"])
+        assert args.command == "cache"
+        assert args.cache_action == "info"
+
+    def test_cache_clean_parses(self):
+        parser = build_parser()
+        args = parser.parse_args(["cache", "clean"])
+        assert args.command == "cache"
+        assert args.cache_action == "clean"
+
+    def test_cache_no_action_defaults_to_none(self):
+        parser = build_parser()
+        args = parser.parse_args(["cache"])
+        assert args.command == "cache"
+        assert args.cache_action is None
+
+    def test_no_cache_flag_on_scan(self):
+        parser = build_parser()
+        args = parser.parse_args(["scan", "--no-cache"])
+        assert args.no_cache is True
+
+    def test_no_cache_flag_default(self):
+        parser = build_parser()
+        args = parser.parse_args(["scan"])
+        assert args.no_cache is False
+
+    def test_cache_info_runs(self, tmp_path, monkeypatch):
+        from argus.cli import cmd_cache
+        monkeypatch.setenv("ARGUS_CACHE_DIR", str(tmp_path))
+        args = build_parser().parse_args(["cache", "info"])
+        result = cmd_cache(args)
+        assert result == EXIT_SUCCESS
+
+    def test_cache_clean_runs(self, tmp_path, monkeypatch):
+        from argus.cli import cmd_cache
+        monkeypatch.setenv("ARGUS_CACHE_DIR", str(tmp_path))
+        cache_dir = tmp_path / "trivy"
+        cache_dir.mkdir()
+        (cache_dir / "db.tar.gz").write_text("fake")
+        args = build_parser().parse_args(["cache", "clean"])
+        result = cmd_cache(args)
+        assert result == EXIT_SUCCESS
+        assert not tmp_path.exists()

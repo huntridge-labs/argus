@@ -210,7 +210,8 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 
 ### Performance Research
 - [ ] Profile individual scanner execution to identify bottlenecks (Docker pull latency, tool startup, output parsing)
-- [ ] Investigate Docker image layer caching across runs (GitHub Actions cache, pre-pulled images)
+- [x] Scanner DB cache volume mounts — persist Trivy/Grype/ClamAV/OpenGrep databases in `$TMPDIR/argus-cache` between container runs (saves ~500MB re-download per full scan)
+- [x] `argus cache info|clean` subcommand for cache management
 - [ ] Evaluate `pull_policy: if-not-present` effectiveness in CI (image reuse between runs)
 - [ ] Benchmark container vs local tool execution per scanner (overhead of Docker vs native)
 - [ ] Consider pre-warming: pull all scanner images in parallel before scan phase

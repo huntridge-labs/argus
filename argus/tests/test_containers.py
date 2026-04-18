@@ -1,6 +1,15 @@
-"""Tests for argus.containers — container image manifest."""
+"""Tests for argus.containers — container image manifest and DB caching."""
 
-from argus.containers import OFFICIAL_IMAGES, CUSTOM_IMAGES, get_image
+from pathlib import Path
+
+from argus.containers import (
+    CACHE_MOUNTS,
+    CUSTOM_IMAGES,
+    OFFICIAL_IMAGES,
+    _default_cache_root,
+    get_cache_mount,
+    get_image,
+)
 
 
 class TestContainerManifest:
@@ -69,4 +78,72 @@ class TestScannerContainerImages:
             args = scanner.container_args()
             assert isinstance(args, list), (
                 f"{name}.container_args() should return list"
+            )
+
+
+class TestCacheMounts:
+    """Tests for DB cache volume mount logic."""
+
+    def test_cache_mounts_has_db_scanners(self):
+        """Scanners with heavy DB downloads should have cache entries."""
+        for scanner in ("trivy", "grype", "clamav", "semgrep"):
+            assert scanner in CACHE_MOUNTS, f"{scanner} missing from CACHE_MOUNTS"
+
+    def test_cache_mounts_values_are_absolute_paths(self):
+        for scanner, path in CACHE_MOUNTS.items():
+            assert path.startswith("/"), (
+                f"{scanner} cache path must be absolute: {path}"
+            )
+
+    def test_get_cache_mount_known_scanner(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ARGUS_CACHE_DIR", str(tmp_path))
+        result = get_cache_mount("trivy")
+        assert result is not None
+        host_dir, container_dir = result
+        assert container_dir == "/root/.cache/trivy"
+        assert host_dir == tmp_path / "trivy"
+        assert host_dir.is_dir()
+
+    def test_get_cache_mount_alias_resolution(self, tmp_path, monkeypatch):
+        """trivy-iac should resolve to trivy's cache via _ALIASES."""
+        monkeypatch.setenv("ARGUS_CACHE_DIR", str(tmp_path))
+        result = get_cache_mount("trivy-iac")
+        assert result is not None
+        _, container_dir = result
+        assert container_dir == "/root/.cache/trivy"
+
+    def test_get_cache_mount_opengrep_alias(self, tmp_path, monkeypatch):
+        """opengrep should resolve to semgrep's cache."""
+        monkeypatch.setenv("ARGUS_CACHE_DIR", str(tmp_path))
+        result = get_cache_mount("opengrep")
+        assert result is not None
+        _, container_dir = result
+        assert container_dir == "/root/.semgrep"
+
+    def test_get_cache_mount_unknown_returns_none(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ARGUS_CACHE_DIR", str(tmp_path))
+        assert get_cache_mount("gitleaks") is None
+        assert get_cache_mount("nonexistent") is None
+
+    def test_get_cache_mount_creates_host_dir(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ARGUS_CACHE_DIR", str(tmp_path))
+        result = get_cache_mount("clamav")
+        assert result is not None
+        host_dir, _ = result
+        assert host_dir.is_dir()
+
+    def test_default_cache_root_uses_env(self, monkeypatch):
+        monkeypatch.setenv("ARGUS_CACHE_DIR", "/custom/cache")
+        assert _default_cache_root() == Path("/custom/cache")
+
+    def test_default_cache_root_uses_tmpdir(self, monkeypatch):
+        monkeypatch.delenv("ARGUS_CACHE_DIR", raising=False)
+        root = _default_cache_root()
+        assert "argus-cache" in str(root)
+
+    def test_no_cache_scanners_excluded(self):
+        """Scanners without heavy DBs should NOT be in CACHE_MOUNTS."""
+        for scanner in ("bandit", "supply-chain", "osv-scanner"):
+            assert scanner not in CACHE_MOUNTS, (
+                f"{scanner} should not have a cache mount"
             )

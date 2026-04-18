@@ -1,6 +1,7 @@
 """Argus CLI — command-line interface for security scanning."""
 
 import argparse
+import os
 import sys
 import threading
 import time
@@ -147,6 +148,7 @@ def build_parser() -> argparse.ArgumentParser:
     _build_validate_parser(subparsers)
     _build_mcp_parser(subparsers)
     _build_completion_parser(subparsers)
+    _build_cache_parser(subparsers)
 
     return parser
 
@@ -306,6 +308,12 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Allow local tool versions that differ from argus-pinned versions. "
              "Use in airgapped environments where tool updates are constrained.",
+    )
+    scan_parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Disable DB cache volume mounts. Forces scanners to re-download "
+             "vulnerability databases on every container run.",
     )
 
     # Container-specific flags (used with: argus scan container)
@@ -633,6 +641,33 @@ def _build_completion_parser(subparsers: argparse._SubParsersAction) -> None:
     )
 
 
+def _build_cache_parser(subparsers: argparse._SubParsersAction) -> None:
+    """Add the 'cache' subcommand for managing scanner DB caches."""
+    cache_parser = subparsers.add_parser(
+        "cache",
+        help="Manage scanner database caches",
+        description=(
+            "Manage cached vulnerability databases used by container-based scanners.\n\n"
+            "Argus caches scanner databases (Trivy, Grype, ClamAV, etc.) in the system\n"
+            "temp directory so container runs don't re-download hundreds of MB each time.\n"
+            "The cache persists across runs within a session but is cleaned on reboot.\n\n"
+            "Cache location: $TMPDIR/argus-cache (override with ARGUS_CACHE_DIR)\n"
+            "For persistent caching: export ARGUS_CACHE_DIR=~/.argus/cache"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    cache_sub = cache_parser.add_subparsers(dest="cache_action")
+
+    cache_sub.add_parser(
+        "info",
+        help="Show cache location and size per scanner",
+    )
+    cache_sub.add_parser(
+        "clean",
+        help="Remove all cached scanner databases",
+    )
+
+
 def _build_report_parser(subparsers: argparse._SubParsersAction) -> None:
     """Add the 'report' subcommand."""
     report_parser = subparsers.add_parser(
@@ -828,6 +863,7 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
                 exclude=getattr(args, "exclude", ""),
                 parallel=not getattr(args, "no_parallel", False),
                 allow_local_versions=getattr(args, "allow_local_versions", False),
+                no_cache=getattr(args, "no_cache", False),
             )
         log.info(
             "Scan complete: %d scanner(s), %d finding(s)",
@@ -1211,6 +1247,53 @@ def cmd_completion(args: argparse.Namespace) -> int:
     return EXIT_SUCCESS
 
 
+def cmd_cache(args: argparse.Namespace) -> int:
+    """Manage scanner database caches."""
+    from argus.containers import CACHE_MOUNTS, _default_cache_root
+
+    cache_root = _default_cache_root()
+    action = getattr(args, "cache_action", None)
+
+    if action == "clean":
+        if cache_root.exists():
+            import shutil
+            shutil.rmtree(cache_root)
+            print(f"Removed cache directory: {cache_root}")
+        else:
+            print("No cache directory found.")
+        return EXIT_SUCCESS
+
+    # Default: info
+    print(f"Cache directory: {cache_root}")
+    if os.environ.get("ARGUS_CACHE_DIR"):
+        print(f"  (set by ARGUS_CACHE_DIR)")
+    print()
+
+    total_size = 0
+    for scanner_key in sorted(CACHE_MOUNTS):
+        scanner_dir = cache_root / scanner_key
+        if scanner_dir.exists():
+            size = sum(f.stat().st_size for f in scanner_dir.rglob("*") if f.is_file())
+            total_size += size
+            print(f"  {scanner_key:<15} {_format_size(size)}")
+        else:
+            print(f"  {scanner_key:<15} (not cached)")
+
+    print(f"\n  {'Total':<15} {_format_size(total_size)}")
+    return EXIT_SUCCESS
+
+
+def _format_size(size_bytes: int) -> str:
+    """Format byte count as human-readable string."""
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    if size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    if size_bytes < 1024 * 1024 * 1024:
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+    return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
+
+
 def cmd_mcp(args: argparse.Namespace) -> int:
     """Start the MCP server for AI assistant integration."""
     try:
@@ -1245,6 +1328,7 @@ _argus() {{
         'validate:Validate an argus.yml configuration file'
         'mcp:Start the MCP server for AI assistant integration'
         'completion:Generate shell completion script'
+        'cache:Manage scanner database caches'
     )
 
     scanners=({scanners})
@@ -1280,6 +1364,9 @@ _argus() {{
                         '--no-timestamp[Flat output directory]'
                         '--fail-fast[Abort on first failure]'
                         '--timeout[Per-scanner timeout]:seconds:'
+                        '--no-parallel[Run scanners sequentially]'
+                        '--allow-local-versions[Skip version enforcement]'
+                        '--no-cache[Disable DB cache volume mounts]'
                     )
 
                     scan_container=(
@@ -1351,7 +1438,7 @@ _argus_completions() {{
     cur="${{COMP_WORDS[COMP_CWORD]}}"
     prev="${{COMP_WORDS[COMP_CWORD-1]}}"
 
-    commands="init scan classify collect report validate mcp completion"
+    commands="init scan classify collect report validate mcp completion cache"
     scanners="{scanners}"
     severity="critical high medium low none"
     formats="terminal markdown sarif json"
@@ -1375,7 +1462,7 @@ _argus_completions() {{
                 --scan-type) COMPREPLY=($(compgen -W "baseline full" -- "$cur")); return ;;
                 --path|-p|--output-dir|-o|--config|-c|--output-vars) COMPREPLY=($(compgen -d -- "$cur")); return ;;
             esac
-            COMPREPLY=($(compgen -W "--path --config --output-dir --severity-threshold --format --output-vars --list --verbose --no-spinner --no-timestamp --fail-fast --timeout" -- "$cur"))
+            COMPREPLY=($(compgen -W "--path --config --output-dir --severity-threshold --format --output-vars --list --verbose --no-spinner --no-timestamp --fail-fast --timeout --no-cache --no-parallel --allow-local-versions" -- "$cur"))
             ;;
         report)
             if [ "$COMP_CWORD" -eq 2 ]; then
@@ -1769,6 +1856,7 @@ def main(argv: list[str] | None = None) -> None:
         "validate": cmd_validate,
         "mcp": cmd_mcp,
         "completion": cmd_completion,
+        "cache": cmd_cache,
     }
 
     handler = handlers.get(args.command)

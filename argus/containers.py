@@ -4,7 +4,11 @@ All container image references are centralized here for:
 1. Single-point version updates
 2. Dependabot/Renovate tracking
 3. Registry override support
+4. DB cache volume mounts for persistent vulnerability databases
 """
+
+import os
+from pathlib import Path
 
 # Official images from tool authors (used directly, not rebuilt by argus)
 OFFICIAL_IMAGES = {
@@ -69,3 +73,46 @@ def get_expected_version(scanner_name: str) -> str | None:
     """
     image = get_image(scanner_name)
     return expected_version(image)
+
+
+# Scanner → container cache path mappings.
+# Keys are resolved via _ALIASES (same as get_image), values are the
+# absolute path inside the container where the tool stores its DB/cache.
+CACHE_MOUNTS: dict[str, str] = {
+    "trivy": "/root/.cache/trivy",
+    "grype": "/root/.cache/grype",
+    "clamav": "/var/lib/clamav",
+    "semgrep": "/root/.semgrep",
+    "checkov": "/root/.checkov",
+}
+
+
+def _default_cache_root() -> Path:
+    """Return the host-side cache root directory.
+
+    Uses ``ARGUS_CACHE_DIR`` env var if set, otherwise a temporary
+    directory (``$TMPDIR/argus-cache``).  The temp dir is non-intrusive —
+    it persists across runs within a session but is cleaned on reboot,
+    avoiding permanent disk consumption on the host.
+    """
+    env = os.environ.get("ARGUS_CACHE_DIR")
+    if env:
+        return Path(env)
+    import tempfile
+    return Path(tempfile.gettempdir()) / "argus-cache"
+
+
+def get_cache_mount(scanner_name: str) -> tuple[Path, str] | None:
+    """Return (host_path, container_path) for a scanner's DB cache.
+
+    Returns ``None`` if the scanner has no known cache directory.
+    The host directory is created lazily if it does not exist.
+    """
+    key = _ALIASES.get(scanner_name, scanner_name)
+    container_path = CACHE_MOUNTS.get(key)
+    if container_path is None:
+        return None
+
+    host_dir = _default_cache_root() / key
+    host_dir.mkdir(parents=True, exist_ok=True)
+    return (host_dir, container_path)

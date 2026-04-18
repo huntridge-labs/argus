@@ -991,3 +991,24 @@ class TestToolVersionEnforcement:
         summary = engine.run(scanner_names=["bandit"])
         assert len(summary.results) == 1
         assert summary.results[0].metadata.get("tool_version") == "1.0.0"
+
+
+class TestEngineCacheFlag:
+    """Test that no_cache flag controls cache volume mounts."""
+
+    def _make_engine(self, scanners_config=None):
+        data = {}
+        if scanners_config:
+            data["scanners"] = scanners_config
+        config = ArgusConfig.from_dict(data)
+        return ArgusEngine(config)
+
+    def test_no_cache_flag_stored(self):
+        engine = self._make_engine()
+        engine.run(no_cache=True)
+        assert engine._no_cache is True
+
+    def test_cache_enabled_by_default(self):
+        engine = self._make_engine()
+        engine.run()
+        assert engine._no_cache is False

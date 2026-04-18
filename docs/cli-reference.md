@@ -61,9 +61,9 @@ argus scan [-h] [--path PATH] [--config CONFIG]
                   [--verbose] [--no-spinner] [--no-timestamp]
                   [--output-vars FILE] [--exclude PATTERNS] [--fail-fast]
                   [--timeout SECONDS] [--no-parallel] [--allow-local-versions]
-                  [--discover [PATH]] [--image REF] [--scanners SCANNERS]
-                  [--target URL] [--port PORT] [--env KEY=VALUE]
-                  [--scan-type {baseline,full}]
+                  [--no-cache] [--discover [PATH]] [--image REF]
+                  [--scanners SCANNERS] [--target URL] [--port PORT]
+                  [--env KEY=VALUE] [--scan-type {baseline,full}]
                   [--startup-timeout STARTUP_TIMEOUT]
                   [scanner]
 ```
@@ -91,6 +91,7 @@ argus scan [-h] [--path PATH] [--config CONFIG]
 | `--timeout` | Per-scanner timeout in seconds. Scanners exceeding this limit are killed. |  |
 | `--no-parallel` | Run scanners sequentially instead of concurrently. | `false` |
 | `--allow-local-versions` | Allow local tool versions that differ from argus-pinned versions. Use in airgapped environments where tool updates are constrained. | `false` |
+| `--no-cache` | Disable DB cache volume mounts. Forces scanners to re-download vulnerability databases on every container run. | `false` |
 
 **Container Scanning:**
 
@@ -240,6 +241,21 @@ argus completion [-h] {bash,zsh}
 **Arguments:**
 
 - `shell` — Shell type to generate completions for (choices: bash, zsh)
+
+### `argus cache`
+
+Manage cached vulnerability databases used by container-based scanners.
+
+Argus caches scanner databases (Trivy, Grype, ClamAV, etc.) in the system
+temp directory so container runs don't re-download hundreds of MB each time.
+The cache persists across runs within a session but is cleaned on reboot.
+
+Cache location: $TMPDIR/argus-cache (override with ARGUS_CACHE_DIR)
+For persistent caching: export ARGUS_CACHE_DIR=~/.argus/cache
+
+```
+argus cache [-h] {info,clean} ...
+```
 
 ## Quick Reference
 

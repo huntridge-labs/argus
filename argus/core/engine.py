@@ -22,6 +22,7 @@ class ArgusEngine:
         self.config = config
         self._scanners: dict[str, Scanner] = {}
         self._allow_local_versions: bool = False
+        self._no_cache: bool = False
 
     def register_scanner(self, scanner: Scanner) -> None:
         """Register a scanner instance for use by the engine."""
@@ -42,6 +43,7 @@ class ArgusEngine:
         exclude: str = "",
         parallel: bool = True,
         allow_local_versions: bool = False,
+        no_cache: bool = False,
     ) -> ScanSummary:
         """Run scanners and return an aggregated ScanSummary.
 
@@ -53,10 +55,12 @@ class ArgusEngine:
             exclude: comma-separated CLI exclusion patterns
             parallel: run scanners concurrently (default True)
             allow_local_versions: skip version enforcement for local tools
+            no_cache: disable DB cache volume mounts for containers
         """
         from .exclusions import build_exclusion_set, log_exclusion_set
 
         self._allow_local_versions = allow_local_versions
+        self._no_cache = no_cache
 
         names_to_run = self._resolve_scanner_names(scanner_names)
         logger.debug(
@@ -517,6 +521,17 @@ class ArgusEngine:
                 "-v", f"{abs_path}:/workspace:ro",
                 "-v", f"{output_dir}:/output",
             ]
+
+            # Mount host-side DB cache to persist vulnerability databases
+            if not self._no_cache:
+                from ..containers import get_cache_mount
+                cache = get_cache_mount(scanner.name)
+                if cache:
+                    host_dir, container_dir = cache
+                    docker_cmd.extend(["-v", f"{host_dir}:{container_dir}"])
+                    logger.debug(
+                        "DB cache mount: %s → %s", host_dir, container_dir,
+                    )
 
             entrypoint = getattr(scanner, "container_entrypoint", None)
             if entrypoint:
