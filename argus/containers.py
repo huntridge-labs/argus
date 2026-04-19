@@ -12,9 +12,9 @@ from pathlib import Path
 
 # Official images from tool authors (used directly, not rebuilt by argus)
 OFFICIAL_IMAGES = {
-    "trivy": "aquasec/trivy:0.69.3",
-    "grype": "anchore/grype:0.111.0",
-    "syft": "anchore/syft:1.42.4",
+    "trivy": "aquasec/trivy:0.70.0",
+    "grype": "anchore/grype:v0.88.0",
+    "syft": "anchore/syft:v1.42.4",
     "gitleaks": "zricethezav/gitleaks:v8.30.1",
     "clamav": "clamav/clamav:1.4",
     "checkov": "bridgecrew/checkov:3.2.346",

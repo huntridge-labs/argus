@@ -197,10 +197,13 @@ def _run_trivy(
 
     Tries local binary first, falls back to Docker container image
     when trivy is not installed and a container runtime is available.
+    When using containers, pre-warms the vulnerability DB in a separate
+    step so the DB download progress doesn't corrupt scan output.
     When local=False, trivy scans directly from the registry without
     pulling the image — minimal disk usage.
     """
     import subprocess
+    from argus.containers import get_cache_mount
 
     output_file = tmp_path / "trivy-results.json"
     use_container = False
@@ -225,12 +228,32 @@ def _run_trivy(
 
         rt = container_runtime.runtime_cmd()
         image = get_image("trivy")
-        cmd = [
-            rt, "run", "--rm",
-            "-v", f"{tmp_path}:/output",
+
+        # Build volume mounts: output dir + optional DB cache
+        vol_args = ["-v", f"{tmp_path}:/output"]
+        cache = get_cache_mount("trivy")
+        if cache:
+            host_dir, container_dir = cache
+            vol_args.extend(["-v", f"{host_dir}:{container_dir}"])
+
+        # Pre-warm the DB so the download progress doesn't mix with scan output
+        logger.info("Updating trivy vulnerability DB...")
+        db_cmd = [rt, "run", "--rm"] + vol_args + [
+            image, "image", "--download-db-only",
+        ]
+        db_result = subprocess.run(db_cmd, capture_output=True, text=True, timeout=300)
+        if db_result.returncode != 0:
+            logger.warning(
+                "Trivy DB download failed (exit %d), scan may still work with cached DB",
+                db_result.returncode,
+            )
+
+        # Run actual scan with --skip-db-update (DB already warm)
+        cmd = [rt, "run", "--rm"] + vol_args + [
             image,
             "image", "--format", "json",
             "--output", "/output/trivy-results.json",
+            "--skip-db-update",
         ]
         if not local:
             cmd.extend(["--image-src", "remote"])
@@ -257,18 +280,20 @@ def _run_trivy(
         return []
 
     if not output_file.exists():
+        stderr = result.stderr.strip()[:500]
         logger.error(
             "trivy produced no output (exit %d): %s",
-            result.returncode,
-            result.stderr.strip()[:500],
+            result.returncode, stderr,
         )
-        return []
+        raise RuntimeError(
+            f"trivy scan failed (exit {result.returncode}): {stderr or 'no output'}"
+        )
 
     try:
         return _parser.parse_trivy_results(output_file)
     except Exception:
         logger.exception("Failed to parse trivy results for %s", image_ref)
-        return []
+        raise
 
 
 def _run_grype(
@@ -277,10 +302,11 @@ def _run_grype(
     """Run grype and parse results.
 
     Tries local binary first, falls back to Docker container image.
-    Grype automatically fetches from registry when the image isn't
-    in local Docker — no special flag needed.
+    When using containers, pre-warms the vulnerability DB so the
+    download progress doesn't corrupt scan output.
     """
     import subprocess
+    from argus.containers import get_cache_mount
 
     output_file = tmp_path / "grype-results.json"
     use_container = False
@@ -305,11 +331,26 @@ def _run_grype(
 
         rt = container_runtime.runtime_cmd()
         image = get_image("grype")
-        cmd = [
-            rt, "run", "--rm",
-            "-v", f"{tmp_path}:/output",
-            image,
-            image_ref,
+
+        # Build volume mounts: output dir + optional DB cache
+        vol_args = ["-v", f"{tmp_path}:/output"]
+        cache = get_cache_mount("grype")
+        if cache:
+            host_dir, container_dir = cache
+            vol_args.extend(["-v", f"{host_dir}:{container_dir}"])
+
+        # Pre-warm the DB so download progress doesn't mix with scan output
+        logger.info("Updating grype vulnerability DB...")
+        db_cmd = [rt, "run", "--rm"] + vol_args + [image, "db", "update"]
+        db_result = subprocess.run(db_cmd, capture_output=True, text=True, timeout=300)
+        if db_result.returncode != 0:
+            logger.warning(
+                "Grype DB update failed (exit %d), scan may still work with cached DB",
+                db_result.returncode,
+            )
+
+        cmd = [rt, "run", "--rm"] + vol_args + [
+            image, image_ref,
             "-o", "json",
             "--file", "/output/grype-results.json",
         ]
@@ -332,12 +373,14 @@ def _run_grype(
         return []
 
     if not output_file.exists():
+        stderr = result.stderr.strip()[:500]
         logger.error(
             "grype produced no output (exit %d): %s",
-            result.returncode,
-            result.stderr.strip()[:500],
+            result.returncode, stderr,
         )
-        return []
+        raise RuntimeError(
+            f"grype scan failed (exit {result.returncode}): {stderr or 'no output'}"
+        )
 
     try:
         return _parser.parse_grype_results(output_file)
