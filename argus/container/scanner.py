@@ -29,6 +29,7 @@ class ContainerScanResult:
     combined_findings: list[Finding] = field(default_factory=list)
     build_success: bool = True
     scan_error: str = ""
+    scanner_errors: dict[str, str] = field(default_factory=dict)
 
     @property
     def critical_count(self) -> int:
@@ -112,6 +113,10 @@ class ContainerScanSummary:
     def build_failures(self) -> int:
         return sum(1 for r in self.results if not r.build_success)
 
+    @property
+    def scan_failures(self) -> int:
+        return sum(1 for r in self.results if r.scanner_errors)
+
 
 def scan_image(
     target: ContainerTarget,
@@ -125,9 +130,11 @@ def scan_image(
     This uses minimal disk — only the vulnerability DB and scan output.
 
     For locally-built images, scanners reference the local Docker daemon.
+    Per-scanner errors are caught and recorded, not swallowed.
     """
     trivy_findings: list[Finding] = []
     grype_findings: list[Finding] = []
+    scanner_errors: dict[str, str] = {}
 
     # Determine if the image is local (built by us) or remote
     is_local = target.dockerfile is not None
@@ -136,14 +143,22 @@ def scan_image(
         tmp_path = Path(tmp_dir)
 
         if "trivy" in scanners:
-            trivy_findings = _run_trivy(
-                target.image_ref, tmp_path, local=is_local,
-            )
+            try:
+                trivy_findings = _run_trivy(
+                    target.image_ref, tmp_path, local=is_local,
+                )
+            except RuntimeError as exc:
+                logger.error("trivy scan failed for %s: %s", target.image_ref, exc)
+                scanner_errors["trivy"] = str(exc)
 
         if "grype" in scanners:
-            grype_findings = _run_grype(
-                target.image_ref, tmp_path, local=is_local,
-            )
+            try:
+                grype_findings = _run_grype(
+                    target.image_ref, tmp_path, local=is_local,
+                )
+            except RuntimeError as exc:
+                logger.error("grype scan failed for %s: %s", target.image_ref, exc)
+                scanner_errors["grype"] = str(exc)
 
         if sbom and "syft" not in scanners:
             _run_syft(target.image_ref, tmp_path)
@@ -156,6 +171,7 @@ def scan_image(
         trivy_findings=trivy_findings,
         grype_findings=grype_findings,
         combined_findings=combined,
+        scanner_errors=scanner_errors,
     )
 
 
@@ -188,6 +204,32 @@ def deduplicate_findings(
         combined.append(finding)
 
     return combined
+
+
+_DOCKER_SOCK = Path("/var/run/docker.sock")
+
+
+def _container_vol_args(
+    tmp_path: Path, cache_scanner: str, mount_docker_sock: bool = False,
+) -> list[str]:
+    """Build standard volume arguments for a container-mode sub-scanner.
+
+    Includes: output dir, optional DB cache, optional docker.sock mount
+    (needed when scanning locally-built images visible only to the host daemon).
+    """
+    from argus.containers import get_cache_mount
+
+    args = ["-v", f"{tmp_path}:/output"]
+
+    cache = get_cache_mount(cache_scanner)
+    if cache:
+        host_dir, container_dir = cache
+        args.extend(["-v", f"{host_dir}:{container_dir}"])
+
+    if mount_docker_sock and _DOCKER_SOCK.exists():
+        args.extend(["-v", f"{_DOCKER_SOCK}:{_DOCKER_SOCK}:ro"])
+
+    return args
 
 
 def _run_trivy(
@@ -229,12 +271,9 @@ def _run_trivy(
         rt = container_runtime.runtime_cmd()
         image = get_image("trivy")
 
-        # Build volume mounts: output dir + optional DB cache
-        vol_args = ["-v", f"{tmp_path}:/output"]
-        cache = get_cache_mount("trivy")
-        if cache:
-            host_dir, container_dir = cache
-            vol_args.extend(["-v", f"{host_dir}:{container_dir}"])
+        # Mount docker.sock when scanning local images so trivy can
+        # see images on the host daemon
+        vol_args = _container_vol_args(tmp_path, "trivy", mount_docker_sock=local)
 
         # Pre-warm the DB so the download progress doesn't mix with scan output
         logger.info("Updating trivy vulnerability DB...")
@@ -332,12 +371,8 @@ def _run_grype(
         rt = container_runtime.runtime_cmd()
         image = get_image("grype")
 
-        # Build volume mounts: output dir + optional DB cache
-        vol_args = ["-v", f"{tmp_path}:/output"]
-        cache = get_cache_mount("grype")
-        if cache:
-            host_dir, container_dir = cache
-            vol_args.extend(["-v", f"{host_dir}:{container_dir}"])
+        # Mount docker.sock when scanning local images
+        vol_args = _container_vol_args(tmp_path, "grype", mount_docker_sock=local)
 
         # Pre-warm the DB so download progress doesn't mix with scan output
         logger.info("Updating grype vulnerability DB...")
@@ -412,9 +447,9 @@ def _run_syft(image_ref: str, tmp_path: Path) -> None:
 
         logger.info("Running syft via container: %s", image)
         rt = container_runtime.runtime_cmd()
-        cmd = [
-            rt, "run", "--rm",
-            "-v", f"{tmp_path}:/output",
+        # Syft needs docker.sock to read local images
+        vol_args = _container_vol_args(tmp_path, "syft", mount_docker_sock=True)
+        cmd = [rt, "run", "--rm"] + vol_args + [
             image,
             image_ref,
             "-o", "cyclonedx-json",

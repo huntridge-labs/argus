@@ -974,7 +974,15 @@ def _cmd_container_scan(args: argparse.Namespace) -> int:
             sarif_reporter = get_reporter("sarif")
             sarif_reporter.report(ScanSummary(results=results), output_dir)
 
-    # Exit code
+    # Exit code — scanner failures are always non-zero
+    scan_failures = getattr(summary, "scan_failures", 0)
+    if scan_failures:
+        print(
+            f"\n{scan_failures} scanner failure(s) — results are incomplete",
+            file=sys.stderr,
+        )
+        return EXIT_ERROR
+
     if args.severity_threshold and args.severity_threshold != "none":
         from argus.core.models import Severity
         threshold = Severity.from_string(args.severity_threshold)
@@ -1159,14 +1167,27 @@ def _print_container_terminal(summary) -> None:
     print("\n" + "=" * 50)
     print("  Container Security Scan Results")
     print("=" * 50 + "\n")
-    print(f"Containers scanned: {summary.container_count}")
-    print(f"Build failures:     {summary.build_failures}")
-    print(f"Total findings:     {summary.total_count}")
-    print(f"Unique findings:    {summary.unique_count}")
+    print(f"Containers scanned:  {summary.container_count}")
+    print(f"Build failures:      {summary.build_failures}")
+    scan_failures = getattr(summary, "scan_failures", 0)
+    if scan_failures:
+        print(f"Scanner failures:    {scan_failures}")
+    print(f"Total findings:      {summary.total_count}")
+    print(f"Unique findings:     {summary.unique_count}")
     print()
     for r in summary.results:
-        status = "BUILD FAILED" if not r.build_success else f"{r.total_count} findings"
+        if not r.build_success:
+            status = "BUILD FAILED"
+        elif getattr(r, "scanner_errors", {}):
+            failed = ", ".join(r.scanner_errors.keys())
+            status = f"SCAN FAILED ({failed})"
+        else:
+            status = f"{r.total_count} findings"
         print(f"  {r.name:<20} {status}")
+        for tool, err in getattr(r, "scanner_errors", {}).items():
+            # Truncate long error messages for terminal readability
+            short = err[:120] + "..." if len(err) > 120 else err
+            print(f"    {tool}: {short}")
     print()
 
 
