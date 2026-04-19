@@ -1,6 +1,7 @@
 """Container scanner orchestrating Trivy, Grype, and Syft."""
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -9,6 +10,8 @@ from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
+
+logger = logging.getLogger("argus")
 
 
 class ContainerScanner:
@@ -58,35 +61,48 @@ class ContainerScanner:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
 
-            if "trivy" in enabled and shutil.which("trivy") is not None:
+            if "trivy" in enabled:
                 trivy_output = tmp_path / "trivy-results.json"
-                trivy_findings, trivy_meta = self._run_trivy(
-                    image_ref, trivy_output, env
+                trivy_findings, trivy_meta = self._run_sub_scanner(
+                    tool="trivy",
+                    local_cmd=["trivy", "image", "--format", "json",
+                               "--output", str(trivy_output), image_ref],
+                    container_args=["image", "--format", "json",
+                                    "--output", "/output/results.json", image_ref],
+                    output_file=trivy_output,
+                    parse_fn=self.parse_trivy_results,
+                    env=env,
                 )
-                self._merge_findings(
-                    trivy_findings, all_findings, seen_cves
-                )
+                self._merge_findings(trivy_findings, all_findings, seen_cves)
                 metadata["trivy"] = trivy_meta
 
-            if "grype" in enabled and shutil.which("grype") is not None:
+            if "grype" in enabled:
                 grype_output = tmp_path / "grype-results.json"
-                grype_findings, grype_meta = self._run_grype(
-                    image_ref, grype_output, env
+                grype_findings, grype_meta = self._run_sub_scanner(
+                    tool="grype",
+                    local_cmd=["grype", image_ref, "-o", "json",
+                               "--file", str(grype_output)],
+                    container_args=[image_ref, "-o", "json",
+                                    "--file", "/output/results.json"],
+                    output_file=grype_output,
+                    parse_fn=self.parse_grype_results,
+                    env=env,
                 )
-                self._merge_findings(
-                    grype_findings, all_findings, seen_cves
-                )
+                self._merge_findings(grype_findings, all_findings, seen_cves)
                 metadata["grype"] = grype_meta
 
-            if "syft" in enabled and shutil.which("syft") is not None:
+            if "syft" in enabled:
                 syft_output = tmp_path / "syft-sbom.json"
-                syft_meta = self._run_syft(image_ref, syft_output, env)
+                syft_meta = self._run_syft_with_fallback(
+                    image_ref, syft_output, env,
+                )
                 metadata["syft"] = syft_meta
 
             if not metadata:
                 metadata["error"] = (
                     "None of the enabled scanners "
-                    "(trivy, grype, syft) are installed"
+                    "(trivy, grype, syft) could be executed — "
+                    "install locally or ensure Docker is available"
                 )
 
         return ScanResult(
@@ -96,11 +112,12 @@ class ContainerScanner:
         )
 
     def is_available(self) -> bool:
-        """Check if at least one vulnerability scanner is installed."""
-        return (
-            shutil.which("trivy") is not None
-            or shutil.which("grype") is not None
-        )
+        """Check if at least one vulnerability scanner is available (local or Docker)."""
+        if shutil.which("trivy") or shutil.which("grype"):
+            return True
+        # Check if Docker is available for container fallback
+        from argus import container_runtime
+        return container_runtime.is_available() and bool(get_image("trivy"))
 
     def install_command(self) -> str | None:
         """Return install hints for the container scanning tools."""
@@ -161,86 +178,110 @@ class ContainerScanner:
 
         return env
 
-    def _run_trivy(
+    def _run_sub_scanner(
         self,
-        image_ref: str,
+        tool: str,
+        local_cmd: list[str],
+        container_args: list[str],
         output_file: Path,
+        parse_fn,
         env: dict[str, str],
     ) -> tuple[list[Finding], dict]:
-        """Execute trivy image scan and return findings plus metadata."""
-        cmd = [
-            "trivy", "image",
-            "--format", "json",
-            "--output", str(output_file),
-            image_ref,
-        ]
+        """Run a sub-scanner locally or via Docker fallback.
 
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            env=env,
-        )
+        Tries local binary first, falls back to container image if not
+        installed and a container runtime is available.
+        """
+        if shutil.which(tool):
+            logger.debug("Running %s locally", tool)
+            result = subprocess.run(
+                local_cmd, capture_output=True, text=True, env=env,
+            )
+            meta: dict = {"returncode": result.returncode, "execution": "local"}
+        else:
+            # Docker fallback
+            from argus import container_runtime
+            image = get_image(tool)
+            if not image or not container_runtime.is_available():
+                logger.warning(
+                    "%s not installed and no container runtime available — skipping",
+                    tool,
+                )
+                return [], {"error": f"{tool} not available (local or container)"}
 
-        meta: dict = {"returncode": result.returncode}
+            if not container_runtime.pull_image(image):
+                return [], {"error": f"Failed to pull {image}"}
+
+            logger.info("Running %s via container: %s", tool, image)
+            rt = container_runtime.runtime_cmd()
+            output_dir = str(output_file.parent)
+            cmd = [
+                rt, "run", "--rm",
+                "-v", f"{output_dir}:/output",
+                image,
+            ] + container_args
+
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, env=env,
+            )
+            meta = {"returncode": result.returncode, "execution": "container", "image": image}
+
+            # Container writes to /output/results.json — copy to expected path
+            container_output = output_file.parent / "results.json"
+            if container_output.exists() and container_output != output_file:
+                container_output.rename(output_file)
 
         if not output_file.exists():
             meta["error"] = result.stderr.strip() or "No output produced"
             return [], meta
 
-        findings = self.parse_trivy_results(output_file)
+        findings = parse_fn(output_file)
         return findings, meta
 
-    def _run_grype(
-        self,
-        image_ref: str,
-        output_file: Path,
-        env: dict[str, str],
-    ) -> tuple[list[Finding], dict]:
-        """Execute grype scan and return findings plus metadata."""
-        cmd = [
-            "grype", image_ref,
-            "-o", "json",
-            "--file", str(output_file),
-        ]
-
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            env=env,
-        )
-
-        meta: dict = {"returncode": result.returncode}
-
-        if not output_file.exists():
-            meta["error"] = result.stderr.strip() or "No output produced"
-            return [], meta
-
-        findings = self.parse_grype_results(output_file)
-        return findings, meta
-
-    def _run_syft(
+    def _run_syft_with_fallback(
         self,
         image_ref: str,
         output_file: Path,
         env: dict[str, str],
     ) -> dict:
-        """Execute syft SBOM generation and return metadata."""
-        cmd = [
-            "syft", image_ref,
-            "-o", "cyclonedx-json",
-            "--file", str(output_file),
-        ]
+        """Run Syft SBOM generation locally or via Docker fallback."""
+        if shutil.which("syft"):
+            cmd = [
+                "syft", image_ref,
+                "-o", "cyclonedx-json",
+                "--file", str(output_file),
+            ]
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, env=env,
+            )
+            meta: dict = {"returncode": result.returncode, "execution": "local"}
+        else:
+            from argus import container_runtime
+            image = get_image("syft")
+            if not image or not container_runtime.is_available():
+                return {"error": "syft not available (local or container)"}
 
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            env=env,
-        )
+            if not container_runtime.pull_image(image):
+                return {"error": f"Failed to pull {image}"}
 
-        meta: dict = {"returncode": result.returncode}
+            logger.info("Running syft via container: %s", image)
+            rt = container_runtime.runtime_cmd()
+            output_dir = str(output_file.parent)
+            cmd = [
+                rt, "run", "--rm",
+                "-v", f"{output_dir}:/output",
+                image,
+                image_ref,
+                "-o", "cyclonedx-json",
+                "--file", "/output/results.json",
+            ]
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, env=env,
+            )
+            meta = {"returncode": result.returncode, "execution": "container", "image": image}
+            container_output = output_file.parent / "results.json"
+            if container_output.exists() and container_output != output_file:
+                container_output.rename(output_file)
 
         if output_file.exists():
             meta["sbom_path"] = str(output_file)

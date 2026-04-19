@@ -5,7 +5,6 @@ Guarantees cleanup even on failures.
 """
 
 import logging
-import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
@@ -224,7 +223,9 @@ class DastEngine:
 
     def _run_zap_scan_url(self, target_url: str) -> list[Finding]:
         """Run ZAP against an already-running URL (no Docker network needed)."""
-        if shutil.which("docker") is None:
+        from argus import container_runtime
+
+        if not container_runtime.is_available():
             raise RuntimeError("Docker is required to run ZAP scanner")
 
         from argus.containers import get_image
@@ -232,12 +233,18 @@ class DastEngine:
         if not zap_image:
             raise RuntimeError("No ZAP container image configured")
 
+        # Pre-pull to avoid Docker pull output mixing with scan stdout
+        if not container_runtime.pull_image(zap_image):
+            raise RuntimeError(f"Failed to pull ZAP image: {zap_image}")
+
+        rt = container_runtime.runtime_cmd()
+
         with tempfile.TemporaryDirectory() as tmp_dir:
             output_path = Path(tmp_dir)
             results_file = output_path / "results.json"
 
             cmd = [
-                "docker", "run", "--rm",
+                rt, "run", "--rm",
                 "--network", "host",
                 "-v", f"{output_path}:/zap/wrk:rw",
                 zap_image,
@@ -251,14 +258,27 @@ class DastEngine:
             proc = subprocess.run(cmd, capture_output=True, text=True)
 
             if proc.returncode not in (0, 1, 2):
-                logger.error("ZAP failed: %s", proc.stderr[:500])
-                raise RuntimeError(f"ZAP exited with code {proc.returncode}")
+                stderr = proc.stderr.strip()[:500]
+                logger.error("ZAP failed (exit %d): %s", proc.returncode, stderr)
+                raise RuntimeError(
+                    f"ZAP exited with code {proc.returncode}: {stderr or 'no output'}"
+                )
 
             if results_file.exists():
                 from argus.scanners.zap import ZapScanner
                 return ZapScanner().parse_results(results_file)
 
-            return []
+            # No output file — scan didn't produce results
+            stderr = proc.stderr.strip()[:500]
+            stdout = proc.stdout.strip()[:500]
+            logger.error(
+                "ZAP produced no output file (exit %d). stderr: %s",
+                proc.returncode, stderr,
+            )
+            raise RuntimeError(
+                f"ZAP scan produced no results (exit {proc.returncode}): "
+                f"{stderr or stdout or 'no output'}"
+            )
 
     def _process_target(self, target_config: dict) -> DastScanResult:
         """Run the full lifecycle for a single target.
@@ -324,8 +344,14 @@ class DastEngine:
         can reach the target by container name. Parses results
         using the existing :class:`ZapScanner` parser.
         """
-        if shutil.which("docker") is None:
+        from argus import container_runtime
+
+        if not container_runtime.is_available():
             raise RuntimeError("Docker is required to run ZAP scanner")
+
+        # Pre-pull to avoid Docker pull output mixing with scan stdout
+        if not container_runtime.pull_image(_ZAP_IMAGE):
+            raise RuntimeError(f"Failed to pull ZAP image: {_ZAP_IMAGE}")
 
         container_name = f"argus-dast-{target.name}"
         # ZAP connects to the target via the Docker network by name
@@ -379,12 +405,14 @@ class DastEngine:
         output_dir: str,
     ) -> list[str]:
         """Build the ZAP Docker command."""
+        from argus import container_runtime
+
         scan_script = "zap-baseline.py"
         if self._scan_type == "full":
             scan_script = "zap-full-scan.py"
 
         return [
-            "docker", "run", "--rm",
+            container_runtime.runtime_cmd(), "run", "--rm",
             "--network", target.network_name,
             "-v", f"{output_dir}:/zap/wrk",
             _ZAP_IMAGE,
