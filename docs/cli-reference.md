@@ -1,6 +1,6 @@
 # Argus CLI Reference (v0.7.2)
 
-> Auto-generated from argparse definitions on 2026-04-18.
+> Auto-generated from argparse definitions on 2026-04-19.
 > Do not edit manually — run `python -m scripts.ci.gen_cli_docs` to regenerate.
 
 Argus Security Scanner — comprehensive security scanning for your codebase
@@ -199,6 +199,7 @@ Catches typos, invalid values, and unknown keys before scanning.
 
 ```
 argus validate [-h] [--config CONFIG] [--check-tools] [--strict]
+                      [--report-issue]
 ```
 
 **Options:**
@@ -208,6 +209,7 @@ argus validate [-h] [--config CONFIG] [--check-tools] [--strict]
 | `--config`, `-c` | Path to argus.yml config file (default: auto-detect) |  |
 | `--check-tools` | Also check scanner tool availability (local + Docker) | `false` |
 | `--strict` | Treat warnings as errors (exit non-zero). Useful in CI. | `false` |
+| `--report-issue` | Create or update a living issue on GitHub/GitLab with validation results. Requires GITHUB_TOKEN or CI_JOB_TOKEN. | `false` |
 
 ### `argus mcp`
 

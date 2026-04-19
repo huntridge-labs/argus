@@ -221,9 +221,10 @@ Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions sh
 
 ### CI Preflight and Config Health
 
-- [ ] CI workflow step: `argus validate --strict --check-tools` as a gate before scan jobs
-- [ ] Living issue (Renovate-style): a single "Argus Config Health" GitHub issue that gets updated (not recreated) when config validation fails on the default branch. Scheduled workflow runs `argus validate --strict --check-tools`, updates the issue body with current status, and auto-closes when healthy. Avoids issue spam — one issue, always current.
-- [ ] `argus validate --check-tools` notes for scanners with runtime network dependencies (e.g., OSV API, ClamAV freshclam, Trivy DB updates) — informational, not blocking
+- [x] `argus validate --strict --check-tools` as a CI gate before scan jobs
+- [x] Living issue via `--report-issue`: finds/creates/updates/closes a single "Argus Config Health" issue on GitHub or GitLab. Auto-detects CI provider from env vars, uses GITHUB_TOKEN or CI_JOB_TOKEN. Auto-closes when all checks pass.
+- [x] `--check-tools` shows runtime network dependencies (OSV API, ClamAV freshclam, Trivy DB) as informational notes
+- [x] `argus/preflight/` package: ci_provider.py (detection), issue_reporter.py (GitHub+GitLab), network_deps.py (scanner deps), report_body.py (Markdown generation) — 49 tests
 
 ### CI Examples & PR Feedback
 - [x] Example workflows with PR comment feedback for each platform

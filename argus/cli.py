@@ -600,6 +600,13 @@ def _build_validate_parser(subparsers: argparse._SubParsersAction) -> None:
         default=False,
         help="Treat warnings as errors (exit non-zero). Useful in CI.",
     )
+    validate_parser.add_argument(
+        "--report-issue",
+        action="store_true",
+        default=False,
+        help="Create or update a living issue on GitHub/GitLab with validation "
+             "results. Requires GITHUB_TOKEN or CI_JOB_TOKEN.",
+    )
 
 
 def _build_mcp_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -1591,6 +1598,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
     fatal = [e for e in errors if e.level == "error"]
 
     strict = getattr(args, "strict", False)
+    report_issue = getattr(args, "report_issue", False)
 
     if not errors:
         print(f"✅ {config_path} is valid")
@@ -1602,13 +1610,10 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
         if fatal:
             print(f"\n{len(fatal)} error(s), {len(warnings)} warning(s). Fix and retry.")
-            return EXIT_ERROR
-
-        if strict and warnings:
+        elif strict and warnings:
             print(f"\n❌ {len(warnings)} warning(s) treated as errors (--strict)")
-            return EXIT_ERROR
-
-        print(f"\n✅ {config_path} is valid ({len(warnings)} warning(s))")
+        else:
+            print(f"\n✅ {config_path} is valid ({len(warnings)} warning(s))")
 
     # Show summary with enabled/disabled breakdown
     scanners = data.get("scanners", {})
@@ -1630,29 +1635,51 @@ def cmd_validate(args: argparse.Namespace) -> int:
     print(f"   Backend: {backend}")
 
     # Tool readiness check
+    unavailable = []
+    tool_statuses = []
     if getattr(args, "check_tools", False) and enabled_names:
         registry = data.get("execution", {}).get("registry", "")
-        unavailable = _check_tool_readiness(enabled_names, backend, registry)
+        unavailable, tool_statuses = _check_tool_readiness(enabled_names, backend, registry)
         if unavailable and strict:
             print(f"\n❌ {len(unavailable)} scanner(s) unavailable (--strict)")
-            return EXIT_ERROR
 
+    # Living issue reporting (runs before exit so the issue captures full state)
+    if report_issue:
+        _report_issue(
+            config_path=config_path,
+            errors=[str(e) for e in fatal],
+            warnings=[str(w) for w in warnings],
+            tool_statuses=tool_statuses,
+            unavailable=unavailable,
+            strict=strict,
+        )
+
+    if fatal:
+        return EXIT_ERROR
+    if strict and warnings:
+        return EXIT_ERROR
+    if unavailable and strict:
+        return EXIT_ERROR
     return EXIT_SUCCESS
 
 
 def _check_tool_readiness(
     enabled_names: list[str], backend: str, registry: str = ""
-) -> list[str]:
+) -> tuple[list[str], list]:
     """Check whether enabled scanners can actually run.
 
-    Returns list of scanner names that cannot run.
+    Returns (unavailable_names, tool_statuses) where tool_statuses is a list
+    of ToolStatus objects for use in issue reporting.
     """
     import shutil
     from argus.scanners import SCANNER_REGISTRY
     from argus.containers import get_image
+    from argus.preflight.network_deps import get_network_deps
+    from argus.preflight.report_body import ToolStatus
 
     container_available = any(shutil.which(r) for r in ("docker", "podman", "nerdctl"))
     unavailable = []
+    statuses = []
 
     def _resolve_image(image: str) -> str:
         """Apply registry override to an image reference."""
@@ -1667,10 +1694,12 @@ def _check_tool_readiness(
         print(f"\n   Registry: {registry}")
     print("\n   Tool readiness:")
     for name in enabled_names:
+        net_deps = get_network_deps(name)
         cls = SCANNER_REGISTRY.get(name)
         if not cls:
             print(f"     {name}: ⚠️  unknown scanner (not in registry)")
             unavailable.append(name)
+            statuses.append(ToolStatus(name, False, "none", network_deps=net_deps))
             continue
 
         scanner = cls()
@@ -1680,26 +1709,82 @@ def _check_tool_readiness(
 
         if local:
             print(f"     {name}: ✅ installed locally")
+            statuses.append(ToolStatus(name, True, "local", network_deps=net_deps))
         elif backend == "local":
             install_cmd = scanner.install_command() or "see docs"
             print(f"     {name}: ❌ not found (install: {install_cmd})")
             unavailable.append(name)
+            statuses.append(ToolStatus(name, False, "none", network_deps=net_deps))
         elif not container_available:
             install_cmd = scanner.install_command() or "see docs"
             print(f"     {name}: ❌ not found, Docker not available (install: {install_cmd})")
             unavailable.append(name)
+            statuses.append(ToolStatus(name, False, "none", network_deps=net_deps))
         elif image:
             print(f"     {name}: 🐳 will use container ({image})")
+            statuses.append(ToolStatus(name, True, "container", image=image, network_deps=net_deps))
         else:
             install_cmd = scanner.install_command() or "see docs"
             print(f"     {name}: ❌ not found, no container image (install: {install_cmd})")
             unavailable.append(name)
+            statuses.append(ToolStatus(name, False, "none", network_deps=net_deps))
+
+        if net_deps:
+            for dep in net_deps:
+                print(f"             ℹ️  Requires network: {dep}")
 
     if not container_available and backend != "local":
         print("\n   ⚠️  No container runtime found (docker, podman, or nerdctl) — scanners without local installs will fail")
         print("      Install Docker, Podman, or nerdctl — or set execution.backend: local in argus.yml")
 
-    return unavailable
+    return unavailable, statuses
+
+
+def _report_issue(
+    config_path: str,
+    errors: list[str],
+    warnings: list[str],
+    tool_statuses: list,
+    unavailable: list[str],
+    strict: bool,
+) -> None:
+    """Create, update, or close a living issue on GitHub/GitLab.
+
+    Never raises — all failures are logged as warnings.
+    """
+    from argus.preflight.ci_provider import detect_ci_provider
+    from argus.preflight.issue_reporter import get_issue_reporter
+    from argus.preflight.report_body import build_issue_body, is_all_healthy
+
+    ctx = detect_ci_provider()
+    reporter = get_issue_reporter(ctx)
+    if reporter is None:
+        return
+
+    healthy = is_all_healthy(errors, warnings, unavailable, strict=strict)
+    existing = reporter.find_issue()
+
+    if healthy:
+        if existing:
+            if reporter.close_issue(existing["number"]):
+                print(f"\n   ✅ Closed issue #{existing['number']} — all checks pass")
+            else:
+                print(f"\n   ⚠️  Failed to close issue #{existing['number']}", file=sys.stderr)
+        else:
+            print("\n   ✅ All checks pass — no issue to report")
+    else:
+        body = build_issue_body(config_path, errors, warnings, tool_statuses)
+        if existing:
+            if reporter.update_issue(existing["number"], body):
+                print(f"\n   📝 Updated issue #{existing['number']}: {existing.get('url', '')}")
+            else:
+                print(f"\n   ⚠️  Failed to update issue #{existing['number']}", file=sys.stderr)
+        else:
+            result = reporter.create_issue(body)
+            if result:
+                print(f"\n   📝 Created issue #{result['number']}: {result.get('url', '')}")
+            else:
+                print("\n   ⚠️  Failed to create issue", file=sys.stderr)
 
 
 def cmd_collect(args: argparse.Namespace) -> int:
