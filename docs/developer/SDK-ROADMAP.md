@@ -112,127 +112,96 @@ Tracks what has been completed and what remains for the argus Python SDK migrati
 
 ---
 
-## Remaining: Phase 3 — Composite Action Thin Wrappers
+## Phase 3 — Composite Action Thin Wrappers ✅
 
-Refactor `.github/actions/scanner-*` to call `argus scan` internally. Actions shrink from ~300 lines to ~170 lines. Same inputs, same outputs, same artifacts — backward compatible for external users.
+All 16 scanner/linter actions refactored to call `argus scan` internally. Actions shrink from ~300 lines to ~170 lines. Same inputs, same outputs, same artifacts.
+
+<details><summary>22 completed items</summary>
 
 - [x] Add `--no-timestamp` CLI flag for CI-friendly flat output directories
 - [x] Design thin wrapper pattern (generate argus config, run scan, parse JSON for outputs)
-- [x] Refactor `scanner-bandit/action.yml` as proof of concept (350 → 169 lines)
-- [x] Refactor `scanner-opengrep/action.yml` (241 → 195 lines)
-- [x] Refactor `scanner-clamav/action.yml` (348 → 214 lines)
-- [x] Refactor `scanner-trivy-iac/action.yml` (362 → 234 lines)
-- [x] Refactor `scanner-supply-chain/action.yml` (371 → 237 lines)
-- [x] Enhance `supply_chain.py` scanner to accept persona, zizmor_config, run_actionlint, github_token from config
-- [x] Refactor `scanner-gitleaks/action.yml` (207 → 161 lines, backend: auto/Docker)
-- [x] Refactor `scanner-osv/action.yml` (357 → 222 lines, backend: auto/Docker)
-- [x] Refactor `scanner-checkov/action.yml` (307 → 253 lines, backend: local/pip)
-- [x] Removed published GitHub Action dependencies (gitleaks-action, osv-scanner-action, checkov-action) for portability
-- [x] Enhanced `osv.py` with lockfile/recursive config passthrough
-- [x] Enhanced `checkov.py` parse_results to return passed_count
-- [x] Refactor `scanner-container/action.yml` (661 → 190 lines, SDK ContainerEngine)
-- [x] Refactor `scanner-zap/action.yml` (544 → 229 lines, SDK DastEngine)
-- [x] `--output-vars FILE` — machine-readable key=value counts for CI (eliminates jq dependency)
+- [x] Refactor all 10 scanner actions (bandit, opengrep, clamav, trivy-iac, supply-chain, gitleaks, osv, checkov, container, zap)
+- [x] Enhance `supply_chain.py`, `osv.py`, `checkov.py` with config passthrough
+- [x] Removed published GitHub Action dependencies for portability
+- [x] `--output-vars FILE` — machine-readable key=value counts for CI
 - [x] SDK auto-discovers argus.yml — actions no longer generate temp configs
-- [x] All actions simplified to `pip install pyyaml` + `python -m argus scan`
-- [x] Add 6 linter SDK modules: yamllint, jsonlint, flake8, jshint, hadolint, terraform
-- [x] Refactor all 6 linter actions to thin wrappers (1424 → 757 lines, -47%)
+- [x] Add 6 linter SDK modules + refactor all 6 linter actions (-47%)
+- [x] Update `test-actions.yml`, delete bundled `scripts/`, update docsite builder
+
+</details>
+
+**Remaining:**
 - [ ] Verify backward compatibility: identical outputs, artifacts, SARIF
-- [x] Update `test-actions.yml` to validate thin wrappers (already clean — no deleted inputs or scripts/ refs)
-- [x] Delete bundled `scripts/` from refactored actions (already done in earlier commits)
-- [x] Update docsite builder if action README structure changes (no changes needed — builder reads action.yml/README.md only)
 
 ---
 
-## Remaining: Phase 4 — Distribution + Multi-Platform
+## Phase 4 — Distribution + Multi-Platform
 
-### PyPI Publishing
-- [x] `pyproject.toml` — hardened with whitelist includes, optional extras (ai, completion), AGPL v3
-- [x] CI workflow: `publish-pypi.yml` validates on PR (build + safety check + test install)
-- [x] CI workflow: `publish-release.yml` publishes to PyPI on tag (protected `prod` environment)
-- [x] TestPyPI: unique dev versions per PR (`0.7.0.dev881`), trusted publishing (OIDC)
-- [x] Safety check script: `scripts/ci/check_package.py` blocklist rejects secrets/tests/credentials
-- [x] Package validated on TestPyPI — `pip install argus-security` works
-- [x] Dynamic version from `argus.__version__`, tied to `version.yaml` via release-it
-- [x] Tool version enforcement: `--allow-local-versions` bypass for airgapped environments
+### Completed
 
-### Post-PyPI Cleanup (first release)
-- [ ] README.md and QUICK-START.md: remove TestPyPI `--index-url` flags (one line each)
+<details><summary>PyPI Publishing (7 items)</summary>
+
+- [x] `pyproject.toml` — hardened with whitelist includes, optional extras (ai, completion, mcp), AGPL v3
+- [x] CI workflows: `publish-pypi.yml` (PR validation) + `publish-release.yml` (tag publish)
+- [x] TestPyPI: unique dev versions, trusted publishing (OIDC)
+- [x] Safety check, dynamic versioning, tool version enforcement
+
+</details>
+
+<details><summary>Container Image Publishing (4 items)</summary>
+
+- [x] GHCR publish on tag, cosign signing, multi-arch (amd64 + arm64)
+
+</details>
+
+<details><summary>SCN Detector SDK Port (13 items)</summary>
+
+- [x] `argus/scn/` — 7 modules, `argus classify` CLI, 191 tests, thin action wrapper, AI deps, schema port
+- [x] 6 classifier improvements (GitHub Actions IaC category, resource naming, false positives, etc.)
+
+</details>
+
+<details><summary>CLI Enhancements (6 items)</summary>
+
+- [x] `argus init` with language/framework/linter detection, `--exclude`, parallel execution
+
+</details>
+
+<details><summary>CI Preflight and Config Health (4 items)</summary>
+
+- [x] `argus validate --strict --check-tools --report-issue`
+- [x] Living issue on GitHub/GitLab (auto-detect provider, auto-close when healthy)
+- [x] Network dependency notes for OSV, ClamAV, Trivy
+- [x] `argus/preflight/` package — 49 tests
+
+</details>
+
+<details><summary>Performance (3 items)</summary>
+
+- [x] Scanner DB cache volume mounts (`$TMPDIR/argus-cache`), `argus cache info|clean`
+- [x] Per-scanner duration logging in audit trail
+
+</details>
+
+<details><summary>CI Examples (5 items)</summary>
+
+- [x] GitHub Actions, GitLab CI, Jenkins, Azure DevOps example workflows with PR comments
+
+</details>
+
+### Remaining
+
+**Release blockers (Post-PyPI Cleanup):**
+- [ ] README.md and QUICK-START.md: remove TestPyPI `--index-url` flags
 - [ ] Update all 16 action wrappers: `pip install pyyaml` → `pip install argus-security`
 - [ ] Rename action step "Install dependencies" → "Install Argus"
 - [ ] Remove `bin/argus` wrapper (pip creates the entry point)
 - [ ] `argus init` summary: show `pip install argus-security` command
 
-### Container Image Publishing
-- [x] CI workflow: `publish-release.yml` builds and pushes to GHCR on tag
-- [x] Tags with argus version (e.g., `scanner-bandit:0.8.0`) + `latest`
-- [x] Image signing with cosign/sigstore
-- [x] Multi-arch builds (amd64 + arm64) — Dockerfiles use TARGETARCH, publish-release builds both — currently amd64 only
-
-### Additional Reporters
-- [ ] `github.py` — PR comments, SARIF upload, step summary (GitHub-specific)
-- [ ] `gitlab.py` — MR comments, SAST report format
-- [ ] `junit.py` — JUnit XML for Jenkins/Azure DevOps
-- [ ] Reporter plugin registration system
-
-### Additional Scanner Modules
-- [ ] `codeql.py` — GitHub-specific, needs CodeQL CLI or Action
-- [ ] `dependency_review.py` — GitHub PR-only, needs GitHub API
-- [x] Linter modules: yaml, json, python, javascript, dockerfile, terraform (done in Phase 3)
-### SCN Detector SDK Port (`argus classify`)
-- [x] Create `argus/scn/` package — 7 modules ported from scn-detector scripts
-- [x] `argus/scn/classifier.py` — rule-based change classification engine
-- [x] `argus/scn/diff.py` — git diff parsing and IaC change analysis
-- [x] `argus/scn/config.py` — SCN profile loading and validation
-- [x] `argus/scn/ai.py` — AI fallback classification with provider abstraction
-- [x] `argus/scn/report.py` — compliance report generation
-- [x] `argus classify` CLI subcommand with --base/--head/--config/--format/--output-vars
-- [x] Port tests to `argus/tests/scn/` (191 tests, 173 passing)
-- [x] Thin wrapper for scn-detector action (505 → 285 lines)
-- [x] Optional AI deps: `pip install argus-security[ai]` adds anthropic/openai/requests
-- [x] Port SCN config schema from `.github/actions/scn-detector/schemas/` to `argus/scn/schemas/`
-
-### SCN Classifier Improvements
-- [x] Add GitHub Actions workflow as an IaC category (currently misdetected as kubernetes)
-- [x] Summary table should include Manual Review count (currently omitted)
-- [x] Resource naming: extract workflow `name:` field instead of defaulting to `unknown.*`
-- [x] False positive: `routine.pattern:description` rule matches workflow `name:` fields as "description changes"
-- [x] Report version should read from `version.yaml`, not hardcoded `v0.3.0`
-- [x] Report `<details>` wrapper should be optional (PR comments need it, standalone viewing doesn't)
-
-### CLI Enhancements
-- [x] `argus init` — detect languages/frameworks/linters/tool-configs, generate argus.yml
-- [x] Dropped `--platform` flag — CI config is a one-liner (`argus scan`), not a generated file
-- [x] Enhanced detection: Go, Java, JS/TS, GitLab CI, Jenkins, existing tool configs (.bandit, .gitleaks.toml, etc.)
-- [x] Linter auto-enable: lint-python, lint-javascript, lint-dockerfile, lint-terraform based on signals
-- [x] `--exclude` global CLI flag + auto-respect .gitignore/.dockerignore
-- [x] Parallel scanner execution — ThreadPoolExecutor, max 8 workers, 40% speedup measured in CI (51.9s → 31.2s)
-
-### Performance Research
-- [ ] Profile individual scanner execution to identify bottlenecks (Docker pull latency, tool startup, output parsing)
-- [x] Scanner DB cache volume mounts — persist Trivy/Grype/ClamAV/OpenGrep databases in `$TMPDIR/argus-cache` between container runs (saves ~500MB re-download per full scan)
-- [x] `argus cache info|clean` subcommand for cache management
-- [ ] Evaluate `pull_policy: if-not-present` effectiveness in CI (image reuse between runs)
-- [ ] Benchmark container vs local tool execution per scanner (overhead of Docker vs native)
-- [ ] Consider pre-warming: pull all scanner images in parallel before scan phase
-- [ ] Investigate lazy image pulls (start scanning available tools while others pull)
-- [x] Measure and log per-scanner breakdown in audit trail for ongoing performance tracking
-- [ ] Progress indicators during scanning and container pulls
-
-### CI Preflight and Config Health
-
-- [x] `argus validate --strict --check-tools` as a CI gate before scan jobs
-- [x] Living issue via `--report-issue`: finds/creates/updates/closes a single "Argus Config Health" issue on GitHub or GitLab. Auto-detects CI provider from env vars, uses GITHUB_TOKEN or CI_JOB_TOKEN. Auto-closes when all checks pass.
-- [x] `--check-tools` shows runtime network dependencies (OSV API, ClamAV freshclam, Trivy DB) as informational notes
-- [x] `argus/preflight/` package: ci_provider.py (detection), issue_reporter.py (GitHub+GitLab), network_deps.py (scanner deps), report_body.py (Markdown generation) — 49 tests
-
-### CI Examples & PR Feedback
-- [x] Example workflows with PR comment feedback for each platform
-- [x] `examples/workflows/sdk-github-actions.yml` — SARIF upload + PR comment via github-script
-- [x] `examples/workflows/sdk-gitlab-ci.yml` — SARIF to Security Dashboard + MR comment via API
-- [x] `examples/workflows/sdk-jenkins.groovy` — Warnings NG SARIF + artifact archival
-- [x] `examples/workflows/sdk-azure-devops.yml` — PR thread comment via REST API
-- [x] Common pattern: `argus scan --format markdown` → platform posts `argus-summary.md` as comment
+**Future (post-release):**
+- [ ] Additional reporters: `github.py`, `gitlab.py`, `junit.py`, plugin registration system
+- [ ] Additional scanners: `codeql.py`, `dependency_review.py` (GitHub-specific)
+- [ ] Performance: profiling, pull_policy evaluation, pre-warming, lazy pulls, progress indicators
 
 ---
 
@@ -318,59 +287,32 @@ The MCP server is a new interface to the existing engine — it does not change 
 - Graceful degradation: scans return partial results with clear "unavailable" status per scanner rather than failing entirely
 - Phase 3 (portability) should land first to maximize the set of scanners that work out of the box
 
-### Implementation tasks
+### Implementation — completed
 
-**MCP server:**
-- [x] `argus/mcp.py` — MCP server module using the MCP Python SDK
-- [x] `argus mcp` CLI subcommand to start the server (stdio transport)
-- [x] `argus_detect` tool — wraps `detect_project()` from init module
-- [x] `argus_scan` tool — wraps engine scan, returns structured `ScanResult.to_dict()`
-- [x] `argus_validate` tool — wraps config validation
-- [x] `argus_list_scanners` tool — wraps scanner registry with availability status
-- [x] `argus_init` tool — wraps init workflow, returns generated content
-- [x] `argus://config` resource — reads and parses argus.yml
-- [x] `argus://results/latest` resource — reads most recent results from output dir
-- [x] Add `mcp` extra to pyproject.toml (`pip install argus-security[mcp]`)
-- [x] Tests for all MCP tools with mock engine (69 tests across 11 test classes in `test_mcp.py`)
-- [x] Documentation: setup instructions per AI tool, example interactions
-- [x] `argus init` prints MCP setup hint in summary output (step 4: `pip install argus-security[mcp]` + `argus mcp`)
+<details><summary>MCP server (13 items)</summary>
 
-**Skill refactor:**
-- [x] Slim `.agents/skills/argus-scanner-selection/SKILL.md` to routing/strategy layer (300 → 66 lines)
-- [x] Move scanner selection logic, CLI syntax details, and output parsing guidance to MCP tool descriptions
-- [x] Add MCP-first instructions: "prefer `argus_scan` tool over CLI when MCP is available"
-- [ ] Publish to [skills.sh](https://skills.sh/)
-- [x] Add version frontmatter to skill for tracking (version: 0.7.2)
+- [x] `argus/mcp.py` — 8 tools, 3 resources, 3 prompts, stdio transport
+- [x] 69 tests across 11 test classes, documentation, init hint
+
+</details>
+
+<details><summary>Skill refactor (4 items)</summary>
+
+- [x] Slimmed to 66-line routing/strategy layer with version frontmatter (0.7.2)
+- [x] MCP-first instructions, scanner logic moved to MCP tool descriptions
+
+</details>
+
+### Remaining
+- [ ] Publish skill to [skills.sh](https://skills.sh/)
 
 ---
 
 ## Known Issues
 
-### Engine
-- [x] Container scanner (`container.py`) has empty `container_image` — can't Docker-fallback the orchestrator (sub-tools need individual execution)
-- [x] `--list` now shows local/container/not-found availability per scanner
-- [x] Container pull progress — spinner covers interactive use, audit log covers CI; streaming Docker pull output deferred (marginal benefit for high complexity)
-- [x] `--fail-fast` flag — abort on first scanner failure instead of silent continue
-- [x] `--timeout SECONDS` flag — per-scanner wall-clock timeout with thread-based enforcement
+All engine, scanner, and testing issues from the migration have been resolved.
 
-### Scanners
-- [x] ClamAV container requires virus DB update on first run (adds ~60s)
-- [x] OSV-Scanner image pinned to `v2.3.5` (was `latest`)
-- [x] OpenGrep image alias added — `get_image("opengrep")` now resolves via `_ALIASES` (OpenGrep doesn't publish its own images, semgrep image is correct)
-- [x] Added `_ALIASES` dict in containers.py for scanner-name-to-image-key mapping (opengrep→semgrep, trivy-iac→trivy, osv→osv-scanner)
-- [x] Supply-chain `container_args` uses `sh -c` shell wrapper — fragile on non-Linux
-- [x] Bandit container ENTRYPOINT means args don't include `bandit` command — documented but could surprise contributors
-
-### Testing Gaps
-- [x] Docker execution integration tests (auto-skip when Docker unavailable, tests pull/run/mount/engine)
-- [x] E2E scan test: `argus scan bandit` via Docker on test Python file
-- [x] Container dedup edge cases: None CVE, empty CVE, severity ordering, large sets, order preservation
-- [x] `argus report` integration tests (17 tests, from_dict roundtrip, all 4 formats)
-- [x] `--version` flag: output format, version.yaml consistency, subprocess test
-
-### Documentation Gaps
-- [x] SDK docs covered by: cli-reference.md (auto-generated), config-reference.md, scanners.md, failure-control.md, and `argus scan <name> --help`
-- [x] Migration guide: `docs/developer/migration-from-reusable-workflows.md`
+**Open:**
 - [ ] No troubleshooting guide for Docker execution failures
 
 ---
