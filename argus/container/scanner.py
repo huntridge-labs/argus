@@ -195,28 +195,55 @@ def _run_trivy(
 ) -> list[Finding]:
     """Run trivy and parse results.
 
+    Tries local binary first, falls back to Docker container image
+    when trivy is not installed and a container runtime is available.
     When local=False, trivy scans directly from the registry without
     pulling the image — minimal disk usage.
     """
-    if shutil.which("trivy") is None:
-        logger.warning("trivy not installed — skipping trivy scan")
-        return []
-
     import subprocess
 
     output_file = tmp_path / "trivy-results.json"
-    cmd = [
-        "trivy", "image",
-        "--format", "json",
-        "--output", str(output_file),
-    ]
+    use_container = False
 
-    if not local:
-        # Scan from registry without pulling to local Docker
-        cmd.append("--image-src")
-        cmd.append("remote")
+    if shutil.which("trivy") is None:
+        from argus import container_runtime
+        from argus.containers import get_image
 
-    cmd.append(image_ref)
+        image = get_image("trivy")
+        if not image or not container_runtime.is_available():
+            logger.warning("trivy not available (local or container) — skipping")
+            return []
+        if not container_runtime.pull_image(image):
+            logger.error("Failed to pull trivy image: %s", image)
+            return []
+        use_container = True
+        logger.info("Running trivy via container: %s", image)
+
+    if use_container:
+        from argus import container_runtime
+        from argus.containers import get_image
+
+        rt = container_runtime.runtime_cmd()
+        image = get_image("trivy")
+        cmd = [
+            rt, "run", "--rm",
+            "-v", f"{tmp_path}:/output",
+            image,
+            "image", "--format", "json",
+            "--output", "/output/trivy-results.json",
+        ]
+        if not local:
+            cmd.extend(["--image-src", "remote"])
+        cmd.append(image_ref)
+    else:
+        cmd = [
+            "trivy", "image",
+            "--format", "json",
+            "--output", str(output_file),
+        ]
+        if not local:
+            cmd.extend(["--image-src", "remote"])
+        cmd.append(image_ref)
 
     try:
         result = subprocess.run(
@@ -249,21 +276,49 @@ def _run_grype(
 ) -> list[Finding]:
     """Run grype and parse results.
 
+    Tries local binary first, falls back to Docker container image.
     Grype automatically fetches from registry when the image isn't
     in local Docker — no special flag needed.
     """
-    if shutil.which("grype") is None:
-        logger.warning("grype not installed — skipping grype scan")
-        return []
-
     import subprocess
 
     output_file = tmp_path / "grype-results.json"
-    cmd = [
-        "grype", image_ref,
-        "-o", "json",
-        "--file", str(output_file),
-    ]
+    use_container = False
+
+    if shutil.which("grype") is None:
+        from argus import container_runtime
+        from argus.containers import get_image
+
+        image = get_image("grype")
+        if not image or not container_runtime.is_available():
+            logger.warning("grype not available (local or container) — skipping")
+            return []
+        if not container_runtime.pull_image(image):
+            logger.error("Failed to pull grype image: %s", image)
+            return []
+        use_container = True
+        logger.info("Running grype via container: %s", image)
+
+    if use_container:
+        from argus import container_runtime
+        from argus.containers import get_image
+
+        rt = container_runtime.runtime_cmd()
+        image = get_image("grype")
+        cmd = [
+            rt, "run", "--rm",
+            "-v", f"{tmp_path}:/output",
+            image,
+            image_ref,
+            "-o", "json",
+            "--file", "/output/grype-results.json",
+        ]
+    else:
+        cmd = [
+            "grype", image_ref,
+            "-o", "json",
+            "--file", str(output_file),
+        ]
 
     try:
         result = subprocess.run(
@@ -292,19 +347,42 @@ def _run_grype(
 
 
 def _run_syft(image_ref: str, tmp_path: Path) -> None:
-    """Run syft to generate an SBOM (best-effort)."""
-    if shutil.which("syft") is None:
-        logger.debug("syft not installed — skipping SBOM generation")
-        return
+    """Run syft to generate an SBOM (best-effort).
 
+    Tries local binary first, falls back to Docker container image.
+    """
     import subprocess
 
     output_file = tmp_path / "syft-sbom.json"
-    cmd = [
-        "syft", image_ref,
-        "-o", "cyclonedx-json",
-        "--file", str(output_file),
-    ]
+
+    if shutil.which("syft") is None:
+        from argus import container_runtime
+        from argus.containers import get_image
+
+        image = get_image("syft")
+        if not image or not container_runtime.is_available():
+            logger.debug("syft not available (local or container) — skipping SBOM")
+            return
+        if not container_runtime.pull_image(image):
+            logger.debug("Failed to pull syft image — skipping SBOM")
+            return
+
+        logger.info("Running syft via container: %s", image)
+        rt = container_runtime.runtime_cmd()
+        cmd = [
+            rt, "run", "--rm",
+            "-v", f"{tmp_path}:/output",
+            image,
+            image_ref,
+            "-o", "cyclonedx-json",
+            "--file", "/output/syft-sbom.json",
+        ]
+    else:
+        cmd = [
+            "syft", image_ref,
+            "-o", "cyclonedx-json",
+            "--file", str(output_file),
+        ]
 
     try:
         subprocess.run(cmd, capture_output=True, text=True, timeout=300)
