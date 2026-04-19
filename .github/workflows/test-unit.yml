@@ -38,6 +38,10 @@ jobs:
       - name: Run all tests
         run: pytest
 
+      - name: Run E2E tests (slow, Docker-dependent)
+        if: matrix.python-version == '3.13'
+        run: pytest -m slow --no-cov -q || true
+
       - name: Check version reference coverage
         if: matrix.python-version == '3.13'
         run: python -m scripts.ci.check_version_refs

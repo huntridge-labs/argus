@@ -80,12 +80,9 @@ class TestContainerScanDockerFallback:
         from argus.container.scanner import scan_image, ContainerScanResult
         from argus.container.discovery import ContainerTarget
 
-        # Skip if trivy binary IS installed (we want to test Docker fallback)
-        # In CI this is the expected path; locally you might have trivy
         target = ContainerTarget(
             name="e2e-test-vuln",
             image_ref="python:3.9-slim",
-            tag="3.9-slim",
         )
 
         result = scan_image(target, scanners=("trivy",))
@@ -113,7 +110,6 @@ class TestContainerScanDockerFallback:
         target = ContainerTarget(
             name="e2e-test-bad",
             image_ref="nonexistent-image-that-does-not-exist:v999",
-            tag="v999",
         )
 
         result = scan_image(target, scanners=("trivy",))
