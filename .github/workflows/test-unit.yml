@@ -46,6 +46,10 @@ jobs:
         if: matrix.python-version == '3.13'
         run: python -m scripts.ci.check_cli_docs
 
+      - name: Check container image manifests
+        if: matrix.python-version == '3.13'
+        run: python -m scripts.ci.check_container_images
+
       - name: Check for dead fixtures
         if: always()
         run: |
