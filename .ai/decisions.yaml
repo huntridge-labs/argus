@@ -758,3 +758,142 @@ decisions:
         Publish to skills.sh
 
       Depends on Phase 3 (portability) for maximum scanner coverage without Docker.
+
+  - id: ADR-016
+    title: "Wrappers must surface scanner failures, not silently report 0 findings"
+    date: "2026-04-19"
+    status: accepted
+
+    context: |
+      Pre-0.7.2 the `reusable-security-hardening` workflow's summary job and
+      the `security-summary` composite both derived an "Overall Security Score"
+      by counting SARIF findings across downloaded artifacts. This rollup
+      could not distinguish between:
+        (a) Scanner ran cleanly and found zero issues.
+        (b) Scanner failed to execute, crashed, or produced no artifact.
+
+      The medsecops-golden-path demo surfaced both cases in rapid succession
+      during the initial SDK integration — see the post-mortem conversation
+      in the golden-path repo. Each bug ended the same way: the aggregator
+      reported "✅ Excellent! No security issues detected" while a scanner
+      job had actually crashed or been skipped by configuration. A pipeline
+      that cannot distinguish success from failure cannot be trusted to gate
+      merges, which contradicts CLAUDE.md's core principle 4: "Trust is
+      everything."
+
+      Secondary issues the refactor addresses:
+      - 17 per-pattern `actions/download-artifact` steps in the reusable
+        workflow, one per scanner artifact naming convention, with
+        `continue-on-error: true` — any one silently fails without signal.
+      - `allow_failure: true` as the default: the reusable workflow ships
+        in "informational-only" mode, so a passing CI gate says nothing
+        about actual scan outcomes.
+      - `<details>` wrapping: container-scan summaries ship pre-wrapped in
+        a disclosure; the rollup wrapped them again, forcing reviewers to
+        click twice to see findings.
+      - Composites installed only `pip install pyyaml`, assuming argus-security
+        was on PYTHONPATH via side effects. A consumer pulling the composite
+        via `uses: huntridge-labs/argus/.github/actions/scanner-*@X` had no
+        reliable way to get the SDK installed.
+
+    decision: |
+      The security-summary composite is now the single aggregation surface.
+      Its contract:
+        1. Accepts an optional `scan_statuses` JSON input mapping scanner
+           name -> job result (success|failure|cancelled|skipped).
+        2. Renders a per-scanner pass/fail/skipped table at the top of the
+           report when `scan_statuses` is provided.
+        3. Exits non-zero by default when any scanner in `scan_statuses`
+           did not succeed, regardless of whether that scanner produced
+           a summary artifact. This is the defense against silent failure.
+        4. Normalizes summaries pre-wrapped in a single outer `<details>`
+           block by replacing the wrapper with a heading, eliminating the
+           two-click UX.
+
+      The reusable-security-hardening workflow:
+        1. Replaces its inline summary job with a single delegation to the
+           security-summary composite, passing `needs.*.result` for every
+           scanner as `scan_statuses`.
+        2. Drops all 17 per-pattern raw-artifact downloads; the composite's
+           single `scanner-summary-*` download is authoritative.
+        3. Flips the default `allow_failure` from `true` to `false`. Users
+           who want informational runs opt in explicitly.
+
+      Composite-action changes:
+        1. `scanner-container` and `scanner-zap` pin an explicit
+           `pip install 'argus-security>=0.7.2'` — the floor version that
+           contains the SDK fixes for socket mount, ZAP pre-pull, and
+           loud RuntimeError on scanner infra failures.
+        2. `scanner-container` uploads with `if-no-files-found: warn`
+           instead of `ignore`.
+
+    alternatives_considered:
+      - name: "Continue counting SARIF findings, just add a warning when downloads fail"
+        rejected_because: |
+          Doesn't solve the core issue: a crashed scanner with a valid-but-empty
+          SARIF looks identical to a clean scan. The verdict has to come from
+          job results, not finding counts.
+
+      - name: "Have each scanner composite emit its own block of PR comment"
+        rejected_because: |
+          PR comment spam — exactly the anti-pattern ADR-008 (post_pr_comment
+          pattern) was written to avoid. A single consolidated comment is
+          the established convention.
+
+      - name: "Keep `allow_failure: true` as default, add `strict: true` opt-in"
+        rejected_because: |
+          Asymmetric defaults bias consumers toward silent success. Given the
+          silent-failure bugs this refactor fixes, the safe default must be
+          the loud one; informational mode is the opt-in.
+
+    consequences:
+      positive:
+        - "Scanner crashes and configuration errors are visible in a single glance"
+        - "Pre-refactor false-green runs cannot silently pass post-refactor"
+        - "Reusable workflow is ~30% smaller (1162 -> 811 lines) and easier to audit"
+        - "Composites explicitly install argus-security, ending reliance on PYTHONPATH side effects"
+        - "New integration tests (24 cases) cover the silent-failure paths that previously shipped untested"
+      negative:
+        - "BREAKING: consumers of reusable-security-hardening who relied on the default informational-only behavior must pass `allow_failure: true` explicitly"
+        - "BREAKING: consumers of security-summary who want the composite to exit 0 regardless of scanner status must pass `fail_on_scanner_failure: 'false'`"
+        - "Composite action download requires one extra HTTP request per consumer run (checkout of argus repo for the aggregator step); amortized across parallel scanner jobs it is negligible"
+
+    implementation: |
+      Composite action:
+        .github/actions/security-summary/action.yml
+        .github/actions/security-summary/scripts/generate_summary.py
+      Reusable workflow:
+        .github/workflows/reusable-security-hardening.yml
+      Pinned composites:
+        .github/actions/scanner-container/action.yml
+        .github/actions/scanner-zap/action.yml
+      Tests:
+        tests/integration/test_security_summary.py  (24 test cases)
+
+    usage_examples:
+      silent_failure_guard: |
+        # In a reusable pipeline, every scanner's needs.*.result becomes a
+        # row in the aggregator's status table. A crashed scanner with no
+        # summary shows up as ❌ and the job exits non-zero.
+        security-summary:
+          needs: [scanner-codeql, scanner-opengrep, scanner-container, scanner-zap]
+          if: always()
+          steps:
+            - uses: huntridge-labs/argus/.github/actions/security-summary@0.7.2
+              with:
+                scan_statuses: |
+                  {
+                    "codeql":    "${{ needs.scanner-codeql.result }}",
+                    "opengrep":  "${{ needs.scanner-opengrep.result }}",
+                    "container": "${{ needs.scanner-container.result }}",
+                    "zap":       "${{ needs.scanner-zap.result }}"
+                  }
+
+      informational_mode: |
+        # Opt-out of blocking on scanner failures (e.g., for a canary report):
+        security-summary:
+          steps:
+            - uses: huntridge-labs/argus/.github/actions/security-summary@0.7.2
+              with:
+                fail_on_scanner_failure: 'false'
+                scan_statuses: '{"...": "..."}'

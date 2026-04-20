@@ -26,27 +26,29 @@ with:
 
 The workflow rewrites the latest comment tagged with `<!-- security-hardening-comment-marker -->`. This keeps PRs tidy even when you rerun scans.
 
+Under the hood, `reusable-security-hardening.yml` delegates to the
+[`security-summary` composite action](../../.github/actions/security-summary/),
+which accepts a `comment_marker` input. The reusable workflow passes
+`security-hardening-comment-marker` to keep the historical marker stable
+across the pre- and post-refactor implementations.
+
 ## Custom formatting (optional)
 
-Drop a Node.js script into your repository to post a fully custom comment:
+Pass a custom title and marker to the composite to carve out your own
+comment thread (for example, a compliance-only view):
 
 ```yaml
-- name: Custom PR comment
-  if: github.event_name == 'pull_request'
-  uses: actions/github-script@v8
+- uses: huntridge-labs/argus/.github/actions/security-summary@0.7.2
   with:
-    script: |
-      const fs = require('fs');
-      const report = fs.readFileSync('security-hardening-report.md', 'utf8');
-      await github.rest.issues.createComment({
-        issue_number: context.issue.number,
-        owner: context.repo.owner,
-        repo: context.repo.repo,
-        body: `## � Security Report\n\n${report.slice(0, 3000)}...`
-      });
+    title: '🛡️ Compliance Scan Summary'
+    comment_marker: 'compliance-scan-comment-marker'
+    scan_statuses: |
+      {"bandit": "${{ needs.bandit.result }}"}
 ```
 
-Set `post_pr_comment: false` when you manage comments yourself.
+Set `post_pr_comment: false` when you manage comments yourself, or pull
+the aggregated markdown out of the `combined-summaries/security.md` file
+the composite writes.
 
 ## Customization
 

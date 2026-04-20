@@ -144,7 +144,8 @@
         },
         {
           "files": [
-            ".github/workflows/container-scan.yml"
+            ".github/workflows/container-scan.yml",
+            ".github/workflows/reusable-security-hardening.yml"
           ],
           "search": {
             "pattern": "(repository: huntridge-labs/argus\\n\\s+ref: )[^\\s]+",

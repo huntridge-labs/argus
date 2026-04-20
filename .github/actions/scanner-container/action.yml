@@ -65,9 +65,17 @@ runs:
       with:
         python-version: '3.12'
 
-    - name: Install dependencies
+    - name: Install Argus SDK
       shell: bash
-      run: pip install pyyaml
+      # Install the SDK from the checked-out composite source. This matches
+      # the consumer-scoped intent of composite actions (`uses: .../scanner-container@tag`
+      # implicitly pins the SDK version to the same tag) and sidesteps the
+      # PyPI-release lag that would break `pip install argus-security>=X`
+      # for consumers until after the release ships. Works identically for
+      # internal test-actions runs (where the argus repo is the consumer
+      # checkout) and for external consumers (where the composite's own
+      # checkout under $GITHUB_ACTION_PATH is the SDK source).
+      run: pip install "${{ github.action_path }}/../../.."
 
     - name: Authenticate to container registry
       if: inputs.registry_username != '' && inputs.registry_password != ''
@@ -161,7 +169,10 @@ runs:
           container-reports/
           scanner-summaries/
         retention-days: 30
-        if-no-files-found: ignore
+        # Surface missing artifacts loudly instead of silently accepting an
+        # empty upload — matches the "no silent failures" theme of the
+        # SDK-side fixes in 0.7.2.
+        if-no-files-found: warn
 
     - name: Upload SARIF to GitHub Security
       if: inputs.enable_code_security == 'true' && always() && hashFiles('container-reports/argus-results.sarif') != ''
