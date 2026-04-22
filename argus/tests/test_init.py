@@ -7,6 +7,8 @@ from argus.init import (
     detect_project,
     generate_config,
     run_init,
+    _extract_enabled_scanners,
+    _check_local_readiness,
     _guess_iac_path,
 )
 
@@ -238,3 +240,87 @@ class TestRunInit:
         assert result == 0
         assert (tmp_path / "argus.yml").exists()
         assert not (tmp_path / ".github" / "workflows").exists()
+
+
+class TestExtractEnabledScanners:
+    """Parsing the just-written argus.yml for enabled scanner names."""
+
+    def test_returns_enabled_scanners(self):
+        content = """
+version: "1.0"
+scanners:
+  gitleaks:
+    enabled: true
+  bandit:
+    enabled: true
+  zap:
+    enabled: false
+"""
+        assert set(_extract_enabled_scanners(content)) == {"gitleaks", "bandit"}
+
+    def test_defaults_enabled_when_omitted(self):
+        content = """
+scanners:
+  gitleaks: {}
+"""
+        assert _extract_enabled_scanners(content) == ["gitleaks"]
+
+    def test_invalid_yaml_returns_empty(self):
+        assert _extract_enabled_scanners("not: [valid: yaml") == []
+
+    def test_no_scanners_section_returns_empty(self):
+        assert _extract_enabled_scanners("version: \"1.0\"") == []
+
+
+class TestCheckLocalReadiness:
+    """The init-time readiness helper must never crash the init flow."""
+
+    def test_returns_summary_when_ok(self, monkeypatch):
+        from argus.preflight.report_body import ToolStatus
+
+        def fake_check(names, backend="auto"):
+            return [
+                ToolStatus("a", True, "local"),
+                ToolStatus("b", True, "container", image="img"),
+                ToolStatus("c", False, "none"),
+            ]
+
+        monkeypatch.setattr(
+            "argus.preflight.tool_check.check_scanner_readiness", fake_check
+        )
+        result = _check_local_readiness(["a", "b", "c"])
+        assert result == {"local": 1, "container": 1, "missing": 1}
+
+    def test_empty_names_returns_none(self):
+        assert _check_local_readiness([]) is None
+
+    def test_swallows_exceptions(self, monkeypatch):
+        def boom(*args, **kwargs):
+            raise RuntimeError("registry exploded")
+
+        monkeypatch.setattr(
+            "argus.preflight.tool_check.check_scanner_readiness", boom
+        )
+        assert _check_local_readiness(["a"]) is None
+
+
+class TestRunInitReadinessOutput:
+    """End-to-end: init should show a readiness one-liner in the summary."""
+
+    def test_readiness_line_printed(self, tmp_path, capsys):
+        result = run_init(target_dir=str(tmp_path))
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Tool readiness on this machine" in captured.out
+
+    def test_check_tools_hint_when_missing(self, tmp_path, capsys, monkeypatch):
+        # Force the missing-count bucket to be non-zero regardless of what's
+        # actually installed on the test machine.
+        monkeypatch.setattr(
+            "argus.init._check_local_readiness",
+            lambda names: {"local": 0, "container": 0, "missing": len(names)},
+        )
+        result = run_init(target_dir=str(tmp_path))
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "argus validate --check-tools" in captured.out

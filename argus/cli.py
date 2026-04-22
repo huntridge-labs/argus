@@ -899,12 +899,40 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
         _write_output_vars(summary, output_vars_path)
         log.debug("Output vars written to %s", output_vars_path)
 
+    # Nudge when scanners ran but produced no results — this is the
+    # "silent empty scan" failure mode users hit on machines without
+    # Docker or the native tools installed. Point them at --check-tools
+    # so they get actionable install suggestions instead of nothing.
+    _print_missing_scanner_nudge(
+        requested=scanner_names or [
+            name for name in engine._scanners
+            if config.get_scanner_config(name).enabled
+        ],
+        summary=summary,
+    )
+
     # Finalize audit trail
     exit_code = EXIT_SUCCESS if summary.passed else EXIT_FINDINGS
     finalize_manifest(manifest, summary=summary, exit_code=exit_code, output_dir=output_dir)
     log.info("Audit manifest written to %s/argus-audit.json", output_dir)
 
     return exit_code
+
+
+def _print_missing_scanner_nudge(requested: list[str], summary) -> None:
+    """Tell the user how to diagnose scanners that produced no results."""
+    completed = {r.scanner for r in summary.results}
+    missing = [name for name in requested if name not in completed]
+    if not missing:
+        return
+    print(
+        f"\n💡 {len(missing)} scanner(s) produced no results: {', '.join(missing)}",
+        file=sys.stderr,
+    )
+    print(
+        "   Run 'argus validate --check-tools' for install suggestions.",
+        file=sys.stderr,
+    )
 
 
 def _cmd_container_scan(args: argparse.Namespace) -> int:
@@ -1689,76 +1717,53 @@ def _check_tool_readiness(
 ) -> tuple[list[str], list]:
     """Check whether enabled scanners can actually run.
 
-    Returns (unavailable_names, tool_statuses) where tool_statuses is a list
-    of ToolStatus objects for use in issue reporting.
+    Returns (unavailable_names, tool_statuses). Pure detection lives in
+    `argus.preflight.tool_check`; this wrapper handles the detailed
+    per-scanner output specific to `argus validate --check-tools`.
     """
-    import shutil
     from argus.scanners import SCANNER_REGISTRY
-    from argus.containers import get_image
-    from argus.preflight.network_deps import get_network_deps
-    from argus.preflight.report_body import ToolStatus
+    from argus.preflight.tool_check import (
+        check_scanner_readiness,
+        container_runtime_available,
+        unavailable_names,
+    )
 
-    container_available = any(shutil.which(r) for r in ("docker", "podman", "nerdctl"))
-    unavailable = []
-    statuses = []
-
-    def _resolve_image(image: str) -> str:
-        """Apply registry override to an image reference."""
-        if not registry or not image:
-            return image
-        parts = image.split("/", 1)
-        if len(parts) == 2 and ("." in parts[0] or ":" in parts[0]):
-            return f"{registry}/{parts[1]}"
-        return f"{registry}/{image}"
+    statuses = check_scanner_readiness(enabled_names, backend=backend, registry=registry)
 
     if registry:
         print(f"\n   Registry: {registry}")
     print("\n   Tool readiness:")
-    for name in enabled_names:
-        net_deps = get_network_deps(name)
+    for status in statuses:
+        name = status.name
         cls = SCANNER_REGISTRY.get(name)
-        if not cls:
+        if cls is None:
             print(f"     {name}: ⚠️  unknown scanner (not in registry)")
-            unavailable.append(name)
-            statuses.append(ToolStatus(name, False, "none", network_deps=net_deps))
-            continue
-
-        scanner = cls()
-        local = scanner.is_available()
-        raw_image = get_image(name) or getattr(scanner, "container_image", "")
-        image = _resolve_image(raw_image)
-
-        if local:
+        elif status.available and status.method == "local":
             print(f"     {name}: ✅ installed locally")
-            statuses.append(ToolStatus(name, True, "local", network_deps=net_deps))
-        elif backend == "local":
-            install_cmd = scanner.install_command() or "see docs"
-            print(f"     {name}: ❌ not found (install: {install_cmd})")
-            unavailable.append(name)
-            statuses.append(ToolStatus(name, False, "none", network_deps=net_deps))
-        elif not container_available:
-            install_cmd = scanner.install_command() or "see docs"
-            print(f"     {name}: ❌ not found, Docker not available (install: {install_cmd})")
-            unavailable.append(name)
-            statuses.append(ToolStatus(name, False, "none", network_deps=net_deps))
-        elif image:
-            print(f"     {name}: 🐳 will use container ({image})")
-            statuses.append(ToolStatus(name, True, "container", image=image, network_deps=net_deps))
+        elif status.available and status.method == "container":
+            print(f"     {name}: 🐳 will use container ({status.image})")
         else:
-            install_cmd = scanner.install_command() or "see docs"
-            print(f"     {name}: ❌ not found, no container image (install: {install_cmd})")
-            unavailable.append(name)
-            statuses.append(ToolStatus(name, False, "none", network_deps=net_deps))
+            install_cmd = cls().install_command() or "see docs"
+            if backend == "local":
+                print(f"     {name}: ❌ not found (install: {install_cmd})")
+            elif not container_runtime_available():
+                print(f"     {name}: ❌ not found, Docker not available (install: {install_cmd})")
+            else:
+                print(f"     {name}: ❌ not found, no container image (install: {install_cmd})")
 
-        if net_deps:
-            for dep in net_deps:
-                print(f"             ℹ️  Requires network: {dep}")
+        for dep in status.network_deps:
+            print(f"             ℹ️  Requires network: {dep}")
 
-    if not container_available and backend != "local":
-        print("\n   ⚠️  No container runtime found (docker, podman, or nerdctl) — scanners without local installs will fail")
-        print("      Install Docker, Podman, or nerdctl — or set execution.backend: local in argus.yml")
+    if not container_runtime_available() and backend != "local":
+        print(
+            "\n   ⚠️  No container runtime found (docker, podman, or nerdctl) — "
+            "scanners without local installs will fail"
+        )
+        print(
+            "      Install Docker, Podman, or nerdctl — or set execution.backend: local in argus.yml"
+        )
 
-    return unavailable, statuses
+    return unavailable_names(statuses), statuses
 
 
 def _report_issue(
