@@ -81,9 +81,51 @@ def run_init(
     config_content = generate_config(signals)
     config_path.write_text(config_content, encoding="utf-8")
 
-    _print_summary(signals, config_path)
+    enabled_scanners = _extract_enabled_scanners(config_content)
+    readiness = _check_local_readiness(enabled_scanners)
+
+    _print_summary(signals, config_path, readiness=readiness)
 
     return EXIT_SUCCESS
+
+
+def _extract_enabled_scanners(config_content: str) -> list[str]:
+    """Parse scanners out of the just-generated argus.yml content.
+
+    We parse the string we just wrote instead of re-reading the file so
+    tests stay deterministic across filesystems, and we avoid importing
+    the full config loader here just for a name list.
+    """
+    import yaml
+    try:
+        data = yaml.safe_load(config_content) or {}
+    except yaml.YAMLError:
+        return []
+    scanners = data.get("scanners", {})
+    if not isinstance(scanners, dict):
+        return []
+    enabled = []
+    for name, cfg in scanners.items():
+        if isinstance(cfg, dict) and cfg.get("enabled", True):
+            enabled.append(name)
+    return enabled
+
+
+def _check_local_readiness(scanner_names: list[str]) -> dict[str, int] | None:
+    """Return a {local, container, missing} bucket summary, or None on error.
+
+    Swallows all errors from the readiness check — init must never fail
+    because a scanner registry import blew up. A None return skips the
+    readiness block entirely in `_print_summary`.
+    """
+    if not scanner_names:
+        return None
+    try:
+        from argus.preflight.tool_check import check_scanner_readiness, summarize
+        statuses = check_scanner_readiness(scanner_names, backend="auto")
+        return summarize(statuses)
+    except Exception:
+        return None
 
 
 def detect_project(root: Path) -> dict[str, list[str]]:
@@ -397,11 +439,13 @@ def _guess_iac_path(signals: dict[str, list[str]]) -> str:
 def _print_summary(
     signals: dict[str, list[str]],
     config_path: Path,
+    readiness: dict[str, int] | None = None,
 ) -> None:
     """Print a polished summary of what was created and next steps."""
     G = "\033[32m"
     B = "\033[1;32m"
     D = "\033[90m"
+    Y = "\033[33m"
     R = "\033[0m"
 
     print(f"\n{B}  Initialized!{R}  {D}Created {config_path}{R}")
@@ -425,6 +469,21 @@ def _print_summary(
         for key, evidence in signals.items():
             label = signal_labels.get(key, key)
             print(f"    {D}-{R} {label} {D}({evidence[0]}){R}")
+
+    if readiness is not None:
+        local = readiness["local"]
+        container = readiness["container"]
+        missing = readiness["missing"]
+        print(f"\n{G}  Tool readiness on this machine:{R}")
+        print(
+            f"    {D}-{R} {local} ready locally, {container} via container, "
+            f"{Y if missing else G}{missing} missing{R}"
+        )
+        if missing:
+            print(
+                f"    {D}-{R} {Y}Run {G}argus validate --check-tools{Y} "
+                f"for per-scanner install suggestions.{R}"
+            )
 
     print(f"\n{G}  Next steps:{R}")
     print(f"    {B}1.{R} Review argus.yml and adjust scanner settings")

@@ -774,3 +774,40 @@ class TestCacheSubcommand:
         result = cmd_cache(args)
         assert result == EXIT_SUCCESS
         assert not tmp_path.exists()
+
+
+class TestMissingScannerNudge:
+    """End-of-scan nudge when requested scanners produced no results."""
+
+    def _summary(self, scanner_names: list[str]):
+        from argus.core.models import ScanResult, ScanSummary
+
+        results = [ScanResult(scanner=name, findings=[]) for name in scanner_names]
+        return ScanSummary(results=results, severity_threshold=None)
+
+    def test_no_output_when_all_scanners_completed(self, capsys):
+        from argus.cli import _print_missing_scanner_nudge
+
+        _print_missing_scanner_nudge(
+            requested=["bandit", "gitleaks"],
+            summary=self._summary(["bandit", "gitleaks"]),
+        )
+        assert capsys.readouterr().err == ""
+
+    def test_lists_missing_and_points_to_check_tools(self, capsys):
+        from argus.cli import _print_missing_scanner_nudge
+
+        _print_missing_scanner_nudge(
+            requested=["bandit", "gitleaks", "opengrep"],
+            summary=self._summary(["bandit"]),
+        )
+        err = capsys.readouterr().err
+        assert "2 scanner(s) produced no results" in err
+        assert "gitleaks" in err and "opengrep" in err
+        assert "argus validate --check-tools" in err
+
+    def test_silent_when_nothing_requested(self, capsys):
+        from argus.cli import _print_missing_scanner_nudge
+
+        _print_missing_scanner_nudge(requested=[], summary=self._summary([]))
+        assert capsys.readouterr().err == ""
