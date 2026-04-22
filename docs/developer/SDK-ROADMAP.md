@@ -65,11 +65,13 @@ Tracks what has been completed and what remains for the argus Python SDK migrati
 - [x] `.release-it.json` — added package.json to regex-bumper output
 - [x] `scripts/ci/check_version_refs.py` — added `.claude`, `.agents` to SKIP_DIRS
 
-### Deprecated Workflow Removal
-- [x] Removed 15 `scanner-*.yml` thin wrapper workflows
-- [x] Removed 6 compound orchestrators: `reusable-security-hardening.yml`, `container-scan.yml`, `container-scan-from-config.yml`, `dependency-scan.yml`, `infrastructure-scan.yml`, `linting.yml`
-- [x] Removed `security-reusable-demo.yml`
-- [x] Removed 6 example workflows that only demonstrated deleted workflows
+### Workflow Deprecation → Restoration
+Originally the plan was to delete all reusable workflows and push consumers to the SDK+composite-actions path. Commit `1a0cb24` did exactly that. Consumer feedback after release made clear the breakage wasn't acceptable, so commit `46bb2f9` restored all 22 workflows with identical input interfaces — internally they now wrap the argus CLI instead of calling composite actions directly. Users change nothing except the version tag.
+- [x] Initial removal: 15 `scanner-*.yml` wrappers, 6 compound orchestrators (`reusable-security-hardening.yml`, `container-scan.yml`, `container-scan-from-config.yml`, `dependency-scan.yml`, `infrastructure-scan.yml`, `linting.yml`), `security-reusable-demo.yml`, 6 example workflows
+- [x] Restoration: all 22 workflows re-added, 12 scanner workflows migrated to `argus scan` under the hood (bandit, checkov, clamav, gitleaks, grype, opengrep, osv, supply-chain, trivy-container, trivy-iac, zap, zap-from-config)
+- [x] 3 scanner workflows kept as composite-action passthroughs (GitHub-native, not in the SDK registry): `scanner-codeql`, `scanner-dependency-review`, `scanner-syft`
+- [x] `linting.yml` kept on composite actions — linters hadn't landed in the SDK registry at restoration time (they have now, follow-up to migrate its internals is tracked under Phase 3 wrapper follow-ups)
+- [x] `reusable-security-hardening.yml` restored as a dispatcher that fans out to the scanner workflows; silent-failure gating added in PR #91 (see section below)
 - [x] Updated `docsite.yml` excluded_workflows, `.github/zizmor.yml` ignore list
 
 ### Dependency Maintenance
@@ -193,8 +195,9 @@ All 16 scanner/linter actions refactored to call `argus scan` internally. Action
 
 **Release blockers (Post-PyPI Cleanup):**
 - [ ] README.md and QUICK-START.md: remove TestPyPI `--index-url` flags
-- [ ] Update all 16 action wrappers: `pip install pyyaml` → `pip install argus-security`
-- [ ] Rename action step "Install dependencies" → "Install Argus"
+- [x] ~~Update all 16 action wrappers: `pip install pyyaml` → `pip install argus-security`~~ — **approach changed:** install SDK from composite's own checkout (`pip install "${{ github.action_path }}/../../.."`) instead of PyPI, which implicitly pins SDK version to composite ref and sidesteps PyPI-release lag. Applied to `scanner-container` and `scanner-zap` in PR #91.
+- [ ] Apply the install-from-source pattern to the remaining 14 wrappers (`scanner-bandit`, `scanner-gitleaks`, `scanner-opengrep`, `scanner-clamav`, `scanner-trivy-iac`, `scanner-checkov`, `scanner-osv`, `scanner-supply-chain`, `scanner-dependency-review`, and the 6 linter wrappers)
+- [ ] Rename action step "Install dependencies" → "Install Argus SDK" (done in 2 wrappers)
 - [ ] Remove `bin/argus` wrapper (pip creates the entry point)
 - [ ] `argus init` summary: show `pip install argus-security` command
 
@@ -202,6 +205,31 @@ All 16 scanner/linter actions refactored to call `argus scan` internally. Action
 - [ ] Additional reporters: `github.py`, `gitlab.py`, `junit.py`, plugin registration system
 - [ ] Additional scanners: `codeql.py`, `dependency_review.py` (GitHub-specific)
 - [ ] Performance: profiling, pull_policy evaluation, pre-warming, lazy pulls, progress indicators
+
+---
+
+## Silent-Failure Gating (Wrapper Layer)
+
+Born out of the medsecops-golden-path SDK-integration post-mortem. The pre-refactor `reusable-security-hardening` summary derived an "Overall Security Score" from SARIF finding counts and could not distinguish between "scanner ran cleanly with zero findings" and "scanner crashed and produced no artifact." Downstream consumers saw `✅ Excellent!` while scanner jobs were actually failing. This work propagates the same "make failures loud" discipline from the SDK-side fixes (0.7.2 — Docker fallback, pre-warm, scan-failure surfacing) into the wrapper layer.
+
+### Completed (PR #91 — `refactor/wrappers-silent-failure-gating`)
+
+- [x] `security-summary` composite: new `scan_statuses` JSON input renders a per-scanner pass/fail/skipped table at the top of the report (the source of truth, independent of artifact presence)
+- [x] New `fail_on_scanner_failure` input (default `true`) + `overall_status` / `failed_count` outputs — composite exits non-zero when any listed scanner did not succeed
+- [x] New `comment_marker` input for PR-comment continuity when migrating from legacy inline summaries
+- [x] Summary logic extracted to stdlib-only `scripts/generate_summary.py` (unit-testable, follows the `scanner-clamav` reference pattern)
+- [x] Outer `<details>` unwrap — summaries pre-wrapped for collapse now get their wrapper replaced by a heading (no more two-click disclosures)
+- [x] `reusable-security-hardening.yml`: inline ~400-line summary job (17 per-pattern artifact downloads + shell-assembled report + inline GitHub-script comment JS) replaced with a single delegation to the `security-summary` composite. File shrinks 30% (1162 → 811 lines).
+- [x] Legacy `security-hardening-comment-marker` preserved so consumer PRs keep updating the same comment thread post-upgrade
+- [x] **Breaking:** `allow_failure` default flipped `true` → `false` (scanners now block by default; callers wanting informational-only mode must opt in explicitly)
+- [x] `.release-it.json`: ref-rewrite extended to cover `reusable-security-hardening.yml`
+- [x] ADR-016 in `.ai/decisions.yaml`, architecture + docs updated
+- [x] 24 integration tests against the real `generate_summary.py` (status-table rendering, silent-failure guard, outer-`<details>` unwrap, `$GITHUB_OUTPUT` verdict, invalid-JSON handling)
+
+### Remaining
+
+- [ ] Verify medsecops-golden-path demo pipeline no longer reproduces the silent-failure scenarios once PR #91 is merged to `feat/argus-portability`
+- [ ] Apply the same silent-failure audit to other aggregators (`linting-summary`) — they may have the same "no artifact = no findings" failure mode
 
 ---
 
