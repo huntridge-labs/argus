@@ -502,7 +502,7 @@ jobs:
 | `zap_target_urls` | Comma-separated URLs to scan (ignored if `zap_config_file` set) | `''` | Conditional |
 | `zap_scan_type` | `baseline`, `full`, or `api` (ignored if `zap_config_file` set) | `baseline` | No |
 | `zap_api_spec` | OpenAPI/Swagger spec URL or path (ignored if `zap_config_file` set) | `''` | Conditional |
-| `allow_failure` | Allow workflow to continue on failures | `true` | No |
+| `allow_failure` | Allow workflow to continue on failures | `false` | No |
 | `severity_threshold` | Minimum severity to fail (`none`, `low`, `medium`, `high`, `critical`) | `high` | No |
 
 > **Note**: When `zap_config_file` is provided, it takes precedence and other `zap_*` inputs are ignored.

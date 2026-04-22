@@ -55,6 +55,43 @@ That's it! The action will automatically find and combine all scanner summaries,
 | `show_metadata` | Show workflow metadata (run, branch, commit) | No | `true` |
 | `show_stats` | Show scanner execution statistics | No | `true` |
 | `post_pr_comment` | Post combined summary as PR comment | No | `true` |
+| `scan_statuses` | Optional JSON object mapping scanner name -> job result (`success\|failure\|cancelled\|skipped`). Renders a per-scanner pass/fail table at the top of the report and drives the action's exit code. | No | `''` |
+| `fail_on_scanner_failure` | When `'true'` and `scan_statuses` is provided, exits non-zero if any listed scanner is not `success` or `skipped`. Set to `'false'` to render the report but never block the job. | No | `'true'` |
+
+## Outputs
+
+| Output | Description |
+|--------|-------------|
+| `overall_status` | Derived verdict: `success`, `failure`, or `unknown` (when `scan_statuses` is empty). |
+| `failed_count` | Number of scanners in `scan_statuses` that did not succeed. |
+
+## Recommended Pattern: Status-Gated Aggregation
+
+Pass `scan_statuses` with `needs.<job>.result` for each scanner. This is the
+defense against silent-failure false-greens — the pre-refactor aggregator
+derived its verdict from SARIF finding counts, so a scanner that crashed
+without uploading an artifact looked identical to a scanner that ran
+cleanly and found nothing. Status-gated aggregation distinguishes these
+cases and blocks the overall workflow when any scanner did not succeed.
+
+```yaml
+security-summary:
+  needs: [bandit-scan, gitleaks-scan, container-scan, zap-scan]
+  if: always()
+  permissions:
+    contents: read
+    pull-requests: write
+  steps:
+    - uses: huntridge-labs/argus/.github/actions/security-summary@0.7.2
+      with:
+        scan_statuses: |
+          {
+            "bandit":    "${{ needs.bandit-scan.result }}",
+            "gitleaks":  "${{ needs.gitleaks-scan.result }}",
+            "container": "${{ needs.container-scan.result }}",
+            "zap":       "${{ needs.zap-scan.result }}"
+          }
+```
 
 ## Features
 

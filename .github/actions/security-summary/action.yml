@@ -2,14 +2,17 @@ name: 'Security Summary'
 description: |
   Aggregate all security scan results into a unified report.
 
-  This action is designed to run as the FINAL job in your security workflow, after all scanner
-  jobs have completed. It automatically discovers and combines summaries from all security
-  scanners into a formatted GitHub Step Summary.
+  This action is designed to run as the FINAL job in your security workflow,
+  after all scanner jobs have completed. It downloads scanner summary artifacts
+  (default pattern: `scanner-summary-*`), stitches them together, and — when
+  `scan_statuses` is provided — renders a per-scanner pass/fail table at the
+  top so downstream consumers can distinguish "no findings" from "scanner
+  crashed and produced nothing."
 
   **Required Environment Variables:**
   - GITHUB_TOKEN: GitHub token for API access (set automatically in workflows)
 
-  **Usage Example:**
+  **Basic Usage (discovery-only):**
   ```yaml
   security-summary:
     runs-on: ubuntu-latest
@@ -19,11 +22,29 @@ description: |
       - uses: huntridge-labs/argus/.github/actions/security-summary@0.7.2
   ```
 
-  **Important:**
-  - Add this job AFTER all your scanner jobs
-  - List all scanner jobs in the 'needs' field
-  - Use 'if: always()' to ensure it runs even if scanners fail
-  - Use 'continue-on-error: true' on scanner jobs so they don't block the summary
+  **With status gating (recommended):**
+
+  Pass `scan_statuses` — a JSON object mapping scanner name to the corresponding
+  job's `result` — to render a pass/fail/skipped table at the top of the report.
+  This prevents the silent-failure mode where a crashed scanner produces no
+  summary and the aggregator reports "no findings" as if everything was healthy.
+
+  ```yaml
+  security-summary:
+    runs-on: ubuntu-latest
+    needs: [bandit-scan, gitleaks-scan, container-scan, zap-scan]
+    if: always()
+    steps:
+      - uses: huntridge-labs/argus/.github/actions/security-summary@0.7.2
+        with:
+          scan_statuses: |
+            {
+              "bandit": "${{ needs.bandit-scan.result }}",
+              "gitleaks": "${{ needs.gitleaks-scan.result }}",
+              "container": "${{ needs.container-scan.result }}",
+              "zap": "${{ needs.zap-scan.result }}"
+            }
+  ```
 
 inputs:
   summary_pattern:
@@ -46,6 +67,40 @@ inputs:
     description: 'Post combined summary as PR comment'
     required: false
     default: 'true'
+  scan_statuses:
+    description: |
+      Optional JSON object mapping scanner name to job result
+      (success|failure|cancelled|skipped). When provided, a per-scanner pass/fail
+      table is rendered at the top of the report and the overall status is derived
+      from it (any failure => job exits non-zero unless `fail_on_scanner_failure`
+      is "false"). When absent, the report falls back to a summary-only view.
+    required: false
+    default: ''
+  fail_on_scanner_failure:
+    description: |
+      When "true" (the default) and `scan_statuses` is provided, the action
+      exits non-zero if any listed scanner is not "success" or "skipped". Set
+      to "false" to render the report but never block the job.
+    required: false
+    default: 'true'
+  comment_marker:
+    description: |
+      HTML-comment marker used to identify the bot's summary comment on a PR
+      so subsequent runs update the same comment instead of spawning new ones.
+      Override when migrating from a pre-existing marker (e.g., pass
+      `security-hardening-comment-marker` when replacing the legacy
+      reusable-workflow inline summary step to keep the same PR comment
+      thread in consumer repos).
+    required: false
+    default: 'security-summary-comment-marker'
+
+outputs:
+  overall_status:
+    description: 'Derived verdict: success, failure, or unknown (when scan_statuses is empty).'
+    value: ${{ steps.generate.outputs.overall_status }}
+  failed_count:
+    description: 'Number of scanners in scan_statuses that did not succeed.'
+    value: ${{ steps.generate.outputs.failed_count }}
 
 runs:
   using: 'composite'
@@ -59,11 +114,13 @@ runs:
       continue-on-error: true
 
     - name: Generate combined summary
+      id: generate
       shell: bash
       env:
         SUMMARY_TITLE: ${{ inputs.title }}
         SHOW_METADATA: ${{ inputs.show_metadata }}
         SHOW_STATS: ${{ inputs.show_stats }}
+        SCAN_STATUSES_JSON: ${{ inputs.scan_statuses }}
         HEAD_REF: ${{ github.head_ref }}
         REF_NAME: ${{ github.ref_name }}
         RUN_NUMBER: ${{ github.run_number }}
@@ -72,84 +129,31 @@ runs:
         RUN_ID: ${{ github.run_id }}
         COMMIT_SHA: ${{ github.sha }}
       run: |
-        # Create output directory for PR comment file
+        set -euo pipefail
         mkdir -p combined-summaries
-
-        # Function to generate summary content
-        generate_summary() {
-          local output="$1"
-          local include_title="$2"
-
-          if [ "$include_title" = "true" ]; then
-            echo "$SUMMARY_TITLE" >> "$output"
-            echo "" >> "$output"
-          fi
-
-          # Show metadata if enabled
-          if [ "$SHOW_METADATA" = "true" ]; then
-            echo "**Workflow Run:** [$RUN_NUMBER]($SERVER_URL/$REPOSITORY/actions/runs/$RUN_ID)" >> "$output"
-
-            # Use head_ref for PRs (source branch), ref_name for pushes
-            BRANCH_NAME="$HEAD_REF"
-            if [ -z "$BRANCH_NAME" ]; then
-              BRANCH_NAME="$REF_NAME"
-            fi
-            echo "**Branch:** \`$BRANCH_NAME\`" >> "$output"
-
-            echo "**Commit:** [\`${GITHUB_SHA:0:7}\`]($SERVER_URL/$REPOSITORY/commit/$COMMIT_SHA)" >> "$output"
-            echo "" >> "$output"
-          fi
-
-          # Check if we have any scanner summaries
-          if [ -d "scanner-summaries" ] && [ "$(ls -A scanner-summaries 2>/dev/null)" ]; then
-            SCANNER_COUNT=$(find scanner-summaries -name "*.md" -type f | wc -l)
-
-            # Show stats if enabled
-            if [ "$SHOW_STATS" = "true" ]; then
-              echo "**Scanners Executed:** $SCANNER_COUNT" >> "$output"
-              echo "" >> "$output"
-            fi
-
-            echo "### Scanner Results" >> "$output"
-            echo "" >> "$output"
-
-            # Combine all scanner summaries in alphabetical order
-            for summary in $(find scanner-summaries -name "*.md" -type f | sort); do
-              if [ -f "$summary" ]; then
-                cat "$summary" >> "$output"
-              fi
-            done
-          else
-            echo "**No scanner summaries found**" >> "$output"
-            echo "" >> "$output"
-            echo "This could mean:" >> "$output"
-            echo "- No scanners were executed" >> "$output"
-            echo "- Scanner jobs failed before generating summaries" >> "$output"
-            echo "- Artifacts did not upload correctly" >> "$output"
-            echo "" >> "$output"
-            echo "Check the job logs for more details." >> "$output"
-          fi
-
-          echo "" >> "$output"
-          echo "---" >> "$output"
-          echo "_Generated by [Argus](https://github.com/huntridge-labs/argus)_" >> "$output"
-        }
-
-        # Generate job summary (with title)
-        generate_summary "$GITHUB_STEP_SUMMARY" "true"
-
-        # Generate PR comment file (without title - comment-pr adds it)
-        generate_summary "combined-summaries/security.md" "false"
-      continue-on-error: true
+        # Generate the job-step summary (with title) and the PR comment body (without title).
+        python3 "${{ github.action_path }}/scripts/generate_summary.py" \
+          "$GITHUB_STEP_SUMMARY" true
+        python3 "${{ github.action_path }}/scripts/generate_summary.py" \
+          combined-summaries/security.md false
 
     - name: Comment PR with security summary
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
       uses: huntridge-labs/argus/.github/actions/comment-pr@0.7.2
       with:
         summary_file: combined-summaries/security.md
-        comment_marker: security-summary-comment-marker
+        comment_marker: ${{ inputs.comment_marker }}
         title: '${{ inputs.title }}'
         fallback_message: 'No security scan results available'
+
+    - name: Fail job when any scanner reported failure
+      if: inputs.fail_on_scanner_failure == 'true' && steps.generate.outputs.overall_status == 'failure'
+      shell: bash
+      env:
+        FAILED_COUNT: ${{ steps.generate.outputs.failed_count }}
+      run: |
+        echo "::error title=Security scanner failure::${FAILED_COUNT} scanner(s) did not complete successfully. See the status table in the summary for details."
+        exit 1
 
 branding:
   icon: 'file-text'

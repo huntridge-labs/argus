@@ -105,9 +105,14 @@ runs:
       with:
         python-version: ${{ inputs.python_version }}
 
-    - name: Install dependencies
+    - name: Install Argus SDK
       shell: bash
-      run: pip install pyyaml
+      # Install the SDK from the checked-out composite source. The composite's
+      # tag implicitly pins the SDK version to the same ref, which is the
+      # right behavior: a user who pins `scanner-zap@0.7.2` gets the SDK's
+      # 0.7.2 ZAP pre-pull fix without any additional version-floor plumbing.
+      # See scanner-container/action.yml for the full rationale.
+      run: pip install "${{ github.action_path }}/../../.."
 
     - name: Run ZAP via Argus SDK
       id: scan

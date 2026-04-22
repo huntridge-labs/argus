@@ -88,6 +88,22 @@ components:
     instances:
       - security-summary
       - linting-summary
+    security-summary_inputs:
+      # scan_statuses is the primary defense against silent-failure greens.
+      # Callers pass `needs.<job>.result` for every scanner so the aggregator
+      # can render a per-scanner pass/fail table and exit non-zero when any
+      # scanner failed — even if that scanner uploaded no summary artifact.
+      scan_statuses: |
+        Optional JSON object mapping scanner name -> job result
+        (success|failure|cancelled|skipped). When provided, a status table
+        is rendered at the top of the report and the composite exits non-zero
+        on any failure unless `fail_on_scanner_failure` is set to "false".
+      fail_on_scanner_failure: |
+        Default "true". When combined with `scan_statuses`, drives the
+        composite's own exit code so consumer workflows fail on any scanner
+        that did not succeed.
+    security-summary_script: ".github/actions/security-summary/scripts/generate_summary.py"
+    security-summary_tests: "tests/integration/test_security_summary.py"
 
   - name: agent-skills
     location: ".agents/skills/"
