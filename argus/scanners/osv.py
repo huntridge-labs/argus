@@ -23,25 +23,13 @@ class OsvScanner:
     def container_args(self, config: dict | None = None) -> list[str]:
         """Build container args from config — mirrors _build_command."""
         config = config or {}
-        args = [
-            "scan", "source",
-            "--format", "json",
-            "--output", "/output/results.json",
-        ]
-        config_file = config.get("config_file")
-        if config_file:
-            args.extend(["--config", f"/workspace/{config_file}"])
-
         sbom_path = config.get("sbom_path")
+        # osv-scanner v2: `scan --sbom` for SBOMs, `scan source` for source trees
         if sbom_path:
-            # SBOM mode: scan the provided file instead of the workspace.
-            # Engine mounts the SBOM into the container at /workspace/<name>
-            # via the sbom_mount_path config key (set by the engine when
-            # the SBOM lives outside the scan root).
             sbom_in_container = config.get("sbom_mount_path") or f"/workspace/{sbom_path}"
-            args.extend(["--sbom", sbom_in_container])
-            return args
-
+            return ["scan", "--format", "json", "--output-file", "/output/results.json",
+                    "-L", sbom_in_container]
+        args = ["scan", "source", "--format", "json", "--output-file", "/output/results.json"]
         lockfile = config.get("lockfile")
         if lockfile:
             args.extend(["-L", f"/workspace/{lockfile}"])
@@ -50,6 +38,8 @@ class OsvScanner:
             if str(recursive).lower() not in ("false", "0", "no"):
                 args.append("--recursive")
             args.append("/workspace")
+        if config.get("config_file"):
+            args.extend(["--config", f"/workspace/{config['config_file']}"])
         return args
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:

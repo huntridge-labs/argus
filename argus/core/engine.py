@@ -46,6 +46,7 @@ class ArgusEngine:
         no_cache: bool = False,
         use_default_excludes: bool = True,
         sbom_path: str | None = None,
+        sbom_format: str | None = None,
     ) -> ScanSummary:
         """Run scanners and return an aggregated ScanSummary.
 
@@ -73,6 +74,7 @@ class ArgusEngine:
         self._no_cache = no_cache
         self._use_default_excludes = use_default_excludes
         self._sbom_path = sbom_path
+        self._sbom_format = sbom_format
 
         if sbom_path is not None:
             names_to_run = self._resolve_sbom_scanner_names(scanner_names)
@@ -157,9 +159,11 @@ class ArgusEngine:
             # ``_run_in_container`` when we build the docker command.
             if self._sbom_path:
                 config_dict["sbom_path"] = self._sbom_path
-                config_dict["sbom_mount_path"] = (
-                    f"/sbom/{Path(self._sbom_path).name}"
-                )
+                # Use format-canonical basename so scanners detect format from extension
+                ext_map = {"spdx-json": ".spdx.json", "spdx-tv": ".spdx",
+                           "cyclonedx-json": ".cdx.json", "cyclonedx-xml": ".cdx.xml"}
+                ext = ext_map.get(self._sbom_format, Path(self._sbom_path).suffix)
+                config_dict["sbom_mount_path"] = f"/sbom/sbom{ext}"
 
             # Resolve the scanner's tool config file. Explicit `config_file:`
             # in argus.yml wins; otherwise we auto-discover against the scan
@@ -226,7 +230,8 @@ class ArgusEngine:
             if version:
                 result.metadata["tool_version"] = version
 
-        if exclusion_patterns and result.findings:
+        # Skip exclusion filter in SBOM mode — findings reference SBOM path, not source
+        if exclusion_patterns and result.findings and not config_dict.get("sbom_path"):
             from .exclusions import filter_findings
             filtered_findings, excluded_count = filter_findings(
                 result.findings, exclusion_patterns,
