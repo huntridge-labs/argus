@@ -96,6 +96,65 @@ class TestBuildExclusionSet:
         patterns = build_exclusion_set(scan_path="/nonexistent/path")
         assert len(patterns) >= len(_BUILTIN_EXCLUDES)
 
+    def test_use_defaults_false_drops_builtins(self):
+        patterns = build_exclusion_set(
+            scan_path="/nonexistent", cli_excludes="mine", use_defaults=False
+        )
+        assert "node_modules" not in patterns
+        assert ".git" not in patterns
+        assert patterns == ["mine"]
+
+    def test_use_defaults_false_skips_ignore_files(self, tmp_path):
+        (tmp_path / ".gitignore").write_text("*.log\n")
+        patterns = build_exclusion_set(
+            scan_path=str(tmp_path),
+            cli_excludes="mine",
+            use_defaults=False,
+        )
+        assert "*.log" not in patterns
+        assert patterns == ["mine"]
+
+
+class TestDoublestarGlob:
+    """is_excluded must understand ``**`` the way users/git/semgrep do."""
+
+    def test_doublestar_tests_dir_matches_nested(self):
+        assert is_excluded("src/foo/tests/bar.py", ["**/tests/**"])
+
+    def test_doublestar_matches_leading_segments(self):
+        assert is_excluded("a/b/c/tests/x.py", ["**/tests/**"])
+
+    def test_doublestar_respects_segment_boundary(self):
+        # "tests" appearing mid-name is NOT a directory match — guard against
+        # the naive "tests" substring false positive that fnmatch alone has.
+        assert not is_excluded(
+            "src/contests/run.py", ["**/tests/**"]
+        )
+
+    def test_doublestar_with_trailing_glob(self):
+        assert is_excluded("generated/pb.py", ["generated/**"])
+        assert is_excluded("generated/nested/pb.py", ["generated/**"])
+
+    def test_star_does_not_cross_segment(self):
+        # Single * must not consume path separators
+        assert not is_excluded("src/a/b.py", ["src/*.py"])
+        assert is_excluded("src/b.py", ["src/*.py"])
+
+    def test_question_mark_single_char(self):
+        assert is_excluded("a/b.py", ["a/?.py"])
+        assert not is_excluded("a/bc.py", ["a/?.py"])
+
+    def test_builtin_substring_still_matches(self):
+        # Plain tokens like "node_modules" keep their substring semantics
+        assert is_excluded(
+            "proj/node_modules/pkg/index.js", ["node_modules"]
+        )
+
+    def test_windows_style_path_matches_posix_pattern(self):
+        assert is_excluded(
+            "src\\tests\\x.py", ["**/tests/**"]
+        )
+
 
 class TestParseIgnoreFile:
     """Tests for _parse_ignore_file() gitignore-style parsing."""

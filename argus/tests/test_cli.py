@@ -757,6 +757,85 @@ class TestCacheSubcommand:
         args = parser.parse_args(["scan"])
         assert args.no_cache is False
 
+    def test_no_default_excludes_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["scan", "--no-default-excludes"])
+        assert args.no_default_excludes is True
+
+    def test_no_default_excludes_default(self):
+        parser = build_parser()
+        args = parser.parse_args(["scan"])
+        assert args.no_default_excludes is False
+
+    def test_dry_run_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["scan", "--dry-run"])
+        assert args.dry_run is True
+
+
+class TestDryRun:
+    """End-to-end coverage for --dry-run output."""
+
+    def _setup_project(self, tmp_path):
+        (tmp_path / "argus.yml").write_text(
+            'version: "1.0"\n'
+            "scanners:\n"
+            "  bandit:\n"
+            "    enabled: true\n"
+            "reporting:\n"
+            "  formats: [terminal]\n"
+            "execution:\n"
+            "  backend: auto\n"
+        )
+
+    def test_dry_run_prints_plan_and_exits_success(self, tmp_path, capsys, monkeypatch):
+        self._setup_project(tmp_path)
+        (tmp_path / ".bandit").write_text("[bandit]\nskips = [\"B101\"]\n")
+        monkeypatch.chdir(tmp_path)
+
+        from argus.cli import cmd_scan
+        import argparse
+
+        args = argparse.Namespace(
+            command="scan",
+            scanner=None,
+            path=str(tmp_path),
+            config="argus.yml",
+            formats=None,
+            severity_threshold=None,
+            output_dir=None,
+            list=False,
+            verbose=False,
+            exclude="",
+            no_default_excludes=False,
+            dry_run=True,
+            fail_fast=False,
+            timeout=None,
+            no_parallel=False,
+            allow_local_versions=False,
+            no_cache=False,
+            no_timestamp=False,
+            no_spinner=True,
+            output_vars=None,
+            discover=None,
+            images=None,
+            scanners=None,
+            target=None,
+            port=None,
+            env_vars=None,
+            scan_type="baseline",
+            startup_timeout=60,
+            check_tools=False,
+        )
+        result = cmd_scan(args)
+        assert result == EXIT_SUCCESS
+
+        out = capsys.readouterr().out
+        assert "dry-run" in out
+        assert "bandit" in out
+        assert ".bandit" in out  # auto-discovered config surfaced
+        assert "Exclusion patterns" in out
+
     def test_cache_info_runs(self, tmp_path, monkeypatch):
         from argus.cli import cmd_cache
         monkeypatch.setenv("ARGUS_CACHE_DIR", str(tmp_path))

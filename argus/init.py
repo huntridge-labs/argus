@@ -218,14 +218,25 @@ def detect_project(root: Path) -> dict[str, list[str]]:
         signals["jenkins"] = [_rel(jenkinsfile)]
 
     # ── Existing tool configs (reference in generated argus.yml) ──
+    # Keep this list aligned with argus.core.tool_config.DISCOVERY_RULES so
+    # the signals "argus init detected" line reflects what will actually be
+    # auto-picked-up at scan time.
     tool_configs = {
         "pyproject.toml": "python-config",
         ".bandit": "bandit-config",
+        "bandit.yaml": "bandit-config",
+        "bandit.yml": "bandit-config",
         ".gitleaks.toml": "gitleaks-config",
         ".gitleaksignore": "gitleaks-config",
         ".semgrepignore": "opengrep-config",
+        "semgrep.yml": "opengrep-config",
+        "semgrep.yaml": "opengrep-config",
         ".trivyignore": "trivy-config",
+        "trivy.yaml": "trivy-config",
+        "trivy.yml": "trivy-config",
         ".checkov.yaml": "checkov-config",
+        ".checkov.yml": "checkov-config",
+        "osv-scanner.toml": "osv-config",
         ".flake8": "flake8-config",
         "setup.cfg": "python-config",
         ".hadolint.yaml": "hadolint-config",

@@ -828,6 +828,101 @@ class TestExclusions:
         assert not is_excluded("src/main.py", ["*.pyc"])
 
 
+class TestToolConfigAutoDiscovery:
+    """Engine should auto-discover per-scanner config files and pass them through."""
+
+    def _make_engine(self, scanners_config=None):
+        data = {"scanners": scanners_config or {}}
+        return ArgusEngine(ArgusConfig.from_dict(data))
+
+    def test_bandit_picks_up_dot_bandit_via_engine(self, tmp_path):
+        (tmp_path / ".bandit").write_text("[bandit]\nskips = [\"B101\"]\n")
+        engine = self._make_engine({"bandit": {"enabled": True}})
+        engine.register_scanner(MockScanner("bandit"))
+
+        engine.run(path=str(tmp_path))
+
+        resolutions = engine._last_resolutions
+        assert len(resolutions) == 1
+        assert resolutions[0].scanner == "bandit"
+        assert resolutions[0].source == "discovered"
+        assert resolutions[0].path.endswith(".bandit")
+
+    def test_explicit_config_file_wins_over_autodiscovery(self, tmp_path):
+        (tmp_path / ".bandit").write_text("[bandit]\n")
+        (tmp_path / "custom.yaml").write_text("skips = []\n")
+        engine = self._make_engine(
+            {"bandit": {"enabled": True, "config_file": "custom.yaml"}},
+        )
+        engine.register_scanner(MockScanner("bandit"))
+
+        engine.run(path=str(tmp_path))
+
+        resolutions = engine._last_resolutions
+        assert resolutions[0].source == "explicit"
+        assert resolutions[0].path == "custom.yaml"
+
+    def test_no_config_file_when_nothing_present(self, tmp_path):
+        engine = self._make_engine({"bandit": {"enabled": True}})
+        engine.register_scanner(MockScanner("bandit"))
+
+        engine.run(path=str(tmp_path))
+
+        resolutions = engine._last_resolutions
+        assert resolutions[0].source == "none"
+
+    def test_discovered_path_is_relative_to_scan_root(self, tmp_path):
+        (tmp_path / ".bandit").write_text("[bandit]\n")
+        engine = self._make_engine({"bandit": {"enabled": True}})
+        scanner = MockScanner("bandit")
+        engine.register_scanner(scanner)
+
+        engine.run(path=str(tmp_path))
+
+        # The scanner receives config_file relative to the scan root so
+        # container wrappers can prepend /workspace/ correctly.
+        _, config = scanner.scan_called_with
+        assert config["config_file"] == ".bandit"
+
+
+class TestNoDefaultExcludes:
+    """use_default_excludes=False must drop builtins + gitignore patterns."""
+
+    def _make_engine(self, scanners_config=None):
+        data = {"scanners": scanners_config or {}}
+        return ArgusEngine(ArgusConfig.from_dict(data))
+
+    def test_drops_builtins_and_gitignore_when_disabled(self, tmp_path):
+        (tmp_path / ".gitignore").write_text("*.log\n")
+        engine = self._make_engine({"bandit": {"enabled": True}})
+        scanner = MockScanner("bandit")
+        engine.register_scanner(scanner)
+
+        engine.run(
+            path=str(tmp_path),
+            exclude="mydir",
+            use_default_excludes=False,
+        )
+
+        _, config = scanner.scan_called_with
+        excludes = config.get("exclude", "").split(",")
+        assert "node_modules" not in excludes
+        assert "*.log" not in excludes
+        assert "mydir" in excludes
+
+    def test_defaults_preserved_by_default(self, tmp_path):
+        engine = self._make_engine({"bandit": {"enabled": True}})
+        scanner = MockScanner("bandit")
+        engine.register_scanner(scanner)
+
+        engine.run(path=str(tmp_path), exclude="mydir")
+
+        _, config = scanner.scan_called_with
+        excludes = config.get("exclude", "").split(",")
+        assert "node_modules" in excludes
+        assert "mydir" in excludes
+
+
 class TestToolVersionEnforcement:
     """Test local tool version verification against container-pinned versions."""
 

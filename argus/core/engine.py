@@ -44,6 +44,7 @@ class ArgusEngine:
         parallel: bool = True,
         allow_local_versions: bool = False,
         no_cache: bool = False,
+        use_default_excludes: bool = True,
     ) -> ScanSummary:
         """Run scanners and return an aggregated ScanSummary.
 
@@ -56,11 +57,15 @@ class ArgusEngine:
             parallel: run scanners concurrently (default True)
             allow_local_versions: skip version enforcement for local tools
             no_cache: disable DB cache volume mounts for containers
+            use_default_excludes: include built-in defaults and ignore-file
+                patterns (True by default). Set False when the caller wants
+                their --exclude value to be the complete pattern set.
         """
         from .exclusions import build_exclusion_set, log_exclusion_set
 
         self._allow_local_versions = allow_local_versions
         self._no_cache = no_cache
+        self._use_default_excludes = use_default_excludes
 
         names_to_run = self._resolve_scanner_names(scanner_names)
         logger.debug(
@@ -74,6 +79,7 @@ class ArgusEngine:
         exclusion_patterns = build_exclusion_set(
             scan_path=scan_root,
             cli_excludes=exclude,
+            use_defaults=use_default_excludes,
         )
         log_exclusion_set(exclusion_patterns)
 
@@ -111,8 +117,12 @@ class ArgusEngine:
     ) -> list[tuple]:
         """Build (scanner, scan_path, config_dict, patterns) tuples."""
         from .exclusions import build_exclusion_set
+        from .tool_config import resolve_config
+
+        use_defaults = getattr(self, "_use_default_excludes", True)
 
         jobs = []
+        resolutions = []
         for name in names_to_run:
             scanner = self._scanners.get(name)
             if scanner is None:
@@ -128,18 +138,43 @@ class ArgusEngine:
             scan_path = path if path is not None else scanner_config.path
             config_dict = self._build_scanner_config_dict(scanner_config)
 
+            # Resolve the scanner's tool config file. Explicit `config_file:`
+            # in argus.yml wins; otherwise we auto-discover against the scan
+            # root so users who drop a `.bandit` / `.checkov.yaml` / etc. at
+            # the project root get suppressions applied without manual wiring.
+            resolution = resolve_config(
+                name, scan_path, config_dict.get("config_file"),
+            )
+            if resolution.path:
+                # Scanner container_args() prepends /workspace/ to whatever
+                # path we pass, so store a scan-root-relative path when the
+                # resolved file lives under scan_path. For absolute paths
+                # outside scan_path (rare — user points at a shared config
+                # elsewhere) we pass through unchanged; container wrappers
+                # handle that case with an extra bind mount if needed.
+                config_dict["config_file"] = _relativize_config_path(
+                    resolution.path, scan_path,
+                )
+            resolutions.append(resolution)
+
             # Merge per-scanner excludes with global exclusion set
             scanner_exclude = config_dict.get("exclude", "")
             combined_patterns = build_exclusion_set(
                 scan_path=scan_path,
                 cli_excludes=exclude,
                 config_excludes=scanner_exclude,
+                use_defaults=use_defaults,
             ) if scanner_exclude else exclusion_patterns
 
             if combined_patterns:
                 config_dict["exclude"] = ",".join(combined_patterns)
 
             jobs.append((scanner, scan_path, config_dict, combined_patterns))
+
+        # Make tool-config resolution visible to callers (CLI verbose/dry-run).
+        self._last_resolutions = resolutions
+        from .tool_config import log_resolutions
+        log_resolutions(resolutions)
 
         return jobs
 
@@ -805,3 +840,22 @@ class ArgusEngine:
         if scanner_config.extra:
             config_dict.update(scanner_config.extra)
         return config_dict
+
+
+def _relativize_config_path(config_path: str, scan_path: str) -> str:
+    """Return ``config_path`` as scan-root-relative when it lives under scan_path.
+
+    Scanner container wrappers prepend ``/workspace/`` to whatever we return,
+    so a relative value is what they want. If the config lives outside the
+    scan root (user pointing at a shared config), we return the original
+    path unchanged — the local-backend code path accepts absolute paths
+    natively, and container wrappers that need this rare case can add a
+    bind mount themselves.
+    """
+    from pathlib import Path
+    try:
+        cp = Path(config_path).resolve()
+        sp = Path(scan_path).resolve()
+        return str(cp.relative_to(sp))
+    except (ValueError, OSError):
+        return config_path
