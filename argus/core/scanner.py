@@ -21,9 +21,15 @@ class Scanner(Protocol):
 
     Supply-chain integrity:
         tool_version() — Detect locally installed tool version
+
+    SBOM scanning:
+        supports_sbom: bool — True when the scanner can accept a pre-built
+            SBOM via ``config["sbom_path"]`` instead of a filesystem path.
+            Consumed by ``argus scan --sbom`` to auto-select capable tools.
     """
 
     name: str
+    supports_sbom: bool = False
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run the scanner against the given path and return results."""

@@ -923,6 +923,80 @@ class TestNoDefaultExcludes:
         assert "mydir" in excludes
 
 
+class TestEngineSbomMode:
+    """engine.run(sbom_path=...) threads the path and filters to sbom-capable scanners."""
+
+    def _make_engine(self, scanners_config=None):
+        data = {"scanners": scanners_config or {}}
+        return ArgusEngine(ArgusConfig.from_dict(data))
+
+    def _make_sbom_scanner(self, name: str):
+        scanner = MockScanner(name)
+        scanner.supports_sbom = True
+        return scanner
+
+    def test_filters_to_sbom_capable_scanners(self, tmp_path):
+        sbom = tmp_path / "sbom.json"
+        sbom.write_text('{"bomFormat": "CycloneDX"}')
+
+        engine = self._make_engine({
+            "osv": {"enabled": True},
+            "bandit": {"enabled": True},
+        })
+        sbom_capable = self._make_sbom_scanner("osv")
+        not_capable = MockScanner("bandit")  # supports_sbom = False by default
+        engine.register_scanner(sbom_capable)
+        engine.register_scanner(not_capable)
+
+        engine.run(sbom_path=str(sbom))
+
+        assert sbom_capable.scan_called_with is not None
+        assert not_capable.scan_called_with is None
+
+    def test_auto_enables_sbom_scanners_regardless_of_config(self, tmp_path):
+        sbom = tmp_path / "sbom.json"
+        sbom.write_text('{"bomFormat": "CycloneDX"}')
+
+        # osv is explicitly DISABLED in argus.yml; --sbom should override.
+        engine = self._make_engine({"osv": {"enabled": False}})
+        osv = self._make_sbom_scanner("osv")
+        engine.register_scanner(osv)
+
+        engine.run(sbom_path=str(sbom))
+
+        assert osv.scan_called_with is not None
+
+    def test_passes_sbom_path_via_config(self, tmp_path):
+        sbom = tmp_path / "sbom.json"
+        sbom.write_text("{}")
+
+        engine = self._make_engine({"osv": {"enabled": True}})
+        osv = self._make_sbom_scanner("osv")
+        engine.register_scanner(osv)
+
+        engine.run(sbom_path=str(sbom))
+
+        _, config = osv.scan_called_with
+        assert config["sbom_path"] == str(sbom)
+        # Mount path dedicated to /sbom/ so it can't collide with workspace files
+        assert config["sbom_mount_path"].startswith("/sbom/")
+        assert config["sbom_mount_path"].endswith("sbom.json")
+
+    def test_named_scanner_without_sbom_support_is_dropped(self, tmp_path, caplog):
+        sbom = tmp_path / "sbom.json"
+        sbom.write_text("{}")
+
+        engine = self._make_engine({"bandit": {"enabled": True}})
+        not_capable = MockScanner("bandit")
+        engine.register_scanner(not_capable)
+
+        with caplog.at_level("WARNING"):
+            engine.run(scanner_names=["bandit"], sbom_path=str(sbom))
+
+        assert not_capable.scan_called_with is None
+        assert any("does not support SBOM" in msg for msg in caplog.messages)
+
+
 class TestToolVersionEnforcement:
     """Test local tool version verification against container-pinned versions."""
 

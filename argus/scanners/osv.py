@@ -14,10 +14,11 @@ class OsvScanner:
     """Wraps OSV-Scanner to detect vulnerable dependencies."""
 
     name = "osv"
-    description = "Dependency vulnerability scanner — checks lockfiles against the OSV database"
+    description = "Dependency vulnerability scanner — checks lockfiles or an SBOM against the OSV database"
     category = "sca"
     languages = ["all"]
     container_image = get_image("osv-scanner")
+    supports_sbom = True
 
     def container_args(self, config: dict | None = None) -> list[str]:
         """Build container args from config — mirrors _build_command."""
@@ -30,6 +31,16 @@ class OsvScanner:
         config_file = config.get("config_file")
         if config_file:
             args.extend(["--config", f"/workspace/{config_file}"])
+
+        sbom_path = config.get("sbom_path")
+        if sbom_path:
+            # SBOM mode: scan the provided file instead of the workspace.
+            # Engine mounts the SBOM into the container at /workspace/<name>
+            # via the sbom_mount_path config key (set by the engine when
+            # the SBOM lives outside the scan root).
+            sbom_in_container = config.get("sbom_mount_path") or f"/workspace/{sbom_path}"
+            args.extend(["--sbom", sbom_in_container])
+            return args
 
         lockfile = config.get("lockfile")
         if lockfile:
@@ -210,6 +221,11 @@ class OsvScanner:
         config_file = config.get("config_file")
         if config_file:
             cmd.extend(["--config", config_file])
+
+        sbom_path = config.get("sbom_path")
+        if sbom_path:
+            cmd.extend(["--sbom", str(sbom_path)])
+            return cmd
 
         lockfile = config.get("lockfile")
         if lockfile:
