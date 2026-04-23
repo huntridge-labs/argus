@@ -18,8 +18,11 @@ Supported formats:
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
+
+logger = logging.getLogger("argus")
 
 
 @dataclass(frozen=True)
@@ -117,3 +120,57 @@ def _detect_tag_value(head: str) -> str | None:
         # First non-comment, non-blank line that isn't SPDXVersion — bail.
         return None
     return None
+
+
+# Files we never bother sniffing when walking a directory — keeps the
+# per-file open()/read(4KB) cost off the hot path for files that are
+# obviously not SBOMs. Sniffing is still the decider for anything that
+# isn't on this list, so a mis-extensioned SBOM still works.
+_DIR_WALK_SKIP_EXTENSIONS = frozenset({
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico",
+    ".pdf", ".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz",
+    ".so", ".dylib", ".dll", ".exe", ".wasm",
+    ".mp3", ".mp4", ".mov", ".wav",
+    ".pyc", ".pyo",
+})
+
+
+def discover_sbom_files(path: str | Path) -> list[SbomInfo]:
+    """Return every recognizable SBOM at ``path``, recursive when a dir.
+
+    - File path: one-item list if the file sniffs as an SBOM, else raise.
+    - Directory path: walk recursively, yielding any file that sniffs
+      cleanly. Files that don't parse as SBOMs are skipped silently
+      (logged at DEBUG) — vendor-provided bundles routinely ship
+      README.md, LICENSE, and signature files alongside the SBOM.
+    - Empty or all-non-SBOM directory: returns ``[]``. Callers decide
+      whether that's an error.
+
+    Files with obviously-non-SBOM extensions (images, archives, binaries)
+    are skipped without opening to keep walks of large vendor bundles
+    cheap. Sniffing remains the source of truth for any remaining file.
+    """
+    p = Path(path)
+    if not p.exists():
+        raise SbomDetectionError(f"SBOM path not found: {p}")
+    if p.is_file():
+        return [detect_sbom(p)]
+    if not p.is_dir():
+        raise SbomDetectionError(
+            f"SBOM path is neither file nor directory: {p}"
+        )
+
+    found: list[SbomInfo] = []
+    for candidate in sorted(p.rglob("*")):
+        if not candidate.is_file():
+            continue
+        if candidate.suffix.lower() in _DIR_WALK_SKIP_EXTENSIONS:
+            continue
+        try:
+            found.append(detect_sbom(candidate))
+        except SbomDetectionError:
+            logger.debug(
+                "Skipping %s — does not appear to be an SBOM", candidate,
+            )
+            continue
+    return found

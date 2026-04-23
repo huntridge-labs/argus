@@ -783,6 +783,96 @@ class TestCacheSubcommand:
         assert args.sbom is None
 
 
+class TestSbomDirectoryMerge:
+    """CLI helper that collapses per-SBOM ScanSummary objects into one."""
+
+    def _make_info(self, tmp_path, name: str):
+        from argus.core.sbom import SbomInfo
+        p = tmp_path / name
+        p.write_text("{}")
+        return SbomInfo(path=p, format="cyclonedx-json")
+
+    def _make_summary(self, scanner: str, findings):
+        from argus.core.models import ScanResult, ScanSummary
+        return ScanSummary(
+            results=[ScanResult(scanner=scanner, findings=findings, metadata={"execution": "local"})],
+            severity_threshold=None,
+        )
+
+    def _finding(self, fid: str):
+        from argus.core.models import Finding, Severity
+        return Finding(
+            id=fid, severity=Severity.HIGH, title=fid,
+            scanner="osv", metadata={},
+        )
+
+    def test_single_sbom_preserved(self, tmp_path):
+        from argus.cli import _merge_sbom_summaries
+        info = self._make_info(tmp_path, "sbom.json")
+        summary = self._make_summary("osv", [self._finding("CVE-1")])
+
+        merged = _merge_sbom_summaries([(info, summary)], severity_threshold=None)
+
+        assert len(merged.results) == 1
+        assert merged.results[0].scanner == "osv"
+        assert len(merged.results[0].findings) == 1
+        # Finding is annotated with its source SBOM
+        assert merged.results[0].findings[0].metadata["sbom_source"] == str(info.path)
+
+    def test_multiple_sboms_same_scanner_collapse(self, tmp_path):
+        from argus.cli import _merge_sbom_summaries
+
+        info_a = self._make_info(tmp_path, "a.json")
+        info_b = self._make_info(tmp_path, "b.json")
+        summary_a = self._make_summary("osv", [self._finding("CVE-1")])
+        summary_b = self._make_summary("osv", [self._finding("CVE-2")])
+
+        merged = _merge_sbom_summaries(
+            [(info_a, summary_a), (info_b, summary_b)],
+            severity_threshold=None,
+        )
+
+        assert len(merged.results) == 1
+        assert merged.results[0].scanner == "osv"
+        assert {f.id for f in merged.results[0].findings} == {"CVE-1", "CVE-2"}
+
+        sources = [f.metadata["sbom_source"] for f in merged.results[0].findings]
+        assert str(info_a.path) in sources
+        assert str(info_b.path) in sources
+
+    def test_records_all_sbom_sources_in_metadata(self, tmp_path):
+        from argus.cli import _merge_sbom_summaries
+
+        info_a = self._make_info(tmp_path, "a.json")
+        info_b = self._make_info(tmp_path, "b.json")
+        merged = _merge_sbom_summaries(
+            [
+                (info_a, self._make_summary("osv", [])),
+                (info_b, self._make_summary("osv", [])),
+            ],
+            severity_threshold=None,
+        )
+        sources = merged.results[0].metadata["sbom_sources"]
+        assert sources == [str(info_a.path), str(info_b.path)]
+
+    def test_multiple_scanners_one_result_each(self, tmp_path):
+        from argus.cli import _merge_sbom_summaries
+        from argus.core.models import ScanResult, ScanSummary
+
+        info = self._make_info(tmp_path, "sbom.json")
+        summary = ScanSummary(
+            results=[
+                ScanResult(scanner="osv", findings=[self._finding("CVE-1")], metadata={}),
+                ScanResult(scanner="grype", findings=[self._finding("CVE-2")], metadata={}),
+            ],
+            severity_threshold=None,
+        )
+        merged = _merge_sbom_summaries([(info, summary)], severity_threshold=None)
+
+        by_scanner = {r.scanner: r for r in merged.results}
+        assert set(by_scanner.keys()) == {"osv", "grype"}
+
+
 class TestDryRun:
     """End-to-end coverage for --dry-run output."""
 

@@ -304,12 +304,14 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
     scan_parser.add_argument(
         "--sbom",
         default=None,
-        metavar="FILE",
-        help="Scan a pre-built SBOM (CycloneDX JSON/XML, SPDX JSON/tag-value, "
-             "or Syft JSON) instead of a directory. Auto-enables all "
-             "SBOM-capable scanners (osv, grype, trivy) regardless of "
-             "argus.yml. Filesystem scanners (bandit, gitleaks, ...) are "
-             "skipped since they have nothing to scan.",
+        metavar="PATH",
+        help="Scan a pre-built SBOM or directory of SBOMs (CycloneDX "
+             "JSON/XML, SPDX JSON/tag-value, or Syft JSON). When PATH is "
+             "a directory, argus walks it recursively, sniffs each file, "
+             "and scans every SBOM it finds. Auto-enables all SBOM-capable "
+             "scanners (osv, grype, trivy) regardless of argus.yml. "
+             "Filesystem scanners (bandit, gitleaks, ...) are skipped "
+             "since they have nothing to scan.",
     )
     scan_parser.add_argument(
         "--fail-fast",
@@ -904,43 +906,87 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
             args=args,
         )
 
-    # SBOM mode: validate the file and detect its format before we spin up
-    # scanners. Failing here is much friendlier than a cryptic tool error
-    # further down.
+    # SBOM mode: validate input (file OR directory), discover every SBOM
+    # present, and record formats up front. Failing here — before spinning
+    # up any scanner — keeps errors actionable.
     sbom_path = getattr(args, "sbom", None)
+    sbom_files: list = []
     if sbom_path:
-        from argus.core.sbom import detect_sbom, SbomDetectionError
+        from argus.core.sbom import discover_sbom_files, SbomDetectionError
         try:
-            info = detect_sbom(sbom_path)
+            sbom_files = discover_sbom_files(sbom_path)
         except SbomDetectionError as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return EXIT_ERROR
-        log.info(
-            "SBOM input: %s (%s)",
-            info.path,
-            info.display_format,
-        )
+        if not sbom_files:
+            print(
+                f"Error: no SBOM files found in {sbom_path}. Supported: "
+                "CycloneDX (JSON/XML), SPDX (JSON/tag-value), Syft JSON.",
+                file=sys.stderr,
+            )
+            return EXIT_ERROR
+        if len(sbom_files) == 1:
+            log.info(
+                "SBOM input: %s (%s)",
+                sbom_files[0].path,
+                sbom_files[0].display_format,
+            )
+        else:
+            log.info(
+                "SBOM batch: %d files found under %s",
+                len(sbom_files), sbom_path,
+            )
+            for info in sbom_files:
+                log.info("  - %s (%s)", info.path, info.display_format)
 
     # Run the scan
     try:
         scanner_names = [args.scanner] if args.scanner else None
         log.info("Running scanners: %s", scanner_names or "all enabled")
-        with _TerminalSpinner(
-            message="Running scanners",
-            enabled=_spinner_enabled(args),
-        ):
-            summary = engine.run(
-                scanner_names=scanner_names,
-                path=args.path,
-                fail_fast=getattr(args, "fail_fast", False),
-                timeout=getattr(args, "timeout", None),
-                exclude=getattr(args, "exclude", ""),
-                parallel=not getattr(args, "no_parallel", False),
-                allow_local_versions=getattr(args, "allow_local_versions", False),
-                no_cache=getattr(args, "no_cache", False),
-                use_default_excludes=not getattr(args, "no_default_excludes", False),
-                sbom_path=sbom_path,
+        if sbom_files:
+            # SBOM mode: run the engine once per discovered SBOM, then
+            # merge the per-file ScanSummary objects into one so the rest
+            # of the pipeline (reporters, output vars, nudge) sees a
+            # single aggregated view.
+            per_file_summaries = []
+            with _TerminalSpinner(
+                message=f"Scanning {len(sbom_files)} SBOM(s)",
+                enabled=_spinner_enabled(args),
+            ):
+                for info in sbom_files:
+                    per_summary = engine.run(
+                        scanner_names=scanner_names,
+                        path=args.path,
+                        fail_fast=getattr(args, "fail_fast", False),
+                        timeout=getattr(args, "timeout", None),
+                        exclude=getattr(args, "exclude", ""),
+                        parallel=not getattr(args, "no_parallel", False),
+                        allow_local_versions=getattr(args, "allow_local_versions", False),
+                        no_cache=getattr(args, "no_cache", False),
+                        use_default_excludes=not getattr(args, "no_default_excludes", False),
+                        sbom_path=str(info.path),
+                    )
+                    per_file_summaries.append((info, per_summary))
+            summary = _merge_sbom_summaries(
+                per_file_summaries,
+                severity_threshold=config.reporting.severity_threshold,
             )
+        else:
+            with _TerminalSpinner(
+                message="Running scanners",
+                enabled=_spinner_enabled(args),
+            ):
+                summary = engine.run(
+                    scanner_names=scanner_names,
+                    path=args.path,
+                    fail_fast=getattr(args, "fail_fast", False),
+                    timeout=getattr(args, "timeout", None),
+                    exclude=getattr(args, "exclude", ""),
+                    parallel=not getattr(args, "no_parallel", False),
+                    allow_local_versions=getattr(args, "allow_local_versions", False),
+                    no_cache=getattr(args, "no_cache", False),
+                    use_default_excludes=not getattr(args, "no_default_excludes", False),
+                )
         if args.verbose and getattr(engine, "_last_resolutions", None):
             from argus.core.tool_config import format_resolutions_for_display
             log.info(
@@ -1022,14 +1068,20 @@ def _dry_run(engine, config, args) -> int:
     )
 
     sbom_path = getattr(args, "sbom", None)
+    sbom_files = []
 
     if sbom_path:
-        from argus.core.sbom import detect_sbom, SbomDetectionError
+        from argus.core.sbom import discover_sbom_files, SbomDetectionError
         try:
-            info = detect_sbom(sbom_path)
-            sbom_label = f"{info.path} ({info.display_format})"
+            sbom_files = discover_sbom_files(sbom_path)
         except SbomDetectionError as exc:
             print(f"Error: {exc}", file=sys.stderr)
+            return EXIT_ERROR
+        if not sbom_files:
+            print(
+                f"Error: no SBOM files found in {sbom_path}.",
+                file=sys.stderr,
+            )
             return EXIT_ERROR
         # SBOM mode: only scanners declaring supports_sbom run; argus.yml
         # `enabled:` flags are ignored by design (the user explicitly asked
@@ -1043,7 +1095,6 @@ def _dry_run(engine, config, args) -> int:
         # plan matches what a real run would do.
         scanner_names = [n for n in scanner_names if n in capable]
     else:
-        sbom_label = None
         scanner_names = [args.scanner] if args.scanner else [
             name for name in engine._scanners
             if config.get_scanner_config(name).enabled
@@ -1051,8 +1102,13 @@ def _dry_run(engine, config, args) -> int:
     use_defaults = not getattr(args, "no_default_excludes", False)
 
     print("Argus dry-run — no scanners will execute.\n")
-    if sbom_label:
-        print(f"SBOM input:  {sbom_label}")
+    if sbom_files:
+        if len(sbom_files) == 1:
+            print(f"SBOM input:  {sbom_files[0].path} ({sbom_files[0].display_format})")
+        else:
+            print(f"SBOM batch:  {len(sbom_files)} files under {sbom_path}")
+            for info in sbom_files:
+                print(f"  - {info.path} ({info.display_format})")
     print(f"Scan path:   {args.path}")
     print(f"Backend:     {config.execution.backend}")
     print(f"Scanners:    {', '.join(scanner_names) if scanner_names else '(none)'}")
@@ -1078,6 +1134,48 @@ def _dry_run(engine, config, args) -> int:
     print(format_resolutions_for_display(resolutions))
 
     return EXIT_SUCCESS
+
+
+def _merge_sbom_summaries(per_file_summaries, severity_threshold):
+    """Collapse per-SBOM ScanSummary objects into a single ScanSummary.
+
+    For each scanner we end up with one ScanResult whose findings span
+    every SBOM file. Each finding is annotated via metadata['sbom_source']
+    so downstream reporters / audit consumers can tell which SBOM a
+    vulnerability came from without losing per-scanner grouping.
+    """
+    from argus.core.models import ScanResult, ScanSummary
+
+    by_scanner: dict[str, list] = {}
+    metadata_by_scanner: dict[str, dict] = {}
+    for info, summary in per_file_summaries:
+        source = str(info.path)
+        for result in summary.results:
+            # Annotate without mutating shared finding objects in place:
+            # metadata is a per-finding dict so assignment is safe, but
+            # we still want to avoid clobbering an sbom_source set by an
+            # earlier iteration (shouldn't happen, but defensive).
+            for f in result.findings:
+                f.metadata.setdefault("sbom_source", source)
+            by_scanner.setdefault(result.scanner, []).extend(result.findings)
+            # Preserve the first metadata dict we see per scanner for
+            # the execution/tool-version bookkeeping the audit trail
+            # relies on; append the new SBOM source to a list.
+            meta = metadata_by_scanner.setdefault(result.scanner, dict(result.metadata))
+            meta.setdefault("sbom_sources", []).append(source)
+
+    merged_results = [
+        ScanResult(
+            scanner=name,
+            findings=findings,
+            metadata=metadata_by_scanner.get(name, {}),
+        )
+        for name, findings in by_scanner.items()
+    ]
+    return ScanSummary(
+        results=merged_results,
+        severity_threshold=severity_threshold,
+    )
 
 
 def _print_missing_scanner_nudge(requested: list[str], summary) -> None:

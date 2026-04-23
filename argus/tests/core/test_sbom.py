@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -10,6 +11,7 @@ from argus.core.sbom import (
     SbomDetectionError,
     SbomInfo,
     detect_sbom,
+    discover_sbom_files,
 )
 
 
@@ -111,3 +113,90 @@ class TestSbomInfo:
     def test_display_format_falls_back_to_raw(self, tmp_path):
         info = SbomInfo(path=tmp_path / "x", format="custom-thing")
         assert info.display_format == "custom-thing"
+
+
+class TestDiscoverSbomFiles:
+    """discover_sbom_files handles single files and directory walks."""
+
+    def _cyclonedx(self, p):
+        p.write_text(json.dumps({
+            "bomFormat": "CycloneDX", "specVersion": "1.5", "components": [],
+        }))
+
+    def _spdx_tv(self, p):
+        p.write_text("SPDXVersion: SPDX-2.3\n")
+
+    def test_single_file_path(self, tmp_path):
+        f = tmp_path / "sbom.json"
+        self._cyclonedx(f)
+
+        infos = discover_sbom_files(f)
+        assert len(infos) == 1
+        assert infos[0].format == "cyclonedx-json"
+
+    def test_directory_returns_all_sboms(self, tmp_path):
+        self._cyclonedx(tmp_path / "a.cdx.json")
+        self._cyclonedx(tmp_path / "b.cdx.json")
+        self._spdx_tv(tmp_path / "c.spdx")
+
+        infos = discover_sbom_files(tmp_path)
+        names = sorted(Path(i.path).name for i in infos)
+        assert names == ["a.cdx.json", "b.cdx.json", "c.spdx"]
+
+    def test_directory_walks_recursively(self, tmp_path):
+        nested = tmp_path / "vendor" / "component-a"
+        nested.mkdir(parents=True)
+        self._cyclonedx(tmp_path / "top.json")
+        self._cyclonedx(nested / "nested.json")
+
+        infos = discover_sbom_files(tmp_path)
+        assert {Path(i.path).name for i in infos} == {"top.json", "nested.json"}
+
+    def test_skips_non_sbom_files(self, tmp_path):
+        self._cyclonedx(tmp_path / "sbom.json")
+        (tmp_path / "README.md").write_text("# A README, not an SBOM\n")
+        (tmp_path / "LICENSE").write_text("Copyright ...\n")
+        (tmp_path / "config.json").write_text('{"unrelated": "stuff"}')
+
+        infos = discover_sbom_files(tmp_path)
+        assert [Path(i.path).name for i in infos] == ["sbom.json"]
+
+    def test_skips_known_binary_extensions(self, tmp_path):
+        self._cyclonedx(tmp_path / "sbom.json")
+        (tmp_path / "image.png").write_bytes(b"\x89PNG\x00")
+        (tmp_path / "bundle.zip").write_bytes(b"PK\x03\x04")
+
+        infos = discover_sbom_files(tmp_path)
+        assert [Path(i.path).name for i in infos] == ["sbom.json"]
+
+    def test_empty_directory_returns_empty_list(self, tmp_path):
+        infos = discover_sbom_files(tmp_path)
+        assert infos == []
+
+    def test_directory_with_only_non_sbom_files(self, tmp_path):
+        (tmp_path / "README.md").write_text("nothing SBOM here")
+        (tmp_path / "bundle.zip").write_bytes(b"PK\x03\x04")
+
+        infos = discover_sbom_files(tmp_path)
+        assert infos == []
+
+    def test_missing_path_raises(self, tmp_path):
+        with pytest.raises(SbomDetectionError, match="not found"):
+            discover_sbom_files(tmp_path / "does-not-exist")
+
+    def test_single_file_that_isnt_sbom_raises(self, tmp_path):
+        f = tmp_path / "notes.txt"
+        f.write_text("Just notes.")
+        with pytest.raises(SbomDetectionError):
+            discover_sbom_files(f)
+
+    def test_mixed_formats_in_one_directory(self, tmp_path):
+        self._cyclonedx(tmp_path / "a.json")
+        (tmp_path / "b.xml").write_text(
+            '<?xml version="1.0"?><bom xmlns="http://cyclonedx.org/schema/bom/1.5"/>'
+        )
+        self._spdx_tv(tmp_path / "c.spdx")
+
+        infos = discover_sbom_files(tmp_path)
+        formats = sorted(i.format for i in infos)
+        assert formats == ["cyclonedx-json", "cyclonedx-xml", "spdx-tv"]
