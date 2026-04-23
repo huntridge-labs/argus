@@ -35,15 +35,16 @@ jobs:
 
       - name: Set dev version for TestPyPI
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |
-          # Unique dev version per workflow run: 0.7.0.dev88<run_number>
+          # github.run_number is a per-workflow monotonic counter, so PEP-440
+          # numeric ordering of dev releases matches upload order. Do not mix
+          # in the PR number — concatenating PR+run produces non-monotonic
+          # versions across PRs (e.g. pr94.run28 sorts above pr88.run30).
           BASE_VERSION=$(python -c "from argus import __version__; print(__version__)")
-          DEV_VERSION="${BASE_VERSION}.dev${PR_NUMBER}${RUN_NUMBER}"
+          DEV_VERSION="${BASE_VERSION}.dev${RUN_NUMBER}"
           echo "Dev version: ${DEV_VERSION}"
 
-          # Temporarily patch __init__.py for the build
           sed -i "s/__version__ = \"${BASE_VERSION}\"/__version__ = \"${DEV_VERSION}\"/" argus/__init__.py
           echo "dev_version=${DEV_VERSION}" >> "$GITHUB_OUTPUT"
 
