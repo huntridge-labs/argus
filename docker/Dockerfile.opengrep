@@ -1,6 +1,6 @@
 FROM alpine:3.21 AS builder
 
-ARG OPENGREP_VERSION=1.18.0
+ARG OPENGREP_VERSION=1.20.0
 ARG TARGETARCH
 
 RUN apk add --no-cache curl && \

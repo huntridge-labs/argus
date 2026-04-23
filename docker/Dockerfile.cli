@@ -8,12 +8,12 @@
 # ---------------------------------------------------------------------------
 FROM alpine:3.21 AS builder
 
-ARG TRIVY_VERSION=0.69.3
-ARG GRYPE_VERSION=0.111.0
-ARG SYFT_VERSION=1.42.4
+ARG TRIVY_VERSION=0.70.0
+ARG GRYPE_VERSION=0.111.1
+ARG SYFT_VERSION=1.43.0
 ARG GITLEAKS_VERSION=8.30.1
 ARG ACTIONLINT_VERSION=1.7.12
-ARG OPENGREP_VERSION=1.18.0
+ARG OPENGREP_VERSION=1.20.0
 ARG TARGETARCH
 
 RUN apk add --no-cache curl tar
@@ -65,7 +65,7 @@ LABEL org.opencontainers.image.source="https://github.com/huntridge-labs/argus"
 LABEL org.opencontainers.image.description="Argus CLI — all-in-one security scanning toolkit"
 LABEL org.opencontainers.image.licenses="AGPL-3.0"
 
-ARG ZIZMOR_VERSION=1.23.1
+ARG ZIZMOR_VERSION=1.24.1
 
 # Install system packages and patch OS-level vulnerabilities
 RUN apk add --no-cache \
