@@ -113,3 +113,17 @@ class TestOsvSbomMode:
         })
         assert "-L" in args
         assert "/workspace/my-sbom.spdx.json" in args
+
+
+class TestOsvContainerArgs:
+    """Test OsvScanner.container_args for non-SBOM modes."""
+
+    def test_container_args_with_config_file(self):
+        """config_file should be passed via --config flag."""
+        args = OsvScanner().container_args({
+            "config_file": "osv-scanner.toml",
+        })
+        assert "--config" in args
+        assert "/workspace/osv-scanner.toml" in args
+        # Should be in source scan mode
+        assert "source" in args
