@@ -950,6 +950,7 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
                 log.warning("%s: %s", info.path.name, msg)
 
     # Run the scan
+    sbom_batch_failures: list[tuple[str, str]] = []
     try:
         scanner_names = [args.scanner] if args.scanner else None
         log.info("Running scanners: %s", scanner_names or "all enabled")
@@ -958,29 +959,56 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
             # merge the per-file ScanSummary objects into one so the rest
             # of the pipeline (reporters, output vars, nudge) sees a
             # single aggregated view.
+            #
+            # Each per-SBOM scan is wrapped in its own try/except so a
+            # single failing SBOM (corrupt file, crashed scanner, docker
+            # daemon glitch) never aborts the batch — users running a
+            # directory of vendor SBOMs depend on partial results, not
+            # an all-or-nothing exit. Failures are recorded and the exit
+            # code accounts for them only AFTER every SBOM has been tried.
             per_file_summaries = []
             with _TerminalSpinner(
                 message=f"Scanning {len(sbom_files)} SBOM(s)",
                 enabled=_spinner_enabled(args),
             ):
                 for info in sbom_files:
-                    per_summary = engine.run(
-                        scanner_names=scanner_names,
-                        path=args.path,
-                        fail_fast=getattr(args, "fail_fast", False),
-                        timeout=getattr(args, "timeout", None),
-                        exclude=getattr(args, "exclude", ""),
-                        parallel=not getattr(args, "no_parallel", False),
-                        allow_local_versions=getattr(args, "allow_local_versions", False),
-                        no_cache=getattr(args, "no_cache", False),
-                        use_default_excludes=not getattr(args, "no_default_excludes", False),
-                        sbom_path=str(info.path),
-                    )
+                    try:
+                        per_summary = engine.run(
+                            scanner_names=scanner_names,
+                            path=args.path,
+                            fail_fast=getattr(args, "fail_fast", False),
+                            timeout=getattr(args, "timeout", None),
+                            exclude=getattr(args, "exclude", ""),
+                            parallel=not getattr(args, "no_parallel", False),
+                            allow_local_versions=getattr(args, "allow_local_versions", False),
+                            no_cache=getattr(args, "no_cache", False),
+                            use_default_excludes=not getattr(args, "no_default_excludes", False),
+                            sbom_path=str(info.path),
+                        )
+                    except Exception as exc:
+                        log.error(
+                            "Scan failed for %s: %s — continuing batch",
+                            info.path, exc,
+                        )
+                        sbom_batch_failures.append((str(info.path), str(exc)))
+                        # Insert an empty summary so per-file bookkeeping
+                        # still reflects that we tried this SBOM.
+                        from argus.core.models import ScanSummary as _ScanSummary
+                        per_summary = _ScanSummary(
+                            results=[],
+                            severity_threshold=config.reporting.severity_threshold,
+                        )
                     per_file_summaries.append((info, per_summary))
             summary = _merge_sbom_summaries(
                 per_file_summaries,
                 severity_threshold=config.reporting.severity_threshold,
             )
+            if sbom_batch_failures:
+                log.warning(
+                    "%d of %d SBOM(s) failed during batch: %s",
+                    len(sbom_batch_failures), len(sbom_files),
+                    ", ".join(p for p, _ in sbom_batch_failures),
+                )
         else:
             with _TerminalSpinner(
                 message="Running scanners",
@@ -1054,8 +1082,20 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
         summary=summary,
     )
 
-    # Finalize audit trail
-    exit_code = EXIT_SUCCESS if summary.passed else EXIT_FINDINGS
+    # Finalize audit trail.
+    #
+    # Exit policy (in priority order):
+    #   1. Findings over the severity threshold → EXIT_FINDINGS.
+    #   2. Otherwise, if any SBOM failed hard during a batch → EXIT_ERROR.
+    #      This always fires AFTER every SBOM in the batch was attempted;
+    #      we never abort the loop on the first failure.
+    #   3. Otherwise → EXIT_SUCCESS.
+    if not summary.passed:
+        exit_code = EXIT_FINDINGS
+    elif sbom_batch_failures:
+        exit_code = EXIT_ERROR
+    else:
+        exit_code = EXIT_SUCCESS
     finalize_manifest(manifest, summary=summary, exit_code=exit_code, output_dir=output_dir)
     log.info("Audit manifest written to %s/argus-audit.json", output_dir)
 

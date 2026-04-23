@@ -873,6 +873,185 @@ class TestSbomDirectoryMerge:
         assert set(by_scanner.keys()) == {"osv", "grype"}
 
 
+class TestSbomBatchResilience:
+    """A per-SBOM failure must not abort the rest of the batch."""
+
+    def _setup_project(self, tmp_path):
+        # Minimal argus.yml so `argus scan` doesn't bail at config load.
+        (tmp_path / "argus.yml").write_text(
+            'version: "1.0"\n'
+            "scanners:\n"
+            "  osv:\n"
+            "    enabled: true\n"
+            "reporting:\n"
+            "  formats: [json]\n"
+            "execution:\n"
+            "  backend: auto\n"
+        )
+
+    def _sbom_dir(self, tmp_path, names):
+        """Create a tmp dir with N minimally-valid CycloneDX JSON SBOMs."""
+        import json as _json
+        d = tmp_path / "sboms"
+        d.mkdir()
+        for name in names:
+            (d / name).write_text(_json.dumps({
+                "bomFormat": "CycloneDX", "specVersion": "1.5", "components": [],
+            }))
+        return d
+
+    def _run(self, tmp_path, sbom_arg, engine_run):
+        """Invoke cmd_scan with engine.run monkeypatched to `engine_run`."""
+        from argus.cli import cmd_scan
+        from argus.core.config import ArgusConfig, ExecutionConfig, ReportingConfig
+        import argparse
+
+        self._setup_project(tmp_path)
+
+        # Minimal in-memory config that skips actual config loading.
+        cfg = ArgusConfig(
+            reporting=ReportingConfig(
+                output_dir=str(tmp_path / "out"),
+                formats=[],
+                severity_threshold=None,
+            ),
+            execution=ExecutionConfig(),
+        )
+        # monkeypatch via argparse.Namespace + sys.monkeypatch not available here;
+        # use pytest's monkeypatch through the fixture instead.
+        return cmd_scan, cfg, argparse, tmp_path, sbom_arg, engine_run
+
+    def test_one_bad_sbom_does_not_abort_batch(self, tmp_path, monkeypatch):
+        """First SBOM raises mid-batch → second SBOM still runs; exit=EXIT_ERROR."""
+        from argus.cli import cmd_scan, EXIT_ERROR, EXIT_SUCCESS
+        from argus.core.config import ArgusConfig, ExecutionConfig, ReportingConfig
+        from argus.core.models import ScanSummary
+        import argparse
+
+        self._setup_project(tmp_path)
+        sboms = self._sbom_dir(tmp_path, ["a.json", "b.json", "c.json"])
+
+        cfg = ArgusConfig(
+            reporting=ReportingConfig(
+                output_dir=str(tmp_path / "out"),
+                formats=[],
+                severity_threshold=None,
+            ),
+            execution=ExecutionConfig(),
+        )
+        monkeypatch.setattr(
+            "argus.core.config.ArgusConfig.load", lambda _p: cfg,
+        )
+
+        seen: list[str] = []
+
+        def fake_run(self, **kwargs):
+            sbom_path = kwargs.get("sbom_path", "")
+            seen.append(sbom_path)
+            # a.json blows up mid-batch; others succeed with zero findings.
+            if sbom_path.endswith("a.json"):
+                raise RuntimeError("Docker daemon vanished")
+            return ScanSummary(results=[], severity_threshold=None)
+
+        monkeypatch.setattr("argus.core.engine.ArgusEngine.run", fake_run)
+        monkeypatch.setattr(
+            "argus.core.engine.ArgusEngine.register_scanner",
+            lambda self, _s: None,
+        )
+        monkeypatch.setattr(
+            "argus.core.engine.ArgusEngine.__init__",
+            lambda self, _cfg: (
+                setattr(self, "config", cfg) or setattr(self, "_scanners", {"osv": object})
+            ),
+        )
+        monkeypatch.setattr(
+            "argus.scanners.get_available_scanners", lambda: [],
+        )
+        monkeypatch.setattr(
+            "argus.reporters.get_reporter", lambda fmt: __import__("unittest.mock").mock.MagicMock(),
+        )
+        monkeypatch.setattr("argus.audit.get_logger", lambda *a, **kw: __import__("logging").getLogger("test"))
+        monkeypatch.setattr("argus.audit.create_manifest", lambda **kw: __import__("unittest.mock").mock.MagicMock(execution_backend=None))
+        monkeypatch.setattr("argus.audit.finalize_manifest", lambda *a, **kw: None)
+
+        args = argparse.Namespace(
+            command="scan", scanner=None, path=".", config=str(tmp_path / "argus.yml"),
+            formats=None, severity_threshold=None, output_dir=str(tmp_path / "out"),
+            list=False, verbose=False, exclude="", no_default_excludes=False,
+            dry_run=False, fail_fast=False, timeout=None, no_parallel=False,
+            allow_local_versions=False, no_cache=False, no_timestamp=True,
+            no_spinner=True, output_vars=None, discover=None, images=None,
+            scanners=None, target=None, port=None, env_vars=None,
+            scan_type="baseline", startup_timeout=60, check_tools=False,
+            sbom=str(sboms),
+        )
+        rc = cmd_scan(args)
+
+        # All three SBOMs were attempted despite a.json raising
+        assert len(seen) == 3
+        assert any(p.endswith("a.json") for p in seen)
+        assert any(p.endswith("b.json") for p in seen)
+        assert any(p.endswith("c.json") for p in seen)
+        # Exit is EXIT_ERROR (batch had a failure), NOT mid-batch abort
+        assert rc == EXIT_ERROR
+
+    def test_clean_batch_returns_success(self, tmp_path, monkeypatch):
+        """Every SBOM scans cleanly → EXIT_SUCCESS."""
+        from argus.cli import cmd_scan, EXIT_SUCCESS
+        from argus.core.config import ArgusConfig, ExecutionConfig, ReportingConfig
+        from argus.core.models import ScanSummary
+        import argparse
+
+        self._setup_project(tmp_path)
+        sboms = self._sbom_dir(tmp_path, ["a.json", "b.json"])
+
+        cfg = ArgusConfig(
+            reporting=ReportingConfig(
+                output_dir=str(tmp_path / "out"),
+                formats=[],
+                severity_threshold=None,
+            ),
+            execution=ExecutionConfig(),
+        )
+        monkeypatch.setattr("argus.core.config.ArgusConfig.load", lambda _p: cfg)
+
+        monkeypatch.setattr(
+            "argus.core.engine.ArgusEngine.run",
+            lambda self, **kw: ScanSummary(results=[], severity_threshold=None),
+        )
+        monkeypatch.setattr(
+            "argus.core.engine.ArgusEngine.register_scanner",
+            lambda self, _s: None,
+        )
+        monkeypatch.setattr(
+            "argus.core.engine.ArgusEngine.__init__",
+            lambda self, _cfg: (
+                setattr(self, "config", cfg) or setattr(self, "_scanners", {"osv": object})
+            ),
+        )
+        monkeypatch.setattr("argus.scanners.get_available_scanners", lambda: [])
+        monkeypatch.setattr(
+            "argus.reporters.get_reporter", lambda fmt: __import__("unittest.mock").mock.MagicMock(),
+        )
+        monkeypatch.setattr("argus.audit.get_logger", lambda *a, **kw: __import__("logging").getLogger("test"))
+        monkeypatch.setattr("argus.audit.create_manifest", lambda **kw: __import__("unittest.mock").mock.MagicMock(execution_backend=None))
+        monkeypatch.setattr("argus.audit.finalize_manifest", lambda *a, **kw: None)
+
+        args = argparse.Namespace(
+            command="scan", scanner=None, path=".", config=str(tmp_path / "argus.yml"),
+            formats=None, severity_threshold=None, output_dir=str(tmp_path / "out"),
+            list=False, verbose=False, exclude="", no_default_excludes=False,
+            dry_run=False, fail_fast=False, timeout=None, no_parallel=False,
+            allow_local_versions=False, no_cache=False, no_timestamp=True,
+            no_spinner=True, output_vars=None, discover=None, images=None,
+            scanners=None, target=None, port=None, env_vars=None,
+            scan_type="baseline", startup_timeout=60, check_tools=False,
+            sbom=str(sboms),
+        )
+        rc = cmd_scan(args)
+        assert rc == EXIT_SUCCESS
+
+
 class TestDryRun:
     """End-to-end coverage for --dry-run output."""
 
