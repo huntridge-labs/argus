@@ -661,20 +661,60 @@ class ArgusEngine:
                     [f.name for f in result_files],
                 )
             else:
-                logger.warning(
-                    "Scanner '%s' produced no output files and no stdout",
-                    scanner.name,
-                )
+                # Surface stderr + return code loudly when the scanner
+                # produced nothing — this is the silent-failure mode
+                # users hit when the underlying tool rejects the input
+                # (e.g. Trivy on SPDX-2.1: "unknown scanning is not yet
+                # supported"). A WARN-level summary means "something is
+                # wrong" is visible without bumping to DEBUG logging.
+                stderr_summary = proc.stderr.strip()
+                if stderr_summary:
+                    # Cap length so a megabyte of log output doesn't
+                    # dominate the terminal; readers with DEBUG enabled
+                    # still get the full dump via the earlier log line.
+                    clipped = stderr_summary[:800]
+                    if len(stderr_summary) > 800:
+                        clipped += f" … ({len(stderr_summary) - 800} more bytes)"
+                    logger.warning(
+                        "Scanner '%s' produced no output files "
+                        "(exit=%d). stderr: %s",
+                        scanner.name,
+                        proc.returncode,
+                        clipped,
+                    )
+                else:
+                    logger.warning(
+                        "Scanner '%s' produced no output files and "
+                        "no stdout (exit=%d).",
+                        scanner.name,
+                        proc.returncode,
+                    )
 
             findings = []
             metadata_extra = {}
             if result_files and hasattr(scanner, "parse_results"):
                 parsed = scanner.parse_results(result_files[0])
-                # parse_results may return a list or a (list, extra) tuple
+                # parse_results may return either a list of Findings,
+                # a ``(list, int)`` tuple (legacy passed_count channel,
+                # used by linters), or a ``(list, dict)`` tuple (extra
+                # metadata merged into ScanResult.metadata — used by
+                # Grype to flag "source.target=unknown" which means
+                # "couldn't identify packages" rather than "nothing
+                # vulnerable").
                 if isinstance(parsed, tuple):
                     findings, extra = parsed
                     if isinstance(extra, int):
                         metadata_extra["passed_count"] = extra
+                    elif isinstance(extra, dict):
+                        metadata_extra.update(extra)
+                        # Warn at the engine layer too so the signal is
+                        # visible even when a reporter doesn't render
+                        # per-scanner metadata.
+                        if "warning" in extra:
+                            logger.warning(
+                                "Scanner '%s': %s",
+                                scanner.name, extra["warning"],
+                            )
                 else:
                     findings = parsed
                 logger.debug(

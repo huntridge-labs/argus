@@ -87,3 +87,49 @@ class TestGrypeScanNoSbom:
         result = GrypeScanner().scan(path=".", config={})
         assert result.findings == []
         assert "sbom_path" in result.metadata.get("error", "")
+
+
+class TestGrypeUnknownSource:
+    """Grype surfaces a warning when it can't identify the scan subject."""
+
+    def _write(self, path, matches, source_target):
+        import json
+        path.write_text(json.dumps({
+            "matches": matches,
+            "source": {"target": source_target, "type": "sbom"},
+            "descriptor": {"name": "grype"},
+        }))
+
+    def test_returns_plain_list_when_source_is_known(self, tmp_path):
+        f = tmp_path / "r.json"
+        self._write(f, [], source_target="container-a")
+        parsed = GrypeScanner().parse_results(f)
+        # Known source + no matches = clean list, no warning extras
+        assert parsed == []
+
+    def test_attaches_warning_when_source_unknown_and_empty(self, tmp_path):
+        f = tmp_path / "r.json"
+        self._write(f, [], source_target="unknown")
+        parsed = GrypeScanner().parse_results(f)
+        # Tuple shape signals engine to merge extra metadata
+        assert isinstance(parsed, tuple)
+        findings, extra = parsed
+        assert findings == []
+        assert "source.target=unknown" in extra["warning"]
+        assert "0 findings does not mean clean" in extra["warning"]
+
+    def test_no_warning_when_source_unknown_but_findings_exist(self, tmp_path):
+        # If Grype *did* match something despite "unknown" source we
+        # don't muddy the waters with a false warning.
+        f = tmp_path / "r.json"
+        match = {
+            "vulnerability": {
+                "id": "CVE-2026-1", "severity": "High",
+                "description": "test", "fix": {"versions": ["1.1"]},
+            },
+            "artifact": {"name": "x", "version": "1.0"},
+        }
+        self._write(f, [match], source_target="unknown")
+        parsed = GrypeScanner().parse_results(f)
+        assert isinstance(parsed, list)  # plain list, no warning extras
+        assert len(parsed) == 1

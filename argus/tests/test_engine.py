@@ -1181,3 +1181,97 @@ class TestEngineCacheFlag:
         engine = self._make_engine()
         engine.run()
         assert engine._no_cache is False
+
+
+class TestEngineSilentFailureSurfacing:
+    """Empty-output container runs must surface stderr + exit code loudly."""
+
+    def _make_engine(self):
+        data = {"execution": {"backend": "docker"}}
+        return ArgusEngine(ArgusConfig.from_dict(data))
+
+    def _scanner(self, **overrides):
+        scanner = MockScanner(
+            name=overrides.get("name", "trivy"),
+            container_image="img:latest",
+        )
+        return scanner
+
+    def test_empty_output_warns_with_stderr(self, monkeypatch, caplog):
+        engine = self._make_engine()
+        scanner = self._scanner()
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+
+        def mock_run(cmd, **kwargs):
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=1,
+                stdout="",
+                stderr="FATAL: SBOM decode error: unknown scanning is not yet supported\n",
+            )
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        with caplog.at_level("WARNING"):
+            engine._run_in_container(scanner, "/src", {})
+
+        # Must include both the exit code AND the upstream stderr so
+        # users can diagnose without enabling DEBUG logging.
+        warnings = [r.message for r in caplog.records if r.levelname == "WARNING"]
+        assert any(
+            "produced no output files" in m and "exit=1" in m and
+            "unknown scanning" in m
+            for m in warnings
+        )
+
+    def test_empty_output_with_no_stderr_still_warns(self, monkeypatch, caplog):
+        engine = self._make_engine()
+        scanner = self._scanner()
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+        monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: (
+            subprocess.CompletedProcess(cmd, returncode=2, stdout="", stderr="")
+        ))
+
+        with caplog.at_level("WARNING"):
+            engine._run_in_container(scanner, "/src", {})
+
+        msgs = [r.message for r in caplog.records if r.levelname == "WARNING"]
+        assert any("no output files and no stdout" in m and "exit=2" in m for m in msgs)
+
+
+class TestEngineParseResultsDictExtra:
+    """parse_results can return (findings, dict) to contribute metadata + warning."""
+
+    def _make_engine(self):
+        data = {"execution": {"backend": "docker"}}
+        return ArgusEngine(ArgusConfig.from_dict(data))
+
+    def test_dict_extra_merged_and_logged(self, monkeypatch, caplog, tmp_path):
+        engine = self._make_engine()
+
+        def parse(_path):
+            return ([], {"warning": "Grype source.target=unknown — 0 findings is not trustworthy"})
+
+        scanner = MockScanner(name="grype", container_image="img:latest")
+        scanner.parse_results = parse
+
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+
+        def mock_run(cmd, **kwargs):
+            for arg in cmd:
+                if ":/output" in str(arg):
+                    Path(arg.split(":")[0]).joinpath("results.json").write_text("{}")
+                    break
+            return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        with caplog.at_level("WARNING"):
+            result = engine._run_in_container(scanner, "/src", {})
+
+        # Warning merged into result.metadata
+        assert "warning" in result.metadata
+        assert "source.target=unknown" in result.metadata["warning"]
+        # Warning logged at WARN so it's visible without DEBUG
+        msgs = [r.message for r in caplog.records if r.levelname == "WARNING"]
+        assert any("Scanner 'grype':" in m and "source.target" in m for m in msgs)

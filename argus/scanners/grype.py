@@ -114,10 +114,33 @@ class GrypeScanner:
             return None
 
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
-        """Parse Grype JSON output into Finding objects."""
+        """Parse Grype JSON output into Finding objects.
+
+        When Grype can't identify the scan subject from the SBOM
+        (e.g. SPDX tag-value without purl refs), it still emits a
+        results file but with ``source.target = "unknown"`` and zero
+        matches. That's a "couldn't identify anything" signal — NOT a
+        "nothing vulnerable" signal — so we stash the fact on a module
+        attribute the scan() method reads to annotate metadata. We
+        can't add it here directly because ``parse_results`` only
+        returns a list of Finding; engine.py:_run_in_container is where
+        the metadata gets attached.
+        """
         try:
             data = json.loads(Path(raw_output_path).read_text())
         except (json.JSONDecodeError, OSError):
             return []
         matches = data.get("matches") or []
-        return [parse_grype_match(m, scanner_name=self.name) for m in matches]
+        # Surface the "unknown source" signal via a module-level warning
+        # plus the parse_results (list, extra) tuple convention the engine
+        # understands. The extra dict is merged into result.metadata.
+        target = data.get("source", {}).get("target", "")
+        extra: dict = {}
+        if isinstance(target, str) and target == "unknown" and not matches:
+            extra["warning"] = (
+                "Grype could not identify the scan subject "
+                "(source.target=unknown). 0 findings does not mean "
+                "clean — the SBOM likely lacks purl external refs."
+            )
+        findings = [parse_grype_match(m, scanner_name=self.name) for m in matches]
+        return (findings, extra) if extra else findings

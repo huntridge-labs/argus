@@ -912,7 +912,11 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
     sbom_path = getattr(args, "sbom", None)
     sbom_files: list = []
     if sbom_path:
-        from argus.core.sbom import discover_sbom_files, SbomDetectionError
+        from argus.core.sbom import (
+            analyze_sbom_quality,
+            discover_sbom_files,
+            SbomDetectionError,
+        )
         try:
             sbom_files = discover_sbom_files(sbom_path)
         except SbomDetectionError as exc:
@@ -938,6 +942,12 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
             )
             for info in sbom_files:
                 log.info("  - %s (%s)", info.path, info.display_format)
+        # Warn on known-scan-hostile SBOMs (SPDX-2.1, purl-less). We
+        # still scan — the user may want the few findings we can get
+        # — but they get a heads-up before the silence.
+        for info in sbom_files:
+            for msg in analyze_sbom_quality(info):
+                log.warning("%s: %s", info.path.name, msg)
 
     # Run the scan
     try:

@@ -135,6 +135,88 @@ _DIR_WALK_SKIP_EXTENSIONS = frozenset({
 })
 
 
+def analyze_sbom_quality(info: SbomInfo) -> list[str]:
+    """Return human-readable warnings about how well an SBOM will scan.
+
+    Called at scan startup so the user learns *before* scanners run that
+    their input will under-identify packages. Based on the empirical
+    matrix we hit with downstream vendor SBOMs:
+
+    - Trivy's SBOM parser only supports SPDX-2.2/2.3. SPDX-2.1 inputs
+      are silently rejected (``Detected SBOM format format="unknown"``).
+    - OSV and Grype identify packages primarily through ``purl``
+      external refs. Tag-value SBOMs without purls produce 0 matches —
+      the tools aren't wrong, they just have nothing to look up.
+
+    Returns an empty list when nothing is off. Warnings are strings so
+    callers can log them at whichever level they prefer.
+    """
+    warnings: list[str] = []
+    if info.format == "spdx-tv":
+        version = _read_spdx_version(info.path)
+        if version and version < (2, 2):
+            warnings.append(
+                f"SPDX-{version[0]}.{version[1]} SBOM detected — Trivy only "
+                "supports SPDX-2.2 and 2.3 and will silently reject this "
+                "file. Consider converting with `pyspdxtools -i X.spdx "
+                "-o X.spdx.json` before scanning."
+            )
+        pkg_count, purl_count = _count_spdx_tv_packages_and_purls(info.path)
+        if pkg_count >= 5 and purl_count < max(1, pkg_count // 2):
+            warnings.append(
+                f"SBOM contains {pkg_count} package(s) but only {purl_count} "
+                "have purl external references. OSV and Grype rely on purl "
+                "for vulnerability lookup; coverage will be incomplete. "
+                "Ask the vendor for a purl-annotated SBOM, or regenerate "
+                "it with `syft dir:./source -o spdx-json`."
+            )
+    return warnings
+
+
+def _read_spdx_version(path: Path) -> tuple[int, int] | None:
+    """Parse ``SPDXVersion: SPDX-X.Y`` from a tag-value file (first 4KB)."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            head = fh.read(4096)
+    except OSError:
+        return None
+    for line in head.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("SPDXVersion:"):
+            _, _, value = stripped.partition(":")
+            value = value.strip()
+            if value.upper().startswith("SPDX-"):
+                value = value[5:]
+            parts = value.split(".")
+            if len(parts) < 2:
+                return None
+            try:
+                return int(parts[0]), int(parts[1])
+            except ValueError:
+                return None
+    return None
+
+
+def _count_spdx_tv_packages_and_purls(path: Path) -> tuple[int, int]:
+    """Return ``(package_count, purl_count)`` for a tag-value SPDX file."""
+    pkg = 0
+    purl = 0
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                stripped = line.lstrip()
+                if stripped.startswith("PackageName:"):
+                    pkg += 1
+                # purl refs live inside ``ExternalRef:`` lines; match on the
+                # substring rather than a strict prefix so we catch variants
+                # like ``PACKAGE-MANAGER purl`` and ``PACKAGE_MANAGER purl``.
+                if "purl" in stripped.lower() and "ExternalRef:" in stripped:
+                    purl += 1
+    except OSError:
+        return 0, 0
+    return pkg, purl
+
+
 def discover_sbom_files(path: str | Path) -> list[SbomInfo]:
     """Return every recognizable SBOM at ``path``, recursive when a dir.
 

@@ -10,6 +10,7 @@ import pytest
 from argus.core.sbom import (
     SbomDetectionError,
     SbomInfo,
+    analyze_sbom_quality,
     detect_sbom,
     discover_sbom_files,
 )
@@ -200,3 +201,66 @@ class TestDiscoverSbomFiles:
         infos = discover_sbom_files(tmp_path)
         formats = sorted(i.format for i in infos)
         assert formats == ["cyclonedx-json", "cyclonedx-xml", "spdx-tv"]
+
+
+class TestAnalyzeSbomQuality:
+    """Preflight warnings for SBOMs that will silently under-match."""
+
+    def _write_spdx_tv(self, path, version="2.3", packages=0, purls=0):
+        lines = [f"SPDXVersion: SPDX-{version}", "DataLicense: CC0-1.0", ""]
+        for i in range(packages):
+            lines.append(f"PackageName: pkg-{i}")
+            lines.append(f"SPDXID: SPDXRef-Package-{i}")
+            if i < purls:
+                lines.append(
+                    f"ExternalRef: PACKAGE-MANAGER purl pkg:npm/pkg-{i}@1.0.0"
+                )
+            lines.append("")
+        path.write_text("\n".join(lines))
+
+    def test_no_warnings_for_healthy_spdx_23(self, tmp_path):
+        f = tmp_path / "good.spdx"
+        self._write_spdx_tv(f, version="2.3", packages=10, purls=10)
+        info = detect_sbom(f)
+        assert analyze_sbom_quality(info) == []
+
+    def test_warns_on_spdx_21(self, tmp_path):
+        f = tmp_path / "legacy.spdx"
+        self._write_spdx_tv(f, version="2.1", packages=10, purls=10)
+        info = detect_sbom(f)
+        warnings = analyze_sbom_quality(info)
+        assert any("SPDX-2.1" in w for w in warnings)
+        assert any("Trivy" in w for w in warnings)
+
+    def test_warns_on_low_purl_coverage(self, tmp_path):
+        # 10 packages, only 2 purls — OSV/Grype will miss most.
+        f = tmp_path / "sparse.spdx"
+        self._write_spdx_tv(f, version="2.3", packages=10, purls=2)
+        info = detect_sbom(f)
+        warnings = analyze_sbom_quality(info)
+        assert any("purl" in w and "10 package" in w for w in warnings)
+
+    def test_no_purl_warning_for_small_sbom(self, tmp_path):
+        # Fewer than 5 packages is too small to be statistically useful,
+        # so we skip the purl warning to avoid noise on trivial inputs.
+        f = tmp_path / "tiny.spdx"
+        self._write_spdx_tv(f, version="2.3", packages=3, purls=0)
+        info = detect_sbom(f)
+        warnings = analyze_sbom_quality(info)
+        assert not any("purl" in w for w in warnings)
+
+    def test_both_warnings_fire_together(self, tmp_path):
+        f = tmp_path / "bad.spdx"
+        self._write_spdx_tv(f, version="2.1", packages=20, purls=0)
+        info = detect_sbom(f)
+        warnings = analyze_sbom_quality(info)
+        assert len(warnings) == 2
+        assert any("SPDX-2.1" in w for w in warnings)
+        assert any("purl" in w for w in warnings)
+
+    def test_non_spdx_tv_gets_no_warnings(self, tmp_path):
+        # CycloneDX/SPDX JSON files skip the tag-value-only checks.
+        f = tmp_path / "cdx.json"
+        f.write_text('{"bomFormat": "CycloneDX", "specVersion": "1.5"}')
+        info = detect_sbom(f)
+        assert analyze_sbom_quality(info) == []
