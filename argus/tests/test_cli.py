@@ -772,6 +772,16 @@ class TestCacheSubcommand:
         args = parser.parse_args(["scan", "--dry-run"])
         assert args.dry_run is True
 
+    def test_sbom_flag_takes_path(self):
+        parser = build_parser()
+        args = parser.parse_args(["scan", "--sbom", "path/to/sbom.json"])
+        assert args.sbom == "path/to/sbom.json"
+
+    def test_sbom_flag_default_none(self):
+        parser = build_parser()
+        args = parser.parse_args(["scan"])
+        assert args.sbom is None
+
 
 class TestDryRun:
     """End-to-end coverage for --dry-run output."""

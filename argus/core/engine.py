@@ -45,6 +45,7 @@ class ArgusEngine:
         allow_local_versions: bool = False,
         no_cache: bool = False,
         use_default_excludes: bool = True,
+        sbom_path: str | None = None,
     ) -> ScanSummary:
         """Run scanners and return an aggregated ScanSummary.
 
@@ -60,18 +61,28 @@ class ArgusEngine:
             use_default_excludes: include built-in defaults and ignore-file
                 patterns (True by default). Set False when the caller wants
                 their --exclude value to be the complete pattern set.
+            sbom_path: path to a pre-built SBOM. When set, the engine
+                restricts the run to scanners whose ``supports_sbom``
+                attribute is True, auto-enables them regardless of
+                argus.yml, and threads the SBOM path through
+                ``config_dict['sbom_path']``.
         """
         from .exclusions import build_exclusion_set, log_exclusion_set
 
         self._allow_local_versions = allow_local_versions
         self._no_cache = no_cache
         self._use_default_excludes = use_default_excludes
+        self._sbom_path = sbom_path
 
-        names_to_run = self._resolve_scanner_names(scanner_names)
+        if sbom_path is not None:
+            names_to_run = self._resolve_sbom_scanner_names(scanner_names)
+        else:
+            names_to_run = self._resolve_scanner_names(scanner_names)
         logger.debug(
-            "Resolved scanners to run: %s (from requested=%s)",
+            "Resolved scanners to run: %s (from requested=%s, sbom=%s)",
             names_to_run,
             scanner_names,
+            sbom_path,
         )
 
         # Build unified exclusion set from ignore files + config + CLI
@@ -137,6 +148,18 @@ class ArgusEngine:
             scanner_config = self.config.get_scanner_config(name)
             scan_path = path if path is not None else scanner_config.path
             config_dict = self._build_scanner_config_dict(scanner_config)
+
+            # SBOM mode: inject the sbom_path into the scanner config so
+            # each scanner's container_args / _build_command pick it up.
+            # A dedicated ``/sbom/<basename>`` mount path avoids colliding
+            # with arbitrary files a user's scan_path might already hold
+            # under /workspace. The bind mount itself is added later in
+            # ``_run_in_container`` when we build the docker command.
+            if self._sbom_path:
+                config_dict["sbom_path"] = self._sbom_path
+                config_dict["sbom_mount_path"] = (
+                    f"/sbom/{Path(self._sbom_path).name}"
+                )
 
             # Resolve the scanner's tool config file. Explicit `config_file:`
             # in argus.yml wins; otherwise we auto-discover against the scan
@@ -557,6 +580,18 @@ class ArgusEngine:
                 "-v", f"{output_dir}:/output",
             ]
 
+            # SBOM mount: when the scan is operating on a pre-built SBOM,
+            # bind-mount the file itself to the sibling ``/sbom/`` path.
+            # Keeping it separate from ``/workspace/`` prevents filename
+            # collisions with the user's project files.
+            sbom_path = (config or {}).get("sbom_path")
+            if sbom_path:
+                abs_sbom = str(Path(sbom_path).resolve())
+                mount_dest = (config or {}).get("sbom_mount_path") or (
+                    f"/sbom/{Path(sbom_path).name}"
+                )
+                docker_cmd.extend(["-v", f"{abs_sbom}:{mount_dest}:ro"])
+
             # Mount host-side DB cache to persist vulnerability databases
             if not self._no_cache:
                 from ..containers import get_cache_mount
@@ -828,6 +863,43 @@ class ArgusEngine:
             for name in self._scanners
             if self.config.get_scanner_config(name).enabled
         ]
+
+    def _resolve_sbom_scanner_names(
+        self, requested: list[str] | None
+    ) -> list[str]:
+        """Determine which scanners to run when an SBOM is supplied.
+
+        SBOM mode has distinct semantics from filesystem mode:
+
+        - Scanners must declare ``supports_sbom = True`` on the class.
+        - When the caller names a scanner explicitly and it doesn't
+          support SBOMs, we log a warning and drop it rather than fail
+          the whole run — preserves pipeline momentum on a mixed config.
+        - When no names are requested, we auto-enable every
+          SBOM-capable scanner in the registry, ignoring argus.yml's
+          ``enabled:`` flags. The user explicitly asked for full SBOM
+          coverage by passing ``--sbom``.
+        """
+        sbom_capable = {
+            name
+            for name, scanner in self._scanners.items()
+            if getattr(scanner, "supports_sbom", False)
+        }
+        if requested is None:
+            return sorted(sbom_capable)
+
+        resolved = []
+        for name in requested:
+            if name in sbom_capable:
+                resolved.append(name)
+            else:
+                logger.warning(
+                    "Scanner '%s' does not support SBOM input — skipping. "
+                    "SBOM-capable scanners: %s",
+                    name,
+                    ", ".join(sorted(sbom_capable)) or "(none registered)",
+                )
+        return resolved
 
     @staticmethod
     def _build_scanner_config_dict(scanner_config) -> dict:

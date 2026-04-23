@@ -1,0 +1,123 @@
+"""Grype standalone scanner — SBOM-input vulnerability scanning.
+
+Used by ``argus scan --sbom`` to pass a pre-existing SBOM (CycloneDX,
+SPDX, or Syft JSON) to Grype and collect vulnerability findings. Grype
+also supports filesystem and image-based scanning upstream; for now
+this module only wires the SBOM path because that's what the SBOM
+feature needs. Filesystem/image modes remain covered by the
+``container`` scanner's bundled Grype invocation.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+
+from argus.containers import get_image
+from argus.core.models import Finding, ScanResult, Severity
+
+from argus.scanners._vuln_parsers import parse_grype_match
+
+
+class GrypeScanner:
+    """Run Grype against a CycloneDX/SPDX/Syft SBOM."""
+
+    name = "grype"
+    description = "Vulnerability scanner — consumes CycloneDX/SPDX/Syft SBOMs"
+    category = "sca"
+    languages = ["all"]
+    container_image = get_image("grype")
+    supports_sbom = True
+
+    def container_args(self, config: dict | None = None) -> list[str]:
+        """Container args for ``anchore/grype``.
+
+        Grype's image uses ``grype`` as entrypoint, so we return only the
+        flags/positionals (no leading ``grype``). The engine mounts the
+        SBOM into the container at ``sbom_mount_path`` (set by the engine;
+        defaults to ``/workspace/<sbom_filename>``).
+        """
+        config = config or {}
+        sbom_path = config.get("sbom_path")
+        if not sbom_path:
+            raise RuntimeError(
+                "grype scanner requires sbom_path (run via `argus scan --sbom <path>`)"
+            )
+        mount = config.get("sbom_mount_path") or f"/workspace/{Path(sbom_path).name}"
+        return [
+            f"sbom:{mount}",
+            "-o", "json",
+            "--file", "/output/results.json",
+        ]
+
+    def scan(self, path: str, config: dict | None = None) -> ScanResult:
+        """Run grype against the SBOM given via ``config['sbom_path']``."""
+        config = config or {}
+        sbom_path = config.get("sbom_path")
+        if not sbom_path:
+            return ScanResult(
+                scanner=self.name,
+                metadata={"error": "grype requires sbom_path"},
+            )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_file = Path(tmp_dir) / "grype-results.json"
+            cmd = [
+                "grype",
+                f"sbom:{sbom_path}",
+                "-o", "json",
+                "--file", str(output_file),
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if not output_file.exists():
+                return ScanResult(
+                    scanner=self.name,
+                    metadata={
+                        "error": result.stderr.strip() or "grype produced no output",
+                        "returncode": result.returncode,
+                    },
+                )
+            findings = self.parse_results(output_file)
+            return ScanResult(
+                scanner=self.name,
+                findings=findings,
+                metadata={
+                    "returncode": result.returncode,
+                    "sbom_path": str(sbom_path),
+                },
+            )
+
+    def is_available(self) -> bool:
+        return shutil.which("grype") is not None
+
+    def install_command(self) -> str | None:
+        return (
+            "curl -sSfL https://raw.githubusercontent.com/anchore/grype/"
+            "main/install.sh | sh -s -- -b /usr/local/bin"
+        )
+
+    def tool_version(self) -> str | None:
+        if not self.is_available():
+            return None
+        try:
+            res = subprocess.run(
+                ["grype", "version", "-o", "json"],
+                capture_output=True, text=True, timeout=5,
+            )
+            data = json.loads(res.stdout)
+            v = data.get("version")
+            return v if isinstance(v, str) else None
+        except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception):
+            return None
+
+    def parse_results(self, raw_output_path: Path) -> list[Finding]:
+        """Parse Grype JSON output into Finding objects."""
+        try:
+            data = json.loads(Path(raw_output_path).read_text())
+        except (json.JSONDecodeError, OSError):
+            return []
+        matches = data.get("matches") or []
+        return [parse_grype_match(m, scanner_name=self.name) for m in matches]

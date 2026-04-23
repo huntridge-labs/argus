@@ -75,7 +75,16 @@ class TestScannerContainerImages:
             assert hasattr(scanner, "container_args"), (
                 f"{name} missing container_args method"
             )
-            args = scanner.container_args()
+            # SBOM-only scanners refuse to build args without an sbom_path
+            # because the SBOM is required for the invocation; pass a
+            # placeholder so this protocol test still exercises them.
+            cfg: dict | None = None
+            if getattr(cls, "supports_sbom", False) and name in {"grype", "trivy"}:
+                cfg = {
+                    "sbom_path": "/host/sbom.json",
+                    "sbom_mount_path": "/sbom/sbom.json",
+                }
+            args = scanner.container_args(cfg)
             assert isinstance(args, list), (
                 f"{name}.container_args() should return list"
             )

@@ -71,6 +71,16 @@ class MarkdownReporter:
         lines.append(f"| **Total** | **{summary.total_count}** |")
         lines.append("")
 
+        # Combined deduplicated view — only makes sense when two or more
+        # scanners produced findings against the same source (SBOM scans
+        # with osv + grype + trivy are the canonical case). For single-
+        # scanner runs the dedup is a no-op, so we skip the section to
+        # avoid noise.
+        combined_block = self._build_combined_section(summary)
+        if combined_block:
+            lines.extend(combined_block)
+            lines.append("")
+
         # Per-scanner sections
         lines.append("## Scanner Results\n")
         for result in summary.results:
@@ -106,3 +116,66 @@ class MarkdownReporter:
             lines.append("\n</details>\n")
 
         return "\n".join(lines)
+
+    def _build_combined_section(self, summary: ScanSummary) -> list[str]:
+        """Return markdown lines for a deduplicated combined findings block.
+
+        Dedup key is ``(cve or id, location)``. When multiple scanners
+        report the same CVE against the same package@version, they
+        collapse into a single row annotated with the list of reporters.
+        Returns an empty list when dedup wouldn't collapse anything
+        (single scanner or findings across scanners share no overlap).
+        """
+        scanners_with_findings = [
+            r for r in summary.results if r.findings
+        ]
+        if len(scanners_with_findings) < 2:
+            return []
+
+        bucket: dict[tuple, dict] = {}
+        for result in scanners_with_findings:
+            for f in result.findings:
+                key = (f.cve or f.id, f.location or "")
+                existing = bucket.get(key)
+                if existing is None:
+                    bucket[key] = {
+                        "finding": f,
+                        "reporters": {result.scanner},
+                    }
+                else:
+                    existing["reporters"].add(result.scanner)
+
+        deduped_total = len(bucket)
+        raw_total = sum(len(r.findings) for r in scanners_with_findings)
+        if deduped_total >= raw_total:
+            # Nothing to dedup — the per-scanner sections already cover it.
+            return []
+
+        out: list[str] = [
+            "## Combined Findings (Deduplicated)\n",
+            (
+                f"**Unique findings:** {deduped_total} "
+                f"(from {raw_total} raw across "
+                f"{len(scanners_with_findings)} scanners)\n"
+            ),
+            "<details>",
+            f"<summary>View {deduped_total} deduplicated findings</summary>\n",
+            "| Severity | ID | Location | Reported by |",
+            "|----------|----|----------|-------------|",
+        ]
+
+        ordered = sorted(
+            bucket.values(),
+            key=lambda entry: (-entry["finding"].severity._order, entry["finding"].id),
+        )
+        for entry in ordered:
+            f = entry["finding"]
+            emoji = _SEVERITY_EMOJI.get(f.severity, "❓")
+            sev = f.severity.value.capitalize()
+            reporters = ", ".join(sorted(entry["reporters"]))
+            location = f.location or "-"
+            out.append(
+                f"| {emoji} {sev} | {f.id} | `{location}` | {reporters} |"
+            )
+        out.append("\n</details>")
+        return out

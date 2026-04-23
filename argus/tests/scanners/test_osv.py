@@ -56,3 +56,42 @@ class TestOsvScannerMeta:
     def test_install_command(self):
         cmd = OsvScanner().install_command()
         assert cmd is not None
+
+    def test_supports_sbom(self):
+        assert OsvScanner.supports_sbom is True
+
+
+class TestOsvSbomMode:
+    """OSV should accept an SBOM via config['sbom_path'] and add --sbom."""
+
+    def test_local_command_uses_sbom_flag(self):
+        from pathlib import Path
+        scanner = OsvScanner()
+        cmd = scanner._build_command(
+            path=".",
+            output_file=Path("/tmp/out.json"),
+            config={"sbom_path": "/shared/sbom.json"},
+        )
+        assert "--sbom" in cmd
+        assert "/shared/sbom.json" in cmd
+        # --recursive / path arg should NOT appear in SBOM mode
+        assert "--recursive" not in cmd
+        assert "." not in cmd
+
+    def test_container_args_use_sbom_flag(self):
+        args = OsvScanner().container_args({
+            "sbom_path": "/host/sbom.json",
+            "sbom_mount_path": "/sbom/sbom.json",
+        })
+        assert "--sbom" in args
+        assert "/sbom/sbom.json" in args
+
+    def test_sbom_mode_ignores_lockfile_and_recursive(self):
+        args = OsvScanner().container_args({
+            "sbom_path": "/host/sbom.json",
+            "lockfile": "requirements.txt",
+            "recursive": True,
+        })
+        # SBOM mode takes precedence; lockfile/recursive should be ignored
+        assert "-L" not in args
+        assert "--recursive" not in args

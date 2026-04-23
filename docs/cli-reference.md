@@ -60,11 +60,12 @@ argus scan [-h] [--path PATH] [--config CONFIG]
                   [--format {terminal,markdown,sarif,json}] [--list]
                   [--verbose] [--no-spinner] [--no-timestamp]
                   [--output-vars FILE] [--exclude PATTERNS]
-                  [--no-default-excludes] [--dry-run] [--fail-fast]
-                  [--timeout SECONDS] [--no-parallel] [--allow-local-versions]
-                  [--no-cache] [--discover [PATH]] [--image REF]
-                  [--scanners SCANNERS] [--target URL] [--port PORT]
-                  [--env KEY=VALUE] [--scan-type {baseline,full}]
+                  [--no-default-excludes] [--dry-run] [--sbom FILE]
+                  [--fail-fast] [--timeout SECONDS] [--no-parallel]
+                  [--allow-local-versions] [--no-cache] [--discover [PATH]]
+                  [--image REF] [--scanners SCANNERS] [--target URL]
+                  [--port PORT] [--env KEY=VALUE]
+                  [--scan-type {baseline,full}]
                   [--startup-timeout STARTUP_TIMEOUT]
                   [scanner]
 ```
@@ -90,6 +91,7 @@ argus scan [-h] [--path PATH] [--config CONFIG]
 | `--exclude`, `-e` | Comma-separated paths or patterns to exclude from scanning. Added on top of .gitignore, .dockerignore, and built-in defaults. | `` |
 | `--no-default-excludes` | Drop built-in exclusions (node_modules, .git, ...) and .gitignore / .dockerignore patterns. Only --exclude and argus.yml exclude: take effect. Use when you explicitly want to scan what the defaults would normally skip. | `false` |
 | `--dry-run` | Resolve config and print the planned scanner invocations without executing them. Useful for verifying which per-scanner config files, paths, and excludes Argus will use. | `false` |
+| `--sbom` | Scan a pre-built SBOM (CycloneDX JSON/XML, SPDX JSON/tag-value, or Syft JSON) instead of a directory. Auto-enables all SBOM-capable scanners (osv, grype, trivy) regardless of argus.yml. Filesystem scanners (bandit, gitleaks, ...) are skipped since they have nothing to scan. |  |
 | `--fail-fast` | Abort immediately if any scanner fails instead of continuing. | `false` |
 | `--timeout` | Per-scanner timeout in seconds. Scanners exceeding this limit are killed. |  |
 | `--no-parallel` | Run scanners sequentially instead of concurrently. | `false` |

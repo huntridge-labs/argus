@@ -302,6 +302,16 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
              "config files, paths, and excludes Argus will use.",
     )
     scan_parser.add_argument(
+        "--sbom",
+        default=None,
+        metavar="FILE",
+        help="Scan a pre-built SBOM (CycloneDX JSON/XML, SPDX JSON/tag-value, "
+             "or Syft JSON) instead of a directory. Auto-enables all "
+             "SBOM-capable scanners (osv, grype, trivy) regardless of "
+             "argus.yml. Filesystem scanners (bandit, gitleaks, ...) are "
+             "skipped since they have nothing to scan.",
+    )
+    scan_parser.add_argument(
         "--fail-fast",
         action="store_true",
         help="Abort immediately if any scanner fails instead of continuing.",
@@ -894,6 +904,23 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
             args=args,
         )
 
+    # SBOM mode: validate the file and detect its format before we spin up
+    # scanners. Failing here is much friendlier than a cryptic tool error
+    # further down.
+    sbom_path = getattr(args, "sbom", None)
+    if sbom_path:
+        from argus.core.sbom import detect_sbom, SbomDetectionError
+        try:
+            info = detect_sbom(sbom_path)
+        except SbomDetectionError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return EXIT_ERROR
+        log.info(
+            "SBOM input: %s (%s)",
+            info.path,
+            info.display_format,
+        )
+
     # Run the scan
     try:
         scanner_names = [args.scanner] if args.scanner else None
@@ -912,6 +939,7 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
                 allow_local_versions=getattr(args, "allow_local_versions", False),
                 no_cache=getattr(args, "no_cache", False),
                 use_default_excludes=not getattr(args, "no_default_excludes", False),
+                sbom_path=sbom_path,
             )
         if args.verbose and getattr(engine, "_last_resolutions", None):
             from argus.core.tool_config import format_resolutions_for_display
@@ -950,11 +978,23 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
     # "silent empty scan" failure mode users hit on machines without
     # Docker or the native tools installed. Point them at --check-tools
     # so they get actionable install suggestions instead of nothing.
-    _print_missing_scanner_nudge(
-        requested=scanner_names or [
+    if sbom_path:
+        # In SBOM mode the engine auto-picks supports_sbom scanners;
+        # the requested set should mirror that logic so the nudge
+        # doesn't falsely report "bandit skipped" on an SBOM scan.
+        requested_for_nudge = [
+            name for name, scanner in engine._scanners.items()
+            if getattr(scanner, "supports_sbom", False)
+        ]
+        if args.scanner:
+            requested_for_nudge = [args.scanner] if args.scanner in requested_for_nudge else []
+    else:
+        requested_for_nudge = scanner_names or [
             name for name in engine._scanners
             if config.get_scanner_config(name).enabled
-        ],
+        ]
+    _print_missing_scanner_nudge(
+        requested=requested_for_nudge,
         summary=summary,
     )
 
@@ -981,13 +1021,38 @@ def _dry_run(engine, config, args) -> int:
         resolve_config,
     )
 
-    scanner_names = [args.scanner] if args.scanner else [
-        name for name in engine._scanners
-        if config.get_scanner_config(name).enabled
-    ]
+    sbom_path = getattr(args, "sbom", None)
+
+    if sbom_path:
+        from argus.core.sbom import detect_sbom, SbomDetectionError
+        try:
+            info = detect_sbom(sbom_path)
+            sbom_label = f"{info.path} ({info.display_format})"
+        except SbomDetectionError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return EXIT_ERROR
+        # SBOM mode: only scanners declaring supports_sbom run; argus.yml
+        # `enabled:` flags are ignored by design (the user explicitly asked
+        # for full SBOM coverage by passing --sbom).
+        capable = [
+            name for name, scanner in engine._scanners.items()
+            if getattr(scanner, "supports_sbom", False)
+        ]
+        scanner_names = [args.scanner] if args.scanner else sorted(capable)
+        # Filter a named request down to capable scanners so the dry-run
+        # plan matches what a real run would do.
+        scanner_names = [n for n in scanner_names if n in capable]
+    else:
+        sbom_label = None
+        scanner_names = [args.scanner] if args.scanner else [
+            name for name in engine._scanners
+            if config.get_scanner_config(name).enabled
+        ]
     use_defaults = not getattr(args, "no_default_excludes", False)
 
     print("Argus dry-run — no scanners will execute.\n")
+    if sbom_label:
+        print(f"SBOM input:  {sbom_label}")
     print(f"Scan path:   {args.path}")
     print(f"Backend:     {config.execution.backend}")
     print(f"Scanners:    {', '.join(scanner_names) if scanner_names else '(none)'}")
