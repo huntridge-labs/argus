@@ -1,6 +1,6 @@
 # Argus CLI Reference (v0.7.2)
 
-> Auto-generated from argparse definitions on 2026-04-19.
+> Auto-generated from argparse definitions on 2026-04-23.
 > Do not edit manually — run `python -m scripts.ci.gen_cli_docs` to regenerate.
 
 Argus Security Scanner — comprehensive security scanning for your codebase
@@ -59,7 +59,8 @@ argus scan [-h] [--path PATH] [--config CONFIG]
                   [--severity-threshold {critical,high,medium,low,none}]
                   [--format {terminal,markdown,sarif,json}] [--list]
                   [--verbose] [--no-spinner] [--no-timestamp]
-                  [--output-vars FILE] [--exclude PATTERNS] [--fail-fast]
+                  [--output-vars FILE] [--exclude PATTERNS]
+                  [--no-default-excludes] [--dry-run] [--fail-fast]
                   [--timeout SECONDS] [--no-parallel] [--allow-local-versions]
                   [--no-cache] [--discover [PATH]] [--image REF]
                   [--scanners SCANNERS] [--target URL] [--port PORT]
@@ -87,6 +88,8 @@ argus scan [-h] [--path PATH] [--config CONFIG]
 | `--no-timestamp` | Write output directly to --output-dir without a timestamped subdirectory. Useful in CI where a predictable output path is needed. | `false` |
 | `--output-vars` | Write scan result counts as key=value pairs to FILE. Useful in CI: cat FILE >> $GITHUB_OUTPUT. Keys: critical_count, high_count, medium_count, low_count, total_count, passed. |  |
 | `--exclude`, `-e` | Comma-separated paths or patterns to exclude from scanning. Added on top of .gitignore, .dockerignore, and built-in defaults. | `` |
+| `--no-default-excludes` | Drop built-in exclusions (node_modules, .git, ...) and .gitignore / .dockerignore patterns. Only --exclude and argus.yml exclude: take effect. Use when you explicitly want to scan what the defaults would normally skip. | `false` |
+| `--dry-run` | Resolve config and print the planned scanner invocations without executing them. Useful for verifying which per-scanner config files, paths, and excludes Argus will use. | `false` |
 | `--fail-fast` | Abort immediately if any scanner fails instead of continuing. | `false` |
 | `--timeout` | Per-scanner timeout in seconds. Scanners exceeding this limit are killed. |  |
 | `--no-parallel` | Run scanners sequentially instead of concurrently. | `false` |

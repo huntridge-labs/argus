@@ -287,6 +287,21 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
              "Added on top of .gitignore, .dockerignore, and built-in defaults.",
     )
     scan_parser.add_argument(
+        "--no-default-excludes",
+        action="store_true",
+        help="Drop built-in exclusions (node_modules, .git, ...) and "
+             ".gitignore / .dockerignore patterns. Only --exclude and "
+             "argus.yml exclude: take effect. Use when you explicitly want "
+             "to scan what the defaults would normally skip.",
+    )
+    scan_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Resolve config and print the planned scanner invocations "
+             "without executing them. Useful for verifying which per-scanner "
+             "config files, paths, and excludes Argus will use.",
+    )
+    scan_parser.add_argument(
         "--fail-fast",
         action="store_true",
         help="Abort immediately if any scanner fails instead of continuing.",
@@ -822,6 +837,21 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
     if args.formats:
         config.reporting.formats = args.formats
 
+    # Dry-run short-circuit: resolve scanners, configs, exclusions — then
+    # print the plan and exit without invoking any scanner. Short-circuits
+    # BEFORE creating output dirs, opening log files, or writing a run
+    # manifest so the dry run stays read-only. We still need an engine +
+    # registered scanners for `--list` parity, so build those lazily below.
+    if getattr(args, "dry_run", False):
+        engine = ArgusEngine(config)
+        try:
+            from argus.scanners import get_available_scanners
+            for scanner_cls in get_available_scanners():
+                engine.register_scanner(scanner_cls())
+        except ImportError:
+            pass
+        return _dry_run(engine=engine, config=config, args=args)
+
     # Initialize output directory — timestamped subdirectory by default,
     # flat directory when --no-timestamp is set (CI/action use case).
     if getattr(args, "no_timestamp", False):
@@ -854,6 +884,16 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
     if args.list:
         return _list_scanners(engine)
 
+    # Dry-run guard — should never be reached because we short-circuited
+    # above. Keep a tripwire here so accidental refactors fail fast rather
+    # than silently fall through into the real scan.
+    if getattr(args, "dry_run", False):
+        return _dry_run(
+            engine=engine,
+            config=config,
+            args=args,
+        )
+
     # Run the scan
     try:
         scanner_names = [args.scanner] if args.scanner else None
@@ -871,6 +911,13 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
                 parallel=not getattr(args, "no_parallel", False),
                 allow_local_versions=getattr(args, "allow_local_versions", False),
                 no_cache=getattr(args, "no_cache", False),
+                use_default_excludes=not getattr(args, "no_default_excludes", False),
+            )
+        if args.verbose and getattr(engine, "_last_resolutions", None):
+            from argus.core.tool_config import format_resolutions_for_display
+            log.info(
+                "%s",
+                format_resolutions_for_display(engine._last_resolutions),
             )
         log.info(
             "Scan complete: %d scanner(s), %d finding(s)",
@@ -917,6 +964,55 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
     log.info("Audit manifest written to %s/argus-audit.json", output_dir)
 
     return exit_code
+
+
+def _dry_run(engine, config, args) -> int:
+    """Resolve the scan plan and print it without executing scanners.
+
+    Exits with EXIT_SUCCESS after printing. The point of --dry-run is to
+    show the user exactly which scanners will run, which config file each
+    will use, and the final exclusion pattern set — so CI debugging and
+    "is my .bandit being picked up?" investigations don't require an
+    actual scan cycle.
+    """
+    from argus.core.exclusions import build_exclusion_set
+    from argus.core.tool_config import (
+        format_resolutions_for_display,
+        resolve_config,
+    )
+
+    scanner_names = [args.scanner] if args.scanner else [
+        name for name in engine._scanners
+        if config.get_scanner_config(name).enabled
+    ]
+    use_defaults = not getattr(args, "no_default_excludes", False)
+
+    print("Argus dry-run — no scanners will execute.\n")
+    print(f"Scan path:   {args.path}")
+    print(f"Backend:     {config.execution.backend}")
+    print(f"Scanners:    {', '.join(scanner_names) if scanner_names else '(none)'}")
+    print()
+
+    # Exclusion set with the same inputs a real run would use
+    patterns = build_exclusion_set(
+        scan_path=args.path,
+        cli_excludes=getattr(args, "exclude", ""),
+        use_defaults=use_defaults,
+    )
+    print(f"Exclusion patterns ({len(patterns)}, use_defaults={use_defaults}):")
+    for p in patterns:
+        print(f"  - {p}")
+    print()
+
+    # Per-scanner config resolution
+    resolutions = []
+    for name in scanner_names:
+        scanner_config = config.get_scanner_config(name)
+        explicit = scanner_config.config_file
+        resolutions.append(resolve_config(name, args.path, explicit))
+    print(format_resolutions_for_display(resolutions))
+
+    return EXIT_SUCCESS
 
 
 def _print_missing_scanner_nudge(requested: list[str], summary) -> None:
