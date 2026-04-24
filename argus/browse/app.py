@@ -126,7 +126,8 @@ class ArgusBrowseCommands(Provider):
             ("Filter: All severities",   "Clear the severity filter", app.action_filter_all),
             ("Sort: Cycle sort mode",    "Cycle severity desc → asc → package → id", app.action_cycle_sort),
             ("Export: CSV of current view", "Write the filtered findings to a timestamped CSV", app.action_export_csv),
-            ("Open: Last export",        "Open the most recent export in your file manager", app.action_open_last_export),
+            ("Open: Last export",        "Open the last export with the system's default app", app.action_open_last_export),
+            ("Reveal: Last export",      "Show the last export in the OS file manager", app.action_reveal_last_export),
         ]
         for label, help_text, callback in commands:
             score = matcher.match(label)
@@ -219,6 +220,7 @@ class BrowseApp(App):
         Binding("s", "cycle_sort", "Sort"),
         Binding("e", "export_csv", "Export"),
         Binding("o", "open_last_export", "Open export"),
+        Binding("r", "reveal_last_export", "Reveal in files"),
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
     ]
@@ -451,42 +453,74 @@ class BrowseApp(App):
             f"Exported {len(self._visible)} finding(s) to:\n"
             f"{dest}\n"
             f"{uri}\n"
-            f"Press [b]o[/b] to open in your file manager.",
+            f"Press [b]o[/b] to open with default app · "
+            f"[b]r[/b] to reveal in file manager.",
             severity="information",
             timeout=12,
         )
 
     def action_open_last_export(self) -> None:
-        """Open the most recent export with the platform's native opener.
+        """Open the most recent export with the platform's default app.
 
-        macOS → ``open``, Linux → ``xdg-open``, Windows → ``start``.
+        macOS → ``open`` (hands off to the file's default handler —
+        .csv opens in Numbers / Excel / LibreOffice depending on
+        what's registered). Linux → ``xdg-open``. Windows → ``start``.
         When nothing has been exported yet, or the file has been
         deleted out from under us, we toast a friendly reminder
         rather than erroring out.
         """
+        self._spawn_with_opener(
+            mode="open",
+            no_export_msg="No export yet. Press [b]e[/b] to export the current filter first.",
+            unavailable_msg="No known opener for this platform. File: {path}",
+            success_msg="Opening {name}…",
+        )
+
+    def action_reveal_last_export(self) -> None:
+        """Reveal the most recent export in the OS file manager.
+
+        macOS → ``open -R`` (Finder with the file selected).
+        Windows → ``explorer /select,<path>`` (same experience).
+        Linux → there's no universal "select in file manager" verb,
+        so we open the containing directory with ``xdg-open`` —
+        most users can find the file visually from there.
+        """
+        self._spawn_with_opener(
+            mode="reveal",
+            no_export_msg="No export yet. Press [b]e[/b] to export the current filter first.",
+            unavailable_msg="No known file-manager command for this platform. File: {path}",
+            success_msg="Revealing {name} in file manager…",
+        )
+
+    def _spawn_with_opener(
+        self,
+        *,
+        mode: str,
+        no_export_msg: str,
+        unavailable_msg: str,
+        success_msg: str,
+    ) -> None:
+        """Shared plumbing for open/reveal — validates, spawns, toasts."""
         path = getattr(self, "_last_export_path", None)
         if not path or not Path(path).exists():
-            self.notify(
-                "No export yet. Press [b]e[/b] to export the current filter first.",
-                severity="warning", timeout=4,
-            )
+            self.notify(no_export_msg, severity="warning", timeout=4)
             return
-        opener, args = _platform_opener()
-        if opener is None:
-            self.notify(
-                f"No known opener for this platform. File: {path}",
-                severity="warning", timeout=6,
-            )
+        argv = _platform_opener_argv(mode, Path(path))
+        if argv is None:
+            self.notify(unavailable_msg.format(path=path), severity="warning", timeout=6)
             return
         import subprocess
         try:
             subprocess.Popen(
-                [opener, *args, str(path)],
+                argv,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
-            self.notify(f"Opening {path.name}…", severity="information", timeout=2)
+            self.notify(
+                success_msg.format(name=path.name, path=path),
+                severity="information", timeout=2,
+            )
         except OSError as exc:
             self.notify(
                 f"Couldn't launch opener ({exc}). File: {path}",
@@ -494,13 +528,53 @@ class BrowseApp(App):
             )
 
 
-def _platform_opener() -> tuple[str | None, list[str]]:
-    """Return ``(command, extra_args)`` for the platform's native file opener.
+def _platform_opener_argv(mode: str, path: Path) -> list[str] | None:
+    """Return the subprocess argv for ``open``/``reveal`` on this platform.
 
-    We never shell-invoke the command — callers pass it through
-    ``subprocess.Popen`` with a list argv so there's no quoting
-    ambiguity. ``(None, [])`` signals "no known opener" and the caller
-    falls back to a text hint.
+    ``mode="open"``    — hand the file to its default application.
+    ``mode="reveal"``  — show the file (or containing folder) in the
+                         OS file manager. On Linux there's no standard
+                         "highlight this file" verb across file
+                         managers, so we open the parent directory.
+
+    Returns ``None`` when we don't know how to service the request on
+    this platform. Callers shell out via ``Popen(argv)`` — never a
+    shell string — so paths with spaces or quotes are safe.
+    """
+    import sys
+    p = str(path)
+    if sys.platform == "darwin":
+        if mode == "open":
+            return ["open", p]
+        if mode == "reveal":
+            return ["open", "-R", p]        # reveal in Finder
+    elif sys.platform.startswith("linux"):
+        if mode == "open":
+            return ["xdg-open", p]
+        if mode == "reveal":
+            # No portable "select file" action across file managers;
+            # opening the parent directory is the lowest-common
+            # denominator for "show me where this lives."
+            return ["xdg-open", str(path.parent)]
+    elif sys.platform == "win32":
+        if mode == "open":
+            # ``start`` is a cmd builtin; the empty "" is the window-
+            # title positional that ``start`` requires.
+            return ["cmd", "/c", "start", "", p]
+        if mode == "reveal":
+            return ["explorer", f"/select,{p}"]
+    return None
+
+
+# Backwards-compat shim for tests that imported the prior helper. Kept
+# so existing unit tests stay meaningful without a rewrite; the new
+# code path uses _platform_opener_argv instead.
+def _platform_opener() -> tuple[str | None, list[str]]:
+    """Legacy shape: ``(command, extra_args_before_path)`` for mode='open'.
+
+    Prefer ``_platform_opener_argv`` in new call sites — it handles
+    both open and reveal, and returns the full argv so callers never
+    reconstruct it.
     """
     import sys
     if sys.platform == "darwin":
@@ -508,8 +582,6 @@ def _platform_opener() -> tuple[str | None, list[str]]:
     if sys.platform.startswith("linux"):
         return "xdg-open", []
     if sys.platform == "win32":
-        # ``start`` is a cmd builtin, not a standalone executable —
-        # route through ``cmd /c`` so Popen can find it.
         return "cmd", ["/c", "start", ""]
     return None, []
 

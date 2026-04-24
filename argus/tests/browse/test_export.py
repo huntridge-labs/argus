@@ -100,6 +100,55 @@ class TestPlatformOpener:
         assert extra == []
 
 
+class TestPlatformOpenerArgv:
+    """The argv builder emits the right command for both open and reveal."""
+
+    def _call(self, platform_str: str, mode: str, path: str):
+        import sys as _sys
+        from pathlib import Path as _Path
+        module = _load_app_module()
+        orig = _sys.platform
+        _sys.platform = platform_str
+        try:
+            return module._platform_opener_argv(mode, _Path(path))
+        finally:
+            _sys.platform = orig
+
+    def test_macos_open_uses_default_app(self):
+        argv = self._call("darwin", "open", "/tmp/x.csv")
+        assert argv == ["open", "/tmp/x.csv"]
+
+    def test_macos_reveal_uses_finder(self):
+        argv = self._call("darwin", "reveal", "/tmp/x.csv")
+        # The -R flag is what tells `open` to reveal in Finder rather
+        # than hand the file to its default app — the whole point of
+        # this code path.
+        assert argv == ["open", "-R", "/tmp/x.csv"]
+
+    def test_linux_open(self):
+        argv = self._call("linux", "open", "/tmp/x.csv")
+        assert argv == ["xdg-open", "/tmp/x.csv"]
+
+    def test_linux_reveal_opens_parent_dir(self):
+        # Linux has no universal "select file" verb; we open the
+        # containing folder as the next-best fallback.
+        argv = self._call("linux", "reveal", "/tmp/sub/x.csv")
+        assert argv == ["xdg-open", "/tmp/sub"]
+
+    def test_windows_open(self):
+        argv = self._call("win32", "open", r"C:\tmp\x.csv")
+        assert argv == ["cmd", "/c", "start", "", r"C:\tmp\x.csv"]
+
+    def test_windows_reveal_selects_file(self):
+        argv = self._call("win32", "reveal", r"C:\tmp\x.csv")
+        # Explorer's /select flag highlights the file in the parent dir.
+        assert argv == ["explorer", r"/select,C:\tmp\x.csv"]
+
+    def test_unknown_platform_returns_none(self):
+        assert self._call("haiku", "open", "/x") is None
+        assert self._call("haiku", "reveal", "/x") is None
+
+
 class TestExportFilenamePattern:
     """Export filenames include a timestamp and scope so repeats don't clobber."""
 
