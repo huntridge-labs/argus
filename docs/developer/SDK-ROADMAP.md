@@ -364,6 +364,67 @@ Shipped on `feat/serve-webui` across six commit-sized phases
 - Secret-redaction on finding text — not serve-specific; applies
   equally to CLI / TUI / JSON export. Tackle globally when it lands.
 
+### Phase 2 additions (post-launch, shipped)
+
+Iteration after dogfooding the initial build. Same scoping rules
+apply: read-only, localhost-only, no new persistence.
+
+- [x] **SG** — Drill-downs on dashboard cards and per-product /
+  per-scanner rows; each deep-links into `/findings` with the
+  matching filter pinned.
+- [x] **SH** — Findings row detail (native `<details>` disclosure
+  inside each title cell, rendering `finding_detail_rows` — same
+  source of truth the TUI uses).
+- [x] **SI** — Sortable column headers on the findings table
+  (Severity / ID / Location / Scanner), aria-sort state reflected.
+- [x] **SJ** — Path-scope constraint: `?scan=` and `/picker?path=`
+  reject targets outside the launch root unless the user relaunches
+  with a broader `--root`. Defense-in-depth even though cross-origin
+  readback is already blocked by the browser SOP.
+- [x] **SK** — Export routes (`/export?format=csv|json|markdown|sarif`)
+  reusing `argus/browse/export.py`; each format exposed in the
+  findings UI with both Download (browser save) and Copy (clipboard
+  via `navigator.clipboard.writeText`) actions.
+- [x] **SL** — Scan diff (`/diff?a=<path>&b=<path>`): new / fixed /
+  severity-changed / still-open buckets keyed off the
+  `(scanner, id, location)` identity tuple. Picker surfaces
+  checkboxes on scan-ready rows + a "Compare selected" button.
+- [x] **SM** — Recent-scans dropdown in the header, auto-populated
+  from scan-ready siblings of the launch root; symlink-deduplicated
+  so `latest/` doesn't double-count.
+- [x] **SN** — Scan metadata panel on the dashboard exposing
+  per-scanner tool versions, container image digests, durations,
+  aggregate duration, and the scan file's mtime.
+- [x] **SO** — Light/dark theme toggle with `prefers-color-scheme`
+  default and a localStorage override. Brand palette unchanged in
+  dark; light variant derived from the same tokens with deeper
+  severity hues for legibility on a bright surface.
+
+### Future ideas (not on the roadmap)
+
+Deliberately not pursuing for now — recording here so the decision
+doesn't have to be re-litigated when someone files a "what about
+X?" issue.
+
+- **Keyboard shortcuts** (`/` focus search, `j/k` row nav, `Enter`
+  expand detail). Considered during the post-launch walkthrough and
+  deferred: browser URL bookmarking already handles the most common
+  flows, and keyboard shortcuts are an expected affordance in TUIs
+  like `argus browse` but a lower payoff in a web surface where
+  mouse + click is the dominant interaction mode. Could revisit if
+  users ask, but not planned.
+- **Triage annotations** (mark false-positive, accepted risk, fix
+  scheduled). Considered and declined. Adding these would mean:
+  1. Writing state to a sidecar file, which breaks the strict
+     read-only model serve is built around.
+  2. Inventing a schema for persisting + recalling triage state
+     across scan runs, with no standard way to surface it back into
+     later scans or report it to a security review POC.
+  3. Duplicating effort with `argus-portal`, which has first-class
+     vuln management in its scope.
+  Routes argus into vuln-management territory without a downstream
+  consumer that uses the data — not worth the complexity.
+
 ### Relationship to `argus-portal`
 
 The two are complementary, not competing:
