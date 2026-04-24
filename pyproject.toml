@@ -41,8 +41,10 @@ ai = ["anthropic>=0.39.0", "openai>=1.0.0", "requests>=2.31.0"]
 completion = ["argcomplete>=3.0"]
 # MCP server for AI assistant integration
 mcp = ["mcp>=1.0.0"]
+# Interactive findings browser (argus browse)
+browse = ["textual>=0.80"]
 # All optional features
-all = ["argus-security[ai,completion,mcp]"]
+all = ["argus-security[ai,completion,mcp,browse]"]
 
 [project.scripts]
 argus = "argus.cli:main"

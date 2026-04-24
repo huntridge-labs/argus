@@ -783,6 +783,39 @@ class TestCacheSubcommand:
         assert args.sbom is None
 
 
+class TestBrowseSubcommand:
+    """Parsing + dispatch for `argus browse`."""
+
+    def test_browse_default_args(self):
+        parser = build_parser()
+        args = parser.parse_args(["browse"])
+        assert args.command == "browse"
+        assert args.results is None
+
+    def test_browse_with_path(self):
+        parser = build_parser()
+        args = parser.parse_args(["browse", "./run-01"])
+        assert args.results == "./run-01"
+
+    def test_browse_without_extra_returns_error(self, monkeypatch, capsys):
+        """When the `browse` extra isn't installed, exit clean with a hint."""
+        from argus.cli import cmd_browse
+        import argparse as _argparse
+
+        def fake_launch(_results):
+            from argus.browse import BrowseUnavailable
+            raise BrowseUnavailable(
+                "The interactive findings browser needs the 'browse' extra. "
+                "Install it with: pip install 'argus-security[browse]'"
+            )
+        monkeypatch.setattr("argus.browse.launch", fake_launch)
+
+        rc = cmd_browse(_argparse.Namespace(results=None))
+        assert rc == EXIT_ERROR
+        err = capsys.readouterr().err
+        assert "argus-security[browse]" in err
+
+
 class TestSbomDirectoryMerge:
     """CLI helper that collapses per-SBOM ScanSummary objects into one."""
 

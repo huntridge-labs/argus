@@ -149,8 +149,49 @@ def build_parser() -> argparse.ArgumentParser:
     _build_mcp_parser(subparsers)
     _build_completion_parser(subparsers)
     _build_cache_parser(subparsers)
+    _build_browse_parser(subparsers)
 
     return parser
+
+
+def _build_browse_parser(subparsers: argparse._SubParsersAction) -> None:
+    """Add the 'browse' subcommand — interactive findings TUI."""
+    browse_parser = subparsers.add_parser(
+        "browse",
+        help="Interactively browse findings from a previous scan",
+        description=(
+            "Launch the terminal UI for triaging an argus-results.json:\n"
+            "  argus browse                          # ./argus-results/argus-results.json\n"
+            "  argus browse ./run-2026-04-24         # specific results dir\n"
+            "  argus browse ./custom-results.json    # direct file path\n\n"
+            "Keyboard shortcuts inside the TUI:\n"
+            "  / search · 1/2/3/4 filter by severity · s sort · e export CSV · q quit\n\n"
+            "Requires the 'browse' extra: pip install 'argus-security[browse]'"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    browse_parser.add_argument(
+        "results",
+        nargs="?",
+        default=None,
+        metavar="PATH",
+        help="Results directory or argus-results.json path "
+             "(default: ./argus-results/)",
+    )
+
+
+def cmd_browse(args: argparse.Namespace) -> int:
+    """Execute the browse subcommand — launch the findings TUI."""
+    try:
+        from argus.browse import launch, BrowseUnavailable
+    except ImportError as exc:  # pragma: no cover — defensive
+        print(f"Error: could not import argus.browse: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    try:
+        return launch(args.results)
+    except BrowseUnavailable as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
 
 
 def _build_init_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -2277,6 +2318,7 @@ def main(argv: list[str] | None = None) -> None:
         "mcp": cmd_mcp,
         "completion": cmd_completion,
         "cache": cmd_cache,
+        "browse": cmd_browse,
     }
 
     handler = handlers.get(args.command)

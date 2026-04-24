@@ -233,6 +233,35 @@ Born out of the medsecops-golden-path SDK-integration post-mortem. The pre-refac
 
 ---
 
+## Interactive Findings Browser (`argus browse`)
+
+Post-scan triage workflow. Engineers sitting with a fresh scan need a way to filter/sort/drill into findings interactively — reading `argus-results.json` in an editor or paging through linear markdown is the current (weak) alternative. The idea was sharpened in discussion: a Claude-code-style persistent-input-at-bottom TUI is wrong for argus's discrete one-shot commands, but a k9s/lazygit-style stateful dataset browser is the right shape for triaging findings.
+
+**Scope:** offline-only, opinionated, scoped to post-scan triage. Reads `argus-results.json` from a results directory or file path. Keyboard-driven: `/` search, `1/2/3/4` severity filters, `s` cycle sort, `e` export CSV, `q` quit. No AI — Claude Code + argus MCP already covers that surface.
+
+### Implementation — v1 (in progress on `feat/browse-tui`)
+
+- [x] `argus browse [PATH]` subcommand wired into the CLI
+- [x] `argus/browse/` package with loader (`loader.py`) and Textual app (`app.py`)
+- [x] Two-pane layout: findings list (DataTable) + detail view (Static); status bar + footer for shortcuts
+- [x] Filter: severity threshold (`1`=crit only / `2`=high+ / `3`=med+ / `4`=all) + free-text search across id/title/location/CVE/scanner
+- [x] Sort: severity desc/asc, package, id (cycle via `s`)
+- [x] CSV export of the currently filtered view (`e`)
+- [x] Optional extra `pip install argus-security[browse]` — `textual>=0.80` is lazy-imported so CI/server installs stay lightweight
+- [x] Friendly "install with [browse]" error when the extra isn't present
+- [x] `ScanSummary.from_dict` on the model so consumers can rebuild a summary from persisted JSON without spinning up the engine
+- [x] Tests: loader + view-state logic (Textual stubbed so tests run without the extra)
+
+### Remaining
+
+- [ ] Help modal (`?`) listing every binding + current scope
+- [ ] Sort indicator in the column header (arrow glyph)
+- [ ] Multi-select for batch actions (export a subset, copy CVE list to clipboard)
+- [ ] `argus scan --interactive` convenience flag that auto-launches `browse` after a scan completes
+- [ ] Screenshot + quickstart in `docs/browse.md`
+
+---
+
 ## Remaining: Phase 5 — Agentic Substrate (CLI + MCP + Skill)
 
 Products that serve developer workflows increasingly need three layers for AI assistant integration. Argus already ships a CLI. Phase 5 adds the MCP server and refines the skill to complete the stack.

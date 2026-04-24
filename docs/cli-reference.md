@@ -1,6 +1,6 @@
 # Argus CLI Reference (v0.7.2)
 
-> Auto-generated from argparse definitions on 2026-04-23.
+> Auto-generated from argparse definitions on 2026-04-24.
 > Do not edit manually — run `python -m scripts.ci.gen_cli_docs` to regenerate.
 
 Argus Security Scanner — comprehensive security scanning for your codebase
@@ -263,6 +263,26 @@ For persistent caching: export ARGUS_CACHE_DIR=~/.argus/cache
 ```
 argus cache [-h] {info,clean} ...
 ```
+
+### `argus browse`
+
+Launch the terminal UI for triaging an argus-results.json:
+  argus browse                          # ./argus-results/argus-results.json
+  argus browse ./run-2026-04-24         # specific results dir
+  argus browse ./custom-results.json    # direct file path
+
+Keyboard shortcuts inside the TUI:
+  / search · 1/2/3/4 filter by severity · s sort · e export CSV · q quit
+
+Requires the 'browse' extra: pip install 'argus-security[browse]'
+
+```
+argus browse [-h] [PATH]
+```
+
+**Arguments:**
+
+- `results` — Results directory or argus-results.json path (default: ./argus-results/)
 
 ## Quick Reference
 
