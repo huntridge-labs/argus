@@ -50,6 +50,11 @@ SORT_LABELS: dict[str, str] = {
     "severity_asc":  "Severity (low → high)",
     "package":       "Package (A → Z)",
     "id":            "Finding ID",
+    "id_desc":       "Finding ID (Z → A)",
+    "location":      "Location (A → Z)",
+    "location_desc": "Location (Z → A)",
+    "scanner":       "Scanner (A → Z)",
+    "scanner_desc":  "Scanner (Z → A)",
 }
 
 
@@ -101,6 +106,12 @@ class ViewState:
         descending order (CRITICAL at index 0) so the natural index yields
         the right ordering. Secondary key: finding id — deterministic
         output when two findings share a severity.
+
+        String-column descending modes (``id_desc``, ``location_desc``,
+        ``scanner_desc``) are scored using the ascending key; callers
+        feed the returned list into ``reversed()`` (or ``sorted(..., reverse=True)``)
+        to get descending order. This keeps the key function side-effect
+        free and composable without inventing a string-negation scheme.
         """
         if self.sort_key == "severity_desc":
             return lambda f: (
@@ -114,7 +125,25 @@ class ViewState:
             )
         if self.sort_key == "package":
             return lambda f: ((f.location or "").lower(), f.id)
+        if self.sort_key in ("id", "id_desc"):
+            return lambda f: (f.id or "", f.severity.value)
+        if self.sort_key in ("location", "location_desc"):
+            return lambda f: ((f.location or "").lower(), f.id)
+        if self.sort_key in ("scanner", "scanner_desc"):
+            return lambda f: ((f.scanner or "").lower(), f.id)
         return lambda f: (f.id, f.severity.value)
+
+    @property
+    def sort_reverse(self) -> bool:
+        """Whether the caller should reverse the sorted list.
+
+        ``severity_desc`` and ``severity_asc`` encode their direction
+        directly into the key (via SEVERITY_ORDER ordinal math), so
+        they don't need a reverse pass. String-column descending modes
+        do — they share the ascending key function with their ``_asc``
+        twin.
+        """
+        return self.sort_key in ("id_desc", "location_desc", "scanner_desc")
 
 
 # ---------------------------------------------------------------------------

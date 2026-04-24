@@ -26,6 +26,7 @@ from argus.browse.loader import RESULTS_FILENAME, flatten_findings, load_summary
 from argus.core.findings_view import (
     ViewState,
     compute_summary,
+    finding_detail_rows,
     unique_products,
     unique_scanners,
 )
@@ -231,6 +232,17 @@ def create_app(root: str | None = None) -> FastAPI:
             },
         )
 
+    # Sort keys the findings route accepts. A crafted URL with a
+    # non-whitelisted value quietly falls back to the default; we
+    # never surface a 500 for a bad query string. Mapping lives next
+    # to the route so it stays in view during review.
+    _ALLOWED_SORTS = {
+        "severity_asc", "severity_desc",
+        "id", "id_desc",
+        "location", "location_desc",
+        "scanner", "scanner_desc",
+    }
+
     @app.get("/findings", response_class=HTMLResponse)
     async def findings(
         request: Request,
@@ -239,6 +251,7 @@ def create_app(root: str | None = None) -> FastAPI:
         product: str | None = None,
         scanner: str | None = None,
         q: str | None = None,
+        sort: str | None = None,
         partial: int = 0,
     ) -> Response:
         """Filterable findings table.
@@ -250,6 +263,9 @@ def create_app(root: str | None = None) -> FastAPI:
         / product / scanner semantics.
         """
         scan_summary, resolved, error = _load_scan(scan)
+        # Clamp sort to the allowlist or fall back to the default so a
+        # typo in the URL doesn't bubble into KeyError territory.
+        active_sort = sort if sort in _ALLOWED_SORTS else "severity_desc"
         context = {
             "scan_param": scan,
             "scan_label": str(resolved) if resolved else None,
@@ -260,11 +276,19 @@ def create_app(root: str | None = None) -> FastAPI:
                 "product": product,
                 "scanner": scanner,
                 "query": q,
+                "sort": active_sort,
             },
             "products": [],
             "scanners": [],
             "visible": [],
             "total": 0,
+            # Expose the shared detail-row builder to the template so
+            # the disclosure <details> inside each row renders the same
+            # fields the TUI's detail pane does. Using the function
+            # directly keeps the two front-ends in lockstep — both read
+            # from finding_detail_rows(f) and neither invents its own
+            # formatting.
+            "detail_rows": finding_detail_rows,
         }
         if scan_summary is not None:
             all_findings = flatten_findings(scan_summary)
@@ -289,10 +313,11 @@ def create_app(root: str | None = None) -> FastAPI:
                 query=q or "",
                 product=product or None,
                 scanner=scanner or None,
+                sort_key=active_sort,
             )
-            context["visible"] = [
-                f for f in all_findings if view_state.matches(f)
-            ]
+            matched = [f for f in all_findings if view_state.matches(f)]
+            matched.sort(key=view_state.sort_key_fn(), reverse=view_state.sort_reverse)
+            context["visible"] = matched
 
         # ?partial=1 returns just the table fragment for auto-filter.js
         # to swap in, skipping the layout. Non-JS clients never set it

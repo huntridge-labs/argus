@@ -264,6 +264,165 @@ class TestDashboardDrillDownLinks:
         assert "Per product" not in resp.text
 
 
+class TestFindingDetailDisclosure:
+    """Each finding row has a native <details> disclosure for its full
+    detail payload — the web UI's counterpart to the TUI's detail pane."""
+
+    def test_row_renders_details_element(self, tmp_path):
+        _write_results(tmp_path, _multi_finding_payload())
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/findings")
+        # Native disclosure widget present.
+        assert "<details" in resp.text
+        assert "<summary>" in resp.text
+
+    def test_detail_panel_includes_core_fields(self, tmp_path):
+        _write_results(tmp_path, _multi_finding_payload())
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/findings")
+        # finding_detail_rows() emits a stable key set — check a few
+        # of them actually land in the rendered HTML so future template
+        # drift gets caught.
+        assert "Scanner" in resp.text
+        assert "CVE" in resp.text
+        assert "Package" in resp.text
+        assert "Location" in resp.text
+        # And the package@version formatting used by the shared helper
+        # makes it through (double-checks we aren't re-formatting locally).
+        assert "log4j-core @ 2.14.1" in resp.text
+
+    def test_detail_description_renders_when_present(self, tmp_path):
+        payload = {
+            "severity_threshold": None,
+            "results": [{
+                "scanner": "bandit",
+                "findings": [{
+                    "id": "B101", "severity": "high", "title": "short title",
+                    "description": "A longer multi-line description\nwith detail.",
+                    "location": "app.py:10", "cwe": None, "cve": None,
+                    "scanner": "bandit", "metadata": {},
+                }],
+                "raw_report": None, "sarif_report": None, "metadata": {},
+                "critical_count": 0, "high_count": 1,
+                "medium_count": 0, "low_count": 0, "total_count": 1,
+            }],
+        }
+        _write_results(tmp_path, payload)
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/findings")
+        assert "A longer multi-line description" in resp.text
+
+    def test_partial_endpoint_also_renders_detail(self, tmp_path):
+        # The ?partial=1 fragment (used by auto-filter.js) must carry
+        # the same disclosure markup — drift between full-page and
+        # partial paths is a recurring footgun.
+        _write_results(tmp_path, _multi_finding_payload())
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/findings?partial=1")
+        assert "<details" in resp.text
+        assert "<summary>" in resp.text
+
+
+class TestSortableHeaders:
+    def test_default_sort_is_severity_desc(self, tmp_path):
+        _write_results(tmp_path, _multi_finding_payload())
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/findings")
+        # First finding row is the highest severity (critical log4j).
+        body = resp.text
+        crit_idx = body.find("CVE-2021-44228")
+        high_idx = body.find("CVE-D" if "CVE-D" in body else "openssl")
+        med_idx = body.find("zlib")
+        assert crit_idx != -1
+        assert crit_idx < med_idx, "critical should come before medium"
+
+    def test_headers_render_sort_links(self, tmp_path):
+        _write_results(tmp_path, _multi_finding_payload())
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/findings")
+        # On the default render, the active Severity header exposes the
+        # *flipped* link — clicking it toggles to ascending. And the
+        # inactive columns each offer their ascending sort as the first
+        # click, so all four column sort targets should appear.
+        assert "sort=severity_asc" in resp.text
+        assert "sort=id" in resp.text
+        assert "sort=location" in resp.text
+        assert "sort=scanner" in resp.text
+        assert 'aria-sort="descending"' in resp.text
+
+    def test_clicking_active_column_flips_direction(self, tmp_path):
+        _write_results(tmp_path, _multi_finding_payload())
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        # Already sorted severity_desc: next click should offer severity_asc
+        resp = client.get("/findings?sort=severity_desc")
+        assert "sort=severity_asc" in resp.text
+        # Same in the other direction.
+        resp = client.get("/findings?sort=severity_asc")
+        assert "sort=severity_desc" in resp.text
+
+    def test_inactive_columns_offer_ascending_first(self, tmp_path):
+        _write_results(tmp_path, _multi_finding_payload())
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/findings?sort=severity_desc")
+        # ID / Location / Scanner aren't active — their first click
+        # should give the user the ascending cut.
+        assert "sort=id" in resp.text
+        assert "sort=location" in resp.text
+        assert "sort=scanner" in resp.text
+
+    def test_sort_by_location_ascending(self, tmp_path):
+        _write_results(tmp_path, _multi_finding_payload())
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/findings?sort=location")
+        body = resp.text
+        # Fixture has log4j-core@2.14.1, zlib@1.2.12, openssl@1.1.1.
+        # Ascending alpha by location puts "log4j-core@..." first.
+        log4j_idx = body.find("log4j-core@2.14.1")
+        zlib_idx = body.find("zlib@1.2.12")
+        assert log4j_idx != -1 and zlib_idx != -1
+        assert log4j_idx < zlib_idx
+
+    def test_sort_by_location_descending(self, tmp_path):
+        _write_results(tmp_path, _multi_finding_payload())
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/findings?sort=location_desc")
+        body = resp.text
+        log4j_idx = body.find("log4j-core@2.14.1")
+        zlib_idx = body.find("zlib@1.2.12")
+        assert log4j_idx != -1 and zlib_idx != -1
+        assert zlib_idx < log4j_idx, "descending puts z-words first"
+
+    def test_sort_preserves_filters_in_href(self, tmp_path):
+        _write_results(tmp_path, _multi_finding_payload())
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        # Active filter + sort — headers must carry both into the click.
+        resp = client.get("/findings?min_severity=high&scanner=grype")
+        # Every sort link for this page should include the active
+        # filter params so clicking doesn't reset the filter.
+        assert "min_severity=high" in resp.text
+        assert "scanner=grype" in resp.text
+
+    def test_invalid_sort_falls_back_to_default(self, tmp_path):
+        _write_results(tmp_path, _multi_finding_payload())
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/findings?sort=nonsense")
+        # 500-proof: unknown sort silently resets to severity_desc.
+        assert resp.status_code == 200
+        assert 'aria-sort="descending"' in resp.text
+
+
 class TestProductFilterMatchesLabel:
     def test_no_product_label_filters_matching_findings(self, tmp_path):
         # Regression: ViewState.product used the raw sbom_source for

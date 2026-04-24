@@ -80,6 +80,67 @@ tr:hover td { background: var(--surface-alt); }
  * page header, nav, and filters should not slide horizontally with it. */
 .table-wrap { overflow-x: auto; border-radius: var(--radius); }
 
+/* Sortable column headers. The ``a`` keeps the whole cell tappable
+ * and keyboard-focusable; the glyph is an arrow that appears only
+ * when the column is the active sort. */
+th .sort-link {
+  color: inherit; text-decoration: none;
+  display: inline-flex; align-items: center; gap: 0.3em;
+}
+th .sort-link:hover { color: var(--fg); }
+th .sort-glyph { font-size: 0.7em; color: var(--accent); }
+th[aria-sort="ascending"], th[aria-sort="descending"] { color: var(--fg); }
+
+/* Screen-reader-only text: used for table <caption> so assistive tech
+ * announces what the table is without taking visual space. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+/* Finding-row disclosure. Native <details> inside the Title cell keeps
+ * the table compact at rest and expands inline when the user clicks a
+ * title. Zero JS needed; <summary> handles keyboard (Enter/Space) and
+ * aria-expanded for free. */
+.finding-detail summary {
+  cursor: pointer; list-style: none;
+  /* Custom chevron — CSS handles open/closed state via the details[open]
+   * selector below. Hide the default ▸ marker since we're drawing our own. */
+}
+.finding-detail summary::-webkit-details-marker { display: none; }
+.finding-detail summary::before {
+  content: "▸"; display: inline-block;
+  color: var(--fg-muted); margin-right: 0.4em;
+  transition: transform 0.1s ease;
+}
+.finding-detail[open] summary::before { transform: rotate(90deg); }
+.finding-detail[open] summary { color: var(--accent); font-weight: 500; }
+.finding-detail .detail-rows {
+  display: grid; grid-template-columns: max-content 1fr;
+  gap: 0.25rem 0.75rem;
+  margin: 0.75rem 0 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-alt); border-radius: 4px;
+  font-size: 0.9rem;
+}
+.finding-detail .detail-rows dt { color: var(--fg-muted); font-weight: 500; }
+.finding-detail .detail-rows dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.finding-detail .detail-description {
+  margin: 0.5rem 0; color: var(--fg-muted);
+  font-size: 0.9rem; line-height: 1.5;
+  white-space: pre-wrap; /* scanners sometimes emit multi-line text */
+}
+.finding-detail .detail-refs-label {
+  margin: 0.5rem 0 0.25rem; font-size: 0.85rem;
+  color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.05em;
+}
+.finding-detail .detail-refs {
+  margin: 0; padding-left: 1.25rem;
+  font-size: 0.85rem;
+}
+.finding-detail .detail-refs li { word-break: break-all; }
+
 /* Severity badges used across dashboard + findings table */
 .sev {
   display: inline-block; padding: 0.1em 0.5em; border-radius: 4px;

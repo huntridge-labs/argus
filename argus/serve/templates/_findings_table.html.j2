@@ -8,7 +8,61 @@
   Context:
     - visible   : iterable of Finding
     - total     : int
+    - view      : dict with filter + sort selections (sort key is
+                  one of severity_asc/_desc, id/_desc, location/_desc,
+                  scanner/_desc); used to build header links that
+                  toggle direction on repeat clicks.
+    - scan_param: current ?scan= value (threaded through header links
+                  so sorts stay inside the active scan context).
 -#}
+
+{#- Header-link helper: given the base key + the currently active one,
+    return (href, aria_sort, glyph). Clicking a column flips direction
+    when already active; otherwise starts on the "natural" direction
+    (severity starts high→low; strings start A→Z). -#}
+{%- macro sort_header(label, key, view, scan_param, min_severity, product, scanner_f, q) -%}
+  {%- set current = view.sort or 'severity_desc' -%}
+  {#- Severity uses severity_asc / severity_desc; string columns use
+      key / key_desc. Keep the asc_key / desc_key mapping explicit so
+      the same macro covers both shapes without special-casing at the
+      call site. -#}
+  {%- if key == 'severity' -%}
+    {%- set asc_key = 'severity_asc' -%}
+    {%- set desc_key = 'severity_desc' -%}
+  {%- else -%}
+    {%- set asc_key = key -%}
+    {%- set desc_key = key + '_desc' -%}
+  {%- endif -%}
+  {%- if current == asc_key -%}
+    {%- set next_key = desc_key -%}
+    {%- set aria = 'ascending' -%}
+    {%- set glyph = '▲' -%}
+  {%- elif current == desc_key -%}
+    {%- set next_key = asc_key -%}
+    {%- set aria = 'descending' -%}
+    {%- set glyph = '▼' -%}
+  {%- else -%}
+    {#- Not currently sorted by this column; first click should give
+        the user the most-useful default. Severity starts high→low
+        (that's the interesting cut); alphabetical columns start A→Z. -#}
+    {%- if key == 'severity' -%}
+      {%- set next_key = 'severity_desc' -%}
+    {%- else -%}
+      {%- set next_key = asc_key -%}
+    {%- endif -%}
+    {%- set aria = 'none' -%}
+    {%- set glyph = '' -%}
+  {%- endif -%}
+  {%- set params = [] -%}
+  {%- if min_severity %}{% set _ = params.append('min_severity=' ~ (min_severity | urlencode)) %}{% endif -%}
+  {%- if product %}{% set _ = params.append('product=' ~ (product | urlencode)) %}{% endif -%}
+  {%- if scanner_f %}{% set _ = params.append('scanner=' ~ (scanner_f | urlencode)) %}{% endif -%}
+  {%- if q %}{% set _ = params.append('q=' ~ (q | urlencode)) %}{% endif -%}
+  {%- if scan_param %}{% set _ = params.append('scan=' ~ (scan_param | urlencode)) %}{% endif -%}
+  {%- set _ = params.append('sort=' ~ next_key) -%}
+  <th aria-sort="{{ aria }}"><a class="sort-link" href="/findings?{{ params | join('&') }}">{{ label }}<span class="sort-glyph">{{ glyph }}</span></a></th>
+{%- endmacro -%}
+
 <p style="color: var(--fg-muted); font-size: 0.9rem;">
   Showing <strong>{{ visible|length }}</strong> of {{ total }} findings.
 </p>
@@ -16,14 +70,15 @@
 {% if visible %}
   <div class="table-wrap">
   <table>
+    <caption class="sr-only">Findings — sortable, filterable table.</caption>
     <thead>
       <tr>
-        <th>Severity</th>
-        <th>ID</th>
+        {{ sort_header('Severity', 'severity', view, scan_param, view.min_severity, view.product, view.scanner, view.query) }}
+        {{ sort_header('ID',       'id',       view, scan_param, view.min_severity, view.product, view.scanner, view.query) }}
         <th>Package</th>
         <th>Fix</th>
-        <th>Location</th>
-        <th>Scanner</th>
+        {{ sort_header('Location', 'location', view, scan_param, view.min_severity, view.product, view.scanner, view.query) }}
+        {{ sort_header('Scanner',  'scanner',  view, scan_param, view.min_severity, view.product, view.scanner, view.query) }}
         <th>Source SBOM</th>
         <th>Title</th>
       </tr>
@@ -46,7 +101,34 @@
           <td><code>{{ f.location or '—' }}</code></td>
           <td>{{ f.scanner or '—' }}</td>
           <td>{{ f.metadata.sbom_source or '—' }}</td>
-          <td>{{ f.title }}</td>
+          <td>
+            {#- Native <details> so expansion is keyboard-accessible,
+                CSP-safe, and needs zero JavaScript. Summary is the
+                title (clickable); the body dumps every enriched field
+                we have plus the description / references when the
+                scanner gave us anything. -#}
+            <details class="finding-detail">
+              <summary>{{ f.title }}</summary>
+              <dl class="detail-rows">
+                {% for label, value in detail_rows(f) %}
+                  <dt>{{ label }}</dt>
+                  <dd>{{ value }}</dd>
+                {% endfor %}
+              </dl>
+              {% if f.description %}
+                <p class="detail-description">{{ f.description }}</p>
+              {% endif %}
+              {% set refs = f.metadata.get("references") or [] %}
+              {% if refs %}
+                <p class="detail-refs-label">References:</p>
+                <ul class="detail-refs">
+                  {% for ref in refs %}
+                    <li><a href="{{ ref }}" rel="noopener noreferrer">{{ ref }}</a></li>
+                  {% endfor %}
+                </ul>
+              {% endif %}
+            </details>
+          </td>
         </tr>
       {% endfor %}
     </tbody>
