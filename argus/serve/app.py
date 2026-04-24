@@ -18,7 +18,7 @@ import logging
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -157,6 +157,15 @@ def create_app(root: str | None = None) -> FastAPI:
             "status": "ok",
             "root": str(app.state.root),
         })
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon() -> Response:
+        # Browsers hit /favicon.ico on the first page load before
+        # parsing <link rel="icon">, so route it here instead of
+        # letting the 404 show up in devtools for every session.
+        # The PNG is served with image/png; browsers accept this
+        # even though the path ends in .ico.
+        return FileResponse(_STATIC_DIR / "favicon.png", media_type="image/png")
 
     def _load_scan(scan: str | None) -> tuple[object, Path | None, str | None]:
         """Shared scan-loading helper used by every view route.

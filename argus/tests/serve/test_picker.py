@@ -188,3 +188,24 @@ class TestPickerRoute:
         assert 'aria-current="page"' in resp.text
         # ...and specifically on the Switch scan anchor.
         assert "Switch scan" in resp.text
+
+    def test_breadcrumb_shows_filesystem_path_not_url_path(self, tmp_path):
+        # Regression: base.html.j2 used to do ``{% set current = request.url.path %}``
+        # which shadowed the route's ``current`` context var (the filesystem
+        # path being browsed). Every picker view rendered the URL path
+        # "/picker" in the breadcrumb and prefill, so the default Jump-to
+        # form took users to a bad path and "Show hidden" built a broken
+        # URL. Lock the correct behavior in.
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/picker")
+        assert resp.status_code == 200
+        # Breadcrumb + prefill must be the resolved launch root on disk,
+        # never the HTTP path.
+        assert str(tmp_path.resolve()) in resp.text
+        assert f'value="{tmp_path.resolve()}"' in resp.text
+        assert 'value="/picker"' not in resp.text
+        # The "Show/Hide hidden" toggle link must carry the filesystem
+        # path too, so clicking it doesn't strand the user.
+        assert f"path={tmp_path.resolve()}".replace("/", "%2F") in resp.text or \
+               f"path={tmp_path.resolve()}" in resp.text

@@ -99,3 +99,30 @@ class TestHealthzRoute:
         # Defaulting to cwd is what the picker starts navigating from
         # when the user launches `argus serve` with no path arg.
         assert str(tmp_path.resolve()) == resp.json()["root"]
+
+
+class TestFaviconRoute:
+    def test_favicon_served_as_png(self, tmp_path):
+        # Browsers request /favicon.ico ahead of parsing <link rel="icon">;
+        # the PNG we ship is served as image/png but reachable at the
+        # traditional .ico URL so devtools stays quiet.
+        from fastapi.testclient import TestClient
+        from argus.serve.app import create_app
+
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/favicon.ico")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "image/png"
+        # Sanity: the PNG signature is the first 8 bytes.
+        assert resp.content[:8] == b"\x89PNG\r\n\x1a\n"
+
+    def test_base_template_links_favicon(self, tmp_path):
+        from fastapi.testclient import TestClient
+        from argus.serve.app import create_app
+
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/")
+        assert 'rel="icon"' in resp.text
+        assert "/static/favicon.png" in resp.text

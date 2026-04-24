@@ -76,6 +76,10 @@ th { background: var(--surface-alt); font-weight: 600; color: var(--fg-muted); t
 tr:last-child td { border-bottom: none; }
 tr:hover td { background: var(--surface-alt); }
 
+/* Wrap wide tables so only the table scrolls on narrow screens — the
+ * page header, nav, and filters should not slide horizontally with it. */
+.table-wrap { overflow-x: auto; border-radius: var(--radius); }
+
 /* Severity badges used across dashboard + findings table */
 .sev {
   display: inline-block; padding: 0.1em 0.5em; border-radius: 4px;

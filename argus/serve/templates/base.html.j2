@@ -13,6 +13,7 @@
         content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{% block title %}Argus{% endblock %}</title>
+  <link rel="icon" type="image/png" href="/static/favicon.png" />
   <link rel="stylesheet" href="/static/argus.css" />
 </head>
 <body>
@@ -21,13 +22,17 @@
       <h1>🛡 argus</h1>
     </div>
     <nav>
-      {%- set current = request.url.path -%}
+      {#- Use a prefixed name so we don't collide with route-provided
+          context vars (picker passes ``current`` for the filesystem
+          path; plain ``current`` here would shadow it inside any
+          child {% block content %} that references {{ current }}).  -#}
+      {%- set _active_nav = request.url.path -%}
       <a href="/?{% if scan_param %}scan={{ scan_param | urlencode }}{% endif %}"
-         {% if current == "/" %}aria-current="page"{% endif %}>Dashboard</a>
+         {% if _active_nav == "/" %}aria-current="page"{% endif %}>Dashboard</a>
       <a href="/findings{% if scan_param %}?scan={{ scan_param | urlencode }}{% endif %}"
-         {% if current == "/findings" %}aria-current="page"{% endif %}>Findings</a>
+         {% if _active_nav == "/findings" %}aria-current="page"{% endif %}>Findings</a>
       <a href="/picker"
-         {% if current == "/picker" %}aria-current="page"{% endif %}>Switch scan</a>
+         {% if _active_nav == "/picker" %}aria-current="page"{% endif %}>Switch scan</a>
     </nav>
   </header>
 
