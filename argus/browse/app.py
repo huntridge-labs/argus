@@ -43,6 +43,16 @@ _SEVERITY_GLYPH = {
     Severity.UNKNOWN:  "❓ ??? ",
 }
 
+# Human-readable labels for each sort mode, surfaced both in the notify
+# toast on `s` and in the column header arrow. Keep in lockstep with
+# ``ViewState.sort_key_fn()`` below.
+_SORT_LABELS = {
+    "severity_desc": "Severity (high → low)",
+    "severity_asc":  "Severity (low → high)",
+    "package":       "Package (A → Z)",
+    "id":            "Finding ID",
+}
+
 
 @dataclass
 class ViewState:
@@ -90,6 +100,24 @@ class ViewState:
         if self.sort_key == "package":
             return lambda f: ((f.location or "").lower(), f.id)
         return lambda f: (f.id, f.severity.value)
+
+
+class SearchInput(Input):
+    """Search box that returns focus to the findings table on ESC.
+
+    Textual's default Input binding for ``escape`` is blur-only, so
+    users get stranded in the search box until they click elsewhere.
+    We hard-bind ``escape`` to shift focus back to the DataTable so a
+    single keystroke drops the user back into navigation.
+    """
+
+    BINDINGS = [
+        Binding("escape", "back_to_table", "Back to list", show=False),
+    ]
+
+    def action_back_to_table(self) -> None:
+        table = self.app.query_one(DataTable)
+        table.focus()
 
 
 class FindingDetail(Static):
@@ -163,7 +191,10 @@ class BrowseApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
-        yield Input(placeholder="Search (id, title, location, CVE, scanner)…", id="search")
+        yield SearchInput(
+            placeholder="Search (id, title, location, CVE, scanner)… ESC to return to list",
+            id="search",
+        )
         with Container(id="body"):
             with Vertical(id="list-pane"):
                 yield DataTable(id="findings", cursor_type="row", zebra_stripes=True)
@@ -186,8 +217,13 @@ class BrowseApp(App):
         self.sub_title = str(resolved)
         self.all_findings = flatten_findings(summary)
         table = self.query_one(DataTable)
-        table.add_columns("Sev", "ID", "Package@Version", "Scanner", "Location")
+        # Column keys are kept so we can re-label the active sort column
+        # with an arrow glyph whenever the sort cycles.
+        self._col_keys = table.add_columns(
+            "Sev", "ID", "Package@Version", "Scanner", "Location",
+        )
         self._refresh_list()
+        self._update_sort_indicator()
 
     # ------------------------------------------------------------------
     # Filter / sort / search
@@ -282,6 +318,47 @@ class BrowseApp(App):
         i = order.index(self.view_state.sort_key)
         self.view_state.sort_key = order[(i + 1) % len(order)]
         self._refresh_list()
+        self._update_sort_indicator()
+        # Toast on every press so the user sees the new mode without
+        # having to hunt the status bar on each cycle.
+        self.notify(
+            f"Sorted by {_SORT_LABELS[self.view_state.sort_key]}",
+            severity="information", timeout=2,
+        )
+
+    def _update_sort_indicator(self) -> None:
+        """Append ↓/↑ to the active sort column's header label.
+
+        DataTable allows updating a column's ``label`` via its
+        internal Column object. We restore the base labels on every
+        call so switching columns leaves no stale indicator behind.
+        """
+        table = self.query_one(DataTable)
+        base_labels = ["Sev", "ID", "Package@Version", "Scanner", "Location"]
+        # When running under stubbed textual in tests, columns may be
+        # an empty mapping or missing; bail silently so the test path
+        # (which only exercises view-state logic) stays green.
+        if not getattr(self, "_col_keys", None):
+            return
+        arrow_col = None
+        arrow_glyph = ""
+        if self.view_state.sort_key == "severity_desc":
+            arrow_col, arrow_glyph = 0, " ↓"
+        elif self.view_state.sort_key == "severity_asc":
+            arrow_col, arrow_glyph = 0, " ↑"
+        elif self.view_state.sort_key == "package":
+            arrow_col, arrow_glyph = 2, " ↓"
+        elif self.view_state.sort_key == "id":
+            arrow_col, arrow_glyph = 1, " ↓"
+        for idx, key in enumerate(self._col_keys):
+            try:
+                col = table.columns[key]
+            except (KeyError, TypeError):
+                continue
+            label = base_labels[idx]
+            if idx == arrow_col:
+                label += arrow_glyph
+            col.label = label
 
     def action_cursor_down(self) -> None:
         self.query_one(DataTable).action_cursor_down()

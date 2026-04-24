@@ -144,3 +144,17 @@ class TestSort:
         ordered = sorted(findings, key=vs.sort_key_fn())
         # Sort is case-insensitive, so Abc beats mname beats zlib.
         assert [f.id for f in ordered] == ["2", "3", "1"]
+
+
+class TestSortLabels:
+    """_SORT_LABELS must cover every sort mode the cycle iterates over."""
+
+    def test_every_cycle_key_has_a_label(self, ViewState):
+        # Import the module same way the fixture does — it's already loaded
+        # into sys.modules as _browse_app_probe by the fixture setup.
+        import sys
+        module = sys.modules["_browse_app_probe"]
+        cycle = ["severity_desc", "severity_asc", "package", "id"]
+        for key in cycle:
+            assert key in module._SORT_LABELS
+            assert module._SORT_LABELS[key]  # non-empty human label
