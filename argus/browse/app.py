@@ -29,79 +29,28 @@ from textual.screen import ModalScreen
 from textual.widgets import DataTable, Footer, Header, Input, Static
 
 from argus.browse.loader import flatten_findings, load_summary
+from argus.core.findings_view import (
+    SEVERITY_GLYPH,
+    SEVERITY_ORDER,
+    SORT_LABELS,
+    ViewState,
+    finding_detail_rows,
+)
 from argus.core.models import Finding, Severity
 
 
-_SEVERITY_ORDER = [
-    Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM,
-    Severity.LOW, Severity.INFO, Severity.UNKNOWN,
-]
-_SEVERITY_GLYPH = {
-    Severity.CRITICAL: "🚨 CRIT",
-    Severity.HIGH:     "⚠️  HIGH",
-    Severity.MEDIUM:   "🟡 MED ",
-    Severity.LOW:      "🔵 LOW ",
-    Severity.INFO:     "ℹ️  INFO",
-    Severity.UNKNOWN:  "❓ ??? ",
-}
-
-# Human-readable labels for each sort mode, surfaced both in the notify
-# toast on `s` and in the column header arrow. Keep in lockstep with
-# ``ViewState.sort_key_fn()`` below.
-_SORT_LABELS = {
-    "severity_desc": "Severity (high → low)",
-    "severity_asc":  "Severity (low → high)",
-    "package":       "Package (A → Z)",
-    "id":            "Finding ID",
-}
+# Module-local aliases preserved so downstream tests that introspected the
+# old private names still work. New code should import from
+# ``argus.core.findings_view``.
+_SEVERITY_ORDER = SEVERITY_ORDER
+_SEVERITY_GLYPH = SEVERITY_GLYPH
+_SORT_LABELS = SORT_LABELS
 
 
-@dataclass
-class ViewState:
-    """Filter + sort selections applied to the finding list."""
-
-    min_severity: Severity | None = None  # None = all
-    query: str = ""
-    sort_key: str = "severity_desc"
-
-    def matches(self, f: Finding) -> bool:
-        """True when the finding satisfies the current filter."""
-        if self.min_severity is not None and f.severity < self.min_severity:
-            return False
-        if self.query:
-            haystack = " ".join([
-                f.id or "",
-                f.title or "",
-                f.location or "",
-                f.cve or "",
-                f.scanner or "",
-            ]).lower()
-            if self.query.lower() not in haystack:
-                return False
-        return True
-
-    def sort_key_fn(self):
-        """Return a comparator-ready key function for the current sort.
-
-        Python's ``sorted()`` is ascending; for severity DESC (highest
-        severity first) we rely on ``_SEVERITY_ORDER`` already being in
-        descending order (CRITICAL at index 0) so the natural index
-        yields the right ordering. Secondary key: finding id, for
-        deterministic output when two findings share a severity.
-        """
-        if self.sort_key == "severity_desc":
-            return lambda f: (
-                _SEVERITY_ORDER.index(f.severity) if f.severity in _SEVERITY_ORDER else 99,
-                f.id,
-            )
-        if self.sort_key == "severity_asc":
-            return lambda f: (
-                -_SEVERITY_ORDER.index(f.severity) if f.severity in _SEVERITY_ORDER else -99,
-                f.id,
-            )
-        if self.sort_key == "package":
-            return lambda f: ((f.location or "").lower(), f.id)
-        return lambda f: (f.id, f.severity.value)
+# ViewState lives in argus.core.findings_view now — imported at the top
+# of this module — so the TUI and the future web UI share one filter/sort
+# implementation. The alias kept here retains backwards compat for any
+# test that monkeypatched ``argus.browse.app.ViewState``.
 
 
 _HELP_TEXT = """\
@@ -233,33 +182,25 @@ class SearchInput(Input):
 
 
 class FindingDetail(Static):
-    """Right pane — plain-text detail view for the selected finding."""
+    """Right pane — plain-text detail view for the selected finding.
+
+    Content structure comes from ``finding_detail_rows`` in the shared
+    core module so the TUI and a future web view stay aligned. This
+    widget only handles the Textual-markup wrapping.
+    """
 
     def update_finding(self, f: Finding | None) -> None:
         if f is None:
             self.update("[dim]Select a finding to see details.[/dim]")
             return
-        fix = f.metadata.get("fixed_version") or "—"
-        pkg = f.metadata.get("package") or "—"
-        installed = f.metadata.get("installed_version") or "—"
-        sbom_source = f.metadata.get("sbom_source") or "—"
-        warning = f.metadata.get("warning")
-        lines = [
-            f"[bold]{f.id}[/bold]   {_SEVERITY_GLYPH.get(f.severity, '?')}",
-            "",
-            f"[b]Scanner:[/b]   {f.scanner or '—'}",
-            f"[b]CVE:[/b]       {f.cve or '—'}",
-            f"[b]CWE:[/b]       {f.cwe or '—'}",
-            f"[b]Package:[/b]   {pkg} @ {installed}",
-            f"[b]Fix:[/b]       {fix}",
-            f"[b]Location:[/b]  {f.location or '—'}",
-            f"[b]SBOM:[/b]      {sbom_source}",
-            "",
-            "[b]Title[/b]",
-            f.title or "—",
-        ]
+        rows = finding_detail_rows(f)
+        lines = [f"[bold]{f.id}[/bold]   {_SEVERITY_GLYPH.get(f.severity, '?')}", ""]
+        for label, value in rows:
+            lines.append(f"[b]{label}:[/b]".ljust(13) + f" {value}")
+        lines += ["", "[b]Title[/b]", f.title or "—"]
         if f.description and f.description != f.title:
             lines += ["", "[b]Description[/b]", f.description]
+        warning = f.metadata.get("warning")
         if warning:
             lines += ["", f"[yellow]{warning}[/yellow]"]
         self.update("\n".join(lines))
