@@ -63,6 +63,33 @@ user_workflows:
     category: scanning
     sdk_command: "python -m argus scan trivy-iac checkov --severity-threshold high"
 
+  sbom_scanning:
+    description: "Scan a pre-built SBOM (CycloneDX / SPDX / Syft JSON) instead of a filesystem"
+    category: scanning
+    when_to_use: "Vendor-supplied SBOMs, scan results from another build system"
+    sdk_command: "python -m argus scan --sbom path/to/sbom.json"
+    notes: |
+      When --sbom is a directory, argus walks it recursively and scans every
+      recognized SBOM. Auto-enables osv, grype, and trivy (the three
+      SBOM-capable scanners) regardless of argus.yml; filesystem-only
+      scanners are skipped since they have nothing to scan.
+
+  interactive_triage:
+    description: "Post-scan interactive findings browser (TUI)"
+    category: triage
+    when_to_use: "Local triage after a scan; reviewing per-product findings; executive summary for owners/managers"
+    sdk_command: "argus browse ./argus-results"
+    one_liner: "argus scan --interactive"
+    requirements:
+      - "Python 3.11+"
+      - "argus-security[browse] extra (installs Textual)"
+    notes: |
+      `argus scan --interactive` scans and then launches the browser against
+      the just-written results directory. Inside the TUI: / to search,
+      1/2/3/4 for severity filters, p for product, c for scanner, s to sort,
+      e to export CSV, d for executive dashboard, ? for help, Ctrl+P for
+      command palette. Full reference in docs/browse.md.
+
   fedramp_scn_detection:
     description: "FedRAMP Significant Change Notification detection and tracking"
     category: compliance
