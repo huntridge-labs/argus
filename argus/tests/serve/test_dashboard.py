@@ -96,6 +96,68 @@ class TestResolveScan:
         assert err is None
         assert result.parent == tmp_path.resolve()
 
+    def test_directory_with_latest_symlink_resolves(self, tmp_path):
+        # Mirror argus scan's output convention: a timestamped run dir
+        # plus a ``latest`` symlink pointing at it.
+        run_dir = tmp_path / "2026-04-24T14-54-13Z"
+        run_dir.mkdir()
+        _write_results(run_dir, _sample_payload())
+        (tmp_path / "latest").symlink_to(run_dir, target_is_directory=True)
+
+        result, err = _resolve_scan(str(tmp_path), launch_root=tmp_path)
+        assert err is None
+        assert result is not None
+        assert result.name == "argus-results.json"
+        # The resolved path should walk through the symlink to the real run.
+        assert result.parent.resolve() == run_dir.resolve()
+
+    def test_directory_with_latest_subdir_resolves(self, tmp_path):
+        # Same convention but ``latest`` is a real directory rather
+        # than a symlink — happens on filesystems without symlink
+        # support (some Windows setups) or after the symlink has
+        # been materialized.
+        latest = tmp_path / "latest"
+        latest.mkdir()
+        _write_results(latest, _sample_payload())
+
+        result, err = _resolve_scan(str(tmp_path), launch_root=tmp_path)
+        assert err is None
+        assert result is not None
+        assert result.parent.resolve() == latest.resolve()
+
+    def test_parent_of_runs_nudges_to_picker(self, tmp_path):
+        # Directory has timestamped run subdirs but no ``latest`` and
+        # no top-level argus-results.json. We refuse to auto-pick but
+        # point the user at the picker with a count.
+        run_a = tmp_path / "2026-04-24T14-54-13Z"
+        run_a.mkdir()
+        _write_results(run_a, _sample_payload())
+        run_b = tmp_path / "2026-04-23T10-00-00Z"
+        run_b.mkdir()
+        _write_results(run_b, _sample_payload())
+
+        result, err = _resolve_scan(str(tmp_path), launch_root=tmp_path)
+        assert result is None
+        assert err is not None
+        # Count is mentioned so the user knows they have multiple choices.
+        assert "2" in err
+        assert "picker" in err.lower()
+        assert "argus-results.json" in err
+
+    def test_direct_hit_beats_latest_fallback(self, tmp_path):
+        # If the user drops an argus-results.json directly in a dir
+        # that also happens to have a latest/ child, prefer the
+        # direct hit. This keeps the simpler case fast and avoids
+        # surprising precedence flips.
+        direct = _write_results(tmp_path, _sample_payload())
+        latest = tmp_path / "latest"
+        latest.mkdir()
+        _write_results(latest, _sample_payload())
+
+        result, err = _resolve_scan(str(tmp_path), launch_root=tmp_path)
+        assert err is None
+        assert result == direct.resolve()
+
 
 class TestDashboardRoute:
     def test_empty_state_when_root_has_no_results(self, tmp_path):

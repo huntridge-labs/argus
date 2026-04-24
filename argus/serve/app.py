@@ -51,15 +51,27 @@ def _resolve_scan(
 ) -> tuple[Path | None, str | None]:
     """Return ``(results_file_path, error_message)`` for a scan reference.
 
-    Resolution rules:
+    Resolution rules, applied in order:
       1. If the caller supplied a path (via ``?scan=...``), use it.
-      2. Otherwise fall back to the server's launch root.
-      3. If the resolved path points at a directory, look for
-         ``argus-results.json`` inside it.
-      4. If the resolved path is a file, use it as-is.
-      5. If nothing matches, return ``(None, "reason")`` so the view
-         can render the empty-state placeholder with an actionable
-         error.
+         Otherwise fall back to the server's launch root.
+      2. If the resolved path is a file → use it as-is.
+      3. If it's a directory:
+         a. ``<dir>/argus-results.json`` exists → load it.
+         b. ``<dir>/latest/argus-results.json`` exists → load it.
+            This matches ``argus scan``'s own output convention:
+            scans write to a timestamped subdir like
+            ``argus-results/2026-04-24T14-54-13Z/`` and maintain a
+            ``latest`` symlink pointing at it. Users pointing ``argus
+            serve`` at the parent ``argus-results/`` directory expect
+            the latest run to load automatically.
+         c. Any subdir has an ``argus-results.json`` directly inside
+            → error message nudges to the picker (multiple choices —
+            we don't want to pick for the user).
+         d. Else → plain "no scan here" error.
+      4. If it's neither file nor directory → error.
+
+    ``(None, "reason")`` tells the route to render the empty-state
+    placeholder with an actionable message.
     """
     target = Path(raw).expanduser() if raw else launch_root
     try:
@@ -70,17 +82,41 @@ def _resolve_scan(
     if not target.exists():
         return None, f"Path does not exist: {target}"
 
+    if target.is_file():
+        return target, None
+
     if target.is_dir():
-        candidate = target / RESULTS_FILENAME
-        if candidate.is_file():
-            return candidate, None
+        # 3a. Direct hit on the scan JSON.
+        direct = target / RESULTS_FILENAME
+        if direct.is_file():
+            return direct, None
+
+        # 3b. ``latest/`` fallback — argus scan maintains this symlink
+        # (or directory) as part of its default output layout.
+        latest_child = target / "latest" / RESULTS_FILENAME
+        if latest_child.is_file():
+            return latest_child.resolve(), None
+
+        # 3c. Parent-of-runs case: the user pointed at a directory
+        # whose subdirs each hold a run. We don't auto-pick which
+        # one — too many ways that goes wrong (most recent by mtime
+        # vs. filename, symlink chasing, etc.) — but we tell the
+        # user where to go.
+        subdirs_with_results = [
+            d for d in target.iterdir()
+            if d.is_dir() and (d / RESULTS_FILENAME).is_file()
+        ]
+        if subdirs_with_results:
+            return None, (
+                f"No {RESULTS_FILENAME} directly inside {target}, but "
+                f"{len(subdirs_with_results)} subdir(s) contain one. "
+                f"Use the picker to choose a specific run."
+            )
+
         return None, (
             f"No {RESULTS_FILENAME} inside {target}. "
             "Pick a results directory or pass a specific JSON path via ?scan=..."
         )
-
-    if target.is_file():
-        return target, None
 
     return None, f"Unsupported path kind: {target}"
 
