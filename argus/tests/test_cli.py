@@ -782,6 +782,16 @@ class TestCacheSubcommand:
         args = parser.parse_args(["scan"])
         assert args.sbom is None
 
+    def test_interactive_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["scan", "--interactive"])
+        assert args.interactive is True
+
+    def test_interactive_flag_default_false(self):
+        parser = build_parser()
+        args = parser.parse_args(["scan"])
+        assert args.interactive is False
+
 
 class TestBrowseSubcommand:
     """Parsing + dispatch for `argus browse`."""

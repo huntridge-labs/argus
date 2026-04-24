@@ -355,6 +355,13 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
              "since they have nothing to scan.",
     )
     scan_parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="After the scan completes, launch the interactive findings "
+             "browser (`argus browse`) against the just-written results. "
+             "Requires the 'browse' extra: pip install 'argus-security[browse]'.",
+    )
+    scan_parser.add_argument(
         "--fail-fast",
         action="store_true",
         help="Abort immediately if any scanner fails instead of continuing.",
@@ -1139,6 +1146,20 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
         exit_code = EXIT_SUCCESS
     finalize_manifest(manifest, summary=summary, exit_code=exit_code, output_dir=output_dir)
     log.info("Audit manifest written to %s/argus-audit.json", output_dir)
+
+    # --interactive: hand off to the findings browser against the
+    # just-written results. Intentionally AFTER finalize_manifest so
+    # the manifest always lands regardless of whether browse succeeds
+    # (or whether the user even has the [browse] extra installed).
+    if getattr(args, "interactive", False):
+        try:
+            from argus.browse import launch as browse_launch, BrowseUnavailable
+            try:
+                browse_launch(output_dir)
+            except BrowseUnavailable as exc:
+                print(f"\n{exc}", file=sys.stderr)
+        except ImportError as exc:  # pragma: no cover — defensive
+            print(f"\nCould not launch browse TUI: {exc}", file=sys.stderr)
 
     return exit_code
 

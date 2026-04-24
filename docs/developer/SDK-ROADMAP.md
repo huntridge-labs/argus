@@ -256,39 +256,25 @@ Post-scan triage workflow. Engineers sitting with a fresh scan need a way to fil
 
 #### UX polish (from first road-test, 2026-04-24)
 
-- [ ] `ESC` out of the search input returns focus to the findings list (currently requires a mouse click — stuck-in-search is the top complaint)
-- [ ] Sort cycle should surface the *new* sort mode explicitly on each `s` press — a toast/notification ("sorted by severity desc") instead of only updating the bottom status bar. Users lose track of which mode they're in mid-triage.
-- [ ] Sort indicator in the column header (arrow glyph ↓/↑) for the column currently sorted by
-- [ ] Help modal (`?` keybinding) listing every binding, current scope, and sort mode
+- [x] `ESC` out of the search input returns focus to the findings list
+- [x] Sort cycle surfaces the new sort mode via toast on each `s` press
+- [x] Sort indicator in the column header (arrow glyph ↓/↑) for the active sort
+- [x] Help modal (`?` keybinding) with grouped keyboard reference
 - [ ] Column-resize / row-count improvements — visual polish from the Textual side
 
 #### Export UX
 
-- [ ] **File path discoverability:** after export, print the *absolute* path plus an OS-agnostic "how to open" hint:
-  - macOS → `open <path>`
-  - Linux → `xdg-open <path>`
-  - Windows → `start <path>`
-  - Many modern terminals (iTerm2, VS Code, Windows Terminal) auto-linkify `file://` URIs; emit one in the toast.
-- [ ] **`o` keybinding to open the last export** — shells out via platform-detected opener, or copies the path to clipboard as a fallback.
-- [ ] **Additional export formats** (currently: CSV only):
-  - `j` → JSON of the filtered view (downstream automation)
-  - `m` → Markdown (paste into tickets / PR descriptions)
-  - `s` → SARIF (security dashboards / GitHub Code Security)
-  - XLSX — nice-to-have for spreadsheet users; adds `openpyxl` dependency, weigh against keeping browse lightweight
-- [ ] Export filename convention: timestamp + filter summary, e.g. `argus-findings-2026-04-24-1530-critical.csv`
+- [x] **File path discoverability:** toast now shows the absolute path plus a `file://` URI most modern terminals auto-linkify
+- [x] **`o` keybinding to open the last export** via platform-native opener
+- [x] **`r` keybinding to reveal in file manager** (Finder/Explorer/parent dir on Linux)
+- [x] **Additional export formats** — CSV, JSON, Markdown, SARIF shipped. XLSX deferred (adds dependency weight without clear demand).
+- [x] **Timestamped + scope-embedded filenames** — repeated exports never clobber
 
 #### Data model / scope
 
-- [ ] **Product × scanner scope**. Batch SBOM scans routinely produce findings across multiple products scanned by multiple scanners. Today the TUI treats findings as one flat list. Needs:
-  - Filter by `metadata.sbom_source` (product/SBOM filename) — dedicated filter line or `p` binding
-  - Group-by mode — toggle between "flat list" and "grouped by product" / "grouped by scanner"
-  - Product selector in the header showing the current scope (`all products` / `BVMS_SBoM.spdx` / etc.)
-- [ ] **Executive summary view** — `E` binding flips from the findings browser into an at-a-glance dashboard showing:
-  - Per-product severity counts and top-3 criticals
-  - Per-scanner contribution (how many findings came from each)
-  - SBOM quality flags (SPDX-2.1 warnings, low-purl-coverage warnings) that were captured during scan
-  - Age of the data (from the results file mtime)
-  - Works as a standalone command too: `argus summary <results-dir>` for scripts/CI
+- [x] **Product × scanner scope** — `p` / `c` bindings open picker modals; status bar shows active filters
+- [x] **Executive summary view** — `d` binding opens dashboard overlay (per-product severity counts, top-3 criticals per product, per-scanner contribution, quality warnings)
+  - Works as a standalone command too: `argus summary <results-dir>` — *still open*, keep on roadmap for when `argus serve` lands and wants the same computation.
 - [ ] **Timeline / diff view** — compare a new results set against a previous one. Powers "what changed this scan-over-scan" workflow.
 
 #### Integration with argus-portal
@@ -305,7 +291,7 @@ Not all of these belong to the TUI itself — the portal integration items are p
 #### Existing polish items (pre-roadtest)
 
 - [ ] Multi-select for batch actions (export a subset, copy CVE list to clipboard)
-- [ ] `argus scan --interactive` convenience flag that auto-launches `browse` after a scan completes
+- [x] `argus scan --interactive` convenience flag — auto-launches `browse` after the scan finishes
 - [ ] Screenshot + quickstart in `docs/browse.md`
 
 ---
