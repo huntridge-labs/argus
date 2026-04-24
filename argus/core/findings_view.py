@@ -72,8 +72,13 @@ class ViewState:
         """True when the finding satisfies every active filter."""
         if self.min_severity is not None and f.severity < self.min_severity:
             return False
-        if self.product and (f.metadata.get("sbom_source") or "") != self.product:
-            return False
+        if self.product:
+            # unique_products() buckets sbom_source-less findings under
+            # the literal "(no product)" label; the filter side needs
+            # to agree or that bucket becomes unreachable from the UI.
+            source = f.metadata.get("sbom_source") or "(no product)"
+            if source != self.product:
+                return False
         if self.scanner and (f.scanner or "") != self.scanner:
             return False
         if self.query:

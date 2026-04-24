@@ -64,6 +64,16 @@ class TestViewStateFilters:
         vs = ViewState(product="BVMS")
         assert not vs.matches(_f(sbom=None))
 
+    def test_no_product_label_matches_findings_missing_sbom_source(self):
+        # unique_products() buckets findings without sbom_source under
+        # the literal "(no product)" label. The filter has to agree or
+        # that bucket becomes unreachable (zero-result after clicking
+        # into it from the dashboard or picking it from the dropdown).
+        vs = ViewState(product="(no product)")
+        assert vs.matches(_f(sbom=None))
+        assert vs.matches(_f(sbom=""))
+        assert not vs.matches(_f(sbom="BVMS"))
+
     def test_scanner_filter(self):
         vs = ViewState(scanner="grype")
         assert vs.matches(_f(scanner="grype"))

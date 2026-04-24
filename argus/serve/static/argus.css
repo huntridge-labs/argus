@@ -93,12 +93,18 @@ tr:hover td { background: var(--surface-alt); }
 .sev-info     { background: var(--info);   color: #fff; }
 .sev-unknown  { background: var(--border); color: var(--fg); }
 
-/* Summary cards — the top-of-dashboard at-a-glance tiles */
+/* Summary cards — the top-of-dashboard at-a-glance tiles. Each card
+ * is rendered as an anchor so click-to-drill-down is native and
+ * keyboard-accessible without extra JS. */
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: var(--gap); margin: 1rem 0; }
 .card {
   background: var(--surface); padding: 1rem; border-radius: var(--radius);
   border-left: 3px solid var(--border);
+  color: inherit; text-decoration: none; display: block;
+  transition: background 0.1s ease;
 }
+.card:hover    { background: var(--surface-alt); opacity: 1; }
+.card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .card .label { color: var(--fg-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
 .card .value { font-size: 1.75rem; font-weight: 700; margin-top: 0.25rem; }
 .card.critical { border-left-color: var(--crit); }
@@ -106,6 +112,10 @@ tr:hover td { background: var(--surface-alt); }
 .card.medium   { border-left-color: var(--med); }
 .card.low      { border-left-color: var(--low); }
 .card.info     { border-left-color: var(--info); }
+
+/* Zero-count severity pills read as subdued so "0 Critical" doesn't
+ * shout with the same red as an actual critical finding. */
+.sev-zero { background: var(--border); color: var(--fg-muted); }
 
 /* Warning banner for scan-quality issues (SPDX-2.1 detected, low purl
  * coverage, grype unknown-subject). Distinct from findings severity —
@@ -131,11 +141,17 @@ footer {
 }
 
 /* Per-product / per-scanner lists — minor decoration so the dashboard
- * doesn't read as one long wall of numbers. */
+ * doesn't read as one long wall of numbers. Rendered as anchors for
+ * drill-down into the matching findings view. */
 .product-row, .scanner-row {
   display: flex; align-items: baseline; justify-content: space-between;
-  padding: 0.5rem 0; border-bottom: 1px solid var(--border);
+  padding: 0.5rem 0.25rem; border-bottom: 1px solid var(--border);
+  color: inherit; text-decoration: none;
+  transition: background 0.1s ease;
+  border-radius: 3px;
 }
+.product-row:hover, .scanner-row:hover { background: var(--surface-alt); opacity: 1; }
+.product-row:focus-visible, .scanner-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .product-row:last-child, .scanner-row:last-child { border-bottom: none; }
 .product-row .name, .scanner-row .name { font-weight: 500; }
 .product-row .counts, .scanner-row .counts { color: var(--fg-muted); font-size: 0.9rem; }

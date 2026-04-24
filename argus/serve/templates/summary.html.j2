@@ -1,5 +1,14 @@
 {% extends "base.html.j2" %}
 {% block title %}Argus — Executive Summary{% endblock %}
+
+{#- Build a /findings URL with one filter pinned + the current scan
+    carried through. Used to wire the dashboard summary cards and
+    rows into deep-links that drill into the matching findings. -#}
+{%- macro findings_link(param, value) -%}
+  /findings?{{ param }}={{ value | urlencode }}
+  {%- if scan_param %}&scan={{ scan_param | urlencode }}{% endif -%}
+{%- endmacro -%}
+
 {% block content %}
 
 {#- Empty state: no scan is in scope yet. The picker (SD) will
@@ -20,14 +29,17 @@
 
   <h2>Executive Summary</h2>
 
-  {#- At-a-glance severity cards. Card color encoded via class so
+  {#- At-a-glance severity cards. Each card is an anchor that drills
+      into ``/findings`` pre-filtered to that severity floor — the
+      summary is the entry point into the detail view. "Total" links
+      to the unfiltered list. Card color encoded via class so
       severity-neutral CSS rules ("card") set layout and the
       severity-specific modifier sets the border accent. -#}
   <div class="cards">
-    <div class="card">
+    <a class="card" href="/findings{% if scan_param %}?scan={{ scan_param | urlencode }}{% endif %}">
       <div class="label">Total findings</div>
       <div class="value">{{ summary.total }}</div>
-    </div>
+    </a>
     {% for sev, icon in [
         ("critical", "🚨"),
         ("high",     "⚠️"),
@@ -38,10 +50,10 @@
     %}
       {% set count = summary.by_severity.get(sev, 0) %}
       {% if count %}
-        <div class="card {{ sev }}">
+        <a class="card {{ sev }}" href="{{ findings_link('min_severity', sev) | trim }}">
           <div class="label">{{ icon }} {{ sev.capitalize() }}</div>
           <div class="value">{{ count }}</div>
-        </div>
+        </a>
       {% endif %}
     {% endfor %}
   </div>
@@ -60,12 +72,17 @@
     </div>
   {% endif %}
 
-  {#- Per-product: total + crit + high counts + top-3 findings. -#}
-  {% if summary.per_product %}
+  {#- Per-product: total + crit + high counts + top-3 findings. Each
+      row anchors to /findings pre-filtered to the product so users
+      drill straight into the backlog for that product. When there
+      is only one bucket and it's the "(no product)" fallback, we
+      skip this section entirely — it's just noise duplicating the
+      total card above. -#}
+  {% if summary.per_product and not (summary.per_product | length == 1 and summary.per_product[0].product == "(no product)") %}
     <section>
       <h2>Per product</h2>
       {% for p in summary.per_product %}
-        <div class="product-row">
+        <a class="product-row" href="{{ findings_link('product', p.product) | trim }}">
           <div>
             <div class="name">{{ p.product }}</div>
             <ul class="top">
@@ -86,25 +103,28 @@
           </div>
           <div class="counts">
             total {{ p.total }}
-            · <span class="sev sev-critical">{{ p.by_severity.critical or 0 }}</span>
-            · <span class="sev sev-high">{{ p.by_severity.high or 0 }}</span>
+            · <span class="sev sev-critical {% if not p.by_severity.critical %}sev-zero{% endif %}"
+                    title="Critical">{{ p.by_severity.critical or 0 }}</span>
+            · <span class="sev sev-high {% if not p.by_severity.high %}sev-zero{% endif %}"
+                    title="High">{{ p.by_severity.high or 0 }}</span>
           </div>
-        </div>
+        </a>
       {% endfor %}
     </section>
   {% endif %}
 
   {#- Per-scanner contribution — useful for spotting when one
       scanner is providing 90% of findings (suggests a config issue
-      or that the others produced nothing because of input format). -#}
+      or that the others produced nothing because of input format).
+      Each row drills into the findings pre-filtered to that scanner. -#}
   {% if summary.per_scanner %}
     <section>
       <h2>Per scanner</h2>
       {% for s in summary.per_scanner %}
-        <div class="scanner-row">
+        <a class="scanner-row" href="{{ findings_link('scanner', s.scanner) | trim }}">
           <span class="name">{{ s.scanner }}</span>
           <span class="counts">{{ s.total }} finding{{ s.total != 1 and 's' or '' }}</span>
-        </div>
+        </a>
       {% endfor %}
     </section>
   {% endif %}

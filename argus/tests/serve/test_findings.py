@@ -180,3 +180,116 @@ class TestFindingsRoute:
         resp = client.get("/")
         # Nav now points at /findings instead of being disabled
         assert "/findings" in resp.text
+
+
+class TestDashboardDrillDownLinks:
+    """Every summary card / row on the dashboard should be a deep-link
+    into the findings view pre-filtered to the matching cut, so the
+    dashboard is the entry point rather than a dead end."""
+
+    def test_severity_card_links_to_filtered_findings(self, tmp_path):
+        _write_results(tmp_path, _multi_finding_payload())
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/")
+        # Critical card links the user into /findings?min_severity=critical
+        assert "/findings?min_severity=critical" in resp.text
+        assert "/findings?min_severity=medium" in resp.text
+
+    def test_total_findings_card_links_to_unfiltered_findings(self, tmp_path):
+        _write_results(tmp_path, _multi_finding_payload())
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/")
+        # The "Total findings" tile is still clickable — just goes to
+        # the unfiltered list.
+        assert 'class="card" href="/findings"' in resp.text or \
+               'class="card" href="/findings?' in resp.text
+
+    def test_per_scanner_row_links_to_scanner_filter(self, tmp_path):
+        _write_results(tmp_path, _multi_finding_payload())
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/")
+        # Fixture uses grype + trivy; both scanner rows should drill in.
+        assert "/findings?scanner=grype" in resp.text
+        assert "/findings?scanner=trivy" in resp.text
+
+    def test_per_product_row_links_to_product_filter(self, tmp_path):
+        _write_results(tmp_path, _multi_finding_payload())
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/")
+        # urlencode on "BVMS.spdx" leaves it alone (no special chars),
+        # but products with spaces would come through as %20 in the href.
+        assert "/findings?product=BVMS.spdx" in resp.text
+
+    def test_scan_param_preserved_through_drill_down(self, tmp_path):
+        # When ?scan= is active, the drill-down anchors must carry it
+        # through so the user stays inside the same scan context.
+        run_a = tmp_path / "run-a"
+        run_a.mkdir()
+        _write_results(run_a, _multi_finding_payload())
+
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get(f"/?scan={run_a}")
+        # Every drill-down href picks up the scan query.
+        assert "&scan=" in resp.text
+
+    def test_no_product_single_bucket_hides_section(self, tmp_path):
+        # When every finding lacks sbom_source metadata, the per-product
+        # breakdown would show a single "(no product)" row that adds no
+        # value over the total. Hide the section rather than render it.
+        single_bucket = {
+            "severity_threshold": None,
+            "results": [{
+                "scanner": "bandit",
+                "findings": [{
+                    "id": "B101", "severity": "low", "title": "x",
+                    "description": "", "location": "app.py:1",
+                    "cwe": None, "cve": None, "scanner": "bandit",
+                    "metadata": {},  # no sbom_source
+                }],
+                "raw_report": None, "sarif_report": None, "metadata": {},
+                "critical_count": 0, "high_count": 0,
+                "medium_count": 0, "low_count": 1, "total_count": 1,
+            }],
+        }
+        _write_results(tmp_path, single_bucket)
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/")
+        assert resp.status_code == 200
+        assert "Per product" not in resp.text
+
+
+class TestProductFilterMatchesLabel:
+    def test_no_product_label_filters_matching_findings(self, tmp_path):
+        # Regression: ViewState.product used the raw sbom_source for
+        # comparison while unique_products() bucketed None-sources under
+        # "(no product)". Clicking into the "(no product)" picker option
+        # used to return zero results even when that bucket was the only
+        # one with findings. Bucketing + filtering must agree.
+        payload = {
+            "severity_threshold": None,
+            "results": [{
+                "scanner": "bandit",
+                "findings": [{
+                    "id": "B101", "severity": "low", "title": "hardcoded pwd",
+                    "description": "", "location": "app.py:1",
+                    "cwe": None, "cve": None, "scanner": "bandit",
+                    "metadata": {},
+                }],
+                "raw_report": None, "sarif_report": None, "metadata": {},
+                "critical_count": 0, "high_count": 0,
+                "medium_count": 0, "low_count": 1, "total_count": 1,
+            }],
+        }
+        _write_results(tmp_path, payload)
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/findings?product=%28no+product%29")
+        assert resp.status_code == 200
+        # The single finding should still be visible post-filter.
+        assert "B101" in resp.text
