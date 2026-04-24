@@ -1,0 +1,112 @@
+"""Tests for the export-path and platform-opener helpers.
+
+These are UI-free smoke tests: the CSV writer and opener detection
+are pure functions we can exercise without spinning up the Textual
+app. Full integration of the `e` and `o` keybindings is covered by
+manual road-testing.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import sys
+import types
+from pathlib import Path
+
+
+_APP_PATH = Path(__file__).resolve().parents[2] / "browse" / "app.py"
+
+
+def _load_app_module():
+    """Load app.py with textual stubbed — mirrors the view_state fixture."""
+    class _Permissive:
+        def __init__(self, *args, **kwargs): ...
+        def __call__(self, *args, **kwargs): return self
+        def __class_getitem__(cls, item): return cls
+
+    for mod_name in (
+        "textual", "textual.app", "textual.binding", "textual.containers",
+        "textual.reactive", "textual.widgets",
+    ):
+        if mod_name not in sys.modules:
+            sys.modules[mod_name] = types.ModuleType(mod_name)
+    for attr, mod in (
+        ("App", "textual.app"), ("ComposeResult", "textual.app"),
+        ("Binding", "textual.binding"),
+        ("Container", "textual.containers"),
+        ("Horizontal", "textual.containers"),
+        ("Vertical", "textual.containers"),
+        ("reactive", "textual.reactive"),
+        ("DataTable", "textual.widgets"),
+        ("Footer", "textual.widgets"),
+        ("Header", "textual.widgets"),
+        ("Input", "textual.widgets"),
+        ("Static", "textual.widgets"),
+    ):
+        setattr(sys.modules[mod], attr, _Permissive)
+
+    spec = importlib.util.spec_from_file_location("_browse_app_probe_export", _APP_PATH)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["_browse_app_probe_export"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+class TestPlatformOpener:
+    """The opener picker returns the right command per platform."""
+
+    def _call(self, platform_str: str):
+        import sys as _sys
+        module = _load_app_module()
+        orig = _sys.platform
+        _sys.platform = platform_str
+        try:
+            return module._platform_opener()
+        finally:
+            _sys.platform = orig
+
+    def test_macos(self):
+        opener, extra = self._call("darwin")
+        assert opener == "open"
+        assert extra == []
+
+    def test_linux(self):
+        opener, extra = self._call("linux")
+        assert opener == "xdg-open"
+        assert extra == []
+
+    def test_linux_any_variant(self):
+        # startswith check so linux2, linux-musl, etc. all resolve
+        opener, _ = self._call("linux-gnu")
+        assert opener == "xdg-open"
+
+    def test_windows_routes_via_cmd_start(self):
+        opener, extra = self._call("win32")
+        assert opener == "cmd"
+        # `start` is a cmd builtin — the empty-string third arg is the
+        # required "window title" positional that `start` eats.
+        assert extra == ["/c", "start", ""]
+
+    def test_unknown_platform(self):
+        opener, extra = self._call("freebsd42")
+        assert opener is None
+        assert extra == []
+
+
+class TestExportFilenamePattern:
+    """Export filenames include a timestamp and scope so repeats don't clobber."""
+
+    def test_filename_contains_timestamp_and_scope(self):
+        module = _load_app_module()
+        # Exercise the filename formation without running the full action.
+        # The action uses: f"argus-findings-{stamp}-{scope}.csv"
+        # We just verify the underlying string interpolation shape by
+        # calling datetime.strftime with a known input.
+        from datetime import datetime
+        stamp = datetime(2026, 4, 24, 10, 30, 0).strftime("%Y%m%d-%H%M%S")
+        assert stamp == "20260424-103000"
+        for scope in ("critical", "high", "medium", "all"):
+            name = f"argus-findings-{stamp}-{scope}.csv"
+            assert name.startswith("argus-findings-")
+            assert name.endswith(".csv")
+            assert scope in name

@@ -176,6 +176,7 @@ class BrowseApp(App):
         Binding("4", "filter_all", "All"),
         Binding("s", "cycle_sort", "Sort"),
         Binding("e", "export_csv", "Export"),
+        Binding("o", "open_last_export", "Open export"),
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
     ]
@@ -367,9 +368,25 @@ class BrowseApp(App):
         self.query_one(DataTable).action_cursor_up()
 
     def action_export_csv(self) -> None:
-        """Dump the currently visible findings to findings-export.csv."""
+        """Dump the currently visible findings to a timestamped CSV.
+
+        The filename includes a timestamp plus the active severity
+        filter so repeated exports don't clobber each other and so the
+        filename itself reveals what's inside. The toast shows the
+        absolute path plus a ``file://`` URI that most modern
+        terminals (iTerm2, WezTerm, VS Code, Windows Terminal)
+        auto-linkify, and remembers the path for the ``o`` key which
+        opens the file via the platform's native opener.
+        """
         import csv
-        dest = Path("argus-findings-export.csv")
+        from datetime import datetime
+
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        scope = (
+            self.view_state.min_severity.value
+            if self.view_state.min_severity else "all"
+        )
+        dest = Path(f"argus-findings-{stamp}-{scope}.csv").resolve()
         with open(dest, "w", newline="", encoding="utf-8") as fh:
             writer = csv.writer(fh)
             writer.writerow([
@@ -386,10 +403,73 @@ class BrowseApp(App):
                     f.location or "", f.title or "",
                     f.metadata.get("sbom_source", ""),
                 ])
+        self._last_export_path = dest
+        uri = dest.as_uri()
         self.notify(
-            f"Exported {len(self._visible)} finding(s) → {dest}",
-            severity="information", timeout=4,
+            f"Exported {len(self._visible)} finding(s) to:\n"
+            f"{dest}\n"
+            f"{uri}\n"
+            f"Press [b]o[/b] to open in your file manager.",
+            severity="information",
+            timeout=12,
         )
+
+    def action_open_last_export(self) -> None:
+        """Open the most recent export with the platform's native opener.
+
+        macOS → ``open``, Linux → ``xdg-open``, Windows → ``start``.
+        When nothing has been exported yet, or the file has been
+        deleted out from under us, we toast a friendly reminder
+        rather than erroring out.
+        """
+        path = getattr(self, "_last_export_path", None)
+        if not path or not Path(path).exists():
+            self.notify(
+                "No export yet. Press [b]e[/b] to export the current filter first.",
+                severity="warning", timeout=4,
+            )
+            return
+        opener, args = _platform_opener()
+        if opener is None:
+            self.notify(
+                f"No known opener for this platform. File: {path}",
+                severity="warning", timeout=6,
+            )
+            return
+        import subprocess
+        try:
+            subprocess.Popen(
+                [opener, *args, str(path)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            self.notify(f"Opening {path.name}…", severity="information", timeout=2)
+        except OSError as exc:
+            self.notify(
+                f"Couldn't launch opener ({exc}). File: {path}",
+                severity="error", timeout=8,
+            )
+
+
+def _platform_opener() -> tuple[str | None, list[str]]:
+    """Return ``(command, extra_args)`` for the platform's native file opener.
+
+    We never shell-invoke the command — callers pass it through
+    ``subprocess.Popen`` with a list argv so there's no quoting
+    ambiguity. ``(None, [])`` signals "no known opener" and the caller
+    falls back to a text hint.
+    """
+    import sys
+    if sys.platform == "darwin":
+        return "open", []
+    if sys.platform.startswith("linux"):
+        return "xdg-open", []
+    if sys.platform == "win32":
+        # ``start`` is a cmd builtin, not a standalone executable —
+        # route through ``cmd /c`` so Popen can find it.
+        return "cmd", ["/c", "start", ""]
+    return None, []
 
 
 def run_app(results_dir: str | None = None) -> int:
