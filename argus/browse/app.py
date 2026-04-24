@@ -86,6 +86,7 @@ _HELP_TEXT = """\
                    (Numbers/Excel/LibreOffice on macOS; default handler elsewhere)
   [b]r[/b]                reveal the last export in your file manager
                    (Finder on macOS, Explorer on Windows, parent dir on Linux)
+  [dim](JSON, Markdown, SARIF formats available via ctrl+p → "Export: …")[/dim]
 
 [b]Other[/b]
   [b]ctrl+p[/b]           command palette — fuzzy-search every action by name
@@ -258,6 +259,9 @@ class ArgusBrowseCommands(Provider):
             ("Scanner: Pick a scanner filter", "Filter findings by reporting scanner", app.action_pick_scanner),
             ("Sort: Cycle sort mode",    "Cycle severity desc → asc → package → id", app.action_cycle_sort),
             ("Export: CSV of current view", "Write the filtered findings to a timestamped CSV", app.action_export_csv),
+            ("Export: JSON",             "Write the filtered findings as JSON", app.action_export_json),
+            ("Export: Markdown",         "Write the filtered findings as a paste-ready Markdown table", app.action_export_markdown),
+            ("Export: SARIF",            "Write the filtered findings as SARIF 2.1.0", app.action_export_sarif),
             ("Open: Last export",        "Open the last export with the system's default app", app.action_open_last_export),
             ("Reveal: Last export",      "Show the last export in the OS file manager", app.action_reveal_last_export),
         ]
@@ -594,46 +598,38 @@ class BrowseApp(App):
     def action_cursor_up(self) -> None:
         self.query_one(DataTable).action_cursor_up()
 
+    # Format dispatch lives in argus.browse.export — these action methods
+    # just wrap the shared writers with filename assembly and toast.
+
     def action_export_csv(self) -> None:
-        """Dump the currently visible findings to a timestamped CSV.
+        """Export the currently visible findings as CSV (bound to ``e``)."""
+        self._export_in_format("csv")
 
-        The filename includes a timestamp plus the active severity
-        filter so repeated exports don't clobber each other and so the
-        filename itself reveals what's inside. The toast shows the
-        absolute path plus a ``file://`` URI that most modern
-        terminals (iTerm2, WezTerm, VS Code, Windows Terminal)
-        auto-linkify, and remembers the path for the ``o`` key which
-        opens the file via the platform's native opener.
-        """
-        import csv
-        from datetime import datetime
+    def action_export_json(self) -> None:
+        """Export the currently visible findings as JSON."""
+        self._export_in_format("json")
 
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    def action_export_markdown(self) -> None:
+        """Export the currently visible findings as Markdown (paste-ready for tickets)."""
+        self._export_in_format("markdown")
+
+    def action_export_sarif(self) -> None:
+        """Export the currently visible findings as SARIF 2.1.0."""
+        self._export_in_format("sarif")
+
+    def _export_in_format(self, fmt: str) -> None:
+        from argus.browse.export import WRITERS, make_export_path
+        writer, extension = WRITERS[fmt]
         scope = (
             self.view_state.min_severity.value
             if self.view_state.min_severity else "all"
         )
-        dest = Path(f"argus-findings-{stamp}-{scope}.csv").resolve()
-        with open(dest, "w", newline="", encoding="utf-8") as fh:
-            writer = csv.writer(fh)
-            writer.writerow([
-                "severity", "id", "cve", "scanner",
-                "package", "installed_version", "fixed_version",
-                "location", "title", "sbom_source",
-            ])
-            for f in self._visible:
-                writer.writerow([
-                    f.severity.value, f.id, f.cve or "", f.scanner or "",
-                    f.metadata.get("package", ""),
-                    f.metadata.get("installed_version", ""),
-                    f.metadata.get("fixed_version", ""),
-                    f.location or "", f.title or "",
-                    f.metadata.get("sbom_source", ""),
-                ])
+        dest = make_export_path(extension, scope=scope)
+        writer(self._visible, dest)
         self._last_export_path = dest
         uri = dest.as_uri()
         self.notify(
-            f"Exported {len(self._visible)} finding(s) to:\n"
+            f"Exported {len(self._visible)} finding(s) as {fmt.upper()} to:\n"
             f"{dest}\n"
             f"{uri}\n"
             f"Press [b]o[/b] to open with default app · "
