@@ -7,6 +7,7 @@
   Navigate into a folder that contains an <code>argus-results.json</code> and
   click <strong>Load this scan</strong>. Nested results show as scan-ready
   folders so you can pick a single run from a parent directory of scans.
+  Check two to compare.
 </p>
 
 <p class="crumbs picker-crumbs">
@@ -41,9 +42,22 @@
   <button type="submit">Go</button>
 </form>
 
-<table>
+{#- Compare bar — hidden until picker-compare.js sees exactly two
+    checkboxes ticked. Button target is built client-side from the
+    checked paths. -#}
+<div class="picker-compare-bar" id="picker-compare-bar" hidden>
+  <span class="picker-compare-status" id="picker-compare-status"></span>
+  <button type="button" id="picker-compare-btn" class="btn-primary" disabled>
+    Compare selected
+  </button>
+</div>
+
+<table class="picker-table">
   <thead>
     <tr>
+      <th class="picker-compare-col" scope="col" aria-label="Compare">
+        <span class="sr-only">Select for compare</span>
+      </th>
       <th class="picker-type-col">Type</th>
       <th>Name</th>
       <th>Status</th>
@@ -52,6 +66,7 @@
   <tbody>
     {%- if parent -%}
       <tr>
+        <td></td>
         <td>📁</td>
         <td><a href="/picker?path={{ parent | urlencode }}"><code>..</code></a></td>
         <td><em class="muted">parent directory</em></td>
@@ -60,6 +75,15 @@
 
     {%- for entry in entries -%}
       <tr>
+        <td>
+          {#- Checkboxes only on rows that actually hold a scan; there's
+              nothing meaningful to diff about a non-scan subdirectory. -#}
+          {%- if entry.has_results or entry.is_results_file -%}
+            <input type="checkbox" class="picker-compare-cb"
+                   data-scan-path="{{ entry.path }}"
+                   aria-label="Select {{ entry.name }} for compare" />
+          {%- endif -%}
+        </td>
         <td>{%- if entry.is_dir -%}📁{%- else -%}📄{%- endif -%}</td>
         <td>
           {%- if entry.is_dir -%}
@@ -85,7 +109,7 @@
     {%- endfor -%}
 
     {%- if not entries and not parent -%}
-      <tr><td colspan="3"><em>Empty directory.</em></td></tr>
+      <tr><td colspan="4"><em>Empty directory.</em></td></tr>
     {%- endif -%}
   </tbody>
 </table>
@@ -99,5 +123,7 @@
     <a href="/picker?path={{ current | urlencode }}">Hide hidden</a>
   {%- endif -%}
 </p>
+
+<script src="/static/picker-compare.js" defer></script>
 
 {% endblock %}

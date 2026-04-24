@@ -27,6 +27,7 @@ from argus.browse.loader import RESULTS_FILENAME, flatten_findings, load_summary
 from argus.core.findings_view import (
     ViewState,
     compute_summary,
+    diff_scans,
     finding_detail_rows,
     unique_products,
     unique_scanners,
@@ -477,6 +478,74 @@ def create_app(root: str | None = None) -> FastAPI:
             content=body,
             media_type=CONTENT_TYPES[format],
             headers=headers,
+        )
+
+    @app.get("/diff", response_class=HTMLResponse)
+    async def diff(
+        request: Request,
+        a: str | None = None,
+        b: str | None = None,
+    ) -> Response:
+        """Compare two scans and render a new/fixed/changed/unchanged view.
+
+        Both ``a`` and ``b`` are full paths (or paths into a run dir
+        whose ``argus-results.json`` / ``latest/argus-results.json``
+        we resolve the same way the dashboard does). The scope rule
+        from _resolve_scan applies — trying to diff something outside
+        the launch root fails with the standard error.
+
+        Finding identity is (scanner, id, location); see
+        argus.core.findings_view.diff_scans for the bucketing rules.
+        """
+        context = {
+            "a_label": None,
+            "b_label": None,
+            "a_param": a,
+            "b_param": b,
+            "diff": None,
+            "error": None,
+            # Scope the breadcrumb bar to neither scan — diff is a
+            # two-scan view, the header's single-scan crumb doesn't
+            # apply here.
+            "scan_param": None,
+            "scan_label": None,
+            "detail_rows": finding_detail_rows,
+        }
+
+        if not a or not b:
+            context["error"] = (
+                "Need both ?a= and ?b= to compare. Select two scans in "
+                "the picker and click Compare selected."
+            )
+            return templates.TemplateResponse(
+                request=request,
+                name="diff.html.j2",
+                context=context,
+            )
+
+        a_summary, a_path, a_err = _load_scan(a)
+        b_summary, b_path, b_err = _load_scan(b)
+        if a_err or b_err:
+            # Join both errors so users see every reason loading failed
+            # rather than chasing them one at a time.
+            parts = [p for p in (a_err, b_err) if p]
+            context["error"] = "Could not load scan(s): " + " | ".join(parts)
+            return templates.TemplateResponse(
+                request=request,
+                name="diff.html.j2",
+                context=context,
+            )
+
+        context["a_label"] = str(a_path) if a_path else a
+        context["b_label"] = str(b_path) if b_path else b
+        context["diff"] = diff_scans(
+            flatten_findings(a_summary),
+            flatten_findings(b_summary),
+        )
+        return templates.TemplateResponse(
+            request=request,
+            name="diff.html.j2",
+            context=context,
         )
 
     @app.get("/picker", response_class=HTMLResponse)

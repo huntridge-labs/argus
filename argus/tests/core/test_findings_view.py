@@ -210,3 +210,88 @@ class TestComputeSummary:
         # The dashboard / web view will dump this to JSON; catching
         # non-serializable types here is cheaper than at render time.
         json.dumps(compute_summary(findings))
+
+
+class TestDiffScans:
+    """Cross-run diff: new / fixed / severity-changed / still-open buckets
+    keyed off the (scanner, id, location) identity tuple."""
+
+    def test_finding_new_in_after_goes_to_new_bucket(self):
+        from argus.core.findings_view import diff_scans
+
+        before = [_f(fid="A", scanner="grype", location="pkg1")]
+        after = [
+            _f(fid="A", scanner="grype", location="pkg1"),
+            _f(fid="B", scanner="grype", location="pkg2"),
+        ]
+        d = diff_scans(before, after)
+        assert [f.id for f in d["new"]] == ["B"]
+        assert d["fixed"] == []
+
+    def test_finding_only_in_before_goes_to_fixed_bucket(self):
+        from argus.core.findings_view import diff_scans
+
+        before = [
+            _f(fid="A", scanner="grype", location="pkg1"),
+            _f(fid="B", scanner="grype", location="pkg2"),
+        ]
+        after = [_f(fid="A", scanner="grype", location="pkg1")]
+        d = diff_scans(before, after)
+        assert [f.id for f in d["fixed"]] == ["B"]
+        assert d["new"] == []
+
+    def test_severity_change_caught_separately(self):
+        from argus.core.findings_view import diff_scans
+
+        before = [_f(fid="A", sev=Severity.MEDIUM, scanner="grype", location="pkg1")]
+        after = [_f(fid="A", sev=Severity.HIGH, scanner="grype", location="pkg1")]
+        d = diff_scans(before, after)
+        assert d["new"] == []
+        assert d["fixed"] == []
+        assert d["still_open"] == []
+        assert len(d["severity_changed"]) == 1
+        pair = d["severity_changed"][0]
+        assert pair["before"].severity == Severity.MEDIUM
+        assert pair["after"].severity == Severity.HIGH
+
+    def test_same_finding_same_severity_is_still_open(self):
+        from argus.core.findings_view import diff_scans
+
+        before = [_f(fid="A", sev=Severity.HIGH, scanner="grype", location="pkg1")]
+        after = [_f(fid="A", sev=Severity.HIGH, scanner="grype", location="pkg1")]
+        d = diff_scans(before, after)
+        assert [f.id for f in d["still_open"]] == ["A"]
+        assert d["new"] == d["fixed"] == d["severity_changed"] == []
+
+    def test_identity_uses_scanner_id_location(self):
+        # Same id across different scanners must NOT collapse.
+        from argus.core.findings_view import diff_scans
+
+        before = [_f(fid="A", scanner="grype", location="pkg1")]
+        after = [
+            _f(fid="A", scanner="grype", location="pkg1"),   # unchanged
+            _f(fid="A", scanner="trivy", location="pkg1"),   # new — different scanner
+        ]
+        d = diff_scans(before, after)
+        assert len(d["new"]) == 1
+        assert d["new"][0].scanner == "trivy"
+
+    def test_empty_inputs_return_empty_buckets(self):
+        from argus.core.findings_view import diff_scans
+
+        d = diff_scans([], [])
+        assert d["new"] == d["fixed"] == d["still_open"] == []
+        assert d["severity_changed"] == []
+
+    def test_new_bucket_sorted_severity_desc(self):
+        from argus.core.findings_view import diff_scans
+
+        before = []
+        after = [
+            _f(fid="low", sev=Severity.LOW, scanner="grype", location="a"),
+            _f(fid="crit", sev=Severity.CRITICAL, scanner="grype", location="b"),
+            _f(fid="med", sev=Severity.MEDIUM, scanner="grype", location="c"),
+        ]
+        d = diff_scans(before, after)
+        # Critical should come first — highest risk surfaced at the top.
+        assert [f.id for f in d["new"]] == ["crit", "med", "low"]
