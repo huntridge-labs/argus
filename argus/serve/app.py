@@ -285,13 +285,20 @@ def _collect_recent_scans(
 
             # Cheap finding-count peek — the same pattern ``_list_directory``
             # uses when flagging scan-ready picker rows. Doesn't load the
-            # whole scan; just counts the "findings" arrays.
+            # whole scan; just counts the "findings" arrays. Every access
+            # is type-guarded so a malformed results file (a stray list,
+            # a nested non-dict result block, string under ``findings``)
+            # degrades to count=0 instead of crashing the dropdown.
             count = 0
             try:
                 with results_file.open() as fh:
                     data = json.load(fh)
-                for r in data.get("results", []):
-                    count += len(r.get("findings", []))
+                if isinstance(data, dict):
+                    for r in data.get("results", []) or []:
+                        if isinstance(r, dict):
+                            findings = r.get("findings") or []
+                            if isinstance(findings, list):
+                                count += len(findings)
             except (OSError, json.JSONDecodeError):
                 count = 0
 

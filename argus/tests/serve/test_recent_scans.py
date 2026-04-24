@@ -132,6 +132,39 @@ class TestCollectRecentScans:
         assert len(scans) == 1
         assert scans[0]["count"] == 0
 
+    def test_non_dict_json_payload_doesnt_crash_peek(self, tmp_path):
+        # A well-formed JSON file whose TOP-LEVEL value isn't a dict
+        # (a bare list, for example) must not crash _collect_recent_scans.
+        # This actually surfaced across tests: argus.browse.loader has
+        # a test that writes a list-shaped argus-results.json to its
+        # tmp_path, and pytest's shared session root meant the picker
+        # walk could trip on that sibling while running a serve test.
+        # Every nested lookup is type-guarded so any shape -> count=0.
+        run = tmp_path / "run-list"
+        run.mkdir()
+        (run / "argus-results.json").write_text("[1, 2, 3]")
+        scans = _collect_recent_scans(tmp_path)
+        assert len(scans) == 1
+        assert scans[0]["count"] == 0
+
+    def test_dict_with_non_list_results_doesnt_crash(self, tmp_path):
+        run = tmp_path / "run-weird"
+        run.mkdir()
+        (run / "argus-results.json").write_text('{"results": "oops"}')
+        scans = _collect_recent_scans(tmp_path)
+        assert len(scans) == 1
+        assert scans[0]["count"] == 0
+
+    def test_result_block_without_findings_list_doesnt_crash(self, tmp_path):
+        run = tmp_path / "run-weird"
+        run.mkdir()
+        (run / "argus-results.json").write_text(
+            '{"results": [{"scanner": "x", "findings": "not-a-list"}]}'
+        )
+        scans = _collect_recent_scans(tmp_path)
+        assert len(scans) == 1
+        assert scans[0]["count"] == 0
+
     def test_limit_caps_list_size(self, tmp_path):
         for i in range(20):
             d = tmp_path / f"run-{i:02d}"
