@@ -3,13 +3,13 @@
 {% block content %}
 
 <h2>Switch scan</h2>
-<p style="color: var(--fg-muted); font-size: 0.9rem; margin-bottom: 0.5rem;">
+<p class="picker-intro">
   Navigate into a folder that contains an <code>argus-results.json</code> and
   click <strong>Load this scan</strong>. Nested results show as scan-ready
   folders so you can pick a single run from a parent directory of scans.
 </p>
 
-<p class="crumbs" style="font-family: ui-monospace, monospace; background: var(--surface); padding: 0.5rem 0.75rem; border-radius: var(--radius); margin-bottom: 1rem;">
+<p class="crumbs picker-crumbs">
   {{ current }}
 </p>
 
@@ -20,25 +20,23 @@
   </div>
 {% endif %}
 
-<div style="display: flex; gap: 1rem; align-items: center; margin: 1rem 0; flex-wrap: wrap;">
+<div class="picker-actions">
   {%- if has_results -%}
-    <a href="/?scan={{ current | urlencode }}"
-       style="background: var(--accent); color: #0f1419; padding: 0.5rem 1rem; border-radius: var(--radius); text-decoration: none; font-weight: 600;">
+    <a href="/?scan={{ current | urlencode }}" class="btn-primary">
       ▶ Load this scan
     </a>
-    <span style="color: var(--fg-muted); font-size: 0.9rem;">
+    <span class="muted-small">
       <code>argus-results.json</code> detected here.
     </span>
   {% else %}
-    <em style="color: var(--fg-muted);">No <code>argus-results.json</code> in this folder — click into a subfolder below, or type a path to jump.</em>
+    <em class="muted">No <code>argus-results.json</code> in this folder — click into a subfolder below, or type a path to jump.</em>
   {% endif -%}
 </div>
 
-<form method="get" action="/picker" style="display: flex; gap: 0.5rem; margin: 1rem 0; align-items: center;">
-  <label style="flex: 1;">
+<form method="get" action="/picker" class="picker-jump-form">
+  <label class="jump-label">
     Jump to path:
-    <input type="text" name="path" value="{{ current }}"
-           style="width: 100%; padding: 0.4rem 0.6rem; background: var(--surface); color: var(--fg); border: 1px solid var(--border); border-radius: 4px;" />
+    <input type="text" name="path" value="{{ current }}" class="jump-input" />
   </label>
   <button type="submit">Go</button>
 </form>
@@ -46,7 +44,7 @@
 <table>
   <thead>
     <tr>
-      <th style="width: 3rem;">Type</th>
+      <th class="picker-type-col">Type</th>
       <th>Name</th>
       <th>Status</th>
     </tr>
@@ -56,7 +54,7 @@
       <tr>
         <td>📁</td>
         <td><a href="/picker?path={{ parent | urlencode }}"><code>..</code></a></td>
-        <td><em style="color: var(--fg-muted);">parent directory</em></td>
+        <td><em class="muted">parent directory</em></td>
       </tr>
     {%- endif -%}
 
@@ -72,17 +70,15 @@
         </td>
         <td>
           {%- if entry.has_results -%}
-            <a href="/?scan={{ entry.path | urlencode }}"
-               style="color: var(--accent); font-weight: 600;">
+            <a href="/?scan={{ entry.path | urlencode }}" class="accent-strong">
               ▶ Load scan ({{ entry.finding_count }} finding{{ entry.finding_count != 1 and 's' or '' }})
             </a>
           {%- elif entry.is_results_file -%}
-            <a href="/?scan={{ entry.path | urlencode }}"
-               style="color: var(--accent); font-weight: 600;">
+            <a href="/?scan={{ entry.path | urlencode }}" class="accent-strong">
               ▶ Load scan
             </a>
           {%- else -%}
-            <span style="color: var(--fg-muted);">—</span>
+            <span class="muted">—</span>
           {%- endif -%}
         </td>
       </tr>
@@ -94,7 +90,7 @@
   </tbody>
 </table>
 
-<p style="color: var(--fg-muted); font-size: 0.85rem; margin-top: 1rem;">
+<p class="muted-xs picker-toggle-hidden">
   Dotfiles and common build dirs (<code>node_modules</code>, <code>.git</code>,
   <code>.venv</code>) are hidden by default.
   {%- if not show_hidden -%}

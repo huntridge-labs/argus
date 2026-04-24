@@ -41,8 +41,11 @@ _STATIC_DIR = _SERVE_DIR / "static"
 
 # Strict CSP — matches the <meta http-equiv> tag in base.html.j2. Kept
 # in sync at both layers so the protection doesn't silently evaporate
-# if the meta tag gets dropped.
-_CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'"
+# if the meta tag gets dropped. Every style lives in static/argus.css;
+# we deliberately drop 'unsafe-inline' for style-src so a future
+# template edit that re-introduces an inline style= will fail loudly
+# in devtools rather than silently loosen the policy.
+_CSP = "default-src 'self'; style-src 'self'; script-src 'self'"
 
 
 def _is_within(child: Path, root: Path) -> bool:

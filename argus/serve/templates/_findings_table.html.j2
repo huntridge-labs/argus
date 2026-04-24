@@ -63,7 +63,7 @@
   <th aria-sort="{{ aria }}"><a class="sort-link" href="/findings?{{ params | join('&') }}">{{ label }}<span class="sort-glyph">{{ glyph }}</span></a></th>
 {%- endmacro -%}
 
-<p style="color: var(--fg-muted); font-size: 0.9rem;">
+<p class="muted-small">
   Showing <strong>{{ visible|length }}</strong> of {{ total }} findings.
 </p>
 

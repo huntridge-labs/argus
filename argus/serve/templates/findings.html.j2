@@ -17,8 +17,7 @@
       no-JS fallback). The ``data-auto-filter`` attribute opts this
       form into auto-filter.js, which swaps just the table body
       when JS is live. -#}
-  <form method="get" action="/findings" data-auto-filter
-        style="margin: 1rem 0; display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
+  <form method="get" action="/findings" data-auto-filter class="filter-bar">
     {%- if scan_param -%}
       <input type="hidden" name="scan" value="{{ scan_param }}" />
     {%- endif -%}

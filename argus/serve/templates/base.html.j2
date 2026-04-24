@@ -10,7 +10,7 @@
 <head>
   <meta charset="utf-8" />
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+        content="default-src 'self'; style-src 'self'; script-src 'self'" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{% block title %}Argus{% endblock %}</title>
   <link rel="icon" type="image/png" href="/static/favicon.png" />
@@ -38,7 +38,7 @@
 
   <main>
     {% if scan_label %}
-      <p class="crumbs" style="margin: 0 0 1rem; color: var(--fg-muted);">
+      <p class="crumbs scan-crumbs">
         Scan: <code>{{ scan_label }}</code>
       </p>
     {% endif %}

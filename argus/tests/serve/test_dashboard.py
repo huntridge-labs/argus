@@ -244,12 +244,34 @@ class TestDashboardRoute:
         client = TestClient(app)
         for path in ("/", "/healthz"):
             resp = client.get(path)
-            assert "Content-Security-Policy" in resp.headers
-            assert "default-src 'self'" in resp.headers["Content-Security-Policy"]
+            csp = resp.headers["Content-Security-Policy"]
+            assert "default-src 'self'" in csp
+            # Every style lives in static/argus.css; we deliberately
+            # drop 'unsafe-inline' for style-src so any template edit
+            # that re-inlines a style= fails loudly rather than quietly
+            # loosening the policy.
+            assert "'unsafe-inline'" not in csp
+            assert "style-src 'self'" in csp
+            assert "script-src 'self'" in csp
             assert resp.headers["X-Frame-Options"] == "DENY"
             # Scan paths and filter state travel through query params;
             # no-referrer stops them leaking if a user clicks out.
             assert resp.headers["Referrer-Policy"] == "no-referrer"
+
+    def test_no_inline_styles_on_rendered_pages(self, tmp_path):
+        # Regression guard: the CSP above bans inline styles. If a
+        # template edit re-introduces one, the browser will block it
+        # and the page will look wrong — better to fail a unit test.
+        _write_results(tmp_path, _sample_payload())
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        for path in ("/", "/findings", "/picker"):
+            resp = client.get(path)
+            assert resp.status_code == 200, path
+            assert 'style="' not in resp.text, (
+                f"{path} contains an inline style= attribute — will be "
+                "blocked by style-src 'self'. Move it into argus.css."
+            )
 
     def test_static_css_served(self, tmp_path):
         app = create_app(root=str(tmp_path))

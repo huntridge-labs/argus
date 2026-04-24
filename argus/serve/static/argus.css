@@ -102,6 +102,62 @@ tr:hover td { background: var(--surface-alt); }
  * Added/removed by auto-filter.js around each refresh call. */
 #findings-target.is-loading { opacity: 0.5; transition: opacity 0.1s ease; pointer-events: none; }
 
+/* ── utility classes ──────────────────────────────────────────────
+ * Previously inline styles in the templates; extracted so the CSP
+ * can drop 'unsafe-inline' for style-src. Keep additions here rather
+ * than re-inlining them — that's what breaks the policy tightening. */
+.muted-small { color: var(--fg-muted); font-size: 0.9rem; }
+.muted-xs    { color: var(--fg-muted); font-size: 0.85rem; }
+.muted       { color: var(--fg-muted); }
+.accent-strong { color: var(--accent); font-weight: 600; }
+
+/* Scan-path breadcrumb at the top of the main content area. */
+.scan-crumbs { margin: 0 0 1rem; color: var(--fg-muted); }
+
+/* Picker-specific styles — extracted from picker.html.j2. */
+.picker-crumbs {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  background: var(--surface); padding: 0.5rem 0.75rem;
+  border-radius: var(--radius); margin-bottom: 1rem;
+}
+.picker-intro { color: var(--fg-muted); font-size: 0.9rem; margin-bottom: 0.5rem; }
+.picker-actions {
+  display: flex; gap: 1rem; align-items: center;
+  margin: 1rem 0; flex-wrap: wrap;
+}
+.picker-jump-form {
+  display: flex; gap: 0.5rem; margin: 1rem 0; align-items: center;
+}
+.picker-jump-form .jump-label { flex: 1; }
+.picker-jump-form .jump-input {
+  width: 100%; padding: 0.4rem 0.6rem;
+  background: var(--surface); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 4px;
+}
+.picker-type-col { width: 3rem; }
+
+/* Primary call-to-action button, used for "Load this scan" and
+ * similar green-accent actions. */
+.btn-primary {
+  background: var(--accent); color: #0f1419;
+  padding: 0.5rem 1rem; border-radius: var(--radius);
+  text-decoration: none; font-weight: 600;
+}
+.btn-primary:hover { opacity: 0.9; }
+
+/* Filter bar on the findings page — the row of dropdowns + search. */
+.filter-bar {
+  margin: 1rem 0;
+  display: flex; gap: 0.75rem;
+  flex-wrap: wrap; align-items: center;
+}
+
+/* "Show hidden / Hide hidden" footer on the picker. Adds top spacing
+ * and a small gap before the link so it doesn't run straight into the
+ * prose. */
+.picker-toggle-hidden { margin-top: 1rem; }
+.picker-toggle-hidden a { margin-left: 0.5rem; }
+
 /* Sortable column headers. The ``a`` keeps the whole cell tappable
  * and keyboard-focusable; the glyph is an arrow that appears only
  * when the column is the active sort. */
