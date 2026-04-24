@@ -1121,6 +1121,8 @@ class TestEngineSbomMode:
 
     def test_exclusion_filter_skipped_in_sbom_mode(self, tmp_path, monkeypatch):
         """Exclusion filter should NOT be invoked when sbom_path is set."""
+        from unittest.mock import MagicMock
+
         sbom = tmp_path / "sbom.json"
         sbom.write_text("{}")
 
@@ -1135,22 +1137,18 @@ class TestEngineSbomMode:
         ]
         engine.register_scanner(osv)
 
-        filter_called = {"count": 0}
-        original_filter = None
-
-        def mock_filter_findings(findings, patterns):
-            filter_called["count"] += 1
-            return findings, 0
-
-        # Patch filter_findings to track if it's called
+        # Patch filter_findings with a MagicMock to track calls
         from argus.core import exclusions
-        original_filter = exclusions.filter_findings
-        monkeypatch.setattr(exclusions, "filter_findings", mock_filter_findings)
+        mock_filter = MagicMock()
+        monkeypatch.setattr(exclusions, "filter_findings", mock_filter)
 
-        engine.run(sbom_path=str(sbom), exclude="node_modules")
+        summary = engine.run(sbom_path=str(sbom), exclude="node_modules")
 
         # filter_findings should NOT have been called in SBOM mode
-        assert filter_called["count"] == 0
+        mock_filter.assert_not_called()
+        # Findings should still be present (not filtered)
+        assert len(summary.results) == 1
+        assert summary.results[0].total_count == 1
 
 
 class TestToolVersionEnforcement:
