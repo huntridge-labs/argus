@@ -897,3 +897,66 @@ decisions:
               with:
                 fail_on_scanner_failure: 'false'
                 scan_statuses: '{"...": "..."}'
+
+  - id: ADR-017
+    title: "argus serve — localhost-only SDK-bundled web UI, separate from argus-portal"
+    status: accepted
+    date: 2026-04-24
+    context: |
+      Owners, managers, and executives want at-a-glance insight into their
+      product's security posture without digging through CI logs, PR
+      comments, or learning a terminal UI. argus-portal (separate repo)
+      sketches a FedRAMP-oriented enterprise dashboard, but productionizing
+      it requires significant work: SARIF ingest endpoints, GitHub OAuth +
+      RBAC, MFA, audit trails, Postgres operational burden, Kubernetes
+      deployment. That is months of scope for the "I just want to look at
+      one argus-results.json" need.
+    decision: |
+      Ship argus serve as a lightweight read-only web UI bundled with the
+      argus SDK as the ``[serve]`` optional extra. Bound to 127.0.0.1
+      only, single-user, single-scan scope. Deliberately NOT a replacement
+      for argus-portal — the portal stays on its own track aimed at
+      enterprise multi-team compliance orgs.
+
+      Technical stakes:
+        - FastAPI + Jinja2 + vanilla JS (no React or Next.js toolchain,
+          no bundler, no CDN dependencies).
+        - Reuses argus.core.findings_view (ViewState, compute_summary,
+          etc.) — same filter, sort, and summary logic as the TUI. One
+          source of truth for "high severity" and "this CVE matches."
+        - Four routes: ``/`` executive dashboard, ``/findings``
+          filterable table, ``/picker`` one-level file browser,
+          ``/healthz`` liveness.
+        - CSP + clickjacking headers on every response; Jinja2 autoescape;
+          no cookies, no sessions, no mutations, so no CSRF handling.
+        - Picker is explicitly one-level-at-a-time — no recursive walks.
+
+      Non-goals (tracked as future roadmap items):
+        - Live reload on results-file changes.
+        - Scan-over-scan diff.
+        - JSON API endpoints (external tools can read argus-results.json
+          directly today).
+        - ``--bind`` or ``--basic-auth`` — multi-user network exposure is
+          argus-portal's territory.
+    rationale: |
+      Reuses all the groundwork already shipped for argus browse — the
+      findings_view module was explicitly built to serve both front-ends.
+      Going localhost-only dodges the biggest sources of complexity
+      (auth, sessions, CSRF, multi-user state) while still delivering the
+      actual user need: non-engineer stakeholders can open a browser and
+      see their findings. If argus-portal matures separately, it can
+      consume the same findings_view module to keep per-finding display
+      consistent across CLI, local web, and enterprise web — no rewrite
+      needed.
+    consequences:
+      positive:
+        - "Executive-level stakeholders get a first-class surface without the argus-portal operational burden"
+        - "TUI and web view cannot drift — filter and summary logic is centralized in argus.core.findings_view"
+        - "Localhost-only default removes an entire class of auth, session, and transport-security footguns"
+        - "No CDN dependencies means argus serve works offline, on airgapped networks, and in restricted corporate environments"
+      negative:
+        - "Users who want a team-visible deployment must set up their own reverse proxy or run argus-portal — documented as an explicit scope choice, not a bug"
+        - "Secret redaction is not serve-specific; if a finding description contains credentials from a stack trace, they appear in the CLI, TUI, JSON export, and the web UI. Will be tackled globally when the need arises"
+    related:
+      - ADR-013  # Python SDK as primary interface
+      - ADR-016  # silent-failure gating (serve inherits the same resilience posture)

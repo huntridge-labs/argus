@@ -325,47 +325,44 @@ Minimal read-only web UI that displays the same data as `argus browse`, bound to
 | Authentication | None in v1. If `--bind` is non-localhost, require `--basic-auth USER:PASS` (HTTP basic over HTTPS, not a full user system). |
 | Data source | Single `argus-results.json` (or directory containing it). No cross-run aggregation, no history. |
 
-### Implementation — v1 plan
+### Implementation — v1 status
 
-**Shared loader + renderer extraction:**
-- [ ] Move `argus/browse/loader.py` logic to `argus/core/findings_view.py` (or similar shared package) so both `browse` and `serve` import from one place.
-- [ ] Factor the finding-detail rendering (currently inside `FindingDetail.update_finding`) into a shape that can produce both Textual markup and HTML/markdown — probably a structured dict that each front-end templates itself.
+Shipped on `feat/serve-webui` across six commit-sized phases
+(SA → SF). Summary below; git log for the full breakdown.
 
-**Web server module:**
-- [ ] `argus/serve/__init__.py` — import guard + `launch(results_dir, port, bind)`.
-- [ ] `argus/serve/app.py` — FastAPI app, three routes: `/` (executive summary), `/findings` (filterable table), `/scan` (metadata + SBOM-quality flags).
-- [ ] `argus/serve/templates/` — Jinja2 templates, HTMX-driven fragments for filter/sort updates.
-- [ ] `argus/serve/static/` — minimal CSS (pico.css or Tailwind CDN), no JS bundler.
+**Completed:**
 
-**CLI subcommand:**
-- [ ] `argus serve [RESULTS_DIR] [--port 8080] [--bind 127.0.0.1] [--open]` — `--open` auto-opens the browser.
-- [ ] Friendly `ServeUnavailable` error when `[serve]` extra isn't installed.
+- [x] **SA** — package scaffold, `[serve]` extra, CLI subcommand with
+  friendly `ServeUnavailable` error, `/healthz` liveness.
+- [x] **SB** — `/` executive dashboard route consuming
+  `argus.core.findings_view.compute_summary()`; CSP + clickjacking
+  headers via middleware; Jinja2Templates + StaticFiles mount.
+- [x] **SC** — `/findings` filterable table route. Query-param-driven
+  filters share `ViewState.matches()` with the TUI (one source of
+  truth for filter semantics). URL-driven and refresh-safe. Unknown
+  severity inputs degrade to "no filter" rather than 500.
+- [x] **SD** — `/picker` one-level file browser with scan-ready hints
+  (finding-count peek for directories containing
+  `argus-results.json`). Dotfiles + build dirs hidden by default;
+  `?show_hidden=1` toggle. No recursion (per scoping decision).
+- [x] **SE** — Progressive-enhancement filter refresh via vanilla JS
+  (80 lines, no HTMX dep). `/findings?partial=1` returns just the
+  table fragment; `auto-filter.js` swaps it in on filter changes,
+  keeps the URL in sync via `history.replaceState`. Form submit is
+  the no-JS fallback.
+- [x] **SF** — `docs/serve.md` user guide, README feature bullet,
+  `.ai/architecture.yaml`, `.ai/workflows.yaml`, ADR in
+  `.ai/decisions.yaml`.
 
-**Executive summary view (`/`):**
-- [ ] Top N criticals per product (grouped by `metadata.sbom_source`)
-- [ ] Scan quality flags (SPDX-2.1 warnings, low-purl-coverage warnings, "couldn't identify scan subject" — surfaced as a yellow banner rather than buried in details)
-- [ ] Scan age (`mtime` of `argus-results.json`)
-- [ ] Per-scanner contribution counts
-- [ ] "What changed" placeholder (future scan-over-scan diff)
+**Scope deferrals (intentional):**
 
-**Security:**
-- [ ] Sanitize all finding text / location / scanner output before rendering (defensive against scanner-emitted XSS payloads in vulnerability descriptions).
-- [ ] Secret-redaction pass on finding `description` / `title` before display — same pattern library as other argus redactors (mask API-key-shaped strings).
-- [ ] CSP header: `default-src 'self'; style-src 'self' 'unsafe-inline'`.
-- [ ] No cookies, no session state in v1 — every request is stateless.
-
-**Packaging:**
-- [ ] `pyproject.toml`: new `[serve]` optional extra (`fastapi`, `uvicorn[standard]`, `jinja2`). Kept separate from `[browse]` so users can pick either or both.
-- [ ] `all = [...browse, serve]` updated.
-
-**Tests:**
-- [ ] Route tests via `httpx.AsyncClient` (no live server needed)
-- [ ] Shared-loader tests cover both paths
-- [ ] Explicit test that `--bind 0.0.0.0` without `--insecure-public-bind` exits with an error
-
-**Docs:**
-- [ ] `docs/serve.md` with screenshot, quickstart, security note (localhost-only)
-- [ ] Architecture decision record in `.ai/decisions.yaml` documenting the choice vs. maturing `argus-portal`
+- `--bind` flag omitted — always `127.0.0.1`. Localhost-only is the
+  product shape; multi-user network exposure belongs to
+  `argus-portal`, not here.
+- `--basic-auth` omitted for the same reason — no auth means no
+  session-state complexity.
+- Secret-redaction on finding text — not serve-specific; applies
+  equally to CLI / TUI / JSON export. Tackle globally when it lands.
 
 ### Relationship to `argus-portal`
 

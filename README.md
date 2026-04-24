@@ -135,6 +135,8 @@ For detailed scanner configuration, see [Scanner Reference](docs/scanners.md).
 - **Private registry support** - Authenticate to container registries
 - **Environment variable expansion** - Dynamic configuration values
 - **[Optional AI summary](.github/actions/ai-summary/README.md)** - Generate executive security summaries from scan results using your own AI provider and API key (Copilot, Claude, or Gemini)
+- **[Interactive findings TUI](docs/browse.md)** - `argus browse` — keyboard-driven triage browser (`pip install 'argus-security[browse]'`)
+- **[Local web UI](docs/serve.md)** - `argus serve` — localhost dashboard for non-engineer stakeholders (`pip install 'argus-security[serve]'`)
 
 ## GitHub Enterprise Server (GHES)
 
