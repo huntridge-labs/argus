@@ -68,6 +68,10 @@
     <a href="/findings{% if scan_param %}?scan={{ scan_param | urlencode }}{% endif %}">Reset</a>
   </form>
 
+  {% if severity_hint %}
+    <p class="filter-hint" role="status">{{ severity_hint }}</p>
+  {% endif %}
+
   {#- Swap target for auto-filter.js. The JS replaces the contents
       of #findings-target; the plain-form fallback re-renders the
       whole page. Both code paths use the same _findings_table.html.j2

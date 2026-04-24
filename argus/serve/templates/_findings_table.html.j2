@@ -75,11 +75,11 @@
       <tr>
         {{ sort_header('Severity', 'severity', view, scan_param, view.min_severity, view.product, view.scanner, view.query) }}
         {{ sort_header('ID',       'id',       view, scan_param, view.min_severity, view.product, view.scanner, view.query) }}
-        <th>Package</th>
-        <th>Fix</th>
+        {% if show_columns.package %}<th>Package</th>{% endif %}
+        {% if show_columns.fix %}<th>Fix</th>{% endif %}
         {{ sort_header('Location', 'location', view, scan_param, view.min_severity, view.product, view.scanner, view.query) }}
         {{ sort_header('Scanner',  'scanner',  view, scan_param, view.min_severity, view.product, view.scanner, view.query) }}
-        <th>Source SBOM</th>
+        {% if show_columns.sbom %}<th>Source SBOM</th>{% endif %}
         <th>Title</th>
       </tr>
     </thead>
@@ -90,17 +90,19 @@
           <td>
             {% if f.cve %}<strong>{{ f.cve }}</strong>{% else %}{{ f.id }}{% endif %}
           </td>
-          <td>
-            {% if f.metadata.package %}
-              <code>{{ f.metadata.package }}@{{ f.metadata.installed_version or '?' }}</code>
-            {% else %}
-              —
-            {% endif %}
-          </td>
-          <td>{{ f.metadata.fixed_version or '—' }}</td>
+          {% if show_columns.package %}
+            <td>
+              {% if f.metadata.package %}
+                <code>{{ f.metadata.package }}@{{ f.metadata.installed_version or '?' }}</code>
+              {% else %}
+                —
+              {% endif %}
+            </td>
+          {% endif %}
+          {% if show_columns.fix %}<td>{{ f.metadata.fixed_version or '—' }}</td>{% endif %}
           <td><code>{{ f.location or '—' }}</code></td>
           <td>{{ f.scanner or '—' }}</td>
-          <td>{{ f.metadata.sbom_source or '—' }}</td>
+          {% if show_columns.sbom %}<td>{{ f.metadata.sbom_source or '—' }}</td>{% endif %}
           <td>
             {#- Native <details> so expansion is keyboard-accessible,
                 CSP-safe, and needs zero JavaScript. Summary is the

@@ -413,6 +413,20 @@ class TestSortableHeaders:
         assert "min_severity=high" in resp.text
         assert "scanner=grype" in resp.text
 
+    def test_sort_by_scanner_descending(self, tmp_path):
+        _write_results(tmp_path, _multi_finding_payload())
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/findings?sort=scanner_desc")
+        body = resp.text
+        # Isolate the tbody so the scanner <option> tags in the filter
+        # form don't contaminate the ordering check.
+        tbody = body.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+        trivy_idx = tbody.find("trivy")
+        grype_idx = tbody.find("grype")
+        assert trivy_idx != -1 and grype_idx != -1
+        assert trivy_idx < grype_idx, "descending should list trivy before grype"
+
     def test_invalid_sort_falls_back_to_default(self, tmp_path):
         _write_results(tmp_path, _multi_finding_payload())
         app = create_app(root=str(tmp_path))
@@ -421,6 +435,75 @@ class TestSortableHeaders:
         # 500-proof: unknown sort silently resets to severity_desc.
         assert resp.status_code == 200
         assert 'aria-sort="descending"' in resp.text
+
+
+class TestAutoHideEmptyColumns:
+    """Package, Fix, and Source SBOM make sense for SCA / SBOM findings
+    but are always em-dash for SAST (bandit, opengrep) and linter
+    output. Hide them when every visible row has nothing to show."""
+
+    def test_bandit_only_scan_hides_package_fix_sbom(self, tmp_path):
+        # All findings from a SAST scanner, no package / fix / sbom
+        # metadata anywhere — all three columns should disappear.
+        bandit_only = {
+            "severity_threshold": None,
+            "results": [{
+                "scanner": "bandit",
+                "findings": [{
+                    "id": "B101", "severity": "low", "title": "subprocess call",
+                    "description": "", "location": "app.py:10",
+                    "cwe": None, "cve": None, "scanner": "bandit",
+                    "metadata": {},
+                }, {
+                    "id": "B102", "severity": "medium", "title": "hardcoded pwd",
+                    "description": "", "location": "auth.py:20",
+                    "cwe": None, "cve": None, "scanner": "bandit",
+                    "metadata": {},
+                }],
+                "raw_report": None, "sarif_report": None, "metadata": {},
+                "critical_count": 0, "high_count": 0,
+                "medium_count": 1, "low_count": 1, "total_count": 2,
+            }],
+        }
+        _write_results(tmp_path, bandit_only)
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/findings")
+        # Column headers absent when the data is absent.
+        assert "<th>Package</th>" not in resp.text
+        assert "<th>Fix</th>" not in resp.text
+        assert "<th>Source SBOM</th>" not in resp.text
+
+    def test_mixed_scan_keeps_all_columns(self, tmp_path):
+        # At least one finding with package metadata → Package column
+        # stays. Same for fix + sbom.
+        _write_results(tmp_path, _multi_finding_payload())
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/findings")
+        assert "<th>Package</th>" in resp.text
+        assert "<th>Fix</th>" in resp.text
+        assert "<th>Source SBOM</th>" in resp.text
+
+
+class TestSeverityHint:
+    def test_invalid_severity_surfaces_quiet_hint(self, tmp_path):
+        _write_results(tmp_path, _multi_finding_payload())
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/findings?min_severity=nonsense")
+        assert resp.status_code == 200
+        # Hint is rendered + explains the fallback. Unfiltered rows show.
+        assert "Unrecognized severity 'nonsense'" in resp.text
+        assert "filter-hint" in resp.text
+
+    def test_valid_severity_no_hint(self, tmp_path):
+        _write_results(tmp_path, _multi_finding_payload())
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/findings?min_severity=high")
+        assert resp.status_code == 200
+        assert "Unrecognized severity" not in resp.text
 
 
 class TestProductFilterMatchesLabel:

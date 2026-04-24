@@ -247,6 +247,9 @@ class TestDashboardRoute:
             assert "Content-Security-Policy" in resp.headers
             assert "default-src 'self'" in resp.headers["Content-Security-Policy"]
             assert resp.headers["X-Frame-Options"] == "DENY"
+            # Scan paths and filter state travel through query params;
+            # no-referrer stops them leaking if a user clicks out.
+            assert resp.headers["Referrer-Policy"] == "no-referrer"
 
     def test_static_css_served(self, tmp_path):
         app = create_app(root=str(tmp_path))

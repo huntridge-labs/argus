@@ -170,11 +170,17 @@ def create_app(root: str | None = None) -> FastAPI:
         ``<meta http-equiv>``, but headers are the primary defense
         (they apply to non-HTML responses and can't be stripped by a
         downstream template edit).
+
+        Referrer-Policy: scan paths and filter state travel through
+        query params. We don't want those leaking to external sites
+        when the user clicks the footer link out, so set the policy
+        to ``no-referrer`` rather than the browser default.
         """
         response = await call_next(request)
         response.headers["Content-Security-Policy"] = _CSP
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
         return response
 
     @app.get("/healthz")
@@ -282,6 +288,7 @@ def create_app(root: str | None = None) -> FastAPI:
             "scanners": [],
             "visible": [],
             "total": 0,
+            "severity_hint": None,
             # Expose the shared detail-row builder to the template so
             # the disclosure <details> inside each row renders the same
             # fields the TUI's detail pane does. Using the function
@@ -299,14 +306,28 @@ def create_app(root: str | None = None) -> FastAPI:
             # Translate the ``min_severity`` string to the enum used by
             # ViewState. An unknown value falls back to None (no filter)
             # rather than 500-ing — user-supplied URLs are untrusted.
+            # If the value was non-empty but didn't parse, surface a
+            # quiet hint so the user knows why they got back the
+            # unfiltered set.
             min_sev_enum = None
+            severity_hint = None
             if min_severity:
                 try:
                     min_sev_enum = Severity.from_string(min_severity)
                     if min_sev_enum == Severity.UNKNOWN and min_severity.lower() != "unknown":
                         min_sev_enum = None
+                        severity_hint = (
+                            f"Unrecognized severity '{min_severity}' — "
+                            "showing all findings. Valid: critical, high, "
+                            "medium, low, info."
+                        )
                 except (KeyError, ValueError):
                     min_sev_enum = None
+                    severity_hint = (
+                        f"Unrecognized severity '{min_severity}' — "
+                        "showing all findings."
+                    )
+            context["severity_hint"] = severity_hint
 
             view_state = ViewState(
                 min_severity=min_sev_enum,
@@ -318,6 +339,23 @@ def create_app(root: str | None = None) -> FastAPI:
             matched = [f for f in all_findings if view_state.matches(f)]
             matched.sort(key=view_state.sort_key_fn(), reverse=view_state.sort_reverse)
             context["visible"] = matched
+
+            # Auto-hide columns that are empty for every visible row.
+            # Bandit, lint-* and SAST scanners never emit package /
+            # fix / sbom_source — showing an all-em-dash column for
+            # them is just visual noise. When any visible row has
+            # content for a column we keep it, so mixed-scanner runs
+            # still show every column that anyone uses.
+            context["show_columns"] = {
+                "package": any(f.metadata.get("package") for f in matched),
+                "fix": any(f.metadata.get("fixed_version") for f in matched),
+                "sbom": any(f.metadata.get("sbom_source") for f in matched),
+            }
+        else:
+            # No scan loaded → template paths that check show_columns
+            # still need the dict keys to exist; default to True so
+            # no branch throws on access during error-state rendering.
+            context["show_columns"] = {"package": True, "fix": True, "sbom": True}
 
         # ?partial=1 returns just the table fragment for auto-filter.js
         # to swap in, skipping the layout. Non-JS clients never set it

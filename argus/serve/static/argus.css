@@ -43,15 +43,32 @@ header {
   display: flex; align-items: center; justify-content: space-between;
   border-bottom: 1px solid var(--border);
   margin-bottom: 1.5rem;
+  flex-wrap: wrap; gap: 0.5rem 1rem;
 }
 header h1 { margin: 0; font-size: 1.1rem; font-weight: 600; letter-spacing: 0.02em; }
 header .crumbs { color: var(--fg-muted); font-size: 0.9rem; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 header nav a {
   color: var(--fg-muted); text-decoration: none; margin-left: 1rem;
   padding: 0.25rem 0.5rem; border-radius: var(--radius);
+  white-space: nowrap;
 }
 header nav a:hover { background: var(--surface); color: var(--fg); }
 header nav a[aria-current="page"] { color: var(--fg); background: var(--surface); }
+
+/* Long scan paths (timestamped run dirs, etc.) shouldn't overflow the
+ * crumb box; break anywhere rather than scrolling the whole page. */
+.crumbs code { overflow-wrap: anywhere; }
+
+/* Quiet hint banner for filter edge cases (invalid ?min_severity= etc.).
+ * Role="status" handles the a11y announce; the color keeps it obvious
+ * without shouting. */
+.filter-hint {
+  color: var(--fg-muted); font-size: 0.9rem;
+  margin: 0.25rem 0 0.75rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--surface); border-left: 3px solid var(--med);
+  border-radius: 4px;
+}
 
 h1, h2, h3 { margin: 1.5rem 0 0.75rem; }
 h2 { font-size: 1.25rem; }
@@ -79,6 +96,11 @@ tr:hover td { background: var(--surface-alt); }
 /* Wrap wide tables so only the table scrolls on narrow screens — the
  * page header, nav, and filters should not slide horizontally with it. */
 .table-wrap { overflow-x: auto; border-radius: var(--radius); }
+
+/* Loading state for the auto-filter swap target: dims the current
+ * contents and blocks pointer events while a fetch is in flight.
+ * Added/removed by auto-filter.js around each refresh call. */
+#findings-target.is-loading { opacity: 0.5; transition: opacity 0.1s ease; pointer-events: none; }
 
 /* Sortable column headers. The ``a`` keeps the whole cell tappable
  * and keyboard-focusable; the glyph is an arrow that appears only

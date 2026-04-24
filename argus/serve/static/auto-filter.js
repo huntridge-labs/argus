@@ -50,19 +50,37 @@
   }
 
   async function refresh() {
+    // Subtle loading state so the user gets feedback on slow disks
+    // / big scans. The CSS rule dims the target until content swaps
+    // back in. Class is cleared in both the success and failure
+    // paths below so we never leave the table stuck "loading".
+    target.classList.add("is-loading");
     try {
       var resp = await fetch(buildUrl(true), {
         headers: { "Accept": "text/html" },
         credentials: "same-origin",
       });
-      if (!resp.ok) { return; }
+      if (!resp.ok) {
+        // Server responded but unhappily — log so a user debugging
+        // via devtools can see why the table didn't refresh. The
+        // full-page Apply button is still the fallback path.
+        console.warn(
+          "argus serve: filter refresh returned HTTP " + resp.status +
+          " — leaving table as-is. Click Apply to submit as a full page."
+        );
+        return;
+      }
       swapContent(await resp.text());
       // Keep the browser URL in sync so refresh / share / back-button
       // all observe the current filter state.
       window.history.replaceState(null, "", buildUrl(false));
     } catch (err) {
-      // Network hiccup — leave the table as-is. Full-page submit via
-      // the Apply button is always the fallback.
+      // Network hiccup — leave the table as-is. Surface the error
+      // to devtools so it isn't silently swallowed; full-page submit
+      // via the Apply button is always the fallback.
+      console.warn("argus serve: filter refresh failed:", err);
+    } finally {
+      target.classList.remove("is-loading");
     }
   }
 
