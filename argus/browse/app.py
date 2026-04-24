@@ -89,6 +89,8 @@ _HELP_TEXT = """\
   [dim](JSON, Markdown, SARIF formats available via ctrl+p → "Export: …")[/dim]
 
 [b]Other[/b]
+  [b]d[/b]                executive summary dashboard
+                   (totals, per-product, per-scanner, quality warnings)
   [b]ctrl+p[/b]           command palette — fuzzy-search every action by name
                    (also shows Textual builtins: Keys help, Theme, Screenshot)
   [b]?[/b]                show this help
@@ -147,6 +149,112 @@ PickerScreen {
 }
 #picker-body > Static { padding: 1 1 0 1; }
 """
+
+
+class DashboardScreen(ModalScreen):
+    """Executive-summary overlay — scan totals, per-product + per-scanner breakdowns.
+
+    Intended for owners / managers / execs who want a quick answer to
+    "what's the state of our security posture?" without navigating the
+    findings list. Uses ``compute_summary`` from the shared findings_view
+    module so a future web view renders an identical dashboard.
+    """
+
+    BINDINGS = [
+        Binding("escape", "app.pop_screen", show=False),
+        Binding("q", "app.pop_screen", show=False),
+        Binding("d", "app.pop_screen", show=False),
+    ]
+
+    CSS = """
+    DashboardScreen { align: center middle; }
+    #dashboard-body {
+        background: $surface;
+        border: thick $accent;
+        padding: 1 2;
+        width: 90%;
+        max-width: 120;
+        height: auto;
+        max-height: 90%;
+    }
+    """
+
+    def __init__(self, all_findings: list[Finding], source_label: str):
+        super().__init__()
+        self._findings = all_findings
+        self._source_label = source_label
+
+    def compose(self) -> ComposeResult:
+        summary = compute_summary(self._findings, top_n=3)
+        lines: list[str] = [
+            "[b]🛡  Argus Executive Summary[/b]",
+            f"[dim]{self._source_label}[/dim]",
+            "",
+            f"[b]Total findings:[/b] {summary['total']}",
+        ]
+
+        # Severity breakdown — one-line ledger.
+        by_sev = summary["by_severity"]
+        sev_parts: list[str] = []
+        for sev, icon in (
+            ("critical", "🚨"), ("high", "⚠️"), ("medium", "🟡"),
+            ("low", "🔵"), ("info", "ℹ️"),
+        ):
+            count = by_sev.get(sev, 0)
+            if count:
+                sev_parts.append(f"{icon} {sev.capitalize()}: [b]{count}[/b]")
+        if sev_parts:
+            lines.append("  " + "   ".join(sev_parts))
+        lines.append("")
+
+        # Quality warnings (SPDX-2.1, purl coverage, "unknown scan
+        # subject" from grype, ...) — loud so execs don't misread an
+        # empty scan as "we're clean."
+        warnings = summary.get("quality_warnings") or []
+        if warnings:
+            lines.append("[b yellow]Quality warnings[/b yellow]")
+            for w in warnings:
+                lines.append(f"  [yellow]•[/yellow] {w}")
+            lines.append("")
+
+        # Per-product breakdown — the dimension execs actually care about.
+        per_product = summary.get("per_product") or []
+        if per_product:
+            lines.append("[b]Per product[/b]")
+            for entry in per_product:
+                p = entry["product"]
+                counts = entry["by_severity"]
+                crit = counts.get("critical", 0)
+                high = counts.get("high", 0)
+                total = entry["total"]
+                header = (
+                    f"  [b]{p}[/b]   total [b]{total}[/b]   "
+                    f"crit [red]{crit}[/red]   high [yellow]{high}[/yellow]"
+                )
+                lines.append(header)
+                for top in entry["top"][:3]:
+                    sev = top["severity"].capitalize()
+                    title = top["title"][:80]
+                    pkg = top.get("metadata", {}).get("package") or "—"
+                    version = top.get("metadata", {}).get("installed_version") or "—"
+                    lines.append(
+                        f"    [dim]·[/dim] [b]{sev}[/b] {top['id']}  "
+                        f"[dim]({pkg}@{version})[/dim]  {title}"
+                    )
+            lines.append("")
+
+        # Per-scanner contribution.
+        per_scanner = summary.get("per_scanner") or []
+        if per_scanner:
+            lines.append("[b]Per scanner[/b]")
+            for entry in per_scanner:
+                lines.append(f"  {entry['scanner']}: [b]{entry['total']}[/b]")
+            lines.append("")
+
+        lines.append("[dim]Press ESC, q, or d to return to the findings list.[/dim]")
+
+        with Container(id="dashboard-body"):
+            yield Static("\n".join(lines))
 
 
 class ProductPickerScreen(ModalScreen[str | None]):
@@ -250,6 +358,7 @@ class ArgusBrowseCommands(Provider):
         # (label, help text, action callable) — keep in sync with BINDINGS.
         commands = [
             ("Help: Show keyboard shortcuts", "Open the full help overlay", app.action_show_help),
+            ("Dashboard: Executive summary", "Open the exec-summary overlay (totals, per-product, per-scanner)", app.action_show_dashboard),
             ("Search findings",          "Focus the search box", app.action_focus_search),
             ("Filter: Critical only",    "Show only CRITICAL findings", app.action_filter_critical),
             ("Filter: High severity and above", "Show HIGH + CRITICAL findings", app.action_filter_high),
@@ -352,6 +461,7 @@ class BrowseApp(App):
         Binding("r", "reveal_last_export", "Reveal in files"),
         Binding("p", "pick_product", "Product"),
         Binding("c", "pick_scanner", "Scanner"),
+        Binding("d", "show_dashboard", "Dashboard"),
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
     ]
@@ -504,6 +614,11 @@ class BrowseApp(App):
         self.push_screen(
             ProductPickerScreen(products, self.view_state.product),
             _on_pick,
+        )
+
+    def action_show_dashboard(self) -> None:
+        self.push_screen(
+            DashboardScreen(self.all_findings, source_label=self.sub_title or ""),
         )
 
     def action_pick_scanner(self) -> None:
