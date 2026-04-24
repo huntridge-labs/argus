@@ -22,6 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from argus.browse.export import CONTENT_TYPES, RENDERERS
 from argus.browse.loader import RESULTS_FILENAME, flatten_findings, load_summary
 from argus.core.findings_view import (
     ViewState,
@@ -252,6 +253,57 @@ def create_app(root: str | None = None) -> FastAPI:
         "scanner", "scanner_desc",
     }
 
+    def _resolve_min_sev(raw: str | None) -> tuple[Severity | None, str | None]:
+        """Translate a query-param severity string into the enum + hint.
+
+        Unknown values fall back to None rather than 500-ing — user
+        URLs are untrusted. When the caller passed something non-empty
+        that we didn't recognize, we also return a short hint so the
+        UI can quietly surface the fallback rather than leave the user
+        wondering why their filter was ignored.
+        """
+        if not raw:
+            return None, None
+        try:
+            enum_val = Severity.from_string(raw)
+            if enum_val == Severity.UNKNOWN and raw.lower() != "unknown":
+                return None, (
+                    f"Unrecognized severity '{raw}' — showing all findings. "
+                    "Valid: critical, high, medium, low, info."
+                )
+            return enum_val, None
+        except (KeyError, ValueError):
+            return None, f"Unrecognized severity '{raw}' — showing all findings."
+
+    def _filter_and_sort(
+        findings,
+        *,
+        min_severity: str | None,
+        product: str | None,
+        scanner: str | None,
+        q: str | None,
+        sort: str | None,
+    ):
+        """Apply the shared query-param filter + sort pipeline.
+
+        Used by both ``/findings`` (render) and ``/export`` (serialize)
+        so they operate on identical subsets — no format-specific
+        filtering logic means copy/pasting a filter URL between the
+        two endpoints is guaranteed to return matching data.
+        """
+        min_sev_enum, _hint = _resolve_min_sev(min_severity)
+        active_sort = sort if sort in _ALLOWED_SORTS else "severity_desc"
+        view_state = ViewState(
+            min_severity=min_sev_enum,
+            query=q or "",
+            product=product or None,
+            scanner=scanner or None,
+            sort_key=active_sort,
+        )
+        matched = [f for f in findings if view_state.matches(f)]
+        matched.sort(key=view_state.sort_key_fn(), reverse=view_state.sort_reverse)
+        return matched
+
     @app.get("/findings", response_class=HTMLResponse)
     async def findings(
         request: Request,
@@ -306,41 +358,20 @@ def create_app(root: str | None = None) -> FastAPI:
             context["products"] = unique_products(all_findings)
             context["scanners"] = unique_scanners(all_findings)
 
-            # Translate the ``min_severity`` string to the enum used by
-            # ViewState. An unknown value falls back to None (no filter)
-            # rather than 500-ing — user-supplied URLs are untrusted.
-            # If the value was non-empty but didn't parse, surface a
-            # quiet hint so the user knows why they got back the
-            # unfiltered set.
-            min_sev_enum = None
-            severity_hint = None
-            if min_severity:
-                try:
-                    min_sev_enum = Severity.from_string(min_severity)
-                    if min_sev_enum == Severity.UNKNOWN and min_severity.lower() != "unknown":
-                        min_sev_enum = None
-                        severity_hint = (
-                            f"Unrecognized severity '{min_severity}' — "
-                            "showing all findings. Valid: critical, high, "
-                            "medium, low, info."
-                        )
-                except (KeyError, ValueError):
-                    min_sev_enum = None
-                    severity_hint = (
-                        f"Unrecognized severity '{min_severity}' — "
-                        "showing all findings."
-                    )
+            # Surface the severity hint when the caller passed a value
+            # we didn't recognize; the helper also returns it so both
+            # /findings and /export behave identically on bad input.
+            _, severity_hint = _resolve_min_sev(min_severity)
             context["severity_hint"] = severity_hint
 
-            view_state = ViewState(
-                min_severity=min_sev_enum,
-                query=q or "",
-                product=product or None,
-                scanner=scanner or None,
-                sort_key=active_sort,
+            matched = _filter_and_sort(
+                all_findings,
+                min_severity=min_severity,
+                product=product,
+                scanner=scanner,
+                q=q,
+                sort=active_sort,
             )
-            matched = [f for f in all_findings if view_state.matches(f)]
-            matched.sort(key=view_state.sort_key_fn(), reverse=view_state.sort_reverse)
             context["visible"] = matched
 
             # Auto-hide columns that are empty for every visible row.
@@ -371,6 +402,81 @@ def create_app(root: str | None = None) -> FastAPI:
             request=request,
             name=template_name,
             context=context,
+        )
+
+    @app.get("/export")
+    async def export(
+        scan: str | None = None,
+        min_severity: str | None = None,
+        product: str | None = None,
+        scanner: str | None = None,
+        q: str | None = None,
+        sort: str | None = None,
+        format: str = "csv",
+        download: int = 0,
+    ) -> Response:
+        """Serialize the current filtered view to CSV / JSON / MD / SARIF.
+
+        The filter query params mirror ``/findings`` exactly — filter
+        on the web page, copy the URL, swap the prefix to ``/export``,
+        done. ``?download=1`` sets a Content-Disposition: attachment
+        header so the browser saves-to-disk; without it the response
+        is inline (used by the Copy-to-clipboard JS which just reads
+        the fetch body).
+
+        Unknown ``format`` values return 400 rather than a default —
+        silently substituting would mask a typo in the caller's URL.
+        """
+        if format not in RENDERERS:
+            valid = ", ".join(sorted(RENDERERS.keys()))
+            return Response(
+                content=f"Unknown format '{format}'. Valid: {valid}.",
+                status_code=400,
+                media_type="text/plain; charset=utf-8",
+            )
+
+        scan_summary, resolved, error = _load_scan(scan)
+        if scan_summary is None:
+            return Response(
+                content=f"No scan loaded: {error or 'unknown error'}",
+                status_code=404,
+                media_type="text/plain; charset=utf-8",
+            )
+
+        findings = _filter_and_sort(
+            flatten_findings(scan_summary),
+            min_severity=min_severity,
+            product=product,
+            scanner=scanner,
+            q=q,
+            sort=sort,
+        )
+
+        render_fn, ext = RENDERERS[format]
+        body = render_fn(findings)
+
+        headers = {}
+        if download:
+            # Timestamped + scope-labeled filename so repeat downloads
+            # don't clobber; matches the make_export_path shape the
+            # TUI uses.
+            from datetime import datetime
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            scope_bits = [
+                f"{k}-{v}" for k, v in [
+                    ("sev", min_severity),
+                    ("prod", product),
+                    ("scanner", scanner),
+                ] if v
+            ]
+            scope = "-".join(scope_bits) if scope_bits else "all"
+            filename = f"argus-findings-{stamp}-{scope}.{ext}"
+            headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+
+        return Response(
+            content=body,
+            media_type=CONTENT_TYPES[format],
+            headers=headers,
         )
 
     @app.get("/picker", response_class=HTMLResponse)

@@ -71,6 +71,37 @@
     <p class="filter-hint" role="status">{{ severity_hint }}</p>
   {% endif %}
 
+  {#- Export menu. Hrefs carry the currently active filter + sort query
+      params so what the user exports is exactly what they see. Each
+      format has two actions: download (browser writes to disk) and
+      copy (small JS fetches the same URL and copies to clipboard). -#}
+  {%- set export_query -%}
+    {%- set params = [] -%}
+    {%- if view.min_severity %}{% set _ = params.append('min_severity=' ~ (view.min_severity | urlencode)) %}{% endif -%}
+    {%- if view.product %}{% set _ = params.append('product=' ~ (view.product | urlencode)) %}{% endif -%}
+    {%- if view.scanner %}{% set _ = params.append('scanner=' ~ (view.scanner | urlencode)) %}{% endif -%}
+    {%- if view.query %}{% set _ = params.append('q=' ~ (view.query | urlencode)) %}{% endif -%}
+    {%- if view.sort %}{% set _ = params.append('sort=' ~ (view.sort | urlencode)) %}{% endif -%}
+    {%- if scan_param %}{% set _ = params.append('scan=' ~ (scan_param | urlencode)) %}{% endif -%}
+    {{- params | join('&') -}}
+  {%- endset %}
+  <details class="export-menu">
+    <summary>Export</summary>
+    <div class="export-grid">
+      {%- for fmt, label in [('csv', 'CSV'), ('json', 'JSON'), ('markdown', 'Markdown'), ('sarif', 'SARIF')] -%}
+        {%- set base_url = '/export?format=' ~ fmt ~ ('&' ~ export_query if export_query else '') -%}
+        <div class="export-row">
+          <span class="export-format">{{ label }}</span>
+          <a class="export-action" href="{{ base_url }}&download=1">Download</a>
+          <button type="button" class="export-action export-copy"
+                  data-export-url="{{ base_url }}"
+                  data-export-format="{{ fmt }}">Copy</button>
+        </div>
+      {%- endfor -%}
+    </div>
+    <p class="export-status" role="status" aria-live="polite"></p>
+  </details>
+
   {#- Swap target for auto-filter.js. The JS replaces the contents
       of #findings-target; the plain-form fallback re-renders the
       whole page. Both code paths use the same _findings_table.html.j2
@@ -80,6 +111,7 @@
   </div>
 
   <script src="/static/auto-filter.js" defer></script>
+  <script src="/static/export-copy.js" defer></script>
 
 {% endif %}
 

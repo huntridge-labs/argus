@@ -301,6 +301,77 @@ select:focus-visible, input:focus-visible {
 .picker-toggle-hidden { margin-top: 1rem; }
 .picker-toggle-hidden a { margin-left: 0.5rem; }
 
+/* ── Export menu ──────────────────────────────────────────────────
+ * Collapsible disclosure on the findings page with a 2-column grid
+ * of (format, download, copy) rows. Summary is styled like a button
+ * so the affordance reads even before it's opened. */
+.export-menu {
+  margin: 0.5rem 0 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  max-width: 28rem;
+}
+.export-menu summary {
+  cursor: pointer;
+  padding: 0.55rem 0.9rem;
+  list-style: none;
+  font-weight: 600;
+  color: var(--fg);
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+}
+.export-menu summary::-webkit-details-marker { display: none; }
+.export-menu summary::before {
+  content: "▸"; display: inline-block;
+  color: var(--fg-muted); margin-right: 0.4em;
+  transition: transform 0.1s ease;
+}
+.export-menu[open] summary::before { transform: rotate(90deg); color: var(--accent); }
+.export-menu[open] summary { color: var(--accent); border-bottom: 1px solid var(--border); }
+.export-grid {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem 0.9rem;
+}
+.export-row {
+  display: grid;
+  grid-template-columns: 5rem 1fr 1fr;
+  gap: 0.5rem;
+  align-items: center;
+}
+.export-format {
+  font-family: var(--font-heading);
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  color: var(--fg);
+  font-weight: 600;
+}
+.export-action {
+  display: inline-block;
+  text-align: center;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-alt);
+  color: var(--fg);
+  text-decoration: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.export-action:hover { border-color: var(--accent); color: var(--accent); opacity: 1; }
+.export-action:disabled { opacity: 0.5; cursor: wait; }
+.export-status {
+  margin: 0 0.9rem 0.6rem;
+  font-size: 0.85rem;
+  min-height: 1.2em;
+}
+.export-status[data-tone="ok"]    { color: var(--accent); }
+.export-status[data-tone="info"]  { color: var(--fg-muted); }
+.export-status[data-tone="error"] { color: var(--high); }
+
 /* Sortable column headers. The ``a`` keeps the whole cell tappable
  * and keyboard-focusable; the glyph is an arrow that appears only
  * when the column is the active sort. */
