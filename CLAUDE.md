@@ -222,8 +222,12 @@ argus/                                 # Python SDK package
 ├── core/
 │   ├── config.py                     # YAML config loading (argus.yml)
 │   ├── engine.py                     # Scan orchestration engine
+│   ├── exclusions.py                 # Path exclusion set + **-glob matcher
+│   ├── findings_view.py              # Shared UI-free view logic (ViewState, compute_summary) — used by argus browse + future argus serve
 │   ├── models.py                     # Finding, ScanResult, Severity
-│   └── scanner.py                    # Scanner protocol definition
+│   ├── sbom.py                       # SBOM format detection (CycloneDX, SPDX, Syft)
+│   ├── scanner.py                    # Scanner protocol definition
+│   └── tool_config.py                # Per-scanner canonical config auto-discovery
 ├── scanners/                         # Scanner modules (one per tool)
 │   ├── __init__.py                   # SCANNER_REGISTRY + get_scanner()
 │   ├── bandit.py                     # Python SAST
@@ -250,6 +254,10 @@ argus/                                 # Python SDK package
 │   ├── markdown.py                   # Markdown summary
 │   ├── sarif.py                      # SARIF format
 │   └── json_report.py               # JSON format
+├── browse/                           # Interactive findings TUI (argus browse) — optional extra
+│   ├── app.py                        # Textual App, HelpScreen, DashboardScreen, PickerScreens
+│   ├── loader.py                     # argus-results.json → ScanSummary
+│   └── export.py                     # CSV / JSON / Markdown / SARIF writers
 └── tests/                            # 20 test files, comprehensive coverage
 ```
 

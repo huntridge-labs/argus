@@ -149,8 +149,49 @@ def build_parser() -> argparse.ArgumentParser:
     _build_mcp_parser(subparsers)
     _build_completion_parser(subparsers)
     _build_cache_parser(subparsers)
+    _build_browse_parser(subparsers)
 
     return parser
+
+
+def _build_browse_parser(subparsers: argparse._SubParsersAction) -> None:
+    """Add the 'browse' subcommand — interactive findings TUI."""
+    browse_parser = subparsers.add_parser(
+        "browse",
+        help="Interactively browse findings from a previous scan",
+        description=(
+            "Launch the terminal UI for triaging an argus-results.json:\n"
+            "  argus browse                          # ./argus-results/argus-results.json\n"
+            "  argus browse ./run-2026-04-24         # specific results dir\n"
+            "  argus browse ./custom-results.json    # direct file path\n\n"
+            "Keyboard shortcuts inside the TUI:\n"
+            "  / search · 1/2/3/4 filter by severity · s sort · e export CSV · q quit\n\n"
+            "Requires the 'browse' extra: pip install 'argus-security[browse]'"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    browse_parser.add_argument(
+        "results",
+        nargs="?",
+        default=None,
+        metavar="PATH",
+        help="Results directory or argus-results.json path "
+             "(default: ./argus-results/)",
+    )
+
+
+def cmd_browse(args: argparse.Namespace) -> int:
+    """Execute the browse subcommand — launch the findings TUI."""
+    try:
+        from argus.browse import launch, BrowseUnavailable
+    except ImportError as exc:  # pragma: no cover — defensive
+        print(f"Error: could not import argus.browse: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    try:
+        return launch(args.results)
+    except BrowseUnavailable as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
 
 
 def _build_init_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -312,6 +353,13 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
              "scanners (osv, grype, trivy) regardless of argus.yml. "
              "Filesystem scanners (bandit, gitleaks, ...) are skipped "
              "since they have nothing to scan.",
+    )
+    scan_parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="After the scan completes, launch the interactive findings "
+             "browser (`argus browse`) against the just-written results. "
+             "Requires the 'browse' extra: pip install 'argus-security[browse]'.",
     )
     scan_parser.add_argument(
         "--fail-fast",
@@ -1100,7 +1148,35 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
     finalize_manifest(manifest, summary=summary, exit_code=exit_code, output_dir=output_dir)
     log.info("Audit manifest written to %s/argus-audit.json", output_dir)
 
+    # --interactive: hand off to the findings browser against the
+    # just-written results. Intentionally AFTER finalize_manifest so
+    # the manifest always lands regardless of whether browse succeeds
+    # (or whether the user even has the [browse] extra installed).
+    if getattr(args, "interactive", False):
+        _launch_interactive_browse(output_dir)
+
     return exit_code
+
+
+def _launch_interactive_browse(results_dir: str) -> None:
+    """Dispatch to ``argus browse`` after a ``--interactive`` scan.
+
+    Extracted from ``cmd_scan`` so it's unit-testable without running
+    a full scan plan. Failures here are non-fatal: the manifest and
+    results file are already on disk, so the user loses the TUI
+    convenience but nothing else. We catch both the friendly
+    ``BrowseUnavailable`` (missing ``[browse]`` extra) and a bare
+    ``ImportError`` (something weirder in the import chain) so the
+    scan exit code isn't affected either way.
+    """
+    try:
+        from argus.browse import launch as browse_launch, BrowseUnavailable
+        try:
+            browse_launch(results_dir)
+        except BrowseUnavailable as exc:
+            print(f"\n{exc}", file=sys.stderr)
+    except ImportError as exc:  # pragma: no cover — defensive
+        print(f"\nCould not launch browse TUI: {exc}", file=sys.stderr)
 
 
 def _dry_run(engine, config, args) -> int:
@@ -2278,6 +2354,7 @@ def main(argv: list[str] | None = None) -> None:
         "mcp": cmd_mcp,
         "completion": cmd_completion,
         "cache": cmd_cache,
+        "browse": cmd_browse,
     }
 
     handler = handlers.get(args.command)

@@ -18,6 +18,15 @@ coverage:
     - "examples/**/*"
     - "docs/**/*"
     - "*.md"
+    # Textual TUI view layer — widget wiring, key bindings, screen
+    # transitions. Meaningfully testable only via Textual's snapshot
+    # framework against a live runtime, which doubles the CI time
+    # and duplicates what a human exercise trivially spots. The
+    # underlying business logic lives in argus/core/findings_view.py
+    # and argus/browse/export.py / argus/browse/loader.py and IS
+    # unit-tested (98-100% covered) — that's the boundary worth
+    # guarding, not the widget tree.
+    - "argus/browse/app.py"
 
 comment:
   layout: "reach,diff,flags,tree"

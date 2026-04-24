@@ -1,6 +1,6 @@
 # Argus CLI Reference (v0.7.2)
 
-> Auto-generated from argparse definitions on 2026-04-23.
+> Auto-generated from argparse definitions on 2026-04-24.
 > Do not edit manually — run `python -m scripts.ci.gen_cli_docs` to regenerate.
 
 Argus Security Scanner — comprehensive security scanning for your codebase
@@ -61,10 +61,10 @@ argus scan [-h] [--path PATH] [--config CONFIG]
                   [--verbose] [--no-spinner] [--no-timestamp]
                   [--output-vars FILE] [--exclude PATTERNS]
                   [--no-default-excludes] [--dry-run] [--sbom PATH]
-                  [--fail-fast] [--timeout SECONDS] [--no-parallel]
-                  [--allow-local-versions] [--no-cache] [--discover [PATH]]
-                  [--image REF] [--scanners SCANNERS] [--target URL]
-                  [--port PORT] [--env KEY=VALUE]
+                  [--interactive] [--fail-fast] [--timeout SECONDS]
+                  [--no-parallel] [--allow-local-versions] [--no-cache]
+                  [--discover [PATH]] [--image REF] [--scanners SCANNERS]
+                  [--target URL] [--port PORT] [--env KEY=VALUE]
                   [--scan-type {baseline,full}]
                   [--startup-timeout STARTUP_TIMEOUT]
                   [scanner]
@@ -92,6 +92,7 @@ argus scan [-h] [--path PATH] [--config CONFIG]
 | `--no-default-excludes` | Drop built-in exclusions (node_modules, .git, ...) and .gitignore / .dockerignore patterns. Only --exclude and argus.yml exclude: take effect. Use when you explicitly want to scan what the defaults would normally skip. | `false` |
 | `--dry-run` | Resolve config and print the planned scanner invocations without executing them. Useful for verifying which per-scanner config files, paths, and excludes Argus will use. | `false` |
 | `--sbom` | Scan a pre-built SBOM or directory of SBOMs (CycloneDX JSON/XML, SPDX JSON/tag-value, or Syft JSON). When PATH is a directory, argus walks it recursively, sniffs each file, and scans every SBOM it finds. Auto-enables all SBOM-capable scanners (osv, grype, trivy) regardless of argus.yml. Filesystem scanners (bandit, gitleaks, ...) are skipped since they have nothing to scan. |  |
+| `--interactive` | After the scan completes, launch the interactive findings browser (`argus browse`) against the just-written results. Requires the 'browse' extra: pip install 'argus-security[browse]'. | `false` |
 | `--fail-fast` | Abort immediately if any scanner fails instead of continuing. | `false` |
 | `--timeout` | Per-scanner timeout in seconds. Scanners exceeding this limit are killed. |  |
 | `--no-parallel` | Run scanners sequentially instead of concurrently. | `false` |
@@ -263,6 +264,26 @@ For persistent caching: export ARGUS_CACHE_DIR=~/.argus/cache
 ```
 argus cache [-h] {info,clean} ...
 ```
+
+### `argus browse`
+
+Launch the terminal UI for triaging an argus-results.json:
+  argus browse                          # ./argus-results/argus-results.json
+  argus browse ./run-2026-04-24         # specific results dir
+  argus browse ./custom-results.json    # direct file path
+
+Keyboard shortcuts inside the TUI:
+  / search · 1/2/3/4 filter by severity · s sort · e export CSV · q quit
+
+Requires the 'browse' extra: pip install 'argus-security[browse]'
+
+```
+argus browse [-h] [PATH]
+```
+
+**Arguments:**
+
+- `results` — Results directory or argus-results.json path (default: ./argus-results/)
 
 ## Quick Reference
 
