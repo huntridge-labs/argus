@@ -1032,6 +1032,7 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
                             no_cache=getattr(args, "no_cache", False),
                             use_default_excludes=not getattr(args, "no_default_excludes", False),
                             sbom_path=str(info.path),
+                            sbom_format=info.format,
                         )
                     except Exception as exc:
                         log.error(

@@ -79,19 +79,51 @@ class TestOsvSbomMode:
         assert "." not in cmd
 
     def test_container_args_use_sbom_flag(self):
+        """osv-scanner v2 uses `-L` for SBOM input."""
         args = OsvScanner().container_args({
             "sbom_path": "/host/sbom.json",
             "sbom_mount_path": "/sbom/sbom.json",
         })
-        assert "--sbom" in args
+        # v2 CLI: scan -L <sbom> instead of deprecated --sbom
+        assert "-L" in args
         assert "/sbom/sbom.json" in args
+        assert "scan" in args
+        assert "--format" in args
 
     def test_sbom_mode_ignores_lockfile_and_recursive(self):
+        """SBOM mode ignores lockfile/recursive options — uses only the SBOM."""
         args = OsvScanner().container_args({
             "sbom_path": "/host/sbom.json",
+            "sbom_mount_path": "/sbom/sbom.json",
             "lockfile": "requirements.txt",
             "recursive": True,
         })
-        # SBOM mode takes precedence; lockfile/recursive should be ignored
-        assert "-L" not in args
+        # SBOM mode uses -L for the SBOM, but lockfile/recursive are ignored
+        assert "-L" in args
+        assert "/sbom/sbom.json" in args
+        # The specific lockfile should NOT appear
+        assert "requirements.txt" not in " ".join(args)
         assert "--recursive" not in args
+
+    def test_container_args_sbom_fallback_path(self):
+        """When sbom_mount_path is not provided, fall back to /workspace/{sbom_path}."""
+        args = OsvScanner().container_args({
+            "sbom_path": "my-sbom.spdx.json",
+            # No sbom_mount_path — should fall back
+        })
+        assert "-L" in args
+        assert "/workspace/my-sbom.spdx.json" in args
+
+
+class TestOsvContainerArgs:
+    """Test OsvScanner.container_args for non-SBOM modes."""
+
+    def test_container_args_with_config_file(self):
+        """config_file should be passed via --config flag."""
+        args = OsvScanner().container_args({
+            "config_file": "osv-scanner.toml",
+        })
+        assert "--config" in args
+        assert "/workspace/osv-scanner.toml" in args
+        # Should be in source scan mode
+        assert "source" in args

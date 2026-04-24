@@ -15,6 +15,16 @@ from .scanner import Scanner
 logger = logging.getLogger("argus")
 
 
+# Canonical extensions for SBOM formats — osv-scanner v2 detects format from file extension.
+# Keys are the allowed sbom_format values; any other value triggers a warning.
+SBOM_FORMAT_EXTENSIONS: dict[str, str] = {
+    "spdx-json": ".spdx.json",
+    "spdx-tv": ".spdx",
+    "cyclonedx-json": ".cdx.json",
+    "cyclonedx-xml": ".cdx.xml",
+}
+
+
 class ArgusEngine:
     """Orchestrates registered scanners and aggregates their results."""
 
@@ -23,6 +33,8 @@ class ArgusEngine:
         self._scanners: dict[str, Scanner] = {}
         self._allow_local_versions: bool = False
         self._no_cache: bool = False
+        self._sbom_path: str | None = None
+        self._sbom_format: str | None = None
 
     def register_scanner(self, scanner: Scanner) -> None:
         """Register a scanner instance for use by the engine."""
@@ -46,6 +58,7 @@ class ArgusEngine:
         no_cache: bool = False,
         use_default_excludes: bool = True,
         sbom_path: str | None = None,
+        sbom_format: str | None = None,
     ) -> ScanSummary:
         """Run scanners and return an aggregated ScanSummary.
 
@@ -73,6 +86,16 @@ class ArgusEngine:
         self._no_cache = no_cache
         self._use_default_excludes = use_default_excludes
         self._sbom_path = sbom_path
+        self._sbom_format = sbom_format
+
+        # Validate sbom_format if provided
+        if sbom_format is not None and sbom_format not in SBOM_FORMAT_EXTENSIONS:
+            logger.warning(
+                "Unrecognized sbom_format '%s' — expected one of %s. "
+                "Falling back to extension detection from sbom_path.",
+                sbom_format,
+                list(SBOM_FORMAT_EXTENSIONS.keys()),
+            )
 
         if sbom_path is not None:
             names_to_run = self._resolve_sbom_scanner_names(scanner_names)
@@ -157,9 +180,15 @@ class ArgusEngine:
             # ``_run_in_container`` when we build the docker command.
             if self._sbom_path:
                 config_dict["sbom_path"] = self._sbom_path
-                config_dict["sbom_mount_path"] = (
-                    f"/sbom/{Path(self._sbom_path).name}"
-                )
+                # Use format-canonical basename so scanners detect format from extension.
+                # When sbom_format is provided and valid, use its canonical extension.
+                # Otherwise, fall back to the file's extension(s) — using suffixes[-2:]
+                # to preserve compound extensions like .spdx.json or .cdx.json.
+                ext = SBOM_FORMAT_EXTENSIONS.get(self._sbom_format)
+                if ext is None:
+                    suffixes = Path(self._sbom_path).suffixes
+                    ext = "".join(suffixes[-2:]) if len(suffixes) >= 2 else "".join(suffixes)
+                config_dict["sbom_mount_path"] = f"/sbom/sbom{ext}"
 
             # Resolve the scanner's tool config file. Explicit `config_file:`
             # in argus.yml wins; otherwise we auto-discover against the scan
@@ -226,7 +255,8 @@ class ArgusEngine:
             if version:
                 result.metadata["tool_version"] = version
 
-        if exclusion_patterns and result.findings:
+        # Skip exclusion filter in SBOM mode — findings reference SBOM path, not source
+        if exclusion_patterns and result.findings and not config_dict.get("sbom_path"):
             from .exclusions import filter_findings
             filtered_findings, excluded_count = filter_findings(
                 result.findings, exclusion_patterns,
