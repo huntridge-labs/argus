@@ -1,0 +1,140 @@
+/* argus serve — minimal classless styles, self-contained (no CDN).
+ *
+ * Dark-first, high-contrast, readable at a distance. Intentionally
+ * spare so the dashboard content carries the weight. No frameworks,
+ * no resets beyond what's needed to keep browser defaults from
+ * fighting us. CSS variables up top so a future theme-toggle can
+ * flip the palette without touching layout rules.
+ */
+
+:root {
+  --bg:            #0f1419;
+  --surface:       #1b2128;
+  --surface-alt:   #232a33;
+  --border:        #313843;
+  --fg:            #e6e8eb;
+  --fg-muted:      #a0a8b3;
+  --accent:        #5cb85c;
+  --crit:          #e74c3c;
+  --high:          #ff8c42;
+  --med:           #f1c40f;
+  --low:           #3498db;
+  --info:          #95a5a6;
+  --radius:        6px;
+  --gap:           1rem;
+  --max-width:     72rem;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+               "SF Pro Text", "Inter", sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+header, main, footer { padding: 1rem 1.5rem; max-width: var(--max-width); margin: 0 auto; }
+
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1.5rem;
+}
+header h1 { margin: 0; font-size: 1.1rem; font-weight: 600; letter-spacing: 0.02em; }
+header .crumbs { color: var(--fg-muted); font-size: 0.9rem; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+header nav a {
+  color: var(--fg-muted); text-decoration: none; margin-left: 1rem;
+  padding: 0.25rem 0.5rem; border-radius: var(--radius);
+}
+header nav a:hover { background: var(--surface); color: var(--fg); }
+header nav a[aria-current="page"] { color: var(--fg); background: var(--surface); }
+
+h1, h2, h3 { margin: 1.5rem 0 0.75rem; }
+h2 { font-size: 1.25rem; }
+h3 { font-size: 1rem; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+a { color: var(--accent); }
+a:hover { opacity: 0.85; }
+
+code, pre, kbd {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  background: var(--surface); border-radius: 4px; padding: 0.1em 0.3em;
+  font-size: 0.92em;
+}
+pre { padding: 1rem; overflow-x: auto; }
+
+table {
+  border-collapse: collapse; width: 100%;
+  background: var(--surface); border-radius: var(--radius); overflow: hidden;
+}
+th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); }
+th { background: var(--surface-alt); font-weight: 600; color: var(--fg-muted); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--surface-alt); }
+
+/* Severity badges used across dashboard + findings table */
+.sev {
+  display: inline-block; padding: 0.1em 0.5em; border-radius: 4px;
+  font-size: 0.8rem; font-weight: 600; letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.sev-critical { background: var(--crit);   color: #fff; }
+.sev-high     { background: var(--high);   color: #fff; }
+.sev-medium   { background: var(--med);    color: #1f1f1f; }
+.sev-low      { background: var(--low);    color: #fff; }
+.sev-info     { background: var(--info);   color: #fff; }
+.sev-unknown  { background: var(--border); color: var(--fg); }
+
+/* Summary cards — the top-of-dashboard at-a-glance tiles */
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: var(--gap); margin: 1rem 0; }
+.card {
+  background: var(--surface); padding: 1rem; border-radius: var(--radius);
+  border-left: 3px solid var(--border);
+}
+.card .label { color: var(--fg-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.card .value { font-size: 1.75rem; font-weight: 700; margin-top: 0.25rem; }
+.card.critical { border-left-color: var(--crit); }
+.card.high     { border-left-color: var(--high); }
+.card.medium   { border-left-color: var(--med); }
+.card.low      { border-left-color: var(--low); }
+.card.info     { border-left-color: var(--info); }
+
+/* Warning banner for scan-quality issues (SPDX-2.1 detected, low purl
+ * coverage, grype unknown-subject). Distinct from findings severity —
+ * these are meta-issues about the scan's trustworthiness. */
+.warnings {
+  background: var(--surface); border-left: 3px solid var(--high);
+  padding: 0.75rem 1rem; border-radius: var(--radius);
+  margin: 1rem 0;
+}
+.warnings h3 { color: var(--high); margin-top: 0; }
+.warnings ul { margin: 0.25rem 0 0; padding-left: 1.25rem; }
+
+/* Empty / placeholder state — shown when no scan is loaded yet. */
+.placeholder {
+  background: var(--surface); padding: 2rem; border-radius: var(--radius);
+  text-align: center; color: var(--fg-muted);
+}
+.placeholder h2 { margin-top: 0; color: var(--fg); }
+
+footer {
+  border-top: 1px solid var(--border); margin-top: 3rem;
+  color: var(--fg-muted); font-size: 0.85rem; text-align: center;
+}
+
+/* Per-product / per-scanner lists — minor decoration so the dashboard
+ * doesn't read as one long wall of numbers. */
+.product-row, .scanner-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 0.5rem 0; border-bottom: 1px solid var(--border);
+}
+.product-row:last-child, .scanner-row:last-child { border-bottom: none; }
+.product-row .name, .scanner-row .name { font-weight: 500; }
+.product-row .counts, .scanner-row .counts { color: var(--fg-muted); font-size: 0.9rem; }
+.product-row .top { margin-top: 0.5rem; margin-left: 1rem; }
+.product-row .top li { list-style: none; margin: 0.25rem 0; font-size: 0.9rem; color: var(--fg-muted); }
+.product-row .top li .sev { margin-right: 0.5rem; font-size: 0.7rem; }

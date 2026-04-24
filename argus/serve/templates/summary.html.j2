@@ -1,0 +1,114 @@
+{% extends "base.html.j2" %}
+{% block title %}Argus — Executive Summary{% endblock %}
+{% block content %}
+
+{#- Empty state: no scan is in scope yet. The picker (SD) will
+    replace this with something navigable; for now, tell the user
+    what's up so the page isn't just blank. -#}
+{% if summary is none %}
+  <section class="placeholder">
+    <h2>No scan loaded</h2>
+    <p>Point <code>argus serve</code> at a results directory or a specific
+       <code>argus-results.json</code>, or pass <code>?scan=/path/...</code>
+       to this URL.</p>
+    {% if error %}
+      <p><strong>Error:</strong> {{ error }}</p>
+    {% endif %}
+  </section>
+
+{% else %}
+
+  <h2>Executive Summary</h2>
+
+  {#- At-a-glance severity cards. Card color encoded via class so
+      severity-neutral CSS rules ("card") set layout and the
+      severity-specific modifier sets the border accent. -#}
+  <div class="cards">
+    <div class="card">
+      <div class="label">Total findings</div>
+      <div class="value">{{ summary.total }}</div>
+    </div>
+    {% for sev, icon in [
+        ("critical", "🚨"),
+        ("high",     "⚠️"),
+        ("medium",   "🟡"),
+        ("low",      "🔵"),
+        ("info",     "ℹ️")
+      ]
+    %}
+      {% set count = summary.by_severity.get(sev, 0) %}
+      {% if count %}
+        <div class="card {{ sev }}">
+          <div class="label">{{ icon }} {{ sev.capitalize() }}</div>
+          <div class="value">{{ count }}</div>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+
+  {#- Quality warnings — SPDX-2.1 detected, low-purl-coverage,
+      grype unknown-subject. Loud banner so empty scans aren't
+      mistaken for clean ones. -#}
+  {% if summary.quality_warnings %}
+    <div class="warnings">
+      <h3>Scan quality warnings</h3>
+      <ul>
+        {% for w in summary.quality_warnings %}
+          <li>{{ w }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  {#- Per-product: total + crit + high counts + top-3 findings. -#}
+  {% if summary.per_product %}
+    <section>
+      <h2>Per product</h2>
+      {% for p in summary.per_product %}
+        <div class="product-row">
+          <div>
+            <div class="name">{{ p.product }}</div>
+            <ul class="top">
+              {% for f in p.top %}
+                <li>
+                  <span class="sev sev-{{ f.severity }}">{{ f.severity }}</span>
+                  <strong>{{ f.id }}</strong>
+                  {% if f.metadata and f.metadata.package %}
+                    <code>{{ f.metadata.package }}@{{ f.metadata.installed_version or '?' }}</code>
+                  {% endif %}
+                  — {{ f.title }}
+                </li>
+              {% endfor %}
+              {% if not p.top %}
+                <li><em>No findings</em></li>
+              {% endif %}
+            </ul>
+          </div>
+          <div class="counts">
+            total {{ p.total }}
+            · <span class="sev sev-critical">{{ p.by_severity.critical or 0 }}</span>
+            · <span class="sev sev-high">{{ p.by_severity.high or 0 }}</span>
+          </div>
+        </div>
+      {% endfor %}
+    </section>
+  {% endif %}
+
+  {#- Per-scanner contribution — useful for spotting when one
+      scanner is providing 90% of findings (suggests a config issue
+      or that the others produced nothing because of input format). -#}
+  {% if summary.per_scanner %}
+    <section>
+      <h2>Per scanner</h2>
+      {% for s in summary.per_scanner %}
+        <div class="scanner-row">
+          <span class="name">{{ s.scanner }}</span>
+          <span class="counts">{{ s.total }} finding{{ s.total != 1 and 's' or '' }}</span>
+        </div>
+      {% endfor %}
+    </section>
+  {% endif %}
+
+{% endif %}
+
+{% endblock %}
