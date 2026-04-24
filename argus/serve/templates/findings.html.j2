@@ -13,9 +13,12 @@
   <h2>Findings</h2>
 
   {#- Filter bar. Every control is a plain GET form so the page stays
-      bookmarkable and search-engine friendly (and so SE can swap in
-      HTMX without rewriting the markup — same URL shape). -#}
-  <form method="get" action="/findings" style="margin: 1rem 0; display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
+      bookmarkable and works without JS (the Apply button is the
+      no-JS fallback). The ``data-auto-filter`` attribute opts this
+      form into auto-filter.js, which swaps just the table body
+      when JS is live. -#}
+  <form method="get" action="/findings" data-auto-filter
+        style="margin: 1rem 0; display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
     {%- if scan_param -%}
       <input type="hidden" name="scan" value="{{ scan_param }}" />
     {%- endif -%}
@@ -65,53 +68,15 @@
     <a href="/findings{% if scan_param %}?scan={{ scan_param | urlencode }}{% endif %}">Reset</a>
   </form>
 
-  <p style="color: var(--fg-muted); font-size: 0.9rem;">
-    Showing <strong>{{ visible|length }}</strong> of {{ total }} findings.
-  </p>
+  {#- Swap target for auto-filter.js. The JS replaces the contents
+      of #findings-target; the plain-form fallback re-renders the
+      whole page. Both code paths use the same _findings_table.html.j2
+      partial so row markup stays in lockstep. -#}
+  <div id="findings-target">
+    {% include "_findings_table.html.j2" %}
+  </div>
 
-  {% if visible %}
-    <table>
-      <thead>
-        <tr>
-          <th>Severity</th>
-          <th>ID</th>
-          <th>Package</th>
-          <th>Fix</th>
-          <th>Location</th>
-          <th>Scanner</th>
-          <th>Source SBOM</th>
-          <th>Title</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for f in visible %}
-          <tr>
-            <td><span class="sev sev-{{ f.severity.value }}">{{ f.severity.value }}</span></td>
-            <td>
-              {% if f.cve %}<strong>{{ f.cve }}</strong>{% else %}{{ f.id }}{% endif %}
-            </td>
-            <td>
-              {% if f.metadata.package %}
-                <code>{{ f.metadata.package }}@{{ f.metadata.installed_version or '?' }}</code>
-              {% else %}
-                —
-              {% endif %}
-            </td>
-            <td>{{ f.metadata.fixed_version or '—' }}</td>
-            <td><code>{{ f.location or '—' }}</code></td>
-            <td>{{ f.scanner or '—' }}</td>
-            <td>{{ f.metadata.sbom_source or '—' }}</td>
-            <td>{{ f.title }}</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    <div class="placeholder">
-      <p>No findings match the current filter. Try widening the severity
-         threshold or clearing the product / scanner selection.</p>
-    </div>
-  {% endif %}
+  <script src="/static/auto-filter.js" defer></script>
 
 {% endif %}
 

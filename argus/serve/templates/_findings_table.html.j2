@@ -1,0 +1,58 @@
+{#-
+  Findings table fragment — rendered either as part of
+  ``findings.html.j2`` (full page) or on its own via
+  ``/findings?partial=1`` for the auto-filter swap. Kept in a
+  partial so both code paths share one source of truth for row
+  markup.
+
+  Context:
+    - visible   : iterable of Finding
+    - total     : int
+-#}
+<p style="color: var(--fg-muted); font-size: 0.9rem;">
+  Showing <strong>{{ visible|length }}</strong> of {{ total }} findings.
+</p>
+
+{% if visible %}
+  <table>
+    <thead>
+      <tr>
+        <th>Severity</th>
+        <th>ID</th>
+        <th>Package</th>
+        <th>Fix</th>
+        <th>Location</th>
+        <th>Scanner</th>
+        <th>Source SBOM</th>
+        <th>Title</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in visible %}
+        <tr>
+          <td><span class="sev sev-{{ f.severity.value }}">{{ f.severity.value }}</span></td>
+          <td>
+            {% if f.cve %}<strong>{{ f.cve }}</strong>{% else %}{{ f.id }}{% endif %}
+          </td>
+          <td>
+            {% if f.metadata.package %}
+              <code>{{ f.metadata.package }}@{{ f.metadata.installed_version or '?' }}</code>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>{{ f.metadata.fixed_version or '—' }}</td>
+          <td><code>{{ f.location or '—' }}</code></td>
+          <td>{{ f.scanner or '—' }}</td>
+          <td>{{ f.metadata.sbom_source or '—' }}</td>
+          <td>{{ f.title }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <div class="placeholder">
+    <p>No findings match the current filter. Try widening the severity
+       threshold or clearing the product / scanner selection.</p>
+  </div>
+{% endif %}

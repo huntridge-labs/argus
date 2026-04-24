@@ -169,6 +169,7 @@ def create_app(root: str | None = None) -> FastAPI:
         product: str | None = None,
         scanner: str | None = None,
         q: str | None = None,
+        partial: int = 0,
     ) -> Response:
         """Filterable findings table.
 
@@ -223,9 +224,16 @@ def create_app(root: str | None = None) -> FastAPI:
                 f for f in all_findings if view_state.matches(f)
             ]
 
+        # ?partial=1 returns just the table fragment for auto-filter.js
+        # to swap in, skipping the layout. Non-JS clients never set it
+        # and get the full render. Sharing the context dict + the
+        # _findings_table.html.j2 partial keeps the two paths in lockstep.
+        template_name = (
+            "_findings_table.html.j2" if partial else "findings.html.j2"
+        )
         return templates.TemplateResponse(
             request=request,
-            name="findings.html.j2",
+            name=template_name,
             context=context,
         )
 
