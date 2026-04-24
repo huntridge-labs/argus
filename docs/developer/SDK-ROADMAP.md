@@ -254,8 +254,56 @@ Post-scan triage workflow. Engineers sitting with a fresh scan need a way to fil
 
 ### Remaining
 
-- [ ] Help modal (`?`) listing every binding + current scope
-- [ ] Sort indicator in the column header (arrow glyph)
+#### UX polish (from first road-test, 2026-04-24)
+
+- [ ] `ESC` out of the search input returns focus to the findings list (currently requires a mouse click — stuck-in-search is the top complaint)
+- [ ] Sort cycle should surface the *new* sort mode explicitly on each `s` press — a toast/notification ("sorted by severity desc") instead of only updating the bottom status bar. Users lose track of which mode they're in mid-triage.
+- [ ] Sort indicator in the column header (arrow glyph ↓/↑) for the column currently sorted by
+- [ ] Help modal (`?` keybinding) listing every binding, current scope, and sort mode
+- [ ] Column-resize / row-count improvements — visual polish from the Textual side
+
+#### Export UX
+
+- [ ] **File path discoverability:** after export, print the *absolute* path plus an OS-agnostic "how to open" hint:
+  - macOS → `open <path>`
+  - Linux → `xdg-open <path>`
+  - Windows → `start <path>`
+  - Many modern terminals (iTerm2, VS Code, Windows Terminal) auto-linkify `file://` URIs; emit one in the toast.
+- [ ] **`o` keybinding to open the last export** — shells out via platform-detected opener, or copies the path to clipboard as a fallback.
+- [ ] **Additional export formats** (currently: CSV only):
+  - `j` → JSON of the filtered view (downstream automation)
+  - `m` → Markdown (paste into tickets / PR descriptions)
+  - `s` → SARIF (security dashboards / GitHub Code Security)
+  - XLSX — nice-to-have for spreadsheet users; adds `openpyxl` dependency, weigh against keeping browse lightweight
+- [ ] Export filename convention: timestamp + filter summary, e.g. `argus-findings-2026-04-24-1530-critical.csv`
+
+#### Data model / scope
+
+- [ ] **Product × scanner scope**. Batch SBOM scans routinely produce findings across multiple products scanned by multiple scanners. Today the TUI treats findings as one flat list. Needs:
+  - Filter by `metadata.sbom_source` (product/SBOM filename) — dedicated filter line or `p` binding
+  - Group-by mode — toggle between "flat list" and "grouped by product" / "grouped by scanner"
+  - Product selector in the header showing the current scope (`all products` / `BVMS_SBoM.spdx` / etc.)
+- [ ] **Executive summary view** — `E` binding flips from the findings browser into an at-a-glance dashboard showing:
+  - Per-product severity counts and top-3 criticals
+  - Per-scanner contribution (how many findings came from each)
+  - SBOM quality flags (SPDX-2.1 warnings, low-purl-coverage warnings) that were captured during scan
+  - Age of the data (from the results file mtime)
+  - Works as a standalone command too: `argus summary <results-dir>` for scripts/CI
+- [ ] **Timeline / diff view** — compare a new results set against a previous one. Powers "what changed this scan-over-scan" workflow.
+
+#### Integration with argus-portal
+
+The `argus-portal` web app at `/Users/collinpesicka/Documents/HRL/github.com/argus-portal` is an adjacent surface for the same underlying data. Open questions (to be resolved before committing to a direction):
+
+- [ ] **Does the portal consume `argus-results.json` natively?** If yes, the TUI's role is "local-dev triage before pushing to portal." If no, we'd want a shared schema/loader library to avoid format drift between CLI and web.
+- [ ] **"Send to portal" keybinding** — `P` from the TUI uploads the current results (or currently filtered subset) to a configured portal instance. Needs portal API (or upload endpoint) defined first.
+- [ ] **"Open in portal"** — deep-link to a scan view: `argus-portal://scan/<id>` or HTTP URL. Works if scans have portal-assigned IDs.
+- [ ] **Shared findings renderer** — if the portal wants identical per-finding layout to the TUI detail pane, factor the detail rendering into a shared module (core of a future `argus.findings_view` package — portal consumes via API/SDK, TUI consumes via import).
+
+Not all of these belong to the TUI itself — the portal integration items are primarily portal-side concerns. Tracked here so the CLI/TUI side doesn't drift from whatever the portal lands on.
+
+#### Existing polish items (pre-roadtest)
+
 - [ ] Multi-select for batch actions (export a subset, copy CVE list to clipboard)
 - [ ] `argus scan --interactive` convenience flag that auto-launches `browse` after a scan completes
 - [ ] Screenshot + quickstart in `docs/browse.md`
