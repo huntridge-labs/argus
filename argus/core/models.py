@@ -209,27 +209,6 @@ class ScanSummary:
             for f in r.findings
         )
 
-    @classmethod
-    def from_dict(cls, data: dict) -> "ScanSummary":
-        """Reconstruct a ScanSummary from a ``to_dict()`` payload.
-
-        Used by offline consumers (``argus browse``, external integrations)
-        that start from a persisted ``argus-results.json`` rather than from
-        a live scan. Severity threshold is restored if present; unknown
-        threshold values collapse to ``None`` so the summary still loads.
-        """
-        threshold = None
-        raw_threshold = data.get("severity_threshold")
-        if raw_threshold:
-            try:
-                threshold = Severity.from_string(raw_threshold)
-            except (ValueError, KeyError):
-                threshold = None
-        results = [
-            ScanResult.from_dict(r) for r in data.get("results", [])
-        ]
-        return cls(results=results, severity_threshold=threshold)
-
     def to_dict(self) -> dict:
         """Serialize to a plain dictionary."""
         return {

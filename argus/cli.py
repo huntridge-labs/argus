@@ -1152,16 +1152,30 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
     # the manifest always lands regardless of whether browse succeeds
     # (or whether the user even has the [browse] extra installed).
     if getattr(args, "interactive", False):
-        try:
-            from argus.browse import launch as browse_launch, BrowseUnavailable
-            try:
-                browse_launch(output_dir)
-            except BrowseUnavailable as exc:
-                print(f"\n{exc}", file=sys.stderr)
-        except ImportError as exc:  # pragma: no cover — defensive
-            print(f"\nCould not launch browse TUI: {exc}", file=sys.stderr)
+        _launch_interactive_browse(output_dir)
 
     return exit_code
+
+
+def _launch_interactive_browse(results_dir: str) -> None:
+    """Dispatch to ``argus browse`` after a ``--interactive`` scan.
+
+    Extracted from ``cmd_scan`` so it's unit-testable without running
+    a full scan plan. Failures here are non-fatal: the manifest and
+    results file are already on disk, so the user loses the TUI
+    convenience but nothing else. We catch both the friendly
+    ``BrowseUnavailable`` (missing ``[browse]`` extra) and a bare
+    ``ImportError`` (something weirder in the import chain) so the
+    scan exit code isn't affected either way.
+    """
+    try:
+        from argus.browse import launch as browse_launch, BrowseUnavailable
+        try:
+            browse_launch(results_dir)
+        except BrowseUnavailable as exc:
+            print(f"\n{exc}", file=sys.stderr)
+    except ImportError as exc:  # pragma: no cover — defensive
+        print(f"\nCould not launch browse TUI: {exc}", file=sys.stderr)
 
 
 def _dry_run(engine, config, args) -> int:

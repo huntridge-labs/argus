@@ -826,6 +826,100 @@ class TestBrowseSubcommand:
         assert "argus-security[browse]" in err
 
 
+class TestLaunchInteractiveBrowse:
+    """Covers the ``--interactive`` dispatch extracted from ``cmd_scan``.
+
+    Exercised directly rather than via a full scan run so we don't
+    need to stand up scanner plumbing just to verify the browser
+    handoff. The handoff has two failure modes it must absorb without
+    affecting the scan's exit code:
+
+    - ``BrowseUnavailable`` (user didn't install the ``[browse]`` extra)
+    - ``ImportError`` (something stranger wrong with the import chain)
+
+    The first is the normal case — ships a message to stderr; the
+    second is defensive and explicitly ``pragma: no cover``.
+    """
+
+    def test_happy_path_calls_browse_launch(self, monkeypatch):
+        from argus.cli import _launch_interactive_browse
+
+        calls = []
+        def fake_launch(results_dir):
+            calls.append(results_dir)
+            return 0
+        monkeypatch.setattr("argus.browse.launch", fake_launch)
+
+        _launch_interactive_browse("/tmp/scan-output")
+        assert calls == ["/tmp/scan-output"]
+
+    def test_browse_unavailable_prints_to_stderr_without_raising(self, monkeypatch, capsys):
+        from argus.cli import _launch_interactive_browse
+
+        def fake_launch(_results_dir):
+            from argus.browse import BrowseUnavailable
+            raise BrowseUnavailable(
+                "The interactive findings browser needs the 'browse' extra."
+            )
+        monkeypatch.setattr("argus.browse.launch", fake_launch)
+
+        # Returns cleanly — scan's exit code is unaffected by the
+        # optional TUI handoff failure.
+        _launch_interactive_browse("/tmp/scan-output")
+        err = capsys.readouterr().err
+        assert "browse" in err.lower()
+
+
+class TestBrowseUnavailableGuard:
+    """Covers the ``argus.browse`` import-guard helper directly.
+
+    The prior browse-extra test patches ``argus.browse.launch`` wholesale,
+    so the real ``_require_textual`` branch (lines 23-26 + 39-41 in
+    browse/__init__.py) never runs under test. Exercise it here by
+    simulating a missing ``textual`` module during import.
+    """
+
+    def test_require_textual_raises_browseunavailable_when_missing(self, monkeypatch):
+        import builtins
+        from argus.browse import _require_textual, BrowseUnavailable
+
+        real_import = builtins.__import__
+
+        def fake_import(name, *a, **kw):
+            if name == "textual":
+                raise ImportError("No module named 'textual'")
+            return real_import(name, *a, **kw)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+
+        with pytest.raises(BrowseUnavailable) as excinfo:
+            _require_textual()
+        assert "argus-security[browse]" in str(excinfo.value)
+
+    def test_launch_delegates_to_run_app_when_textual_available(self, monkeypatch):
+        # Real argus.browse.launch body: _require_textual() then
+        # `from argus.browse.app import run_app; return run_app(...)`.
+        # Stub both so we don't need the live Textual runtime.
+        import argus.browse
+
+        monkeypatch.setattr(argus.browse, "_require_textual", lambda: None)
+        # run_app lives in argus.browse.app. Fake that module path for
+        # this test so the import inside launch() resolves to our stub.
+        import sys
+        import types
+        fake_module = types.ModuleType("argus.browse.app")
+        calls = []
+        def fake_run_app(results_dir):
+            calls.append(results_dir)
+            return 0
+        fake_module.run_app = fake_run_app
+        monkeypatch.setitem(sys.modules, "argus.browse.app", fake_module)
+
+        rc = argus.browse.launch("/some/dir")
+        assert rc == 0
+        assert calls == ["/some/dir"]
+
+
 class TestSbomDirectoryMerge:
     """CLI helper that collapses per-SBOM ScanSummary objects into one."""
 

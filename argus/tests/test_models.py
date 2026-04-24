@@ -253,3 +253,45 @@ class TestScanSummary:
         summary = ScanSummary()
         assert summary.total_count == 0
         assert summary.passed is True
+
+    def test_from_dict_round_trips_findings_and_threshold(self):
+        # Offline consumers (argus browse / external dashboards) read
+        # a persisted argus-results.json back into a ScanSummary via
+        # from_dict. Round-trip must preserve findings, severity
+        # threshold, and per-scanner grouping.
+        source = self._make_summary(threshold=Severity.HIGH)
+        serialized = source.to_dict()
+        restored = ScanSummary.from_dict(serialized)
+        assert restored.severity_threshold == Severity.HIGH
+        assert len(restored.results) == 2
+        assert restored.total_count == 4
+        # Finding identities survive — the CLI-less browser workflow
+        # needs stable ids so pre-scan triage notes stay linked.
+        restored_ids = {f.id for r in restored.results for f in r.findings}
+        assert restored_ids == {"1", "2", "3", "4"}
+
+    def test_from_dict_unrecognized_severity_becomes_unknown(self):
+        # ``Severity.from_string`` returns ``UNKNOWN`` for values it
+        # doesn't recognize (it normalizes via an alias table rather
+        # than raising). So a hand-edited or forward-compatible
+        # threshold loads as UNKNOWN instead of dying on import —
+        # downstream consumers can still compare against it.
+        payload = {
+            "severity_threshold": "bogus",
+            "results": [],
+        }
+        restored = ScanSummary.from_dict(payload)
+        assert restored.severity_threshold == Severity.UNKNOWN
+        assert restored.results == []
+
+    def test_from_dict_missing_threshold_keeps_none(self):
+        # severity_threshold is optional; from_dict should accept
+        # payloads without it (older scan files pre-threshold).
+        restored = ScanSummary.from_dict({"results": []})
+        assert restored.severity_threshold is None
+
+    def test_from_dict_empty_threshold_stays_none(self):
+        # Explicit empty string is treated as "no threshold" — the
+        # ``if raw_threshold:`` guard skips the parse entirely.
+        restored = ScanSummary.from_dict({"severity_threshold": "", "results": []})
+        assert restored.severity_threshold is None
