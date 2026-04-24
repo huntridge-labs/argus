@@ -285,6 +285,34 @@ argus browse [-h] [PATH]
 
 - `results` — Results directory or argus-results.json path (default: ./argus-results/)
 
+### `argus serve`
+
+Serve a read-only web view of argus scan results on localhost:
+  argus serve                       # picker rooted at CWD
+  argus serve /path/to/results/     # load that scan directly
+  argus serve --port 9090 --open    # custom port, open browser
+
+Bound to 127.0.0.1 only by design — single-user, no auth, no
+mutations. For enterprise multi-user deployments see
+argus-portal (separate track).
+
+Requires the 'serve' extra: pip install 'argus-security[serve]'
+
+```
+argus serve [-h] [--port PORT] [--open] [PATH]
+```
+
+**Arguments:**
+
+- `root` — Starting folder for the picker, or a direct argus-results.json path (default: current working directory)
+
+**Options:**
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--port` | TCP port to listen on (default: 8080) | `8080` |
+| `--open` | Open the default browser at the server URL after startup | `false` |
+
 ## Quick Reference
 
 ```bash

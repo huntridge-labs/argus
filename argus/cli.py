@@ -150,6 +150,7 @@ def build_parser() -> argparse.ArgumentParser:
     _build_completion_parser(subparsers)
     _build_cache_parser(subparsers)
     _build_browse_parser(subparsers)
+    _build_serve_parser(subparsers)
 
     return parser
 
@@ -190,6 +191,64 @@ def cmd_browse(args: argparse.Namespace) -> int:
     try:
         return launch(args.results)
     except BrowseUnavailable as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+
+def _build_serve_parser(subparsers: argparse._SubParsersAction) -> None:
+    """Add the 'serve' subcommand — local read-only web UI."""
+    serve_parser = subparsers.add_parser(
+        "serve",
+        help="Launch a local web UI to browse scan findings",
+        description=(
+            "Serve a read-only web view of argus scan results on "
+            "localhost:\n"
+            "  argus serve                       # picker rooted at CWD\n"
+            "  argus serve /path/to/results/     # load that scan directly\n"
+            "  argus serve --port 9090 --open    # custom port, open browser\n\n"
+            "Bound to 127.0.0.1 only by design — single-user, no auth, no\n"
+            "mutations. For enterprise multi-user deployments see\n"
+            "argus-portal (separate track).\n\n"
+            "Requires the 'serve' extra: pip install 'argus-security[serve]'"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    serve_parser.add_argument(
+        "root",
+        nargs="?",
+        default=None,
+        metavar="PATH",
+        help="Starting folder for the picker, or a direct argus-results.json "
+             "path (default: current working directory)",
+    )
+    serve_parser.add_argument(
+        "--port",
+        type=int,
+        default=8080,
+        help="TCP port to listen on (default: 8080)",
+    )
+    serve_parser.add_argument(
+        "--open",
+        dest="open_browser",
+        action="store_true",
+        help="Open the default browser at the server URL after startup",
+    )
+
+
+def cmd_serve(args: argparse.Namespace) -> int:
+    """Execute the serve subcommand — launch the local web UI."""
+    try:
+        from argus.serve import launch, ServeUnavailable
+    except ImportError as exc:  # pragma: no cover — defensive
+        print(f"Error: could not import argus.serve: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    try:
+        return launch(
+            root=args.root,
+            port=args.port,
+            open_browser=args.open_browser,
+        )
+    except ServeUnavailable as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
@@ -2355,6 +2414,7 @@ def main(argv: list[str] | None = None) -> None:
         "completion": cmd_completion,
         "cache": cmd_cache,
         "browse": cmd_browse,
+        "serve": cmd_serve,
     }
 
     handler = handlers.get(args.command)
