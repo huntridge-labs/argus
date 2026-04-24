@@ -996,6 +996,160 @@ class TestEngineSbomMode:
         assert not_capable.scan_called_with is None
         assert any("does not support SBOM" in msg for msg in caplog.messages)
 
+    # --- sbom_format → canonical extension mapping tests ---
+
+    def test_sbom_format_spdx_json_uses_canonical_extension(self, tmp_path):
+        sbom = tmp_path / "my-sbom.json"
+        sbom.write_text("{}")
+
+        engine = self._make_engine({"osv": {"enabled": True}})
+        osv = self._make_sbom_scanner("osv")
+        engine.register_scanner(osv)
+
+        engine.run(sbom_path=str(sbom), sbom_format="spdx-json")
+
+        _, config = osv.scan_called_with
+        assert config["sbom_mount_path"] == "/sbom/sbom.spdx.json"
+
+    def test_sbom_format_cyclonedx_json_uses_canonical_extension(self, tmp_path):
+        sbom = tmp_path / "my-sbom.json"
+        sbom.write_text("{}")
+
+        engine = self._make_engine({"osv": {"enabled": True}})
+        osv = self._make_sbom_scanner("osv")
+        engine.register_scanner(osv)
+
+        engine.run(sbom_path=str(sbom), sbom_format="cyclonedx-json")
+
+        _, config = osv.scan_called_with
+        assert config["sbom_mount_path"] == "/sbom/sbom.cdx.json"
+
+    def test_sbom_format_cyclonedx_xml_uses_canonical_extension(self, tmp_path):
+        sbom = tmp_path / "my-sbom.xml"
+        sbom.write_text("<bom/>")
+
+        engine = self._make_engine({"osv": {"enabled": True}})
+        osv = self._make_sbom_scanner("osv")
+        engine.register_scanner(osv)
+
+        engine.run(sbom_path=str(sbom), sbom_format="cyclonedx-xml")
+
+        _, config = osv.scan_called_with
+        assert config["sbom_mount_path"] == "/sbom/sbom.cdx.xml"
+
+    def test_sbom_format_spdx_tv_uses_canonical_extension(self, tmp_path):
+        sbom = tmp_path / "my-sbom.txt"
+        sbom.write_text("SPDXVersion: SPDX-2.3")
+
+        engine = self._make_engine({"osv": {"enabled": True}})
+        osv = self._make_sbom_scanner("osv")
+        engine.register_scanner(osv)
+
+        engine.run(sbom_path=str(sbom), sbom_format="spdx-tv")
+
+        _, config = osv.scan_called_with
+        assert config["sbom_mount_path"] == "/sbom/sbom.spdx"
+
+    # --- Multi-suffix fallback tests ---
+
+    def test_multi_suffix_path_preserves_compound_extension(self, tmp_path):
+        """foo.spdx.json should preserve .spdx.json, not collapse to .json."""
+        sbom = tmp_path / "foo.spdx.json"
+        sbom.write_text("{}")
+
+        engine = self._make_engine({"osv": {"enabled": True}})
+        osv = self._make_sbom_scanner("osv")
+        engine.register_scanner(osv)
+
+        # No sbom_format — should fall back to file extension
+        engine.run(sbom_path=str(sbom))
+
+        _, config = osv.scan_called_with
+        assert config["sbom_mount_path"] == "/sbom/sbom.spdx.json"
+
+    def test_multi_suffix_cdx_path_preserves_compound_extension(self, tmp_path):
+        """foo.cdx.json should preserve .cdx.json, not collapse to .json."""
+        sbom = tmp_path / "foo.cdx.json"
+        sbom.write_text("{}")
+
+        engine = self._make_engine({"osv": {"enabled": True}})
+        osv = self._make_sbom_scanner("osv")
+        engine.register_scanner(osv)
+
+        engine.run(sbom_path=str(sbom))
+
+        _, config = osv.scan_called_with
+        assert config["sbom_mount_path"] == "/sbom/sbom.cdx.json"
+
+    def test_single_suffix_path_uses_that_suffix(self, tmp_path):
+        """foo.json should use .json when no sbom_format provided."""
+        sbom = tmp_path / "foo.json"
+        sbom.write_text("{}")
+
+        engine = self._make_engine({"osv": {"enabled": True}})
+        osv = self._make_sbom_scanner("osv")
+        engine.register_scanner(osv)
+
+        engine.run(sbom_path=str(sbom))
+
+        _, config = osv.scan_called_with
+        assert config["sbom_mount_path"] == "/sbom/sbom.json"
+
+    # --- sbom_format validation tests ---
+
+    def test_unknown_sbom_format_logs_warning(self, tmp_path, caplog):
+        """Unknown sbom_format should log a warning and fall back to extension."""
+        sbom = tmp_path / "foo.spdx.json"
+        sbom.write_text("{}")
+
+        engine = self._make_engine({"osv": {"enabled": True}})
+        osv = self._make_sbom_scanner("osv")
+        engine.register_scanner(osv)
+
+        with caplog.at_level("WARNING"):
+            engine.run(sbom_path=str(sbom), sbom_format="invalid-format")
+
+        # Should have logged a warning about the unrecognized format
+        assert any("Unrecognized sbom_format" in msg for msg in caplog.messages)
+        assert any("invalid-format" in msg for msg in caplog.messages)
+
+        # Should still fall back to extension-based detection
+        _, config = osv.scan_called_with
+        assert config["sbom_mount_path"] == "/sbom/sbom.spdx.json"
+
+    # --- Exclusion filter bypass tests ---
+
+    def test_exclusion_filter_skipped_in_sbom_mode(self, tmp_path, monkeypatch):
+        """Exclusion filter should NOT be invoked when sbom_path is set."""
+        from unittest.mock import MagicMock
+
+        sbom = tmp_path / "sbom.json"
+        sbom.write_text("{}")
+
+        engine = self._make_engine({"osv": {"enabled": True}})
+        osv = self._make_sbom_scanner("osv")
+        # Add some findings that would normally be filtered
+        osv._findings = [
+            Finding(
+                id="1", severity=Severity.HIGH, title="vuln",
+                location="node_modules/bad/lib.js",  # Normally excluded
+            ),
+        ]
+        engine.register_scanner(osv)
+
+        # Patch filter_findings with a MagicMock to track calls
+        from argus.core import exclusions
+        mock_filter = MagicMock()
+        monkeypatch.setattr(exclusions, "filter_findings", mock_filter)
+
+        summary = engine.run(sbom_path=str(sbom), exclude="node_modules")
+
+        # filter_findings should NOT have been called in SBOM mode
+        mock_filter.assert_not_called()
+        # Findings should still be present (not filtered)
+        assert len(summary.results) == 1
+        assert summary.results[0].total_count == 1
+
 
 class TestToolVersionEnforcement:
     """Test local tool version verification against container-pinned versions."""
