@@ -45,7 +45,7 @@ def ViewState():
     for mod_name in (
         "textual", "textual.app", "textual.binding", "textual.command",
         "textual.containers", "textual.reactive", "textual.screen",
-        "textual.widgets",
+        "textual.widgets", "textual.widgets.option_list",
     ):
         if mod_name not in sys.modules:
             sys.modules[mod_name] = types.ModuleType(mod_name)
@@ -64,6 +64,8 @@ def ViewState():
         ("Footer", "textual.widgets"),
         ("Header", "textual.widgets"),
         ("Input", "textual.widgets"),
+        ("OptionList", "textual.widgets"),
+        ("Option", "textual.widgets.option_list"),
         ("Static", "textual.widgets"),
     ):
         setattr(sys.modules[mod], attr, _Permissive)

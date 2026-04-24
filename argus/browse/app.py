@@ -26,7 +26,8 @@ from textual.command import Hit, Hits, Provider
 from textual.containers import Container, Horizontal, Vertical
 from textual.reactive import reactive
 from textual.screen import ModalScreen
-from textual.widgets import DataTable, Footer, Header, Input, Static
+from textual.widgets import DataTable, Footer, Header, Input, OptionList, Static
+from textual.widgets.option_list import Option
 
 from argus.browse.loader import flatten_findings, load_summary
 from argus.core.findings_view import (
@@ -34,7 +35,10 @@ from argus.core.findings_view import (
     SEVERITY_ORDER,
     SORT_LABELS,
     ViewState,
+    compute_summary,
     finding_detail_rows,
+    unique_products,
+    unique_scanners,
 )
 from argus.core.models import Finding, Severity
 
@@ -68,6 +72,8 @@ _HELP_TEXT = """\
   [b]2[/b]                HIGH severity and above
   [b]3[/b]                MEDIUM and above
   [b]4[/b]                all severities (clear filter)
+  [b]p[/b]                pick a product (SBOM source) to focus on
+  [b]c[/b]                pick a scanner to focus on
 
 [b]Sort[/b]
   [b]s[/b]                cycle: Severity desc → Severity asc → Package → ID
@@ -125,6 +131,107 @@ class HelpScreen(ModalScreen):
         yield Static(_HELP_TEXT, id="help-body")
 
 
+_PICKER_CSS = """
+PickerScreen {
+    align: center middle;
+}
+#picker-body {
+    background: $surface;
+    border: thick $accent;
+    padding: 0 1;
+    width: 70%;
+    max-width: 80;
+    height: auto;
+    max-height: 70%;
+}
+#picker-body > Static { padding: 1 1 0 1; }
+"""
+
+
+class ProductPickerScreen(ModalScreen[str | None]):
+    """Modal list of discovered products (SBOM sources) for filtering.
+
+    Returns the chosen product name when the user picks one, the
+    sentinel ``"(clear)"`` to reset the filter, or ``None`` on ESC.
+    Built on Textual's ``OptionList`` so keyboard navigation (j/k,
+    arrows, enter) works out of the box.
+    """
+
+    BINDINGS = [
+        Binding("escape", "dismiss", show=False),
+        Binding("q", "dismiss", show=False),
+    ]
+
+    CSS = _PICKER_CSS
+
+    def __init__(self, products: list[str], current: str | None):
+        super().__init__()
+        self._products = products
+        self._current = current
+
+    def compose(self) -> ComposeResult:
+        with Container(id="picker-body"):
+            yield Static(
+                "[b]Filter by product[/b] · enter to select · ESC to cancel"
+            )
+            options = [Option("(all products)", id="__all__")]
+            for product in self._products:
+                prefix = "✔ " if product == self._current else "  "
+                options.append(Option(f"{prefix}{product}", id=product))
+            yield OptionList(*options, id="picker-list")
+
+    def on_option_list_option_selected(
+        self, event: OptionList.OptionSelected
+    ) -> None:
+        option_id = str(event.option.id) if event.option.id else None
+        if option_id == "__all__":
+            self.dismiss("(clear)")
+        else:
+            self.dismiss(option_id)
+
+    def action_dismiss(self) -> None:
+        self.dismiss(None)
+
+
+class ScannerPickerScreen(ModalScreen[str | None]):
+    """Same shape as ProductPickerScreen, but for the Scanner dimension."""
+
+    BINDINGS = [
+        Binding("escape", "dismiss", show=False),
+        Binding("q", "dismiss", show=False),
+    ]
+
+    CSS = _PICKER_CSS
+
+    def __init__(self, scanners: list[str], current: str | None):
+        super().__init__()
+        self._scanners = scanners
+        self._current = current
+
+    def compose(self) -> ComposeResult:
+        with Container(id="picker-body"):
+            yield Static(
+                "[b]Filter by scanner[/b] · enter to select · ESC to cancel"
+            )
+            options = [Option("(all scanners)", id="__all__")]
+            for scanner in self._scanners:
+                prefix = "✔ " if scanner == self._current else "  "
+                options.append(Option(f"{prefix}{scanner}", id=scanner))
+            yield OptionList(*options, id="picker-list")
+
+    def on_option_list_option_selected(
+        self, event: OptionList.OptionSelected
+    ) -> None:
+        option_id = str(event.option.id) if event.option.id else None
+        if option_id == "__all__":
+            self.dismiss("(clear)")
+        else:
+            self.dismiss(option_id)
+
+    def action_dismiss(self) -> None:
+        self.dismiss(None)
+
+
 class ArgusBrowseCommands(Provider):
     """Expose the browse app's actions in Textual's Ctrl+P command palette.
 
@@ -147,6 +254,8 @@ class ArgusBrowseCommands(Provider):
             ("Filter: High severity and above", "Show HIGH + CRITICAL findings", app.action_filter_high),
             ("Filter: Medium severity and above", "Show MEDIUM + HIGH + CRITICAL findings", app.action_filter_medium),
             ("Filter: All severities",   "Clear the severity filter", app.action_filter_all),
+            ("Product: Pick a product filter", "Filter findings by SBOM source / product", app.action_pick_product),
+            ("Scanner: Pick a scanner filter", "Filter findings by reporting scanner", app.action_pick_scanner),
             ("Sort: Cycle sort mode",    "Cycle severity desc → asc → package → id", app.action_cycle_sort),
             ("Export: CSV of current view", "Write the filtered findings to a timestamped CSV", app.action_export_csv),
             ("Open: Last export",        "Open the last export with the system's default app", app.action_open_last_export),
@@ -237,6 +346,8 @@ class BrowseApp(App):
         Binding("e", "export_csv", "Export"),
         Binding("o", "open_last_export", "Open export"),
         Binding("r", "reveal_last_export", "Reveal in files"),
+        Binding("p", "pick_product", "Product"),
+        Binding("c", "pick_scanner", "Scanner"),
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
     ]
@@ -319,14 +430,21 @@ class BrowseApp(App):
     def _update_status(self) -> None:
         total = len(self.all_findings)
         shown = len(self._visible)
-        sev_label = (
+        parts: list[str] = []
+        parts.append(
             f"≥ {self.view_state.min_severity.value}"
             if self.view_state.min_severity else "all severities"
         )
-        query = f" · query='{self.view_state.query}'" if self.view_state.query else ""
+        if self.view_state.product:
+            parts.append(f"product={self.view_state.product}")
+        if self.view_state.scanner:
+            parts.append(f"scanner={self.view_state.scanner}")
+        if self.view_state.query:
+            parts.append(f"query='{self.view_state.query}'")
         sort = self.view_state.sort_key.replace("_", " ")
         self.query_one("#status", Static).update(
-            f"[b]{shown}[/b] / {total} findings · filter: {sev_label}{query} · sort: {sort}"
+            f"[b]{shown}[/b] / {total} findings · "
+            f"filter: {' · '.join(parts)} · sort: {sort}"
         )
 
     def _update_detail(self, row: int) -> None:
@@ -360,6 +478,52 @@ class BrowseApp(App):
 
     def action_show_help(self) -> None:
         self.push_screen(HelpScreen())
+
+    def action_pick_product(self) -> None:
+        products = unique_products(self.all_findings)
+        if not products:
+            self.notify(
+                "No products — findings have no 'sbom_source' metadata.",
+                severity="warning", timeout=3,
+            )
+            return
+
+        def _on_pick(choice: str | None) -> None:
+            if choice is None:
+                return  # ESC / cancel
+            if choice == "(clear)":
+                self.view_state.product = None
+            else:
+                self.view_state.product = choice
+            self._refresh_list()
+
+        self.push_screen(
+            ProductPickerScreen(products, self.view_state.product),
+            _on_pick,
+        )
+
+    def action_pick_scanner(self) -> None:
+        scanners = unique_scanners(self.all_findings)
+        if not scanners:
+            self.notify(
+                "No scanners reported in this results set.",
+                severity="warning", timeout=3,
+            )
+            return
+
+        def _on_pick(choice: str | None) -> None:
+            if choice is None:
+                return
+            if choice == "(clear)":
+                self.view_state.scanner = None
+            else:
+                self.view_state.scanner = choice
+            self._refresh_list()
+
+        self.push_screen(
+            ScannerPickerScreen(scanners, self.view_state.scanner),
+            _on_pick,
+        )
 
     def action_filter_critical(self) -> None:
         self.view_state.min_severity = Severity.CRITICAL
