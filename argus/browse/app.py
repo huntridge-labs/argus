@@ -22,6 +22,7 @@ from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.command import Hit, Hits, Provider
 from textual.containers import Container, Horizontal, Vertical
 from textual.reactive import reactive
 from textual.widgets import DataTable, Footer, Header, Input, Static
@@ -102,6 +103,42 @@ class ViewState:
         return lambda f: (f.id, f.severity.value)
 
 
+class ArgusBrowseCommands(Provider):
+    """Expose the browse app's actions in Textual's Ctrl+P command palette.
+
+    Without this, the palette only shows framework builtins (Keys,
+    Maximize, Quit, Screenshot, Theme) — useful but not the commands
+    a user actually wants to find by name. Each entry yields a
+    ``Hit`` whose callback invokes the matching ``action_*`` method
+    on the BrowseApp so palette-driven invocations are identical to
+    key-bound ones.
+    """
+
+    async def search(self, query: str) -> Hits:
+        matcher = self.matcher(query)
+        app = self.app
+        # (label, help text, action callable) — keep in sync with BINDINGS.
+        commands = [
+            ("Search findings",          "Focus the search box", app.action_focus_search),
+            ("Filter: Critical only",    "Show only CRITICAL findings", app.action_filter_critical),
+            ("Filter: High severity and above", "Show HIGH + CRITICAL findings", app.action_filter_high),
+            ("Filter: Medium severity and above", "Show MEDIUM + HIGH + CRITICAL findings", app.action_filter_medium),
+            ("Filter: All severities",   "Clear the severity filter", app.action_filter_all),
+            ("Sort: Cycle sort mode",    "Cycle severity desc → asc → package → id", app.action_cycle_sort),
+            ("Export: CSV of current view", "Write the filtered findings to a timestamped CSV", app.action_export_csv),
+            ("Open: Last export",        "Open the most recent export in your file manager", app.action_open_last_export),
+        ]
+        for label, help_text, callback in commands:
+            score = matcher.match(label)
+            if score > 0:
+                yield Hit(
+                    score,
+                    matcher.highlight(label),
+                    callback,
+                    help=help_text,
+                )
+
+
 class SearchInput(Input):
     """Search box that returns focus to the findings table on ESC.
 
@@ -155,6 +192,11 @@ class FindingDetail(Static):
 
 class BrowseApp(App):
     """Main Textual app — loads findings, wires filters, renders panes."""
+
+    # Merge our custom command provider with Textual's defaults (Keys,
+    # Maximize, Quit, Screenshot, Theme) so the Ctrl+P palette finds
+    # both argus-specific and framework-level commands.
+    COMMANDS = App.COMMANDS | {ArgusBrowseCommands}
 
     CSS = """
     Screen { layout: vertical; }

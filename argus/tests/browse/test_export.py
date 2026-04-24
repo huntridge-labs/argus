@@ -20,19 +20,26 @@ _APP_PATH = Path(__file__).resolve().parents[2] / "browse" / "app.py"
 def _load_app_module():
     """Load app.py with textual stubbed — mirrors the view_state fixture."""
     class _Permissive:
+        # Empty COMMANDS set lets ``App.COMMANDS | {ArgusBrowseCommands}``
+        # evaluate against the stub without an AttributeError.
+        COMMANDS = set()
+
         def __init__(self, *args, **kwargs): ...
         def __call__(self, *args, **kwargs): return self
         def __class_getitem__(cls, item): return cls
 
     for mod_name in (
-        "textual", "textual.app", "textual.binding", "textual.containers",
-        "textual.reactive", "textual.widgets",
+        "textual", "textual.app", "textual.binding", "textual.command",
+        "textual.containers", "textual.reactive", "textual.widgets",
     ):
         if mod_name not in sys.modules:
             sys.modules[mod_name] = types.ModuleType(mod_name)
     for attr, mod in (
         ("App", "textual.app"), ("ComposeResult", "textual.app"),
         ("Binding", "textual.binding"),
+        ("Hit", "textual.command"),
+        ("Hits", "textual.command"),
+        ("Provider", "textual.command"),
         ("Container", "textual.containers"),
         ("Horizontal", "textual.containers"),
         ("Vertical", "textual.containers"),
