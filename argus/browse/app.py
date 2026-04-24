@@ -25,6 +25,7 @@ from textual.binding import Binding
 from textual.command import Hit, Hits, Provider
 from textual.containers import Container, Horizontal, Vertical
 from textual.reactive import reactive
+from textual.screen import ModalScreen
 from textual.widgets import DataTable, Footer, Header, Input, Static
 
 from argus.browse.loader import flatten_findings, load_summary
@@ -103,6 +104,78 @@ class ViewState:
         return lambda f: (f.id, f.severity.value)
 
 
+_HELP_TEXT = """\
+[b]argus browse[/b] — interactive findings triage
+
+[b]Navigate[/b]
+  [b]↑/↓[/b] or [b]j/k[/b]   move selection
+  [b]enter[/b]            open finding detail (auto-shown on highlight)
+  [b]tab[/b]              jump between panes
+
+[b]Search & filter[/b]
+  [b]/[/b]                focus search (matches id, title, location, CVE, scanner)
+  [b]ESC[/b]              exit search back to the findings list
+  [b]1[/b]                show only CRITICAL findings
+  [b]2[/b]                HIGH severity and above
+  [b]3[/b]                MEDIUM and above
+  [b]4[/b]                all severities (clear filter)
+
+[b]Sort[/b]
+  [b]s[/b]                cycle: Severity desc → Severity asc → Package → ID
+                   active column shows ↓/↑ in its header
+
+[b]Export[/b]
+  [b]e[/b]                export the currently filtered view as CSV
+                   (timestamped filename, stored in cwd)
+  [b]o[/b]                open the last export with your default app
+                   (Numbers/Excel/LibreOffice on macOS; default handler elsewhere)
+  [b]r[/b]                reveal the last export in your file manager
+                   (Finder on macOS, Explorer on Windows, parent dir on Linux)
+
+[b]Other[/b]
+  [b]ctrl+p[/b]           command palette — fuzzy-search every action by name
+                   (also shows Textual builtins: Keys help, Theme, Screenshot)
+  [b]?[/b]                show this help
+  [b]q[/b]                quit
+
+[dim]Press ?, ESC, or q to dismiss.[/dim]
+"""
+
+
+class HelpScreen(ModalScreen):
+    """Full-screen modal overlay with the keyboard-shortcut reference.
+
+    Kept as curated sectioned text rather than a mechanical dump of
+    ``BINDINGS`` — groupings and one-line explanations matter more
+    than listing every key alphabetically. A test cross-checks that
+    every binding description is still referenced so we don't drift
+    silently when a new binding gets added.
+    """
+
+    BINDINGS = [
+        Binding("escape", "app.pop_screen", show=False),
+        Binding("q", "app.pop_screen", show=False),
+        Binding("question_mark", "app.pop_screen", show=False, key_display="?"),
+    ]
+
+    CSS = """
+    HelpScreen {
+        align: center middle;
+    }
+    #help-body {
+        background: $surface;
+        border: thick $accent;
+        padding: 1 2;
+        width: 80%;
+        max-width: 90;
+        height: auto;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        yield Static(_HELP_TEXT, id="help-body")
+
+
 class ArgusBrowseCommands(Provider):
     """Expose the browse app's actions in Textual's Ctrl+P command palette.
 
@@ -119,6 +192,7 @@ class ArgusBrowseCommands(Provider):
         app = self.app
         # (label, help text, action callable) — keep in sync with BINDINGS.
         commands = [
+            ("Help: Show keyboard shortcuts", "Open the full help overlay", app.action_show_help),
             ("Search findings",          "Focus the search box", app.action_focus_search),
             ("Filter: Critical only",    "Show only CRITICAL findings", app.action_filter_critical),
             ("Filter: High severity and above", "Show HIGH + CRITICAL findings", app.action_filter_high),
@@ -212,6 +286,7 @@ class BrowseApp(App):
 
     BINDINGS = [
         Binding("q", "quit", "Quit"),
+        Binding("question_mark", "show_help", "Help", key_display="?"),
         Binding("slash", "focus_search", "Search", show=True, key_display="/"),
         Binding("1", "filter_critical", "Crit only"),
         Binding("2", "filter_high", "High+"),
@@ -341,6 +416,9 @@ class BrowseApp(App):
 
     def action_focus_search(self) -> None:
         self.query_one("#search", Input).focus()
+
+    def action_show_help(self) -> None:
+        self.push_screen(HelpScreen())
 
     def action_filter_critical(self) -> None:
         self.view_state.min_severity = Severity.CRITICAL

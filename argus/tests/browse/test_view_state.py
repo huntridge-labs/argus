@@ -44,7 +44,8 @@ def ViewState():
 
     for mod_name in (
         "textual", "textual.app", "textual.binding", "textual.command",
-        "textual.containers", "textual.reactive", "textual.widgets",
+        "textual.containers", "textual.reactive", "textual.screen",
+        "textual.widgets",
     ):
         if mod_name not in sys.modules:
             sys.modules[mod_name] = types.ModuleType(mod_name)
@@ -58,6 +59,7 @@ def ViewState():
         ("Horizontal", "textual.containers"),
         ("Vertical", "textual.containers"),
         ("reactive", "textual.reactive"),
+        ("ModalScreen", "textual.screen"),
         ("DataTable", "textual.widgets"),
         ("Footer", "textual.widgets"),
         ("Header", "textual.widgets"),
