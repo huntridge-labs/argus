@@ -310,6 +310,94 @@ Not all of these belong to the TUI itself — the portal integration items are p
 
 ---
 
+## SDK-Hosted Executive Web View (`argus serve`)
+
+A read-only web front-end bundled with the argus SDK, aimed at non-engineer stakeholders — product owners, managers, executives — who want easy insight into their products' security posture without digging through CI logs or PR comments. Launched locally or within a trusted team network; **not** a replacement for the separate `argus-portal` enterprise effort.
+
+**Why it exists:**
+- The real value argus provides is "CI pipeline findings + more, but easy to read." Today an exec has to read PR comments, dashboard screenshots, or raw JSON — none of which scale to quick-read questions like "are we shipping log4shell?"
+- The TUI (`argus browse`) solves the same workflow for engineers, but not for users who don't live in a terminal.
+- `argus-portal` exists as a proof-of-concept Next.js app, but has significant operational burden (Postgres, Kubernetes, planned OAuth/RBAC, FedRAMP session controls) that doesn't fit "I just want to glance at findings."
+
+**Non-goals** (deliberately kept out of scope):
+- Multi-tenant hosting, user management, authentication flows
+- FedRAMP/SOC-2/enterprise compliance controls
+- Persistent database — entirely in-memory from `argus-results.json`
+- CRUD mutations (POAM management, change approvals, ticket creation) — the portal's territory
+- Uploading scans from one machine to another
+
+**Scope for v1:**
+
+Minimal read-only web UI that displays the same data as `argus browse`, bound to localhost by default, launched via `argus serve [RESULTS_DIR]`. Stakes in the ground:
+
+| Decision | Direction |
+|---|---|
+| Backend | FastAPI or Starlette (Python, same runtime as argus SDK) — keeps the install story to "pip install 'argus-security[serve]'" |
+| Frontend | Server-rendered HTML + HTMX for reactivity — no React/Next.js build toolchain, no separate bundler. Ship as Jinja2 templates inside the wheel. |
+| Shared code with TUI | Factor the loader and per-finding renderer out of `argus/browse/` so both the TUI and the web app consume the same logic. Avoid drift between CLI and web. |
+| Default binding | `127.0.0.1:<port>`. `--bind 0.0.0.0` prints an explicit warning and requires `--insecure-public-bind` ack. |
+| Authentication | None in v1. If `--bind` is non-localhost, require `--basic-auth USER:PASS` (HTTP basic over HTTPS, not a full user system). |
+| Data source | Single `argus-results.json` (or directory containing it). No cross-run aggregation, no history. |
+
+### Implementation — v1 plan
+
+**Shared loader + renderer extraction:**
+- [ ] Move `argus/browse/loader.py` logic to `argus/core/findings_view.py` (or similar shared package) so both `browse` and `serve` import from one place.
+- [ ] Factor the finding-detail rendering (currently inside `FindingDetail.update_finding`) into a shape that can produce both Textual markup and HTML/markdown — probably a structured dict that each front-end templates itself.
+
+**Web server module:**
+- [ ] `argus/serve/__init__.py` — import guard + `launch(results_dir, port, bind)`.
+- [ ] `argus/serve/app.py` — FastAPI app, three routes: `/` (executive summary), `/findings` (filterable table), `/scan` (metadata + SBOM-quality flags).
+- [ ] `argus/serve/templates/` — Jinja2 templates, HTMX-driven fragments for filter/sort updates.
+- [ ] `argus/serve/static/` — minimal CSS (pico.css or Tailwind CDN), no JS bundler.
+
+**CLI subcommand:**
+- [ ] `argus serve [RESULTS_DIR] [--port 8080] [--bind 127.0.0.1] [--open]` — `--open` auto-opens the browser.
+- [ ] Friendly `ServeUnavailable` error when `[serve]` extra isn't installed.
+
+**Executive summary view (`/`):**
+- [ ] Top N criticals per product (grouped by `metadata.sbom_source`)
+- [ ] Scan quality flags (SPDX-2.1 warnings, low-purl-coverage warnings, "couldn't identify scan subject" — surfaced as a yellow banner rather than buried in details)
+- [ ] Scan age (`mtime` of `argus-results.json`)
+- [ ] Per-scanner contribution counts
+- [ ] "What changed" placeholder (future scan-over-scan diff)
+
+**Security:**
+- [ ] Sanitize all finding text / location / scanner output before rendering (defensive against scanner-emitted XSS payloads in vulnerability descriptions).
+- [ ] Secret-redaction pass on finding `description` / `title` before display — same pattern library as other argus redactors (mask API-key-shaped strings).
+- [ ] CSP header: `default-src 'self'; style-src 'self' 'unsafe-inline'`.
+- [ ] No cookies, no session state in v1 — every request is stateless.
+
+**Packaging:**
+- [ ] `pyproject.toml`: new `[serve]` optional extra (`fastapi`, `uvicorn[standard]`, `jinja2`). Kept separate from `[browse]` so users can pick either or both.
+- [ ] `all = [...browse, serve]` updated.
+
+**Tests:**
+- [ ] Route tests via `httpx.AsyncClient` (no live server needed)
+- [ ] Shared-loader tests cover both paths
+- [ ] Explicit test that `--bind 0.0.0.0` without `--insecure-public-bind` exits with an error
+
+**Docs:**
+- [ ] `docs/serve.md` with screenshot, quickstart, security note (localhost-only)
+- [ ] Architecture decision record in `.ai/decisions.yaml` documenting the choice vs. maturing `argus-portal`
+
+### Relationship to `argus-portal`
+
+The two are complementary, not competing:
+
+| Aspect | `argus serve` (this track) | `argus-portal` (separate track) |
+|---|---|---|
+| Audience | Single team / single product owner | Enterprise / multi-team compliance org |
+| Deploy | `argus serve` on a laptop or jumpbox | Kubernetes + Postgres + Traefik ingress |
+| Auth | None or basic auth | GitHub OAuth + RBAC + FedRAMP MFA |
+| State | Single file, ephemeral | Multi-scan history, CRUD (POAM, changes) |
+| Goal | Answer "is product X shipping log4shell?" | FedRAMP continuous-authorization dashboard |
+| Maintenance burden | ~2k LOC, no infra | Full Next.js app + Postgres + Kubernetes |
+
+If `argus-portal` matures, it can consume the same `findings_view` shared module we extract for `argus serve`, keeping the per-finding display consistent across CLI, local web, and enterprise web.
+
+---
+
 ## Remaining: Phase 5 — Agentic Substrate (CLI + MCP + Skill)
 
 Products that serve developer workflows increasingly need three layers for AI assistant integration. Argus already ships a CLI. Phase 5 adds the MCP server and refines the skill to complete the stack.
