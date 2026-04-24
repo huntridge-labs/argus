@@ -72,6 +72,88 @@
     </div>
   {% endif %}
 
+  {#- Scan metadata panel — when this scan ran, how long it took, and
+      which scanner versions contributed. Collapsed by default so it
+      doesn't crowd the executive summary above but available one
+      click away for "what commit was this against / how long did it
+      take?" questions that come up in audit reviews. -#}
+  {% if metadata %}
+    <details class="scan-metadata">
+      <summary>
+        <span class="scan-metadata-title">Scan metadata</span>
+        <span class="scan-metadata-summary-chips">
+          {%- if metadata.scanner_count %}
+            <span>{{ metadata.scanner_count }} scanner{{ metadata.scanner_count != 1 and 's' or '' }}</span>
+          {%- endif %}
+          {%- if metadata.total_duration_ms is not none %}
+            · <span>{{ (metadata.total_duration_ms / 1000) | round(1) }}s total</span>
+          {%- endif %}
+        </span>
+      </summary>
+      <div class="scan-metadata-body">
+        <dl class="scan-metadata-file">
+          {%- if metadata.scan_file %}
+            <dt>File</dt><dd><code>{{ metadata.scan_file }}</code></dd>
+          {%- endif %}
+          {%- if metadata.scan_mtime %}
+            <dt>Modified</dt>
+            <dd><time datetime="{{ metadata.scan_mtime }}" class="scan-mtime"
+                      data-epoch="{{ metadata.scan_mtime }}">{{ metadata.scan_mtime | int }}</time></dd>
+          {%- endif %}
+          {%- if metadata.total_duration_ms is not none %}
+            <dt>Duration</dt><dd>{{ metadata.total_duration_ms }} ms total</dd>
+          {%- endif %}
+        </dl>
+        {% if metadata.scanners %}
+          <table class="scan-metadata-scanners">
+            <caption class="sr-only">Per-scanner execution details.</caption>
+            <thead>
+              <tr>
+                <th>Scanner</th>
+                <th>Version</th>
+                <th>Execution</th>
+                <th>Duration</th>
+                <th>Findings</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for s in metadata.scanners %}
+                <tr>
+                  <td><strong>{{ s.scanner }}</strong></td>
+                  <td>{{ s.tool_version or '—' }}</td>
+                  <td>
+                    {%- if s.execution == "container" %}
+                      container
+                      {%- if s.digest %}
+                        <br><code class="scan-metadata-digest">{{ s.digest }}</code>
+                      {%- endif %}
+                    {%- elif s.execution %}
+                      {{ s.execution }}
+                    {%- else %}
+                      —
+                    {%- endif %}
+                  </td>
+                  <td>
+                    {%- if s.duration_ms is not none %}
+                      {{ s.duration_ms }} ms
+                    {%- else %}
+                      —
+                    {%- endif %}
+                  </td>
+                  <td>{{ s.total_count }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% endif %}
+      </div>
+    </details>
+    {#- Tiny script to turn the epoch mtime into a human-readable
+        local time. Doesn't run on SSR (mtime renders as a raw int
+        first) so pages stay readable under strict CSP / no-JS. -#}
+    <script src="/static/scan-mtime.js" defer></script>
+  {% endif %}
+
   {#- Per-product: total + crit + high counts + top-3 findings. Each
       row anchors to /findings pre-filtered to the product so users
       drill straight into the backlog for that product. When there

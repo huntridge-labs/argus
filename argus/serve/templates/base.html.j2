@@ -32,8 +32,42 @@
          {% if _active_nav == "/" %}aria-current="page"{% endif %}>Dashboard</a>
       <a href="/findings{% if scan_param %}?scan={{ scan_param | urlencode }}{% endif %}"
          {% if _active_nav == "/findings" %}aria-current="page"{% endif %}>Findings</a>
+
+      {#- Recent runs dropdown — only rendered when there are at
+          least two scan-ready dirs under the launch root. Single-scan
+          deployments (the common case for a one-off argus scan) get
+          the plain nav without an empty dropdown. -#}
+      {% if recent_scans and recent_scans | length > 1 %}
+        <details class="recent-scans-menu">
+          <summary>Recent runs <span class="recent-scans-count">{{ recent_scans | length }}</span></summary>
+          <ul class="recent-scans-list">
+            {% for s in recent_scans %}
+              <li>
+                <a href="/?scan={{ s.path | urlencode }}"
+                   {% if s.is_current %}aria-current="true" class="recent-scans-current"{% endif %}>
+                  <span class="recent-scans-label">{{ s.label }}</span>
+                  <span class="recent-scans-count-badge">{{ s.count }}</span>
+                </a>
+              </li>
+            {% endfor %}
+          </ul>
+        </details>
+      {% endif %}
+
       <a href="/picker"
          {% if _active_nav == "/picker" %}aria-current="page"{% endif %}>Switch scan</a>
+
+      {#- Theme toggle — flips between dark and light via a
+          data-theme attribute on <html>. Defaults to the user's
+          prefers-color-scheme until they click it, after which the
+          choice persists in localStorage. Button label updates in
+          JS; the SSR fallback reads "Theme" with no icon so users
+          without JS see a clean no-op label rather than a broken one. -#}
+      <button type="button" class="theme-toggle" id="theme-toggle"
+              aria-label="Toggle color theme">
+        <span class="theme-toggle-icon" aria-hidden="true">◐</span>
+        <span class="theme-toggle-label sr-only">Theme</span>
+      </button>
     </nav>
   </header>
 
@@ -51,5 +85,12 @@
     · localhost-only ·
     <a href="/healthz">healthz</a>
   </footer>
+
+  {#- Theme-toggle JS loaded at end-of-body with defer so the header
+      renders without a flash. When localStorage already has a saved
+      preference the script applies it here; otherwise the @media
+      prefers-color-scheme rule in argus.css has already done the
+      right thing. -#}
+  <script src="/static/theme-toggle.js" defer></script>
 </body>
 </html>

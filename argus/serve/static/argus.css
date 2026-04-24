@@ -11,8 +11,11 @@
  */
 
 :root {
-  /* Brand palette — in lockstep with argus.huntridgelabs.com.
-   * Deep dark-green background, lime accent, muted primary green. */
+  /* Brand palette — dark theme, in lockstep with argus.huntridgelabs.com.
+   * Deep dark-green background, lime accent, muted primary green.
+   * Light-theme overrides live in the [data-theme="light"] block
+   * further down, and prefers-color-scheme flips the same tokens
+   * automatically for users who haven't picked a theme explicitly. */
   --argus-deep-bg:       #0b0f0d;
   --argus-dark-surface:  #111916;
   --argus-subtle-panel:  #16211c;
@@ -21,6 +24,10 @@
   --argus-light-text:    #eaf2ea;
   --argus-muted-text:    #9fb09f;
   --argus-border:        #1f2a22;
+  /* On-lime text color — deep-bg in both themes for max contrast
+   * against the lime CTA. A separate token so light theme doesn't
+   * accidentally flip it to off-white (invisible on lime). */
+  --argus-on-accent:     #0b0f0d;
 
   /* Legacy shortcuts — kept so existing rules don't need refactoring.
    * Point each at the brand tokens above. */
@@ -54,6 +61,74 @@
                "Segoe UI", "SF Pro Text", sans-serif;
   --font-heading: "SF Pro Display", -apple-system, BlinkMacSystemFont,
                   "Segoe UI", "Inter", sans-serif;
+}
+
+/* Light-theme overrides. Two activation paths:
+ *   1. User explicitly picks it via the theme toggle — sets
+ *      [data-theme="light"] on the <html> element.
+ *   2. User hasn't picked a theme and their OS prefers light — the
+ *      @media block below kicks in. The explicit data-theme selectors
+ *      further down override the @media so user choice always wins.
+ *
+ * The severity hues get slightly deeper variants so the badges stay
+ * readable against a bright background; the accent lime and primary
+ * green stay anchored to the brand tokens so CTAs look "on brand"
+ * regardless of theme. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --argus-deep-bg:       #f5f7f0;
+    --argus-dark-surface:  #ffffff;
+    --argus-subtle-panel:  #eef1e8;
+    --argus-primary-green: #4a7a2e;
+    --argus-accent-lime:   #c4d421;
+    --argus-light-text:    #1a2118;
+    --argus-muted-text:    #5d6b58;
+    --argus-border:        #c8d1ba;
+    --argus-on-accent:     #0b0f0d;
+    --crit:          #c0392b;
+    --high:          #d76b2a;
+    --med:           #b89200;
+    --low:           #2d7bbf;
+    --info:          #6b7370;
+  }
+}
+
+[data-theme="light"] {
+  --argus-deep-bg:       #f5f7f0;
+  --argus-dark-surface:  #ffffff;
+  --argus-subtle-panel:  #eef1e8;
+  --argus-primary-green: #4a7a2e;
+  --argus-accent-lime:   #c4d421;
+  --argus-light-text:    #1a2118;
+  --argus-muted-text:    #5d6b58;
+  --argus-border:        #c8d1ba;
+  --argus-on-accent:     #0b0f0d;
+  --crit:          #c0392b;
+  --high:          #d76b2a;
+  --med:           #b89200;
+  --low:           #2d7bbf;
+  --info:          #6b7370;
+}
+
+/* Explicit dark override — only matters when the OS prefers light
+ * but the user picked dark via the toggle. The tokens match the
+ * dark :root block above; CSS custom properties can't be extended
+ * in place so we repeat them. */
+[data-theme="dark"] {
+  --argus-deep-bg:       #0b0f0d;
+  --argus-dark-surface:  #111916;
+  --argus-subtle-panel:  #16211c;
+  --argus-primary-green: #84b852;
+  --argus-accent-lime:   #dbe64c;
+  --argus-light-text:    #eaf2ea;
+  --argus-muted-text:    #9fb09f;
+  --argus-border:        #1f2a22;
+  --argus-on-accent:     #0b0f0d;
+  --crit:          #e74c3c;
+  --high:          #ff8c42;
+  --med:           #f1c40f;
+  --low:           #3498db;
+  --info:          #95a5a6;
 }
 
 * { box-sizing: border-box; }
@@ -123,9 +198,177 @@ header nav a {
 }
 header nav a:hover { background: var(--surface); color: var(--fg); }
 header nav a[aria-current="page"] {
-  color: var(--argus-deep-bg);
+  color: var(--argus-on-accent);
   background: var(--accent);
   font-weight: 600;
+}
+
+/* Theme toggle — tiny circular button next to the nav. Icon flips
+ * between sun and moon depending on the current theme. Button
+ * itself has no background so it reads as "utility" rather than a
+ * primary action. */
+.theme-toggle {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  width: 2rem; height: 2rem;
+  padding: 0; margin-left: 0.25rem;
+  border-radius: 999px;
+  font-size: 0.95rem; line-height: 1;
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.theme-toggle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.theme-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Recent-runs dropdown in the header. Native <details> so keyboard
+ * and screen readers work without any JS. Open menu anchors to the
+ * right side to avoid extending past the viewport on narrow layouts. */
+.recent-scans-menu {
+  position: relative;
+}
+.recent-scans-menu summary {
+  cursor: pointer; list-style: none;
+  color: var(--fg-muted); text-decoration: none;
+  padding: 0.4rem 0.8rem; border-radius: var(--radius);
+  white-space: nowrap;
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.recent-scans-menu summary:hover { background: var(--surface); color: var(--fg); }
+.recent-scans-menu summary::-webkit-details-marker { display: none; }
+.recent-scans-menu summary::after {
+  content: " ▾"; font-size: 0.7em;
+  margin-left: 0.2em; color: var(--accent);
+}
+.recent-scans-menu[open] summary { color: var(--fg); background: var(--surface); }
+.recent-scans-count {
+  display: inline-block;
+  background: var(--surface-alt); color: var(--accent-dim);
+  padding: 0 0.4em; border-radius: 999px;
+  font-size: 0.75em; margin-left: 0.3em;
+}
+.recent-scans-list {
+  position: absolute; right: 0; top: calc(100% + 0.25rem);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.35rem;
+  margin: 0; list-style: none;
+  min-width: 20rem;
+  max-height: 24rem; overflow-y: auto;
+  z-index: 10;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+}
+.recent-scans-list li { margin: 0; }
+.recent-scans-list a {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: var(--radius-sm);
+  color: var(--fg); text-decoration: none;
+  font-size: 0.9rem;
+}
+.recent-scans-list a:hover { background: var(--surface-alt); }
+.recent-scans-list a.recent-scans-current {
+  color: var(--accent);
+  background: var(--surface-alt);
+  font-weight: 600;
+}
+.recent-scans-label {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.85rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.recent-scans-count-badge {
+  font-size: 0.75rem; color: var(--fg-muted);
+  background: var(--surface); padding: 0.05em 0.5em;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.recent-scans-list a.recent-scans-current .recent-scans-count-badge {
+  color: var(--accent-dim);
+  background: var(--argus-deep-bg);
+}
+
+/* ── Scan metadata panel ─────────────────────────────────────────
+ * Collapsed <details> on the dashboard showing per-scanner info
+ * the user might need for audit questions: tool versions,
+ * execution mode, image digests (SHA-pinned scanners), durations.
+ * Kept out of the at-a-glance summary so it doesn't compete for
+ * attention but one click away when needed. */
+.scan-metadata {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 1rem 0 1.5rem;
+}
+.scan-metadata summary {
+  cursor: pointer; list-style: none;
+  padding: 0.65rem 1rem;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem;
+}
+.scan-metadata summary::-webkit-details-marker { display: none; }
+.scan-metadata summary::before {
+  content: "▸"; display: inline-block;
+  color: var(--fg-muted);
+  transition: transform 0.1s ease;
+}
+.scan-metadata[open] summary::before { transform: rotate(90deg); color: var(--accent); }
+.scan-metadata-title {
+  font-family: var(--font-heading);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+  color: var(--accent-dim);
+  flex: 1;
+  margin-left: 0.4rem;
+}
+.scan-metadata-summary-chips {
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+}
+.scan-metadata-body {
+  padding: 0 1rem 1rem;
+  border-top: 1px solid var(--border);
+}
+.scan-metadata-file {
+  display: grid; grid-template-columns: max-content 1fr;
+  gap: 0.3rem 1rem;
+  margin: 0.9rem 0;
+  font-size: 0.9rem;
+}
+.scan-metadata-file dt {
+  color: var(--fg-muted);
+  font-weight: 500;
+}
+.scan-metadata-file dd { margin: 0; overflow-wrap: anywhere; }
+.scan-metadata-file code { background: transparent; padding: 0; color: var(--fg); }
+.scan-metadata-scanners {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}
+.scan-metadata-scanners th, .scan-metadata-scanners td {
+  padding: 0.45rem 0.7rem;
+}
+.scan-metadata-digest {
+  display: inline-block;
+  max-width: 22rem;
+  overflow: hidden; text-overflow: ellipsis;
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+  background: transparent;
+  padding: 0;
 }
 
 /* Long scan paths (timestamped run dirs, etc.) shouldn't overflow the
@@ -241,7 +484,7 @@ tr:hover td { background: var(--surface-alt); }
  * argus.huntridgelabs.com — lime fill, deep-bg text, soft glow. */
 .btn-primary {
   background: var(--accent);
-  color: var(--argus-deep-bg);
+  color: var(--argus-on-accent);
   padding: 0.55rem 1.1rem;
   border-radius: var(--radius);
   text-decoration: none;

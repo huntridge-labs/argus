@@ -152,6 +152,166 @@ def _resolve_scan(
     return None, f"Unsupported path kind: {target}"
 
 
+def _scan_metadata(scan_summary, resolved: Path | None) -> dict | None:
+    """Extract the meta-panel shape from a loaded ScanSummary.
+
+    Surfaces the pieces that are actually present in argus-results.json
+    today (per-scanner tool version / duration / container image /
+    digest + file mtime) plus optional fields like ``commit_sha`` that
+    future scans may start emitting. Missing keys render as em-dashes
+    in the template rather than failing the page.
+
+    Returns None when no scan is loaded so the template can skip the
+    panel entirely instead of showing an empty shell.
+    """
+    if scan_summary is None:
+        return None
+
+    scanners: list[dict] = []
+    total_duration_ms = 0
+    has_any_duration = False
+    for r in scan_summary.results:
+        md = getattr(r, "metadata", {}) or {}
+        duration = md.get("duration_ms")
+        if isinstance(duration, (int, float)):
+            total_duration_ms += int(duration)
+            has_any_duration = True
+        scanners.append({
+            "scanner": getattr(r, "scanner", None) or "unknown",
+            "tool_version": md.get("tool_version"),
+            "duration_ms": duration,
+            "execution": md.get("execution"),   # "container" | "local" | None
+            "image": md.get("image"),
+            "digest": md.get("digest"),
+            "total_count": getattr(r, "total_count", 0),
+        })
+
+    # File metadata — resolved is the actual argus-results.json path;
+    # mtime is the closest approximation of "when was this scan run"
+    # without relying on a top-level timestamp field we don't yet emit.
+    scan_file = None
+    scan_mtime = None
+    if resolved is not None:
+        scan_file = str(resolved)
+        try:
+            scan_mtime = resolved.stat().st_mtime
+        except OSError:
+            scan_mtime = None
+
+    return {
+        "scan_file": scan_file,
+        "scan_mtime": scan_mtime,
+        "scanner_count": len(scanners),
+        "scanners": scanners,
+        "total_duration_ms": total_duration_ms if has_any_duration else None,
+    }
+
+
+def _collect_recent_scans(
+    launch_root: Path, current: Path | None = None, *, limit: int = 12,
+) -> list[dict]:
+    """Return scan-ready directories under ``launch_root``, newest first.
+
+    Used to populate the header's "Recent runs" dropdown so a user can
+    switch between runs without visiting the picker. Each dict carries::
+
+        {
+            "path":       absolute path to the scan dir (or .json),
+            "label":      short display name (dir basename),
+            "is_current": True if path matches ``current`` (resolved),
+            "count":      finding count peeked from the JSON,
+            "mtime":      file mtime as epoch seconds (sort key),
+        }
+
+    Scope rules:
+    - If ``launch_root`` itself contains ``argus-results.json``, we
+      treat it as a single scan and look at its parent for siblings.
+      This is the common "argus serve <one-run-dir>" case.
+    - Otherwise we iterate ``launch_root``'s immediate subdirs and
+      keep those that are scan-ready. This is the "argus serve <runs
+      parent>" case.
+
+    Both cases apply a symlink de-dup: ``latest/`` resolves to a
+    timestamped sibling, so we won't render both rows for what is
+    effectively the same run.
+
+    ``limit`` caps the list length. 12 is a soft cap that covers
+    ~a fortnight of daily runs without drowning the nav.
+    """
+    launch_root = launch_root.resolve()
+
+    # Where do we look for scan-ready dirs?
+    if (launch_root / RESULTS_FILENAME).is_file():
+        parent = launch_root.parent
+    else:
+        parent = launch_root
+
+    try:
+        candidates = list(parent.iterdir())
+    except (PermissionError, FileNotFoundError):
+        return []
+
+    # Include the parent itself if it's scan-ready (direct drop case).
+    if (parent / RESULTS_FILENAME).is_file():
+        candidates.insert(0, parent)
+
+    seen_resolved: set[Path] = set()
+    scans: list[dict] = []
+    # Normalize ``current`` to the directory. Callers pass either the
+    # scan directory or the ``argus-results.json`` inside it (that's
+    # what _load_scan returns); collapse to the dir so comparisons
+    # match resolved candidate dirs below.
+    current_resolved: Path | None = None
+    if current is not None:
+        resolved_current = current.resolve()
+        current_resolved = (
+            resolved_current.parent if resolved_current.is_file()
+            else resolved_current
+        )
+
+    for c in candidates:
+        try:
+            if not c.is_dir():
+                continue
+            results_file = c / RESULTS_FILENAME
+            if not results_file.is_file():
+                continue
+            # Dedup via the symlink-resolved directory so ``latest/``
+            # collapses into the timestamped dir it points at.
+            resolved = c.resolve()
+            if resolved in seen_resolved:
+                continue
+            seen_resolved.add(resolved)
+
+            # Cheap finding-count peek — the same pattern ``_list_directory``
+            # uses when flagging scan-ready picker rows. Doesn't load the
+            # whole scan; just counts the "findings" arrays.
+            count = 0
+            try:
+                with results_file.open() as fh:
+                    data = json.load(fh)
+                for r in data.get("results", []):
+                    count += len(r.get("findings", []))
+            except (OSError, json.JSONDecodeError):
+                count = 0
+
+            is_current = current_resolved is not None and resolved == current_resolved
+            scans.append({
+                "path": str(c),
+                "label": c.name,
+                "is_current": is_current,
+                "count": count,
+                "mtime": results_file.stat().st_mtime,
+            })
+        except (PermissionError, OSError):
+            # Unreadable scan dir — skip without failing the whole
+            # dropdown. Better a short list than no dropdown at all.
+            continue
+
+    scans.sort(key=lambda s: s["mtime"], reverse=True)
+    return scans[:limit]
+
+
 def create_app(root: str | None = None) -> FastAPI:
     """Build the FastAPI app, wire templates / static, register routes."""
     app = FastAPI(
@@ -204,6 +364,20 @@ def create_app(root: str | None = None) -> FastAPI:
         # even though the path ends in .ico.
         return FileResponse(_STATIC_DIR / "favicon.png", media_type="image/png")
 
+    def _base_context(resolved: Path | None = None) -> dict:
+        """Shared context keys threaded into every HTML render.
+
+        Recent scans power the header dropdown — always visible so
+        switching runs is one click. ``resolved`` is the currently
+        loaded scan (if any) so the dropdown can highlight it. Routes
+        that don't have a single "current" scan (the picker, the diff
+        view) pass ``None``; nothing is highlighted but the list still
+        renders.
+        """
+        return {
+            "recent_scans": _collect_recent_scans(app.state.root, resolved),
+        }
+
     def _load_scan(scan: str | None) -> tuple[object, Path | None, str | None]:
         """Shared scan-loading helper used by every view route.
 
@@ -236,9 +410,11 @@ def create_app(root: str | None = None) -> FastAPI:
             request=request,
             name="summary.html.j2",
             context={
+                **_base_context(resolved),
                 "scan_param": scan,
                 "scan_label": str(resolved) if resolved else None,
                 "summary": summary,
+                "metadata": _scan_metadata(scan_summary, resolved),
                 "error": error,
             },
         )
@@ -329,6 +505,7 @@ def create_app(root: str | None = None) -> FastAPI:
         # typo in the URL doesn't bubble into KeyError territory.
         active_sort = sort if sort in _ALLOWED_SORTS else "severity_desc"
         context = {
+            **_base_context(resolved),
             "scan_param": scan,
             "scan_label": str(resolved) if resolved else None,
             "summary": scan_summary,
@@ -498,6 +675,7 @@ def create_app(root: str | None = None) -> FastAPI:
         argus.core.findings_view.diff_scans for the bucketing rules.
         """
         context = {
+            **_base_context(None),
             "a_label": None,
             "b_label": None,
             "a_param": a,
@@ -571,6 +749,7 @@ def create_app(root: str | None = None) -> FastAPI:
                 request=request,
                 name="picker.html.j2",
                 context={
+                    **_base_context(None),
                     "current": str(base),
                     "parent": None,
                     "entries": [],
@@ -593,6 +772,7 @@ def create_app(root: str | None = None) -> FastAPI:
                 request=request,
                 name="picker.html.j2",
                 context={
+                    **_base_context(None),
                     "current": str(app.state.root),
                     "parent": None,
                     "entries": [],
@@ -613,6 +793,7 @@ def create_app(root: str | None = None) -> FastAPI:
                 request=request,
                 name="picker.html.j2",
                 context={
+                    **_base_context(None),
                     "current": str(base),
                     "parent": None,
                     "entries": [],
@@ -643,6 +824,7 @@ def create_app(root: str | None = None) -> FastAPI:
             request=request,
             name="picker.html.j2",
             context={
+                **_base_context(None),
                 "current": str(base),
                 "parent": str(parent) if parent is not None else None,
                 "entries": entries,
