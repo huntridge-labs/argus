@@ -1,0 +1,118 @@
+{% extends "base.html.j2" %}
+{% block title %}Argus — Findings{% endblock %}
+{% block content %}
+
+{% if summary is none %}
+  <section class="placeholder">
+    <h2>No scan loaded</h2>
+    {% if error %}<p><strong>Error:</strong> {{ error }}</p>{% endif %}
+  </section>
+
+{% else %}
+
+  <h2>Findings</h2>
+
+  {#- Filter bar. Every control is a plain GET form so the page stays
+      bookmarkable and search-engine friendly (and so SE can swap in
+      HTMX without rewriting the markup — same URL shape). -#}
+  <form method="get" action="/findings" style="margin: 1rem 0; display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
+    {%- if scan_param -%}
+      <input type="hidden" name="scan" value="{{ scan_param }}" />
+    {%- endif -%}
+
+    <label>
+      Min severity:
+      <select name="min_severity">
+        <option value=""          {% if not view.min_severity %}selected{% endif %}>(all)</option>
+        <option value="critical"  {% if view.min_severity == "critical" %}selected{% endif %}>Critical only</option>
+        <option value="high"      {% if view.min_severity == "high"     %}selected{% endif %}>High and above</option>
+        <option value="medium"    {% if view.min_severity == "medium"   %}selected{% endif %}>Medium and above</option>
+        <option value="low"       {% if view.min_severity == "low"      %}selected{% endif %}>Low and above</option>
+      </select>
+    </label>
+
+    {% if products %}
+      <label>
+        Product:
+        <select name="product">
+          <option value="" {% if not view.product %}selected{% endif %}>(all)</option>
+          {% for p in products %}
+            <option value="{{ p }}" {% if view.product == p %}selected{% endif %}>{{ p }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    {% endif %}
+
+    {% if scanners %}
+      <label>
+        Scanner:
+        <select name="scanner">
+          <option value="" {% if not view.scanner %}selected{% endif %}>(all)</option>
+          {% for s in scanners %}
+            <option value="{{ s }}" {% if view.scanner == s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    {% endif %}
+
+    <label>
+      Search:
+      <input type="search" name="q" value="{{ view.query or '' }}"
+             placeholder="id, title, CVE, scanner…" />
+    </label>
+
+    <button type="submit">Apply</button>
+    <a href="/findings{% if scan_param %}?scan={{ scan_param | urlencode }}{% endif %}">Reset</a>
+  </form>
+
+  <p style="color: var(--fg-muted); font-size: 0.9rem;">
+    Showing <strong>{{ visible|length }}</strong> of {{ total }} findings.
+  </p>
+
+  {% if visible %}
+    <table>
+      <thead>
+        <tr>
+          <th>Severity</th>
+          <th>ID</th>
+          <th>Package</th>
+          <th>Fix</th>
+          <th>Location</th>
+          <th>Scanner</th>
+          <th>Source SBOM</th>
+          <th>Title</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in visible %}
+          <tr>
+            <td><span class="sev sev-{{ f.severity.value }}">{{ f.severity.value }}</span></td>
+            <td>
+              {% if f.cve %}<strong>{{ f.cve }}</strong>{% else %}{{ f.id }}{% endif %}
+            </td>
+            <td>
+              {% if f.metadata.package %}
+                <code>{{ f.metadata.package }}@{{ f.metadata.installed_version or '?' }}</code>
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>{{ f.metadata.fixed_version or '—' }}</td>
+            <td><code>{{ f.location or '—' }}</code></td>
+            <td>{{ f.scanner or '—' }}</td>
+            <td>{{ f.metadata.sbom_source or '—' }}</td>
+            <td>{{ f.title }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="placeholder">
+      <p>No findings match the current filter. Try widening the severity
+         threshold or clearing the product / scanner selection.</p>
+    </div>
+  {% endif %}
+
+{% endif %}
+
+{% endblock %}

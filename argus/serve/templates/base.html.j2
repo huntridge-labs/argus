@@ -24,9 +24,9 @@
       {%- set current = request.url.path -%}
       <a href="/?{% if scan_param %}scan={{ scan_param | urlencode }}{% endif %}"
          {% if current == "/" %}aria-current="page"{% endif %}>Dashboard</a>
-      {#- Findings + picker links land in SC/SD. Stubs here so the
-          nav doesn't rewrite itself across phases. -#}
-      <a href="#" aria-disabled="true" title="Coming in SC">Findings</a>
+      <a href="/findings{% if scan_param %}?scan={{ scan_param | urlencode }}{% endif %}"
+         {% if current == "/findings" %}aria-current="page"{% endif %}>Findings</a>
+      {#- Picker link lands in SD. -#}
       <a href="#" aria-disabled="true" title="Coming in SD">Switch scan</a>
     </nav>
   </header>

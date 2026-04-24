@@ -22,8 +22,14 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from argus.browse.loader import RESULTS_FILENAME, load_summary
-from argus.core.findings_view import compute_summary
+from argus.browse.loader import RESULTS_FILENAME, flatten_findings, load_summary
+from argus.core.findings_view import (
+    ViewState,
+    compute_summary,
+    unique_products,
+    unique_scanners,
+)
+from argus.core.models import Severity
 
 
 logger = logging.getLogger("argus.serve")
@@ -116,6 +122,22 @@ def create_app(root: str | None = None) -> FastAPI:
             "root": str(app.state.root),
         })
 
+    def _load_scan(scan: str | None) -> tuple[object, Path | None, str | None]:
+        """Shared scan-loading helper used by every view route.
+
+        Returns ``(scan_summary, resolved_path, error_message)``. Exactly
+        one of summary and error_message is populated — callers use that
+        to decide between rendering data and the empty-state placeholder.
+        """
+        results_path, error = _resolve_scan(scan, launch_root=app.state.root)
+        if error is not None:
+            return None, None, error
+        try:
+            scan_summary, resolved = load_summary(results_path)
+            return scan_summary, resolved, None
+        except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
+            return None, None, str(exc)
+
     @app.get("/", response_class=HTMLResponse)
     async def dashboard(request: Request, scan: str | None = None) -> Response:
         """Executive-summary dashboard for the active scan context.
@@ -124,30 +146,86 @@ def create_app(root: str | None = None) -> FastAPI:
         bookmarkable and lets the future picker hand off a chosen
         scan by pointing back at ``/?scan=...``.
         """
-        results_path, error = _resolve_scan(scan, launch_root=app.state.root)
-        context = {
-            "scan_param": scan,
-            "scan_label": None,
-            "summary": None,
-            "error": error,
-        }
-        if results_path is not None:
-            try:
-                scan_summary, resolved = load_summary(results_path)
-                context["scan_label"] = str(resolved)
-                context["summary"] = compute_summary(
-                    [f for r in scan_summary.results for f in r.findings],
-                    top_n=3,
-                )
-            except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
-                context["error"] = str(exc)
-        # Starlette ≥0.32 uses the ``(request, name, context)`` signature;
-        # keyword form is the forward-compatible style that works across
-        # versions and catches regressions at import time rather than at
-        # template-render time.
+        scan_summary, resolved, error = _load_scan(scan)
+        summary = None
+        if scan_summary is not None:
+            summary = compute_summary(flatten_findings(scan_summary), top_n=3)
         return templates.TemplateResponse(
             request=request,
             name="summary.html.j2",
+            context={
+                "scan_param": scan,
+                "scan_label": str(resolved) if resolved else None,
+                "summary": summary,
+                "error": error,
+            },
+        )
+
+    @app.get("/findings", response_class=HTMLResponse)
+    async def findings(
+        request: Request,
+        scan: str | None = None,
+        min_severity: str | None = None,
+        product: str | None = None,
+        scanner: str | None = None,
+        q: str | None = None,
+    ) -> Response:
+        """Filterable findings table.
+
+        Every filter is a query param so the URL is bookmarkable and
+        the page stays refresh-safe. Filtering happens through the
+        shared ``ViewState`` so the server's idea of "match" and the
+        TUI's are identical — one source of truth for severity / query
+        / product / scanner semantics.
+        """
+        scan_summary, resolved, error = _load_scan(scan)
+        context = {
+            "scan_param": scan,
+            "scan_label": str(resolved) if resolved else None,
+            "summary": scan_summary,
+            "error": error,
+            "view": {
+                "min_severity": min_severity,
+                "product": product,
+                "scanner": scanner,
+                "query": q,
+            },
+            "products": [],
+            "scanners": [],
+            "visible": [],
+            "total": 0,
+        }
+        if scan_summary is not None:
+            all_findings = flatten_findings(scan_summary)
+            context["total"] = len(all_findings)
+            context["products"] = unique_products(all_findings)
+            context["scanners"] = unique_scanners(all_findings)
+
+            # Translate the ``min_severity`` string to the enum used by
+            # ViewState. An unknown value falls back to None (no filter)
+            # rather than 500-ing — user-supplied URLs are untrusted.
+            min_sev_enum = None
+            if min_severity:
+                try:
+                    min_sev_enum = Severity.from_string(min_severity)
+                    if min_sev_enum == Severity.UNKNOWN and min_severity.lower() != "unknown":
+                        min_sev_enum = None
+                except (KeyError, ValueError):
+                    min_sev_enum = None
+
+            view_state = ViewState(
+                min_severity=min_sev_enum,
+                query=q or "",
+                product=product or None,
+                scanner=scanner or None,
+            )
+            context["visible"] = [
+                f for f in all_findings if view_state.matches(f)
+            ]
+
+        return templates.TemplateResponse(
+            request=request,
+            name="findings.html.j2",
             context=context,
         )
 
