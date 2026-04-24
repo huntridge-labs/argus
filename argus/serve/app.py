@@ -229,7 +229,165 @@ def create_app(root: str | None = None) -> FastAPI:
             context=context,
         )
 
+    @app.get("/picker", response_class=HTMLResponse)
+    async def picker(
+        request: Request,
+        path: str | None = None,
+        show_hidden: int = 0,
+    ) -> Response:
+        """Lightweight file-browser picker.
+
+        One directory level at a time — explicitly not recursive, per
+        the SD scoping decision. Users navigate by clicking into
+        subdirs; each listed entry is flagged scan-ready when it
+        contains an ``argus-results.json`` directly inside it, so
+        nested results show up as one-click targets without us doing
+        a full filesystem walk.
+        """
+        base = Path(path).expanduser() if path else app.state.root
+        try:
+            base = base.resolve()
+        except OSError as exc:
+            return templates.TemplateResponse(
+                request=request,
+                name="picker.html.j2",
+                context={
+                    "current": str(base),
+                    "parent": None,
+                    "entries": [],
+                    "error": f"Cannot resolve path: {exc}",
+                    "has_results": False,
+                    "show_hidden": bool(show_hidden),
+                    "scan_param": None,
+                    "scan_label": None,
+                },
+            )
+
+        if not base.exists() or not base.is_dir():
+            return templates.TemplateResponse(
+                request=request,
+                name="picker.html.j2",
+                context={
+                    "current": str(base),
+                    "parent": None,
+                    "entries": [],
+                    "error": (
+                        f"{base} is not a directory. "
+                        "Pick a folder; individual JSON files can be loaded "
+                        "via the dashboard URL (?scan=...)."
+                    ),
+                    "has_results": False,
+                    "show_hidden": bool(show_hidden),
+                    "scan_param": None,
+                    "scan_label": None,
+                },
+            )
+
+        entries, error = _list_directory(base, show_hidden=bool(show_hidden))
+        has_results = (base / RESULTS_FILENAME).is_file()
+
+        return templates.TemplateResponse(
+            request=request,
+            name="picker.html.j2",
+            context={
+                "current": str(base),
+                "parent": str(base.parent) if base.parent != base else None,
+                "entries": entries,
+                "error": error,
+                "has_results": has_results,
+                "show_hidden": bool(show_hidden),
+                # Picker isn't scoped to a loaded scan — clear the header
+                # breadcrumb so users don't think they're still in scan
+                # context while they're actively switching away from it.
+                "scan_param": None,
+                "scan_label": None,
+            },
+        )
+
     return app
+
+
+# Common noise in argus workflows; hidden from the default picker listing
+# but surfaced via ``?show_hidden=1`` when the user actually needs to dig.
+_HIDDEN_BY_DEFAULT = {
+    "node_modules", ".git", ".venv", "venv", "__pycache__",
+    ".tox", ".pytest_cache", ".mypy_cache",
+}
+
+
+def _list_directory(
+    base: Path,
+    *,
+    show_hidden: bool,
+) -> tuple[list[dict], str | None]:
+    """Return ``(entries, error)`` for picker consumption.
+
+    Each entry dict carries:
+      - ``name``    : bare filename
+      - ``path``    : absolute path (string, ready for URL encoding)
+      - ``is_dir``  : True if it's a directory
+      - ``is_results_file`` : True if it's named argus-results.json
+      - ``has_results``    : True if it's a directory that contains
+                             argus-results.json directly inside
+      - ``finding_count``  : total findings if has_results (cheap
+                             read — one open+json.load) else None
+
+    Directories first, then files, alphabetical within each group.
+    Readability trumps performance here: picker content is interactive
+    and users wait at the rendering boundary, so we do the small I/O
+    that makes the status column useful.
+    """
+    import json as _json
+    try:
+        raw = sorted(base.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+    except PermissionError as exc:
+        return [], f"Permission denied: {exc}"
+    except OSError as exc:
+        return [], f"Could not list directory: {exc}"
+
+    entries: list[dict] = []
+    for item in raw:
+        name = item.name
+        # Filter rules: hide dotfiles and the well-known build/cache
+        # directories unless the user explicitly opted in.
+        if not show_hidden and (
+            name.startswith(".") or name in _HIDDEN_BY_DEFAULT
+        ):
+            continue
+
+        is_dir = item.is_dir()
+        is_results_file = not is_dir and name == RESULTS_FILENAME
+
+        has_results = False
+        finding_count = None
+        if is_dir:
+            candidate = item / RESULTS_FILENAME
+            if candidate.is_file():
+                has_results = True
+                # Peek at the finding count so the picker row can
+                # advertise scan size — users picking among dated
+                # scan dirs can see which one had activity worth
+                # looking at. Best-effort only; a parse failure
+                # reduces to "no count shown" rather than erroring.
+                try:
+                    data = _json.loads(candidate.read_text(encoding="utf-8"))
+                    finding_count = sum(
+                        len(r.get("findings", []))
+                        for r in data.get("results", [])
+                    )
+                except (OSError, _json.JSONDecodeError, TypeError):
+                    finding_count = None
+
+        entries.append({
+            "name": name,
+            "path": str(item),
+            "is_dir": is_dir,
+            "is_results_file": is_results_file,
+            "has_results": has_results,
+            "finding_count": finding_count,
+        })
+
+    return entries, None
 
 
 def run_app(

@@ -26,8 +26,8 @@
          {% if current == "/" %}aria-current="page"{% endif %}>Dashboard</a>
       <a href="/findings{% if scan_param %}?scan={{ scan_param | urlencode }}{% endif %}"
          {% if current == "/findings" %}aria-current="page"{% endif %}>Findings</a>
-      {#- Picker link lands in SD. -#}
-      <a href="#" aria-disabled="true" title="Coming in SD">Switch scan</a>
+      <a href="/picker"
+         {% if current == "/picker" %}aria-current="page"{% endif %}>Switch scan</a>
     </nav>
   </header>
 
