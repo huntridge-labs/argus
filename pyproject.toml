@@ -35,8 +35,20 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# AI classification for SCN detector (argus classify --enable-ai)
-ai = ["anthropic>=0.39.0", "openai>=1.0.0", "requests>=2.31.0"]
+# AI classification for SCN detector (argus classify --enable-ai).
+# httpx[socks] is pulled in explicitly — anthropic + openai both
+# instantiate an httpx.Client during SDK construction, and httpx
+# only picks up a SOCKS proxy transport when the socksio package
+# is present. Developer environments with an ``ALL_PROXY``/``HTTPS_PROXY``
+# that uses ``socks5://`` would otherwise ImportError every test
+# that builds a provider object, even tests that never make an
+# actual HTTP call.
+ai = [
+    "anthropic>=0.39.0",
+    "openai>=1.0.0",
+    "requests>=2.31.0",
+    "httpx[socks]>=0.24",
+]
 # Shell tab completion
 completion = ["argcomplete>=3.0"]
 # MCP server for AI assistant integration
