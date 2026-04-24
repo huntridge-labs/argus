@@ -185,19 +185,49 @@ class TestDashboardRoute:
         # Scan crumb shows the resolved path
         assert "argus-results.json" in resp.text
 
-    def test_scan_query_param_overrides_launch_root(self, tmp_path):
-        # Launch at an empty dir; point ?scan= at a populated sibling.
+    def test_scan_query_param_overrides_launch_root_within_scope(self, tmp_path):
+        # ``?scan=`` can point at any directory or file *inside* the
+        # launch root. Launch at the parent; load a specific run below.
+        run_a = tmp_path / "run-a"
+        run_a.mkdir()
+        _write_results(run_a, _sample_payload())
+
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get(f"/?scan={run_a}")
+        assert resp.status_code == 200
+        assert "CVE-2021-44228" in resp.text
+
+    def test_scan_query_param_outside_launch_root_rejected(self, tmp_path):
+        # Defense-in-depth: even though the browser SOP blocks cross-site
+        # readback, a path *outside* launch_root should still be refused.
+        # Users who want to load scans elsewhere relaunch with a wider
+        # --root rather than smuggling paths through ``?scan=``.
         empty = tmp_path / "empty"
         empty.mkdir()
-        populated = tmp_path / "run-a"
-        populated.mkdir()
-        _write_results(populated, _sample_payload())
+        outside = tmp_path / "other" / "run-a"
+        outside.mkdir(parents=True)
+        _write_results(outside, _sample_payload())
 
         app = create_app(root=str(empty))
         client = TestClient(app)
-        resp = client.get(f"/?scan={populated}")
+        resp = client.get(f"/?scan={outside}")
         assert resp.status_code == 200
-        assert "CVE-2021-44228" in resp.text
+        # Error message tells the user what happened and how to widen.
+        assert "outside the scan root" in resp.text
+        assert "--root" in resp.text
+        # And no finding leaks into the response.
+        assert "CVE-2021-44228" not in resp.text
+
+    def test_scan_query_param_for_sensitive_files_rejected(self, tmp_path):
+        # The classic attack-vector test: /etc/passwd. The browser SOP
+        # prevents an attacker from reading the response, but we reject
+        # the path up front anyway so the server never opens it.
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get("/?scan=/etc/passwd")
+        assert resp.status_code == 200
+        assert "outside the scan root" in resp.text
 
     def test_malformed_results_json_shows_error_not_500(self, tmp_path):
         (tmp_path / "argus-results.json").write_text("not json {")

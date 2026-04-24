@@ -44,6 +44,20 @@ _STATIC_DIR = _SERVE_DIR / "static"
 _CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'"
 
 
+def _is_within(child: Path, root: Path) -> bool:
+    """Return True if ``child`` is ``root`` itself or a descendant of it.
+
+    Both paths must already be resolved (symlinks followed, absolute).
+    Uses ``relative_to`` rather than string-prefix matching so we don't
+    false-positive on ``/foo-bar`` when the root is ``/foo``.
+    """
+    try:
+        child.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
 def _resolve_scan(
     raw: str | None,
     *,
@@ -54,8 +68,13 @@ def _resolve_scan(
     Resolution rules, applied in order:
       1. If the caller supplied a path (via ``?scan=...``), use it.
          Otherwise fall back to the server's launch root.
-      2. If the resolved path is a file → use it as-is.
-      3. If it's a directory:
+      2. Reject anything that resolves outside ``launch_root`` — this
+         is a read-only localhost UI, but a cross-site GET could still
+         poke the filesystem for file-existence oracles otherwise.
+         Relaunch ``argus serve`` with a broader ``--root`` if you
+         genuinely need access to a wider tree.
+      3. If the resolved path is a file → use it as-is.
+      4. If it's a directory:
          a. ``<dir>/argus-results.json`` exists → load it.
          b. ``<dir>/latest/argus-results.json`` exists → load it.
             This matches ``argus scan``'s own output convention:
@@ -68,7 +87,7 @@ def _resolve_scan(
             → error message nudges to the picker (multiple choices —
             we don't want to pick for the user).
          d. Else → plain "no scan here" error.
-      4. If it's neither file nor directory → error.
+      5. If it's neither file nor directory → error.
 
     ``(None, "reason")`` tells the route to render the empty-state
     placeholder with an actionable message.
@@ -78,6 +97,12 @@ def _resolve_scan(
         target = target.resolve()
     except OSError as exc:
         return None, f"Could not resolve path: {exc}"
+
+    if not _is_within(target, launch_root):
+        return None, (
+            f"Path is outside the scan root ({launch_root}). "
+            "Relaunch with a broader --root to access wider trees."
+        )
 
     if not target.exists():
         return None, f"Path does not exist: {target}"
@@ -316,6 +341,32 @@ def create_app(root: str | None = None) -> FastAPI:
                 },
             )
 
+        # Keep the picker scoped to the launch root for the same
+        # reason _resolve_scan is: this is a localhost-only tool but
+        # a crafted cross-site GET could otherwise probe the filesystem
+        # (directory listings, finding-count peeks on argus-results.json
+        # files outside the root). Relaunching with a broader --root is
+        # the escape hatch.
+        if not _is_within(base, app.state.root):
+            return templates.TemplateResponse(
+                request=request,
+                name="picker.html.j2",
+                context={
+                    "current": str(app.state.root),
+                    "parent": None,
+                    "entries": [],
+                    "error": (
+                        f"{base} is outside the scan root "
+                        f"({app.state.root}). Relaunch with a broader "
+                        "--root to navigate wider trees."
+                    ),
+                    "has_results": False,
+                    "show_hidden": bool(show_hidden),
+                    "scan_param": None,
+                    "scan_label": None,
+                },
+            )
+
         if not base.exists() or not base.is_dir():
             return templates.TemplateResponse(
                 request=request,
@@ -339,12 +390,20 @@ def create_app(root: str | None = None) -> FastAPI:
         entries, error = _list_directory(base, show_hidden=bool(show_hidden))
         has_results = (base / RESULTS_FILENAME).is_file()
 
+        # Only offer a "..  parent directory" link when the parent is
+        # still inside the launch root. Stepping up past the root would
+        # immediately hit the scope error above, so suppress the link
+        # rather than offering a dead end.
+        parent = base.parent if base.parent != base else None
+        if parent is not None and not _is_within(parent, app.state.root):
+            parent = None
+
         return templates.TemplateResponse(
             request=request,
             name="picker.html.j2",
             context={
                 "current": str(base),
-                "parent": str(base.parent) if base.parent != base else None,
+                "parent": str(parent) if parent is not None else None,
                 "entries": entries,
                 "error": error,
                 "has_results": has_results,

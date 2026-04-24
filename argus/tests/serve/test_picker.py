@@ -189,6 +189,27 @@ class TestPickerRoute:
         # ...and specifically on the Switch scan anchor.
         assert "Switch scan" in resp.text
 
+    def test_path_outside_launch_root_rejected(self, tmp_path):
+        # Picker honors the same scope rule as the dashboard: a crafted
+        # ?path= that escapes the launch root should land on an error,
+        # not a directory listing.
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get(f"/picker?path={tmp_path.parent}")
+        assert resp.status_code == 200
+        assert "outside the scan root" in resp.text
+
+    def test_parent_link_suppressed_at_launch_root(self, tmp_path):
+        # Normally the picker renders a ".."  parent row. At the launch
+        # root itself, clicking that would leave scope and land on the
+        # error above — so we suppress the link instead of offering a
+        # dead end. Check for the literal "..  " row markup rather than
+        # the word "parent" (which appears in the intro prose too).
+        app = create_app(root=str(tmp_path))
+        client = TestClient(app)
+        resp = client.get(f"/picker?path={tmp_path}")
+        assert "<code>..</code>" not in resp.text
+
     def test_breadcrumb_shows_filesystem_path_not_url_path(self, tmp_path):
         # Regression: base.html.j2 used to do ``{% set current = request.url.path %}``
         # which shadowed the route's ``current`` context var (the filesystem
