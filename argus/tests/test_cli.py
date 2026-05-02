@@ -165,6 +165,36 @@ class TestNoCommand:
         assert args.command is None
 
 
+class TestCompletionHelp:
+    """Test that 'argus completion --help' explains how to use it end-to-end."""
+
+    def _completion_help(self) -> str:
+        parser = build_parser()
+        # Reach into the subparsers to render the completion subcommand's help.
+        subparsers_action = next(
+            action
+            for action in parser._actions
+            if isinstance(action, argparse._SubParsersAction)
+        )
+        return subparsers_action.choices["completion"].format_help()
+
+    def test_help_mentions_what_gets_completed(self):
+        help_text = self._completion_help()
+        assert "subcommands" in help_text
+        assert "scanner" in help_text
+
+    def test_help_includes_source_step_for_zsh(self):
+        # Regression: prior wording showed `>> ~/.zshrc` without the `source`
+        # step, so users edited rc files but saw no completions until restart.
+        help_text = self._completion_help()
+        assert "source ~/.zshrc" in help_text
+        assert "source ~/.bashrc" in help_text
+
+    def test_help_includes_eval_for_current_session(self):
+        help_text = self._completion_help()
+        assert 'eval "$(argus completion zsh)"' in help_text
+
+
 class TestHiddenEasterEgg:
     """Test hidden CLI easter egg behavior."""
 

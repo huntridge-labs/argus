@@ -1,6 +1,6 @@
 # Argus CLI Reference (v0.7.2)
 
-> Auto-generated from argparse definitions on 2026-04-24.
+> Auto-generated from argparse definitions on 2026-05-02.
 > Do not edit manually — run `python -m scripts.ci.gen_cli_docs` to regenerate.
 
 Argus Security Scanner — comprehensive security scanning for your codebase
@@ -237,10 +237,20 @@ argus mcp [-h]
 
 Generate a shell completion script for argus.
 
-Usage:
-  argus completion bash >> ~/.bashrc
-  argus completion zsh >> ~/.zshrc
-  eval "$(argus completion zsh)"    # activate for current session
+Once installed, pressing <Tab> will complete:
+  - subcommands (scan, list, browse, cache, ...)
+  - scanner and linter names (bandit, gitleaks, lint-yaml, ...)
+  - common flags (--config, --scanners, --severity, ...)
+
+Install (persistent — remember to reload your shell):
+  argus completion zsh  >> ~/.zshrc  && source ~/.zshrc
+  argus completion bash >> ~/.bashrc && source ~/.bashrc
+
+Activate for current session only:
+  eval "$(argus completion zsh)"
+
+Completions are generated from the live scanner registry, so
+newly added scanners appear after re-running this command.
 
 ```
 argus completion [-h] {bash,zsh}

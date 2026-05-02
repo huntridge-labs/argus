@@ -768,10 +768,17 @@ def _build_completion_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Generate shell completion script",
         description=(
             "Generate a shell completion script for argus.\n\n"
-            "Usage:\n"
-            "  argus completion bash >> ~/.bashrc\n"
-            "  argus completion zsh >> ~/.zshrc\n"
-            "  eval \"$(argus completion zsh)\"    # activate for current session\n"
+            "Once installed, pressing <Tab> will complete:\n"
+            "  - subcommands (scan, list, browse, cache, ...)\n"
+            "  - scanner and linter names (bandit, gitleaks, lint-yaml, ...)\n"
+            "  - common flags (--config, --scanners, --severity, ...)\n\n"
+            "Install (persistent — remember to reload your shell):\n"
+            "  argus completion zsh  >> ~/.zshrc  && source ~/.zshrc\n"
+            "  argus completion bash >> ~/.bashrc && source ~/.bashrc\n\n"
+            "Activate for current session only:\n"
+            "  eval \"$(argus completion zsh)\"\n\n"
+            "Completions are generated from the live scanner registry, so\n"
+            "newly added scanners appear after re-running this command.\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
