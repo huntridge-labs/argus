@@ -298,13 +298,13 @@ Install:
 ```
 argus view [-h] [--interface {terminal,browser}] [--port PORT]
                   [--no-open]
-                  [INTERFACE] [PATH]
+                  [INTERFACE|PATH] [PATH]
 ```
 
 **Arguments:**
 
-- `interface_pos` — Interface to open: terminal | browser (default: terminal) (choices: terminal, browser)
-- `path` — Results directory or argus-results.json path (default: ./argus-results/)
+- `interface_or_path` — Either an interface keyword (terminal | browser) or a results path. If a path is given here without an interface keyword, the interface defaults to terminal.
+- `path_arg` — Results directory or argus-results.json path when the first positional is an interface keyword (default: ./argus-results/)
 
 **Options:**
 

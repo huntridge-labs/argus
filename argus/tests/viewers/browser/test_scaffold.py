@@ -24,8 +24,8 @@ class TestViewBrowserSubcommandParsing:
         parser = build_parser()
         args = parser.parse_args(["view", "browser"])
         assert args.command == "view"
-        assert args.interface_pos == "browser"
-        assert args.path is None
+        assert args.interface_or_path == "browser"
+        assert args.path_arg is None
         assert args.port == 8080
         # Auto-open is the default; the negative flag is opt-in.
         assert args.no_open is False
@@ -33,8 +33,8 @@ class TestViewBrowserSubcommandParsing:
     def test_view_browser_with_path(self):
         parser = build_parser()
         args = parser.parse_args(["view", "browser", "/path/to/results"])
-        assert args.interface_pos == "browser"
-        assert args.path == "/path/to/results"
+        assert args.interface_or_path == "browser"
+        assert args.path_arg == "/path/to/results"
 
     def test_view_browser_custom_port(self):
         parser = build_parser()
@@ -83,9 +83,9 @@ class TestBrowserViewerUnavailableFriendlyError:
 
         with patch("argus.viewers.browser.launch", fake_launch):
             rc = cmd_view(argparse.Namespace(
-                interface_pos="browser",
+                interface_or_path="browser",
+                path_arg=None,
                 interface_flag=None,
-                path=None,
                 port=8080,
                 no_open=True,
             ))

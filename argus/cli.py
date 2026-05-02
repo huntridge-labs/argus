@@ -186,21 +186,27 @@ def _build_view_parser(subparsers: argparse._SubParsersAction) -> None:
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    # Two positionals where the first is *either* an interface keyword
+    # (terminal|browser) *or* a results path. We can't put choices=
+    # on the first positional because it would reject path-shaped
+    # values when the user passes --interface separately. Instead we
+    # accept any string and sort it out in _resolve_view_args.
     view_parser.add_argument(
-        "interface_pos",
+        "interface_or_path",
         nargs="?",
         default=None,
-        choices=VIEW_INTERFACES,
-        metavar="INTERFACE",
-        help="Interface to open: terminal | browser (default: terminal)",
+        metavar="INTERFACE|PATH",
+        help="Either an interface keyword (terminal | browser) or a "
+             "results path. If a path is given here without an interface "
+             "keyword, the interface defaults to terminal.",
     )
     view_parser.add_argument(
-        "path",
+        "path_arg",
         nargs="?",
         default=None,
         metavar="PATH",
-        help="Results directory or argus-results.json path "
-             "(default: ./argus-results/)",
+        help="Results directory or argus-results.json path when the first "
+             "positional is an interface keyword (default: ./argus-results/)",
     )
     view_parser.add_argument(
         "--interface", "-i",
@@ -226,32 +232,67 @@ def _build_view_parser(subparsers: argparse._SubParsersAction) -> None:
     )
 
 
-def _resolve_view_interface(args: argparse.Namespace) -> str | None:
-    """Resolve the effective interface from positional + flag forms.
+def _resolve_view_args(args: argparse.Namespace) -> tuple[str, str | None] | None:
+    """Sort positionals + flag into (interface, path).
 
-    Returns the interface name, or ``None`` if positional and flag
-    disagree (in which case the caller has already printed an error).
+    The first positional can be either an interface keyword
+    (``terminal``/``browser``) or a path. We only know which by looking
+    at its value, so the disambiguation lives here rather than in the
+    parser.
+
+    Returns ``(interface, path)`` on success, or ``None`` if the
+    arguments are inconsistent (the caller has already printed an
+    error to stderr).
     """
-    pos = getattr(args, "interface_pos", None)
+    pos1 = getattr(args, "interface_or_path", None)
+    pos2 = getattr(args, "path_arg", None)
     flag = getattr(args, "interface_flag", None)
-    if pos and flag and pos != flag:
+
+    pos_interface: str | None = None
+    pos_path: str | None = None
+
+    if pos1 in VIEW_INTERFACES:
+        pos_interface = pos1
+        if pos2 in VIEW_INTERFACES:
+            print(
+                f"Error: got two interface keywords ('{pos1}', '{pos2}'). "
+                "Pass at most one interface (positional or --interface).",
+                file=sys.stderr,
+            )
+            return None
+        pos_path = pos2
+    elif pos1 is not None:
+        # First positional is path-shaped — there shouldn't be a second.
+        if pos2 is not None:
+            print(
+                f"Error: got two paths ('{pos1}', '{pos2}') but no interface "
+                "keyword. Pass at most one path.",
+                file=sys.stderr,
+            )
+            return None
+        pos_path = pos1
+
+    if pos_interface and flag and pos_interface != flag:
         print(
-            f"Error: conflicting interfaces — positional '{pos}' vs --interface "
-            f"'{flag}'. Pass only one.",
+            f"Error: conflicting interfaces — positional '{pos_interface}' vs "
+            f"--interface '{flag}'. Pass only one.",
             file=sys.stderr,
         )
         return None
-    return flag or pos or "terminal"
+
+    interface = flag or pos_interface or "terminal"
+    return interface, pos_path
 
 
 def cmd_view(args: argparse.Namespace) -> int:
     """Execute the view subcommand — dispatch to terminal or browser viewer."""
-    interface = _resolve_view_interface(args)
-    if interface is None:
+    resolved = _resolve_view_args(args)
+    if resolved is None:
         return EXIT_ERROR
+    interface, path = resolved
     return _launch_view(
         interface,
-        path=args.path,
+        path=path,
         port=args.port,
         open_browser=_should_open_browser(args),
     )

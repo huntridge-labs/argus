@@ -835,46 +835,130 @@ class TestViewSubcommand:
         parser = build_parser()
         args = parser.parse_args(["view"])
         assert args.command == "view"
-        assert args.interface_pos is None
+        assert args.interface_or_path is None
         assert args.interface_flag is None
-        assert args.path is None
+        assert args.path_arg is None
 
     def test_view_positional_terminal(self):
         parser = build_parser()
         args = parser.parse_args(["view", "terminal"])
-        assert args.interface_pos == "terminal"
-        assert args.path is None
+        assert args.interface_or_path == "terminal"
+        assert args.path_arg is None
 
     def test_view_positional_browser_with_path(self):
         parser = build_parser()
         args = parser.parse_args(["view", "browser", "./run-01"])
-        assert args.interface_pos == "browser"
-        assert args.path == "./run-01"
+        assert args.interface_or_path == "browser"
+        assert args.path_arg == "./run-01"
+
+    def test_view_path_only_positional(self):
+        """Bare `argus view ./path` works — first positional is treated as path."""
+        parser = build_parser()
+        args = parser.parse_args(["view", "./argus-results/latest"])
+        # Parser doesn't disambiguate; the resolver does.
+        assert args.interface_or_path == "./argus-results/latest"
+        assert args.path_arg is None
 
     def test_view_flag_form(self):
         parser = build_parser()
         args = parser.parse_args(["view", "--interface=terminal"])
         assert args.interface_flag == "terminal"
 
-    def test_view_resolve_defaults_to_terminal(self):
-        from argus.cli import _resolve_view_interface
-        import argparse as _argparse
-        ns = _argparse.Namespace(interface_pos=None, interface_flag=None)
-        assert _resolve_view_interface(ns) == "terminal"
+    def test_view_flag_with_path_positional(self):
+        """`argus view -i terminal ./path` — the flag carries the interface,
+        the lone positional is a path. (Regression for the bug where argparse
+        choices= rejected the path as INTERFACE.)
+        """
+        parser = build_parser()
+        args = parser.parse_args(["view", "-i", "terminal", "./run-01"])
+        assert args.interface_flag == "terminal"
+        assert args.interface_or_path == "./run-01"
+        assert args.path_arg is None
 
-    def test_view_resolve_prefers_flag_over_unset_positional(self):
-        from argus.cli import _resolve_view_interface
+    def test_view_resolve_defaults_to_terminal(self):
+        from argus.cli import _resolve_view_args
         import argparse as _argparse
-        ns = _argparse.Namespace(interface_pos=None, interface_flag="browser")
-        assert _resolve_view_interface(ns) == "browser"
+        ns = _argparse.Namespace(
+            interface_or_path=None, path_arg=None, interface_flag=None,
+        )
+        assert _resolve_view_args(ns) == ("terminal", None)
+
+    def test_view_resolve_prefers_flag_over_default(self):
+        from argus.cli import _resolve_view_args
+        import argparse as _argparse
+        ns = _argparse.Namespace(
+            interface_or_path=None, path_arg=None, interface_flag="browser",
+        )
+        assert _resolve_view_args(ns) == ("browser", None)
+
+    def test_view_resolve_path_only_positional(self):
+        """First positional is a path → interface defaults to terminal."""
+        from argus.cli import _resolve_view_args
+        import argparse as _argparse
+        ns = _argparse.Namespace(
+            interface_or_path="./argus-results/latest",
+            path_arg=None,
+            interface_flag=None,
+        )
+        assert _resolve_view_args(ns) == ("terminal", "./argus-results/latest")
+
+    def test_view_resolve_flag_plus_path_positional(self):
+        """`argus view -i browser ./path` → (browser, ./path)."""
+        from argus.cli import _resolve_view_args
+        import argparse as _argparse
+        ns = _argparse.Namespace(
+            interface_or_path="./run-01",
+            path_arg=None,
+            interface_flag="browser",
+        )
+        assert _resolve_view_args(ns) == ("browser", "./run-01")
+
+    def test_view_resolve_interface_keyword_plus_path(self):
+        """`argus view terminal ./path` → (terminal, ./path)."""
+        from argus.cli import _resolve_view_args
+        import argparse as _argparse
+        ns = _argparse.Namespace(
+            interface_or_path="terminal",
+            path_arg="./run-01",
+            interface_flag=None,
+        )
+        assert _resolve_view_args(ns) == ("terminal", "./run-01")
 
     def test_view_resolve_conflict_returns_none(self, capsys):
-        from argus.cli import _resolve_view_interface
+        from argus.cli import _resolve_view_args
         import argparse as _argparse
-        ns = _argparse.Namespace(interface_pos="terminal", interface_flag="browser")
-        assert _resolve_view_interface(ns) is None
+        ns = _argparse.Namespace(
+            interface_or_path="terminal",
+            path_arg=None,
+            interface_flag="browser",
+        )
+        assert _resolve_view_args(ns) is None
         err = capsys.readouterr().err
         assert "conflicting" in err.lower()
+
+    def test_view_resolve_two_interface_keywords_errors(self, capsys):
+        from argus.cli import _resolve_view_args
+        import argparse as _argparse
+        ns = _argparse.Namespace(
+            interface_or_path="terminal",
+            path_arg="browser",
+            interface_flag=None,
+        )
+        assert _resolve_view_args(ns) is None
+        err = capsys.readouterr().err
+        assert "interface keyword" in err.lower()
+
+    def test_view_resolve_two_paths_errors(self, capsys):
+        from argus.cli import _resolve_view_args
+        import argparse as _argparse
+        ns = _argparse.Namespace(
+            interface_or_path="./a",
+            path_arg="./b",
+            interface_flag=None,
+        )
+        assert _resolve_view_args(ns) is None
+        err = capsys.readouterr().err
+        assert "two paths" in err.lower()
 
     def test_view_terminal_unavailable_returns_error(self, monkeypatch, capsys):
         """When the `terminal` extra isn't installed, exit clean with a hint."""
@@ -890,9 +974,9 @@ class TestViewSubcommand:
         monkeypatch.setattr("argus.viewers.terminal.launch", fake_launch)
 
         rc = cmd_view(_argparse.Namespace(
-            interface_pos="terminal",
+            interface_or_path="terminal",
+            path_arg=None,
             interface_flag=None,
-            path=None,
             port=8080,
             no_open=True,
         ))
@@ -914,9 +998,9 @@ class TestViewSubcommand:
         monkeypatch.setattr("argus.viewers.browser.launch", fake_launch)
 
         rc = cmd_view(_argparse.Namespace(
-            interface_pos="browser",
+            interface_or_path="browser",
+            path_arg=None,
             interface_flag=None,
-            path=None,
             port=8080,
             no_open=True,
         ))
