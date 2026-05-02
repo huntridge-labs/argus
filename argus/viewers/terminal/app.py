@@ -23,7 +23,7 @@ from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.command import Hit, Hits, Provider
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widgets import DataTable, Footer, Header, Input, OptionList, Static
@@ -124,15 +124,26 @@ class HelpScreen(ModalScreen):
     #help-body {
         background: $surface;
         border: thick $accent;
-        padding: 1 2;
         width: 80%;
         max-width: 90;
+        max-height: 90%;
         height: auto;
     }
+    #help-body > Static { padding: 1 2; }
     """
 
     def compose(self) -> ComposeResult:
-        yield Static(_HELP_TEXT, id="help-body")
+        # VerticalScroll is focusable and ships with arrow-key, page-up/
+        # down, home/end bindings, so wrapping the help text in one is
+        # what lets ↑/↓ scroll the modal. Without it, the Static was
+        # effectively read-only via mouse-wheel only.
+        with VerticalScroll(id="help-body"):
+            yield Static(_HELP_TEXT)
+
+    def on_mount(self) -> None:
+        # Land focus on the scroll container so arrow keys work the
+        # moment the help opens (no need to click first).
+        self.query_one("#help-body", VerticalScroll).focus()
 
 
 _PICKER_CSS = """

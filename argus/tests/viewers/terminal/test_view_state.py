@@ -58,6 +58,7 @@ def ViewState():
         ("Container", "textual.containers"),
         ("Horizontal", "textual.containers"),
         ("Vertical", "textual.containers"),
+        ("VerticalScroll", "textual.containers"),
         ("reactive", "textual.reactive"),
         ("ModalScreen", "textual.screen"),
         ("DataTable", "textual.widgets"),

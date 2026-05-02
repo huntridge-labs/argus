@@ -59,6 +59,7 @@ def _load_app_module():
         ("Container", "textual.containers"),
         ("Horizontal", "textual.containers"),
         ("Vertical", "textual.containers"),
+        ("VerticalScroll", "textual.containers"),
         ("reactive", "textual.reactive"),
         ("ModalScreen", "textual.screen"),
         ("DataTable", "textual.widgets"),
