@@ -1,0 +1,250 @@
+# Argus MCP Server
+
+The Argus MCP server exposes Argus's security-scanning capabilities to AI assistants over the [Model Context Protocol](https://modelcontextprotocol.io/). Tools like Claude Desktop, Claude Code, Cursor, Continue, and Cline can run scans, validate configs, classify IaC changes, and explain findings — without leaving the chat.
+
+The server speaks JSON-RPC over stdin/stdout (the standard MCP `stdio` transport). It's built on top of the same Argus SDK the CLI uses, so anything the CLI can do, an AI assistant can request.
+
+---
+
+## Quick start
+
+You have two install paths. Pick based on whether you want Argus on your `$PATH` for direct CLI use too.
+
+### Option A — `uvx` (zero-install, recommended for AI-tool-only users)
+
+[`uvx`](https://docs.astral.sh/uv/guides/tools/) downloads the package on demand and runs the entry point. Nothing lands in your global Python.
+
+```bash
+uvx --from 'argus-security[mcp]' argus mcp
+```
+
+This is the right answer for people who don't otherwise use Argus from the terminal — you point your AI client at this command and that's the entire install. `uv` caches the package, so subsequent runs start in milliseconds.
+
+### Option B — `pip install` (recommended if you also use the Argus CLI)
+
+```bash
+pip install 'argus-security[mcp]'
+```
+
+After this, `argus mcp` is on your `$PATH` and your AI client just needs to launch it. You also get the rest of the Argus CLI for free (`argus scan`, `argus browse`, `argus serve`, etc.).
+
+### Confirming it works
+
+Run the server directly in a terminal:
+
+```bash
+argus mcp     # or: uvx --from 'argus-security[mcp]' argus mcp
+```
+
+You should see (on stderr):
+
+```
+argus MCP server starting on stdio transport — awaiting client messages...
+
+  This is correct behavior. The server reads JSON-RPC messages from
+  stdin and writes responses to stdout — that's how MCP clients
+  (Claude Desktop, Cursor, Claude Code, etc.) talk to it.
+
+  Configure your client to launch:  argus mcp
+  Press Ctrl+C to exit.
+```
+
+`Ctrl+C` exits cleanly. The server is now ready to be wired into a client.
+
+---
+
+## Configure your AI client
+
+Pick the section that matches your tool. Each example uses Option B (`pip install`); swap `"command": "argus"` for `"command": "uvx", "args": ["--from", "argus-security[mcp]", "argus", "mcp"]` if you went the `uvx` route.
+
+### Claude Desktop
+
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "argus": {
+      "command": "argus",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Restart Claude Desktop. Argus's tools appear in the tool picker.
+
+### Claude Code
+
+Edit `.claude/settings.json` in your repo (or `~/.claude/settings.json` for global):
+
+```json
+{
+  "mcpServers": {
+    "argus": {
+      "command": "argus",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Or use the CLI:
+
+```bash
+claude mcp add argus argus mcp
+```
+
+### Cursor
+
+Open *Cursor Settings → MCP → Add new MCP server*, or edit `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "argus": {
+      "command": "argus",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### Continue (VS Code)
+
+Edit `~/.continue/config.json`:
+
+```json
+{
+  "experimental": {
+    "modelContextProtocolServers": [
+      {
+        "name": "argus",
+        "transport": {
+          "type": "stdio",
+          "command": "argus",
+          "args": ["mcp"]
+        }
+      }
+    ]
+  }
+}
+```
+
+### Cline (VS Code)
+
+Edit `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` (macOS path):
+
+```json
+{
+  "mcpServers": {
+    "argus": {
+      "command": "argus",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### Generic stdio MCP client
+
+Any client that supports the standard MCP stdio transport accepts the same shape:
+
+```json
+{
+  "command": "argus",
+  "args": ["mcp"]
+}
+```
+
+---
+
+## What the server provides
+
+### Tools
+
+| Tool | What it does |
+|---|---|
+| `argus_detect` | Inspect a project and report scanner-relevant signals (languages, package files, IaC, etc.) |
+| `argus_init` | Generate a tailored `argus.yml` for the project |
+| `argus_validate` | Check whether an existing `argus.yml` is valid |
+| `argus_list_scanners` | List every scanner the SDK knows about, grouped by category |
+| `argus_scan` | Run a scan (specify scanners or auto-detect) |
+| `argus_scan_summary` | Quick check of the latest scan results without re-scanning |
+| `argus_explain_finding` | Get remediation guidance for a specific finding |
+| `argus_classify` | Classify IaC changes between two git refs for compliance review |
+
+### Resources
+
+The MCP client can read these directly without invoking a tool:
+
+| URI | Contents |
+|---|---|
+| `argus://config` | The current `argus.yml` (rendered as JSON) |
+| `argus://results/latest` | The most recent scan results from `argus-results/` |
+| `argus://config/schema` | The full JSON schema for `argus.yml` |
+
+### Prompts
+
+| Prompt | Use when... |
+|---|---|
+| `security_review` | You want a comprehensive review: detect → scan → explain critical/high findings → summarize posture |
+| `fix_findings` | You want the AI to apply fixes for the latest scan's findings |
+| `setup_scanning` | You're onboarding a new project — detect → init → validate → baseline scan |
+
+---
+
+## Discovery and registry listings
+
+The Argus MCP server is distributed as part of the [`argus-security` PyPI package](https://pypi.org/project/argus-security/). Listings in community MCP server catalogs make it easier for AI-tool users to find it without needing to read the Argus repo first.
+
+### Where Argus is listed
+
+| Registry | Listed | Submission flow |
+|---|---|---|
+| [`modelcontextprotocol/servers`](https://github.com/modelcontextprotocol/servers) | _pending — open a PR adding Argus to the **Community Servers** section of `README.md`_ | Pull request to the official Anthropic-maintained list |
+| [`punkpeye/awesome-mcp-servers`](https://github.com/punkpeye/awesome-mcp-servers) | _pending — open a PR adding Argus to the **Security** section_ | Pull request to the community awesome-list |
+| [mcp.so](https://mcp.so/) | _pending_ | [Submit form](https://mcp.so/submit) |
+| [Smithery](https://smithery.ai/) | _pending_ | [Submit at smithery.ai](https://smithery.ai/) (auto-detects npm packages; manual submission for PyPI servers) |
+| [Glama](https://glama.ai/mcp/servers) | _pending_ | Auto-discovers servers from public GitHub repos with the `mcp-server` topic + `MCP` mention in README |
+
+_Update this table when each submission lands. The `_pending_` rows are tracked in [`docs/developer/SDK-ROADMAP.md`](developer/SDK-ROADMAP.md#mcp-registry-submissions)._
+
+### How to submit Argus to a new registry
+
+1. Confirm the package metadata is current — `pyproject.toml` description, classifiers, `Repository`/`Documentation` URLs.
+2. Confirm the README's **MCP Server** section accurately describes what the server does.
+3. Most catalogs want:
+   - Server name: `argus`
+   - Install command: `pip install 'argus-security[mcp]'` or `uvx --from 'argus-security[mcp]' argus mcp`
+   - Launch command: `argus mcp`
+   - Tools list: see *What the server provides → Tools* above
+   - Categories/tags: `security`, `vulnerability-scanning`, `sast`, `iac`, `sca`, `secrets`, `dast`
+   - Author: Huntridge Labs
+   - License: Apache-2.0
+4. File the PR / form. Reference [PR #97](https://github.com/huntridge-labs/argus/pull/97) and earlier MCP work for the canonical implementation history.
+
+---
+
+## Troubleshooting
+
+**"command not found: argus"** — your shell isn't pointing at the venv that has Argus. Either re-activate (`deactivate && source .venv/bin/activate && hash -r`), call `.venv/bin/argus` explicitly, or switch to the `uvx` path which doesn't depend on `$PATH`.
+
+**The terminal goes silent when I run `argus mcp` directly** — that's expected behavior; the server is awaiting JSON-RPC messages on stdin from a client. Argus 0.7.2+ logs a banner to stderr explaining this. Press `Ctrl+C` to exit.
+
+**Client says "spawn argus ENOENT"** — the client can't find the `argus` binary. Either give the absolute path (`/full/path/to/.venv/bin/argus`) or switch to the `uvx` invocation.
+
+**`ImportError: Using SOCKS proxy, but the 'socksio' package is not installed`** — your shell has `ALL_PROXY` or `HTTPS_PROXY` set to `socks5://`. Install the SOCKS extras: `pip install 'httpx[socks]'`. The `[ai]` extra already pins this since 0.7.2, so `pip install 'argus-security[ai]'` covers it too.
+
+**Stale tool definitions in the client** — most clients cache MCP tool schemas. Restart the client (or use its "reload MCP servers" command) after upgrading Argus or changing your config.
+
+**The MCP server starts but tools aren't appearing in the client** — confirm the server is actually being launched. Most clients log subprocess stderr; you should see the `argus MCP server starting...` banner. If you don't, the client either isn't running the command at all (typically a config-path issue) or is running it with a different working directory than expected.
+
+---
+
+## See also
+
+- [`docs/cli-reference.md`](cli-reference.md) — full CLI reference including `argus mcp` subcommand options
+- [`README.md` → MCP Server section](../README.md#mcp-server-ai-integration) — the elevator-pitch summary
+- [Model Context Protocol specification](https://modelcontextprotocol.io/) — the underlying protocol
+- [`argus/mcp.py`](../argus/mcp.py) — the server implementation
