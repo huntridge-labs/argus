@@ -543,6 +543,18 @@ The MCP server is a new interface to the existing engine — it does not change 
 ### Remaining
 - [ ] Publish skill to [skills.sh](https://skills.sh/)
 
+#### MCP registry submissions
+
+The Argus MCP server is currently distributed only via PyPI (`pip install argus-security[mcp]`) and `uvx`. Listing it in community MCP server catalogs makes it discoverable for AI-tool users who don't already use the Argus CLI. Submission process for each is documented in [`docs/mcp.md`](../mcp.md#discovery-and-registry-listings).
+
+- [ ] [`modelcontextprotocol/servers`](https://github.com/modelcontextprotocol/servers) — PR adding Argus to the **Community Servers** section of the README
+- [ ] [`punkpeye/awesome-mcp-servers`](https://github.com/punkpeye/awesome-mcp-servers) — PR adding Argus to the **Security** section
+- [ ] [mcp.so](https://mcp.so/) — submit at https://mcp.so/submit
+- [ ] [Smithery](https://smithery.ai/) — manual submission for PyPI-distributed servers
+- [ ] [Glama](https://glama.ai/mcp/servers) — auto-discovers from public repos with the `mcp-server` GitHub topic; ensure the topic is set on `huntridge-labs/argus`
+
+Each is independent of the others; ship as bandwidth allows. Update the *"Where Argus is listed"* table in `docs/mcp.md` when each lands.
+
 ---
 
 ## Known Issues

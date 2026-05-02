@@ -367,10 +367,18 @@ Scanner-specific secrets (for GitHub Actions composite action usage):
 
 ## MCP Server (AI Integration)
 
-Argus includes an MCP server for seamless AI assistant integration. AI tools like Claude, Copilot, and Cursor can run scans, validate configs, and detect project characteristics directly.
+Argus includes an MCP server for AI-assistant integration. Tools like Claude Desktop, Claude Code, Cursor, Continue, and Cline can run scans, validate configs, classify IaC changes, and explain findings — without leaving the chat.
+
+**Zero-install** (recommended for AI-tool-only users — no global Python install needed):
 
 ```bash
-pip install argus-security[mcp]
+uvx --from 'argus-security[mcp]' argus mcp
+```
+
+**Or install via pip** (recommended if you also use the Argus CLI):
+
+```bash
+pip install 'argus-security[mcp]'
 ```
 
 Add to your AI tool's MCP configuration:
@@ -383,7 +391,9 @@ Add to your AI tool's MCP configuration:
 }
 ```
 
-Available tools: `argus_scan`, `argus_detect`, `argus_validate`, `argus_list_scanners`, `argus_init`
+Available tools: `argus_scan`, `argus_detect`, `argus_validate`, `argus_list_scanners`, `argus_init`, `argus_classify`, `argus_explain_finding`, `argus_scan_summary`. Resources: `argus://config`, `argus://results/latest`, `argus://config/schema`. Prompts: `security_review`, `fix_findings`, `setup_scanning`.
+
+See [`docs/mcp.md`](docs/mcp.md) for per-client config (Claude Desktop, Claude Code, Cursor, Continue, Cline), the full tool reference, and the list of MCP server registries where Argus is listed for discovery.
 
 ## Contributing
 
