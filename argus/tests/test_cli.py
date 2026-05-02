@@ -1306,3 +1306,98 @@ class TestMissingScannerNudge:
 
         _print_missing_scanner_nudge(requested=[], summary=self._summary([]))
         assert capsys.readouterr().err == ""
+
+
+class TestCmdMcp:
+    """``argus mcp`` UX guards.
+
+    The MCP server uses stdio transport: it speaks JSON-RPC on
+    stdin/stdout and any stray write to stdout would corrupt the
+    protocol. So all human feedback must go to stderr — and we
+    DO need feedback, otherwise users running ``argus mcp``
+    interactively see a silent terminal and assume it hung.
+    """
+
+    def _stub_server(self, monkeypatch):
+        """Replace ``create_server`` with a stub whose .run() returns
+        immediately, so the test never actually starts a real MCP loop."""
+        class _StubServer:
+            def __init__(self):
+                self.run_called_with = None
+
+            def run(self, transport):
+                self.run_called_with = transport
+
+        stub = _StubServer()
+        # cmd_mcp does ``from argus.mcp import create_server`` lazily,
+        # so patch the import target by injecting a fake module.
+        import sys
+        import types
+        fake = types.ModuleType("argus.mcp")
+        fake.create_server = lambda: stub
+        monkeypatch.setitem(sys.modules, "argus.mcp", fake)
+        return stub
+
+    def test_startup_banner_goes_to_stderr_not_stdout(self, monkeypatch, capsys):
+        # stdout is the JSON-RPC channel — anything we write there
+        # would corrupt the protocol. The banner must land on stderr.
+        from argus.cli import cmd_mcp
+        import argparse as _argparse
+
+        self._stub_server(monkeypatch)
+        rc = cmd_mcp(_argparse.Namespace())
+        captured = capsys.readouterr()
+        assert rc == EXIT_SUCCESS
+        assert captured.out == "", "stdout must stay empty for the protocol"
+        assert "argus MCP server starting" in captured.err
+
+    def test_run_invoked_with_stdio_transport(self, monkeypatch):
+        from argus.cli import cmd_mcp
+        import argparse as _argparse
+
+        stub = self._stub_server(monkeypatch)
+        cmd_mcp(_argparse.Namespace())
+        assert stub.run_called_with == "stdio"
+
+    def test_interactive_hint_only_when_stderr_is_a_tty(self, monkeypatch, capsys):
+        # When invoked by an MCP client (subprocess with piped stderr)
+        # the hint adds noise to client logs without helping anyone.
+        # Only humans staring at a real terminal benefit from it.
+        from argus.cli import cmd_mcp
+        import argparse as _argparse
+        import sys as _sys
+
+        self._stub_server(monkeypatch)
+
+        # Non-tty stderr (the default during pytest capture) — no hint.
+        monkeypatch.setattr(_sys.stderr, "isatty", lambda: False)
+        cmd_mcp(_argparse.Namespace())
+        err_no_tty = capsys.readouterr().err
+        assert "argus MCP server starting" in err_no_tty
+        assert "Press Ctrl+C" not in err_no_tty
+
+        # tty stderr — hint included.
+        self._stub_server(monkeypatch)
+        monkeypatch.setattr(_sys.stderr, "isatty", lambda: True)
+        cmd_mcp(_argparse.Namespace())
+        err_tty = capsys.readouterr().err
+        assert "argus MCP server starting" in err_tty
+        assert "Press Ctrl+C" in err_tty
+
+    def test_missing_extra_returns_friendly_error(self, monkeypatch, capsys):
+        from argus.cli import cmd_mcp
+        import argparse as _argparse
+        import builtins
+
+        # Force the lazy ``from argus.mcp import create_server`` to fail.
+        real_import = builtins.__import__
+        def fake_import(name, *a, **kw):
+            if name == "argus.mcp":
+                raise ImportError("No module named 'mcp'")
+            return real_import(name, *a, **kw)
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+
+        rc = cmd_mcp(_argparse.Namespace())
+        assert rc == EXIT_ERROR
+        err = capsys.readouterr().err
+        assert "argus-security[mcp]" in err
