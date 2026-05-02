@@ -462,21 +462,26 @@ class BrowseApp(App):
     #status { height: 1; dock: bottom; background: $panel; padding: 0 1; }
     """
 
+    # Footer-visible bindings are kept tight so the bar fits common
+    # terminal widths (~80 cols). Less-used actions (open / reveal
+    # exports, product / scanner pickers) are hidden with show=False —
+    # they remain bound, listed in the ? help screen, and discoverable
+    # via the Ctrl+P command palette.
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("question_mark", "show_help", "Help", key_display="?"),
         Binding("slash", "focus_search", "Search", show=True, key_display="/"),
-        Binding("1", "filter_critical", "Crit only"),
-        Binding("2", "filter_high", "High+"),
-        Binding("3", "filter_medium", "Med+"),
-        Binding("4", "filter_all", "All"),
+        Binding("1", "filter_critical", "Crit"),
+        Binding("2", "filter_high", "≥High"),
+        Binding("3", "filter_medium", "≥Med"),
+        Binding("4", "filter_all", "All sev"),
         Binding("s", "cycle_sort", "Sort"),
-        Binding("e", "export_csv", "Export"),
-        Binding("o", "open_last_export", "Open export"),
-        Binding("r", "reveal_last_export", "Reveal in files"),
-        Binding("p", "pick_product", "Product"),
-        Binding("c", "pick_scanner", "Scanner"),
-        Binding("d", "show_dashboard", "Dashboard"),
+        Binding("e", "export_csv", "CSV"),
+        Binding("d", "show_dashboard", "Dash"),
+        Binding("o", "open_last_export", "Open export", show=False),
+        Binding("r", "reveal_last_export", "Reveal export", show=False),
+        Binding("p", "pick_product", "Product", show=False),
+        Binding("c", "pick_scanner", "Scanner", show=False),
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
     ]
