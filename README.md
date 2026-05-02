@@ -57,18 +57,18 @@ argus scan bandit gitleaks osv --severity-threshold high
 
 ### Interactive triage
 
-After a scan, `argus browse` opens a terminal UI for navigating findings —
+After a scan, `argus view terminal` opens a terminal UI for navigating findings —
 filter by severity, product, or scanner; search by CVE; drill into details;
 export to CSV / JSON / Markdown / SARIF; see an executive dashboard. Ships
 behind an optional extra:
 
 ```bash
-pip install 'argus-security[browse]'
-argus browse                         # load ./argus-results/argus-results.json
-argus scan --interactive             # scan, then drop straight into browse
+pip install 'argus-security[terminal]'
+argus view terminal                         # load ./argus-results/argus-results.json
+argus scan --interface=terminal             # scan, then drop straight into the terminal viewer
 ```
 
-Full keyboard reference and workflow in [`docs/browse.md`](docs/browse.md).
+Full keyboard reference and workflow in [`docs/view-terminal.md`](docs/view-terminal.md).
 
 ### GitHub Actions (Composite Actions)
 
@@ -125,7 +125,7 @@ For detailed scanner configuration, see [Scanner Reference](docs/scanners.md).
 - **[Argus SDK](argus/)** - Run scanners locally or in CI with `argus scan`
 - **[Unified interface](docs/scanners.md)** - One CLI or workflow for all scanners
 - **[Flexible scanner selection](docs/scanners.md)** - Use scanner groups or specific scanners
-- **[Interactive triage TUI](docs/browse.md)** - `argus browse` — keyboard-driven findings explorer with executive dashboard
+- **[Interactive triage TUI](docs/view-terminal.md)** - `argus view terminal` — keyboard-driven findings explorer with executive dashboard
 - **[SBOM input](docs/cli-reference.md)** - `argus scan --sbom path/to/sbom.json` accepts CycloneDX / SPDX / Syft SBOMs (file or directory of SBOMs)
 - **[GitHub Security tab integration](.github/actions/scanner-codeql/README.md)** - Upload SARIF results to Code Scanning
 - **PR comments** - Inline feedback on pull requests
@@ -135,8 +135,8 @@ For detailed scanner configuration, see [Scanner Reference](docs/scanners.md).
 - **Private registry support** - Authenticate to container registries
 - **Environment variable expansion** - Dynamic configuration values
 - **[Optional AI summary](.github/actions/ai-summary/README.md)** - Generate executive security summaries from scan results using your own AI provider and API key (Copilot, Claude, or Gemini)
-- **[Interactive findings TUI](docs/browse.md)** - `argus browse` — keyboard-driven triage browser (`pip install 'argus-security[browse]'`)
-- **[Local web UI](docs/serve.md)** - `argus serve` — localhost dashboard for non-engineer stakeholders (`pip install 'argus-security[serve]'`)
+- **[Interactive findings TUI](docs/view-terminal.md)** - `argus view terminal` — keyboard-driven triage browser (`pip install 'argus-security[terminal]'`)
+- **[Local web UI](docs/view-browser.md)** - `argus view browser` — localhost dashboard for non-engineer stakeholders (`pip install 'argus-security[browser]'`)
 
 ## GitHub Enterprise Server (GHES)
 

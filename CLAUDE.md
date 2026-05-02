@@ -223,7 +223,7 @@ argus/                                 # Python SDK package
 │   ├── config.py                     # YAML config loading (argus.yml)
 │   ├── engine.py                     # Scan orchestration engine
 │   ├── exclusions.py                 # Path exclusion set + **-glob matcher
-│   ├── findings_view.py              # Shared UI-free view logic (ViewState, compute_summary) — used by argus browse + future argus serve
+│   ├── findings_view.py              # Shared UI-free view logic (ViewState, compute_summary) — consumed by both viewer interfaces
 │   ├── models.py                     # Finding, ScanResult, Severity
 │   ├── sbom.py                       # SBOM format detection (CycloneDX, SPDX, Syft)
 │   ├── scanner.py                    # Scanner protocol definition
@@ -254,14 +254,16 @@ argus/                                 # Python SDK package
 │   ├── markdown.py                   # Markdown summary
 │   ├── sarif.py                      # SARIF format
 │   └── json_report.py               # JSON format
-├── browse/                           # Interactive findings TUI (argus browse) — optional extra
-│   ├── app.py                        # Textual App, HelpScreen, DashboardScreen, PickerScreens
-│   ├── loader.py                     # argus-results.json → ScanSummary
-│   └── export.py                     # CSV / JSON / Markdown / SARIF writers
-├── serve/                            # Local read-only web UI (argus serve) — optional extra, 127.0.0.1 only
-│   ├── app.py                        # FastAPI routes: /, /findings, /picker, /healthz
-│   ├── templates/                    # Jinja2: base, summary (dashboard), findings, picker
-│   └── static/                       # argus.css + auto-filter.js (vanilla, no framework)
+├── viewers/                          # `argus view` interfaces (optional extras)
+│   ├── __init__.py                   # ViewerUnavailable shared exception
+│   ├── terminal/                     # `argus view --interface=terminal` — Textual TUI ([terminal] extra)
+│   │   ├── app.py                    # Textual App, HelpScreen, DashboardScreen, PickerScreens
+│   │   ├── loader.py                 # argus-results.json → ScanSummary
+│   │   └── export.py                 # CSV / JSON / Markdown / SARIF writers
+│   └── browser/                      # `argus view --interface=browser` — FastAPI web UI, 127.0.0.1 only ([browser] extra)
+│       ├── app.py                    # FastAPI routes: /, /findings, /picker, /healthz
+│       ├── templates/                # Jinja2: base, summary (dashboard), findings, picker
+│       └── static/                   # argus.css + auto-filter.js (vanilla, no framework)
 └── tests/                            # 20 test files, comprehensive coverage
 ```
 

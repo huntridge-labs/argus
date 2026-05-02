@@ -60,7 +60,7 @@ def render_csv(findings: Iterable[Finding]) -> str:
     """Return findings as a CSV string.
 
     Pure-in-memory rendering so callers that don't want a file (e.g.
-    ``argus serve`` returning a Response body) can skip the filesystem
+    ``argus view browser`` returning a Response body) can skip the filesystem
     entirely. The TUI's ``write_csv`` wraps this for the file path.
     """
     buf = io.StringIO()

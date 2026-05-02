@@ -12,7 +12,7 @@ pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient   # noqa: E402
 
-from argus.serve.app import _collect_recent_scans, create_app   # noqa: E402
+from argus.viewers.browser.app import _collect_recent_scans, create_app   # noqa: E402
 
 
 def _write_results(dir_path: Path, count: int = 1) -> Path:
@@ -64,7 +64,7 @@ class TestCollectRecentScans:
         assert labels == ["run-1"]
 
     def test_looks_at_parent_when_launch_root_is_itself_a_scan(self, tmp_path):
-        # argus serve <one-scan-dir> → launch_root contains argus-results.json.
+        # argus view browser <one-scan-dir> → launch_root contains argus-results.json.
         # Recent-scans should show siblings in the parent, not treat the
         # scan's own subdirs (if any) as runs.
         run = tmp_path / "run-1"
@@ -135,7 +135,7 @@ class TestCollectRecentScans:
     def test_non_dict_json_payload_doesnt_crash_peek(self, tmp_path):
         # A well-formed JSON file whose TOP-LEVEL value isn't a dict
         # (a bare list, for example) must not crash _collect_recent_scans.
-        # This actually surfaced across tests: argus.browse.loader has
+        # This actually surfaced across tests: argus.viewers.terminal.loader has
         # a test that writes a list-shaped argus-results.json to its
         # tmp_path, and pytest's shared session root meant the picker
         # walk could trip on that sibling while running a serve test.

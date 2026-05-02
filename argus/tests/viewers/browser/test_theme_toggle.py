@@ -16,7 +16,7 @@ pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient   # noqa: E402
 
-from argus.serve.app import create_app   # noqa: E402
+from argus.viewers.browser.app import create_app   # noqa: E402
 
 
 class TestThemeToggleUI:

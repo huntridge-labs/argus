@@ -23,13 +23,13 @@ from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.command import Hit, Hits, Provider
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widgets import DataTable, Footer, Header, Input, OptionList, Static
 from textual.widgets.option_list import Option
 
-from argus.browse.loader import flatten_findings, load_summary
+from argus.viewers.terminal.loader import flatten_findings, load_summary
 from argus.core.findings_view import (
     SEVERITY_GLYPH,
     SEVERITY_ORDER,
@@ -54,14 +54,15 @@ _SORT_LABELS = SORT_LABELS
 # ViewState lives in argus.core.findings_view now — imported at the top
 # of this module — so the TUI and the future web UI share one filter/sort
 # implementation. The alias kept here retains backwards compat for any
-# test that monkeypatched ``argus.browse.app.ViewState``.
+# test that monkeypatched ``argus.viewers.terminal.app.ViewState``.
 
 
 _HELP_TEXT = """\
-[b]argus browse[/b] — interactive findings triage
+[b]argus view (terminal)[/b] — interactive findings triage
 
 [b]Navigate[/b]
   [b]↑/↓[/b] or [b]j/k[/b]   move selection
+  [b]mouse[/b]            click a row to select · scroll-wheel to scroll
   [b]enter[/b]            open finding detail (auto-shown on highlight)
   [b]tab[/b]              jump between panes
 
@@ -123,15 +124,26 @@ class HelpScreen(ModalScreen):
     #help-body {
         background: $surface;
         border: thick $accent;
-        padding: 1 2;
         width: 80%;
         max-width: 90;
+        max-height: 90%;
         height: auto;
     }
+    #help-body > Static { padding: 1 2; }
     """
 
     def compose(self) -> ComposeResult:
-        yield Static(_HELP_TEXT, id="help-body")
+        # VerticalScroll is focusable and ships with arrow-key, page-up/
+        # down, home/end bindings, so wrapping the help text in one is
+        # what lets ↑/↓ scroll the modal. Without it, the Static was
+        # effectively read-only via mouse-wheel only.
+        with VerticalScroll(id="help-body"):
+            yield Static(_HELP_TEXT)
+
+    def on_mount(self) -> None:
+        # Land focus on the scroll container so arrow keys work the
+        # moment the help opens (no need to click first).
+        self.query_one("#help-body", VerticalScroll).focus()
 
 
 _PICKER_CSS = """
@@ -386,21 +398,35 @@ class ArgusBrowseCommands(Provider):
 
 
 class SearchInput(Input):
-    """Search box that returns focus to the findings table on ESC.
+    """Search box that returns focus to the findings table on ESC / ↓.
 
     Textual's default Input binding for ``escape`` is blur-only, so
     users get stranded in the search box until they click elsewhere.
     We hard-bind ``escape`` to shift focus back to the DataTable so a
     single keystroke drops the user back into navigation.
+
+    ``down`` / ``up`` here also exit search and move focus to the
+    findings table — that's the natural keystroke users try after
+    typing a query and wanting to scan the matches, and the default
+    Input behavior (which only navigates within the input field) is a
+    dead end.
     """
 
     BINDINGS = [
         Binding("escape", "back_to_table", "Back to list", show=False),
+        Binding("down", "into_table", "Into list", show=False),
+        Binding("up", "into_table", "Into list", show=False),
     ]
 
     def action_back_to_table(self) -> None:
         table = self.app.query_one(DataTable)
         table.focus()
+
+    def action_into_table(self) -> None:
+        # Same as ESC for now — the table preserves its cursor position,
+        # so refocusing is enough to let arrow keys keep navigating from
+        # wherever the user left off.
+        self.action_back_to_table()
 
 
 class FindingDetail(Static):
@@ -447,21 +473,26 @@ class BrowseApp(App):
     #status { height: 1; dock: bottom; background: $panel; padding: 0 1; }
     """
 
+    # Footer-visible bindings are kept tight so the bar fits common
+    # terminal widths (~80 cols). Less-used actions (open / reveal
+    # exports, product / scanner pickers) are hidden with show=False —
+    # they remain bound, listed in the ? help screen, and discoverable
+    # via the Ctrl+P command palette.
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("question_mark", "show_help", "Help", key_display="?"),
         Binding("slash", "focus_search", "Search", show=True, key_display="/"),
-        Binding("1", "filter_critical", "Crit only"),
-        Binding("2", "filter_high", "High+"),
-        Binding("3", "filter_medium", "Med+"),
-        Binding("4", "filter_all", "All"),
+        Binding("1", "filter_critical", "Crit"),
+        Binding("2", "filter_high", "≥High"),
+        Binding("3", "filter_medium", "≥Med"),
+        Binding("4", "filter_all", "All sev"),
         Binding("s", "cycle_sort", "Sort"),
-        Binding("e", "export_csv", "Export"),
-        Binding("o", "open_last_export", "Open export"),
-        Binding("r", "reveal_last_export", "Reveal in files"),
-        Binding("p", "pick_product", "Product"),
-        Binding("c", "pick_scanner", "Scanner"),
-        Binding("d", "show_dashboard", "Dashboard"),
+        Binding("e", "export_csv", "CSV"),
+        Binding("d", "show_dashboard", "Dash"),
+        Binding("o", "open_last_export", "Open export", show=False),
+        Binding("r", "reveal_last_export", "Reveal export", show=False),
+        Binding("p", "pick_product", "Product", show=False),
+        Binding("c", "pick_scanner", "Scanner", show=False),
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
     ]
@@ -478,7 +509,8 @@ class BrowseApp(App):
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
         yield SearchInput(
-            placeholder="Search (id, title, location, CVE, scanner)… ESC to return to list",
+            placeholder="Search (id, title, location, CVE, scanner)… "
+                        "↓ or ESC to return to list",
             id="search",
         )
         with Container(id="body"):
@@ -494,7 +526,7 @@ class BrowseApp(App):
     # ------------------------------------------------------------------
 
     def on_mount(self) -> None:
-        self.title = "argus browse"
+        self.title = "argus view (terminal)"
         try:
             summary, resolved = load_summary(self._results_dir)
         except (FileNotFoundError, ValueError) as exc:
@@ -510,6 +542,11 @@ class BrowseApp(App):
         )
         self._refresh_list()
         self._update_sort_indicator()
+        # Open into the findings list, not the search box. The search
+        # input is the first focusable child by yield order, so without
+        # this users land in the search field and find that ↑/↓ edit
+        # the query rather than navigating findings.
+        table.focus()
 
     # ------------------------------------------------------------------
     # Filter / sort / search
@@ -713,7 +750,7 @@ class BrowseApp(App):
     def action_cursor_up(self) -> None:
         self.query_one(DataTable).action_cursor_up()
 
-    # Format dispatch lives in argus.browse.export — these action methods
+    # Format dispatch lives in argus.viewers.terminal.export — these action methods
     # just wrap the shared writers with filename assembly and toast.
 
     def action_export_csv(self) -> None:
@@ -733,7 +770,7 @@ class BrowseApp(App):
         self._export_in_format("sarif")
 
     def _export_in_format(self, fmt: str) -> None:
-        from argus.browse.export import WRITERS, make_export_path
+        from argus.viewers.terminal.export import WRITERS, make_export_path
         writer, extension = WRITERS[fmt]
         scope = (
             self.view_state.min_severity.value

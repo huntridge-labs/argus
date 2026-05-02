@@ -899,7 +899,7 @@ decisions:
                 scan_statuses: '{"...": "..."}'
 
   - id: ADR-017
-    title: "argus serve — localhost-only SDK-bundled web UI, separate from argus-portal"
+    title: "argus view browser — localhost-only SDK-bundled web UI, separate from argus-portal"
     status: accepted
     date: 2026-04-24
     context: |
@@ -912,7 +912,7 @@ decisions:
       deployment. That is months of scope for the "I just want to look at
       one argus-results.json" need.
     decision: |
-      Ship argus serve as a lightweight read-only web UI bundled with the
+      Ship argus view browser as a lightweight read-only web UI bundled with the
       argus SDK as the ``[serve]`` optional extra. Bound to 127.0.0.1
       only, single-user, single-scan scope. Deliberately NOT a replacement
       for argus-portal — the portal stays on its own track aimed at
@@ -939,7 +939,7 @@ decisions:
         - ``--bind`` or ``--basic-auth`` — multi-user network exposure is
           argus-portal's territory.
     rationale: |
-      Reuses all the groundwork already shipped for argus browse — the
+      Reuses all the groundwork already shipped for argus view terminal — the
       findings_view module was explicitly built to serve both front-ends.
       Going localhost-only dodges the biggest sources of complexity
       (auth, sessions, CSRF, multi-user state) while still delivering the
@@ -953,7 +953,7 @@ decisions:
         - "Executive-level stakeholders get a first-class surface without the argus-portal operational burden"
         - "TUI and web view cannot drift — filter and summary logic is centralized in argus.core.findings_view"
         - "Localhost-only default removes an entire class of auth, session, and transport-security footguns"
-        - "No CDN dependencies means argus serve works offline, on airgapped networks, and in restricted corporate environments"
+        - "No CDN dependencies means argus view browser works offline, on airgapped networks, and in restricted corporate environments"
       negative:
         - "Users who want a team-visible deployment must set up their own reverse proxy or run argus-portal — documented as an explicit scope choice, not a bug"
         - "Secret redaction is not serve-specific; if a finding description contains credentials from a stack trace, they appear in the CLI, TUI, JSON export, and the web UI. Will be tackled globally when the need arises"

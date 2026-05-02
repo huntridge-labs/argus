@@ -16,7 +16,7 @@ pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient   # noqa: E402 — pytest importorskip above
 
-from argus.serve.app import _resolve_scan, create_app   # noqa: E402
+from argus.viewers.browser.app import _resolve_scan, create_app   # noqa: E402
 
 
 def _write_results(dir_path, payload):

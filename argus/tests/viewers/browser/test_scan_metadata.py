@@ -17,7 +17,7 @@ pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient   # noqa: E402
 
-from argus.serve.app import _scan_metadata, create_app   # noqa: E402
+from argus.viewers.browser.app import _scan_metadata, create_app   # noqa: E402
 
 
 def _write_scan(dir_path: Path, scanner_blocks: list[dict]) -> Path:
@@ -46,7 +46,7 @@ class TestScanMetadataExtractor:
     def test_collects_per_scanner_execution_fields(self, tmp_path):
         # Fake the ScanSummary via the real loader so we test the
         # extractor against actual models, not dict shims.
-        from argus.browse.loader import load_summary
+        from argus.viewers.terminal.loader import load_summary
 
         _write_scan(tmp_path, [{
             "scanner": "bandit",
@@ -71,7 +71,7 @@ class TestScanMetadataExtractor:
         assert md["total_duration_ms"] == 250
 
     def test_sums_durations_across_scanners(self, tmp_path):
-        from argus.browse.loader import load_summary
+        from argus.viewers.terminal.loader import load_summary
         _write_scan(tmp_path, [
             {"scanner": "bandit", "metadata": {"duration_ms": 100}},
             {"scanner": "grype",  "metadata": {"duration_ms": 250}},
@@ -86,14 +86,14 @@ class TestScanMetadataExtractor:
         # Older scans without duration_ms metadata — total should be
         # None (not zero) so the template hides the "0s total" line
         # rather than implying an instant scan.
-        from argus.browse.loader import load_summary
+        from argus.viewers.terminal.loader import load_summary
         _write_scan(tmp_path, [{"scanner": "bandit", "metadata": {}}])
         scan_summary, resolved = load_summary(tmp_path / "argus-results.json")
         md = _scan_metadata(scan_summary, resolved)
         assert md["total_duration_ms"] is None
 
     def test_scan_file_and_mtime_captured(self, tmp_path):
-        from argus.browse.loader import load_summary
+        from argus.viewers.terminal.loader import load_summary
         p = _write_scan(tmp_path, [{"scanner": "bandit", "metadata": {}}])
         scan_summary, resolved = load_summary(p)
         md = _scan_metadata(scan_summary, resolved)

@@ -1,4 +1,4 @@
-"""FastAPI application factory and uvicorn runner for ``argus serve``.
+"""FastAPI application factory and uvicorn runner for ``argus view browser``.
 
 Phase SB shape: ``/`` renders the executive-summary dashboard when a
 scan is in scope (either the launch root pointed at an
@@ -22,8 +22,8 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from argus.browse.export import CONTENT_TYPES, RENDERERS
-from argus.browse.loader import RESULTS_FILENAME, flatten_findings, load_summary
+from argus.viewers.terminal.export import CONTENT_TYPES, RENDERERS
+from argus.viewers.terminal.loader import RESULTS_FILENAME, flatten_findings, load_summary
 from argus.core.findings_view import (
     ViewState,
     compute_summary,
@@ -35,7 +35,7 @@ from argus.core.findings_view import (
 from argus.core.models import Severity
 
 
-logger = logging.getLogger("argus.serve")
+logger = logging.getLogger("argus.viewers.browser")
 
 _SERVE_DIR = Path(__file__).resolve().parent
 _TEMPLATES_DIR = _SERVE_DIR / "templates"
@@ -77,7 +77,7 @@ def _resolve_scan(
       2. Reject anything that resolves outside ``launch_root`` — this
          is a read-only localhost UI, but a cross-site GET could still
          poke the filesystem for file-existence oracles otherwise.
-         Relaunch ``argus serve`` with a broader ``--root`` if you
+         Relaunch ``argus view browser`` with a broader path if you
          genuinely need access to a wider tree.
       3. If the resolved path is a file → use it as-is.
       4. If it's a directory:
@@ -226,10 +226,10 @@ def _collect_recent_scans(
     Scope rules:
     - If ``launch_root`` itself contains ``argus-results.json``, we
       treat it as a single scan and look at its parent for siblings.
-      This is the common "argus serve <one-run-dir>" case.
+      This is the common "argus view browser <one-run-dir>" case.
     - Otherwise we iterate ``launch_root``'s immediate subdirs and
-      keep those that are scan-ready. This is the "argus serve <runs
-      parent>" case.
+      keep those that are scan-ready. This is the "argus view browser
+      <runs parent>" case.
 
     Both cases apply a symlink de-dup: ``latest/`` resolves to a
     timestamped sibling, so we won't render both rows for what is
@@ -952,7 +952,7 @@ def run_app(
     if open_browser:
         # ``webbrowser`` is stdlib, handles URL-vs-file dispatch and the
         # platform opener shell-out internally, and doesn't require the
-        # [browse] extra (``argus.browse.app._platform_opener_argv`` is
+        # [browse] extra (``argus.viewers.terminal.app._platform_opener_argv`` is
         # path-oriented and would mis-route a URL). Not fatal on failure
         # — uvicorn still prints the URL below.
         import webbrowser
@@ -961,8 +961,8 @@ def run_app(
         except Exception as exc:   # noqa: BLE001 — webbrowser can raise broadly on headless systems
             logger.debug("webbrowser.open failed: %s — skipping auto-open", exc)
 
-    logger.info("argus serve listening on %s (Ctrl+C to stop)", url)
-    print(f"argus serve listening on {url} — Ctrl+C to stop")
+    logger.info("argus view browser listening on %s (Ctrl+C to stop)", url)
+    print(f"argus view browser listening on {url} — Ctrl+C to stop")
 
     try:
         uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")

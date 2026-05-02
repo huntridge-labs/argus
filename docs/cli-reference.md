@@ -61,11 +61,11 @@ argus scan [-h] [--path PATH] [--config CONFIG]
                   [--verbose] [--no-spinner] [--no-timestamp]
                   [--output-vars FILE] [--exclude PATTERNS]
                   [--no-default-excludes] [--dry-run] [--sbom PATH]
-                  [--interactive] [--fail-fast] [--timeout SECONDS]
-                  [--no-parallel] [--allow-local-versions] [--no-cache]
-                  [--discover [PATH]] [--image REF] [--scanners SCANNERS]
-                  [--target URL] [--port PORT] [--env KEY=VALUE]
-                  [--scan-type {baseline,full}]
+                  [--interface {terminal,browser}] [--fail-fast]
+                  [--timeout SECONDS] [--no-parallel] [--allow-local-versions]
+                  [--no-cache] [--discover [PATH]] [--image REF]
+                  [--scanners SCANNERS] [--target URL] [--port PORT]
+                  [--env KEY=VALUE] [--scan-type {baseline,full}]
                   [--startup-timeout STARTUP_TIMEOUT]
                   [scanner]
 ```
@@ -92,7 +92,7 @@ argus scan [-h] [--path PATH] [--config CONFIG]
 | `--no-default-excludes` | Drop built-in exclusions (node_modules, .git, ...) and .gitignore / .dockerignore patterns. Only --exclude and argus.yml exclude: take effect. Use when you explicitly want to scan what the defaults would normally skip. | `false` |
 | `--dry-run` | Resolve config and print the planned scanner invocations without executing them. Useful for verifying which per-scanner config files, paths, and excludes Argus will use. | `false` |
 | `--sbom` | Scan a pre-built SBOM or directory of SBOMs (CycloneDX JSON/XML, SPDX JSON/tag-value, or Syft JSON). When PATH is a directory, argus walks it recursively, sniffs each file, and scans every SBOM it finds. Auto-enables all SBOM-capable scanners (osv, grype, trivy) regardless of argus.yml. Filesystem scanners (bandit, gitleaks, ...) are skipped since they have nothing to scan. |  |
-| `--interactive` | After the scan completes, launch the interactive findings browser (`argus browse`) against the just-written results. Requires the 'browse' extra: pip install 'argus-security[browse]'. | `false` |
+| `--interface`, `-i` | After the scan completes, open a viewer on the just-written results. 'terminal' launches the TUI (requires 'argus-security[terminal]'); 'browser' launches the local web UI (requires 'argus-security[browser]'). (terminal, browser) |  |
 | `--fail-fast` | Abort immediately if any scanner fails instead of continuing. | `false` |
 | `--timeout` | Per-scanner timeout in seconds. Scanners exceeding this limit are killed. |  |
 | `--no-parallel` | Run scanners sequentially instead of concurrently. | `false` |
@@ -238,7 +238,7 @@ argus mcp [-h]
 Generate a shell completion script for argus.
 
 Once installed, pressing <Tab> will complete:
-  - subcommands (scan, list, browse, cache, ...)
+  - subcommands (scan, list, view, cache, ...)
   - scanner and linter names (bandit, gitleaks, lint-yaml, ...)
   - common flags (--config, --scanners, --severity, ...)
 
@@ -275,53 +275,44 @@ For persistent caching: export ARGUS_CACHE_DIR=~/.argus/cache
 argus cache [-h] {info,clean} ...
 ```
 
-### `argus browse`
+### `argus view`
 
-Launch the terminal UI for triaging an argus-results.json:
-  argus browse                          # ./argus-results/argus-results.json
-  argus browse ./run-2026-04-24         # specific results dir
-  argus browse ./custom-results.json    # direct file path
+Open a human-readable view of argus-results.json:
+  argus view                                  # terminal interface, ./argus-results/
+  argus view terminal                         # explicit terminal
+  argus view browser                          # local web UI (127.0.0.1)
+  argus view --interface=terminal             # flag form
+  argus view browser ./run-2026-04-24/        # interface + path
+  argus view --interface=browser --port 9090
+  argus view browser --no-open      # don't auto-open the browser
 
-Keyboard shortcuts inside the TUI:
+Terminal interface keyboard shortcuts:
   / search · 1/2/3/4 filter by severity · s sort · e export CSV · q quit
 
-Requires the 'browse' extra: pip install 'argus-security[browse]'
+Browser interface is bound to 127.0.0.1 only — no auth, no mutations.
+
+Install:
+  pip install 'argus-security[terminal]'      # terminal interface
+  pip install 'argus-security[browser]'       # browser interface
 
 ```
-argus browse [-h] [PATH]
-```
-
-**Arguments:**
-
-- `results` — Results directory or argus-results.json path (default: ./argus-results/)
-
-### `argus serve`
-
-Serve a read-only web view of argus scan results on localhost:
-  argus serve                       # picker rooted at CWD
-  argus serve /path/to/results/     # load that scan directly
-  argus serve --port 9090 --open    # custom port, open browser
-
-Bound to 127.0.0.1 only by design — single-user, no auth, no
-mutations. For enterprise multi-user deployments see
-argus-portal (separate track).
-
-Requires the 'serve' extra: pip install 'argus-security[serve]'
-
-```
-argus serve [-h] [--port PORT] [--open] [PATH]
+argus view [-h] [--interface {terminal,browser}] [--port PORT]
+                  [--no-open]
+                  [INTERFACE|PATH] [PATH]
 ```
 
 **Arguments:**
 
-- `root` — Starting folder for the picker, or a direct argus-results.json path (default: current working directory)
+- `interface_or_path` — Either an interface keyword (terminal | browser) or a results path. If a path is given here without an interface keyword, the interface defaults to terminal.
+- `path_arg` — Results directory or argus-results.json path when the first positional is an interface keyword (default: ./argus-results/)
 
 **Options:**
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--port` | TCP port to listen on (default: 8080) | `8080` |
-| `--open` | Open the default browser at the server URL after startup | `false` |
+| `--interface`, `-i` | Interface to open: terminal \| browser (alternative to positional) (terminal, browser) |  |
+| `--port` | TCP port for the browser interface (default: 8080) | `8080` |
+| `--no-open` | Don't auto-open the default web browser after startup (browser interface only). By default, the browser opens when stdout is a TTY; CI and other non-interactive contexts already skip auto-open without this flag. | `false` |
 
 ## Quick Reference
 

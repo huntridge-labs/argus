@@ -2,7 +2,7 @@
 
 Branch under test: **`feat/serve-webui`** ([PR #97](https://github.com/huntridge-labs/argus/pull/97))
 
-`argus browse` is the terminal TUI; `argus serve` is the browser web UI. Both read the same `argus-results.json` produced by `argus scan`. You can test either without Docker if you already have scan results on disk.
+`argus view terminal` is the terminal TUI; `argus view browser` is the browser web UI. Both read the same `argus-results.json` produced by `argus scan`. You can test either without Docker if you already have scan results on disk.
 
 Target time: ~15 min of clicking around.
 
@@ -62,12 +62,12 @@ cd /path/to/your/project && argus scan
 
 ---
 
-## 3. Test `argus browse` (terminal TUI)
+## 3. Test `argus view terminal` (terminal TUI)
 
 ```bash
-argus browse                    # looks at ./argus-results
-argus browse /path/to/results   # or an explicit path
-argus scan --interactive        # or the one-shot: scan → auto-launch browse
+argus view terminal                    # looks at ./argus-results
+argus view terminal /path/to/results   # or an explicit path
+argus scan --interface=terminal        # or the one-shot: scan → auto-launch terminal viewer
 ```
 
 ### Try each, in any order
@@ -91,14 +91,14 @@ argus scan --interactive        # or the one-shot: scan → auto-launch browse
 
 ---
 
-## 4. Test `argus serve` (browser web UI)
+## 4. Test `argus view browser` (browser web UI)
 
 ```bash
-argus serve argus-results --open       # default port 8080, auto-opens browser
-# or: argus serve /some/results --port 8765 --open
+argus view browser argus-results --open       # default port 8080, auto-opens browser
+# or: argus view browser /some/results --port 8765
 ```
 
-Point a browser at `http://127.0.0.1:8080/` if `--open` didn't fire.
+Point a browser at `http://127.0.0.1:8080/` if auto-open didn't fire.
 
 ### Dashboard (`/`)
 
@@ -153,7 +153,7 @@ Point a browser at `http://127.0.0.1:8080/` if `--open` didn't fire.
   - `Referrer-Policy: no-referrer`
 - [ ] Dev tools → Console should be empty (no errors, no warnings)
 
-**Pass criteria:** every boxable item above checks, no console errors, no server crashes in the terminal running `argus serve`.
+**Pass criteria:** every boxable item above checks, no console errors, no server crashes in the terminal running `argus view browser`.
 
 ---
 
@@ -177,12 +177,12 @@ which argus                                    # should be .venv/bin/argus
 deactivate && source .venv/bin/activate        # re-activate
 hash -r                                        # clear shell cache
 ```
-If `which argus` still isn't the venv, pyenv shims or Homebrew may be intercepting. Call it explicitly: `.venv/bin/argus serve …`.
+If `which argus` still isn't the venv, pyenv shims or Homebrew may be intercepting. Call it explicitly: `.venv/bin/argus view browser …`.
 
 **`The local web UI needs the 'serve' extra`** — the venv doesn't have fastapi. Same root cause:
 ```bash
 .venv/bin/pip install -e '.[serve]'
-.venv/bin/argus serve ...
+.venv/bin/argus view browser ...
 ```
 
 **`ImportError: Using SOCKS proxy, but the 'socksio' package is not installed`** — your shell has `ALL_PROXY`/`HTTPS_PROXY` set to `socks5://`. Fix:
@@ -190,6 +190,6 @@ If `which argus` still isn't the venv, pyenv shims or Homebrew may be intercepti
 .venv/bin/pip install 'httpx[socks]'
 ```
 
-**`argus serve` starts but the browser doesn't open** — `--open` relies on your OS's default browser resolver. Just paste `http://127.0.0.1:8080` manually.
+**`argus view browser` starts but the browser doesn't open** — auto-open relies on your OS's default browser resolver. Just paste `http://127.0.0.1:8080` manually.
 
 **Port already in use** — pass `--port N` to pick a different one.

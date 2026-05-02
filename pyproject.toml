@@ -53,12 +53,12 @@ ai = [
 completion = ["argcomplete>=3.0"]
 # MCP server for AI assistant integration
 mcp = ["mcp>=1.0.0"]
-# Interactive findings browser (argus browse)
-browse = ["textual>=0.80"]
-# Local read-only web UI (argus serve)
-serve = ["fastapi>=0.110", "uvicorn[standard]>=0.30", "jinja2>=3.1", "python-multipart>=0.0.9"]
+# Terminal interface for `argus view --interface=terminal`
+terminal = ["textual>=0.80"]
+# Browser interface for `argus view --interface=browser` (localhost web UI)
+browser = ["fastapi>=0.110", "uvicorn[standard]>=0.30", "jinja2>=3.1", "python-multipart>=0.0.9"]
 # All optional features
-all = ["argus-security[ai,completion,mcp,browse,serve]"]
+all = ["argus-security[ai,completion,mcp,terminal,browser]"]
 
 [project.scripts]
 argus = "argus.cli:main"
@@ -91,7 +91,7 @@ argus = ["../argus-config.schema.json", "../img/argus_logo.txt"]
 # Web UI templates and static assets live next to the Python package but
 # aren't .py files; setuptools won't pick them up automatically. Listing
 # them here ships them inside the built wheel.
-"argus.serve" = ["templates/*.j2", "static/*"]
+"argus.viewers.browser" = ["templates/*.j2", "static/*"]
 
 # ── Tool configuration ────────────────────────────────────────────
 
