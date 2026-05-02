@@ -351,7 +351,9 @@ Create a single Python file implementing the `Scanner` protocol:
 
 3. **Add tests** at `argus/tests/scanners/test_my_scanner.py`
 
-4. **Update documentation** and `.ai/architecture.yaml`
+4. **Audit for secret leaks.** If the scanner's raw output ever contains matched literals from source code (passwords, API keys, the `code` excerpt that triggered a finding), drop or redact those fields before building the `Finding`. Use `argus.core.redact.redact_secret(value)` for fields that hold the raw value, `redact_secret_in_message(msg, value)` to scrub interpolated descriptions. Add a test asserting the original literal never appears in `Finding.to_dict()` JSON output. Full audit checklist + rationale: [`docs/mcp.md` → Secrets handling](docs/mcp.md#secrets-handling).
+
+5. **Update documentation** and `.ai/architecture.yaml`
 
 ## Adding a New Linter
 

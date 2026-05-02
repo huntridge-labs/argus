@@ -194,6 +194,38 @@ The MCP client can read these directly without invoking a tool:
 
 ---
 
+## Secrets handling
+
+Argus's commitment: a secret value detected by a scanner **never** leaves the parser. The MCP server returns scan results to AI clients, which means anything carried in those results travels through your assistant's API call to a third-party LLM provider — exactly where you don't want a credential. We block the leak at the source instead of trying to scrub it downstream.
+
+**How it works:**
+
+- Each scanner that detects credential-shaped content audits its own output and replaces secret-bearing fields with the literal `<redacted>` placeholder before the `Finding` is constructed.
+- The scrubbed `Finding` is what every consumer sees: terminal output, JSON / Markdown / SARIF exports, the MCP tool responses, and the AI assistant's context window. There's no path that reaches a raw secret.
+- A small fixed-string placeholder is used deliberately. Length-preserving masks (`ghp_***...12`) leak entropy and the first-prefix sniff (`ghp_` etc.) duplicates information already in `rule_id`. Position-bearing fields (`file:line:col`, scanner-emitted `fingerprint`) are kept because they're enough for a developer to find the right line and rotate the credential.
+
+**What gets redacted:**
+
+| Scanner | Redacted | Kept |
+|---|---|---|
+| **gitleaks** | `Match`, `Secret`, `Author` (PII), `Email` (PII), `Date`, `Message` | `RuleID`, `Commit` (SHA, public), `Fingerprint`, `match_length` (integer for diagnostics), line/col |
+| **bandit** B105 / B106 / B107 (hardcoded-credential checks) | `issue_text` literal value (regex-stripped between quotes), `code` excerpt (replaced wholesale with `<redacted>`) | `test_name`, `more_info` URL, location, CWE, severity |
+| **bandit** other tests | nothing — code excerpts are valuable triage signal | everything bandit emits |
+
+**Adding a new scanner — audit checklist:**
+
+When you wire up a new scanner module under `argus/scanners/`, run through this before merging:
+
+1. Does the raw output contain matched literals from source code?
+2. If yes: which JSON / output fields carry that content? Document them in the parser's docstring.
+3. Drop or `redact_secret(...)` those fields before building the `Finding`. Helpers: `argus.core.redact.redact_secret(value)` returns the placeholder; `redact_secret_in_message(msg, value)` substring-replaces the literal in human-readable strings.
+4. Add a test that loads a representative fixture and asserts the original literal does not appear anywhere in the `Finding.to_dict()` JSON dump (see `argus/tests/scanners/test_gitleaks.py` `TestGitleaksRedaction` for the pattern).
+5. Note the redaction policy in the scanner's module docstring so future maintainers don't accidentally re-add the leak.
+
+**Defense-in-depth pattern-pass safety net:** a follow-up roadmap item (see [`docs/developer/SDK-ROADMAP.md` → Secret Redaction Hardening](developer/SDK-ROADMAP.md#secret-redaction-hardening)) — would catch a future scanner that gets added without a per-parser audit. Deferred for now because the per-scanner approach is the primary defense and pattern-based double-pass duplicates gitleaks's domain.
+
+---
+
 ## Discovery and registry listings
 
 The Argus MCP server is distributed as part of the [`argus-security` PyPI package](https://pypi.org/project/argus-security/). Listings in community MCP server catalogs make it easier for AI-tool users to find it without needing to read the Argus repo first.

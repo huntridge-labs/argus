@@ -112,12 +112,38 @@ class GitleaksScanner:
     def _parse_finding(self, item: dict) -> Finding:
         """Convert a single Gitleaks result into a Finding.
 
-        All secrets findings are HIGH severity -- leaked credentials
+        All secrets findings are HIGH severity — leaked credentials
         are always a high-priority issue.
+
+        Redaction commitment: the actual secret value (``Match`` /
+        ``Secret`` fields in Gitleaks's JSON) NEVER lands in the
+        Finding. Same for committer email/name (PII), commit message
+        (may contain credentials in rollbacks), and date (correlation
+        risk). What we keep:
+
+        - ``rule_id``: identifies the secret *type* (e.g.
+          ``github-pat``) — safer + more useful than a raw prefix.
+        - ``commit``: SHA only. Public once code is shared.
+        - ``fingerprint``: Gitleaks's own deterministic identifier,
+          safe to log and search across runs.
+        - ``match_length``: integer length of the original secret,
+          for the rare diagnostic case where two adjacent rules
+          would otherwise be indistinguishable.
+        - location ``file:line``: enough to find the right place to
+          rotate the credential.
+
+        Downstream consumers (terminal reporter, JSON export,
+        Markdown export, MCP tool responses, AI-assistant context)
+        therefore see no leakable content. See ``argus/core/redact.py``
+        for the wider rationale.
         """
+        from argus.core.redact import redact_secret
+
         file_path = item.get("File", "")
         start_line = item.get("StartLine", 0)
         location = f"{file_path}:{start_line}" if file_path else None
+
+        raw_match = item.get("Match", "") or item.get("Secret", "")
 
         return Finding(
             id=item.get("RuleID", "UNKNOWN"),
@@ -128,9 +154,10 @@ class GitleaksScanner:
             scanner=self.name,
             metadata={
                 "commit": item.get("Commit", ""),
-                "author": item.get("Author", ""),
                 "rule_id": item.get("RuleID", ""),
-                "match": item.get("Match", ""),
+                "fingerprint": item.get("Fingerprint", ""),
+                "match": redact_secret(raw_match),
+                "match_length": len(raw_match) if raw_match else 0,
                 "end_line": item.get("EndLine", 0),
             },
         )
