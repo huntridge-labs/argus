@@ -175,7 +175,8 @@ def _build_view_parser(subparsers: argparse._SubParsersAction) -> None:
             "  argus view browser                          # local web UI (127.0.0.1)\n"
             "  argus view --interface=terminal             # flag form\n"
             "  argus view browser ./run-2026-04-24/        # interface + path\n"
-            "  argus view --interface=browser --port 9090 --open\n\n"
+            "  argus view --interface=browser --port 9090\n"
+            "  argus view browser --no-open      # don't auto-open the browser\n\n"
             "Terminal interface keyboard shortcuts:\n"
             "  / search · 1/2/3/4 filter by severity · s sort · e export CSV · q quit\n\n"
             "Browser interface is bound to 127.0.0.1 only — no auth, no mutations.\n\n"
@@ -215,11 +216,13 @@ def _build_view_parser(subparsers: argparse._SubParsersAction) -> None:
         help="TCP port for the browser interface (default: 8080)",
     )
     view_parser.add_argument(
-        "--open",
-        dest="open_browser",
+        "--no-open",
+        dest="no_open",
         action="store_true",
-        help="Open the default web browser at the server URL after startup "
-             "(browser interface only)",
+        help="Don't auto-open the default web browser after startup "
+             "(browser interface only). By default, the browser opens when "
+             "stdout is a TTY; CI and other non-interactive contexts already "
+             "skip auto-open without this flag.",
     )
 
 
@@ -250,8 +253,21 @@ def cmd_view(args: argparse.Namespace) -> int:
         interface,
         path=args.path,
         port=args.port,
-        open_browser=args.open_browser,
+        open_browser=_should_open_browser(args),
     )
+
+
+def _should_open_browser(args: argparse.Namespace) -> bool:
+    """Default to auto-opening the browser when stdout is a TTY.
+
+    Headless / CI / piped-output contexts already shouldn't trigger
+    ``webbrowser.open`` (it would either fail noisily or block), so the
+    TTY check gives us a sensible default without needing the user to
+    flag every interactive run. ``--no-open`` overrides regardless.
+    """
+    if getattr(args, "no_open", False):
+        return False
+    return sys.stdout.isatty()
 
 
 def _launch_view(
@@ -2029,7 +2045,7 @@ _argus() {{
                         '2:path:_files -/' \\
                         '(-i --interface)'{{-i,--interface}}'[Interface to open]:interface:($interfaces)' \\
                         '--port[TCP port for browser interface]:port:' \\
-                        '--open[Open default web browser at server URL]'
+                        '--no-open[Skip auto-opening the default web browser]'
                     ;;
             esac
             ;;
@@ -2101,7 +2117,7 @@ _argus_completions() {{
                 --interface|-i) COMPREPLY=($(compgen -W "$interfaces" -- "$cur")); return ;;
                 --port) return ;;
             esac
-            COMPREPLY=($(compgen -W "--interface --port --open" -- "$cur"))
+            COMPREPLY=($(compgen -W "--interface --port --no-open" -- "$cur"))
             ;;
     esac
 }}

@@ -460,7 +460,7 @@ docsite:
     cli_commands:
       - "argus scan [scanner] --path --config --severity-threshold --format [--interface=terminal|browser]"
       - "argus report <format> --results-dir --output-dir"
-      - "argus view [terminal|browser] [PATH] [--interface=terminal|browser] [--port N] [--open]"
+      - "argus view [terminal|browser] [PATH] [--interface=terminal|browser] [--port N] [--no-open]"
 
 directory_structure:
   "argus/": "Standalone Python SDK (primary interface, ADR-013)"

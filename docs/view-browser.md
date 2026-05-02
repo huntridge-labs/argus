@@ -28,7 +28,7 @@ argus view browser                          # picker rooted at CWD
 argus view browser /path/to/results/        # load that scan directly
 argus view browser /path/to/scans-parent/   # picker rooted there
 argus view browser --port 9090              # non-default port
-argus view browser --open                   # open default browser on startup
+argus view browser --no-open                # skip auto-opening the browser (default opens it on TTY)
 ```
 
 **Localhost only.** The server always binds to `127.0.0.1` — there is no
@@ -145,7 +145,7 @@ but not the `[serve]` extra. Retry with `pip install 'argus-security[browser]'`.
 
 **Port 8080 already in use** — pass `--port 9090` (or any free port).
 
-**Browser didn't auto-open with `--open`** — we use the stdlib `webbrowser`
+**Browser didn't auto-open** — we use the stdlib `webbrowser`
 module which is generally reliable but can fail silently in headless or
 SSH-remoted environments. The URL is printed to stdout — open it manually.
 

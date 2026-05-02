@@ -894,7 +894,7 @@ class TestViewSubcommand:
             interface_flag=None,
             path=None,
             port=8080,
-            open_browser=False,
+            no_open=True,
         ))
         assert rc == EXIT_ERROR
         err = capsys.readouterr().err
@@ -918,7 +918,7 @@ class TestViewSubcommand:
             interface_flag=None,
             path=None,
             port=8080,
-            open_browser=False,
+            no_open=True,
         ))
         assert rc == EXIT_ERROR
         err = capsys.readouterr().err

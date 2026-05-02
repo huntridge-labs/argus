@@ -283,7 +283,8 @@ Open a human-readable view of argus-results.json:
   argus view browser                          # local web UI (127.0.0.1)
   argus view --interface=terminal             # flag form
   argus view browser ./run-2026-04-24/        # interface + path
-  argus view --interface=browser --port 9090 --open
+  argus view --interface=browser --port 9090
+  argus view browser --no-open      # don't auto-open the browser
 
 Terminal interface keyboard shortcuts:
   / search · 1/2/3/4 filter by severity · s sort · e export CSV · q quit
@@ -295,7 +296,8 @@ Install:
   pip install 'argus-security[browser]'       # browser interface
 
 ```
-argus view [-h] [--interface {terminal,browser}] [--port PORT] [--open]
+argus view [-h] [--interface {terminal,browser}] [--port PORT]
+                  [--no-open]
                   [INTERFACE] [PATH]
 ```
 
@@ -310,7 +312,7 @@ argus view [-h] [--interface {terminal,browser}] [--port PORT] [--open]
 |------|-------------|---------|
 | `--interface`, `-i` | Interface to open: terminal \| browser (alternative to positional) (terminal, browser) |  |
 | `--port` | TCP port for the browser interface (default: 8080) | `8080` |
-| `--open` | Open the default web browser at the server URL after startup (browser interface only) | `false` |
+| `--no-open` | Don't auto-open the default web browser after startup (browser interface only). By default, the browser opens when stdout is a TTY; CI and other non-interactive contexts already skip auto-open without this flag. | `false` |
 
 ## Quick Reference
 

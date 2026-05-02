@@ -95,10 +95,10 @@ argus scan --interface=terminal        # or the one-shot: scan → auto-launch t
 
 ```bash
 argus view browser argus-results --open       # default port 8080, auto-opens browser
-# or: argus view browser /some/results --port 8765 --open
+# or: argus view browser /some/results --port 8765
 ```
 
-Point a browser at `http://127.0.0.1:8080/` if `--open` didn't fire.
+Point a browser at `http://127.0.0.1:8080/` if auto-open didn't fire.
 
 ### Dashboard (`/`)
 
@@ -190,6 +190,6 @@ If `which argus` still isn't the venv, pyenv shims or Homebrew may be intercepti
 .venv/bin/pip install 'httpx[socks]'
 ```
 
-**`argus view browser` starts but the browser doesn't open** — `--open` relies on your OS's default browser resolver. Just paste `http://127.0.0.1:8080` manually.
+**`argus view browser` starts but the browser doesn't open** — auto-open relies on your OS's default browser resolver. Just paste `http://127.0.0.1:8080` manually.
 
 **Port already in use** — pass `--port N` to pick a different one.

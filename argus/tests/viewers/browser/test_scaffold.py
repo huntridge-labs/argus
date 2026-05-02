@@ -27,7 +27,8 @@ class TestViewBrowserSubcommandParsing:
         assert args.interface_pos == "browser"
         assert args.path is None
         assert args.port == 8080
-        assert args.open_browser is False
+        # Auto-open is the default; the negative flag is opt-in.
+        assert args.no_open is False
 
     def test_view_browser_with_path(self):
         parser = build_parser()
@@ -40,10 +41,26 @@ class TestViewBrowserSubcommandParsing:
         args = parser.parse_args(["view", "browser", "--port", "9090"])
         assert args.port == 9090
 
-    def test_view_browser_open_flag(self):
+    def test_view_browser_no_open_flag(self):
         parser = build_parser()
-        args = parser.parse_args(["view", "browser", "--open"])
-        assert args.open_browser is True
+        args = parser.parse_args(["view", "browser", "--no-open"])
+        assert args.no_open is True
+
+    def test_should_open_browser_respects_no_open(self):
+        """`--no-open` always wins over the TTY default."""
+        from argus.cli import _should_open_browser
+        import argparse as _argparse
+        ns = _argparse.Namespace(no_open=True)
+        assert _should_open_browser(ns) is False
+
+    def test_should_open_browser_defaults_to_false_under_capsys(self):
+        """Under pytest's capsys, stdout isn't a TTY, so we don't auto-open."""
+        from argus.cli import _should_open_browser
+        import argparse as _argparse
+        ns = _argparse.Namespace(no_open=False)
+        # capsys captures stdout to a buffer with no isatty support — same
+        # shape as a CI runner or a piped invocation.
+        assert _should_open_browser(ns) is False
 
     def test_view_interface_flag_form(self):
         parser = build_parser()
@@ -70,7 +87,7 @@ class TestBrowserViewerUnavailableFriendlyError:
                 interface_flag=None,
                 path=None,
                 port=8080,
-                open_browser=False,
+                no_open=True,
             ))
         assert rc == EXIT_ERROR
         err = capsys.readouterr().err

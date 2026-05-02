@@ -95,7 +95,7 @@ user_workflows:
     category: triage
     when_to_use: "Non-engineer stakeholders (owners, managers, execs) who want at-a-glance insight without a terminal"
     sdk_command: "argus view browser ./argus-results"
-    one_liner: "argus view browser --open"
+    one_liner: "argus view browser"
     requirements:
       - "Python 3.11+"
       - "argus-security[browser] extra (installs FastAPI + uvicorn + jinja2)"
