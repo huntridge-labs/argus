@@ -233,7 +233,7 @@ Born out of the medsecops-golden-path SDK-integration post-mortem. The pre-refac
 
 ---
 
-## Interactive Findings Browser (`argus browse`)
+## Interactive Findings Browser (`argus view terminal`)
 
 Post-scan triage workflow. Engineers sitting with a fresh scan need a way to filter/sort/drill into findings interactively — reading `argus-results.json` in an editor or paging through linear markdown is the current (weak) alternative. The idea was sharpened in discussion: a Claude-code-style persistent-input-at-bottom TUI is wrong for argus's discrete one-shot commands, but a k9s/lazygit-style stateful dataset browser is the right shape for triaging findings.
 
@@ -241,13 +241,13 @@ Post-scan triage workflow. Engineers sitting with a fresh scan need a way to fil
 
 ### Implementation — v1 (in progress on `feat/browse-tui`)
 
-- [x] `argus browse [PATH]` subcommand wired into the CLI
+- [x] `argus view terminal [PATH]` subcommand wired into the CLI
 - [x] `argus/browse/` package with loader (`loader.py`) and Textual app (`app.py`)
 - [x] Two-pane layout: findings list (DataTable) + detail view (Static); status bar + footer for shortcuts
 - [x] Filter: severity threshold (`1`=crit only / `2`=high+ / `3`=med+ / `4`=all) + free-text search across id/title/location/CVE/scanner
 - [x] Sort: severity desc/asc, package, id (cycle via `s`)
 - [x] CSV export of the currently filtered view (`e`)
-- [x] Optional extra `pip install argus-security[browse]` — `textual>=0.80` is lazy-imported so CI/server installs stay lightweight
+- [x] Optional extra `pip install argus-security[terminal]` — `textual>=0.80` is lazy-imported so CI/server installs stay lightweight
 - [x] Friendly "install with [browse]" error when the extra isn't present
 - [x] `ScanSummary.from_dict` on the model so consumers can rebuild a summary from persisted JSON without spinning up the engine
 - [x] Tests: loader + view-state logic (Textual stubbed so tests run without the extra)
@@ -274,7 +274,7 @@ Post-scan triage workflow. Engineers sitting with a fresh scan need a way to fil
 
 - [x] **Product × scanner scope** — `p` / `c` bindings open picker modals; status bar shows active filters
 - [x] **Executive summary view** — `d` binding opens dashboard overlay (per-product severity counts, top-3 criticals per product, per-scanner contribution, quality warnings)
-  - Works as a standalone command too: `argus summary <results-dir>` — *still open*, keep on roadmap for when `argus serve` lands and wants the same computation.
+  - Works as a standalone command too: `argus summary <results-dir>` — *still open*, keep on roadmap for when `argus view browser` lands and wants the same computation.
 - [ ] **Timeline / diff view** — compare a new results set against a previous one. Powers "what changed this scan-over-scan" workflow.
 
 #### Integration with argus-portal
@@ -291,18 +291,18 @@ Not all of these belong to the TUI itself — the portal integration items are p
 #### Existing polish items (pre-roadtest)
 
 - [ ] Multi-select for batch actions (export a subset, copy CVE list to clipboard)
-- [x] `argus scan --interactive` convenience flag — auto-launches `browse` after the scan finishes
-- [ ] Screenshot + quickstart in `docs/browse.md`
+- [x] `argus scan --interface=terminal` convenience flag — auto-launches the terminal viewer after the scan finishes
+- [ ] Screenshot + quickstart in `docs/view-terminal.md`
 
 ---
 
-## SDK-Hosted Executive Web View (`argus serve`)
+## SDK-Hosted Executive Web View (`argus view browser`)
 
 A read-only web front-end bundled with the argus SDK, aimed at non-engineer stakeholders — product owners, managers, executives — who want easy insight into their products' security posture without digging through CI logs or PR comments. Launched locally or within a trusted team network; **not** a replacement for the separate `argus-portal` enterprise effort.
 
 **Why it exists:**
 - The real value argus provides is "CI pipeline findings + more, but easy to read." Today an exec has to read PR comments, dashboard screenshots, or raw JSON — none of which scale to quick-read questions like "are we shipping log4shell?"
-- The TUI (`argus browse`) solves the same workflow for engineers, but not for users who don't live in a terminal.
+- The TUI (`argus view terminal`) solves the same workflow for engineers, but not for users who don't live in a terminal.
 - `argus-portal` exists as a proof-of-concept Next.js app, but has significant operational burden (Postgres, Kubernetes, planned OAuth/RBAC, FedRAMP session controls) that doesn't fit "I just want to glance at findings."
 
 **Non-goals** (deliberately kept out of scope):
@@ -314,11 +314,11 @@ A read-only web front-end bundled with the argus SDK, aimed at non-engineer stak
 
 **Scope for v1:**
 
-Minimal read-only web UI that displays the same data as `argus browse`, bound to localhost by default, launched via `argus serve [RESULTS_DIR]`. Stakes in the ground:
+Minimal read-only web UI that displays the same data as `argus view terminal`, bound to localhost by default, launched via `argus view browser [RESULTS_DIR]`. Stakes in the ground:
 
 | Decision | Direction |
 |---|---|
-| Backend | FastAPI or Starlette (Python, same runtime as argus SDK) — keeps the install story to "pip install 'argus-security[serve]'" |
+| Backend | FastAPI or Starlette (Python, same runtime as argus SDK) — keeps the install story to "pip install 'argus-security[browser]'" |
 | Frontend | Server-rendered HTML + HTMX for reactivity — no React/Next.js build toolchain, no separate bundler. Ship as Jinja2 templates inside the wheel. |
 | Shared code with TUI | Factor the loader and per-finding renderer out of `argus/browse/` so both the TUI and the web app consume the same logic. Avoid drift between CLI and web. |
 | Default binding | `127.0.0.1:<port>`. `--bind 0.0.0.0` prints an explicit warning and requires `--insecure-public-bind` ack. |
@@ -350,7 +350,7 @@ Shipped on `feat/serve-webui` across six commit-sized phases
   table fragment; `auto-filter.js` swaps it in on filter changes,
   keeps the URL in sync via `history.replaceState`. Form submit is
   the no-JS fallback.
-- [x] **SF** — `docs/serve.md` user guide, README feature bullet,
+- [x] **SF** — `docs/view-browser.md` user guide, README feature bullet,
   `.ai/architecture.yaml`, `.ai/workflows.yaml`, ADR in
   `.ai/decisions.yaml`.
 
@@ -410,7 +410,7 @@ X?" issue.
   expand detail). Considered during the post-launch walkthrough and
   deferred: browser URL bookmarking already handles the most common
   flows, and keyboard shortcuts are an expected affordance in TUIs
-  like `argus browse` but a lower payoff in a web surface where
+  like `argus view terminal` but a lower payoff in a web surface where
   mouse + click is the dominant interaction mode. Could revisit if
   users ask, but not planned.
 - **Triage annotations** (mark false-positive, accepted risk, fix
@@ -429,16 +429,16 @@ X?" issue.
 
 The two are complementary, not competing:
 
-| Aspect | `argus serve` (this track) | `argus-portal` (separate track) |
+| Aspect | `argus view browser` (this track) | `argus-portal` (separate track) |
 |---|---|---|
 | Audience | Single team / single product owner | Enterprise / multi-team compliance org |
-| Deploy | `argus serve` on a laptop or jumpbox | Kubernetes + Postgres + Traefik ingress |
+| Deploy | `argus view browser` on a laptop or jumpbox | Kubernetes + Postgres + Traefik ingress |
 | Auth | None or basic auth | GitHub OAuth + RBAC + FedRAMP MFA |
 | State | Single file, ephemeral | Multi-scan history, CRUD (POAM, changes) |
 | Goal | Answer "is product X shipping log4shell?" | FedRAMP continuous-authorization dashboard |
 | Maintenance burden | ~2k LOC, no infra | Full Next.js app + Postgres + Kubernetes |
 
-If `argus-portal` matures, it can consume the same `findings_view` shared module we extract for `argus serve`, keeping the per-finding display consistent across CLI, local web, and enterprise web.
+If `argus-portal` matures, it can consume the same `findings_view` shared module we extract for `argus view browser`, keeping the per-finding display consistent across CLI, local web, and enterprise web.
 
 ---
 

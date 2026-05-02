@@ -812,106 +812,188 @@ class TestCacheSubcommand:
         args = parser.parse_args(["scan"])
         assert args.sbom is None
 
-    def test_interactive_flag(self):
+    def test_interface_flag_terminal(self):
         parser = build_parser()
-        args = parser.parse_args(["scan", "--interactive"])
-        assert args.interactive is True
+        args = parser.parse_args(["scan", "--interface", "terminal"])
+        assert args.view_interface == "terminal"
 
-    def test_interactive_flag_default_false(self):
+    def test_interface_flag_browser(self):
+        parser = build_parser()
+        args = parser.parse_args(["scan", "--interface=browser"])
+        assert args.view_interface == "browser"
+
+    def test_interface_flag_default_none(self):
         parser = build_parser()
         args = parser.parse_args(["scan"])
-        assert args.interactive is False
+        assert args.view_interface is None
 
 
-class TestBrowseSubcommand:
-    """Parsing + dispatch for `argus browse`."""
+class TestViewSubcommand:
+    """Parsing + dispatch for `argus view`."""
 
-    def test_browse_default_args(self):
+    def test_view_default_args(self):
         parser = build_parser()
-        args = parser.parse_args(["browse"])
-        assert args.command == "browse"
-        assert args.results is None
+        args = parser.parse_args(["view"])
+        assert args.command == "view"
+        assert args.interface_pos is None
+        assert args.interface_flag is None
+        assert args.path is None
 
-    def test_browse_with_path(self):
+    def test_view_positional_terminal(self):
         parser = build_parser()
-        args = parser.parse_args(["browse", "./run-01"])
-        assert args.results == "./run-01"
+        args = parser.parse_args(["view", "terminal"])
+        assert args.interface_pos == "terminal"
+        assert args.path is None
 
-    def test_browse_without_extra_returns_error(self, monkeypatch, capsys):
-        """When the `browse` extra isn't installed, exit clean with a hint."""
-        from argus.cli import cmd_browse
+    def test_view_positional_browser_with_path(self):
+        parser = build_parser()
+        args = parser.parse_args(["view", "browser", "./run-01"])
+        assert args.interface_pos == "browser"
+        assert args.path == "./run-01"
+
+    def test_view_flag_form(self):
+        parser = build_parser()
+        args = parser.parse_args(["view", "--interface=terminal"])
+        assert args.interface_flag == "terminal"
+
+    def test_view_resolve_defaults_to_terminal(self):
+        from argus.cli import _resolve_view_interface
+        import argparse as _argparse
+        ns = _argparse.Namespace(interface_pos=None, interface_flag=None)
+        assert _resolve_view_interface(ns) == "terminal"
+
+    def test_view_resolve_prefers_flag_over_unset_positional(self):
+        from argus.cli import _resolve_view_interface
+        import argparse as _argparse
+        ns = _argparse.Namespace(interface_pos=None, interface_flag="browser")
+        assert _resolve_view_interface(ns) == "browser"
+
+    def test_view_resolve_conflict_returns_none(self, capsys):
+        from argus.cli import _resolve_view_interface
+        import argparse as _argparse
+        ns = _argparse.Namespace(interface_pos="terminal", interface_flag="browser")
+        assert _resolve_view_interface(ns) is None
+        err = capsys.readouterr().err
+        assert "conflicting" in err.lower()
+
+    def test_view_terminal_unavailable_returns_error(self, monkeypatch, capsys):
+        """When the `terminal` extra isn't installed, exit clean with a hint."""
+        from argus.cli import cmd_view
         import argparse as _argparse
 
         def fake_launch(_results):
-            from argus.browse import BrowseUnavailable
-            raise BrowseUnavailable(
-                "The interactive findings browser needs the 'browse' extra. "
-                "Install it with: pip install 'argus-security[browse]'"
+            from argus.viewers import ViewerUnavailable
+            raise ViewerUnavailable(
+                "The terminal interface needs the 'terminal' extra. "
+                "Install it with: pip install 'argus-security[terminal]'"
             )
-        monkeypatch.setattr("argus.browse.launch", fake_launch)
+        monkeypatch.setattr("argus.viewers.terminal.launch", fake_launch)
 
-        rc = cmd_browse(_argparse.Namespace(results=None))
+        rc = cmd_view(_argparse.Namespace(
+            interface_pos="terminal",
+            interface_flag=None,
+            path=None,
+            port=8080,
+            open_browser=False,
+        ))
         assert rc == EXIT_ERROR
         err = capsys.readouterr().err
-        assert "argus-security[browse]" in err
+        assert "argus-security[terminal]" in err
+
+    def test_view_browser_unavailable_returns_error(self, monkeypatch, capsys):
+        """When the `browser` extra isn't installed, exit clean with a hint."""
+        from argus.cli import cmd_view
+        import argparse as _argparse
+
+        def fake_launch(*, root, port, open_browser):
+            from argus.viewers import ViewerUnavailable
+            raise ViewerUnavailable(
+                "The browser interface needs the 'browser' extra. "
+                "Install it with: pip install 'argus-security[browser]'"
+            )
+        monkeypatch.setattr("argus.viewers.browser.launch", fake_launch)
+
+        rc = cmd_view(_argparse.Namespace(
+            interface_pos="browser",
+            interface_flag=None,
+            path=None,
+            port=8080,
+            open_browser=False,
+        ))
+        assert rc == EXIT_ERROR
+        err = capsys.readouterr().err
+        assert "argus-security[browser]" in err
 
 
-class TestLaunchInteractiveBrowse:
-    """Covers the ``--interactive`` dispatch extracted from ``cmd_scan``.
+class TestLaunchViewAfterScan:
+    """Covers the ``--interface`` dispatch extracted from ``cmd_scan``.
 
     Exercised directly rather than via a full scan run so we don't
-    need to stand up scanner plumbing just to verify the browser
+    need to stand up scanner plumbing just to verify the viewer
     handoff. The handoff has two failure modes it must absorb without
     affecting the scan's exit code:
 
-    - ``BrowseUnavailable`` (user didn't install the ``[browse]`` extra)
+    - ``ViewerUnavailable`` (user didn't install the matching extra)
     - ``ImportError`` (something stranger wrong with the import chain)
 
     The first is the normal case — ships a message to stderr; the
     second is defensive and explicitly ``pragma: no cover``.
     """
 
-    def test_happy_path_calls_browse_launch(self, monkeypatch):
-        from argus.cli import _launch_interactive_browse
+    def test_terminal_happy_path_calls_launch(self, monkeypatch):
+        from argus.cli import _launch_view_after_scan
 
         calls = []
         def fake_launch(results_dir):
             calls.append(results_dir)
             return 0
-        monkeypatch.setattr("argus.browse.launch", fake_launch)
+        monkeypatch.setattr("argus.viewers.terminal.launch", fake_launch)
 
-        _launch_interactive_browse("/tmp/scan-output")
+        _launch_view_after_scan("terminal", "/tmp/scan-output")
         assert calls == ["/tmp/scan-output"]
 
-    def test_browse_unavailable_prints_to_stderr_without_raising(self, monkeypatch, capsys):
-        from argus.cli import _launch_interactive_browse
+    def test_browser_happy_path_calls_launch(self, monkeypatch):
+        from argus.cli import _launch_view_after_scan
+
+        calls = []
+        def fake_launch(*, root, **_kw):
+            calls.append(root)
+            return 0
+        monkeypatch.setattr("argus.viewers.browser.launch", fake_launch)
+
+        _launch_view_after_scan("browser", "/tmp/scan-output")
+        assert calls == ["/tmp/scan-output"]
+
+    def test_terminal_unavailable_prints_to_stderr_without_raising(self, monkeypatch, capsys):
+        from argus.cli import _launch_view_after_scan
 
         def fake_launch(_results_dir):
-            from argus.browse import BrowseUnavailable
-            raise BrowseUnavailable(
-                "The interactive findings browser needs the 'browse' extra."
+            from argus.viewers import ViewerUnavailable
+            raise ViewerUnavailable(
+                "The terminal interface needs the 'terminal' extra."
             )
-        monkeypatch.setattr("argus.browse.launch", fake_launch)
+        monkeypatch.setattr("argus.viewers.terminal.launch", fake_launch)
 
         # Returns cleanly — scan's exit code is unaffected by the
-        # optional TUI handoff failure.
-        _launch_interactive_browse("/tmp/scan-output")
+        # optional viewer handoff failure.
+        _launch_view_after_scan("terminal", "/tmp/scan-output")
         err = capsys.readouterr().err
-        assert "browse" in err.lower()
+        assert "terminal" in err.lower()
 
 
-class TestBrowseUnavailableGuard:
-    """Covers the ``argus.browse`` import-guard helper directly.
+class TestViewerUnavailableGuards:
+    """Covers the ``argus.viewers.{terminal,browser}`` import-guard helpers.
 
-    The prior browse-extra test patches ``argus.browse.launch`` wholesale,
-    so the real ``_require_textual`` branch (lines 23-26 + 39-41 in
-    browse/__init__.py) never runs under test. Exercise it here by
-    simulating a missing ``textual`` module during import.
+    The cmd-level tests patch ``launch`` wholesale, so the real
+    ``_require_textual`` and ``_require_web_stack`` branches never run
+    under test. Exercise them here by simulating missing modules
+    during import.
     """
 
-    def test_require_textual_raises_browseunavailable_when_missing(self, monkeypatch):
+    def test_require_textual_raises_when_missing(self, monkeypatch):
         import builtins
-        from argus.browse import _require_textual, BrowseUnavailable
+        from argus.viewers.terminal import _require_textual
+        from argus.viewers import ViewerUnavailable
 
         real_import = builtins.__import__
 
@@ -922,30 +1004,28 @@ class TestBrowseUnavailableGuard:
 
         monkeypatch.setattr(builtins, "__import__", fake_import)
 
-        with pytest.raises(BrowseUnavailable) as excinfo:
+        with pytest.raises(ViewerUnavailable) as excinfo:
             _require_textual()
-        assert "argus-security[browse]" in str(excinfo.value)
+        assert "argus-security[terminal]" in str(excinfo.value)
 
-    def test_launch_delegates_to_run_app_when_textual_available(self, monkeypatch):
-        # Real argus.browse.launch body: _require_textual() then
-        # `from argus.browse.app import run_app; return run_app(...)`.
+    def test_terminal_launch_delegates_to_run_app_when_textual_available(self, monkeypatch):
+        # Real argus.viewers.terminal.launch body: _require_textual() then
+        # `from argus.viewers.terminal.app import run_app; return run_app(...)`.
         # Stub both so we don't need the live Textual runtime.
-        import argus.browse
+        import argus.viewers.terminal
 
-        monkeypatch.setattr(argus.browse, "_require_textual", lambda: None)
-        # run_app lives in argus.browse.app. Fake that module path for
-        # this test so the import inside launch() resolves to our stub.
+        monkeypatch.setattr(argus.viewers.terminal, "_require_textual", lambda: None)
         import sys
         import types
-        fake_module = types.ModuleType("argus.browse.app")
+        fake_module = types.ModuleType("argus.viewers.terminal.app")
         calls = []
         def fake_run_app(results_dir):
             calls.append(results_dir)
             return 0
         fake_module.run_app = fake_run_app
-        monkeypatch.setitem(sys.modules, "argus.browse.app", fake_module)
+        monkeypatch.setitem(sys.modules, "argus.viewers.terminal.app", fake_module)
 
-        rc = argus.browse.launch("/some/dir")
+        rc = argus.viewers.terminal.launch("/some/dir")
         assert rc == 0
         assert calls == ["/some/dir"]
 

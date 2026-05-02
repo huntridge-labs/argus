@@ -26,7 +26,7 @@ This is the right answer for people who don't otherwise use Argus from the termi
 pip install 'argus-security[mcp]'
 ```
 
-After this, `argus mcp` is on your `$PATH` and your AI client just needs to launch it. You also get the rest of the Argus CLI for free (`argus scan`, `argus browse`, `argus serve`, etc.).
+After this, `argus mcp` is on your `$PATH` and your AI client just needs to launch it. You also get the rest of the Argus CLI for free (`argus scan`, `argus view terminal`, `argus view browser`, etc.).
 
 ### Confirming it works
 

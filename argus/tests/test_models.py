@@ -255,7 +255,7 @@ class TestScanSummary:
         assert summary.passed is True
 
     def test_from_dict_round_trips_findings_and_threshold(self):
-        # Offline consumers (argus browse / external dashboards) read
+        # Offline consumers (argus view terminal / external dashboards) read
         # a persisted argus-results.json back into a ScanSummary via
         # from_dict. Round-trip must preserve findings, severity
         # threshold, and per-scanner grouping.

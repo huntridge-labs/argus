@@ -1,4 +1,4 @@
-"""Unit tests for argus.browse.loader — results-file discovery + parse."""
+"""Unit tests for argus.viewers.terminal.loader — results-file discovery + parse."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from argus.browse.loader import (
+from argus.viewers.terminal.loader import (
     RESULTS_FILENAME,
     flatten_findings,
     load_summary,

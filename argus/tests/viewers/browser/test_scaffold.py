@@ -1,8 +1,8 @@
-"""Phase SA tests for argus serve — package scaffolding.
+"""Phase SA tests for the browser interface — package scaffolding.
 
 Covers:
-- CLI subcommand parsing and defaults
-- Friendly ServeUnavailable error when the [serve] extra isn't installed
+- ``argus view browser`` CLI parsing and defaults
+- Friendly ``ViewerUnavailable`` error when the [browser] extra isn't installed
 - /healthz route on the FastAPI app (skipped when extra not installed)
 
 Route tests use httpx.AsyncClient via FastAPI's TestClient so they
@@ -16,57 +16,69 @@ from unittest.mock import patch
 
 import pytest
 
-from argus.cli import build_parser, cmd_serve, EXIT_ERROR
+from argus.cli import build_parser, cmd_view, EXIT_ERROR
 
 
-class TestServeSubcommandParsing:
-    def test_serve_default_args(self):
+class TestViewBrowserSubcommandParsing:
+    def test_view_browser_default_args(self):
         parser = build_parser()
-        args = parser.parse_args(["serve"])
-        assert args.command == "serve"
-        assert args.root is None
+        args = parser.parse_args(["view", "browser"])
+        assert args.command == "view"
+        assert args.interface_pos == "browser"
+        assert args.path is None
         assert args.port == 8080
         assert args.open_browser is False
 
-    def test_serve_with_root_path(self):
+    def test_view_browser_with_path(self):
         parser = build_parser()
-        args = parser.parse_args(["serve", "/path/to/results"])
-        assert args.root == "/path/to/results"
+        args = parser.parse_args(["view", "browser", "/path/to/results"])
+        assert args.interface_pos == "browser"
+        assert args.path == "/path/to/results"
 
-    def test_serve_custom_port(self):
+    def test_view_browser_custom_port(self):
         parser = build_parser()
-        args = parser.parse_args(["serve", "--port", "9090"])
+        args = parser.parse_args(["view", "browser", "--port", "9090"])
         assert args.port == 9090
 
-    def test_serve_open_flag(self):
+    def test_view_browser_open_flag(self):
         parser = build_parser()
-        args = parser.parse_args(["serve", "--open"])
+        args = parser.parse_args(["view", "browser", "--open"])
         assert args.open_browser is True
 
+    def test_view_interface_flag_form(self):
+        parser = build_parser()
+        args = parser.parse_args(["view", "--interface=browser", "--port", "9090"])
+        assert args.interface_flag == "browser"
+        assert args.port == 9090
 
-class TestServeUnavailableFriendlyError:
+
+class TestBrowserViewerUnavailableFriendlyError:
     def test_missing_extra_returns_exit_error_and_prints_hint(self, capsys):
-        """When FastAPI isn't installed, cmd_serve exits EXIT_ERROR with a hint."""
-        from argus.serve import ServeUnavailable
+        """When FastAPI isn't installed, cmd_view exits EXIT_ERROR with a hint."""
+        from argus.viewers.browser import ViewerUnavailable
         import argparse
 
         def fake_launch(**_kwargs):
-            raise ServeUnavailable(
-                "The local web UI needs the 'serve' extra. "
-                "Install it with: pip install 'argus-security[serve]'"
+            raise ViewerUnavailable(
+                "The browser interface needs the 'browser' extra. "
+                "Install it with: pip install 'argus-security[browser]'"
             )
 
-        with patch("argus.serve.launch", fake_launch):
-            rc = cmd_serve(argparse.Namespace(
-                root=None, port=8080, open_browser=False,
+        with patch("argus.viewers.browser.launch", fake_launch):
+            rc = cmd_view(argparse.Namespace(
+                interface_pos="browser",
+                interface_flag=None,
+                path=None,
+                port=8080,
+                open_browser=False,
             ))
         assert rc == EXIT_ERROR
         err = capsys.readouterr().err
-        assert "argus-security[serve]" in err
+        assert "argus-security[browser]" in err
 
 
 # ---------------------------------------------------------------------------
-# Route tests — only meaningful when the [serve] extra is present.
+# Route tests — only meaningful when the [browser] extra is present.
 # FastAPI's TestClient spins up the app without uvicorn.
 # ---------------------------------------------------------------------------
 
@@ -76,7 +88,7 @@ fastapi = pytest.importorskip("fastapi")
 class TestHealthzRoute:
     def test_healthz_returns_ok_and_root(self, tmp_path):
         from fastapi.testclient import TestClient
-        from argus.serve.app import create_app
+        from argus.viewers.browser.app import create_app
 
         app = create_app(root=str(tmp_path))
         client = TestClient(app)
@@ -89,7 +101,7 @@ class TestHealthzRoute:
 
     def test_healthz_defaults_root_to_cwd_when_none(self, tmp_path, monkeypatch):
         from fastapi.testclient import TestClient
-        from argus.serve.app import create_app
+        from argus.viewers.browser.app import create_app
 
         monkeypatch.chdir(tmp_path)
         app = create_app(root=None)
@@ -97,7 +109,7 @@ class TestHealthzRoute:
         resp = client.get("/healthz")
         assert resp.status_code == 200
         # Defaulting to cwd is what the picker starts navigating from
-        # when the user launches `argus serve` with no path arg.
+        # when the user launches `argus view browser` with no path arg.
         assert str(tmp_path.resolve()) == resp.json()["root"]
 
 
@@ -107,7 +119,7 @@ class TestFaviconRoute:
         # the PNG we ship is served as image/png but reachable at the
         # traditional .ico URL so devtools stays quiet.
         from fastapi.testclient import TestClient
-        from argus.serve.app import create_app
+        from argus.viewers.browser.app import create_app
 
         app = create_app(root=str(tmp_path))
         client = TestClient(app)
@@ -119,7 +131,7 @@ class TestFaviconRoute:
 
     def test_base_template_links_favicon(self, tmp_path):
         from fastapi.testclient import TestClient
-        from argus.serve.app import create_app
+        from argus.viewers.browser.app import create_app
 
         app = create_app(root=str(tmp_path))
         client = TestClient(app)

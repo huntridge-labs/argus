@@ -29,7 +29,7 @@ from textual.screen import ModalScreen
 from textual.widgets import DataTable, Footer, Header, Input, OptionList, Static
 from textual.widgets.option_list import Option
 
-from argus.browse.loader import flatten_findings, load_summary
+from argus.viewers.terminal.loader import flatten_findings, load_summary
 from argus.core.findings_view import (
     SEVERITY_GLYPH,
     SEVERITY_ORDER,
@@ -54,11 +54,11 @@ _SORT_LABELS = SORT_LABELS
 # ViewState lives in argus.core.findings_view now — imported at the top
 # of this module — so the TUI and the future web UI share one filter/sort
 # implementation. The alias kept here retains backwards compat for any
-# test that monkeypatched ``argus.browse.app.ViewState``.
+# test that monkeypatched ``argus.viewers.terminal.app.ViewState``.
 
 
 _HELP_TEXT = """\
-[b]argus browse[/b] — interactive findings triage
+[b]argus view (terminal)[/b] — interactive findings triage
 
 [b]Navigate[/b]
   [b]↑/↓[/b] or [b]j/k[/b]   move selection
@@ -494,7 +494,7 @@ class BrowseApp(App):
     # ------------------------------------------------------------------
 
     def on_mount(self) -> None:
-        self.title = "argus browse"
+        self.title = "argus view (terminal)"
         try:
             summary, resolved = load_summary(self._results_dir)
         except (FileNotFoundError, ValueError) as exc:
@@ -713,7 +713,7 @@ class BrowseApp(App):
     def action_cursor_up(self) -> None:
         self.query_one(DataTable).action_cursor_up()
 
-    # Format dispatch lives in argus.browse.export — these action methods
+    # Format dispatch lives in argus.viewers.terminal.export — these action methods
     # just wrap the shared writers with filename assembly and toast.
 
     def action_export_csv(self) -> None:
@@ -733,7 +733,7 @@ class BrowseApp(App):
         self._export_in_format("sarif")
 
     def _export_in_format(self, fmt: str) -> None:
-        from argus.browse.export import WRITERS, make_export_path
+        from argus.viewers.terminal.export import WRITERS, make_export_path
         writer, extension = WRITERS[fmt]
         scope = (
             self.view_state.min_severity.value

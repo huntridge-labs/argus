@@ -15,7 +15,7 @@ import pytest
 from argus.core.models import Finding, Severity
 
 
-_APP_PATH = Path(__file__).resolve().parents[2] / "browse" / "app.py"
+_APP_PATH = Path(__file__).resolve().parents[3] / "viewers" / "terminal" / "app.py"
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def ViewState():
     """Load ViewState from app.py WITHOUT importing textual.
 
     The Textual imports live at module top-level, so we can't
-    ``from argus.browse.app import ViewState`` unless textual is
+    ``from argus.viewers.terminal.app import ViewState`` unless textual is
     installed. A direct spec-based load with the textual imports
     stubbed keeps the test hermetic.
     """

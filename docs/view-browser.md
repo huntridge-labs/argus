@@ -1,9 +1,9 @@
-# `argus serve` — local read-only web UI
+# `argus view browser` — local read-only web UI
 
 After a scan produces `argus-results.json`, there are three ways to look at
 it today: open the JSON directly (for engineers comfortable with the shape),
-run [`argus browse`](browse.md) (for engineers who live in the terminal), or
-`argus serve` — a tiny web app bundled with the SDK that serves the same
+run [`argus view terminal`](view-terminal.md) (for engineers who live in the terminal), or
+`argus view browser` — a tiny web app bundled with the SDK that serves the same
 findings to anyone with a browser.
 
 Aimed at owners, managers, and executives who want at-a-glance insight
@@ -13,22 +13,22 @@ learning a TUI.
 ## Install
 
 ```bash
-pip install 'argus-security[serve]'
+pip install 'argus-security[browser]'
 ```
 
 Pulls in FastAPI, uvicorn, Jinja2, and python-multipart (~10 MB total).
-Without the extra, running `argus serve` prints a friendly install hint and
+Without the extra, running `argus view browser` prints a friendly install hint and
 exits cleanly — the extra is never required for `argus scan` or any other
 subcommand.
 
 ## Launch
 
 ```bash
-argus serve                          # picker rooted at CWD
-argus serve /path/to/results/        # load that scan directly
-argus serve /path/to/scans-parent/   # picker rooted there
-argus serve --port 9090              # non-default port
-argus serve --open                   # open default browser on startup
+argus view browser                          # picker rooted at CWD
+argus view browser /path/to/results/        # load that scan directly
+argus view browser /path/to/scans-parent/   # picker rooted there
+argus view browser --port 9090              # non-default port
+argus view browser --open                   # open default browser on startup
 ```
 
 **Localhost only.** The server always binds to `127.0.0.1` — there is no
@@ -113,17 +113,17 @@ for scripts that need to know when the server has started up.
   design. If users ask for "find all scans under this tree," that's a
   separate UX decision (performance, gitignore semantics, skip-rules).
 
-## Architecture relationship to `argus browse` and `argus-portal`
+## Architecture relationship to `argus view terminal` and `argus-portal`
 
 Three UIs look at the same data; each has its own scope:
 
 | Tool | Scope | Audience |
 |------|-------|----------|
-| `argus browse` (TUI) | Single scan, read-only | Engineer triaging in a terminal |
-| `argus serve` (this) | Single scan, read-only, local web | Owner / manager / exec on the same machine |
+| `argus view terminal` (TUI) | Single scan, read-only | Engineer triaging in a terminal |
+| `argus view browser` (this) | Single scan, read-only, local web | Owner / manager / exec on the same machine |
 | `argus-portal` | Multi-scan, multi-user, persistent DB, OAuth, FedRAMP | Enterprise compliance organization |
 
-**`argus browse` and `argus serve` share a module** — `argus.core.findings_view`
+**`argus view terminal` and `argus view browser` share a module** — `argus.core.findings_view`
 — that owns the filter / sort / summary logic. ViewState semantics,
 compute_summary output, and severity ordering are identical across the TUI
 and the web view. A filter that produces 17 results in the TUI produces the
@@ -138,10 +138,10 @@ findings match which filter.
 
 **`argus: error: argument command: invalid choice: 'serve'`** — your `argus`
 binary was installed before `serve` landed. Reinstall: `pip install --upgrade
---pre 'argus-security[serve]'`.
+--pre 'argus-security[browser]'`.
 
 **"The local web UI needs the 'serve' extra"** — you installed `argus-security`
-but not the `[serve]` extra. Retry with `pip install 'argus-security[serve]'`.
+but not the `[serve]` extra. Retry with `pip install 'argus-security[browser]'`.
 
 **Port 8080 already in use** — pass `--port 9090` (or any free port).
 
@@ -149,7 +149,7 @@ but not the `[serve]` extra. Retry with `pip install 'argus-security[serve]'`.
 module which is generally reliable but can fail silently in headless or
 SSH-remoted environments. The URL is printed to stdout — open it manually.
 
-**Page renders "No scan loaded"** — the directory you pointed `argus serve`
+**Page renders "No scan loaded"** — the directory you pointed `argus view browser`
 at doesn't contain an `argus-results.json`. Use `/picker` to navigate to one,
 or pass `?scan=/abs/path` on `/`.
 
@@ -157,9 +157,9 @@ or pass `?scan=/abs/path` on `/`.
 
 - [`argus scan`](cli-reference.md#argus-scan) — produces the
   `argus-results.json` this UI reads.
-- [`argus scan --interactive`](browse.md) — launches the TUI after a scan.
+- [`argus scan --interface=terminal`](view-terminal.md) — launches the TUI after a scan.
   A web-equivalent `argus scan --serve` convenience flag is tracked on the
   roadmap.
-- [`argus browse`](browse.md) — keyboard-driven TUI for the same data.
+- [`argus view terminal`](view-terminal.md) — keyboard-driven TUI for the same data.
 - [SDK roadmap](developer/SDK-ROADMAP.md) — tracked follow-ups (live reload,
   scan-over-scan diff, JSON API endpoints).

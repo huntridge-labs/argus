@@ -15,7 +15,7 @@ import types
 from pathlib import Path
 
 
-_APP_PATH = Path(__file__).resolve().parents[2] / "browse" / "app.py"
+_APP_PATH = Path(__file__).resolve().parents[3] / "viewers" / "terminal" / "app.py"
 
 
 def _load_app_module():

@@ -1,4 +1,4 @@
-"""Tests for the /export route on argus serve.
+"""Tests for the /export route on the browser interface.
 
 Exercises filter + sort pass-through, every supported format, the
 download-vs-inline content disposition, and the clipboard-copy
@@ -16,7 +16,7 @@ pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient   # noqa: E402
 
-from argus.serve.app import create_app   # noqa: E402
+from argus.viewers.browser.app import create_app   # noqa: E402
 
 
 def _write_results(dir_path: Path, payload: dict) -> Path:

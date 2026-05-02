@@ -10,7 +10,7 @@ The goal is one source of truth for:
 - Aggregate summary metrics (``compute_summary``) for executive dashboards.
 
 Keeping this UI-free means unit tests run without Textual installed and the
-same code powers a future ``argus serve`` web view without duplicating logic.
+same code powers a future ``argus view browser`` web view without duplicating logic.
 """
 
 from __future__ import annotations
@@ -281,7 +281,7 @@ def compute_summary(findings: list[Finding], *, top_n: int = 3) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Scan-to-scan diff — used by argus serve's /diff route to answer the
+# Scan-to-scan diff — used by argus view browser's /diff route to answer the
 # single most common follow-up question after "what's there now?": "what
 # changed since the last run?".
 # ---------------------------------------------------------------------------

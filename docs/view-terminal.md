@@ -1,8 +1,8 @@
-# `argus browse` — interactive findings triage
+# `argus view terminal` — interactive findings triage
 
 After a scan produces `argus-results.json`, reading the raw file in an editor
-or paging through the linear Markdown report is a poor way to triage. `argus
-browse` is a terminal UI for *navigating* findings: filter by severity,
+or paging through the linear Markdown report is a poor way to triage.
+`argus view terminal` is a full-screen terminal UI for *navigating* findings: filter by severity,
 product, or scanner; search by CVE; drill into details; export the filtered
 subset; see an executive summary — all with keyboard shortcuts.
 
@@ -12,32 +12,32 @@ lightweight.
 ## Install
 
 ```bash
-pip install 'argus-security[browse]'
+pip install 'argus-security[terminal]'
 ```
 
 The extra pulls in [Textual](https://textual.textualize.io/) (~2 MB of Python
-deps). Without it, running `argus browse` prints a friendly install hint and
+deps). Without it, running `argus view terminal` prints a friendly install hint and
 exits cleanly — the extra is never required for `argus scan` or any other
 subcommand.
 
 ## Launch
 
 ```bash
-argus browse                          # loads ./argus-results/argus-results.json
-argus browse ./run-2026-04-24         # specific results directory
-argus browse ./custom-results.json    # direct file path
+argus view terminal                          # loads ./argus-results/argus-results.json
+argus view terminal ./run-2026-04-24         # specific results directory
+argus view terminal ./custom-results.json    # direct file path
 ```
 
 ### One-flag scan → browse workflow
 
 ```bash
-argus scan --interactive              # scans, then launches browse on the output
-argus scan --sbom data/ --interactive # batch-scan a directory of SBOMs, then browse
+argus scan --interface=terminal              # scans, then opens the terminal viewer on the output
+argus scan --sbom data/ --interface=terminal # batch-scan a directory of SBOMs, then browse
 ```
 
-The `--interactive` flag takes effect after the scan completes and the
-manifest is finalized. If the `[browse]` extra isn't installed, the scan
-still succeeds; only the browser launch is skipped with a note.
+The `--interface=terminal` flag takes effect after the scan completes and the
+manifest is finalized. If the `[terminal]` extra isn't installed, the scan
+still succeeds; only the viewer launch is skipped with a note.
 
 ## Keyboard reference
 
@@ -104,7 +104,7 @@ Dismiss with `ESC`, `q`, or `?` again.
 
 ### Command palette (`Ctrl+P`)
 
-Textual's built-in fuzzy-search launcher. Every `argus browse` action is
+Textual's built-in fuzzy-search launcher. Every `argus view terminal` action is
 registered as a command — type "sort", "filter", "export", "dashboard",
 "product", etc. to find them. Textual's own commands (Keys help, Theme
 switcher, Screenshot-as-SVG) also appear.
@@ -127,7 +127,7 @@ All four writers take the currently filtered view. Pick via keyboard shortcut
 
 Exports write to the current working directory. `.gitignore` patterns
 (`*.csv` and `argus-findings-*.{json,md,sarif}`) cover them in the argus
-repo; add similar rules to downstream projects where you run `argus browse`.
+repo; add similar rules to downstream projects where you run `argus view terminal`.
 
 ## Platform notes
 
@@ -145,7 +145,7 @@ shell string, so paths with spaces, quotes, or special characters are safe.
 
 **`argus: error: argument command: invalid choice: 'browse'`** — your `argus`
 binary was installed before `browse` landed. Reinstall: `pip install -e
-'.[browse]'` in a dev checkout, or `pip install --upgrade 'argus-security[browse]'`.
+'.[browse]'` in a dev checkout, or `pip install --upgrade 'argus-security[terminal]'`.
 
 **TUI shows "Could not find argus-results.json"** — you haven't run a scan in
 the target directory yet, or the scan used a different `--output-dir`. Run
@@ -163,10 +163,10 @@ your OS's file-type associations. Change those in Finder (macOS, "Get Info" →
 ## Related
 
 - [`argus scan`](cli-reference.md#argus-scan) — produces the
-  `argus-results.json` that `argus browse` loads
+  `argus-results.json` that `argus view terminal` loads
 - [`argus report`](cli-reference.md#argus-report) — regenerate terminal /
   markdown / JSON / SARIF output from an existing results directory without
   re-running scanners
 - [SDK roadmap](developer/SDK-ROADMAP.md) — tracked follow-ups (multi-select,
-  scan-over-scan diff, `argus summary` standalone command, `argus serve` web
+  scan-over-scan diff, `argus summary` standalone command, `argus view browser` web
   view sharing the same `findings_view` module)

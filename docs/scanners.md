@@ -22,10 +22,10 @@ python -m argus scan gitleaks bandit --severity-threshold high
 ```
 
 **Post-scan triage**: Once you have `argus-results.json`, run
-[`argus browse`](browse.md) for an interactive terminal UI — filter by
+[`argus view terminal`](view-terminal.md) for an interactive terminal UI — filter by
 severity, product, or scanner; export to CSV/JSON/Markdown/SARIF; open an
-executive dashboard. Install via `pip install 'argus-security[browse]'`,
-or combine with scanning in one shot: `argus scan --interactive`.
+executive dashboard. Install via `pip install 'argus-security[terminal]'`,
+or combine with scanning in one shot: `argus scan --interface=terminal`.
 
 **Composite action usage (GitHub Actions)**:
 

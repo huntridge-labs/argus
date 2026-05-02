@@ -1,4 +1,4 @@
-"""Unit tests for the four export writers in argus.browse.export.
+"""Unit tests for the four export writers in argus.viewers.terminal.export.
 
 Pure I/O tests — no Textual needed. Each writer is exercised against
 a small hand-built finding set and the output is parsed back to confirm
@@ -13,7 +13,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from argus.browse.export import (
+from argus.viewers.terminal.export import (
     CSV_COLUMNS,
     WRITERS,
     available_formats,

@@ -149,108 +149,145 @@ def build_parser() -> argparse.ArgumentParser:
     _build_mcp_parser(subparsers)
     _build_completion_parser(subparsers)
     _build_cache_parser(subparsers)
-    _build_browse_parser(subparsers)
-    _build_serve_parser(subparsers)
+    _build_view_parser(subparsers)
 
     return parser
 
 
-def _build_browse_parser(subparsers: argparse._SubParsersAction) -> None:
-    """Add the 'browse' subcommand — interactive findings TUI."""
-    browse_parser = subparsers.add_parser(
-        "browse",
-        help="Interactively browse findings from a previous scan",
+VIEW_INTERFACES = ("terminal", "browser")
+
+
+def _build_view_parser(subparsers: argparse._SubParsersAction) -> None:
+    """Add the 'view' subcommand — open a viewer on existing scan results.
+
+    Replaces the old ``browse`` and ``serve`` commands with a single entry
+    point. The interface is selected positionally (``argus view terminal``)
+    or via ``--interface=`` (``argus view --interface=browser``); both
+    forms are accepted for ergonomics.
+    """
+    view_parser = subparsers.add_parser(
+        "view",
+        help="Open a viewer (terminal UI or browser) on existing scan results",
         description=(
-            "Launch the terminal UI for triaging an argus-results.json:\n"
-            "  argus browse                          # ./argus-results/argus-results.json\n"
-            "  argus browse ./run-2026-04-24         # specific results dir\n"
-            "  argus browse ./custom-results.json    # direct file path\n\n"
-            "Keyboard shortcuts inside the TUI:\n"
+            "Open a human-readable view of argus-results.json:\n"
+            "  argus view                                  # terminal interface, ./argus-results/\n"
+            "  argus view terminal                         # explicit terminal\n"
+            "  argus view browser                          # local web UI (127.0.0.1)\n"
+            "  argus view --interface=terminal             # flag form\n"
+            "  argus view browser ./run-2026-04-24/        # interface + path\n"
+            "  argus view --interface=browser --port 9090 --open\n\n"
+            "Terminal interface keyboard shortcuts:\n"
             "  / search · 1/2/3/4 filter by severity · s sort · e export CSV · q quit\n\n"
-            "Requires the 'browse' extra: pip install 'argus-security[browse]'"
+            "Browser interface is bound to 127.0.0.1 only — no auth, no mutations.\n\n"
+            "Install:\n"
+            "  pip install 'argus-security[terminal]'      # terminal interface\n"
+            "  pip install 'argus-security[browser]'       # browser interface"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    browse_parser.add_argument(
-        "results",
+    view_parser.add_argument(
+        "interface_pos",
+        nargs="?",
+        default=None,
+        choices=VIEW_INTERFACES,
+        metavar="INTERFACE",
+        help="Interface to open: terminal | browser (default: terminal)",
+    )
+    view_parser.add_argument(
+        "path",
         nargs="?",
         default=None,
         metavar="PATH",
         help="Results directory or argus-results.json path "
              "(default: ./argus-results/)",
     )
-
-
-def cmd_browse(args: argparse.Namespace) -> int:
-    """Execute the browse subcommand — launch the findings TUI."""
-    try:
-        from argus.browse import launch, BrowseUnavailable
-    except ImportError as exc:  # pragma: no cover — defensive
-        print(f"Error: could not import argus.browse: {exc}", file=sys.stderr)
-        return EXIT_ERROR
-    try:
-        return launch(args.results)
-    except BrowseUnavailable as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        return EXIT_ERROR
-
-
-def _build_serve_parser(subparsers: argparse._SubParsersAction) -> None:
-    """Add the 'serve' subcommand — local read-only web UI."""
-    serve_parser = subparsers.add_parser(
-        "serve",
-        help="Launch a local web UI to browse scan findings",
-        description=(
-            "Serve a read-only web view of argus scan results on "
-            "localhost:\n"
-            "  argus serve                       # picker rooted at CWD\n"
-            "  argus serve /path/to/results/     # load that scan directly\n"
-            "  argus serve --port 9090 --open    # custom port, open browser\n\n"
-            "Bound to 127.0.0.1 only by design — single-user, no auth, no\n"
-            "mutations. For enterprise multi-user deployments see\n"
-            "argus-portal (separate track).\n\n"
-            "Requires the 'serve' extra: pip install 'argus-security[serve]'"
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    serve_parser.add_argument(
-        "root",
-        nargs="?",
+    view_parser.add_argument(
+        "--interface", "-i",
+        dest="interface_flag",
+        choices=VIEW_INTERFACES,
         default=None,
-        metavar="PATH",
-        help="Starting folder for the picker, or a direct argus-results.json "
-             "path (default: current working directory)",
+        help="Interface to open: terminal | browser (alternative to positional)",
     )
-    serve_parser.add_argument(
+    view_parser.add_argument(
         "--port",
         type=int,
         default=8080,
-        help="TCP port to listen on (default: 8080)",
+        help="TCP port for the browser interface (default: 8080)",
     )
-    serve_parser.add_argument(
+    view_parser.add_argument(
         "--open",
         dest="open_browser",
         action="store_true",
-        help="Open the default browser at the server URL after startup",
+        help="Open the default web browser at the server URL after startup "
+             "(browser interface only)",
     )
 
 
-def cmd_serve(args: argparse.Namespace) -> int:
-    """Execute the serve subcommand — launch the local web UI."""
-    try:
-        from argus.serve import launch, ServeUnavailable
-    except ImportError as exc:  # pragma: no cover — defensive
-        print(f"Error: could not import argus.serve: {exc}", file=sys.stderr)
-        return EXIT_ERROR
-    try:
-        return launch(
-            root=args.root,
-            port=args.port,
-            open_browser=args.open_browser,
+def _resolve_view_interface(args: argparse.Namespace) -> str | None:
+    """Resolve the effective interface from positional + flag forms.
+
+    Returns the interface name, or ``None`` if positional and flag
+    disagree (in which case the caller has already printed an error).
+    """
+    pos = getattr(args, "interface_pos", None)
+    flag = getattr(args, "interface_flag", None)
+    if pos and flag and pos != flag:
+        print(
+            f"Error: conflicting interfaces — positional '{pos}' vs --interface "
+            f"'{flag}'. Pass only one.",
+            file=sys.stderr,
         )
-    except ServeUnavailable as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        return None
+    return flag or pos or "terminal"
+
+
+def cmd_view(args: argparse.Namespace) -> int:
+    """Execute the view subcommand — dispatch to terminal or browser viewer."""
+    interface = _resolve_view_interface(args)
+    if interface is None:
         return EXIT_ERROR
+    return _launch_view(
+        interface,
+        path=args.path,
+        port=args.port,
+        open_browser=args.open_browser,
+    )
+
+
+def _launch_view(
+    interface: str,
+    *,
+    path: str | None,
+    port: int = 8080,
+    open_browser: bool = False,
+) -> int:
+    """Dispatch to the chosen viewer, surfacing missing-extra hints cleanly."""
+    if interface == "terminal":
+        try:
+            from argus.viewers.terminal import launch, ViewerUnavailable
+        except ImportError as exc:  # pragma: no cover — defensive
+            print(f"Error: could not import argus.viewers.terminal: {exc}", file=sys.stderr)
+            return EXIT_ERROR
+        try:
+            return launch(path)
+        except ViewerUnavailable as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return EXIT_ERROR
+
+    if interface == "browser":
+        try:
+            from argus.viewers.browser import launch, ViewerUnavailable
+        except ImportError as exc:  # pragma: no cover — defensive
+            print(f"Error: could not import argus.viewers.browser: {exc}", file=sys.stderr)
+            return EXIT_ERROR
+        try:
+            return launch(root=path, port=port, open_browser=open_browser)
+        except ViewerUnavailable as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return EXIT_ERROR
+
+    print(f"Error: unknown interface '{interface}'", file=sys.stderr)
+    return EXIT_ERROR
 
 
 def _build_init_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -414,11 +451,14 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
              "since they have nothing to scan.",
     )
     scan_parser.add_argument(
-        "--interactive",
-        action="store_true",
-        help="After the scan completes, launch the interactive findings "
-             "browser (`argus browse`) against the just-written results. "
-             "Requires the 'browse' extra: pip install 'argus-security[browse]'.",
+        "--interface", "-i",
+        dest="view_interface",
+        choices=VIEW_INTERFACES,
+        default=None,
+        help="After the scan completes, open a viewer on the just-written "
+             "results. 'terminal' launches the TUI (requires "
+             "'argus-security[terminal]'); 'browser' launches the local web "
+             "UI (requires 'argus-security[browser]').",
     )
     scan_parser.add_argument(
         "--fail-fast",
@@ -769,7 +809,7 @@ def _build_completion_parser(subparsers: argparse._SubParsersAction) -> None:
         description=(
             "Generate a shell completion script for argus.\n\n"
             "Once installed, pressing <Tab> will complete:\n"
-            "  - subcommands (scan, list, browse, cache, ...)\n"
+            "  - subcommands (scan, list, view, cache, ...)\n"
             "  - scanner and linter names (bandit, gitleaks, lint-yaml, ...)\n"
             "  - common flags (--config, --scanners, --severity, ...)\n\n"
             "Install (persistent — remember to reload your shell):\n"
@@ -1214,35 +1254,54 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
     finalize_manifest(manifest, summary=summary, exit_code=exit_code, output_dir=output_dir)
     log.info("Audit manifest written to %s/argus-audit.json", output_dir)
 
-    # --interactive: hand off to the findings browser against the
+    # --interface: hand off to the chosen viewer against the
     # just-written results. Intentionally AFTER finalize_manifest so
-    # the manifest always lands regardless of whether browse succeeds
-    # (or whether the user even has the [browse] extra installed).
-    if getattr(args, "interactive", False):
-        _launch_interactive_browse(output_dir)
+    # the manifest always lands regardless of whether the viewer
+    # succeeds (or whether the user has the matching extra installed).
+    view_interface = getattr(args, "view_interface", None)
+    if view_interface:
+        _launch_view_after_scan(view_interface, output_dir)
 
     return exit_code
 
 
-def _launch_interactive_browse(results_dir: str) -> None:
-    """Dispatch to ``argus browse`` after a ``--interactive`` scan.
+def _launch_view_after_scan(interface: str, results_dir: str) -> None:
+    """Dispatch to ``argus view`` after ``argus scan --interface=...``.
 
     Extracted from ``cmd_scan`` so it's unit-testable without running
     a full scan plan. Failures here are non-fatal: the manifest and
-    results file are already on disk, so the user loses the TUI
-    convenience but nothing else. We catch both the friendly
-    ``BrowseUnavailable`` (missing ``[browse]`` extra) and a bare
-    ``ImportError`` (something weirder in the import chain) so the
-    scan exit code isn't affected either way.
+    results file are already on disk, so the user loses the viewer
+    convenience but nothing else. Both the friendly
+    ``ViewerUnavailable`` / ``ViewerUnavailable`` (missing optional
+    extra) and a bare ``ImportError`` (something weirder in the
+    import chain) are caught so the scan exit code isn't affected
+    either way.
     """
-    try:
-        from argus.browse import launch as browse_launch, BrowseUnavailable
+    if interface == "terminal":
         try:
-            browse_launch(results_dir)
-        except BrowseUnavailable as exc:
-            print(f"\n{exc}", file=sys.stderr)
-    except ImportError as exc:  # pragma: no cover — defensive
-        print(f"\nCould not launch browse TUI: {exc}", file=sys.stderr)
+            from argus.viewers.terminal import launch as terminal_launch, ViewerUnavailable
+            try:
+                terminal_launch(results_dir)
+            except ViewerUnavailable as exc:
+                print(f"\n{exc}", file=sys.stderr)
+        except ImportError as exc:  # pragma: no cover — defensive
+            print(f"\nCould not launch terminal interface: {exc}", file=sys.stderr)
+        return
+
+    if interface == "browser":
+        try:
+            from argus.viewers.browser import launch as browser_launch, ViewerUnavailable
+            try:
+                browser_launch(root=results_dir)
+            except ViewerUnavailable as exc:
+                print(f"\n{exc}", file=sys.stderr)
+        except ImportError as exc:  # pragma: no cover — defensive
+            print(f"\nCould not launch browser interface: {exc}", file=sys.stderr)
+        return
+
+    # Defensive: unknown interface should never reach here because argparse
+    # restricts --interface to VIEW_INTERFACES.
+    print(f"\nUnknown interface '{interface}'", file=sys.stderr)  # pragma: no cover
 
 
 def _dry_run(engine, config, args) -> int:
@@ -1870,11 +1929,13 @@ _argus() {{
         'mcp:Start the MCP server for AI assistant integration'
         'completion:Generate shell completion script'
         'cache:Manage scanner database caches'
+        'view:Open a viewer (terminal UI or browser) on existing scan results'
     )
 
     scanners=({scanners})
     severity=(critical high medium low none)
     formats=(terminal markdown sarif json)
+    interfaces=(terminal browser)
 
     _arguments -C \\
         '--version[Show version]' \\
@@ -1908,6 +1969,7 @@ _argus() {{
                         '--no-parallel[Run scanners sequentially]'
                         '--allow-local-versions[Skip version enforcement]'
                         '--no-cache[Disable DB cache volume mounts]'
+                        '(-i --interface)'{{-i,--interface}}'[Open viewer after scan]:interface:($interfaces)'
                     )
 
                     scan_container=(
@@ -1961,6 +2023,14 @@ _argus() {{
                 completion)
                     _arguments '1:shell:(bash zsh)'
                     ;;
+                view)
+                    _arguments \\
+                        '1:interface:($interfaces)' \\
+                        '2:path:_files -/' \\
+                        '(-i --interface)'{{-i,--interface}}'[Interface to open]:interface:($interfaces)' \\
+                        '--port[TCP port for browser interface]:port:' \\
+                        '--open[Open default web browser at server URL]'
+                    ;;
             esac
             ;;
     esac
@@ -1979,10 +2049,11 @@ _argus_completions() {{
     cur="${{COMP_WORDS[COMP_CWORD]}}"
     prev="${{COMP_WORDS[COMP_CWORD-1]}}"
 
-    commands="init scan classify collect report validate mcp completion cache"
+    commands="init scan classify collect report validate mcp completion cache view"
     scanners="{scanners}"
     severity="critical high medium low none"
     formats="terminal markdown sarif json"
+    interfaces="terminal browser"
 
     if [ "$COMP_CWORD" -eq 1 ]; then
         COMPREPLY=($(compgen -W "$commands --version --help" -- "$cur"))
@@ -2000,10 +2071,11 @@ _argus_completions() {{
             case "$prev" in
                 --severity-threshold|-s) COMPREPLY=($(compgen -W "$severity" -- "$cur")); return ;;
                 --format|-f) COMPREPLY=($(compgen -W "$formats" -- "$cur")); return ;;
+                --interface|-i) COMPREPLY=($(compgen -W "$interfaces" -- "$cur")); return ;;
                 --scan-type) COMPREPLY=($(compgen -W "baseline full" -- "$cur")); return ;;
                 --path|-p|--output-dir|-o|--config|-c|--output-vars) COMPREPLY=($(compgen -d -- "$cur")); return ;;
             esac
-            COMPREPLY=($(compgen -W "--path --config --output-dir --severity-threshold --format --output-vars --list --verbose --no-spinner --no-timestamp --fail-fast --timeout --no-cache --no-parallel --allow-local-versions" -- "$cur"))
+            COMPREPLY=($(compgen -W "--path --config --output-dir --severity-threshold --format --interface --output-vars --list --verbose --no-spinner --no-timestamp --fail-fast --timeout --no-cache --no-parallel --allow-local-versions" -- "$cur"))
             ;;
         report)
             if [ "$COMP_CWORD" -eq 2 ]; then
@@ -2020,6 +2092,17 @@ _argus_completions() {{
             ;;
         collect) COMPREPLY=($(compgen -W "--output-dir --verbose" -- "$cur")) ;;
         completion) COMPREPLY=($(compgen -W "bash zsh" -- "$cur")) ;;
+        view)
+            if [ "$COMP_CWORD" -eq 2 ] && [[ "$cur" != -* ]]; then
+                COMPREPLY=($(compgen -W "$interfaces --help" -- "$cur"))
+                return
+            fi
+            case "$prev" in
+                --interface|-i) COMPREPLY=($(compgen -W "$interfaces" -- "$cur")); return ;;
+                --port) return ;;
+            esac
+            COMPREPLY=($(compgen -W "--interface --port --open" -- "$cur"))
+            ;;
     esac
 }}
 
@@ -2453,8 +2536,7 @@ def main(argv: list[str] | None = None) -> None:
         "mcp": cmd_mcp,
         "completion": cmd_completion,
         "cache": cmd_cache,
-        "browse": cmd_browse,
-        "serve": cmd_serve,
+        "view": cmd_view,
     }
 
     handler = handlers.get(args.command)

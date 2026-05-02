@@ -11,7 +11,7 @@ pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient   # noqa: E402
 
-from argus.serve.app import _list_directory, create_app   # noqa: E402
+from argus.viewers.browser.app import _list_directory, create_app   # noqa: E402
 
 
 def _write_results(dir_path: Path, findings_count: int = 0) -> Path:
