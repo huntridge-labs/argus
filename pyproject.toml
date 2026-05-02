@@ -35,16 +35,30 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# AI classification for SCN detector (argus classify --enable-ai)
-ai = ["anthropic>=0.39.0", "openai>=1.0.0", "requests>=2.31.0"]
+# AI classification for SCN detector (argus classify --enable-ai).
+# httpx[socks] is pulled in explicitly — anthropic + openai both
+# instantiate an httpx.Client during SDK construction, and httpx
+# only picks up a SOCKS proxy transport when the socksio package
+# is present. Developer environments with an ``ALL_PROXY``/``HTTPS_PROXY``
+# that uses ``socks5://`` would otherwise ImportError every test
+# that builds a provider object, even tests that never make an
+# actual HTTP call.
+ai = [
+    "anthropic>=0.39.0",
+    "openai>=1.0.0",
+    "requests>=2.31.0",
+    "httpx[socks]>=0.24",
+]
 # Shell tab completion
 completion = ["argcomplete>=3.0"]
 # MCP server for AI assistant integration
 mcp = ["mcp>=1.0.0"]
 # Interactive findings browser (argus browse)
 browse = ["textual>=0.80"]
+# Local read-only web UI (argus serve)
+serve = ["fastapi>=0.110", "uvicorn[standard]>=0.30", "jinja2>=3.1", "python-multipart>=0.0.9"]
 # All optional features
-all = ["argus-security[ai,completion,mcp,browse]"]
+all = ["argus-security[ai,completion,mcp,browse,serve]"]
 
 [project.scripts]
 argus = "argus.cli:main"
@@ -74,6 +88,10 @@ exclude = [
 [tool.setuptools.package-data]
 # Include schema files and logo
 argus = ["../argus-config.schema.json", "../img/argus_logo.txt"]
+# Web UI templates and static assets live next to the Python package but
+# aren't .py files; setuptools won't pick them up automatically. Listing
+# them here ships them inside the built wheel.
+"argus.serve" = ["templates/*.j2", "static/*"]
 
 # ── Tool configuration ────────────────────────────────────────────
 

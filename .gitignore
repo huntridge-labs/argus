@@ -95,3 +95,13 @@ argus-results/
 argus-findings-*.json
 argus-findings-*.md
 argus-findings-*.sarif
+
+# AI / automation tool scratch — per-machine state, not project content.
+# .omc/             — oh-my-claudecode plugin state
+# .playwright-mcp/  — Playwright MCP page snapshots and console logs
+.omc/
+.playwright-mcp/
+
+# One-off UI smoke screenshots from local Playwright walk-throughs.
+# Tagged with the smoke- prefix so manual scan-result PNGs aren't caught.
+smoke-*.png

@@ -90,6 +90,23 @@ user_workflows:
       e to export CSV, d for executive dashboard, ? for help, Ctrl+P for
       command palette. Full reference in docs/browse.md.
 
+  local_web_dashboard:
+    description: "Serve findings locally via a browser-based dashboard (argus serve)"
+    category: triage
+    when_to_use: "Non-engineer stakeholders (owners, managers, execs) who want at-a-glance insight without a terminal"
+    sdk_command: "argus serve ./argus-results"
+    one_liner: "argus serve --open"
+    requirements:
+      - "Python 3.11+"
+      - "argus-security[serve] extra (installs FastAPI + uvicorn + jinja2)"
+    notes: |
+      Three routes: `/` executive dashboard, `/findings` filterable
+      table (URL-shareable filters), `/picker` one-level file browser
+      to switch scans. Bound to 127.0.0.1 only — no auth, no
+      sessions, no mutations. For multi-user enterprise deployments
+      see argus-portal (separate track). Full reference in
+      docs/serve.md.
+
   fedramp_scn_detection:
     description: "FedRAMP Significant Change Notification detection and tracking"
     category: compliance

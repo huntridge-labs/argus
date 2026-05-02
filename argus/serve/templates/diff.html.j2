@@ -1,0 +1,120 @@
+{% extends "base.html.j2" %}
+{% block title %}Argus — Scan Diff{% endblock %}
+
+{#- Tiny macro to render a finding row inside any of the diff buckets.
+    Keeps the four sections visually consistent and stops the template
+    from ballooning with four near-copies of the same markup. -#}
+{%- macro finding_row(f) -%}
+  <li class="diff-finding">
+    <span class="sev sev-{{ f.severity.value }}">{{ f.severity.value }}</span>
+    <strong>{% if f.cve %}{{ f.cve }}{% else %}{{ f.id }}{% endif %}</strong>
+    {%- if f.scanner %} <span class="diff-scanner">{{ f.scanner }}</span>{% endif %}
+    <span class="diff-title">{{ f.title or f.id }}</span>
+    {%- if f.location %}<br><code class="diff-location">{{ f.location }}</code>{% endif %}
+  </li>
+{%- endmacro -%}
+
+{% block content %}
+
+<h2>Scan Diff</h2>
+
+{% if error %}
+  <section class="placeholder">
+    <p><strong>Error:</strong> {{ error }}</p>
+    <p><a href="/picker">Open the picker</a> to select two scans.</p>
+  </section>
+
+{% elif diff is none %}
+  {#- Shouldn't hit this branch in practice (the route either sets
+      error or diff), but render a defensive fallback so the template
+      never blows up on a bad context. -#}
+  <section class="placeholder">
+    <p>No comparison loaded.</p>
+  </section>
+
+{% else %}
+
+  <div class="diff-header">
+    <div>
+      <div class="diff-scan-label">Before</div>
+      <code class="diff-scan-path">{{ a_label }}</code>
+    </div>
+    <div class="diff-arrow" aria-hidden="true">→</div>
+    <div>
+      <div class="diff-scan-label">After</div>
+      <code class="diff-scan-path">{{ b_label }}</code>
+    </div>
+  </div>
+
+  <div class="diff-tally">
+    <span class="diff-tally-pill diff-new">
+      <strong>{{ diff.new | length }}</strong> new
+    </span>
+    <span class="diff-tally-pill diff-fixed">
+      <strong>{{ diff.fixed | length }}</strong> fixed
+    </span>
+    <span class="diff-tally-pill diff-changed">
+      <strong>{{ diff.severity_changed | length }}</strong> severity changed
+    </span>
+    <span class="diff-tally-pill diff-unchanged">
+      <strong>{{ diff.still_open | length }}</strong> still open
+    </span>
+  </div>
+
+  <section class="diff-section diff-new-section">
+    <h3>🆕 New ({{ diff.new | length }})</h3>
+    {% if diff.new %}
+      <ul class="diff-list">
+        {% for f in diff.new %}{{ finding_row(f) }}{% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted-small">No new findings introduced in After.</p>
+    {% endif %}
+  </section>
+
+  <section class="diff-section diff-fixed-section">
+    <h3>✅ Fixed ({{ diff.fixed | length }})</h3>
+    {% if diff.fixed %}
+      <ul class="diff-list">
+        {% for f in diff.fixed %}{{ finding_row(f) }}{% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted-small">No findings resolved between Before and After.</p>
+    {% endif %}
+  </section>
+
+  <section class="diff-section diff-changed-section">
+    <h3>⚠️ Severity changed ({{ diff.severity_changed | length }})</h3>
+    {% if diff.severity_changed %}
+      <ul class="diff-list">
+        {% for pair in diff.severity_changed %}
+          <li class="diff-finding">
+            <span class="sev sev-{{ pair.before.severity.value }} diff-sev-before">{{ pair.before.severity.value }}</span>
+            <span class="diff-arrow-small" aria-hidden="true">→</span>
+            <span class="sev sev-{{ pair.after.severity.value }}">{{ pair.after.severity.value }}</span>
+            <strong>{% if pair.after.cve %}{{ pair.after.cve }}{% else %}{{ pair.after.id }}{% endif %}</strong>
+            {%- if pair.after.scanner %} <span class="diff-scanner">{{ pair.after.scanner }}</span>{% endif %}
+            <span class="diff-title">{{ pair.after.title or pair.after.id }}</span>
+            {%- if pair.after.location %}<br><code class="diff-location">{{ pair.after.location }}</code>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted-small">No severity-rating changes on persisting findings.</p>
+    {% endif %}
+  </section>
+
+  <details class="diff-section diff-unchanged-section">
+    <summary><h3>Still open ({{ diff.still_open | length }})</h3></summary>
+    {% if diff.still_open %}
+      <ul class="diff-list">
+        {% for f in diff.still_open %}{{ finding_row(f) }}{% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted-small">No findings present in both scans.</p>
+    {% endif %}
+  </details>
+
+{% endif %}
+
+{% endblock %}

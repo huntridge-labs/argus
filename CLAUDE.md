@@ -258,6 +258,10 @@ argus/                                 # Python SDK package
 │   ├── app.py                        # Textual App, HelpScreen, DashboardScreen, PickerScreens
 │   ├── loader.py                     # argus-results.json → ScanSummary
 │   └── export.py                     # CSV / JSON / Markdown / SARIF writers
+├── serve/                            # Local read-only web UI (argus serve) — optional extra, 127.0.0.1 only
+│   ├── app.py                        # FastAPI routes: /, /findings, /picker, /healthz
+│   ├── templates/                    # Jinja2: base, summary (dashboard), findings, picker
+│   └── static/                       # argus.css + auto-filter.js (vanilla, no framework)
 └── tests/                            # 20 test files, comprehensive coverage
 ```
 

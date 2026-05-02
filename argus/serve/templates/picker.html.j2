@@ -1,0 +1,129 @@
+{% extends "base.html.j2" %}
+{% block title %}Argus — Switch scan{% endblock %}
+{% block content %}
+
+<h2>Switch scan</h2>
+<p class="picker-intro">
+  Navigate into a folder that contains an <code>argus-results.json</code> and
+  click <strong>Load this scan</strong>. Nested results show as scan-ready
+  folders so you can pick a single run from a parent directory of scans.
+  Check two to compare.
+</p>
+
+<p class="crumbs picker-crumbs">
+  {{ current }}
+</p>
+
+{% if error %}
+  <div class="warnings">
+    <h3>Error</h3>
+    <p>{{ error }}</p>
+  </div>
+{% endif %}
+
+<div class="picker-actions">
+  {%- if has_results -%}
+    <a href="/?scan={{ current | urlencode }}" class="btn-primary">
+      ▶ Load this scan
+    </a>
+    <span class="muted-small">
+      <code>argus-results.json</code> detected here.
+    </span>
+  {% else %}
+    <em class="muted">No <code>argus-results.json</code> in this folder — click into a subfolder below, or type a path to jump.</em>
+  {% endif -%}
+</div>
+
+<form method="get" action="/picker" class="picker-jump-form">
+  <label class="jump-label">
+    Jump to path:
+    <input type="text" name="path" value="{{ current }}" class="jump-input" />
+  </label>
+  <button type="submit">Go</button>
+</form>
+
+{#- Compare bar — hidden until picker-compare.js sees exactly two
+    checkboxes ticked. Button target is built client-side from the
+    checked paths. -#}
+<div class="picker-compare-bar" id="picker-compare-bar" hidden>
+  <span class="picker-compare-status" id="picker-compare-status"></span>
+  <button type="button" id="picker-compare-btn" class="btn-primary" disabled>
+    Compare selected
+  </button>
+</div>
+
+<table class="picker-table">
+  <thead>
+    <tr>
+      <th class="picker-compare-col" scope="col" aria-label="Compare">
+        <span class="sr-only">Select for compare</span>
+      </th>
+      <th class="picker-type-col">Type</th>
+      <th>Name</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    {%- if parent -%}
+      <tr>
+        <td></td>
+        <td>📁</td>
+        <td><a href="/picker?path={{ parent | urlencode }}"><code>..</code></a></td>
+        <td><em class="muted">parent directory</em></td>
+      </tr>
+    {%- endif -%}
+
+    {%- for entry in entries -%}
+      <tr>
+        <td>
+          {#- Checkboxes only on rows that actually hold a scan; there's
+              nothing meaningful to diff about a non-scan subdirectory. -#}
+          {%- if entry.has_results or entry.is_results_file -%}
+            <input type="checkbox" class="picker-compare-cb"
+                   data-scan-path="{{ entry.path }}"
+                   aria-label="Select {{ entry.name }} for compare" />
+          {%- endif -%}
+        </td>
+        <td>{%- if entry.is_dir -%}📁{%- else -%}📄{%- endif -%}</td>
+        <td>
+          {%- if entry.is_dir -%}
+            <a href="/picker?path={{ entry.path | urlencode }}"><code>{{ entry.name }}/</code></a>
+          {%- else -%}
+            <code>{{ entry.name }}</code>
+          {%- endif -%}
+        </td>
+        <td>
+          {%- if entry.has_results -%}
+            <a href="/?scan={{ entry.path | urlencode }}" class="accent-strong">
+              ▶ Load scan ({{ entry.finding_count }} finding{{ entry.finding_count != 1 and 's' or '' }})
+            </a>
+          {%- elif entry.is_results_file -%}
+            <a href="/?scan={{ entry.path | urlencode }}" class="accent-strong">
+              ▶ Load scan
+            </a>
+          {%- else -%}
+            <span class="muted">—</span>
+          {%- endif -%}
+        </td>
+      </tr>
+    {%- endfor -%}
+
+    {%- if not entries and not parent -%}
+      <tr><td colspan="4"><em>Empty directory.</em></td></tr>
+    {%- endif -%}
+  </tbody>
+</table>
+
+<p class="muted-xs picker-toggle-hidden">
+  Dotfiles and common build dirs (<code>node_modules</code>, <code>.git</code>,
+  <code>.venv</code>) are hidden by default.
+  {%- if not show_hidden -%}
+    <a href="/picker?path={{ current | urlencode }}&show_hidden=1">Show hidden</a>
+  {%- else -%}
+    <a href="/picker?path={{ current | urlencode }}">Hide hidden</a>
+  {%- endif -%}
+</p>
+
+<script src="/static/picker-compare.js" defer></script>
+
+{% endblock %}

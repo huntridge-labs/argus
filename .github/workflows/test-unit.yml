@@ -33,6 +33,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          # Install the package itself with every optional extra so all
+          # test modules can actually run. Tests for optional features
+          # (argus browse / argus serve / MCP server / AI classifier)
+          # guard their imports with pytest.importorskip or module-level
+          # stubs — without the extras those tests either skip or run
+          # against fake stubs, and codecov's patch metric flags the
+          # unexercised test bodies as missing coverage. Installing
+          # [all] runs the real tests against the real code paths.
+          pip install -e '.[all]'
           pip install pytest-deadfixtures
 
       - name: Run all tests

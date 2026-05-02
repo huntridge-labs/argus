@@ -325,47 +325,105 @@ Minimal read-only web UI that displays the same data as `argus browse`, bound to
 | Authentication | None in v1. If `--bind` is non-localhost, require `--basic-auth USER:PASS` (HTTP basic over HTTPS, not a full user system). |
 | Data source | Single `argus-results.json` (or directory containing it). No cross-run aggregation, no history. |
 
-### Implementation — v1 plan
+### Implementation — v1 status
 
-**Shared loader + renderer extraction:**
-- [ ] Move `argus/browse/loader.py` logic to `argus/core/findings_view.py` (or similar shared package) so both `browse` and `serve` import from one place.
-- [ ] Factor the finding-detail rendering (currently inside `FindingDetail.update_finding`) into a shape that can produce both Textual markup and HTML/markdown — probably a structured dict that each front-end templates itself.
+Shipped on `feat/serve-webui` across six commit-sized phases
+(SA → SF). Summary below; git log for the full breakdown.
 
-**Web server module:**
-- [ ] `argus/serve/__init__.py` — import guard + `launch(results_dir, port, bind)`.
-- [ ] `argus/serve/app.py` — FastAPI app, three routes: `/` (executive summary), `/findings` (filterable table), `/scan` (metadata + SBOM-quality flags).
-- [ ] `argus/serve/templates/` — Jinja2 templates, HTMX-driven fragments for filter/sort updates.
-- [ ] `argus/serve/static/` — minimal CSS (pico.css or Tailwind CDN), no JS bundler.
+**Completed:**
 
-**CLI subcommand:**
-- [ ] `argus serve [RESULTS_DIR] [--port 8080] [--bind 127.0.0.1] [--open]` — `--open` auto-opens the browser.
-- [ ] Friendly `ServeUnavailable` error when `[serve]` extra isn't installed.
+- [x] **SA** — package scaffold, `[serve]` extra, CLI subcommand with
+  friendly `ServeUnavailable` error, `/healthz` liveness.
+- [x] **SB** — `/` executive dashboard route consuming
+  `argus.core.findings_view.compute_summary()`; CSP + clickjacking
+  headers via middleware; Jinja2Templates + StaticFiles mount.
+- [x] **SC** — `/findings` filterable table route. Query-param-driven
+  filters share `ViewState.matches()` with the TUI (one source of
+  truth for filter semantics). URL-driven and refresh-safe. Unknown
+  severity inputs degrade to "no filter" rather than 500.
+- [x] **SD** — `/picker` one-level file browser with scan-ready hints
+  (finding-count peek for directories containing
+  `argus-results.json`). Dotfiles + build dirs hidden by default;
+  `?show_hidden=1` toggle. No recursion (per scoping decision).
+- [x] **SE** — Progressive-enhancement filter refresh via vanilla JS
+  (80 lines, no HTMX dep). `/findings?partial=1` returns just the
+  table fragment; `auto-filter.js` swaps it in on filter changes,
+  keeps the URL in sync via `history.replaceState`. Form submit is
+  the no-JS fallback.
+- [x] **SF** — `docs/serve.md` user guide, README feature bullet,
+  `.ai/architecture.yaml`, `.ai/workflows.yaml`, ADR in
+  `.ai/decisions.yaml`.
 
-**Executive summary view (`/`):**
-- [ ] Top N criticals per product (grouped by `metadata.sbom_source`)
-- [ ] Scan quality flags (SPDX-2.1 warnings, low-purl-coverage warnings, "couldn't identify scan subject" — surfaced as a yellow banner rather than buried in details)
-- [ ] Scan age (`mtime` of `argus-results.json`)
-- [ ] Per-scanner contribution counts
-- [ ] "What changed" placeholder (future scan-over-scan diff)
+**Scope deferrals (intentional):**
 
-**Security:**
-- [ ] Sanitize all finding text / location / scanner output before rendering (defensive against scanner-emitted XSS payloads in vulnerability descriptions).
-- [ ] Secret-redaction pass on finding `description` / `title` before display — same pattern library as other argus redactors (mask API-key-shaped strings).
-- [ ] CSP header: `default-src 'self'; style-src 'self' 'unsafe-inline'`.
-- [ ] No cookies, no session state in v1 — every request is stateless.
+- `--bind` flag omitted — always `127.0.0.1`. Localhost-only is the
+  product shape; multi-user network exposure belongs to
+  `argus-portal`, not here.
+- `--basic-auth` omitted for the same reason — no auth means no
+  session-state complexity.
+- Secret-redaction on finding text — not serve-specific; applies
+  equally to CLI / TUI / JSON export. Tackle globally when it lands.
 
-**Packaging:**
-- [ ] `pyproject.toml`: new `[serve]` optional extra (`fastapi`, `uvicorn[standard]`, `jinja2`). Kept separate from `[browse]` so users can pick either or both.
-- [ ] `all = [...browse, serve]` updated.
+### Phase 2 additions (post-launch, shipped)
 
-**Tests:**
-- [ ] Route tests via `httpx.AsyncClient` (no live server needed)
-- [ ] Shared-loader tests cover both paths
-- [ ] Explicit test that `--bind 0.0.0.0` without `--insecure-public-bind` exits with an error
+Iteration after dogfooding the initial build. Same scoping rules
+apply: read-only, localhost-only, no new persistence.
 
-**Docs:**
-- [ ] `docs/serve.md` with screenshot, quickstart, security note (localhost-only)
-- [ ] Architecture decision record in `.ai/decisions.yaml` documenting the choice vs. maturing `argus-portal`
+- [x] **SG** — Drill-downs on dashboard cards and per-product /
+  per-scanner rows; each deep-links into `/findings` with the
+  matching filter pinned.
+- [x] **SH** — Findings row detail (native `<details>` disclosure
+  inside each title cell, rendering `finding_detail_rows` — same
+  source of truth the TUI uses).
+- [x] **SI** — Sortable column headers on the findings table
+  (Severity / ID / Location / Scanner), aria-sort state reflected.
+- [x] **SJ** — Path-scope constraint: `?scan=` and `/picker?path=`
+  reject targets outside the launch root unless the user relaunches
+  with a broader `--root`. Defense-in-depth even though cross-origin
+  readback is already blocked by the browser SOP.
+- [x] **SK** — Export routes (`/export?format=csv|json|markdown|sarif`)
+  reusing `argus/browse/export.py`; each format exposed in the
+  findings UI with both Download (browser save) and Copy (clipboard
+  via `navigator.clipboard.writeText`) actions.
+- [x] **SL** — Scan diff (`/diff?a=<path>&b=<path>`): new / fixed /
+  severity-changed / still-open buckets keyed off the
+  `(scanner, id, location)` identity tuple. Picker surfaces
+  checkboxes on scan-ready rows + a "Compare selected" button.
+- [x] **SM** — Recent-scans dropdown in the header, auto-populated
+  from scan-ready siblings of the launch root; symlink-deduplicated
+  so `latest/` doesn't double-count.
+- [x] **SN** — Scan metadata panel on the dashboard exposing
+  per-scanner tool versions, container image digests, durations,
+  aggregate duration, and the scan file's mtime.
+- [x] **SO** — Light/dark theme toggle with `prefers-color-scheme`
+  default and a localStorage override. Brand palette unchanged in
+  dark; light variant derived from the same tokens with deeper
+  severity hues for legibility on a bright surface.
+
+### Future ideas (not on the roadmap)
+
+Deliberately not pursuing for now — recording here so the decision
+doesn't have to be re-litigated when someone files a "what about
+X?" issue.
+
+- **Keyboard shortcuts** (`/` focus search, `j/k` row nav, `Enter`
+  expand detail). Considered during the post-launch walkthrough and
+  deferred: browser URL bookmarking already handles the most common
+  flows, and keyboard shortcuts are an expected affordance in TUIs
+  like `argus browse` but a lower payoff in a web surface where
+  mouse + click is the dominant interaction mode. Could revisit if
+  users ask, but not planned.
+- **Triage annotations** (mark false-positive, accepted risk, fix
+  scheduled). Considered and declined. Adding these would mean:
+  1. Writing state to a sidecar file, which breaks the strict
+     read-only model serve is built around.
+  2. Inventing a schema for persisting + recalling triage state
+     across scan runs, with no standard way to surface it back into
+     later scans or report it to a security review POC.
+  3. Duplicating effort with `argus-portal`, which has first-class
+     vuln management in its scope.
+  Routes argus into vuln-management territory without a downstream
+  consumer that uses the data — not worth the complexity.
 
 ### Relationship to `argus-portal`
 

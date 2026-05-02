@@ -14,6 +14,7 @@ Textual action methods.
 from __future__ import annotations
 
 import csv
+import io
 import json
 from datetime import datetime
 from pathlib import Path
@@ -55,21 +56,32 @@ def make_export_path(
 # CSV
 # ---------------------------------------------------------------------------
 
+def render_csv(findings: Iterable[Finding]) -> str:
+    """Return findings as a CSV string.
+
+    Pure-in-memory rendering so callers that don't want a file (e.g.
+    ``argus serve`` returning a Response body) can skip the filesystem
+    entirely. The TUI's ``write_csv`` wraps this for the file path.
+    """
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(CSV_COLUMNS)
+    for f in findings:
+        writer.writerow([
+            f.severity.value, f.id, f.cve or "", f.scanner or "",
+            f.metadata.get("package", ""),
+            f.metadata.get("installed_version", ""),
+            f.metadata.get("fixed_version", ""),
+            f.location or "", f.title or "",
+            f.metadata.get("sbom_source", ""),
+        ])
+    return buf.getvalue()
+
+
 def write_csv(findings: Iterable[Finding], dest: Path) -> Path:
     """Write findings as CSV to ``dest``. Returns the resolved path."""
     dest = Path(dest).resolve()
-    with open(dest, "w", newline="", encoding="utf-8") as fh:
-        writer = csv.writer(fh)
-        writer.writerow(CSV_COLUMNS)
-        for f in findings:
-            writer.writerow([
-                f.severity.value, f.id, f.cve or "", f.scanner or "",
-                f.metadata.get("package", ""),
-                f.metadata.get("installed_version", ""),
-                f.metadata.get("fixed_version", ""),
-                f.location or "", f.title or "",
-                f.metadata.get("sbom_source", ""),
-            ])
+    dest.write_text(render_csv(findings), encoding="utf-8")
     return dest
 
 
@@ -77,17 +89,22 @@ def write_csv(findings: Iterable[Finding], dest: Path) -> Path:
 # JSON
 # ---------------------------------------------------------------------------
 
-def write_json(findings: Iterable[Finding], dest: Path) -> Path:
-    """Write findings as JSON (a list of Finding.to_dict() objects).
+def render_json(findings: Iterable[Finding]) -> str:
+    """Return findings as a pretty-printed JSON string.
 
     Matches the shape used inside ``argus-results.json`` for per-finding
     records, so downstream consumers can pipe the export back through
     other argus tooling (e.g. a future ``argus report`` subcommand)
     without a shape translation step.
     """
-    dest = Path(dest).resolve()
     payload = [f.to_dict() for f in findings]
-    dest.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    return json.dumps(payload, indent=2, ensure_ascii=False)
+
+
+def write_json(findings: Iterable[Finding], dest: Path) -> Path:
+    """Write findings as JSON to ``dest``."""
+    dest = Path(dest).resolve()
+    dest.write_text(render_json(findings), encoding="utf-8")
     return dest
 
 
@@ -105,18 +122,18 @@ _SEVERITY_ICON = {
 }
 
 
-def write_markdown(findings: Iterable[Finding], dest: Path) -> Path:
-    """Write findings as a Markdown table — paste-ready for tickets / PRs.
+def render_markdown(findings: Iterable[Finding], *, now: datetime | None = None) -> str:
+    """Return findings as a Markdown table — paste-ready for tickets / PRs.
 
     Pipes in table cells are escaped so a CVE title containing ``|``
     doesn't break the row. The column set mirrors the CSV writer's so
-    the two formats carry the same data.
+    the two formats carry the same data. ``now`` is injectable for
+    deterministic test fixtures; production callers pass ``None``.
     """
-    dest = Path(dest).resolve()
     lines: list[str] = [
         "# Argus Findings Export",
         "",
-        f"Generated {datetime.now().isoformat(timespec='seconds')}",
+        f"Generated {(now or datetime.now()).isoformat(timespec='seconds')}",
         "",
         "| Sev | ID | Scanner | Package | Fix | Location | SBOM | Title |",
         "|-----|----|---------|---------|-----|----------|------|-------|",
@@ -135,7 +152,13 @@ def write_markdown(findings: Iterable[Finding], dest: Path) -> Path:
             f"| {f.scanner or '—'} | {pkg_cell} | {fixed} "
             f"| `{location}` | {sbom} | {title} |"
         )
-    dest.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return "\n".join(lines) + "\n"
+
+
+def write_markdown(findings: Iterable[Finding], dest: Path) -> Path:
+    """Write findings as a Markdown table to ``dest``."""
+    dest = Path(dest).resolve()
+    dest.write_text(render_markdown(findings), encoding="utf-8")
     return dest
 
 
@@ -153,9 +176,9 @@ _SARIF_LEVEL = {
 }
 
 
-def write_sarif(findings: Iterable[Finding], dest: Path) -> Path:
-    """Write findings as SARIF 2.1.0 — the format GitHub Code Security
-    and most dashboards consume.
+def render_sarif(findings: Iterable[Finding]) -> str:
+    """Return findings as a SARIF 2.1.0 JSON string — the format
+    GitHub Code Security and most dashboards consume.
 
     We emit one ``run`` per scanner so viewers that group-by-run see
     the same grouping a user would expect. Rule metadata is minimal
@@ -164,7 +187,6 @@ def write_sarif(findings: Iterable[Finding], dest: Path) -> Path:
     output, which users can still access via the SDK's native sarif
     reporter.
     """
-    dest = Path(dest).resolve()
     by_scanner: dict[str, list[Finding]] = {}
     for f in findings:
         by_scanner.setdefault(f.scanner or "unknown", []).append(f)
@@ -220,12 +242,20 @@ def write_sarif(findings: Iterable[Finding], dest: Path) -> Path:
         "version": "2.1.0",
         "runs": runs,
     }
-    dest.write_text(json.dumps(sarif, indent=2), encoding="utf-8")
+    return json.dumps(sarif, indent=2)
+
+
+def write_sarif(findings: Iterable[Finding], dest: Path) -> Path:
+    """Write findings as SARIF 2.1.0 to ``dest``."""
+    dest = Path(dest).resolve()
+    dest.write_text(render_sarif(findings), encoding="utf-8")
     return dest
 
 
 # ---------------------------------------------------------------------------
-# Dispatch table — the TUI looks up (fmt -> writer) to pick the right one.
+# Dispatch tables — format → (callable, file extension, HTTP content type).
+# TUI path uses WRITERS (writes to a Path). Web path uses RENDERERS (returns
+# a string) and CONTENT_TYPES to build the HTTP Response.
 # ---------------------------------------------------------------------------
 
 WRITERS = {
@@ -233,6 +263,23 @@ WRITERS = {
     "json":     (write_json,     "json"),
     "markdown": (write_markdown, "md"),
     "sarif":    (write_sarif,    "sarif"),
+}
+
+RENDERERS = {
+    "csv":      (render_csv,      "csv"),
+    "json":     (render_json,     "json"),
+    "markdown": (render_markdown, "md"),
+    "sarif":    (render_sarif,    "sarif"),
+}
+
+# MIME types for the /export HTTP route. text/* when the content is
+# safe to display as plain text in a browser; application/json for
+# structured payloads where browsers' JSON viewers are useful.
+CONTENT_TYPES = {
+    "csv":      "text/csv; charset=utf-8",
+    "json":     "application/json; charset=utf-8",
+    "markdown": "text/markdown; charset=utf-8",
+    "sarif":    "application/sarif+json; charset=utf-8",
 }
 
 

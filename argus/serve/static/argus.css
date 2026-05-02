@@ -1,0 +1,948 @@
+/* argus serve — minimal classless styles, self-contained (no CDN).
+ *
+ * Palette and type scale lifted from argus.huntridgelabs.com so the
+ * local UI feels like the same product. Color tokens prefixed
+ * --argus-* mirror the brand site's CSS custom properties exactly;
+ * severity hues stay semantic (not brand) for finding badges.
+ *
+ * No frameworks, no resets beyond what's needed to keep browser
+ * defaults from fighting us. Self-hosted (no CDN font loads) so CSP
+ * stays strict and the UI works offline.
+ */
+
+:root {
+  /* Brand palette — dark theme, in lockstep with argus.huntridgelabs.com.
+   * Deep dark-green background, lime accent, muted primary green.
+   * Light-theme overrides live in the [data-theme="light"] block
+   * further down, and prefers-color-scheme flips the same tokens
+   * automatically for users who haven't picked a theme explicitly. */
+  --argus-deep-bg:       #0b0f0d;
+  --argus-dark-surface:  #111916;
+  --argus-subtle-panel:  #16211c;
+  --argus-primary-green: #84b852;
+  --argus-accent-lime:   #dbe64c;
+  --argus-light-text:    #eaf2ea;
+  --argus-muted-text:    #9fb09f;
+  --argus-border:        #1f2a22;
+  /* On-lime text color — deep-bg in both themes for max contrast
+   * against the lime CTA. A separate token so light theme doesn't
+   * accidentally flip it to off-white (invisible on lime). */
+  --argus-on-accent:     #0b0f0d;
+
+  /* Legacy shortcuts — kept so existing rules don't need refactoring.
+   * Point each at the brand tokens above. */
+  --bg:            var(--argus-deep-bg);
+  --surface:       var(--argus-dark-surface);
+  --surface-alt:   var(--argus-subtle-panel);
+  --border:        var(--argus-border);
+  --fg:            var(--argus-light-text);
+  --fg-muted:      var(--argus-muted-text);
+  --accent:        var(--argus-accent-lime);
+  --accent-dim:    var(--argus-primary-green);
+
+  /* Severity hues — semantic, not brand. Tuned slightly to sit
+   * comfortably against the dark-green background. */
+  --crit:          #e74c3c;
+  --high:          #ff8c42;
+  --med:           #f1c40f;
+  --low:           #3498db;
+  --info:          #95a5a6;
+
+  --radius:        8px;
+  --radius-sm:     4px;
+  --gap:           1rem;
+  --max-width:     72rem;
+
+  /* Type stack — brand page uses Exo 2 (heading) + Noto Sans (body).
+   * We ship neither (keeps the package slim, no Google Fonts CDN
+   * for CSP reasons) and fall back to system fonts that approximate
+   * the geometric feel on macOS / Windows / Linux. */
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont,
+               "Segoe UI", "SF Pro Text", sans-serif;
+  --font-heading: "SF Pro Display", -apple-system, BlinkMacSystemFont,
+                  "Segoe UI", "Inter", sans-serif;
+}
+
+/* Light-theme overrides. Two activation paths:
+ *   1. User explicitly picks it via the theme toggle — sets
+ *      [data-theme="light"] on the <html> element.
+ *   2. User hasn't picked a theme and their OS prefers light — the
+ *      @media block below kicks in. The explicit data-theme selectors
+ *      further down override the @media so user choice always wins.
+ *
+ * The severity hues get slightly deeper variants so the badges stay
+ * readable against a bright background; the accent lime and primary
+ * green stay anchored to the brand tokens so CTAs look "on brand"
+ * regardless of theme. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --argus-deep-bg:       #f5f7f0;
+    --argus-dark-surface:  #ffffff;
+    --argus-subtle-panel:  #eef1e8;
+    --argus-primary-green: #4a7a2e;
+    --argus-accent-lime:   #c4d421;
+    --argus-light-text:    #1a2118;
+    --argus-muted-text:    #5d6b58;
+    --argus-border:        #c8d1ba;
+    --argus-on-accent:     #0b0f0d;
+    --crit:          #c0392b;
+    --high:          #d76b2a;
+    --med:           #b89200;
+    --low:           #2d7bbf;
+    --info:          #6b7370;
+  }
+}
+
+[data-theme="light"] {
+  --argus-deep-bg:       #f5f7f0;
+  --argus-dark-surface:  #ffffff;
+  --argus-subtle-panel:  #eef1e8;
+  --argus-primary-green: #4a7a2e;
+  --argus-accent-lime:   #c4d421;
+  --argus-light-text:    #1a2118;
+  --argus-muted-text:    #5d6b58;
+  --argus-border:        #c8d1ba;
+  --argus-on-accent:     #0b0f0d;
+  --crit:          #c0392b;
+  --high:          #d76b2a;
+  --med:           #b89200;
+  --low:           #2d7bbf;
+  --info:          #6b7370;
+}
+
+/* Explicit dark override — only matters when the OS prefers light
+ * but the user picked dark via the toggle. The tokens match the
+ * dark :root block above; CSS custom properties can't be extended
+ * in place so we repeat them. */
+[data-theme="dark"] {
+  --argus-deep-bg:       #0b0f0d;
+  --argus-dark-surface:  #111916;
+  --argus-subtle-panel:  #16211c;
+  --argus-primary-green: #84b852;
+  --argus-accent-lime:   #dbe64c;
+  --argus-light-text:    #eaf2ea;
+  --argus-muted-text:    #9fb09f;
+  --argus-border:        #1f2a22;
+  --argus-on-accent:     #0b0f0d;
+  --crit:          #e74c3c;
+  --high:          #ff8c42;
+  --med:           #f1c40f;
+  --low:           #3498db;
+  --info:          #95a5a6;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+/* Subtle brand "eye pattern" vignette behind the page — very low
+ * opacity so it doesn't compete with content. Pure CSS radial so we
+ * avoid a background image asset. */
+body::before {
+  content: "";
+  position: fixed; inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% 0%,
+      rgba(219, 230, 76, 0.04) 0%,
+      transparent 50%),
+    radial-gradient(ellipse at 50% 100%,
+      rgba(132, 184, 82, 0.03) 0%,
+      transparent 40%);
+  z-index: 0;
+}
+body > * { position: relative; z-index: 1; }
+
+header, main, footer { padding: 1rem 1.5rem; max-width: var(--max-width); margin: 0 auto; }
+
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap; gap: 0.5rem 1rem;
+  padding-top: 1.25rem; padding-bottom: 1.25rem;
+}
+header .brand {
+  display: flex; align-items: center; gap: 0.6rem;
+  text-decoration: none; color: var(--fg);
+}
+header .brand img {
+  width: 28px; height: 28px;
+  filter: drop-shadow(0 0 6px rgba(219, 230, 76, 0.25));
+}
+header h1 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--fg);
+}
+header .crumbs { color: var(--fg-muted); font-size: 0.9rem; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+header nav { display: flex; align-items: center; gap: 0.25rem; }
+header nav a {
+  color: var(--fg-muted); text-decoration: none;
+  padding: 0.4rem 0.8rem; border-radius: var(--radius);
+  white-space: nowrap;
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+header nav a:hover { background: var(--surface); color: var(--fg); }
+header nav a[aria-current="page"] {
+  color: var(--argus-on-accent);
+  background: var(--accent);
+  font-weight: 600;
+}
+
+/* Theme toggle — tiny circular button next to the nav. Icon flips
+ * between sun and moon depending on the current theme. Button
+ * itself has no background so it reads as "utility" rather than a
+ * primary action. */
+.theme-toggle {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  width: 2rem; height: 2rem;
+  padding: 0; margin-left: 0.25rem;
+  border-radius: 999px;
+  font-size: 0.95rem; line-height: 1;
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.theme-toggle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.theme-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Recent-runs dropdown in the header. Native <details> so keyboard
+ * and screen readers work without any JS. Open menu anchors to the
+ * right side to avoid extending past the viewport on narrow layouts. */
+.recent-scans-menu {
+  position: relative;
+}
+.recent-scans-menu summary {
+  cursor: pointer; list-style: none;
+  color: var(--fg-muted); text-decoration: none;
+  padding: 0.4rem 0.8rem; border-radius: var(--radius);
+  white-space: nowrap;
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.recent-scans-menu summary:hover { background: var(--surface); color: var(--fg); }
+.recent-scans-menu summary::-webkit-details-marker { display: none; }
+.recent-scans-menu summary::after {
+  content: " ▾"; font-size: 0.7em;
+  margin-left: 0.2em; color: var(--accent);
+}
+.recent-scans-menu[open] summary { color: var(--fg); background: var(--surface); }
+.recent-scans-count {
+  display: inline-block;
+  background: var(--surface-alt); color: var(--accent-dim);
+  padding: 0 0.4em; border-radius: 999px;
+  font-size: 0.75em; margin-left: 0.3em;
+}
+.recent-scans-list {
+  position: absolute; right: 0; top: calc(100% + 0.25rem);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.35rem;
+  margin: 0; list-style: none;
+  min-width: 20rem;
+  max-height: 24rem; overflow-y: auto;
+  z-index: 10;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+}
+.recent-scans-list li { margin: 0; }
+.recent-scans-list a {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: var(--radius-sm);
+  color: var(--fg); text-decoration: none;
+  font-size: 0.9rem;
+}
+.recent-scans-list a:hover { background: var(--surface-alt); }
+.recent-scans-list a.recent-scans-current {
+  color: var(--accent);
+  background: var(--surface-alt);
+  font-weight: 600;
+}
+.recent-scans-label {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.85rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.recent-scans-count-badge {
+  font-size: 0.75rem; color: var(--fg-muted);
+  background: var(--surface); padding: 0.05em 0.5em;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.recent-scans-list a.recent-scans-current .recent-scans-count-badge {
+  color: var(--accent-dim);
+  background: var(--argus-deep-bg);
+}
+
+/* ── Scan metadata panel ─────────────────────────────────────────
+ * Collapsed <details> on the dashboard showing per-scanner info
+ * the user might need for audit questions: tool versions,
+ * execution mode, image digests (SHA-pinned scanners), durations.
+ * Kept out of the at-a-glance summary so it doesn't compete for
+ * attention but one click away when needed. */
+.scan-metadata {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 1rem 0 1.5rem;
+}
+.scan-metadata summary {
+  cursor: pointer; list-style: none;
+  padding: 0.65rem 1rem;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem;
+}
+.scan-metadata summary::-webkit-details-marker { display: none; }
+.scan-metadata summary::before {
+  content: "▸"; display: inline-block;
+  color: var(--fg-muted);
+  transition: transform 0.1s ease;
+}
+.scan-metadata[open] summary::before { transform: rotate(90deg); color: var(--accent); }
+.scan-metadata-title {
+  font-family: var(--font-heading);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+  color: var(--accent-dim);
+  flex: 1;
+  margin-left: 0.4rem;
+}
+.scan-metadata-summary-chips {
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+}
+.scan-metadata-body {
+  padding: 0 1rem 1rem;
+  border-top: 1px solid var(--border);
+}
+.scan-metadata-file {
+  display: grid; grid-template-columns: max-content 1fr;
+  gap: 0.3rem 1rem;
+  margin: 0.9rem 0;
+  font-size: 0.9rem;
+}
+.scan-metadata-file dt {
+  color: var(--fg-muted);
+  font-weight: 500;
+}
+.scan-metadata-file dd { margin: 0; overflow-wrap: anywhere; }
+.scan-metadata-file code { background: transparent; padding: 0; color: var(--fg); }
+.scan-metadata-scanners {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}
+.scan-metadata-scanners th, .scan-metadata-scanners td {
+  padding: 0.45rem 0.7rem;
+}
+.scan-metadata-digest {
+  display: inline-block;
+  max-width: 22rem;
+  overflow: hidden; text-overflow: ellipsis;
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+  background: transparent;
+  padding: 0;
+}
+
+/* Long scan paths (timestamped run dirs, etc.) shouldn't overflow the
+ * crumb box; break anywhere rather than scrolling the whole page. */
+.crumbs code { overflow-wrap: anywhere; }
+
+/* Quiet hint banner for filter edge cases (invalid ?min_severity= etc.).
+ * Role="status" handles the a11y announce; the color keeps it obvious
+ * without shouting. */
+.filter-hint {
+  color: var(--fg-muted); font-size: 0.9rem;
+  margin: 0.25rem 0 0.75rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--surface); border-left: 3px solid var(--med);
+  border-radius: 4px;
+}
+
+h1, h2, h3 {
+  margin: 1.5rem 0 0.75rem;
+  font-family: var(--font-heading);
+  color: var(--fg);
+}
+h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+h3 {
+  font-size: 0.8rem;
+  color: var(--accent-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+}
+
+a { color: var(--accent); }
+a:hover { opacity: 0.85; }
+
+code, pre, kbd {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  background: var(--surface-alt);
+  color: var(--accent-dim);
+  border-radius: var(--radius-sm);
+  padding: 0.1em 0.4em;
+  font-size: 0.9em;
+}
+pre { padding: 1rem; overflow-x: auto; }
+
+table {
+  border-collapse: collapse; width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+th, td { text-align: left; padding: 0.6rem 0.85rem; border-bottom: 1px solid var(--border); }
+th {
+  background: var(--surface-alt);
+  font-weight: 600;
+  color: var(--accent-dim);
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--surface-alt); }
+
+/* Wrap wide tables so only the table scrolls on narrow screens — the
+ * page header, nav, and filters should not slide horizontally with it. */
+.table-wrap { overflow-x: auto; border-radius: var(--radius); }
+
+/* Loading state for the auto-filter swap target: dims the current
+ * contents and blocks pointer events while a fetch is in flight.
+ * Added/removed by auto-filter.js around each refresh call. */
+#findings-target.is-loading { opacity: 0.5; transition: opacity 0.1s ease; pointer-events: none; }
+
+/* ── utility classes ──────────────────────────────────────────────
+ * Previously inline styles in the templates; extracted so the CSP
+ * can drop 'unsafe-inline' for style-src. Keep additions here rather
+ * than re-inlining them — that's what breaks the policy tightening. */
+.muted-small { color: var(--fg-muted); font-size: 0.9rem; }
+.muted-xs    { color: var(--fg-muted); font-size: 0.85rem; }
+.muted       { color: var(--fg-muted); }
+.accent-strong { color: var(--accent); font-weight: 600; }
+
+/* Scan-path breadcrumb at the top of the main content area. */
+.scan-crumbs { margin: 0 0 1rem; color: var(--fg-muted); }
+
+/* Picker-specific styles — extracted from picker.html.j2. */
+.picker-crumbs {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  background: var(--surface); padding: 0.5rem 0.75rem;
+  border-radius: var(--radius); margin-bottom: 1rem;
+}
+.picker-intro { color: var(--fg-muted); font-size: 0.9rem; margin-bottom: 0.5rem; }
+.picker-actions {
+  display: flex; gap: 1rem; align-items: center;
+  margin: 1rem 0; flex-wrap: wrap;
+}
+.picker-jump-form {
+  display: flex; gap: 0.5rem; margin: 1rem 0; align-items: center;
+}
+.picker-jump-form .jump-label { flex: 1; }
+.picker-jump-form .jump-input {
+  width: 100%; padding: 0.4rem 0.6rem;
+  background: var(--surface); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 4px;
+}
+.picker-type-col { width: 3rem; }
+
+/* Primary call-to-action button, used for "Load this scan" and
+ * similar lime-accent actions. Matches the hero CTA on
+ * argus.huntridgelabs.com — lime fill, deep-bg text, soft glow. */
+.btn-primary {
+  background: var(--accent);
+  color: var(--argus-on-accent);
+  padding: 0.55rem 1.1rem;
+  border-radius: var(--radius);
+  text-decoration: none;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid var(--accent);
+  box-shadow: 0 0 0 rgba(219, 230, 76, 0);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.btn-primary:hover {
+  opacity: 1;
+  box-shadow: 0 0 16px rgba(219, 230, 76, 0.35);
+  transform: translateY(-1px);
+}
+/* Generic <button> (filter Apply, picker Go) takes the same brand
+ * treatment as btn-primary but lighter — outlined lime on hover. */
+button {
+  background: var(--surface-alt);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 0.45rem 0.9rem;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+button:hover { border-color: var(--accent); color: var(--accent); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Form controls match the dark surface + subtle border treatment. */
+select, input[type="text"], input[type="search"] {
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+select:focus-visible, input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(219, 230, 76, 0.15);
+}
+
+/* Filter bar on the findings page — the row of dropdowns + search. */
+.filter-bar {
+  margin: 1rem 0;
+  display: flex; gap: 0.75rem;
+  flex-wrap: wrap; align-items: center;
+}
+
+/* "Show hidden / Hide hidden" footer on the picker. Adds top spacing
+ * and a small gap before the link so it doesn't run straight into the
+ * prose. */
+.picker-toggle-hidden { margin-top: 1rem; }
+.picker-toggle-hidden a { margin-left: 0.5rem; }
+
+/* ── Export menu ──────────────────────────────────────────────────
+ * Collapsible disclosure on the findings page with a 2-column grid
+ * of (format, download, copy) rows. Summary is styled like a button
+ * so the affordance reads even before it's opened. */
+.export-menu {
+  margin: 0.5rem 0 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  max-width: 28rem;
+}
+.export-menu summary {
+  cursor: pointer;
+  padding: 0.55rem 0.9rem;
+  list-style: none;
+  font-weight: 600;
+  color: var(--fg);
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+}
+.export-menu summary::-webkit-details-marker { display: none; }
+.export-menu summary::before {
+  content: "▸"; display: inline-block;
+  color: var(--fg-muted); margin-right: 0.4em;
+  transition: transform 0.1s ease;
+}
+.export-menu[open] summary::before { transform: rotate(90deg); color: var(--accent); }
+.export-menu[open] summary { color: var(--accent); border-bottom: 1px solid var(--border); }
+.export-grid {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem 0.9rem;
+}
+.export-row {
+  display: grid;
+  grid-template-columns: 5rem 1fr 1fr;
+  gap: 0.5rem;
+  align-items: center;
+}
+.export-format {
+  font-family: var(--font-heading);
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  color: var(--fg);
+  font-weight: 600;
+}
+.export-action {
+  display: inline-block;
+  text-align: center;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-alt);
+  color: var(--fg);
+  text-decoration: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.export-action:hover { border-color: var(--accent); color: var(--accent); opacity: 1; }
+.export-action:disabled { opacity: 0.5; cursor: wait; }
+.export-status {
+  margin: 0 0.9rem 0.6rem;
+  font-size: 0.85rem;
+  min-height: 1.2em;
+}
+.export-status[data-tone="ok"]    { color: var(--accent); }
+.export-status[data-tone="info"]  { color: var(--fg-muted); }
+.export-status[data-tone="error"] { color: var(--high); }
+
+/* ── Picker compare bar ──────────────────────────────────────────
+ * Appears above the picker table once JS enables it. Buttons
+ * disable themselves unless exactly two scans are checked. */
+.picker-compare-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; padding: 0.6rem 0.9rem;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface);
+  margin: 0.5rem 0 1rem;
+}
+.picker-compare-status {
+  font-size: 0.9rem; color: var(--fg-muted);
+}
+.picker-compare-status[data-tone="ok"]    { color: var(--accent); }
+.picker-compare-status[data-tone="info"]  { color: var(--fg-muted); }
+.picker-compare-status[data-tone="error"] { color: var(--high); }
+.picker-compare-col { width: 2.5rem; text-align: center; }
+.picker-compare-cb { cursor: pointer; accent-color: var(--accent); }
+.btn-primary:disabled {
+  background: var(--surface-alt);
+  color: var(--fg-muted);
+  border-color: var(--border);
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+/* ── Scan diff view ──────────────────────────────────────────────
+ * Two-scan header crumb, counts row, four sections keyed off the
+ * diff buckets returned by findings_view.diff_scans. */
+.diff-header {
+  display: grid; grid-template-columns: 1fr auto 1fr;
+  gap: 1rem; align-items: center;
+  padding: 1rem 1.2rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 1rem 0;
+}
+.diff-scan-label {
+  font-family: var(--font-heading);
+  font-size: 0.7rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--accent-dim);
+  margin-bottom: 0.3rem;
+}
+.diff-scan-path {
+  font-size: 0.85rem; color: var(--fg-muted);
+  background: transparent; padding: 0;
+  overflow-wrap: anywhere;
+}
+.diff-arrow {
+  font-size: 1.5rem;
+  color: var(--accent);
+}
+
+.diff-tally {
+  display: flex; flex-wrap: wrap; gap: 0.5rem;
+  margin: 0.75rem 0 1.5rem;
+}
+.diff-tally-pill {
+  padding: 0.4rem 0.8rem;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.diff-tally-pill strong {
+  font-family: var(--font-heading);
+  font-size: 1rem; margin-right: 0.2rem;
+}
+.diff-tally-pill.diff-new       { border-color: var(--crit); color: var(--crit); }
+.diff-tally-pill.diff-fixed     { border-color: var(--accent-dim); color: var(--accent-dim); }
+.diff-tally-pill.diff-changed   { border-color: var(--high); color: var(--high); }
+.diff-tally-pill.diff-unchanged { color: var(--fg-muted); }
+
+.diff-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.2rem;
+  margin: 0.75rem 0;
+}
+.diff-section h3 {
+  margin-top: 0; margin-bottom: 0.75rem;
+  color: var(--fg);
+  text-transform: none; letter-spacing: 0;
+  font-size: 1.05rem;
+  display: inline-block;
+}
+.diff-list {
+  list-style: none; padding: 0; margin: 0;
+}
+.diff-finding {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+.diff-finding:last-child { border-bottom: none; }
+.diff-finding strong {
+  color: var(--fg); font-family: ui-monospace, monospace;
+  margin-right: 0.5rem;
+}
+.diff-finding .sev { margin-right: 0.5rem; }
+.diff-scanner {
+  font-size: 0.75rem; color: var(--fg-muted);
+  margin-right: 0.5rem;
+}
+.diff-title { color: var(--fg-muted); }
+.diff-location {
+  display: inline-block; margin-top: 0.2rem;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.diff-sev-before { opacity: 0.6; }
+.diff-arrow-small {
+  color: var(--fg-muted);
+  margin: 0 0.25rem;
+  font-size: 0.9rem;
+}
+
+/* Still-open section is a collapsed <details> so long diffs don't
+ * drown the more interesting "new / fixed" content. The summary is
+ * a clickable disclosure; the <h3> inside it styles as heading. */
+.diff-unchanged-section summary {
+  cursor: pointer; list-style: none;
+  padding: 0;
+}
+.diff-unchanged-section summary::-webkit-details-marker { display: none; }
+.diff-unchanged-section summary::before {
+  content: "▸"; display: inline-block;
+  color: var(--fg-muted); margin-right: 0.4em;
+  transition: transform 0.1s ease;
+}
+.diff-unchanged-section[open] summary::before { transform: rotate(90deg); }
+.diff-unchanged-section summary h3 {
+  display: inline; margin: 0;
+}
+
+/* Sortable column headers. The ``a`` keeps the whole cell tappable
+ * and keyboard-focusable; the glyph is an arrow that appears only
+ * when the column is the active sort. */
+th .sort-link {
+  color: inherit; text-decoration: none;
+  display: inline-flex; align-items: center; gap: 0.3em;
+}
+th .sort-link:hover { color: var(--fg); }
+th .sort-glyph { font-size: 0.7em; color: var(--accent); }
+th[aria-sort="ascending"], th[aria-sort="descending"] { color: var(--fg); }
+
+/* Screen-reader-only text: used for table <caption> so assistive tech
+ * announces what the table is without taking visual space. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+/* Finding-row disclosure. Native <details> inside the Title cell keeps
+ * the table compact at rest and expands inline when the user clicks a
+ * title. Zero JS needed; <summary> handles keyboard (Enter/Space) and
+ * aria-expanded for free. */
+.finding-detail summary {
+  cursor: pointer; list-style: none;
+  /* Custom chevron — CSS handles open/closed state via the details[open]
+   * selector below. Hide the default ▸ marker since we're drawing our own. */
+}
+.finding-detail summary::-webkit-details-marker { display: none; }
+.finding-detail summary::before {
+  content: "▸"; display: inline-block;
+  color: var(--fg-muted); margin-right: 0.4em;
+  transition: transform 0.1s ease;
+}
+.finding-detail[open] summary::before { transform: rotate(90deg); }
+.finding-detail[open] summary { color: var(--accent); font-weight: 500; }
+.finding-detail .detail-rows {
+  display: grid; grid-template-columns: max-content 1fr;
+  gap: 0.25rem 0.75rem;
+  margin: 0.75rem 0 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-alt); border-radius: 4px;
+  font-size: 0.9rem;
+}
+.finding-detail .detail-rows dt { color: var(--fg-muted); font-weight: 500; }
+.finding-detail .detail-rows dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.finding-detail .detail-description {
+  margin: 0.5rem 0; color: var(--fg-muted);
+  font-size: 0.9rem; line-height: 1.5;
+  white-space: pre-wrap; /* scanners sometimes emit multi-line text */
+}
+.finding-detail .detail-refs-label {
+  margin: 0.5rem 0 0.25rem; font-size: 0.85rem;
+  color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.05em;
+}
+.finding-detail .detail-refs {
+  margin: 0; padding-left: 1.25rem;
+  font-size: 0.85rem;
+}
+.finding-detail .detail-refs li { word-break: break-all; }
+
+/* Severity badges used across dashboard + findings table. Styled as
+ * chips to match the scanner-pill treatment on the brand site —
+ * subtle fill, soft border, uppercase label. */
+.sev {
+  display: inline-block;
+  padding: 0.15em 0.55em;
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+.sev-critical { background: var(--crit);   color: #fff; }
+.sev-high     { background: var(--high);   color: #1f1f1f; }
+.sev-medium   { background: var(--med);    color: #1f1f1f; }
+.sev-low      { background: var(--low);    color: #fff; }
+.sev-info     { background: var(--info);   color: #1f1f1f; }
+.sev-unknown  { background: var(--border); color: var(--fg); }
+
+/* Summary cards — the top-of-dashboard at-a-glance tiles. Each card
+ * is rendered as an anchor so click-to-drill-down is native and
+ * keyboard-accessible without extra JS. Panel treatment matches the
+ * feature tiles on argus.huntridgelabs.com: rounded corners, soft
+ * border, dark surface, subtle hover lift. */
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: var(--gap); margin: 1rem 0; }
+.card {
+  background: var(--surface); padding: 1.1rem 1.2rem; border-radius: var(--radius);
+  border: 1px solid var(--border);
+  color: inherit; text-decoration: none; display: block;
+  transition: border-color 0.15s ease, transform 0.15s ease, background 0.15s ease;
+}
+.card:hover {
+  background: var(--surface-alt);
+  border-color: var(--accent-dim);
+  opacity: 1;
+  transform: translateY(-1px);
+}
+.card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.card .label {
+  color: var(--fg-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+}
+.card .value {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-top: 0.35rem;
+  font-family: var(--font-heading);
+  color: var(--fg);
+  line-height: 1.1;
+}
+/* Severity-specific accents — a tinted top border + subtle glow so
+ * each card's severity is readable at a glance without needing to
+ * read the label. Keeps the semantic palette (red = critical). */
+.card.critical { border-top: 3px solid var(--crit); }
+.card.high     { border-top: 3px solid var(--high); }
+.card.medium   { border-top: 3px solid var(--med); }
+.card.low      { border-top: 3px solid var(--low); }
+.card.info     { border-top: 3px solid var(--info); }
+/* Total findings — the hero tile — picks up the brand lime accent. */
+.cards .card:first-child { border-top: 3px solid var(--accent); }
+
+/* Zero-count severity pills read as subdued so "0 Critical" doesn't
+ * shout with the same red as an actual critical finding. */
+.sev-zero { background: var(--border); color: var(--fg-muted); }
+
+/* Warning banner for scan-quality issues (SPDX-2.1 detected, low purl
+ * coverage, grype unknown-subject). Distinct from findings severity —
+ * these are meta-issues about the scan's trustworthiness. Styled as
+ * a tinted panel rather than the old left-rule, matching the brand
+ * page's alert treatment. */
+.warnings {
+  background: var(--surface);
+  border: 1px solid rgba(255, 140, 66, 0.25);
+  border-left: 3px solid var(--high);
+  padding: 0.9rem 1.1rem;
+  border-radius: var(--radius);
+  margin: 1rem 0;
+}
+.warnings h3 { color: var(--high); margin-top: 0; }
+.warnings ul { margin: 0.25rem 0 0; padding-left: 1.25rem; }
+
+/* Empty / placeholder state — shown when no scan is loaded yet. */
+.placeholder {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 2.5rem 2rem;
+  border-radius: var(--radius);
+  text-align: center;
+  color: var(--fg-muted);
+}
+.placeholder h2 { margin-top: 0; color: var(--fg); }
+
+footer {
+  border-top: 1px solid var(--border);
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+footer a { color: var(--accent-dim); }
+
+/* Per-product / per-scanner lists — styled like the feature tiles on
+ * argus.huntridgelabs.com: a dark panel per entry, subtle border,
+ * accent lime border on hover, rounded corners. Rendered as anchors
+ * for drill-down into the matching findings view. */
+.product-row, .scanner-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 0.85rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  margin-bottom: 0.5rem;
+  border-radius: var(--radius);
+  color: inherit; text-decoration: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.product-row:hover, .scanner-row:hover {
+  background: var(--surface-alt);
+  border-color: var(--accent-dim);
+  opacity: 1;
+}
+.product-row:focus-visible, .scanner-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.product-row .name, .scanner-row .name { font-weight: 600; color: var(--fg); }
+.product-row .counts, .scanner-row .counts { color: var(--fg-muted); font-size: 0.9rem; }
+.product-row .top { margin-top: 0.6rem; margin-left: 1rem; }
+.product-row .top li { list-style: none; margin: 0.3rem 0; font-size: 0.9rem; color: var(--fg-muted); }
+.product-row .top li .sev { margin-right: 0.5rem; font-size: 0.65rem; }
+.product-row .top li strong { color: var(--accent-dim); font-family: ui-monospace, monospace; }

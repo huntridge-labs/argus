@@ -50,6 +50,11 @@ SORT_LABELS: dict[str, str] = {
     "severity_asc":  "Severity (low → high)",
     "package":       "Package (A → Z)",
     "id":            "Finding ID",
+    "id_desc":       "Finding ID (Z → A)",
+    "location":      "Location (A → Z)",
+    "location_desc": "Location (Z → A)",
+    "scanner":       "Scanner (A → Z)",
+    "scanner_desc":  "Scanner (Z → A)",
 }
 
 
@@ -72,8 +77,13 @@ class ViewState:
         """True when the finding satisfies every active filter."""
         if self.min_severity is not None and f.severity < self.min_severity:
             return False
-        if self.product and (f.metadata.get("sbom_source") or "") != self.product:
-            return False
+        if self.product:
+            # unique_products() buckets sbom_source-less findings under
+            # the literal "(no product)" label; the filter side needs
+            # to agree or that bucket becomes unreachable from the UI.
+            source = f.metadata.get("sbom_source") or "(no product)"
+            if source != self.product:
+                return False
         if self.scanner and (f.scanner or "") != self.scanner:
             return False
         if self.query:
@@ -96,6 +106,12 @@ class ViewState:
         descending order (CRITICAL at index 0) so the natural index yields
         the right ordering. Secondary key: finding id — deterministic
         output when two findings share a severity.
+
+        String-column descending modes (``id_desc``, ``location_desc``,
+        ``scanner_desc``) are scored using the ascending key; callers
+        feed the returned list into ``reversed()`` (or ``sorted(..., reverse=True)``)
+        to get descending order. This keeps the key function side-effect
+        free and composable without inventing a string-negation scheme.
         """
         if self.sort_key == "severity_desc":
             return lambda f: (
@@ -109,7 +125,25 @@ class ViewState:
             )
         if self.sort_key == "package":
             return lambda f: ((f.location or "").lower(), f.id)
+        if self.sort_key in ("id", "id_desc"):
+            return lambda f: (f.id or "", f.severity.value)
+        if self.sort_key in ("location", "location_desc"):
+            return lambda f: ((f.location or "").lower(), f.id)
+        if self.sort_key in ("scanner", "scanner_desc"):
+            return lambda f: ((f.scanner or "").lower(), f.id)
         return lambda f: (f.id, f.severity.value)
+
+    @property
+    def sort_reverse(self) -> bool:
+        """Whether the caller should reverse the sorted list.
+
+        ``severity_desc`` and ``severity_asc`` encode their direction
+        directly into the key (via SEVERITY_ORDER ordinal math), so
+        they don't need a reverse pass. String-column descending modes
+        do — they share the ascending key function with their ``_asc``
+        twin.
+        """
+        return self.sort_key in ("id_desc", "location_desc", "scanner_desc")
 
 
 # ---------------------------------------------------------------------------
@@ -243,4 +277,84 @@ def compute_summary(findings: list[Finding], *, top_n: int = 3) -> dict:
         "per_product": per_product,
         "per_scanner": per_scanner,
         "quality_warnings": warnings,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Scan-to-scan diff — used by argus serve's /diff route to answer the
+# single most common follow-up question after "what's there now?": "what
+# changed since the last run?".
+# ---------------------------------------------------------------------------
+
+def _finding_key(f: Finding) -> tuple[str, str, str]:
+    """Stable identity tuple for cross-run matching.
+
+    (scanner, id, location) survives run-to-run restarts of the same
+    scan config better than any single field: scanner + id alone
+    would collapse every bandit finding of a given rule into one row
+    regardless of file, and location alone breaks when the same line
+    triggers multiple scanners or multiple rules.
+    """
+    return (f.scanner or "", f.id or "", f.location or "")
+
+
+def diff_scans(before: Iterable[Finding], after: Iterable[Finding]) -> dict:
+    """Compare two scans and bucket findings by how they moved.
+
+    Returns::
+
+        {
+            "new":              [Finding, ...],   # in after only
+            "fixed":            [Finding, ...],   # in before only
+            "severity_changed": [{"before": Finding, "after": Finding}, ...],
+            "still_open":       [Finding, ...],   # same severity in both
+        }
+
+    ``severity_changed`` captures the case where a finding persists
+    but its rating shifts (e.g. a CVE re-scored from MEDIUM → HIGH).
+    Callers who don't care can ignore that bucket; the primary
+    "what's new / what's gone" answer is the first two lists.
+    """
+    before_by_key: dict[tuple[str, str, str], Finding] = {
+        _finding_key(f): f for f in before
+    }
+    after_by_key: dict[tuple[str, str, str], Finding] = {
+        _finding_key(f): f for f in after
+    }
+
+    new_findings: list[Finding] = []
+    still_open: list[Finding] = []
+    severity_changed: list[dict[str, Finding]] = []
+
+    for key, a in after_by_key.items():
+        b = before_by_key.get(key)
+        if b is None:
+            new_findings.append(a)
+        elif a.severity != b.severity:
+            severity_changed.append({"before": b, "after": a})
+        else:
+            still_open.append(a)
+
+    fixed = [
+        b for key, b in before_by_key.items()
+        if key not in after_by_key
+    ]
+
+    # Sort every bucket severity-desc-then-id so the templates can
+    # render straight out of the dict without a second pass.
+    def _sev_key(f: Finding) -> tuple[int, str]:
+        idx = (SEVERITY_ORDER.index(f.severity)
+               if f.severity in SEVERITY_ORDER else 99)
+        return (idx, f.id or "")
+
+    new_findings.sort(key=_sev_key)
+    fixed.sort(key=_sev_key)
+    still_open.sort(key=_sev_key)
+    severity_changed.sort(key=lambda pair: _sev_key(pair["after"]))
+
+    return {
+        "new": new_findings,
+        "fixed": fixed,
+        "severity_changed": severity_changed,
+        "still_open": still_open,
     }
