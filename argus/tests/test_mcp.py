@@ -22,6 +22,7 @@ from argus.mcp import (  # noqa: E402
     argus_list_scanners,
     argus_scan,
     argus_scan_summary,
+    argus_security_review,
     argus_validate,
     create_server,
     read_config,
@@ -1167,7 +1168,18 @@ class TestPrompts:
         result = _run(security_review())
         assert isinstance(result, str)
         assert len(result) > 0
-        assert "argus_detect" in result or "argus_scan" in result
+        # Prompt should steer the assistant toward at least one Argus tool —
+        # argus_security_review is the canonical entry point but legacy
+        # phrasing referencing argus_detect / argus_scan is also acceptable.
+        assert any(
+            tool in result
+            for tool in (
+                "argus_security_review",
+                "argus_detect",
+                "argus_scan",
+                "argus_explain_finding",
+            )
+        )
 
     def test_fix_findings_returns_nonempty(self):
         result = _run(fix_findings())
@@ -1222,3 +1234,367 @@ class TestCreateServer:
         server1 = create_server()
         server2 = create_server()
         assert server1 is server2
+
+    def test_instructions_advertise_security_review_entry_point(self):
+        """The unified tool is the recommended path for natural-language
+        queries. Server instructions must advertise it so clients route to
+        it instead of stitching together argus_detect + argus_scan ad hoc.
+        """
+        server = create_server()
+        assert "argus_security_review" in server.instructions
+        assert "QUICK PATH" in server.instructions
+
+    def test_instructions_warn_about_stale_cache(self):
+        """Instructions must teach clients to check cache_age_seconds and
+        re-scan when stale, so they don't answer posture questions from
+        a 9-day-old snapshot.
+        """
+        server = create_server()
+        assert "cache_age_seconds" in server.instructions
+
+
+# ---------------------------------------------------------------------------
+# TestArgusScanSummaryCacheFreshness
+# ---------------------------------------------------------------------------
+
+
+def _write_results(results_dir, payload, *, mtime_offset_seconds: int = 0):
+    """Write a results JSON file and optionally backdate its mtime.
+
+    A non-zero mtime_offset_seconds backs the file up that many seconds in
+    the past — used to simulate stale cached scans without sleeping.
+    """
+    import os
+    import time
+
+    results_dir.mkdir(parents=True, exist_ok=True)
+    results_file = results_dir / "argus-results.json"
+    results_file.write_text(json.dumps(payload))
+    if mtime_offset_seconds:
+        target = time.time() - mtime_offset_seconds
+        os.utime(results_file, (target, target))
+    return results_file
+
+
+class TestArgusScanSummaryCacheFreshness:
+    """argus_scan_summary now reports cache_age_seconds + cached_at so
+    the LLM can decide whether to trust the cached snapshot or re-scan.
+    These tests pin that behavior — without the freshness signal, an
+    assistant may answer posture questions from a 9-day-old cache (the
+    real-world failure mode this guards against).
+    """
+
+    _BASE_PAYLOAD = {
+        "passed": True,
+        "severity_threshold": "high",
+        "critical_count": 0,
+        "high_count": 0,
+        "medium_count": 0,
+        "low_count": 0,
+        "total_count": 0,
+        "results": [],
+    }
+
+    def test_includes_cache_age_seconds_field(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_results(tmp_path / "argus-results" / "latest", self._BASE_PAYLOAD)
+
+        data = json.loads(_run(argus_scan_summary()))
+
+        assert "cache_age_seconds" in data
+        assert isinstance(data["cache_age_seconds"], int)
+        assert data["cache_age_seconds"] >= 0
+        # A just-written file should be within a few seconds of "now".
+        assert data["cache_age_seconds"] < 10
+
+    def test_includes_cached_at_iso_timestamp(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_results(tmp_path / "argus-results" / "latest", self._BASE_PAYLOAD)
+
+        data = json.loads(_run(argus_scan_summary()))
+
+        assert "cached_at" in data
+        # ISO-8601 with timezone — should parse cleanly via fromisoformat.
+        from datetime import datetime
+        parsed = datetime.fromisoformat(data["cached_at"])
+        assert parsed.tzinfo is not None
+
+    def test_fresh_results_omit_freshness_warning(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_results(tmp_path / "argus-results" / "latest", self._BASE_PAYLOAD)
+
+        data = json.loads(_run(argus_scan_summary()))
+
+        assert "freshness_warning" not in data
+
+    def test_stale_results_include_freshness_warning(self, tmp_path, monkeypatch):
+        # Backdate the file by 48h — well past the 24h staleness threshold.
+        monkeypatch.chdir(tmp_path)
+        _write_results(
+            tmp_path / "argus-results" / "latest",
+            self._BASE_PAYLOAD,
+            mtime_offset_seconds=48 * 3600,
+        )
+
+        data = json.loads(_run(argus_scan_summary()))
+
+        assert data["cache_age_seconds"] >= 48 * 3600
+        assert "freshness_warning" in data
+        # The warning should name argus_scan or argus_security_review so
+        # the client knows what to do — not a vague "results may be stale".
+        assert (
+            "argus_scan" in data["freshness_warning"]
+            or "argus_security_review" in data["freshness_warning"]
+        )
+
+
+# ---------------------------------------------------------------------------
+# TestReadLatestResultsCacheFreshness
+# ---------------------------------------------------------------------------
+
+
+class TestReadLatestResultsCacheFreshness:
+    """The argus://results/latest resource now augments JSON-object
+    payloads with _cache_age_seconds and _cached_at envelope fields.
+    Underscore-prefixed because they're MCP-injected metadata, not part
+    of the scan-results schema downstream consumers parse.
+    """
+
+    _BASE_PAYLOAD = {
+        "passed": True,
+        "severity_threshold": "high",
+        "critical_count": 0,
+        "high_count": 0,
+        "medium_count": 0,
+        "low_count": 0,
+        "total_count": 0,
+        "results": [],
+    }
+
+    def test_dict_payload_gets_cache_metadata(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_results(tmp_path / "argus-results" / "latest", self._BASE_PAYLOAD)
+
+        data = json.loads(_run(read_latest_results()))
+
+        assert "_cache_age_seconds" in data
+        assert "_cached_at" in data
+        assert data["passed"] is True  # original fields preserved
+
+    def test_stale_payload_includes_freshness_warning(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_results(
+            tmp_path / "argus-results" / "latest",
+            self._BASE_PAYLOAD,
+            mtime_offset_seconds=72 * 3600,
+        )
+
+        data = json.loads(_run(read_latest_results()))
+
+        assert "_freshness_warning" in data
+        assert data["_cache_age_seconds"] >= 72 * 3600
+
+
+# ---------------------------------------------------------------------------
+# TestArgusSecurityReview
+# ---------------------------------------------------------------------------
+
+
+class TestArgusSecurityReview:
+    """argus_security_review is the canonical one-call entry point. It
+    must return a stable JSON envelope so the same posture question
+    produces the same response shape across sessions — that's the whole
+    point of unifying the workflow into one tool.
+    """
+
+    _CACHED_PAYLOAD = {
+        "passed": False,
+        "severity_threshold": "high",
+        "critical_count": 1,
+        "high_count": 1,
+        "medium_count": 0,
+        "low_count": 0,
+        "total_count": 2,
+        "results": [
+            {
+                "scanner": "bandit",
+                "total_count": 2,
+                "critical_count": 1,
+                "high_count": 1,
+                "findings": [
+                    {
+                        "id": "B301",
+                        "severity": "critical",
+                        "title": "Pickle usage",
+                        "location": "app.py:10",
+                        "scanner": "bandit",
+                    },
+                    {
+                        "id": "B302",
+                        "severity": "high",
+                        "title": "Insecure marshal",
+                        "location": "utils.py:5",
+                        "scanner": "bandit",
+                    },
+                ],
+            },
+        ],
+    }
+
+    def test_returns_stable_envelope_shape(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_results(
+            tmp_path / "argus-results" / "latest",
+            self._CACHED_PAYLOAD,
+        )
+
+        with patch("argus.init.detect_project", return_value={"python": ["app.py"]}):
+            data = json.loads(_run(argus_security_review()))
+
+        # The envelope keys are the contract — every successful call
+        # returns the same top-level shape regardless of cache state.
+        for key in (
+            "version",
+            "cache_used",
+            "cache_age_seconds",
+            "cached_at",
+            "is_stale",
+            "signals",
+            "summary",
+            "next_steps",
+        ):
+            assert key in data, f"missing envelope key: {key}"
+        assert data["version"] == "1"
+
+    def test_uses_cache_when_fresh(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_results(
+            tmp_path / "argus-results" / "latest",
+            self._CACHED_PAYLOAD,
+        )
+
+        with patch("argus.init.detect_project", return_value={"python": []}):
+            data = json.loads(_run(argus_security_review()))
+
+        assert data["cache_used"] is True
+        assert data["is_stale"] is False
+        # Summary should reflect the cached payload, not a fresh scan.
+        assert data["summary"]["counts"]["critical"] == 1
+        assert data["summary"]["counts"]["high"] == 1
+
+    def test_summary_includes_top_findings(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_results(
+            tmp_path / "argus-results" / "latest",
+            self._CACHED_PAYLOAD,
+        )
+
+        with patch("argus.init.detect_project", return_value={}):
+            data = json.loads(_run(argus_security_review()))
+
+        top = data["summary"]["top_findings"]
+        assert len(top) == 2
+        # critical sorts before high
+        assert top[0]["severity"] == "critical"
+        assert top[1]["severity"] == "high"
+
+    def test_signals_passed_through_from_detect(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_results(
+            tmp_path / "argus-results" / "latest",
+            self._CACHED_PAYLOAD,
+        )
+
+        signals = {"python": ["app.py"], "github-actions": [".github/workflows/ci.yml"]}
+        with patch("argus.init.detect_project", return_value=signals):
+            data = json.loads(_run(argus_security_review()))
+
+        assert data["signals"] == signals
+
+    def test_next_steps_recommend_explain_for_critical(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_results(
+            tmp_path / "argus-results" / "latest",
+            self._CACHED_PAYLOAD,
+        )
+
+        with patch("argus.init.detect_project", return_value={}):
+            data = json.loads(_run(argus_security_review()))
+
+        joined = " ".join(data["next_steps"])
+        assert "argus_explain_finding" in joined
+        assert "critical" in joined.lower()
+
+    def test_next_steps_clean_when_no_findings(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        clean_payload = dict(self._CACHED_PAYLOAD)
+        clean_payload["critical_count"] = 0
+        clean_payload["high_count"] = 0
+        clean_payload["total_count"] = 0
+        clean_payload["results"] = []
+        _write_results(tmp_path / "argus-results" / "latest", clean_payload)
+
+        with patch("argus.init.detect_project", return_value={}):
+            data = json.loads(_run(argus_security_review()))
+
+        assert data["next_steps"]
+        joined = " ".join(data["next_steps"]).lower()
+        assert "no critical or high" in joined
+
+    def test_stale_cache_triggers_warning_and_rescan_hint(
+        self, tmp_path, monkeypatch,
+    ):
+        monkeypatch.chdir(tmp_path)
+        # Backdate cache 9 days — the exact failure mode the user reported.
+        _write_results(
+            tmp_path / "argus-results" / "latest",
+            self._CACHED_PAYLOAD,
+            mtime_offset_seconds=9 * 86400,
+        )
+
+        # Stale cache => the tool must run a fresh scan rather than reuse.
+        # Mock the engine path so the test stays hermetic.
+        mock_summary = MagicMock()
+        mock_summary.to_dict.return_value = self._CACHED_PAYLOAD
+        mock_engine_instance = MagicMock()
+        mock_engine_instance.run.return_value = mock_summary
+
+        with patch("argus.init.detect_project", return_value={}), \
+             patch("argus.core.ArgusConfig.load", return_value=MagicMock()), \
+             patch("argus.core.engine.ArgusEngine", return_value=mock_engine_instance), \
+             patch("argus.scanners.get_available_scanners", return_value=[]):
+            data = json.loads(_run(argus_security_review()))
+
+        # When stale, we re-scanned, so cache_used is False.
+        assert data["cache_used"] is False
+        mock_engine_instance.run.assert_called_once()
+
+    def test_force_fresh_scan_skips_cache(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_results(
+            tmp_path / "argus-results" / "latest",
+            self._CACHED_PAYLOAD,
+        )
+
+        mock_summary = MagicMock()
+        mock_summary.to_dict.return_value = self._CACHED_PAYLOAD
+        mock_engine_instance = MagicMock()
+        mock_engine_instance.run.return_value = mock_summary
+
+        with patch("argus.init.detect_project", return_value={}), \
+             patch("argus.core.ArgusConfig.load", return_value=MagicMock()), \
+             patch("argus.core.engine.ArgusEngine", return_value=mock_engine_instance), \
+             patch("argus.scanners.get_available_scanners", return_value=[]):
+            data = json.loads(_run(argus_security_review(use_cached_if_fresh=False)))
+
+        assert data["cache_used"] is False
+        mock_engine_instance.run.assert_called_once()
+
+    def test_error_returns_structured_error(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+
+        with patch("argus.init.detect_project", side_effect=RuntimeError("boom")):
+            data = json.loads(_run(argus_security_review()))
+
+        assert "error" in data
+        assert data["error_type"] == "RuntimeError"

@@ -6,28 +6,52 @@ explaining findings, and summarizing results. Also exposes resources for
 reading the current config, latest scan results, and the config schema.
 """
 
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
 from mcp.server.fastmcp import FastMCP
+
+# A scan older than this is considered stale and should be re-run for
+# accurate posture answers. 24 hours is the default because most code
+# review questions ("is this repo secure?") only need same-day data;
+# older snapshots can miss recent changes or new disclosures.
+DEFAULT_FRESH_THRESHOLD_SECONDS = 86400
 
 mcp = FastMCP(
     "argus",
     instructions="""
 Argus Security Scanner — comprehensive security scanning for your codebase.
 
-WHEN TO USE EACH TOOL:
-- argus_detect: First step — understand what's in the project
+QUICK PATH (RECOMMENDED FOR NATURAL-LANGUAGE QUERIES):
+- argus_security_review: ONE-CALL entry point for "what's my security posture?",
+  "is this repo secure?", "what should I fix?" — orchestrates detect + scan
+  (or fresh-cache reuse) + returns a stable JSON envelope. Use this first
+  when the user asks an open-ended security question.
+
+WHEN TO USE INDIVIDUAL TOOLS:
+- argus_detect: Understand what's in the project (languages, IaC, CI/CD)
 - argus_scan: Run security scans (specify scanners or let auto-detect choose)
 - argus_list_scanners: See what scanners are available and their categories
 - argus_classify: Analyze IaC changes between git branches for compliance
 - argus_validate: Check if argus.yml config is valid
 - argus_init: Generate a tailored config for the project
 - argus_explain_finding: Get remediation guidance for a specific finding
-- argus_scan_summary: Quick check on latest scan status
+- argus_scan_summary: Quick check on latest scan results (returns cache age —
+  if cache_age_seconds > 86400, prefer argus_scan for fresh results)
+
+CACHE FRESHNESS:
+- argus_scan_summary and argus://results/latest both report cache_age_seconds.
+- Treat results > 24h old as stale; re-run argus_scan or argus_security_review
+  rather than answering from a stale snapshot.
 
 COMMON WORKFLOWS:
-1. New project setup: argus_detect -> argus_init -> save config -> argus_scan
-2. Security review: argus_scan -> review findings -> argus_explain_finding for each
-3. Quick check: argus_scan_summary to see latest results
+1. Open-ended posture question: argus_security_review (handles everything)
+2. New project setup: argus_detect -> argus_init -> save config -> argus_scan
+3. Targeted re-scan: argus_scan with specific scanners
 4. Branch comparison: argus_classify to check IaC changes
+5. Fix triage: argus_scan_summary -> argus_explain_finding per finding
 
 SCANNER CATEGORIES:
 - sast: Static analysis (bandit, opengrep)
@@ -41,6 +65,78 @@ SCANNER CATEGORIES:
 - linter: Code quality (lint-yaml, lint-json, lint-python, etc.)
 """,
 )
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers — cache freshness + results loading
+# ---------------------------------------------------------------------------
+
+
+# Search order for cached scan results. The 'latest' symlink is canonical;
+# the unprefixed paths are legacy fallbacks from older argus runs.
+_RESULTS_CANDIDATES: tuple[str, ...] = (
+    "argus-results/latest/argus-results.json",
+    "argus-results/latest/argus-audit.json",
+    "argus-results/argus-results.json",
+    "argus-results/argus-audit.json",
+)
+
+
+def _freshness_for(path: Path, threshold_seconds: int = DEFAULT_FRESH_THRESHOLD_SECONDS) -> dict[str, Any]:
+    """Compute cache-freshness metadata for a results file.
+
+    Returns a dict with:
+      - cache_age_seconds: int — seconds since file mtime (>=0)
+      - cached_at: str — ISO-8601 UTC timestamp of file mtime
+      - is_stale: bool — True if older than threshold_seconds
+
+    Stale results are still returned to the caller; this metadata lets the
+    LLM decide whether to re-run the scan rather than answering from old data.
+    """
+    mtime = path.stat().st_mtime
+    cached_at = datetime.fromtimestamp(mtime, tz=timezone.utc)
+    age_seconds = max(0, int((datetime.now(timezone.utc) - cached_at).total_seconds()))
+    return {
+        "cache_age_seconds": age_seconds,
+        "cached_at": cached_at.isoformat(),
+        "is_stale": age_seconds > threshold_seconds,
+    }
+
+
+def _find_latest_results_file() -> Path | None:
+    """Locate the most recent scan-results JSON file, or None if absent.
+
+    Tries the canonical candidates first, then falls back to globbing the
+    'latest' run directory for any *.json. Mirrors the discovery used by
+    argus_scan_summary and the argus://results/latest resource so they
+    stay in agreement.
+    """
+    for name in _RESULTS_CANDIDATES:
+        candidate = Path(name)
+        if candidate.exists():
+            return candidate
+
+    latest_link = Path("argus-results/latest")
+    if latest_link.is_symlink() or latest_link.is_dir():
+        json_files = sorted(latest_link.glob("*.json"))
+        if json_files:
+            return json_files[0]
+
+    return None
+
+
+def _stale_warning(age_seconds: int) -> str:
+    """Render a human-readable freshness warning for stale results."""
+    if age_seconds < 3600:
+        age_str = f"{age_seconds // 60}m"
+    elif age_seconds < 86400:
+        age_str = f"{age_seconds // 3600}h"
+    else:
+        age_str = f"{age_seconds // 86400}d"
+    return (
+        f"Results are {age_str} old. For current security state, "
+        "re-run argus_scan or argus_security_review."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -486,92 +582,219 @@ async def argus_explain_finding(
     return json.dumps(explanation, indent=2)
 
 
+def _summarize_results(results_data: dict) -> dict[str, Any]:
+    """Build the standard summary envelope from a parsed results blob.
+
+    Shared by argus_scan_summary and argus_security_review so they emit
+    the same shape (counts, scanner breakdown, top findings).
+    """
+    summary: dict[str, Any] = {
+        "passed": results_data.get("passed"),
+        "severity_threshold": results_data.get("severity_threshold"),
+        "counts": {
+            "critical": results_data.get("critical_count", 0),
+            "high": results_data.get("high_count", 0),
+            "medium": results_data.get("medium_count", 0),
+            "low": results_data.get("low_count", 0),
+            "total": results_data.get("total_count", 0),
+        },
+    }
+
+    scanner_breakdown = []
+    for result in results_data.get("results", []):
+        scanner_breakdown.append({
+            "scanner": result.get("scanner", "unknown"),
+            "total": result.get("total_count", 0),
+            "critical": result.get("critical_count", 0),
+            "high": result.get("high_count", 0),
+        })
+    summary["scanners"] = scanner_breakdown
+
+    top_findings = []
+    for result in results_data.get("results", []):
+        for finding in result.get("findings", []):
+            sev = finding.get("severity", "unknown")
+            if sev in ("critical", "high"):
+                top_findings.append({
+                    "id": finding.get("id", ""),
+                    "severity": sev,
+                    "title": finding.get("title", ""),
+                    "location": finding.get("location", ""),
+                    "scanner": finding.get("scanner", result.get("scanner", "")),
+                })
+    top_findings.sort(key=lambda f: 0 if f["severity"] == "critical" else 1)
+    summary["top_findings"] = top_findings[:5]
+    return summary
+
+
 @mcp.tool()
 async def argus_scan_summary() -> str:
     """Get a quick summary of the most recent scan results.
 
-    Returns severity counts, scanner breakdown, and top findings
-    without the full payload. Use this for a quick "how bad is it?"
-    check before diving into details with argus://results/latest.
+    Returns severity counts, scanner breakdown, top findings, and **cache
+    freshness metadata** (cache_age_seconds, cached_at). If cache_age_seconds
+    exceeds 86400 (24h), the response includes a freshness_warning and you
+    should prefer running argus_scan (or argus_security_review) for current
+    posture rather than answering from this snapshot.
+
+    Use this for a quick "how bad is it?" check before diving into details
+    with argus://results/latest.
     """
-    import json
-    from pathlib import Path
-
     try:
-        candidates = [
-            Path("argus-results/latest/argus-results.json"),
-            Path("argus-results/latest/argus-audit.json"),
-            Path("argus-results/argus-results.json"),
-            Path("argus-results/argus-audit.json"),
-        ]
-
-        results_data = None
-        source_path = None
-        for candidate in candidates:
-            if candidate.exists():
-                raw = candidate.read_text(encoding="utf-8")
-                results_data = json.loads(raw)
-                source_path = str(candidate)
-                break
-
-        if results_data is None:
-            latest_link = Path("argus-results/latest")
-            if latest_link.is_symlink() or latest_link.is_dir():
-                json_files = sorted(latest_link.glob("*.json"))
-                if json_files:
-                    raw = json_files[0].read_text(encoding="utf-8")
-                    results_data = json.loads(raw)
-                    source_path = str(json_files[0])
-
-        if results_data is None:
+        results_path = _find_latest_results_file()
+        if results_path is None:
             return json.dumps({
                 "error": "No scan results found. Run argus_scan first.",
             })
 
-        # Extract summary counts
-        summary = {
-            "source": source_path,
-            "passed": results_data.get("passed"),
-            "severity_threshold": results_data.get("severity_threshold"),
-            "counts": {
-                "critical": results_data.get("critical_count", 0),
-                "high": results_data.get("high_count", 0),
-                "medium": results_data.get("medium_count", 0),
-                "low": results_data.get("low_count", 0),
-                "total": results_data.get("total_count", 0),
-            },
-        }
+        results_data = json.loads(results_path.read_text(encoding="utf-8"))
 
-        # Scanner breakdown
-        scanner_breakdown = []
-        for result in results_data.get("results", []):
-            scanner_breakdown.append({
-                "scanner": result.get("scanner", "unknown"),
-                "total": result.get("total_count", 0),
-                "critical": result.get("critical_count", 0),
-                "high": result.get("high_count", 0),
-            })
-        summary["scanners"] = scanner_breakdown
+        summary = _summarize_results(results_data)
+        summary["source"] = str(results_path)
 
-        # Top critical/high findings (up to 5)
-        top_findings = []
-        for result in results_data.get("results", []):
-            for finding in result.get("findings", []):
-                sev = finding.get("severity", "unknown")
-                if sev in ("critical", "high"):
-                    top_findings.append({
-                        "id": finding.get("id", ""),
-                        "severity": sev,
-                        "title": finding.get("title", ""),
-                        "location": finding.get("location", ""),
-                        "scanner": finding.get("scanner", result.get("scanner", "")),
-                    })
-        top_findings.sort(key=lambda f: 0 if f["severity"] == "critical" else 1)
-        summary["top_findings"] = top_findings[:5]
+        freshness = _freshness_for(results_path)
+        summary["cache_age_seconds"] = freshness["cache_age_seconds"]
+        summary["cached_at"] = freshness["cached_at"]
+        if freshness["is_stale"]:
+            summary["freshness_warning"] = _stale_warning(
+                freshness["cache_age_seconds"],
+            )
 
         return json.dumps(summary, indent=2)
     except Exception as exc:
         return json.dumps({"error": str(exc)})
+
+
+@mcp.tool()
+async def argus_security_review(
+    path: str = ".",
+    use_cached_if_fresh: bool = True,
+    fresh_threshold_seconds: int = DEFAULT_FRESH_THRESHOLD_SECONDS,
+) -> str:
+    """One-call security posture review — the canonical entry point.
+
+    USE THIS WHEN the user asks open-ended security questions like:
+      - "What's my security posture?"
+      - "Is this repo secure?"
+      - "What should I fix?"
+      - "Run a security review"
+      - "Are there any vulnerabilities?"
+
+    Orchestrates the full workflow in a single call:
+      1. Detect project signals (languages, IaC, CI/CD)
+      2. Reuse cached scan results if fresher than ``fresh_threshold_seconds``
+         (default 24h) and ``use_cached_if_fresh`` is True; otherwise run a
+         new scan via the engine.
+      3. Return a stable JSON envelope so repeated invocations of the same
+         question produce the same shape — no tool-routing variance.
+
+    Args:
+        path: Project root to analyze. Defaults to current directory.
+        use_cached_if_fresh: When True (default), reuse the latest cached
+            scan if it's fresher than the threshold. Set False to force a
+            new scan.
+        fresh_threshold_seconds: Cache freshness cutoff in seconds.
+            Defaults to 86400 (24h).
+
+    Returns:
+        JSON envelope with stable shape:
+          {
+            "version": "1",
+            "cache_used": bool,           // True if served from cache
+            "cache_age_seconds": int,     // 0 for a fresh scan
+            "cached_at": str,             // ISO-8601 UTC timestamp
+            "is_stale": bool,             // age > threshold
+            "freshness_warning": str?,    // present only if is_stale
+            "signals": dict,              // from argus_detect
+            "summary": dict,              // counts + scanners + top_findings
+            "next_steps": list[str]       // recommended follow-ups
+          }
+    """
+    try:
+        from argus.init import detect_project
+
+        signals = detect_project(Path(path))
+
+        results_path: Path | None = None
+        results_data: dict | None = None
+        cache_used = False
+        freshness: dict[str, Any] | None = None
+
+        if use_cached_if_fresh:
+            cached_path = _find_latest_results_file()
+            if cached_path is not None:
+                cached_freshness = _freshness_for(cached_path, fresh_threshold_seconds)
+                if not cached_freshness["is_stale"]:
+                    results_path = cached_path
+                    results_data = json.loads(cached_path.read_text(encoding="utf-8"))
+                    cache_used = True
+                    freshness = cached_freshness
+
+        if results_data is None:
+            from argus.core import ArgusConfig
+            from argus.core.engine import ArgusEngine
+            from argus.scanners import get_available_scanners
+
+            config = ArgusConfig.load()
+            engine = ArgusEngine(config)
+            for scanner_cls in get_available_scanners():
+                engine.register_scanner(scanner_cls())
+
+            scan_summary = engine.run(scanner_names=None, path=path)
+            results_data = scan_summary.to_dict()
+            now = datetime.now(timezone.utc)
+            freshness = {
+                "cache_age_seconds": 0,
+                "cached_at": now.isoformat(),
+                "is_stale": False,
+            }
+
+        envelope: dict[str, Any] = {
+            "version": "1",
+            "cache_used": cache_used,
+            "cache_age_seconds": freshness["cache_age_seconds"],
+            "cached_at": freshness["cached_at"],
+            "is_stale": freshness["is_stale"],
+            "signals": signals,
+            "summary": _summarize_results(results_data),
+        }
+        if freshness["is_stale"]:
+            envelope["freshness_warning"] = _stale_warning(
+                freshness["cache_age_seconds"],
+            )
+        if results_path is not None:
+            envelope["source"] = str(results_path)
+
+        next_steps: list[str] = []
+        counts = envelope["summary"]["counts"]
+        if counts.get("critical", 0) > 0:
+            next_steps.append(
+                "Triage critical findings first — call argus_explain_finding "
+                "for each top_finding with severity=critical."
+            )
+        if counts.get("high", 0) > 0:
+            next_steps.append(
+                "Address high-severity findings — call argus_explain_finding "
+                "for each top_finding with severity=high."
+            )
+        if envelope["is_stale"]:
+            next_steps.append(
+                "Cache is stale — re-run with use_cached_if_fresh=False for "
+                "current results."
+            )
+        if not next_steps:
+            next_steps.append(
+                "No critical or high findings. Review medium/low findings "
+                "in argus://results/latest as time permits."
+            )
+        envelope["next_steps"] = next_steps
+
+        return json.dumps(envelope, indent=2)
+    except Exception as exc:
+        return json.dumps({
+            "error": str(exc),
+            "error_type": type(exc).__name__,
+        }, indent=2)
 
 
 # ---------------------------------------------------------------------------
@@ -644,36 +867,43 @@ async def read_config() -> str:
 async def read_latest_results() -> str:
     """Read the most recent scan results.
 
-    Looks for argus-results/latest/argus-results.json (the symlink
-    created by each scan run). Falls back to argus-results.json in
-    the default output directory.
+    Looks for argus-results/latest/argus-results.json (the symlink created
+    by each scan run). Falls back to argus-results.json in the default
+    output directory. When the underlying file is a JSON object, the
+    response is augmented with ``_cache_age_seconds`` and ``_cached_at``
+    fields (underscore-prefixed because they're MCP envelope metadata,
+    not part of the scan-results schema). Use these to decide whether to
+    re-run the scan instead of trusting a stale snapshot.
     """
-    import json
-    from pathlib import Path
-
     try:
-        # Check the 'latest' symlink first
-        candidates = [
-            Path("argus-results/latest/argus-results.json"),
-            Path("argus-results/latest/argus-audit.json"),
-            Path("argus-results/argus-results.json"),
-            Path("argus-results/argus-audit.json"),
-        ]
+        results_path = _find_latest_results_file()
+        if results_path is None:
+            return json.dumps({
+                "error": "No scan results found. Run argus_scan first.",
+            })
 
-        for candidate in candidates:
-            if candidate.exists():
-                return candidate.read_text(encoding="utf-8")
+        raw = results_path.read_text(encoding="utf-8")
+        freshness = _freshness_for(results_path)
 
-        # Try to find any JSON result file in the latest run dir
-        latest_link = Path("argus-results/latest")
-        if latest_link.is_symlink() or latest_link.is_dir():
-            json_files = sorted(latest_link.glob("*.json"))
-            if json_files:
-                return json_files[0].read_text(encoding="utf-8")
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            # Non-JSON or malformed file — return raw bytes unchanged
+            # rather than swallowing the original content.
+            return raw
 
-        return json.dumps({
-            "error": "No scan results found. Run argus_scan first.",
-        })
+        if isinstance(data, dict):
+            data["_cache_age_seconds"] = freshness["cache_age_seconds"]
+            data["_cached_at"] = freshness["cached_at"]
+            if freshness["is_stale"]:
+                data["_freshness_warning"] = _stale_warning(
+                    freshness["cache_age_seconds"],
+                )
+            return json.dumps(data, indent=2)
+
+        # Not a JSON object (e.g. a list at the top level) — return raw
+        # text since we have no envelope to inject metadata into.
+        return raw
     except Exception as exc:
         return json.dumps({"error": str(exc)})
 
@@ -715,14 +945,33 @@ async def read_config_schema() -> str:
 
 @mcp.prompt()
 async def security_review() -> str:
-    """Comprehensive security review prompt for a codebase."""
+    """Run a comprehensive security review of the current codebase.
+
+    Trigger phrases (use this prompt when the user says any of):
+      - "what's my security posture?"
+      - "is this repo secure?"
+      - "what should I fix?"
+      - "run a security review"
+      - "are there any vulnerabilities?"
+      - "check this project for security issues"
+    """
     return (
-        "Perform a security review of this project:\n"
-        "1. Run argus_detect to understand the project\n"
-        "2. Run argus_scan to find vulnerabilities\n"
-        "3. For each HIGH or CRITICAL finding, explain the risk and suggest a fix\n"
-        "4. Summarize the overall security posture\n"
-        "5. Recommend additional scanners if appropriate"
+        "Perform a security review of this project. Prefer the one-call\n"
+        "tool argus_security_review for the orchestration; the explicit\n"
+        "steps below are the breakdown it performs.\n"
+        "\n"
+        "1. Call argus_security_review (handles detect + scan-or-cached\n"
+        "   reuse + stable JSON envelope). If cache_age_seconds > 86400,\n"
+        "   re-call with use_cached_if_fresh=False for fresh results.\n"
+        "2. From the response, list each CRITICAL and HIGH finding by\n"
+        "   id, severity, location, and scanner.\n"
+        "3. For each top finding, call argus_explain_finding with the\n"
+        "   finding id and scanner; report the remediation guidance.\n"
+        "4. Summarize the overall posture: total counts by severity,\n"
+        "   whether the scan passed the threshold, and which scanners\n"
+        "   produced the most findings.\n"
+        "5. Recommend any uninstalled scanners that would add coverage\n"
+        "   based on the detected signals (use argus_list_scanners)."
     )
 
 
