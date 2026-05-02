@@ -113,8 +113,29 @@ class BanditScanner:
 
         return [self._parse_finding(item) for item in results]
 
+    # Bandit tests that detect hardcoded credentials. Their ``issue_text``
+    # interpolates the matched literal verbatim
+    # (e.g. ``Possible hardcoded password: 'hunter2'``) and the ``code``
+    # excerpt contains the offending source line — both leak the secret
+    # to terminal output, exports, and (most acutely) the MCP server's
+    # AI-assistant context. We redact both for these IDs.
+    _HARDCODED_SECRET_TESTS = frozenset({
+        "B105",   # hardcoded_password_string
+        "B106",   # hardcoded_password_funcarg
+        "B107",   # hardcoded_password_default
+    })
+
     def _parse_finding(self, item: dict) -> Finding:
-        """Convert a single Bandit result into a Finding."""
+        """Convert a single Bandit result into a Finding.
+
+        Redaction commitment: for the hardcoded-credential tests
+        (B105 / B106 / B107) bandit's ``issue_text`` and ``code``
+        fields contain the matched secret value literally. Both
+        are replaced with the redaction placeholder before they
+        reach the Finding — see ``argus/core/redact.py``.
+        """
+        from argus.core.redact import REDACTED_PLACEHOLDER
+
         severity = Severity.from_string(item.get("issue_severity", "UNKNOWN"))
 
         cwe = None
@@ -126,11 +147,28 @@ class BanditScanner:
         line_number = item.get("line_number", 0)
         location = f"{filename}:{line_number}" if filename else None
 
+        test_id = item.get("test_id", "UNKNOWN")
+        issue_text = item.get("issue_text", "")
+        code_excerpt = item.get("code", "")
+
+        if test_id in self._HARDCODED_SECRET_TESTS:
+            # Strip the quoted literal from the message — bandit's
+            # template is ``...: '<value>'``. Anchored to the colon-quote
+            # boundary so we don't false-positive on messages with
+            # other punctuation.
+            import re
+            issue_text = re.sub(
+                r":\s*['\"][^'\"]*['\"]",
+                f": {REDACTED_PLACEHOLDER}",
+                issue_text,
+            )
+            code_excerpt = REDACTED_PLACEHOLDER
+
         return Finding(
-            id=item.get("test_id", "UNKNOWN"),
+            id=test_id,
             severity=severity,
-            title=item.get("issue_text", ""),
-            description=item.get("issue_text", ""),
+            title=issue_text,
+            description=issue_text,
             location=location,
             cwe=cwe,
             scanner=self.name,
@@ -138,7 +176,7 @@ class BanditScanner:
                 "test_name": item.get("test_name", ""),
                 "confidence": item.get("issue_confidence", ""),
                 "more_info": item.get("more_info", ""),
-                "code": item.get("code", ""),
+                "code": code_excerpt,
             },
         )
 

@@ -566,6 +566,32 @@ All engine, scanner, and testing issues from the migration have been resolved.
 
 ---
 
+## Secret Redaction Hardening
+
+The current redaction model (per-scanner, at the parser) is documented in [`docs/mcp.md` → Secrets handling](../mcp.md). Each scanner that emits potentially-sensitive content audits its own output and replaces secret-bearing fields with the `<redacted>` placeholder before the `Finding` is built. Downstream consumers (terminal reporter, JSON / Markdown / SARIF exports, MCP tool responses, the LLM context window) therefore never see raw values.
+
+**Completed:**
+- [x] `argus/core/redact.py` — primitive helpers (`redact_secret`, `redact_secret_in_message`, `is_redacted`)
+- [x] `argus/scanners/gitleaks.py` — drops `Match` / `Secret` / `Email` / `Date` / `Message` from finding metadata; keeps `RuleID`, `Commit`, `Fingerprint`, `match_length`, line/col positions
+- [x] `argus/scanners/bandit.py` — strips the literal value from `issue_text` and replaces `code` excerpt for B105 / B106 / B107 (hardcoded-credential tests). Other bandit rules pass through unchanged.
+
+**Open — defense-in-depth safety net:**
+
+- [ ] Pattern-based second-pass scanner that audits every `Finding`'s `description` and `metadata` values for high-entropy or known-prefix strings (`ghp_…`, `AKIA…`, `xoxb-…`, `glpat-…`, `xoxp-…`, etc.). Catches future scanners that get added without a per-parser redaction audit.
+  - **Why deferred:** the per-scanner approach is the primary defense and is sufficient when contributors follow the audit checklist for new scanners. A pattern-based pass duplicates gitleaks's domain (and falls behind upstream rules immediately), risks false positives on legitimate non-secret strings (e.g., a CWE ID that happens to start with `AKIA`), and adds a per-finding regex pass that scales linearly with scan size.
+  - **Trigger to revisit:** a real-world leak via a scanner whose parser was missed. At that point we have concrete data to tune false-positive thresholds against and a known cost of *not* having the safety net.
+  - **If/when we ship it:** likely a `argus/core/redact_safety_net.py` module that runs at `Finding.__post_init__` time. Configurable allow/deny lists. Off by default for performance; gated by a per-scan flag and on by default for the MCP server's responses (where the cost-of-leak is highest).
+
+**Audit checklist for new scanners** (the "follow this and the per-scanner approach holds" list):
+
+1. Does the scanner's raw output ever contain matched literals from source code?
+2. If yes: which JSON / output fields carry that content? List them in the parser's docstring.
+3. Drop or `redact_secret(...)` those fields before building the `Finding`.
+4. Add a test that loads a representative fixture and asserts the original literal does not appear anywhere in `Finding.to_dict()` JSON output.
+5. Note the redaction policy in the scanner's module docstring so future maintainers don't accidentally re-add the leak.
+
+---
+
 ## Dependency Maintenance — Full Coverage
 
 | Dependency Type | Tool | Config Location | Status |
