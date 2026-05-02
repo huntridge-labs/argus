@@ -62,6 +62,7 @@ _HELP_TEXT = """\
 
 [b]Navigate[/b]
   [b]↑/↓[/b] or [b]j/k[/b]   move selection
+  [b]mouse[/b]            click a row to select · scroll-wheel to scroll
   [b]enter[/b]            open finding detail (auto-shown on highlight)
   [b]tab[/b]              jump between panes
 
@@ -386,21 +387,35 @@ class ArgusBrowseCommands(Provider):
 
 
 class SearchInput(Input):
-    """Search box that returns focus to the findings table on ESC.
+    """Search box that returns focus to the findings table on ESC / ↓.
 
     Textual's default Input binding for ``escape`` is blur-only, so
     users get stranded in the search box until they click elsewhere.
     We hard-bind ``escape`` to shift focus back to the DataTable so a
     single keystroke drops the user back into navigation.
+
+    ``down`` / ``up`` here also exit search and move focus to the
+    findings table — that's the natural keystroke users try after
+    typing a query and wanting to scan the matches, and the default
+    Input behavior (which only navigates within the input field) is a
+    dead end.
     """
 
     BINDINGS = [
         Binding("escape", "back_to_table", "Back to list", show=False),
+        Binding("down", "into_table", "Into list", show=False),
+        Binding("up", "into_table", "Into list", show=False),
     ]
 
     def action_back_to_table(self) -> None:
         table = self.app.query_one(DataTable)
         table.focus()
+
+    def action_into_table(self) -> None:
+        # Same as ESC for now — the table preserves its cursor position,
+        # so refocusing is enough to let arrow keys keep navigating from
+        # wherever the user left off.
+        self.action_back_to_table()
 
 
 class FindingDetail(Static):
@@ -478,7 +493,8 @@ class BrowseApp(App):
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
         yield SearchInput(
-            placeholder="Search (id, title, location, CVE, scanner)… ESC to return to list",
+            placeholder="Search (id, title, location, CVE, scanner)… "
+                        "↓ or ESC to return to list",
             id="search",
         )
         with Container(id="body"):
@@ -510,6 +526,11 @@ class BrowseApp(App):
         )
         self._refresh_list()
         self._update_sort_indicator()
+        # Open into the findings list, not the search box. The search
+        # input is the first focusable child by yield order, so without
+        # this users land in the search field and find that ↑/↓ edit
+        # the query rather than navigating findings.
+        table.focus()
 
     # ------------------------------------------------------------------
     # Filter / sort / search
