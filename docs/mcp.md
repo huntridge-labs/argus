@@ -165,14 +165,17 @@ Any client that supports the standard MCP stdio transport accepts the same shape
 
 | Tool | What it does |
 |---|---|
+| `argus_security_review` | **Recommended entry point** for natural-language posture queries ("is this repo secure?", "what should I fix?"). One call: detect → fresh-scan-or-cached-with-age → stable JSON envelope. |
 | `argus_detect` | Inspect a project and report scanner-relevant signals (languages, package files, IaC, etc.) |
 | `argus_init` | Generate a tailored `argus.yml` for the project |
 | `argus_validate` | Check whether an existing `argus.yml` is valid |
 | `argus_list_scanners` | List every scanner the SDK knows about, grouped by category |
 | `argus_scan` | Run a scan (specify scanners or auto-detect) |
-| `argus_scan_summary` | Quick check of the latest scan results without re-scanning |
+| `argus_scan_summary` | Quick check of the latest scan results without re-scanning. Returns `cache_age_seconds` so callers can decide whether to trust the snapshot. |
 | `argus_explain_finding` | Get remediation guidance for a specific finding |
 | `argus_classify` | Classify IaC changes between two git refs for compliance review |
+
+**Cache freshness**: both `argus_scan_summary` and the `argus://results/latest` resource report `cache_age_seconds` and `cached_at`. Results older than 24 hours are flagged with a `freshness_warning` field. Treat stale results as a cue to re-run `argus_scan` rather than answering posture questions from a 9-day-old snapshot.
 
 ### Resources
 
