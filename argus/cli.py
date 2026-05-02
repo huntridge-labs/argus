@@ -1796,7 +1796,14 @@ def _format_size(size_bytes: int) -> str:
 
 
 def cmd_mcp(args: argparse.Namespace) -> int:
-    """Start the MCP server for AI assistant integration."""
+    """Start the MCP server for AI assistant integration.
+
+    The server speaks JSON-RPC over stdin/stdout (the standard MCP
+    stdio transport), so anything written to stdout would corrupt
+    the protocol. Startup feedback goes to stderr instead — visible
+    to humans running ``argus mcp`` directly, captured in MCP
+    clients' subprocess logs, never seen by the protocol parser.
+    """
     try:
         from argus.mcp import create_server
     except ImportError:
@@ -1807,8 +1814,34 @@ def cmd_mcp(args: argparse.Namespace) -> int:
         )
         return EXIT_ERROR
 
+    # Always log the startup line — MCP clients pipe stderr to their
+    # logs, so it's useful as a "server started" marker there too.
+    print(
+        "argus MCP server starting on stdio transport — awaiting client messages...",
+        file=sys.stderr,
+        flush=True,
+    )
+    if sys.stderr.isatty():
+        # Interactive invocation: explain what to do next so the user
+        # doesn't think the command has hung.
+        print(
+            "\n  This is correct behavior. The server reads JSON-RPC messages from"
+            "\n  stdin and writes responses to stdout — that's how MCP clients"
+            "\n  (Claude Desktop, Cursor, Claude Code, etc.) talk to it."
+            "\n"
+            "\n  Configure your client to launch:  argus mcp"
+            "\n  Press Ctrl+C to exit.",
+            file=sys.stderr,
+            flush=True,
+        )
+
     server = create_server()
-    server.run(transport="stdio")
+    try:
+        server.run(transport="stdio")
+    except KeyboardInterrupt:
+        # Clean exit on Ctrl+C — only meaningful when run interactively;
+        # MCP clients close the subprocess via stdin EOF instead.
+        print("\nargus MCP server stopped.", file=sys.stderr, flush=True)
     return EXIT_SUCCESS
 
 
