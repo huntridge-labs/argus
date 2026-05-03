@@ -13,14 +13,14 @@ from pathlib import Path
 # Official images from tool authors (used directly, not rebuilt by argus)
 OFFICIAL_IMAGES = {
     "trivy": "aquasec/trivy:0.70.0",
-    "grype": "anchore/grype:v0.88.0",
-    "syft": "anchore/syft:v1.42.4",
+    "grype": "anchore/grype:v0.112.0",
+    "syft": "anchore/syft:v1.44.0",
     "gitleaks": "zricethezav/gitleaks:v8.30.1",
-    "clamav": "clamav/clamav:1.4",
-    "checkov": "bridgecrew/checkov:3.2.346",
-    "osv-scanner": "ghcr.io/google/osv-scanner:v2.3.5",
-    "zap": "ghcr.io/zaproxy/zaproxy:2.16.0",
-    "hadolint": "hadolint/hadolint:v2.12.0",
+    "clamav": "clamav/clamav:1.5",
+    "checkov": "bridgecrew/checkov:3.2.526",
+    "osv-scanner": "ghcr.io/google/osv-scanner:v2.3.6",
+    "zap": "ghcr.io/zaproxy/zaproxy:2.17.0",
+    "hadolint": "hadolint/hadolint:v2.14.0",
 }
 
 # Custom images built and published by Argus to ghcr.io/huntridge-labs/argus/
