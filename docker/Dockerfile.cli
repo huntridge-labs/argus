@@ -65,6 +65,8 @@ LABEL org.opencontainers.image.source="https://github.com/huntridge-labs/argus"
 LABEL org.opencontainers.image.description="Argus CLI — all-in-one security scanning toolkit"
 LABEL org.opencontainers.image.licenses="AGPL-3.0"
 
+ARG BANDIT_VERSION=1.9.4
+ARG PYYAML_VERSION=6.0.2
 ARG ZIZMOR_VERSION=1.24.1
 
 # Install system packages and patch OS-level vulnerabilities
@@ -86,9 +88,9 @@ COPY --from=builder /usr/local/bin/opengrep   /usr/local/bin/opengrep
 # Note: checkov excluded — requires Rust compilation on Alpine.
 # The engine falls back to the official bridgecrew/checkov container.
 RUN pip install --no-cache-dir \
-    'bandit[toml,sarif]==1.9.4' \
+    "bandit[toml,sarif]==${BANDIT_VERSION}" \
     "zizmor==${ZIZMOR_VERSION}" \
-    'pyyaml==6.0.2'
+    "pyyaml==${PYYAML_VERSION}"
 
 # Create non-root user
 RUN adduser -D -u 1000 argus
