@@ -7,8 +7,10 @@ LABEL org.opencontainers.image.licenses="AGPL-3.0"
 # Patch OS-level vulnerabilities before anything else
 RUN apk upgrade --no-cache
 
+ARG BANDIT_VERSION=1.9.4
+
 RUN adduser -D -u 1000 argus
-RUN pip install --no-cache-dir 'bandit[toml,sarif]==1.9.4'
+RUN pip install --no-cache-dir "bandit[toml,sarif]==${BANDIT_VERSION}"
 
 USER argus
 WORKDIR /workspace
