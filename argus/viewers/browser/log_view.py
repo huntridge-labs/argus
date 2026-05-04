@@ -4,35 +4,26 @@ UI-free, mirrors the pattern in ``argus.core.findings_view``: keep the
 parsing and filtering pure so route handlers, templates, and tests can
 all share the same code path.
 
-Argus emits log lines in the standard Python logging shape::
+argus writes ``argus.log`` as one JSON object per line via
+:class:`argus.audit.logger.JsonLogFormatter`. Each entry looks like::
 
-    07:13:58 DEBUG    argus Container exited: code=0, duration=701ms
-    07:13:59 INFO     viewers.browser argus view browser listening on …
+    {"timestamp": "2026-05-04T11:13:58.531038+00:00",
+     "level": "INFO", "module": "argus", "function": "_cmd_source_scan",
+     "line": 1093, "message": "Argus scan starting"}
 
-A regex extracts the four fields. Lines that don't match are treated as
-continuations of the previous entry's message — common when a scanner
-dumps a multi-line stderr blob that the engine forwards verbatim.
+The parser reads JSON-lines, dropping any malformed line silently
+(rather than 500ing on a partially-flushed log file). Continuation
+handling that was needed for plain-text logs is unnecessary here:
+multi-line messages live inside the ``message`` string and the
+``<pre>`` template renders the embedded newlines as-is.
 """
 
 from __future__ import annotations
 
-import re
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
-
-
-# The structured-line regex. Argus uses Python logging's default time
-# format ``%H:%M:%S`` plus a level + logger + message tail. Levels
-# include both Python's canonical names (DEBUG/INFO/WARNING/ERROR/
-# CRITICAL) and the shortened ``WARN`` we sometimes see in container
-# stderr that's been forwarded through.
-_LOG_LINE_RE = re.compile(
-    r"^(?P<time>\d{2}:\d{2}:\d{2})\s+"
-    r"(?P<level>DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL)\s+"
-    r"(?P<logger>\S+)\s+"
-    r"(?P<msg>.*)$"
-)
 
 
 # Severity ranking for ``min_level`` filtering. Matches Python's
@@ -49,68 +40,91 @@ LEVEL_RANK: dict[str, int] = {
 
 @dataclass(frozen=True)
 class LogEntry:
-    """A single parsed log entry.
+    """A single parsed log entry — display shape only.
 
-    ``msg`` includes any continuation lines that follow the header line
-    (joined with ``\n``) so the renderer doesn't have to know about
-    multi-line entries — it just paints what we hand it.
+    The on-disk JSON record carries more (function, line, optional
+    scanner / phase / image / duration_ms), but the viewer only needs
+    these five fields. Keep the dataclass narrow so future renderer
+    changes don't have to know about the file format.
     """
 
-    line_no: int    # 1-based line number of the header line in the source file
-    time: str       # "07:13:58"
-    level: str      # canonicalized: DEBUG / INFO / WARNING / ERROR / CRITICAL
-    logger: str     # "argus", "viewers.browser", etc.
-    msg: str        # full message including any continuation lines
+    line_no: int    # 1-based line number in the source file (for reference)
+    time: str       # "07:13:58" — extracted from the ISO timestamp
+    level: str      # canonical: DEBUG / INFO / WARNING / ERROR / CRITICAL
+    logger: str     # "argus", "viewers.browser", etc. (the JSON ``module`` field)
+    msg: str        # the rendered message string
 
 
 def _canonicalize_level(level: str) -> str:
     """Fold the short ``WARN`` form onto Python's canonical ``WARNING``.
 
-    Other levels passthrough. Centralizing the rule keeps filter
-    comparisons (``LEVEL_RANK[entry.level]``) consistent regardless of
-    which form the underlying logger emits.
+    ``JsonLogFormatter`` emits ``WARNING`` directly, but defensive in
+    case future scanner-forwarded entries use the short form. Other
+    levels passthrough.
     """
-    return "WARNING" if level == "WARN" else level
+    upper = (level or "").upper()
+    return "WARNING" if upper == "WARN" else upper
+
+
+def _extract_time(iso_timestamp: str) -> str:
+    """Extract the ``HH:MM:SS`` portion from an ISO 8601 timestamp.
+
+    Returns an empty string if the input is missing or unparsable —
+    we'd rather render a blank time field than crash a whole render
+    on one weird line. Tolerant of microseconds and any timezone
+    suffix (``+00:00``, ``-05:00``, ``Z``).
+    """
+    if not iso_timestamp or "T" not in iso_timestamp:
+        return ""
+    time_part = iso_timestamp.split("T", 1)[1]
+    # Trim microseconds before timezone matters since ``.`` always
+    # precedes ``+/-`` / ``Z`` when present.
+    if "." in time_part:
+        time_part = time_part.split(".", 1)[0]
+    elif time_part.endswith("Z"):
+        time_part = time_part[:-1]
+    elif "+" in time_part:
+        time_part = time_part.split("+", 1)[0]
+    elif "-" in time_part:
+        time_part = time_part.split("-", 1)[0]
+    return time_part
 
 
 def parse_log(text: str) -> list[LogEntry]:
-    """Parse the contents of an ``argus.log`` file into structured entries.
+    """Parse the contents of an ``argus.log`` file (JSON-lines) into entries.
 
-    Lines that don't start with the standard timestamp+level prefix are
-    treated as continuations of the previous header line — that's how
-    argus wraps multi-line scanner output today. Continuation text
-    before any header line at all is silently dropped (we don't have a
-    reasonable level/logger to assign it).
+    Skips:
+    - empty lines
+    - lines that aren't valid JSON
+    - JSON values that aren't objects (shouldn't happen with
+      ``JsonLogFormatter``, defensive)
+    - records with a ``level`` we don't recognize (rather than
+      assigning them an arbitrary rank that would warp filters)
+
+    Doesn't enforce field presence beyond that — missing ``module``
+    falls back to ``"argus"``, missing ``message`` to ``""``.
     """
     entries: list[LogEntry] = []
-    current_match: re.Match[str] | None = None
-    current_line_no = 0
-    current_lines: list[str] = []
-
-    def _flush() -> None:
-        if current_match is None:
-            return
+    for i, raw in enumerate(text.splitlines(), start=1):
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(data, dict):
+            continue
+        level = _canonicalize_level(data.get("level", ""))
+        if level not in LEVEL_RANK:
+            continue
         entries.append(LogEntry(
-            line_no=current_line_no,
-            time=current_match["time"],
-            level=_canonicalize_level(current_match["level"]),
-            logger=current_match["logger"],
-            msg="\n".join(current_lines).rstrip(),
+            line_no=i,
+            time=_extract_time(data.get("timestamp", "")),
+            level=level,
+            logger=str(data.get("module") or "argus"),
+            msg=str(data.get("message", "")),
         ))
-
-    for i, line in enumerate(text.splitlines(), start=1):
-        match = _LOG_LINE_RE.match(line)
-        if match:
-            _flush()
-            current_match = match
-            current_line_no = i
-            # The first line carries the structured prefix; we keep
-            # only the message portion in current_lines so the rendered
-            # output doesn't re-display time/level/logger inline.
-            current_lines = [match["msg"]]
-        elif current_match is not None:
-            current_lines.append(line)
-    _flush()
     return entries
 
 

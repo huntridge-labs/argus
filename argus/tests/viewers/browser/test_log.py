@@ -30,14 +30,42 @@ from argus.viewers.browser.app import create_app   # noqa: E402
 # Fixtures shared across route + parser tests
 # ───────────────────────────────────────────────
 
-_SAMPLE_LOG = (
-    "07:13:58 DEBUG    argus Full exclusion set: ['node_modules', '.git']\n"
-    "07:13:58 INFO     argus Loaded 66 exclusion pattern(s) from .gitignore\n"
-    "07:13:59 WARNING  argus Native pull failed for clamav/clamav:1.5\n"
-    "       continuation line for the warning above\n"
-    "07:13:59 ERROR    viewers.browser Could not connect to docker.sock\n"
-    "07:13:59 INFO     argus Scanner 'gitleaks' finished in 11722ms: 0 finding(s)\n"
-)
+# JSON-lines format — matches what JsonLogFormatter (in
+# argus/audit/logger.py) actually writes to disk. The console
+# handler emits human-readable HH:MM:SS lines but the file handler
+# always emits structured JSON, so the parser only handles JSON.
+_SAMPLE_LOG = "\n".join([
+    json.dumps({
+        "timestamp": "2026-05-04T07:13:58.531038+00:00",
+        "level": "DEBUG", "module": "argus",
+        "function": "_load_exclusions", "line": 42,
+        "message": "Full exclusion set: ['node_modules', '.git']",
+    }),
+    json.dumps({
+        "timestamp": "2026-05-04T07:13:58.612001+00:00",
+        "level": "INFO", "module": "argus",
+        "function": "_load_exclusions", "line": 51,
+        "message": "Loaded 66 exclusion pattern(s) from .gitignore",
+    }),
+    json.dumps({
+        "timestamp": "2026-05-04T07:13:59.001234+00:00",
+        "level": "WARNING", "module": "argus",
+        "function": "pull_image", "line": 542,
+        "message": "Native pull failed for clamav/clamav:1.5",
+    }),
+    json.dumps({
+        "timestamp": "2026-05-04T07:13:59.105678+00:00",
+        "level": "ERROR", "module": "viewers.browser",
+        "function": "_resolve_scan", "line": 99,
+        "message": "Could not connect to docker.sock",
+    }),
+    json.dumps({
+        "timestamp": "2026-05-04T07:13:59.205678+00:00",
+        "level": "INFO", "module": "argus",
+        "function": "_run_scanner", "line": 712,
+        "message": "Scanner 'gitleaks' finished in 11722ms: 0 finding(s)",
+    }),
+]) + "\n"
 
 
 def _sample_payload() -> dict:
@@ -74,30 +102,93 @@ def _write_scan(tmp_path, log_contents: str | None = _SAMPLE_LOG) -> str:
 
 
 class TestParseLog:
-    def test_parses_each_header_line(self):
+    def test_parses_each_json_line(self):
         entries = parse_log(_SAMPLE_LOG)
-        # 5 header lines (the continuation belongs to the WARNING entry).
         assert len(entries) == 5
 
     def test_canonicalizes_warn_to_warning(self):
-        entries = parse_log("07:00:00 WARN     argus short-warn form\n")
+        text = json.dumps({
+            "timestamp": "2026-05-04T07:00:00+00:00",
+            "level": "WARN", "module": "argus",
+            "message": "short-warn form",
+        }) + "\n"
+        entries = parse_log(text)
         assert len(entries) == 1
         assert entries[0].level == "WARNING"
 
-    def test_attaches_continuation_to_previous_entry(self):
+    def test_extracts_hhmmss_from_iso_timestamp(self):
         entries = parse_log(_SAMPLE_LOG)
         warning = next(e for e in entries if e.level == "WARNING")
-        assert "continuation line for the warning above" in warning.msg
+        assert warning.time == "07:13:59"
 
-    def test_continuation_before_first_header_is_dropped(self):
-        text = "stray line before any header\n07:00:00 INFO     argus first\n"
+    def test_extracts_time_with_z_suffix(self):
+        text = json.dumps({
+            "timestamp": "2026-05-04T09:30:15.123Z",
+            "level": "INFO", "module": "argus",
+            "message": "z-suffixed",
+        }) + "\n"
         entries = parse_log(text)
         assert len(entries) == 1
+        assert entries[0].time == "09:30:15"
+
+    def test_skips_malformed_json_lines(self):
+        # Real-world logs can have a partially-flushed final line if
+        # the user reads while the scan is mid-write. Skip rather than
+        # 500.
+        text = (
+            json.dumps({
+                "timestamp": "2026-05-04T07:00:00+00:00",
+                "level": "INFO", "module": "argus",
+                "message": "first",
+            }) + "\n"
+            + "{not valid json\n"
+            + json.dumps({
+                "timestamp": "2026-05-04T07:00:01+00:00",
+                "level": "INFO", "module": "argus",
+                "message": "third",
+            }) + "\n"
+        )
+        entries = parse_log(text)
+        assert [e.msg for e in entries] == ["first", "third"]
+
+    def test_skips_records_with_unknown_level(self):
+        text = (
+            json.dumps({
+                "timestamp": "2026-05-04T07:00:00+00:00",
+                "level": "INFO", "module": "argus", "message": "kept",
+            }) + "\n"
+            + json.dumps({
+                "timestamp": "2026-05-04T07:00:01+00:00",
+                "level": "TRACE", "module": "argus", "message": "dropped",
+            }) + "\n"
+        )
+        entries = parse_log(text)
+        assert [e.msg for e in entries] == ["kept"]
+
+    def test_missing_module_falls_back_to_argus(self):
+        text = json.dumps({
+            "timestamp": "2026-05-04T07:00:00+00:00",
+            "level": "INFO", "message": "no-module",
+        }) + "\n"
+        entries = parse_log(text)
         assert entries[0].logger == "argus"
 
-    def test_line_no_points_at_header_line(self):
+    def test_empty_lines_ignored(self):
+        text = (
+            "\n\n"
+            + json.dumps({
+                "timestamp": "2026-05-04T07:00:00+00:00",
+                "level": "INFO", "module": "argus", "message": "lonely",
+            }) + "\n"
+            + "\n\n"
+        )
+        entries = parse_log(text)
+        assert len(entries) == 1
+        assert entries[0].msg == "lonely"
+
+    def test_line_no_points_at_source_line(self):
         entries = parse_log(_SAMPLE_LOG)
-        # Lines are 1-based; the WARNING is the 3rd header line.
+        # The WARNING is the 3rd entry in the sample (line 3 of the file).
         warning = next(e for e in entries if e.level == "WARNING")
         assert warning.line_no == 3
 
