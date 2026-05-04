@@ -955,3 +955,57 @@ footer a { color: var(--accent-dim); }
 .product-row .top li { list-style: none; margin: 0.3rem 0; font-size: 0.9rem; color: var(--fg-muted); }
 .product-row .top li .sev { margin-right: 0.5rem; font-size: 0.65rem; }
 .product-row .top li strong { color: var(--accent-dim); font-family: ui-monospace, monospace; }
+
+/* ── Scan log viewer ─────────────────────────────────────────────
+ * Read-only pane mirroring `argus.log`. Inline-styled levels make
+ * WARN/ERROR jump out without any JS; the surrounding `<pre>` keeps
+ * scrollback cheap by relying on the browser's native text engine
+ * rather than per-row DOM. */
+.log-status {
+  color: var(--fg-muted);
+  font-size: 0.9rem;
+  margin: 0.5rem 0 1rem;
+}
+.log-status .log-download { margin-left: 0.5rem; }
+.log-pane {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  max-height: 70vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.log-pane:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.log-line {
+  display: block;
+  border-radius: var(--radius-sm);
+}
+.log-line:hover { background: var(--surface-alt); }
+.log-time   { color: var(--fg-muted); }
+.log-logger { color: var(--accent); }
+.log-msg    { color: var(--fg); }
+.log-level {
+  display: inline-block;
+  font-weight: 600;
+  min-width: 4.5rem;
+}
+/* Level-specific accents — semantic only, kept restrained so a
+ * 30k-line log doesn't look like a Christmas tree. */
+.log-level-debug    .log-level { color: var(--fg-muted); }
+.log-level-info     .log-level { color: var(--accent-dim); }
+.log-level-warning  .log-level { color: #c4992c; }
+.log-level-error    .log-level,
+.log-level-critical .log-level { color: var(--severity-high, #c4392c); font-weight: 700; }
+.log-empty {
+  color: var(--fg-muted);
+  font-style: italic;
+  margin: 1rem 0;
+}

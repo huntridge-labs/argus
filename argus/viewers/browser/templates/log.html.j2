@@ -1,0 +1,68 @@
+{#-
+  Read-only scan-log viewer.
+  Companion to /findings — same shape (filter bar + monospace pane),
+  driven by URL query params so the page stays bookmarkable.
+-#}
+{% extends "base.html.j2" %}
+{% block title %}Argus — Scan Log{% endblock %}
+{% block content %}
+
+{% if not log_available %}
+  <section class="placeholder">
+    <h2>No log available</h2>
+    {% if error %}
+      <p><strong>Error:</strong> {{ error }}</p>
+    {% else %}
+      <p>This scan has no <code>argus.log</code> file. Logs are written
+         alongside <code>argus-results.json</code> by <code>argus scan</code>;
+         older runs, or scans loaded from an external <code>argus-results.json</code>,
+         won't have one.</p>
+    {% endif %}
+  </section>
+
+{% else %}
+
+  <h2>Scan Log</h2>
+
+  <form method="get" action="/log" class="filter-bar log-filter-bar" data-auto-filter>
+    {%- if scan_param -%}
+      <input type="hidden" name="scan" value="{{ scan_param }}" />
+    {%- endif -%}
+
+    <label>
+      Min level:
+      <select name="level">
+        <option value=""        {% if not active_level %}selected{% endif %}>(all)</option>
+        <option value="debug"   {% if active_level == "DEBUG"   %}selected{% endif %}>DEBUG and above</option>
+        <option value="info"    {% if active_level == "INFO"    %}selected{% endif %}>INFO and above</option>
+        <option value="warning" {% if active_level == "WARNING" %}selected{% endif %}>WARN and above</option>
+        <option value="error"   {% if active_level == "ERROR"   %}selected{% endif %}>ERROR and above</option>
+      </select>
+    </label>
+
+    <label>
+      Search:
+      <input type="search" name="q" value="{{ query or '' }}"
+             placeholder="message, logger, level…" />
+    </label>
+
+    <button type="submit">Apply</button>
+    <a href="/log{% if scan_param %}?scan={{ scan_param | urlencode }}{% endif %}">Reset</a>
+  </form>
+
+  <p class="log-status" role="status">
+    Showing <strong>{{ entries | length }}</strong> of {{ total_entries }} entries
+    {%- if active_level or query %} (filtered){% endif -%}.
+    <a class="log-download" href="/log/raw{% if scan_param %}?scan={{ scan_param | urlencode }}{% endif %}">Download raw log</a>
+  </p>
+
+  {% if entries %}
+    <pre class="log-pane" tabindex="0" aria-label="Scan log entries">{%- for e in entries -%}
+<span class="log-line log-level-{{ e.level | lower }}"><span class="log-time">{{ e.time }}</span> <span class="log-level">{{ e.level }}</span> <span class="log-logger">{{ e.logger }}</span> <span class="log-msg">{{ e.msg }}</span></span>
+{% endfor -%}</pre>
+  {% else %}
+    <p class="log-empty">No log entries match the current filters.</p>
+  {% endif %}
+
+{% endif %}
+{% endblock %}
