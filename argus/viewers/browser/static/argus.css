@@ -159,6 +159,12 @@ body::before {
   z-index: 0;
 }
 body > * { position: relative; z-index: 1; }
+/* The Recent-runs dropdown lives inside <header>; without bumping the
+ * header's stacking context above main/footer, source order makes
+ * <main> paint on top and the dropdown gets clipped by anything in
+ * the body. The selector specificity has to beat the rule above
+ * (`body > *`) — a plain `header { z-index: 100 }` does not. */
+body > header { z-index: 100; }
 
 header, main, footer { padding: 1rem 1.5rem; max-width: var(--max-width); margin: 0 auto; }
 
@@ -168,12 +174,9 @@ header {
   margin-bottom: 1.5rem;
   flex-wrap: wrap; gap: 0.5rem 1rem;
   padding-top: 1.25rem; padding-bottom: 1.25rem;
-  /* Promote the header into its own stacking context above <main> so
-   * absolutely-positioned descendants (the Recent-runs dropdown) can
-   * overlay the highlighted scan-path block and any other downstream
-   * content. Without this, source order makes <main> paint on top. */
-  position: relative;
-  z-index: 100;
+  /* Stacking-context promotion lives in `body > header` above so it
+   * beats the `body > *` specificity. A plain `header { z-index: ... }`
+   * is overridden by that rule and the dropdown gets clipped by main. */
 }
 header .brand {
   display: flex; align-items: center; gap: 0.6rem;
