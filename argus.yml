@@ -30,7 +30,18 @@ scanners:
   supply-chain:
     enabled: true
 
-  # Not applicable to this repo
+  # Lint our own Dockerfiles via hadolint as part of the default scan.
+  # Catches bad practices (mutable image tags, missing USER directives,
+  # apt without --no-install-recommends, etc.) on every run.
+  lint-dockerfile:
+    enabled: true
+
+  # Not applicable to this repo as part of the default scan:
+  # - trivy-iac / checkov target Terraform / CloudFormation / K8s — none here
+  # - container / zap operate on built images / running endpoints, not
+  #   source paths; run them on demand:
+  #     argus scan container --discover .
+  #     argus scan zap --target http://...
   trivy-iac:
     enabled: false
   checkov:

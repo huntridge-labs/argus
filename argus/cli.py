@@ -1349,7 +1349,11 @@ def _launch_view_after_scan(interface: str, results_dir: str) -> None:
         try:
             from argus.viewers.browser import launch as browser_launch, ViewerUnavailable
             try:
-                browser_launch(root=results_dir)
+                # Match `argus view --interface=browser` semantics: auto-open
+                # the user's default browser when stdout is a TTY (interactive
+                # invocation), skip in CI / piped contexts where webbrowser.open
+                # would fail or hang.
+                browser_launch(root=results_dir, open_browser=sys.stdout.isatty())
             except ViewerUnavailable as exc:
                 print(f"\n{exc}", file=sys.stderr)
         except ImportError as exc:  # pragma: no cover — defensive
