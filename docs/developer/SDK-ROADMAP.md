@@ -400,6 +400,64 @@ apply: read-only, localhost-only, no new persistence.
   dark; light variant derived from the same tokens with deeper
   severity hues for legibility on a bright surface.
 
+### Phase 3 — Scan log viewer in the browser interface
+
+A read-only `/log` route that surfaces the per-run `argus.log` file in
+the browser interface, with the same shape as `/findings`: a filter
+bar (severity-equivalent for log levels, plus substring search) and a
+scrollable monospace pane. Closes a real triage gap — answers like
+"why did osv exclude 258 findings?" or "did clamav actually run?"
+required dropping back to the terminal until now.
+
+**Scope: read-only viewer, no live tailing.** Logs are written
+synchronously to disk by `argus scan`; once the scan completes the
+file is final. A live-tail mode would need a websocket and a process
+watcher, which is out of proportion for a single-user localhost UI.
+
+**MVP shape (shipped in this Phase 3):**
+- Parses argus's standard logging format (`HH:MM:SS LEVEL  logger  msg`)
+- Continuation lines (multi-line scanner stderr) join onto the previous entry
+- Filter by minimum level (DEBUG/INFO/WARN/ERROR), URL-shareable
+- Substring search across level + logger + message, URL-shareable
+- "Showing N of M (filtered)" status with raw-log download link
+- Level color accents (DEBUG muted, INFO accent-dim, WARN amber, ERROR red)
+- Empty states for "no log file" and "no entries match filters"
+- 27-test suite covering the parser, the filter, both routes, and nav threading
+
+**Tasks:**
+
+- [x] **SU** — `argus/viewers/browser/log_view.py`: `LogEntry` dataclass,
+      `parse_log()`, `filter_entries()`, `load_log()`. UI-free; mirrors
+      the pattern of `argus.core.findings_view`.
+- [x] **SV** — `/log` route in `argus/viewers/browser/app.py` accepting
+      `?scan=`, `?level=`, `?q=`. Whitelist + canonicalize `level` so
+      crafted URLs fall back to "no filter" rather than 500.
+- [x] **SW** — `/log/raw` route streaming the file as `text/plain` with
+      a `Content-Disposition: attachment` header so browsers download
+      it for grep/diff/issue-paste workflows.
+- [x] **SX** — `templates/log.html.j2` + nav link in `base.html.j2` +
+      `.log-pane` / `.log-level-*` rules in `static/argus.css`.
+- [x] **SY** — `argus/tests/viewers/browser/test_log.py`: parser,
+      filter combinations, route empty-states, CSP-friendly markup,
+      raw-download download.
+
+**Out of scope for this phase (potential follow-ups):**
+
+- Per-scanner filter chips (parse `scanner=` field that already
+  appears in many log lines). Keystroke chord on top of the search
+  box would be cleaner than another `<select>`.
+- Anchor jump-to-first-error / jump-to-last-error keyboard shortcuts.
+- Match highlighting via `<mark>` tags. Today the user relies on the
+  filter narrowing + the browser's native Cmd+F. Adding `<mark>`
+  requires either a Jinja filter that escapes-then-marks or a
+  client-side highlighter — neither is justified by the current
+  pain.
+- Per-scanner timing breakdown surfaced as a side panel (already
+  tracked in `argus-audit.json`; would be a separate route or a
+  metadata fold-out on the dashboard rather than inside this log
+  viewer).
+- Live tail (deliberately deferred — see Scope above).
+
 ### Future ideas (not on the roadmap)
 
 Deliberately not pursuing for now — recording here so the decision

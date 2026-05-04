@@ -22,6 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from argus.viewers.browser.log_view import filter_entries, load_log
 from argus.viewers.terminal.export import CONTENT_TYPES, RENDERERS
 from argus.viewers.terminal.loader import RESULTS_FILENAME, flatten_findings, load_summary
 from argus.core.findings_view import (
@@ -731,6 +732,86 @@ def create_app(root: str | None = None) -> FastAPI:
             request=request,
             name="diff.html.j2",
             context=context,
+        )
+
+    # Whitelist for the ``?level=`` query param. Anything else is
+    # silently treated as "no level filter" — same posture as the
+    # findings route's severity handling. Stored uppercase so the
+    # template can match against ``active_level`` directly.
+    _VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+
+    @app.get("/log", response_class=HTMLResponse)
+    async def log_view(
+        request: Request,
+        scan: str | None = None,
+        level: str | None = None,
+        q: str | None = None,
+    ) -> Response:
+        """Read-only viewer for ``argus.log`` next to the active scan.
+
+        Same shape as ``/findings``: filter bar (level + search), a
+        scrollable monospace pane, and bookmarkable URL state. Logs
+        live next to ``argus-results.json`` in the timestamped run
+        dir, so resolving the scan also resolves the log path.
+        """
+        scan_summary, resolved, error = _load_scan(scan)
+        log_data = load_log(resolved.parent) if resolved else None
+
+        # Normalize the user-supplied level to our canonical set. The
+        # short ``WARN`` form maps onto ``WARNING`` for parity with
+        # Python's logging module — same as ``log_view._canonicalize_level``.
+        active_level = (level or "").upper()
+        if active_level == "WARN":
+            active_level = "WARNING"
+        if active_level not in _VALID_LOG_LEVELS:
+            active_level = ""
+
+        entries: list = []
+        total = 0
+        if log_data is not None:
+            all_entries, _line_count = log_data
+            total = len(all_entries)
+            entries = filter_entries(
+                all_entries,
+                min_level=active_level or None,
+                query=q,
+            )
+
+        return templates.TemplateResponse(
+            request=request,
+            name="log.html.j2",
+            context={
+                **_base_context(resolved),
+                "scan_param": scan,
+                "scan_label": str(resolved) if resolved else None,
+                "log_available": log_data is not None,
+                "entries": entries,
+                "total_entries": total,
+                "active_level": active_level,
+                "query": q or "",
+                "error": error,
+            },
+        )
+
+    @app.get("/log/raw")
+    async def log_raw(scan: str | None = None) -> Response:
+        """Stream the raw ``argus.log`` file for offline analysis.
+
+        Served as ``text/plain`` with a Content-Disposition attachment
+        so the browser saves rather than rendering — easier to grep,
+        diff, or paste into an issue. 404 when the log doesn't exist
+        rather than a misleading empty 200.
+        """
+        _, resolved, _error = _load_scan(scan)
+        if resolved is None:
+            return Response("Scan not found.", status_code=404, media_type="text/plain")
+        log_path = resolved.parent / "argus.log"
+        if not log_path.exists():
+            return Response("Log not found.", status_code=404, media_type="text/plain")
+        return FileResponse(
+            log_path,
+            media_type="text/plain",
+            filename=log_path.name,
         )
 
     @app.get("/picker", response_class=HTMLResponse)

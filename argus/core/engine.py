@@ -538,9 +538,14 @@ class ArgusEngine:
         elapsed = int((time.monotonic() - start) * 1000)
 
         if result.returncode != 0:
+            # Distinct from a hard "pull failed" — the retry below
+            # almost always succeeds for upstreams that publish amd64-
+            # only (clamav, etc.). Word it as a fallback so users
+            # reading the log don't misread the line as a scan failure.
             logger.info(
-                "Native pull failed for %s (%dms), retrying with "
-                "--platform linux/amd64. stderr: %s",
+                "%s: native pull unsuccessful (%dms) — auto-falling "
+                "back to --platform linux/amd64 (common for upstreams "
+                "without arm64 builds). stderr: %s",
                 image,
                 elapsed,
                 result.stderr.strip()[:200],
