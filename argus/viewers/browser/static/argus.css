@@ -168,6 +168,12 @@ header {
   margin-bottom: 1.5rem;
   flex-wrap: wrap; gap: 0.5rem 1rem;
   padding-top: 1.25rem; padding-bottom: 1.25rem;
+  /* Promote the header into its own stacking context above <main> so
+   * absolutely-positioned descendants (the Recent-runs dropdown) can
+   * overlay the highlighted scan-path block and any other downstream
+   * content. Without this, source order makes <main> paint on top. */
+  position: relative;
+  z-index: 100;
 }
 header .brand {
   display: flex; align-items: center; gap: 0.6rem;
@@ -265,7 +271,10 @@ header nav a[aria-current="page"] {
   margin: 0; list-style: none;
   min-width: 20rem;
   max-height: 24rem; overflow-y: auto;
-  z-index: 10;
+  /* High z-index inside the header's stacking context (header itself
+   * is z-index: 100). Combined, this guarantees the open dropdown
+   * paints above any <main> content beneath. */
+  z-index: 1000;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
 }
 .recent-scans-list li { margin: 0; }
