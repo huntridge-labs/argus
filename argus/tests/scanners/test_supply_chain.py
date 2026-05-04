@@ -227,11 +227,13 @@ class TestSupplyChainContainerArgs:
         scanner = SupplyChainScanner()
         args = scanner.container_args()
 
+        # Single-element list: the supply-chain Dockerfile sets
+        # ENTRYPOINT ["/bin/sh", "-c"] so we pass just the command
+        # string. Returning ["sh", "-c", ...] would double-dispatch
+        # the shell and the real command would never run.
         assert isinstance(args, list)
-        assert args[0] == "sh"
-        assert args[1] == "-c"
-        # The shell command should reference both tools
-        shell_cmd = args[2]
+        assert len(args) == 1
+        shell_cmd = args[0]
         assert "zizmor" in shell_cmd
         assert "actionlint" in shell_cmd
 
@@ -242,5 +244,5 @@ class TestSupplyChainContainerArgs:
         # Current implementation does not vary container_args by config,
         # so verify the default structure is still returned intact.
         assert isinstance(args, list)
-        assert len(args) == 3
-        assert "zizmor" in args[2]
+        assert len(args) == 1
+        assert "zizmor" in args[0]
