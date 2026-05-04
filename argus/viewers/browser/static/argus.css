@@ -163,8 +163,15 @@ body > * { position: relative; z-index: 1; }
  * header's stacking context above main/footer, source order makes
  * <main> paint on top and the dropdown gets clipped by anything in
  * the body. The selector specificity has to beat the rule above
- * (`body > *`) — a plain `header { z-index: 100 }` does not. */
-body > header { z-index: 100; }
+ * (`body > *`) — a plain `header { z-index: 100 }` does not.
+ *
+ * `isolation: isolate` is paired with the bumped z-index because
+ * Safari is inconsistent about whether `position: relative;
+ * z-index: N` on a flex container with a nested <details> child
+ * actually establishes a stacking context. `isolation: isolate`
+ * does so unconditionally (Safari 15.4+) and short-circuits the
+ * Safari-specific clipping that #105 didn't anticipate. */
+body > header { z-index: 100; isolation: isolate; }
 
 header, main, footer { padding: 1rem 1.5rem; max-width: var(--max-width); margin: 0 auto; }
 
