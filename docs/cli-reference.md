@@ -64,8 +64,8 @@ argus scan [-h] [--path PATH] [--config CONFIG]
                   [--interface {terminal,browser}] [--fail-fast]
                   [--fail-on-scanner-error] [--timeout SECONDS]
                   [--no-parallel] [--allow-local-versions] [--no-cache]
-                  [--discover [PATH]] [--image REF] [--scanners SCANNERS]
-                  [--no-keep-raw] [--target URL] [--port PORT]
+                  [--no-keep-raw] [--discover [PATH]] [--image REF]
+                  [--scanners SCANNERS] [--target URL] [--port PORT]
                   [--env KEY=VALUE] [--scan-type {baseline,full}]
                   [--startup-timeout STARTUP_TIMEOUT]
                   [scanner]
@@ -100,6 +100,7 @@ argus scan [-h] [--path PATH] [--config CONFIG]
 | `--no-parallel` | Run scanners sequentially instead of concurrently. | `false` |
 | `--allow-local-versions` | Allow local tool versions that differ from argus-pinned versions. Use in airgapped environments where tool updates are constrained. | `false` |
 | `--no-cache` | Disable DB cache volume mounts. Forces scanners to re-download vulnerability databases on every container run. | `false` |
+| `--no-keep-raw` | Do not persist raw per-scanner output files alongside the canonical argus-results.json. Source scans normally drop each scanner's results.json / *.sarif / stdout.txt under <output_dir>/raw/<scanner>/; container scans drop trivy-results.json / grype-results.json / syft-sbom.json under <output_dir>/raw/<image>/. Pass --no-keep-raw to skip that step in tight CI environments. The same effect is available via 'reporting.keep_raw: false' in argus.yml. | `false` |
 
 **Container Scanning:**
 
@@ -108,7 +109,6 @@ argus scan [-h] [--path PATH] [--config CONFIG]
 | `--discover` | Discover Dockerfiles in PATH (default: current directory) |  |
 | `--image` | Container image to scan (can be repeated) |  |
 | `--scanners` | Sub-scanners for container scanning: trivy,grype,syft (default: trivy,grype) |  |
-| `--no-keep-raw` | Do not persist raw per-scanner output (trivy-results.json, grype-results.json, syft-sbom.json) under <output_dir>/raw/<image>/. By default raw artifacts are kept alongside the canonical argus-results.json so users can drill into individual scanner output for forensics or manual triage. Set ``containers.keep_raw: false`` in argus.yml for the same effect via config. | `false` |
 
 **Dast Scanning:**
 

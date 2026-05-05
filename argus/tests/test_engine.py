@@ -805,6 +805,127 @@ class TestRunInContainer:
         result = engine._run_in_container(scanner, "/src", {})
         assert "execution_failed" not in result.metadata
 
+    def test_raw_output_dir_persists_per_scanner_files(self, monkeypatch, tmp_path):
+        """When ``raw_output_dir`` is set, the engine copies each
+        scanner's raw output (results.json / *.sarif / stdout.txt)
+        into ``<raw_output_dir>/<scanner.name>/`` before the tempdir
+        is wiped. Mirrors the container-scan flow's ``raw/`` artifact
+        preservation so source scans aren't an inconsistent
+        second-class case."""
+        engine = self._make_engine()
+        scanner = self._make_scanner(parse_results=lambda f: [])
+        engine._raw_output_root = str(tmp_path / "raw")
+
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+
+        def mock_run(cmd, **_kwargs):
+            for i, arg in enumerate(cmd):
+                if ":/output" in str(arg):
+                    Path(arg.split(":")[0]).joinpath("results.json").write_text(
+                        '{"findings": []}'
+                    )
+                    break
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="", stderr="",
+            )
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+        engine._run_in_container(scanner, "/src", {})
+
+        # File landed at <raw_output_root>/<scanner_name>/results.json
+        # — the per-scanner subdir keeps multi-scanner runs from
+        # colliding on common filenames.
+        persisted = tmp_path / "raw" / scanner.name / "results.json"
+        assert persisted.exists()
+        # Contents survived intact.
+        assert "findings" in persisted.read_text()
+
+    def test_raw_output_dir_none_does_not_persist_files(
+        self, monkeypatch, tmp_path,
+    ):
+        """Default behavior — ``raw_output_dir`` unset — leaves no
+        per-scanner artifacts on disk after the run. Confirms the
+        copy step is opt-in, not always-on."""
+        engine = self._make_engine()
+        scanner = self._make_scanner(parse_results=lambda f: [])
+        # Explicitly None (the default).
+        engine._raw_output_root = None
+
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+
+        def mock_run(cmd, **_kwargs):
+            for i, arg in enumerate(cmd):
+                if ":/output" in str(arg):
+                    Path(arg.split(":")[0]).joinpath("results.json").write_text("{}")
+                    break
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="", stderr="",
+            )
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+        engine._run_in_container(scanner, "/src", {})
+
+        # tmp_path is otherwise untouched.
+        assert list(tmp_path.iterdir()) == []
+
+    def test_raw_output_persists_stdout_fallback(self, monkeypatch, tmp_path):
+        """Some scanners write to stdout instead of a file (e.g.
+        ClamAV). The engine captures that as ``stdout.txt`` in the
+        per-scanner tempdir; raw-output preservation should pick it
+        up the same way it picks up regular result files."""
+        engine = self._make_engine()
+        scanner = self._make_scanner(parse_results=lambda f: [])
+        engine._raw_output_root = str(tmp_path / "raw")
+
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+
+        def mock_run(cmd, **_kwargs):
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0,
+                stdout="scanner output line 1\nscanner output line 2\n",
+                stderr="",
+            )
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+        engine._run_in_container(scanner, "/src", {})
+
+        persisted = tmp_path / "raw" / scanner.name / "stdout.txt"
+        assert persisted.exists()
+        assert "scanner output line" in persisted.read_text()
+
+    def test_raw_output_skips_zero_byte_files(self, monkeypatch, tmp_path):
+        """0-byte files are explicit failure signals upstream
+        (``_validate_scanner_output`` rejects them in the container
+        sub-scanners). Don't persist them — making known-broken
+        output look authoritative on disk would mislead anyone
+        triaging from the saved artifacts."""
+        engine = self._make_engine()
+        scanner = self._make_scanner(parse_results=lambda f: [])
+        engine._raw_output_root = str(tmp_path / "raw")
+
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+
+        def mock_run(cmd, **_kwargs):
+            for i, arg in enumerate(cmd):
+                if ":/output" in str(arg):
+                    Path(arg.split(":")[0]).joinpath("results.json").touch()
+                    break
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="", stderr="",
+            )
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+        engine._run_in_container(scanner, "/src", {})
+
+        target_dir = tmp_path / "raw" / scanner.name
+        # Either no dir created or empty — never a 0-byte stub.
+        if target_dir.exists():
+            assert not list(target_dir.iterdir())
+
     def test_container_custom_entrypoint(self, monkeypatch):
         engine = self._make_engine()
         scanner = self._make_scanner(container_entrypoint="/bin/custom")

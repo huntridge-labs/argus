@@ -590,6 +590,19 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Disable DB cache volume mounts. Forces scanners to re-download "
              "vulnerability databases on every container run.",
     )
+    scan_parser.add_argument(
+        "--no-keep-raw",
+        action="store_true",
+        dest="no_keep_raw",
+        help="Do not persist raw per-scanner output files alongside the "
+             "canonical argus-results.json. Source scans normally drop "
+             "each scanner's results.json / *.sarif / stdout.txt under "
+             "<output_dir>/raw/<scanner>/; container scans drop "
+             "trivy-results.json / grype-results.json / syft-sbom.json "
+             "under <output_dir>/raw/<image>/. Pass --no-keep-raw to "
+             "skip that step in tight CI environments. The same effect "
+             "is available via 'reporting.keep_raw: false' in argus.yml.",
+    )
 
     # Container-specific flags (used with: argus scan container)
     container_group = scan_parser.add_argument_group(
@@ -615,18 +628,6 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         "--scanners",
         default=None,
         help="Sub-scanners for container scanning: trivy,grype,syft (default: trivy,grype)",
-    )
-    container_group.add_argument(
-        "--no-keep-raw",
-        action="store_true",
-        dest="no_keep_raw",
-        help="Do not persist raw per-scanner output (trivy-results.json, "
-             "grype-results.json, syft-sbom.json) under "
-             "<output_dir>/raw/<image>/. By default raw artifacts are "
-             "kept alongside the canonical argus-results.json so users "
-             "can drill into individual scanner output for forensics or "
-             "manual triage. Set ``containers.keep_raw: false`` in argus.yml "
-             "for the same effect via config.",
     )
 
     # ZAP DAST flags (used with: argus scan zap)
@@ -1147,6 +1148,15 @@ def _load_container_config(args: argparse.Namespace) -> dict:
             )
         config = dict(containers_section)
 
+        # Pull ``reporting.keep_raw`` from the same file so the
+        # container handler honors the unified config knob — same
+        # default-True semantics as ``_cmd_source_scan``. Stashed
+        # under a synthetic underscore key so it doesn't collide
+        # with any future ``containers:`` field a user might add.
+        reporting_section = file_config.get("reporting", {})
+        if isinstance(reporting_section, dict) and "keep_raw" in reporting_section:
+            config["_reporting_keep_raw"] = bool(reporting_section["keep_raw"])
+
     # CLI overrides — explicit > implicit. --image and --discover both
     # OVERWRITE the corresponding config keys so the user's intent is
     # unambiguous (and so we don't accidentally double-scan an image
@@ -1260,6 +1270,18 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
 
     log.info("Argus scan starting")
 
+    # Decide whether to persist raw per-scanner outputs alongside the
+    # canonical argus-results.json. Default ON — users running
+    # ``argus scan`` reasonably expect each scanner's raw results
+    # (results.json / *.sarif / stdout.txt) to be available for
+    # forensics or manual triage. Opt out via ``--no-keep-raw``
+    # (CLI) or ``reporting.keep_raw: false`` (argus.yml). CLI flag
+    # wins on conflict, matching the dispatcher's
+    # explicit-over-implicit posture used throughout.
+    keep_raw_config = getattr(config.reporting, "keep_raw", True)
+    keep_raw = bool(keep_raw_config) and not getattr(args, "no_keep_raw", False)
+    raw_output_root = str(Path(output_dir) / "raw") if keep_raw else None
+
     # Build engine and register scanners
     engine = ArgusEngine(config)
 
@@ -1364,6 +1386,7 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
                             use_default_excludes=not getattr(args, "no_default_excludes", False),
                             sbom_path=str(info.path),
                             sbom_format=info.format,
+                            raw_output_dir=raw_output_root,
                         )
                     except Exception as exc:
                         log.error(
@@ -1404,6 +1427,7 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
                     allow_local_versions=getattr(args, "allow_local_versions", False),
                     no_cache=getattr(args, "no_cache", False),
                     use_default_excludes=not getattr(args, "no_default_excludes", False),
+                    raw_output_dir=raw_output_root,
                 )
         if args.verbose and getattr(engine, "_last_resolutions", None):
             from argus.core.tool_config import format_resolutions_for_display
@@ -1752,7 +1776,13 @@ def _cmd_container_scan(
     # ``containers.keep_raw: false`` (argus.yml). CLI flag wins on
     # conflict, matching the rest of the dispatcher's
     # explicit-over-implicit posture.
-    keep_raw_config = config.get("keep_raw", True)
+    # ``reporting.keep_raw`` is the unified config home for raw-output
+    # preservation; the legacy ``containers.keep_raw`` is still read
+    # as a fallback so configs from earlier in this PR's lifecycle
+    # don't break. CLI ``--no-keep-raw`` wins over both.
+    keep_raw_config = config.get(
+        "_reporting_keep_raw", config.get("keep_raw", True),
+    )
     keep_raw = bool(keep_raw_config) and not getattr(args, "no_keep_raw", False)
     if keep_raw:
         config["_raw_output_root"] = str(Path(output_dir) / "raw")

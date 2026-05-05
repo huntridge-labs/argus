@@ -35,6 +35,7 @@ class ArgusEngine:
         self._no_cache: bool = False
         self._sbom_path: str | None = None
         self._sbom_format: str | None = None
+        self._raw_output_root: str | None = None
 
     def register_scanner(self, scanner: Scanner) -> None:
         """Register a scanner instance for use by the engine."""
@@ -59,6 +60,7 @@ class ArgusEngine:
         use_default_excludes: bool = True,
         sbom_path: str | None = None,
         sbom_format: str | None = None,
+        raw_output_dir: str | None = None,
     ) -> ScanSummary:
         """Run scanners and return an aggregated ScanSummary.
 
@@ -79,6 +81,14 @@ class ArgusEngine:
                 attribute is True, auto-enables them regardless of
                 argus.yml, and threads the SBOM path through
                 ``config_dict['sbom_path']``.
+            raw_output_dir: when set, ``_run_in_container`` copies each
+                scanner's raw output files (``results.json``,
+                ``stdout.txt``, ``*.sarif``) into
+                ``<raw_output_dir>/<scanner_name>/`` before the
+                per-scanner tempdir is cleaned up. Mirrors the
+                container-scan flow's ``raw/`` artifact preservation
+                so users can drill into individual scanner output
+                regardless of which scan flow produced it.
         """
         from .exclusions import build_exclusion_set, log_exclusion_set
 
@@ -87,6 +97,7 @@ class ArgusEngine:
         self._use_default_excludes = use_default_excludes
         self._sbom_path = sbom_path
         self._sbom_format = sbom_format
+        self._raw_output_root = raw_output_dir
 
         # Validate sbom_format if provided
         if sbom_format is not None and sbom_format not in SBOM_FORMAT_EXTENSIONS:
@@ -709,6 +720,28 @@ class ArgusEngine:
                 stdout_file.write_text(proc.stdout)
                 result_files = [stdout_file]
                 logger.debug("No output files — captured stdout (%d bytes)", len(proc.stdout))
+
+            # Persist raw scanner output (best-effort) before the
+            # tempdir is wiped. Mirrors the container-scan flow's
+            # ``raw/`` artifact preservation: every scanner gets its
+            # own subdir under ``<raw_output_root>/<scanner.name>/``
+            # so ``argus-results.json`` (the canonical artifact)
+            # lives next to the per-scanner files (results.json,
+            # *.sarif, stdout.txt) for forensics or manual triage.
+            # Errors during copy are non-fatal — the scan succeeded,
+            # the canonical JSON is still emitted upstream.
+            if self._raw_output_root and result_files:
+                try:
+                    target_dir = Path(self._raw_output_root) / scanner.name
+                    target_dir.mkdir(parents=True, exist_ok=True)
+                    for src in result_files:
+                        if src.exists() and src.stat().st_size > 0:
+                            shutil.copy2(src, target_dir / src.name)
+                except OSError as exc:
+                    logger.warning(
+                        "Failed to persist raw output for '%s' under %s: %s",
+                        scanner.name, self._raw_output_root, exc,
+                    )
 
             if result_files:
                 logger.debug(
