@@ -197,3 +197,81 @@ class TestParseContainerConfig:
         }
         targets = parse_container_config(config)
         assert targets[0].name == "org-myapp"
+
+
+class TestParseContainerConfigUnwrappedShape:
+    """Regression: ``parse_container_config`` must accept the inner-mapping
+    shape returned by the CLI's ``_load_container_config``.
+
+    The bug: dispatch path for ``argus scan container --config argus.yml``
+    extracted just the inner ``containers:`` mapping (matching the
+    rest of the engine's top-level key access — ``images``,
+    ``search_paths``, ``scanners``) and passed that to
+    ``ContainerEngine``. The parser's strict ``config.get("containers")``
+    lookup found nothing and the scan dropped all config-defined
+    targets with a "No container targets found" error despite a
+    well-formed config.
+    """
+
+    def test_unwrapped_shape_resolves_explicit_images(self):
+        # The user's exact repro from the bug report — top-level
+        # ``containers:`` block in argus.yml with one image entry,
+        # extracted into the inner-mapping shape by the CLI before
+        # being passed to the engine.
+        config = {
+            "images": [
+                {
+                    "image": "docker:argus-scan",
+                    "dockerfile": "docker/Dockerfile",
+                    "context": ".",
+                },
+            ],
+        }
+        targets = parse_container_config(config)
+        assert len(targets) == 1
+        target = targets[0]
+        assert target.image_ref == "docker:argus-scan"
+        assert target.dockerfile == Path("docker/Dockerfile")
+        assert target.context == Path(".")
+
+    def test_unwrapped_shape_with_discover(self, tmp_path):
+        # Verifies the unwrapped path also honors ``discover: true`` +
+        # ``search_paths``, not just explicit images. Combined with
+        # the test above this covers both target sources end-to-end.
+        (tmp_path / "Dockerfile").write_text("FROM scratch\n")
+        config = {
+            "discover": True,
+            "search_paths": [str(tmp_path)],
+        }
+        targets = parse_container_config(config)
+        assert len(targets) == 1
+        assert targets[0].dockerfile == (tmp_path / "Dockerfile").resolve()
+
+    def test_wrapped_shape_takes_precedence_when_both_keys_present(self):
+        # Defensive: if a config has BOTH a top-level ``containers:``
+        # mapping AND top-level ``images``/``discover`` keys, prefer
+        # the wrapped form to match the historical contract. The
+        # unwrapped fallback only fires when ``containers`` isn't a
+        # mapping at the top level.
+        config = {
+            "containers": {
+                "images": [{"image": "wrapped:1.0"}],
+            },
+            "images": [{"image": "unwrapped:1.0"}],
+        }
+        targets = parse_container_config(config)
+        assert len(targets) == 1
+        assert targets[0].image_ref == "wrapped:1.0"
+
+    def test_unwrapped_with_digest_pin_preserved(self):
+        # Digest-pinned refs are the recommended form (per
+        # argus.example.yml). Round-trip through the unwrapped path
+        # without losing the @sha256: suffix.
+        ref = (
+            "ghcr.io/myorg/app:1.0@sha256:"
+            "f1e2d3c4b5a6f7e8d9c0b1a2c3d4e5f6"
+            "a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2"
+        )
+        targets = parse_container_config({"images": [{"image": ref}]})
+        assert len(targets) == 1
+        assert targets[0].image_ref == ref
