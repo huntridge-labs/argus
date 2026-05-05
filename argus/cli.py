@@ -1016,20 +1016,39 @@ def cmd_scan(args: argparse.Namespace) -> int:
         except ImportError:
             pass
 
-    # Container lifecycle — needs --discover or --image
+    # Container lifecycle — activated by EITHER CLI flags OR a config
+    # file with a populated ``containers:`` block. Load config first
+    # so a config-only invocation (``argus scan container --config
+    # argus.yml`` with no --image/--discover) reaches the lifecycle
+    # path; the previous gate looked at CLI flags only and shipped a
+    # confusing usage error before config was even consulted.
     if args.scanner == "container":
-        if _is_container_lifecycle(args):
-            return _cmd_container_scan(args)
+        try:
+            container_config = _load_container_config(args)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return EXIT_ERROR
+
+        if (
+            _is_container_lifecycle(args)
+            or _container_config_has_targets(container_config)
+        ):
+            return _cmd_container_scan(args, container_config=container_config)
+
         print(
-            "Usage: argus scan container [--discover PATH | --image REF]\n\n"
-            "Container image scanning requires one of:\n"
-            "  --discover PATH   Discover Dockerfiles and scan all images\n"
-            "  --image REF       Scan a specific image (can be repeated)\n\n"
+            "Usage: argus scan container "
+            "[--config FILE | --discover PATH | --image REF]\n\n"
+            "Container image scanning needs at least one source of targets:\n"
+            "  --image REF      Scan a specific image (CLI, repeatable)\n"
+            "  --discover PATH  Discover Dockerfiles in PATH\n"
+            "  --config FILE    Load `containers.images` and/or "
+            "`containers.discover`\n"
+            "                   from a YAML config file (e.g. argus.yml).\n\n"
             "Examples:\n"
-            "  argus scan container --discover ./\n"
-            "  argus scan container --discover docker/\n"
             "  argus scan container --image nginx:latest\n"
-            "  argus scan container --image myapp:v1 --image worker:v1\n",
+            "  argus scan container --discover ./docker/\n"
+            "  argus scan container --config argus.yml\n"
+            "  argus scan container --config argus.yml --image extra:tag\n",
             file=sys.stderr,
         )
         return EXIT_ERROR
@@ -1056,11 +1075,104 @@ def cmd_scan(args: argparse.Namespace) -> int:
 
 
 def _is_container_lifecycle(args: argparse.Namespace) -> bool:
-    """Check if container lifecycle flags are present."""
+    """Check if container lifecycle CLI flags are present.
+
+    Note: this is the CLI-only signal. Config-defined targets in
+    ``argus.yml`` (a ``containers.images`` list or
+    ``containers.discover`` flag) also activate the container lifecycle —
+    that path goes through ``_load_container_config`` /
+    ``_container_config_has_targets``, which the dispatcher consults
+    alongside this CLI-flag check before deciding whether to fall
+    back to the usage-error gate.
+    """
     return bool(
         getattr(args, "discover", None) is not None
         or getattr(args, "images", None)
     )
+
+
+def _load_container_config(args: argparse.Namespace) -> dict:
+    """Build the container-scan config from --config + CLI overrides.
+
+    The caller can supply targets one of three ways (or any
+    combination): an explicit ``--config FILE`` (top-level
+    ``containers:`` block), repeated ``--image REF`` flags, or
+    ``--discover PATH``. CLI flags take precedence over config-file
+    values for the keys they touch — explicit > implicit.
+
+    Raises ``ValueError`` with an actionable message when the config
+    file is unreadable, isn't a YAML mapping, or has a malformed
+    ``containers`` section. The dispatcher catches this and prints
+    the message before exiting EXIT_ERROR — users see one clean
+    diagnostic instead of an opaque traceback from deep in the
+    YAML/engine path.
+    """
+    config: dict = {}
+    config_path = getattr(args, "config", None)
+    if config_path:
+        try:
+            import yaml
+            with open(config_path, "r", encoding="utf-8") as fh:
+                file_config = yaml.safe_load(fh) or {}
+        except FileNotFoundError as exc:
+            raise ValueError(f"Config file not found: {config_path}") from exc
+        except yaml.YAMLError as exc:
+            raise ValueError(
+                f"Config file YAML parse error in {config_path}: {exc}"
+            ) from exc
+
+        if not isinstance(file_config, dict):
+            raise ValueError(
+                f"{config_path} is not a YAML mapping; expected an object "
+                "at the top level."
+            )
+        containers_section = file_config.get("containers", {})
+        if not isinstance(containers_section, dict):
+            raise ValueError(
+                f"{config_path}: 'containers' must be a mapping, got "
+                f"{type(containers_section).__name__}. Expected: "
+                "containers:\n  images:\n    - image: <ref>\n  discover: true"
+            )
+        config = dict(containers_section)
+
+    # CLI overrides — explicit > implicit. --image and --discover both
+    # OVERWRITE the corresponding config keys so the user's intent is
+    # unambiguous (and so we don't accidentally double-scan an image
+    # the user passed on the CLI to *replace* a stale config entry).
+    if getattr(args, "images", None):
+        config["images"] = [
+            {"image": img, "name": img.split(":")[0].split("/")[-1]}
+            for img in args.images
+        ]
+    if getattr(args, "discover", None) is not None:
+        config["discover"] = True
+        config["search_paths"] = [args.discover]
+    if getattr(args, "scanners", None):
+        config["scanners"] = [s.strip() for s in args.scanners.split(",")]
+
+    return config
+
+
+def _container_config_has_targets(config: dict) -> bool:
+    """Return True if the merged container config has any way to resolve targets.
+
+    Used by the dispatcher to decide whether ``argus scan container``
+    can proceed without explicit ``--discover``/``--image`` flags.
+    Mirrors the semantics of ``parse_container_config``: images list
+    non-empty, ``discover: true``, or an explicit ``search_paths``
+    list — any one is enough.
+    """
+    if not isinstance(config, dict):
+        return False
+    images = config.get("images")
+    if isinstance(images, list) and len(images) > 0:
+        return True
+    if config.get("discover"):
+        return True
+    search_paths = config.get("search_paths")
+    if isinstance(search_paths, list) and len(search_paths) > 0:
+        return True
+    return False
 
 
 def _is_dast_lifecycle(args: argparse.Namespace) -> bool:
@@ -1578,36 +1690,45 @@ def _print_missing_scanner_nudge(requested: list[str], summary) -> None:
     )
 
 
-def _cmd_container_scan(args: argparse.Namespace) -> int:
-    """Run container image scanning lifecycle (discover, build, scan, report)."""
+def _cmd_container_scan(
+    args: argparse.Namespace,
+    container_config: dict | None = None,
+) -> int:
+    """Run container image scanning lifecycle (discover, build, scan, report).
+
+    ``container_config`` is the merged config the dispatcher pre-loaded
+    via ``_load_container_config``. When ``None`` (e.g. a direct
+    test-side call), this function falls back to loading it locally —
+    that path is kept for backward compatibility with any caller that
+    still bypasses ``cmd_scan``.
+    """
     from argus.container import ContainerEngine
     from argus.reporters.container_markdown import ContainerMarkdownReporter
 
-    # Build container config from args and config file
-    config = {}
-
-    if args.config:
+    if container_config is None:
         try:
-            import yaml
-            with open(args.config, "r") as fh:
-                file_config = yaml.safe_load(fh) or {}
-            config = file_config.get("containers", {})
-        except Exception as exc:
-            print(f"Error loading config: {exc}", file=sys.stderr)
+            container_config = _load_container_config(args)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
             return EXIT_ERROR
 
-    # CLI overrides
-    if args.images:
-        config["images"] = [
-            {"image": img, "name": img.split(":")[0].split("/")[-1]}
-            for img in args.images
-        ]
-    if args.discover is not None:
-        config["discover"] = True
-        config["search_paths"] = [args.discover]
-    if args.scanners:
-        config["scanners"] = [s.strip() for s in args.scanners.split(",")]
+    # Defensive: a config that resolves to zero targets after merging
+    # CLI overrides should hit a clear error before the engine spins
+    # up, not deep inside it. The dispatcher gates this in the normal
+    # flow; this branch covers tests / direct-callers + protects
+    # against a regression where the gate stops covering a case.
+    if not _container_config_has_targets(container_config):
+        print(
+            "Error: container scan has no targets to run. Provide one of:\n"
+            "  --image REF        (CLI)\n"
+            "  --discover PATH    (CLI)\n"
+            "  containers.images  (in --config FILE)\n"
+            "  containers.discover: true + containers.search_paths  (in --config FILE)",
+            file=sys.stderr,
+        )
+        return EXIT_ERROR
 
+    config = container_config
     base_dir = args.output_dir or config.get("output_dir", "./argus-results")
     output_dir = _make_run_dir(base_dir)
     formats = args.formats or ["terminal", "markdown"]

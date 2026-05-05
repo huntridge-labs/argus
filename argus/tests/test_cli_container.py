@@ -209,7 +209,11 @@ class TestCmdScanRouting:
     def test_routes_to_container_with_discover(self, monkeypatch):
         called = {}
 
-        def fake_container_scan(args):
+        def fake_container_scan(args, **_kwargs):
+            # The dispatcher now passes ``container_config=`` so the
+            # downstream cmd doesn't have to re-load the YAML. Tolerate
+            # the kwarg without inspecting it — this test only verifies
+            # the routing decision, not the config plumbing.
             called["container"] = True
             return 0
 

@@ -55,6 +55,31 @@ reporting:
   severity_threshold: high
   output_dir: "./argus-results"
 
+# Container lifecycle targets (consumed by ``argus scan container``).
+# Defining anything under this top-level ``containers:`` key activates
+# config-driven container scans — no need to pass --image / --discover
+# on the CLI. CLI flags, when supplied, override the matching keys
+# below: explicit > implicit.
+#
+# containers:
+#   # Explicit list. Each entry: a registry image ref to scan, plus
+#   # optional dockerfile/context to build it locally first.
+#   images:
+#     - image: myorg/myapp:latest
+#     - image: myorg/worker:1.4.0
+#       dockerfile: docker/Dockerfile.worker
+#       context: .
+#
+#   # OR auto-discovery. Walks ``search_paths`` for Dockerfile,
+#   # Dockerfile.<name>, <name>.Dockerfile.
+#   discover: true
+#   search_paths:
+#     - .
+#     - docker/
+#
+#   # Override which sub-scanners run; default is trivy + grype.
+#   scanners: [trivy, grype, syft]
+
 # Execution backend configuration
 execution:
   # auto (default): containers for immutable, reproducible scans
