@@ -299,7 +299,7 @@ Install:
 
 ```
 argus view [-h] [--interface {terminal,browser}] [--port PORT]
-                  [--no-open]
+                  [--no-open] [--check]
                   [INTERFACE|PATH] [PATH]
 ```
 
@@ -315,6 +315,7 @@ argus view [-h] [--interface {terminal,browser}] [--port PORT]
 | `--interface`, `-i` | Interface to open: terminal \| browser (alternative to positional) (terminal, browser) |  |
 | `--port` | TCP port for the browser interface (default: 8080) | `8080` |
 | `--no-open` | Don't auto-open the default web browser after startup (browser interface only). By default, the browser opens when stdout is a TTY; CI and other non-interactive contexts already skip auto-open without this flag. | `false` |
+| `--check` | Validate that the resolved scan directory contains argus-results.json and print actionable remediation if not. Doesn't launch the viewer — useful in CI and pre-flight checks. | `false` |
 
 ## Quick Reference
 

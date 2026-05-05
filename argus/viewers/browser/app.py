@@ -145,10 +145,13 @@ def _resolve_scan(
                 f"Use the picker to choose a specific run."
             )
 
-        return None, (
-            f"No {RESULTS_FILENAME} inside {target}. "
-            "Pick a results directory or pass a specific JSON path via ?scan=..."
-        )
+        # No results anywhere under the target. Defer to the shared
+        # diagnoser so the message identifies the likely root cause —
+        # most often the user's argus.yml lists 'reporting.formats'
+        # without 'json', so the previous scan never wrote the file
+        # the viewers consume.
+        from argus.viewers.diagnose import diagnose_missing_results
+        return None, diagnose_missing_results(direct)
 
     return None, f"Unsupported path kind: {target}"
 

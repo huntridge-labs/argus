@@ -290,6 +290,69 @@ class TestCmdScan:
         captured = capsys.readouterr()
         assert "unknown scanner 'nonexistent'" in captured.err
 
+    def test_scan_source_always_emits_canonical_json(self, monkeypatch, tmp_path):
+        """Regression for Option C: argus-results.json must be written
+        regardless of the user's ``reporting.formats``. Captures the
+        format names the cli.py loop asks ``get_reporter`` for, and
+        asserts 'json' is in the list even though the user configured
+        formats=[terminal] only."""
+        from argus.core.config import ArgusConfig, ReportingConfig, ExecutionConfig
+        from argus.core.models import ScanSummary
+
+        config = ArgusConfig(
+            reporting=ReportingConfig(
+                output_dir=str(tmp_path),
+                formats=["terminal"],   # deliberately omits json
+                severity_threshold=None,
+            ),
+            execution=ExecutionConfig(),
+        )
+        monkeypatch.setattr(
+            "argus.core.config.ArgusConfig.load",
+            lambda _path: config,
+        )
+
+        summary = ScanSummary(results=[], severity_threshold=None)
+        monkeypatch.setattr(
+            "argus.core.engine.ArgusEngine.__init__",
+            lambda self, _cfg: setattr(self, "config", config)
+            or setattr(self, "_scanners", {}),
+        )
+        monkeypatch.setattr(
+            "argus.core.engine.ArgusEngine.run",
+            lambda self, **kwargs: summary,
+        )
+        monkeypatch.setattr(
+            "argus.core.engine.ArgusEngine.register_scanner",
+            lambda self, s: None,
+        )
+        monkeypatch.setattr("argus.scanners.get_available_scanners", lambda: [])
+
+        # Capture every format name the dispatch loop requests so we
+        # can assert canonical JSON was demanded alongside the user's
+        # configured formats.
+        requested: list[str] = []
+
+        def capture_reporter(fmt):
+            requested.append(fmt)
+            return MagicMock()
+
+        monkeypatch.setattr("argus.reporters.get_reporter", capture_reporter)
+        monkeypatch.setattr("argus.audit.get_logger", lambda *a, **kw: MagicMock())
+        monkeypatch.setattr(
+            "argus.audit.create_manifest",
+            lambda **kw: MagicMock(execution_backend=None),
+        )
+        monkeypatch.setattr("argus.audit.finalize_manifest", lambda *a, **kw: None)
+
+        args = _make_scan_args(output_dir=str(tmp_path))
+        cmd_scan(args)
+
+        # Canonical JSON is requested even though config didn't list it.
+        # User's terminal report is still emitted.
+        assert "json" in requested
+        assert "terminal" in requested
+
     def test_scan_source_runs_engine(self, monkeypatch, tmp_path):
         """A valid scan with no findings should call engine.run and return EXIT_SUCCESS."""
         from argus.core.config import ArgusConfig, ReportingConfig, ExecutionConfig
@@ -849,6 +912,41 @@ class TestViewSubcommand:
         assert args.interface_or_path is None
         assert args.interface_flag is None
         assert args.path_arg is None
+        assert args.check is False
+
+    def test_view_check_flag_parses(self):
+        parser = build_parser()
+        args = parser.parse_args(["view", "--check"])
+        assert args.check is True
+
+    def test_view_check_succeeds_when_results_present(self, tmp_path, capsys):
+        """--check resolves the path, finds argus-results.json, prints OK,
+        and exits 0 without launching the viewer."""
+        from argus.cli import _check_view_artifact, EXIT_SUCCESS
+        (tmp_path / "argus-results.json").write_text("{}")
+
+        rc = _check_view_artifact(str(tmp_path))
+        assert rc == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "OK:" in out
+        assert "argus-results.json" in out
+
+    def test_view_check_emits_diagnoser_when_results_missing(self, tmp_path, capsys, monkeypatch):
+        """--check fails clean with the diagnoser's remediation message —
+        no traceback, no launching viewer, EXIT_ERROR for CI gating."""
+        from argus.cli import _check_view_artifact, EXIT_ERROR
+        # No argus-results.json in tmp_path; no argus.yml either, so we
+        # exercise the generic-hint branch.
+        monkeypatch.chdir(tmp_path)
+
+        rc = _check_view_artifact(str(tmp_path))
+        assert rc == EXIT_ERROR
+        err = capsys.readouterr().err
+        # Original missing-file diagnostic is preserved...
+        assert "argus-results.json not found" in err
+        # ...and accompanied by both fix paths.
+        assert "argus scan --format json" in err
+        assert "reporting.formats" in err
 
     def test_view_positional_terminal(self):
         parser = build_parser()

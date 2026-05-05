@@ -109,3 +109,35 @@ class TestFlattenFindings:
         summary = ScanSummary(results=[ScanResult(scanner="osv", findings=[f])])
         out = flatten_findings(summary)
         assert out[0].scanner == "osv"
+
+
+class TestMissingResultsRoutesThroughDiagnoser:
+    """Regression: locate_results' FileNotFoundError must include the
+    config-aware remediation hint, not just the bare "file not found"
+    message. Both viewers surface this exception verbatim."""
+
+    def test_error_includes_diagnoser_remediation(self, tmp_path, monkeypatch):
+        # No argus.yml anywhere → generic-hint branch of the diagnoser.
+        monkeypatch.chdir(tmp_path)
+        with pytest.raises(FileNotFoundError) as excinfo:
+            locate_results(str(tmp_path))
+        msg = str(excinfo.value)
+        # File is identified.
+        assert RESULTS_FILENAME in msg
+        # Both fix paths are surfaced.
+        assert "argus scan --format json" in msg
+        assert "reporting.formats" in msg
+
+    def test_error_calls_out_config_root_cause_when_json_omitted(self, tmp_path, monkeypatch):
+        """Targeted hint when argus.yml is present but missing 'json'."""
+        (tmp_path / "argus.yml").write_text(
+            "reporting:\n  formats:\n    - terminal\n    - sarif\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with pytest.raises(FileNotFoundError) as excinfo:
+            locate_results(str(tmp_path))
+        msg = str(excinfo.value)
+        # Targeted-branch markers.
+        assert "Detected" in msg
+        assert "argus.yml" in msg
+        assert "'terminal'" in msg and "'sarif'" in msg

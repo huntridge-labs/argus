@@ -31,11 +31,14 @@ def locate_results(path: str | Path | None) -> Path:
         p = Path(path)
         candidate = p / RESULTS_FILENAME if p.is_dir() else p
     if not candidate.is_file():
-        raise FileNotFoundError(
-            f"Could not find {RESULTS_FILENAME} at {candidate}. "
-            "Run `argus scan --format json` first, or pass the path to "
-            "an existing results directory."
-        )
+        # Defer to the shared diagnoser so the message identifies the
+        # likely root cause (most often: ``reporting.formats`` in
+        # argus.yml omits ``json``) rather than just reporting the
+        # missing file. Both viewers raise this exception and surface
+        # the message verbatim, so users get the same actionable
+        # remediation regardless of which interface they invoked.
+        from argus.viewers.diagnose import diagnose_missing_results
+        raise FileNotFoundError(diagnose_missing_results(candidate))
     return candidate
 
 
