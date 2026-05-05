@@ -849,6 +849,41 @@ class TestViewSubcommand:
         assert args.interface_or_path is None
         assert args.interface_flag is None
         assert args.path_arg is None
+        assert args.check is False
+
+    def test_view_check_flag_parses(self):
+        parser = build_parser()
+        args = parser.parse_args(["view", "--check"])
+        assert args.check is True
+
+    def test_view_check_succeeds_when_results_present(self, tmp_path, capsys):
+        """--check resolves the path, finds argus-results.json, prints OK,
+        and exits 0 without launching the viewer."""
+        from argus.cli import _check_view_artifact, EXIT_SUCCESS
+        (tmp_path / "argus-results.json").write_text("{}")
+
+        rc = _check_view_artifact(str(tmp_path))
+        assert rc == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "OK:" in out
+        assert "argus-results.json" in out
+
+    def test_view_check_emits_diagnoser_when_results_missing(self, tmp_path, capsys, monkeypatch):
+        """--check fails clean with the diagnoser's remediation message —
+        no traceback, no launching viewer, EXIT_ERROR for CI gating."""
+        from argus.cli import _check_view_artifact, EXIT_ERROR
+        # No argus-results.json in tmp_path; no argus.yml either, so we
+        # exercise the generic-hint branch.
+        monkeypatch.chdir(tmp_path)
+
+        rc = _check_view_artifact(str(tmp_path))
+        assert rc == EXIT_ERROR
+        err = capsys.readouterr().err
+        # Original missing-file diagnostic is preserved...
+        assert "argus-results.json not found" in err
+        # ...and accompanied by both fix paths.
+        assert "argus scan --format json" in err
+        assert "reporting.formats" in err
 
     def test_view_positional_terminal(self):
         parser = build_parser()

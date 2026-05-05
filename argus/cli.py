@@ -230,6 +230,13 @@ def _build_view_parser(subparsers: argparse._SubParsersAction) -> None:
              "stdout is a TTY; CI and other non-interactive contexts already "
              "skip auto-open without this flag.",
     )
+    view_parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Validate that the resolved scan directory contains "
+             "argus-results.json and print actionable remediation if not. "
+             "Doesn't launch the viewer — useful in CI and pre-flight checks.",
+    )
 
 
 def _resolve_view_args(args: argparse.Namespace) -> tuple[str, str | None] | None:
@@ -290,12 +297,40 @@ def cmd_view(args: argparse.Namespace) -> int:
     if resolved is None:
         return EXIT_ERROR
     interface, path = resolved
+
+    # --check short-circuits before launching the viewer: validate that
+    # argus-results.json is reachable from the supplied path and print
+    # remediation guidance if not. Useful in CI and as a pre-flight
+    # check before a maintainer hands off "open this scan in argus
+    # view" to a less-technical stakeholder.
+    if getattr(args, "check", False):
+        return _check_view_artifact(path)
+
     return _launch_view(
         interface,
         path=path,
         port=args.port,
         open_browser=_should_open_browser(args),
     )
+
+
+def _check_view_artifact(path: str | None) -> int:
+    """Resolve ``path`` to an argus-results.json without launching the viewer.
+
+    Reuses the terminal loader's resolver so the success / failure
+    message matches what a real ``argus view`` would surface. On
+    success, prints the resolved path; on failure, prints the
+    diagnoser's remediation output (config-aware hint identifying the
+    likely root cause) to stderr.
+    """
+    from argus.viewers.terminal.loader import locate_results
+    try:
+        resolved = locate_results(path)
+    except FileNotFoundError as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_ERROR
+    print(f"OK: {resolved} is readable.")
+    return EXIT_SUCCESS
 
 
 def _should_open_browser(args: argparse.Namespace) -> bool:
