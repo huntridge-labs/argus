@@ -59,21 +59,33 @@ def discover_dockerfiles(search_paths: list[str]) -> list[ContainerTarget]:
 def parse_container_config(config: dict) -> list[ContainerTarget]:
     """Parse container targets from argus.yml config.
 
-    Config format::
+    Accepts both shapes:
 
-        containers:
-          images:
-            - image: myapp:latest
-              dockerfile: Dockerfile
-            - image: worker:latest
-              dockerfile: docker/Dockerfile.worker
-              context: .
-          discover: true
-          search_paths: [".", "docker/"]
+    Wrapped — full ``argus.yml`` mapping with the top-level
+    ``containers:`` key still in place::
+
+        {"containers": {"images": [...], "discover": true, ...}}
+
+    Unwrapped — just the inner ``containers:`` mapping (the shape the
+    CLI's ``_load_container_config`` returns after extracting the
+    section and merging CLI overrides in place)::
+
+        {"images": [...], "discover": true, ...}
+
+    The engine's other config accessors (``self.config.get("images")``,
+    ``self.config.get("search_paths")``, etc.) operate on the
+    unwrapped shape — leaving this function strict on the wrapped
+    shape silently dropped config-driven targets when the CLI handed
+    in the unwrapped form. Tolerate both so the parser can't be the
+    only place in the dispatch path that disagrees about config
+    layout.
     """
-    containers = config.get("containers", {})
-    if not isinstance(containers, dict):
-        return []
+    nested = config.get("containers")
+    if isinstance(nested, dict):
+        containers = nested
+    else:
+        # Unwrapped shape — treat the input as already-the-inner mapping.
+        containers = config if isinstance(config, dict) else {}
 
     targets: list[ContainerTarget] = []
 
