@@ -44,6 +44,11 @@ scanners:
   #   target_url: "http://localhost:3000"
 
 reporting:
+  # ``argus-results.json`` is the canonical scan artifact and is
+  # always written regardless of this list — the viewers, the audit
+  # manifest, and the ``argus report`` subcommand all consume it.
+  # This list selects which *additional* human-readable reports to
+  # emit alongside the JSON. Available: terminal, markdown, sarif.
   formats:
     - terminal
     - sarif

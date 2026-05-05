@@ -1297,10 +1297,19 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
         finalize_manifest(manifest, exit_code=EXIT_ERROR, output_dir=output_dir)
         return EXIT_ERROR
 
-    # Generate reports
+    # Generate reports.
+    #
+    # ``ensure_canonical_json`` guarantees the source-of-truth artifact
+    # (``argus-results.json``) is always written, regardless of what
+    # the user listed in ``reporting.formats``. The viewers, the audit
+    # manifest, and the ``argus report`` subcommand all consume that
+    # file — keeping it implicitly mandatory means a config like
+    # ``formats: [terminal, sarif]`` no longer silently breaks
+    # ``argus view`` (the diagnoser still helps for legacy result dirs
+    # produced before this contract was in place).
     try:
-        from argus.reporters import get_reporter
-        for fmt in config.reporting.formats:
+        from argus.reporters import ensure_canonical_json, get_reporter
+        for fmt in ensure_canonical_json(config.reporting.formats):
             reporter = get_reporter(fmt)
             reporter.report(summary, output_dir)
             log.debug("Generated %s report", fmt)
