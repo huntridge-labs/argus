@@ -1,5 +1,6 @@
 """Scan container images with trivy and grype, deduplicate findings."""
 
+import json
 import logging
 import shutil
 import tempfile
@@ -232,6 +233,70 @@ def _container_vol_args(
     return args
 
 
+def _validate_scanner_output(
+    scanner_name: str,
+    output_file: Path,
+    result,
+) -> None:
+    """Raise RuntimeError when a sub-scanner's run looks unhealthy.
+
+    Container sub-scanners (trivy, grype) all hand off via the same
+    "subprocess writes JSON to a file path, we parse it" contract.
+    They all have the same failure modes:
+
+    1. subprocess exits non-zero — DB pull failed, image not
+       resolvable, registry auth missing, etc. Anything that prints
+       to stderr and bails before producing meaningful output.
+    2. output file isn't there — scanner crashed mid-run.
+    3. output file exists but is 0 bytes — common when a wrapper
+       process (e.g. ``docker run --rm``) exits non-zero from a
+       different stage than the scanner itself, leaving a stub
+       file from the redirect.
+
+    All three modes need to surface the scanner's own stderr (clipped
+    for terminal sanity), use ERROR-level logging without dumping a
+    Python traceback, and raise a single ``RuntimeError`` shape so
+    the caller can record it under ``scanner_errors`` consistently.
+
+    JSON parse failure is intentionally NOT validated here — every
+    sub-scanner uses a different parser, so the per-runner caller
+    owns that check (and translates exceptions into RuntimeError
+    via the same shape).
+    """
+    stderr = result.stderr.strip()[:500] if result.stderr else ""
+    stderr_label = stderr or "no stderr"
+
+    if result.returncode != 0:
+        logger.error(
+            "%s exited non-zero (%d): %s",
+            scanner_name, result.returncode, stderr_label,
+        )
+        raise RuntimeError(
+            f"{scanner_name} scan failed (exit {result.returncode}): "
+            f"{stderr or 'no output'}"
+        )
+
+    if not output_file.exists():
+        logger.error(
+            "%s produced no output file (exit %d): %s",
+            scanner_name, result.returncode, stderr_label,
+        )
+        raise RuntimeError(
+            f"{scanner_name} scan produced no output file "
+            f"(exit {result.returncode}): {stderr or 'no output'}"
+        )
+
+    if output_file.stat().st_size == 0:
+        logger.error(
+            "%s produced 0-byte output (exit %d): %s",
+            scanner_name, result.returncode, stderr_label,
+        )
+        raise RuntimeError(
+            f"{scanner_name} scan produced empty output file "
+            f"(exit {result.returncode}): {stderr or 'no output'}"
+        )
+
+
 def _run_trivy(
     image_ref: str, tmp_path: Path, local: bool = False,
 ) -> list[Finding]:
@@ -318,21 +383,21 @@ def _run_trivy(
         logger.error("trivy binary not found")
         return []
 
-    if not output_file.exists():
-        stderr = result.stderr.strip()[:500]
-        logger.error(
-            "trivy produced no output (exit %d): %s",
-            result.returncode, stderr,
-        )
-        raise RuntimeError(
-            f"trivy scan failed (exit {result.returncode}): {stderr or 'no output'}"
-        )
+    _validate_scanner_output("trivy", output_file, result)
 
     try:
         return _parser.parse_trivy_results(output_file)
-    except Exception:
-        logger.exception("Failed to parse trivy results for %s", image_ref)
-        raise
+    except json.JSONDecodeError as exc:
+        logger.error("trivy output JSON parse error for %s: %s", image_ref, exc)
+        raise RuntimeError(
+            f"trivy output JSON parse error: {exc}"
+        ) from exc
+    except Exception as exc:
+        # Non-decode parser errors (schema mismatch, missing keys) —
+        # log without traceback and re-raise as RuntimeError so the
+        # engine catches it as a structured scanner_errors entry.
+        logger.error("trivy output parse error for %s: %s", image_ref, exc)
+        raise RuntimeError(f"trivy output parse error: {exc}") from exc
 
 
 def _run_grype(
@@ -407,21 +472,26 @@ def _run_grype(
         logger.error("grype binary not found")
         return []
 
-    if not output_file.exists():
-        stderr = result.stderr.strip()[:500]
-        logger.error(
-            "grype produced no output (exit %d): %s",
-            result.returncode, stderr,
-        )
-        raise RuntimeError(
-            f"grype scan failed (exit {result.returncode}): {stderr or 'no output'}"
-        )
+    _validate_scanner_output("grype", output_file, result)
 
     try:
         return _parser.parse_grype_results(output_file)
-    except Exception:
-        logger.exception("Failed to parse grype results for %s", image_ref)
-        return []
+    except json.JSONDecodeError as exc:
+        # The user-reported regression: grype writes a 0-byte file
+        # when its image-resolution / catalog step fails after the
+        # output handle is created. Validation above catches that
+        # branch first, but JSON-shape errors (truncated output,
+        # malformed schema) still land here. Raise instead of
+        # swallowing — the engine catches the RuntimeError and
+        # records it under scanner_errors so the summary reflects
+        # reality instead of silently dropping grype's contribution.
+        logger.error("grype output JSON parse error for %s: %s", image_ref, exc)
+        raise RuntimeError(
+            f"grype output JSON parse error: {exc}"
+        ) from exc
+    except Exception as exc:
+        logger.error("grype output parse error for %s: %s", image_ref, exc)
+        raise RuntimeError(f"grype output parse error: {exc}") from exc
 
 
 def _run_syft(image_ref: str, tmp_path: Path) -> None:
