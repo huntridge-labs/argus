@@ -214,6 +214,82 @@ class TestRunGrype:
         assert findings[0].cve == "CVE-2024-1234"
 
 
+class TestRunGrypeLocalDaemonScheme:
+    """When Grype scans a locally-built image, its CLI source-scheme
+    prefix collides with image refs that happen to start with
+    ``docker:`` (etc.). The runner forces the docker-daemon source
+    explicitly so user-supplied refs are never misparsed.
+    """
+
+    def _force_local_binary(self, monkeypatch):
+        monkeypatch.setattr(
+            "argus.container.scanner.shutil.which",
+            lambda name: "/usr/local/bin/grype" if name == "grype" else None,
+        )
+
+    def test_local_target_is_prefixed_with_docker_scheme(
+        self, tmp_path, monkeypatch,
+    ):
+        """The image ref grype sees gets a ``docker:`` scheme prefix
+        when ``local=True``, so the daemon source is unambiguous."""
+        self._force_local_binary(monkeypatch)
+        captured = {}
+
+        def fake_run(cmd, **_kwargs):
+            captured["cmd"] = list(cmd)
+            (tmp_path / "grype-results.json").write_text(
+                '{"matches": []}'
+            )
+            return _completed(returncode=0)
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+        _run_grype("docker:argus-scan", tmp_path, local=True)
+
+        # The argument grype receives is the user's literal ref,
+        # prefixed with the scheme. ``docker:argus-scan`` becomes
+        # ``docker:docker:argus-scan`` — first half is the scheme,
+        # the rest is the daemon image identifier.
+        assert "docker:docker:argus-scan" in captured["cmd"]
+        # And the bare un-prefixed ref isn't accidentally also there.
+        assert captured["cmd"].count("docker:argus-scan") == 0
+
+    def test_local_target_with_clean_ref_still_gets_prefix(
+        self, tmp_path, monkeypatch,
+    ):
+        """Refs that don't collide still get the prefix — uniform
+        behavior is easier to reason about than "sometimes prefix"."""
+        self._force_local_binary(monkeypatch)
+        captured = {}
+
+        def fake_run(cmd, **_kwargs):
+            captured["cmd"] = list(cmd)
+            (tmp_path / "grype-results.json").write_text('{"matches": []}')
+            return _completed(returncode=0)
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+        _run_grype("myapp:dev", tmp_path, local=True)
+        assert "docker:myapp:dev" in captured["cmd"]
+
+    def test_remote_target_is_not_prefixed(self, tmp_path, monkeypatch):
+        """For registry scans (``local=False``), the original ref
+        passes through untouched — the docker-daemon scheme would
+        force grype to look at a daemon that doesn't have the image."""
+        self._force_local_binary(monkeypatch)
+        captured = {}
+
+        def fake_run(cmd, **_kwargs):
+            captured["cmd"] = list(cmd)
+            (tmp_path / "grype-results.json").write_text('{"matches": []}')
+            return _completed(returncode=0)
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+        _run_grype("registry.example/myapp:1.0", tmp_path, local=False)
+
+        assert "registry.example/myapp:1.0" in captured["cmd"]
+        # No accidental scheme prefix on remote scans.
+        assert "docker:registry.example/myapp:1.0" not in captured["cmd"]
+
+
 class TestRunTrivy:
     """Mirror coverage for trivy — same failure-mode contract via the
     shared validator. Confirms grype isn't the only beneficiary of the

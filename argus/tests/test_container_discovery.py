@@ -275,3 +275,74 @@ class TestParseContainerConfigUnwrappedShape:
         targets = parse_container_config({"images": [{"image": ref}]})
         assert len(targets) == 1
         assert targets[0].image_ref == ref
+
+
+class TestGrypePrefixCollisionWarning:
+    """Image refs that collide with Grype's CLI source-scheme prefixes
+    (``docker:``, ``podman:``, ``registry:``, etc.) get mis-parsed by
+    Grype as scheme requests. Argus warns at config-load so users see
+    the issue before the build runs."""
+
+    def test_warn_on_docker_prefix(self):
+        from argus.container.discovery import warn_on_grype_prefix_collision
+        msg = warn_on_grype_prefix_collision("docker:argus-scan")
+        assert msg is not None
+        # Names the actual prefix and explains the misparse.
+        assert "docker:" in msg
+        assert "scheme" in msg.lower() or "mis-parse" in msg.lower()
+        # Suggests a rename path.
+        assert "Rename" in msg or "rename" in msg
+
+    def test_warn_on_each_reserved_prefix(self):
+        from argus.container.discovery import (
+            GRYPE_RESERVED_PREFIXES,
+            warn_on_grype_prefix_collision,
+        )
+        # Sanity: the documented reserved-prefix list is non-empty
+        # and every entry triggers the warning.
+        assert len(GRYPE_RESERVED_PREFIXES) >= 5
+        for prefix in GRYPE_RESERVED_PREFIXES:
+            ref = f"{prefix}myapp"
+            msg = warn_on_grype_prefix_collision(ref)
+            assert msg is not None, f"expected warning for {ref!r}"
+
+    def test_no_warning_for_clean_refs(self):
+        from argus.container.discovery import warn_on_grype_prefix_collision
+        for ref in (
+            "myapp:dev",
+            "argus-app:dev",
+            "myorg/app:1.0",
+            "ghcr.io/myorg/app:1.0",
+            "alpine:3.20@sha256:abc123",
+        ):
+            assert warn_on_grype_prefix_collision(ref) is None, (
+                f"unexpected warning for {ref!r}"
+            )
+
+    def test_warning_logged_during_parse(self, caplog):
+        # Integration: parse_container_config logs the warning when
+        # an image ref collides. caplog captures it via the
+        # ``argus.container`` logger.
+        import logging
+        caplog.set_level(logging.WARNING, logger="argus.container")
+
+        config = {
+            "images": [
+                {"image": "docker:argus-scan", "dockerfile": "Dockerfile"},
+            ],
+        }
+        targets = parse_container_config(config)
+        # Target is still resolved — the warning is non-fatal.
+        assert len(targets) == 1
+        # And the warning surfaced.
+        assert any(
+            "docker:argus-scan" in record.message
+            and "scheme" in record.message.lower()
+            for record in caplog.records
+        ), "expected a Grype prefix-collision warning during parse"
+
+    def test_non_string_image_ref_does_not_crash(self):
+        from argus.container.discovery import warn_on_grype_prefix_collision
+        # Defensive — never raise on malformed input.
+        assert warn_on_grype_prefix_collision(None) is None  # type: ignore[arg-type]
+        assert warn_on_grype_prefix_collision(123) is None  # type: ignore[arg-type]
