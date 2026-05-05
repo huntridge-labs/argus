@@ -65,8 +65,8 @@ argus scan [-h] [--path PATH] [--config CONFIG]
                   [--fail-on-scanner-error] [--timeout SECONDS]
                   [--no-parallel] [--allow-local-versions] [--no-cache]
                   [--discover [PATH]] [--image REF] [--scanners SCANNERS]
-                  [--target URL] [--port PORT] [--env KEY=VALUE]
-                  [--scan-type {baseline,full}]
+                  [--no-keep-raw] [--target URL] [--port PORT]
+                  [--env KEY=VALUE] [--scan-type {baseline,full}]
                   [--startup-timeout STARTUP_TIMEOUT]
                   [scanner]
 ```
@@ -108,6 +108,7 @@ argus scan [-h] [--path PATH] [--config CONFIG]
 | `--discover` | Discover Dockerfiles in PATH (default: current directory) |  |
 | `--image` | Container image to scan (can be repeated) |  |
 | `--scanners` | Sub-scanners for container scanning: trivy,grype,syft (default: trivy,grype) |  |
+| `--no-keep-raw` | Do not persist raw per-scanner output (trivy-results.json, grype-results.json, syft-sbom.json) under <output_dir>/raw/<image>/. By default raw artifacts are kept alongside the canonical argus-results.json so users can drill into individual scanner output for forensics or manual triage. Set ``containers.keep_raw: false`` in argus.yml for the same effect via config. | `false` |
 
 **Dast Scanning:**
 

@@ -123,6 +123,7 @@ def scan_image(
     target: ContainerTarget,
     scanners: tuple[str, ...] = ("trivy", "grype"),
     sbom: bool = True,
+    raw_output_dir: Path | None = None,
 ) -> ContainerScanResult:
     """Scan a single container image with trivy and/or grype.
 
@@ -132,7 +133,19 @@ def scan_image(
 
     For locally-built images, scanners reference the local Docker daemon.
     Per-scanner errors are caught and recorded, not swallowed.
+
+    ``raw_output_dir``: when supplied, the raw scanner output files
+    (``trivy-results.json``, ``grype-results.json``, ``syft-sbom.json``)
+    are copied into this directory before the temp dir is cleaned up.
+    Lets users preserve full per-scanner artifacts for forensics,
+    audit, or manual triage workflows alongside the canonical
+    ``argus-results.json``. ``None`` (the default) means transient
+    output — historic behavior.
     """
+    import shutil as _shutil  # local import to avoid shadowing the
+                              # module-level ``shutil`` reference used
+                              # by ``shutil.which`` checks below.
+
     trivy_findings: list[Finding] = []
     grype_findings: list[Finding] = []
     scanner_errors: dict[str, str] = {}
@@ -163,6 +176,29 @@ def scan_image(
 
         if sbom and "syft" not in scanners:
             _run_syft(target.image_ref, tmp_path)
+
+        # Persist raw scanner artifacts (best-effort) before the
+        # tempdir is wiped. We copy whatever files exist; missing
+        # files (e.g. grype failed before writing) just don't get
+        # copied — the structured ``scanner_errors`` already records
+        # why. Errors during copy are non-fatal: the scan succeeded,
+        # the canonical JSON is still emitted upstream.
+        if raw_output_dir is not None:
+            try:
+                raw_output_dir.mkdir(parents=True, exist_ok=True)
+                for fname in (
+                    "trivy-results.json",
+                    "grype-results.json",
+                    "syft-sbom.json",
+                ):
+                    src = tmp_path / fname
+                    if src.exists() and src.stat().st_size > 0:
+                        _shutil.copy2(src, raw_output_dir / fname)
+            except OSError as exc:
+                logger.warning(
+                    "Failed to persist raw scanner outputs to %s: %s",
+                    raw_output_dir, exc,
+                )
 
     combined = deduplicate_findings(trivy_findings, grype_findings)
 

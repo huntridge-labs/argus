@@ -101,6 +101,15 @@ reporting:
 #
 #   # Override which sub-scanners run; default is trivy + grype.
 #   scanners: [trivy, grype, syft]
+#
+#   # Persist raw per-scanner artifacts (trivy-results.json,
+#   # grype-results.json, syft-sbom.json) under
+#   # ``<output_dir>/raw/<image>/`` alongside the canonical
+#   # argus-results.json. Default is true so the artifacts are
+#   # available for forensics, audit, or manual triage. Set false
+#   # (or pass --no-keep-raw on the CLI) to skip — saves a few MB
+#   # per image when running in tight CI environments.
+#   keep_raw: true
 
 # Execution backend configuration
 execution:

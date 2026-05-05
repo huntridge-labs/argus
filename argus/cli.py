@@ -616,6 +616,18 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         default=None,
         help="Sub-scanners for container scanning: trivy,grype,syft (default: trivy,grype)",
     )
+    container_group.add_argument(
+        "--no-keep-raw",
+        action="store_true",
+        dest="no_keep_raw",
+        help="Do not persist raw per-scanner output (trivy-results.json, "
+             "grype-results.json, syft-sbom.json) under "
+             "<output_dir>/raw/<image>/. By default raw artifacts are "
+             "kept alongside the canonical argus-results.json so users "
+             "can drill into individual scanner output for forensics or "
+             "manual triage. Set ``containers.keep_raw: false`` in argus.yml "
+             "for the same effect via config.",
+    )
 
     # ZAP DAST flags (used with: argus scan zap)
     dast_group = scan_parser.add_argument_group(
@@ -1733,6 +1745,18 @@ def _cmd_container_scan(
     output_dir = _make_run_dir(base_dir)
     formats = args.formats or ["terminal", "markdown"]
 
+    # Decide whether to persist raw per-scanner outputs alongside the
+    # canonical argus-results.json. Default is ON — the user just ran
+    # a scan and would expect those artifacts to be available for
+    # manual triage. Opt out via ``--no-keep-raw`` (CLI) or
+    # ``containers.keep_raw: false`` (argus.yml). CLI flag wins on
+    # conflict, matching the rest of the dispatcher's
+    # explicit-over-implicit posture.
+    keep_raw_config = config.get("keep_raw", True)
+    keep_raw = bool(keep_raw_config) and not getattr(args, "no_keep_raw", False)
+    if keep_raw:
+        config["_raw_output_root"] = str(Path(output_dir) / "raw")
+
     # Run
     try:
         engine = ContainerEngine(config)
@@ -1745,6 +1769,42 @@ def _cmd_container_scan(
         print(f"Error: container scan failed: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
+    # Build a canonical ScanSummary view of the container results so
+    # the standard reporters (json → argus-results.json, sarif) and
+    # ``argus view`` can consume container scans the same way they
+    # consume source scans. Each container target becomes a
+    # ScanResult; the per-image domain metadata (image_ref, build
+    # status, scanner_errors) lifts onto ScanResult.metadata so the
+    # browser dashboard and exporters surface it.
+    from argus.core.models import ScanResult, ScanSummary
+    canonical_results = [
+        ScanResult(
+            scanner=f"container/{r.name}",
+            findings=list(r.combined_findings),
+            metadata={
+                "image_ref": r.image_ref,
+                "build_success": r.build_success,
+                **(
+                    {"scanner_errors": dict(r.scanner_errors)}
+                    if r.scanner_errors else {}
+                ),
+                **(
+                    {"scan_error": r.scan_error}
+                    if getattr(r, "scan_error", None) else {}
+                ),
+            },
+        )
+        for r in summary.results
+    ]
+    canonical_summary = ScanSummary(results=canonical_results)
+
+    # Always emit argus-results.json — same canonical-artifact
+    # contract the source-scan flow established. ``argus view`` and
+    # the audit manifest both consume this regardless of what the
+    # user listed in ``formats``.
+    from argus.reporters import get_reporter
+    get_reporter("json").report(canonical_summary, output_dir)
+
     # Reports
     for fmt in formats:
         if fmt == "markdown":
@@ -1755,16 +1815,15 @@ def _cmd_container_scan(
         elif fmt == "terminal":
             _print_container_terminal(summary)
         elif fmt == "json":
+            # Domain-shaped per-image summary (container_count etc.)
+            # lives at container-scan.json. The canonical
+            # argus-results.json was already written above; this
+            # is the supplementary domain artifact for tooling that
+            # wants per-image stats without parsing findings.
             _write_container_json(summary, output_dir)
         elif fmt == "sarif":
-            from argus.core.models import ScanResult, ScanSummary
-            from argus.reporters import get_reporter
-            results = [
-                ScanResult(scanner=f"container/{r.name}", findings=r.combined_findings)
-                for r in summary.results
-            ]
             sarif_reporter = get_reporter("sarif")
-            sarif_reporter.report(ScanSummary(results=results), output_dir)
+            sarif_reporter.report(canonical_summary, output_dir)
 
     # Exit code — scanner failures are always non-zero
     scan_failures = getattr(summary, "scan_failures", 0)

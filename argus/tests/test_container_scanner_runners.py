@@ -333,6 +333,177 @@ class TestRunTrivy:
 # ───────────────────────────────────────────────
 
 
+class TestScanImageRawOutputPersistence:
+    """``scan_image(raw_output_dir=...)`` copies raw scanner artifacts
+    into a caller-supplied directory so ``argus-results/<run>/raw/``
+    can preserve trivy/grype/syft per-scanner output for forensics
+    after the underlying tempdir is cleaned up."""
+
+    def _stub_runners(self, monkeypatch, write_files=("trivy", "grype")):
+        """Replace the live scanner runners with stubs that drop the
+        files we'd expect to see on a successful real run. Lets these
+        tests focus on the copy/persistence layer without touching
+        the actual binaries."""
+        from argus.container import scanner as scanner_mod
+
+        def fake_trivy(image_ref, tmp_path, local=False):
+            if "trivy" in write_files:
+                (tmp_path / "trivy-results.json").write_text('{"Results": []}')
+            return []
+
+        def fake_grype(image_ref, tmp_path, local=False):
+            if "grype" in write_files:
+                (tmp_path / "grype-results.json").write_text('{"matches": []}')
+            return []
+
+        def fake_syft(image_ref, tmp_path):
+            if "syft" in write_files:
+                (tmp_path / "syft-sbom.json").write_text('{"artifacts": []}')
+
+        monkeypatch.setattr(scanner_mod, "_run_trivy", fake_trivy)
+        monkeypatch.setattr(scanner_mod, "_run_grype", fake_grype)
+        monkeypatch.setattr(scanner_mod, "_run_syft", fake_syft)
+
+    def test_raw_outputs_copied_when_dir_supplied(self, tmp_path, monkeypatch):
+        from argus.container.scanner import scan_image
+        from argus.container.discovery import ContainerTarget
+
+        self._stub_runners(monkeypatch, write_files=("trivy", "grype", "syft"))
+
+        target = ContainerTarget(name="app", image_ref="myapp:dev")
+        raw_dir = tmp_path / "raw" / "app"
+
+        scan_image(target, sbom=True, raw_output_dir=raw_dir)
+
+        # All three artifacts persisted at the expected names.
+        assert (raw_dir / "trivy-results.json").exists()
+        assert (raw_dir / "grype-results.json").exists()
+        assert (raw_dir / "syft-sbom.json").exists()
+        # Contents survived intact.
+        assert "Results" in (raw_dir / "trivy-results.json").read_text()
+
+    def test_no_copy_when_raw_output_dir_is_none(self, tmp_path, monkeypatch):
+        # Default path — historic behavior — leaves no artifacts on
+        # disk after the tempdir cleanup.
+        from argus.container.scanner import scan_image
+        from argus.container.discovery import ContainerTarget
+
+        self._stub_runners(monkeypatch)
+
+        target = ContainerTarget(name="app", image_ref="myapp:dev")
+        scan_image(target, sbom=False, raw_output_dir=None)
+
+        # No `raw/` directory was created (the test's tmp_path is
+        # otherwise empty).
+        assert not (tmp_path / "raw").exists()
+
+    def test_partial_outputs_persisted_when_some_scanners_skipped(
+        self, tmp_path, monkeypatch,
+    ):
+        # Only trivy ran (grype skipped or failed); the raw dir
+        # contains just trivy's file. Missing files don't block the
+        # copy of the ones that exist.
+        from argus.container.scanner import scan_image
+        from argus.container.discovery import ContainerTarget
+
+        self._stub_runners(monkeypatch, write_files=("trivy",))
+
+        target = ContainerTarget(name="app", image_ref="myapp:dev")
+        raw_dir = tmp_path / "raw" / "app"
+
+        scan_image(
+            target, scanners=("trivy",), sbom=False,
+            raw_output_dir=raw_dir,
+        )
+
+        assert (raw_dir / "trivy-results.json").exists()
+        assert not (raw_dir / "grype-results.json").exists()
+        assert not (raw_dir / "syft-sbom.json").exists()
+
+    def test_zero_byte_files_are_not_persisted(self, tmp_path, monkeypatch):
+        # 0-byte files are an explicit failure signal upstream
+        # (``_validate_scanner_output`` rejects them). Don't copy
+        # them — the persistence layer should never make a 0-byte
+        # file look authoritative on disk.
+        from argus.container import scanner as scanner_mod
+        from argus.container.scanner import scan_image
+        from argus.container.discovery import ContainerTarget
+
+        def fake_trivy(image_ref, tmp_path, local=False):
+            (tmp_path / "trivy-results.json").touch()  # 0-byte
+            return []
+
+        monkeypatch.setattr(scanner_mod, "_run_trivy", fake_trivy)
+        monkeypatch.setattr(scanner_mod, "_run_grype", lambda *a, **kw: [])
+        monkeypatch.setattr(scanner_mod, "_run_syft", lambda *a, **kw: None)
+
+        raw_dir = tmp_path / "raw" / "app"
+        scan_image(
+            ContainerTarget(name="app", image_ref="myapp:dev"),
+            scanners=("trivy",), sbom=False, raw_output_dir=raw_dir,
+        )
+        # Either the dir doesn't exist (nothing copied) or it's empty.
+        if raw_dir.exists():
+            assert not list(raw_dir.iterdir())
+
+
+class TestContainerCanonicalScanSummary:
+    """The container scan flow now also emits the canonical
+    ScanSummary shape (the same one source scans use), so
+    ``argus view`` and the JSON reporter can render container
+    findings without a separate code path."""
+
+    def test_each_target_becomes_a_scanresult_with_combined_findings(
+        self, tmp_path, monkeypatch,
+    ):
+        # Exercises the cli.py snippet that maps ContainerScanResult
+        # → ScanResult(scanner=f"container/{name}", ...). Tests a
+        # representative subset of the conversion in isolation.
+        from argus.core.models import ScanResult, ScanSummary, Finding, Severity
+        from argus.container.scanner import (
+            ContainerScanResult, ContainerScanSummary,
+        )
+
+        f1 = Finding(id="CVE-2024-1", severity=Severity.HIGH, title="t1",
+                     cve="CVE-2024-1", scanner="trivy")
+        f2 = Finding(id="CVE-2024-2", severity=Severity.MEDIUM, title="t2",
+                     cve="CVE-2024-2", scanner="grype")
+
+        container_summary = ContainerScanSummary(
+            results=[
+                ContainerScanResult(
+                    name="webapp",
+                    image_ref="myorg/webapp:1.0",
+                    combined_findings=[f1, f2],
+                    scanner_errors={},
+                ),
+            ],
+        )
+
+        # Mirror cli.py's mapping logic.
+        canonical = ScanSummary(results=[
+            ScanResult(
+                scanner=f"container/{r.name}",
+                findings=list(r.combined_findings),
+                metadata={
+                    "image_ref": r.image_ref,
+                    "build_success": r.build_success,
+                },
+            )
+            for r in container_summary.results
+        ])
+
+        # The canonical summary round-trips through the same
+        # serialization the source-scan flow uses, so ``argus view``
+        # treats container findings identically.
+        as_dict = canonical.to_dict()
+        assert "results" in as_dict
+        assert as_dict["results"][0]["scanner"] == "container/webapp"
+        assert len(as_dict["results"][0]["findings"]) == 2
+        # Per-image metadata lifts onto the ScanResult.
+        assert as_dict["results"][0]["metadata"]["image_ref"] == "myorg/webapp:1.0"
+
+
 class TestOrchestratorRecordsScannerError:
     """Closing the loop: when ``_run_grype`` raises RuntimeError, the
     orchestrator must catch it and record under ``scanner_errors`` so
