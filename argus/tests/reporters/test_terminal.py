@@ -77,6 +77,53 @@ class TestTerminalReporter:
         output = capsys.readouterr().out
         assert "FAIL" in output
 
+    def test_report_warns_on_execution_failure_above_pass_status(self, capsys):
+        """Scanners that produced no output (execution_failed=True in
+        metadata) get a clear warning in the terminal output so a single
+        bad scanner image doesn't quietly slip past the PASS line."""
+        reporter = TerminalReporter()
+        summary = ScanSummary(
+            results=[
+                ScanResult(scanner="gitleaks", findings=[]),  # ran fine
+                ScanResult(
+                    scanner="bandit", findings=[],
+                    metadata={
+                        "execution_failed": True,
+                        "execution_failure_reason": (
+                            "no output files (exit=13). stderr: "
+                            "cannot open /output/results.json: permission denied"
+                        ),
+                    },
+                ),
+                ScanResult(
+                    scanner="opengrep", findings=[],
+                    metadata={"execution_failed": True},
+                ),
+            ],
+            severity_threshold=None,
+        )
+        reporter.report(summary)
+        output = capsys.readouterr().out
+
+        # Failed scanners are named, count is correct, and the hint
+        # points at --fail-on-scanner-error for hard CI gating.
+        assert "2 scanner(s) produced no output" in output
+        assert "bandit" in output
+        assert "opengrep" in output
+        assert "--fail-on-scanner-error" in output
+        # PASS status still renders below — execution failure is a
+        # separate signal from threshold compliance.
+        assert "PASS" in output
+
+    def test_report_no_warning_when_all_scanners_produced_output(self, capsys):
+        """Successful runs must not get the warning row."""
+        reporter = TerminalReporter()
+        summary = _make_summary()
+        reporter.report(summary)
+
+        output = capsys.readouterr().out
+        assert "produced no output" not in output
+
     def test_report_empty_results(self, capsys):
         reporter = TerminalReporter()
         summary = ScanSummary()

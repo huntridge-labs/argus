@@ -100,6 +100,24 @@ class TerminalReporter:
             print()
 
     def _print_status(self, summary: ScanSummary) -> None:
+        # Scanner-execution failures (no output produced) are flagged
+        # separately so a single bad scanner image doesn't quietly slip
+        # past a "Status: PASS" line. The PASS/FAIL line still reflects
+        # *threshold* outcome; this row reflects *execution* outcome.
+        # CI-callers who want hard-fail behavior on missing output use
+        # ``--fail-on-scanner-error``.
+        failed = [
+            r.scanner for r in summary.results
+            if r.metadata.get("execution_failed")
+        ]
+        if failed:
+            names = ", ".join(failed)
+            print(f"Warning: {len(failed)} scanner(s) produced no output: {names}")
+            print("  These scanners likely failed to execute (uid mismatch on")
+            print("  /output mount, crashed, or wrong entrypoint). Re-run with")
+            print("  --verbose for stderr; pass --fail-on-scanner-error to fail")
+            print("  the scan when this happens.")
+
         if summary.passed:
             print("Status: PASS")
         else:

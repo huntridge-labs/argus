@@ -609,6 +609,26 @@ class ArgusEngine:
         abs_path = str(Path(path).resolve())
 
         with tempfile.TemporaryDirectory() as output_dir:
+            # Make the host-side temp dir world-writable BEFORE the
+            # container starts. Python's TemporaryDirectory creates
+            # dirs with mode 0o700 (owner-only). When a scanner image
+            # runs as a non-root user (e.g., bandit / opengrep / our
+            # custom images all use ``USER argus`` uid 1000) and the
+            # invoking host user has a different uid (commonly 501 on
+            # macOS), the container's process can't write
+            # ``/output/results.json`` and we get the silent "produced
+            # no output files" failure mode.
+            #
+            # Mode 0o777 is safe here:
+            #  - dir lives under ``tempfile.gettempdir()`` (host-only,
+            #    not network-shared)
+            #  - random name from ``mkdtemp`` (collision-resistant)
+            #  - removed at the end of this with-block
+            #  - holds only one scan's transient output (no secrets;
+            #    findings travel through ``parse_results`` and end up
+            #    in the user-specified output_dir, never here).
+            os.chmod(output_dir, 0o777)
+
             docker_cmd = [
                 self._runtime, "run", "--rm",
                 "-v", f"{abs_path}:/workspace:ro",
@@ -727,6 +747,26 @@ class ArgusEngine:
 
             findings = []
             metadata_extra = {}
+            # Track scanner execution failures distinctly from "ran and
+            # found nothing". A scanner that produced no output files and
+            # no stdout most likely failed to run — could not write to
+            # /output (uid mismatch), crashed without flushing, or had
+            # the wrong entrypoint chain. We mark these on the ScanResult
+            # so the CLI / reporters can surface them, and so consumers
+            # who want hard CI gates can opt into ``--fail-on-scanner-error``
+            # without having to grep our log lines.
+            if not result_files:
+                metadata_extra["execution_failed"] = True
+                stderr_clipped = proc.stderr.strip()[:400]
+                if stderr_clipped:
+                    metadata_extra["execution_failure_reason"] = (
+                        f"no output files (exit={proc.returncode}). "
+                        f"stderr: {stderr_clipped}"
+                    )
+                else:
+                    metadata_extra["execution_failure_reason"] = (
+                        f"no output files and no stdout (exit={proc.returncode})"
+                    )
             if result_files and hasattr(scanner, "parse_results"):
                 parsed = scanner.parse_results(result_files[0])
                 # parse_results may return either a list of Findings,
