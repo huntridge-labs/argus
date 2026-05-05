@@ -1,5 +1,6 @@
 """Tests for argus.core.engine — ArgusEngine."""
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -718,6 +719,91 @@ class TestRunInContainer:
         result = engine._run_in_container(scanner, "/src", {})
         assert result.findings[0].title == "from stdout"
         assert captured_file["path"].name == "stdout.txt"
+
+    def test_container_output_dir_is_world_writable(self, monkeypatch):
+        """Regression: scanners running as USER non-root (uid 1000)
+        couldn't write /output/results.json on hosts with uid != 1000
+        because Python's TemporaryDirectory creates dirs mode 0o700.
+        Engine now chmods the dir 0o777 right after creation."""
+        engine = self._make_engine()
+        scanner = self._make_scanner()
+
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+
+        captured_mode = {}
+
+        def mock_run(cmd, **_kwargs):
+            # The chmod happens before docker run, so by the time we're
+            # invoked the host-side temp dir already has the new mode.
+            for i, arg in enumerate(cmd):
+                if ":/output" in str(arg):
+                    host_dir = arg.split(":")[0]
+                    captured_mode["mode"] = os.stat(host_dir).st_mode & 0o777
+                    Path(host_dir).joinpath("results.json").write_text("{}")
+                    break
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="", stderr="",
+            )
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        engine._run_in_container(scanner, "/src", {})
+        # 0o777 means rwx for owner, group, other — every container
+        # uid can write to /output regardless of its image's USER.
+        assert captured_mode["mode"] == 0o777
+
+    def test_container_no_output_marks_execution_failed(self, monkeypatch):
+        """Empty result_files + no stdout means the container ran but
+        produced nothing. Mark the ScanResult so reporters and the
+        --fail-on-scanner-error gate can surface it instead of silently
+        rolling it up as an empty PASS."""
+        engine = self._make_engine()
+        scanner = self._make_scanner()
+
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+
+        def mock_run(cmd, **_kwargs):
+            # Container exits 13 (permission denied) without writing
+            # anything to /output — the exact bug in the user report.
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=13, stdout="",
+                stderr="cannot open /output/results.json: permission denied",
+            )
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        result = engine._run_in_container(scanner, "/src", {})
+        assert result.findings == []
+        assert result.metadata.get("execution_failed") is True
+        # Reason carries the stderr for the user — they shouldn't have
+        # to bump the log level to find out why.
+        reason = result.metadata.get("execution_failure_reason", "")
+        assert "permission denied" in reason
+        assert "exit=13" in reason
+
+    def test_container_with_output_does_not_mark_execution_failed(self, monkeypatch):
+        """Successful container runs must not get the failure marker."""
+        engine = self._make_engine()
+        scanner = self._make_scanner(parse_results=lambda f: [])
+
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+
+        def mock_run(cmd, **_kwargs):
+            for i, arg in enumerate(cmd):
+                if ":/output" in str(arg):
+                    Path(arg.split(":")[0]).joinpath("results.json").write_text("[]")
+                    break
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="", stderr="",
+            )
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        result = engine._run_in_container(scanner, "/src", {})
+        assert "execution_failed" not in result.metadata
 
     def test_container_custom_entrypoint(self, monkeypatch):
         engine = self._make_engine()

@@ -1,6 +1,6 @@
 # Argus CLI Reference (v0.7.2)
 
-> Auto-generated from argparse definitions on 2026-05-02.
+> Auto-generated from argparse definitions on 2026-05-05.
 > Do not edit manually — run `python -m scripts.ci.gen_cli_docs` to regenerate.
 
 Argus Security Scanner — comprehensive security scanning for your codebase
@@ -62,10 +62,11 @@ argus scan [-h] [--path PATH] [--config CONFIG]
                   [--output-vars FILE] [--exclude PATTERNS]
                   [--no-default-excludes] [--dry-run] [--sbom PATH]
                   [--interface {terminal,browser}] [--fail-fast]
-                  [--timeout SECONDS] [--no-parallel] [--allow-local-versions]
-                  [--no-cache] [--discover [PATH]] [--image REF]
-                  [--scanners SCANNERS] [--target URL] [--port PORT]
-                  [--env KEY=VALUE] [--scan-type {baseline,full}]
+                  [--fail-on-scanner-error] [--timeout SECONDS]
+                  [--no-parallel] [--allow-local-versions] [--no-cache]
+                  [--discover [PATH]] [--image REF] [--scanners SCANNERS]
+                  [--target URL] [--port PORT] [--env KEY=VALUE]
+                  [--scan-type {baseline,full}]
                   [--startup-timeout STARTUP_TIMEOUT]
                   [scanner]
 ```
@@ -94,6 +95,7 @@ argus scan [-h] [--path PATH] [--config CONFIG]
 | `--sbom` | Scan a pre-built SBOM or directory of SBOMs (CycloneDX JSON/XML, SPDX JSON/tag-value, or Syft JSON). When PATH is a directory, argus walks it recursively, sniffs each file, and scans every SBOM it finds. Auto-enables all SBOM-capable scanners (osv, grype, trivy) regardless of argus.yml. Filesystem scanners (bandit, gitleaks, ...) are skipped since they have nothing to scan. |  |
 | `--interface`, `-i` | After the scan completes, open a viewer on the just-written results. 'terminal' launches the TUI (requires 'argus-security[terminal]'); 'browser' launches the local web UI (requires 'argus-security[browser]'). (terminal, browser) |  |
 | `--fail-fast` | Abort immediately if any scanner fails instead of continuing. | `false` |
+| `--fail-on-scanner-error` | Exit non-zero when any scanner produced no output (typically a uid-mismatch on /output, container crash, or wrong entrypoint). Default behavior treats these as warnings so partial scans still surface findings; opt in for hard CI gates that require every configured scanner to actually run. | `false` |
 | `--timeout` | Per-scanner timeout in seconds. Scanners exceeding this limit are killed. |  |
 | `--no-parallel` | Run scanners sequentially instead of concurrently. | `false` |
 | `--allow-local-versions` | Allow local tool versions that differ from argus-pinned versions. Use in airgapped environments where tool updates are constrained. | `false` |

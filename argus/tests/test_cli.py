@@ -812,6 +812,17 @@ class TestCacheSubcommand:
         args = parser.parse_args(["scan"])
         assert args.sbom is None
 
+    def test_fail_on_scanner_error_flag(self):
+        """--fail-on-scanner-error is opt-in (default False) so existing
+        ``argus scan`` users keep getting partial-scan PASS behavior;
+        CI callers who want hard fails set the flag."""
+        parser = build_parser()
+        args = parser.parse_args(["scan"])
+        assert args.fail_on_scanner_error is False
+
+        args = parser.parse_args(["scan", "--fail-on-scanner-error"])
+        assert args.fail_on_scanner_error is True
+
     def test_interface_flag_terminal(self):
         parser = build_parser()
         args = parser.parse_args(["scan", "--interface", "terminal"])

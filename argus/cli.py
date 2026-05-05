@@ -523,6 +523,15 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Abort immediately if any scanner fails instead of continuing.",
     )
     scan_parser.add_argument(
+        "--fail-on-scanner-error",
+        action="store_true",
+        help="Exit non-zero when any scanner produced no output (typically "
+             "a uid-mismatch on /output, container crash, or wrong "
+             "entrypoint). Default behavior treats these as warnings so "
+             "partial scans still surface findings; opt in for hard CI "
+             "gates that require every configured scanner to actually run.",
+    )
+    scan_parser.add_argument(
         "--timeout",
         type=int,
         default=None,
@@ -1301,10 +1310,28 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
     #   2. Otherwise, if any SBOM failed hard during a batch → EXIT_ERROR.
     #      This always fires AFTER every SBOM in the batch was attempted;
     #      we never abort the loop on the first failure.
-    #   3. Otherwise → EXIT_SUCCESS.
+    #   3. Otherwise, if --fail-on-scanner-error is set AND any scanner
+    #      produced no output → EXIT_ERROR. Opt-in so existing default
+    #      "warn but pass" behavior stays unchanged.
+    #   4. Otherwise → EXIT_SUCCESS.
+    scanner_execution_failures = [
+        r.scanner for r in summary.results
+        if r.metadata.get("execution_failed")
+    ]
     if not summary.passed:
         exit_code = EXIT_FINDINGS
     elif sbom_batch_failures:
+        exit_code = EXIT_ERROR
+    elif (
+        getattr(args, "fail_on_scanner_error", False)
+        and scanner_execution_failures
+    ):
+        log.error(
+            "Exiting non-zero: %d scanner(s) produced no output (%s) and "
+            "--fail-on-scanner-error is set.",
+            len(scanner_execution_failures),
+            ", ".join(scanner_execution_failures),
+        )
         exit_code = EXIT_ERROR
     else:
         exit_code = EXIT_SUCCESS
@@ -2026,6 +2053,7 @@ _argus() {{
                         '--no-spinner[Disable spinner]'
                         '--no-timestamp[Flat output directory]'
                         '--fail-fast[Abort on first failure]'
+                        '--fail-on-scanner-error[Exit non-zero if any scanner produced no output]'
                         '--timeout[Per-scanner timeout]:seconds:'
                         '--no-parallel[Run scanners sequentially]'
                         '--allow-local-versions[Skip version enforcement]'
@@ -2136,7 +2164,7 @@ _argus_completions() {{
                 --scan-type) COMPREPLY=($(compgen -W "baseline full" -- "$cur")); return ;;
                 --path|-p|--output-dir|-o|--config|-c|--output-vars) COMPREPLY=($(compgen -d -- "$cur")); return ;;
             esac
-            COMPREPLY=($(compgen -W "--path --config --output-dir --severity-threshold --format --interface --output-vars --list --verbose --no-spinner --no-timestamp --fail-fast --timeout --no-cache --no-parallel --allow-local-versions" -- "$cur"))
+            COMPREPLY=($(compgen -W "--path --config --output-dir --severity-threshold --format --interface --output-vars --list --verbose --no-spinner --no-timestamp --fail-fast --fail-on-scanner-error --timeout --no-cache --no-parallel --allow-local-versions" -- "$cur"))
             ;;
         report)
             if [ "$COMP_CWORD" -eq 2 ]; then
