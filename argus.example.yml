@@ -61,17 +61,39 @@ reporting:
 # on the CLI. CLI flags, when supplied, override the matching keys
 # below: explicit > implicit.
 #
+# RECOMMENDED: pin every image to an immutable digest. ``:tag``
+# references are mutable — the same ``myorg/app:1.4.0`` can publish
+# different bytes over time, which means CVE attribution drifts and
+# scan results aren't reproducible. ``@sha256:...`` references are
+# byte-level immutable: the scanner reads exactly what you pinned,
+# every run, forever. Renovate and Dependabot can both update
+# digest-pinned references automatically.
+#
 # containers:
-#   # Explicit list. Each entry: a registry image ref to scan, plus
-#   # optional dockerfile/context to build it locally first.
 #   images:
-#     - image: myorg/myapp:latest
-#     - image: myorg/worker:1.4.0
-#       dockerfile: docker/Dockerfile.worker
+#     # PREFERRED: tag + digest (human-readable + immutable)
+#     - image: ghcr.io/myorg/app:1.4.0@sha256:f1e2d3c4b5a6f7e8d9c0b1a2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2
+#
+#     # ALSO PREFERRED: digest-only (immutable, no tag noise)
+#     - image: ghcr.io/myorg/worker@sha256:0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b
+#
+#     # Build-then-scan: digest only meaningful after first publish.
+#     # The dockerfile is built and tagged locally, so it's reproducible
+#     # within one CI run even without a pinned digest.
+#     - image: myorg/inhouse:dev
+#       dockerfile: docker/Dockerfile
 #       context: .
 #
+#     # ACCEPTABLE FALLBACK: tag-only. Easier to read, but mutable —
+#     # use only for ad-hoc scans or in environments where digest
+#     # discovery isn't yet wired up. Plan to migrate to a pinned
+#     # form before relying on the scan output for an audit trail.
+#     # - image: myorg/legacy:1.0.0
+#
 #   # OR auto-discovery. Walks ``search_paths`` for Dockerfile,
-#   # Dockerfile.<name>, <name>.Dockerfile.
+#   # Dockerfile.<name>, <name>.Dockerfile, then builds + scans each
+#   # image locally. Builds inherit your local docker daemon, so
+#   # reproducibility is bounded by your build cache.
 #   discover: true
 #   search_paths:
 #     - .
