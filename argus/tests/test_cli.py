@@ -290,6 +290,114 @@ class TestCmdScan:
         captured = capsys.readouterr()
         assert "unknown scanner 'nonexistent'" in captured.err
 
+    def test_container_lifecycle_activates_from_config_only(self, tmp_path, monkeypatch):
+        """Regression: ``argus scan container --config argus.yml`` should
+        run end-to-end when the config has containers.images, with no
+        --discover/--image required. Previously the CLI gate looked at
+        flags only and exited with usage error before reading config."""
+        from argus.cli import _container_config_has_targets, _load_container_config
+
+        config_file = tmp_path / "argus.yml"
+        config_file.write_text(
+            "containers:\n"
+            "  images:\n"
+            "    - image: myapp:latest\n"
+            "      dockerfile: Dockerfile\n"
+        )
+        args = _make_scan_args(scanner="container", config=str(config_file))
+
+        loaded = _load_container_config(args)
+        # Config-only invocation now resolves real targets without flags.
+        assert _container_config_has_targets(loaded) is True
+        assert loaded["images"] == [{"image": "myapp:latest", "dockerfile": "Dockerfile"}]
+
+    def test_container_lifecycle_cli_image_overrides_config(self, tmp_path):
+        """Explicit --image on the CLI replaces the config's images list,
+        so a stale config entry doesn't sneak into a one-off scan."""
+        from argus.cli import _load_container_config
+
+        config_file = tmp_path / "argus.yml"
+        config_file.write_text(
+            "containers:\n  images:\n    - image: stale:1.0\n"
+        )
+        args = _make_scan_args(
+            scanner="container", config=str(config_file), images=["fresh:2.0"],
+        )
+
+        loaded = _load_container_config(args)
+        # CLI --image is the source of truth; stale config entry is gone.
+        assert loaded["images"] == [{"image": "fresh:2.0", "name": "fresh"}]
+
+    def test_container_lifecycle_cli_discover_overrides_search_paths(self, tmp_path):
+        """``--discover .`` on the CLI replaces the config's search_paths."""
+        from argus.cli import _load_container_config
+
+        config_file = tmp_path / "argus.yml"
+        config_file.write_text(
+            "containers:\n"
+            "  discover: true\n"
+            "  search_paths:\n    - docker/\n"
+        )
+        args = _make_scan_args(
+            scanner="container", config=str(config_file), discover=".",
+        )
+
+        loaded = _load_container_config(args)
+        assert loaded["search_paths"] == ["."]
+        assert loaded["discover"] is True
+
+    def test_container_lifecycle_malformed_config_emits_actionable_error(self, tmp_path):
+        """``containers:`` set to a string (not a mapping) gets a clear
+        error, not a deep traceback."""
+        from argus.cli import _load_container_config
+
+        config_file = tmp_path / "argus.yml"
+        config_file.write_text("containers: not-a-mapping\n")
+        args = _make_scan_args(scanner="container", config=str(config_file))
+
+        with pytest.raises(ValueError) as excinfo:
+            _load_container_config(args)
+        msg = str(excinfo.value)
+        assert "containers" in msg
+        assert "must be a mapping" in msg
+        # Hint includes the expected shape so the user knows how to fix it.
+        assert "images:" in msg
+
+    def test_container_lifecycle_no_targets_returns_usage_error(self, tmp_path, monkeypatch, capsys):
+        """A config with an empty ``containers:`` block AND no CLI flags
+        hits the usage-error gate with a config-aware help message."""
+        from argus.cli import cmd_scan
+        monkeypatch.setattr(
+            "argus.scanners.SCANNER_REGISTRY", {"container": object},
+        )
+
+        config_file = tmp_path / "argus.yml"
+        config_file.write_text("containers: {}\n")
+        args = _make_scan_args(scanner="container", config=str(config_file))
+
+        rc = cmd_scan(args)
+        err = capsys.readouterr().err
+
+        assert rc == EXIT_ERROR
+        # The new message names config as a valid source of targets,
+        # so users running config-only flows see they need to populate
+        # the ``containers.images`` block — not just add a CLI flag.
+        assert "--config FILE" in err
+        assert "containers.images" in err
+
+    def test_container_lifecycle_yaml_parse_error_is_caught(self, tmp_path):
+        """Invalid YAML produces a friendly error, not a yaml.YAMLError
+        traceback bubbling up from deep in the loader."""
+        from argus.cli import _load_container_config
+
+        config_file = tmp_path / "argus.yml"
+        config_file.write_text("containers: [{")  # incomplete
+        args = _make_scan_args(scanner="container", config=str(config_file))
+
+        with pytest.raises(ValueError) as excinfo:
+            _load_container_config(args)
+        assert "YAML parse error" in str(excinfo.value)
+
     def test_scan_source_always_emits_canonical_json(self, monkeypatch, tmp_path):
         """Regression for Option C: argus-results.json must be written
         regardless of the user's ``reporting.formats``. Captures the
