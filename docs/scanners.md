@@ -8,7 +8,7 @@ Complete configuration reference for all available security scanners.
 
 ## Architecture
 
-The argus Python SDK (`python -m argus scan`) is the primary interface for running scanners. Composite actions remain available for GitHub Actions users.
+The argus Python SDK (`argus scan`) is the primary interface for running scanners. Composite actions remain available for GitHub Actions users.
 
 - **Argus SDK** (`argus/`) - Primary interface, works locally and in any CI
 - **Composite Actions** (`.github/actions/scanner-*/`) - GitHub Actions integration
@@ -17,8 +17,8 @@ The argus Python SDK (`python -m argus scan`) is the primary interface for runni
 **SDK usage (recommended)**:
 
 ```bash
-pip install pyyaml
-python -m argus scan gitleaks bandit --severity-threshold high
+pip install argus-security
+argus scan gitleaks bandit --severity-threshold high
 ```
 
 **Post-scan triage**: Once you have `argus-results.json`, run

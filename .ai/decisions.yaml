@@ -530,7 +530,9 @@ decisions:
   - id: ADR-013
     title: "Python SDK + CLI + thin CI adapters for cross-platform portability"
     date: "2026-04-11"
-    status: proposed
+    status: accepted
+    accepted_date: "2026-04-15"
+    note: "Phases 1-2 shipped as the argus SDK; Phase 3 thin-composite migration is the active integration target. See docs/developer/SDK-ROADMAP.md."
 
     context: |
       Argus is tightly coupled to GitHub Actions. All 31 composite actions use
@@ -656,7 +658,9 @@ decisions:
   - id: ADR-015
     title: "Agentic substrate: CLI + MCP server + skill as complementary layers"
     date: "2026-04-12"
-    status: proposed
+    status: accepted
+    accepted_date: "2026-04-20"
+    note: "argus mcp ships in 0.7.x; the slim skill at .agents/skills/argus-scanner-selection/ is published. PR #102 added the unified security_review MCP tool and cache-freshness signals."
 
     context: |
       AI coding assistants (Claude Code, Cursor, Windsurf, VS Code Copilot) are
@@ -960,3 +964,109 @@ decisions:
     related:
       - ADR-013  # Python SDK as primary interface
       - ADR-016  # silent-failure gating (serve inherits the same resilience posture)
+
+  - id: ADR-018
+    title: "Canonical argus-results.json + container/<name> ScanResult naming + raw output preservation"
+    status: accepted
+    date: 2026-05-05
+    context: |
+      Source-scan and container-scan flows had drifted apart. Source scans
+      always wrote a canonical argus-results.json (the JsonReporter
+      contract that argus view, argus report, and the MCP server depend
+      on). Container scans wrote a domain-shaped container-scan.json with
+      per-image counts, container_count, and scanner_errors — a different
+      shape that the viewers had no rendering path for. Reported as a
+      bug: "argus view doesn't display container vulns."
+
+      Two related gaps:
+        1. The argus-results/ directory did not preserve per-scanner raw
+           output files (trivy-results.json, grype-results.json,
+           syft-sbom.json for containers; results.json / *.sarif /
+           stdout.txt for source scans). They lived in a tempdir that was
+           wiped at scan end. Users who wanted forensics, audit trails,
+           or manual triage had nowhere to look.
+        2. Without a normalized scanner-name convention, container
+           findings rendered with a generic "container" or per-tool name,
+           breaking the viewers' per-scanner filtering and per-image
+           grouping.
+
+      All three rooted in the same architectural drift: the container
+      flow had grown its own output contract independent of the SDK's
+      core ScanSummary model.
+    decision: |
+      Three coupled changes, shipped in PR #116:
+
+      1. Canonical artifact contract is universal.
+         The container flow now builds a canonical ScanSummary alongside
+         the existing ContainerScanSummary, and the JsonReporter writes
+         argus-results.json unconditionally for both source and container
+         scans. The domain-shaped container-scan.json is preserved for
+         backward compat with downstream tooling, but argus-results.json
+         is the single source of truth that viewers/MCP/external tools
+         consume. (PR #111 originally established this for source scans;
+         PR #116 extended it to containers.)
+
+      2. Container findings surface as ScanResult rows with scanner names
+         of the form `container/<image-name>`. The viewers (terminal +
+         browser) and reporters render them through their normal
+         per-scanner code path — no container-specific rendering.
+
+      3. Raw scanner output is preserved alongside the canonical artifact
+         under <output_dir>/raw/<scanner_or_image>/, configurable via the
+         unified reporting.keep_raw key (default true) or --no-keep-raw.
+         The container flow uses scan_image(raw_output_dir=...) and the
+         source flow uses ArgusEngine.run(raw_output_dir=...). 0-byte
+         files are explicitly skipped (they're failure-signal stubs and
+         persisting them would mislead readers).
+    alternatives_considered:
+      - name: "Add container-specific rendering to argus view"
+        rejected_because: |
+          Doubles the rendering surface and forces viewers to know the
+          difference between source and container findings. Re-aligning
+          on the canonical model is cheaper and keeps the viewers
+          oblivious to scan-flow origin.
+
+      - name: "Drop container-scan.json entirely"
+        rejected_because: |
+          Existing downstream consumers (security-summary aggregator,
+          some user dashboards) parse the per-image stats. Keeping it
+          alongside the canonical artifact preserves their integrations
+          while letting new consumers depend only on argus-results.json.
+
+      - name: "Persist raw output in scanner tempdirs and require manual copy"
+        rejected_because: |
+          Tempdirs are wiped at scan end, so this just shifts the burden
+          onto users to know about and intercept transient files. The
+          opt-in --no-keep-raw flag is the correct posture for tight CI
+          environments while keeping the default helpful.
+    consequences:
+      positive:
+        - "argus view, argus report, and the MCP server work uniformly across source and container scans without scan-flow-specific code"
+        - "Per-scanner filtering and triage works for container findings via the container/<image> naming convention"
+        - "Forensics and manual triage have a stable surface area: <output_dir>/raw/<name>/ regardless of scan flow"
+        - "reporting.keep_raw is a single config knob covering both flows; --no-keep-raw is a single CLI flag"
+      negative:
+        - "Two artifact files for container scans (argus-results.json + container-scan.json) until consumers migrate; documented as transitional"
+        - "Disk usage grows by a few MB per scan when raw output is preserved (default on); --no-keep-raw is the documented opt-out for tight CI"
+    implementation: |
+      Source-scan flow:
+        argus/core/engine.py: ArgusEngine.run(raw_output_dir) and _run_in_container() copy result_files to <raw>/<scanner>/
+      Container-scan flow:
+        argus/container/scanner.py: scan_image(raw_output_dir) copies trivy/grype/syft outputs
+        argus/container/engine.py: threads _raw_output_root from config dict to scan_image
+      CLI:
+        argus/cli.py: --no-keep-raw is a top-level scan flag; both _cmd_source_scan and _cmd_container_scan honor it
+      Config:
+        argus/core/config.py: ReportingConfig.keep_raw (bool, default True) replaces the container-scoped containers.keep_raw
+      Canonical container ScanSummary:
+        argus/cli.py::_cmd_container_scan builds ScanResult(scanner=f"container/{name}", findings=combined, metadata={image_ref, build_success, scanner_errors, scan_error}); JSON + SARIF reporters consume it.
+      Tests:
+        argus/tests/test_engine.py::TestRunInContainer (source raw-output persistence)
+        argus/tests/test_container_scanner_runners.py::TestScanImageRawOutputPersistence + TestContainerCanonicalScanSummary
+    related:
+      - ADR-013  # Python SDK as primary interface
+      - ADR-014  # Docker execution backend (the source of the tempdir lifecycle)
+      - ADR-016  # Silent-failure gating (this preserves the same loud-on-failure posture in the artifact)
+    pr_references:
+      - "#111 (canonical argus-results.json contract for source scans)"
+      - "#116 (canonical contract for container scans + raw output preservation)"

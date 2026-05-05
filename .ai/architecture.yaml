@@ -8,11 +8,11 @@ architecture:
   description: "The argus Python SDK is the primary interface. Composite actions provide GitHub Actions integration."
   primary:
     location: "argus/"
-    pattern: "Python SDK"
-    version: "0.7.0"
+    pattern: "Python SDK + CLI"
+    version: "0.7.2"
     status: production
-    advantage: "Platform-independent, works locally and in any CI"
-    cli: "python -m argus scan --config argus.yml"
+    advantage: "Platform-independent, works locally and in any CI; canonical argus-results.json shared across source-scan, container-scan, and MCP flows"
+    cli: "argus scan --config argus.yml  (or: python -m argus scan --config argus.yml)"
 
   actions:
     location: ".github/actions/"
@@ -314,23 +314,53 @@ dependencies:
 
 data_flow:
   diagram: |
-    SDK pipeline:
-      python -m argus scan --config argus.yml
-        → ArgusEngine loads config
-        → Scanner modules run in sequence
-          → Run scanner binary
-          → Parse output (→ Finding dataclasses)
-          → Aggregate into ScanResult
-        → Reporter generates output (terminal, markdown, sarif, json)
+    SDK source-scan pipeline (argus scan):
+      argus scan [--config argus.yml | scanner ...]
+        → ArgusEngine loads config + computes exclusions
+        → For each enabled scanner (parallel by default):
+          → is_available()? → run locally; else fall back to docker run (ADR-014)
+          → Parse tool output → list[Finding]
+          → Aggregate into ScanResult(scanner=<name>, findings=..., metadata=...)
+          → If reporting.keep_raw: copy raw scanner files to <output_dir>/raw/<scanner>/
+        → Build ScanSummary
+        → Reporters consume ScanSummary:
+            JsonReporter writes canonical argus-results.json (always)
+            terminal/markdown/sarif emit alongside per reporting.formats
 
-    Composite action pipeline (GitHub Actions — thin SDK wrappers):
+    SDK container-scan pipeline (argus scan container):
+      argus scan container [--image REF | --discover PATH]
+        → ContainerEngine resolves image targets (CLI flags > containers: config)
+        → For each target: scan_image(trivy + grype + syft)
+          → If reporting.keep_raw: copy trivy/grype/syft raw outputs to <output_dir>/raw/<image>/
+        → Map ContainerScanResult → ScanResult(scanner="container/<name>", findings=combined)
+        → Same JsonReporter / SARIF reporter pipeline as source scans —
+          argus view consumes the canonical argus-results.json without
+          container-specific code (PR #116, ADR-018).
+
+    Composite action pipeline (GitHub Actions — thin SDK wrappers per ADR-013):
       User workflow step
         → scanner-{name} composite action
-          → Setup Python, install pyyaml
-          → python -m argus scan {scanner} (SDK handles scanning + reporting)
+          → pip install argus-security
+          → argus scan {scanner}  (SDK handles scanning + reporting)
           → Parse JSON output for severity counts → GITHUB_OUTPUT
           → Upload artifacts, SARIF, summary
           → [Optional] Post individual PR comment
+
+    MCP pipeline (argus mcp):
+      AI assistant connects via stdio
+        → MCP tools dispatch to the same SDK entry points (argus_scan, argus_validate, etc.)
+        → Returns structured JSON; resources expose argus://config and argus://results/latest
+
+  canonical_artifact:
+    file: "argus-results.json"
+    written_by: "argus.reporters.json_report.JsonReporter"
+    contract: |
+      Always emitted by both source-scan and container-scan flows.
+      Single ScanSummary.to_dict() shape consumed by argus view (terminal + browser),
+      argus report, the MCP server (argus://results/latest), and external integrations.
+      Container scanners surface as ScanResult rows with scanner names of the form
+      `container/<image-name>` — viewers render them like any other scanner without
+      special-casing.
 
   pr_commenting_strategy:
     description: "PR commenting via composite actions in GitHub Actions workflows"
@@ -455,12 +485,24 @@ docsite:
       - markdown
       - sarif
       - json
-    dependencies: "stdlib + pyyaml only"
+    dependencies:
+      core: "pyyaml, click, jsonschema, rich (terminal output), packaging"
+      optional_extras:
+        terminal: "textual (TUI viewer)"
+        browser: "fastapi, uvicorn, jinja2 (web viewer, 127.0.0.1 only)"
+        mcp: "mcp Python SDK (stdio transport)"
     config_file: "argus.yml"
     cli_commands:
       - "argus scan [scanner] --path --config --severity-threshold --format [--interface=terminal|browser]"
-      - "argus report <format> --results-dir --output-dir"
-      - "argus view [terminal|browser] [PATH] [--interface=terminal|browser] [--port N] [--no-open]"
+      - "argus scan container [--image REF | --discover [PATH]] [--scanners trivy,grype,syft] [--no-keep-raw]"
+      - "argus init [--force] — generate tailored argus.yml from auto-detection"
+      - "argus list — show registered scanners (SCANNER_REGISTRY)"
+      - "argus validate [argus.yml] — JSON Schema validation"
+      - "argus report <format> --results-dir --output-dir — re-emit canonical results"
+      - "argus view [terminal|browser] [PATH] [--port N] [--no-open]"
+      - "argus mcp — start MCP server over stdio"
+      - "argus completion {bash,zsh,fish} — shell completion (dynamic from registry)"
+      - "argus cache info|clean — manage scanner DB cache volumes"
 
 directory_structure:
   "argus/": "Standalone Python SDK (primary interface, ADR-013)"

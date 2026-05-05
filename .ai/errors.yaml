@@ -53,26 +53,18 @@ error_patterns:
 
   - pattern: "Scanner X not found in matrix"
     category: configuration
-    context: "Workflow fails with unknown scanner"
+    context: "Workflow or `argus scan` fails with unknown scanner"
 
     root_cause: "Typo in scanner name or scanner not implemented"
 
     solution:
-      valid_values:
-        - codeql
-        - bandit
-        - gitleaks
-        - opengrep
-        - trivy
-        - grype
-        - syft
-        - checkov
-        - trivy-iac
-        - clamav
-        - zap
-        - osv
-        - dependency-review
-      verification: "Check spelling against valid scanner names"
+      verification:
+        - "Run `argus list` to see every registered scanner and linter (single source of truth — SCANNER_REGISTRY auto-merges LINTER_REGISTRY at import)"
+        - "Tab-complete via `argus completion zsh` (or bash/fish) — completions are generated from the live registry"
+      examples:
+        security_scanners: "bandit, gitleaks, opengrep, osv, trivy-iac, checkov, clamav, supply-chain, zap, container"
+        linters: "lint-yaml, lint-json, lint-python, lint-javascript, lint-dockerfile, lint-terraform"
+        composite_only: "codeql, dependency-review, scn-detector (composite-action-only; not registered as SDK scanners)"
 
   - pattern: "CodeQL.*unsupported language"
     category: scanner
@@ -281,13 +273,13 @@ error_patterns:
     root_cause: "GHES version doesn't support cross-repository workflow_call"
 
     solution:
-      explanation: "Use the argus SDK or composite actions instead"
+      explanation: "Use the argus SDK (primary) or composite actions"
       alternatives:
         - description: "Use the argus SDK"
-          how: "pip install pyyaml && python -m argus scan --config argus.yml"
+          how: "pip install argus-security && argus scan --config argus.yml"
         - description: "Use composite actions directly"
           how: "Switch to .github/actions/ based implementation"
-      reference: "See ADR-001 in .ai/decisions.yaml"
+      reference: "See ADR-013 (SDK primary) and ADR-001 in .ai/decisions.yaml"
 
 # ==============================================================================
 # DEBUGGING GUIDE

@@ -271,44 +271,55 @@ contributor_workflows:
       - "Run: pytest"
 
   add_new_scanner:
-    description: "Add support for a new security scanner"
+    description: "Add support for a new security scanner (SDK-first)"
     steps:
-      - action: "Create action directory"
-        command: "mkdir -p .github/actions/scanner-{name}"
+      - action: "Create scanner module"
+        location: "argus/scanners/{name}.py"
+        purpose: "Implement Scanner protocol — name, scan(path, config), is_available(), install_command()"
+        template: "argus/scanners/bandit.py"
 
-      - action: "Create action.yml"
-        location: ".github/actions/scanner-{name}/action.yml"
-        template: ".github/actions/scanner-bandit/action.yml"
+      - action: "Register in SCANNER_REGISTRY"
+        location: "argus/scanners/__init__.py"
+        purpose: "Add one line: \"{name}\": {Name}Scanner — wires the scanner into CLI, MCP, and docs auto-generation"
 
-      - action: "Create parse script"
-        location: ".github/actions/scanner-{name}/scripts/parse-results.py"
-        purpose: "Convert scanner output → JSON"
-
-      - action: "Create summary script"
-        location: ".github/actions/scanner-{name}/scripts/generate-summary.py"
-        purpose: "Convert JSON → Markdown summary"
+      - action: "Add Dockerfile (only if hermetic execution wanted)"
+        location: "docker/Dockerfile.{name}"
+        purpose: "Container image for the SDK's docker backend; skip if upstream tool publishes an official image (Argus prefers official images per ADR-014)"
+        also_update: "argus/containers.py CACHE_MOUNTS / image manifest if a custom image is added"
 
       - action: "Add tests"
-        location: ".github/actions/scanner-{name}/tests/"
-        required_files:
-          - "test_parse_results.py"
-          - "test_generate_summary.py"
+        location: "argus/tests/scanners/test_{name}.py"
+        required_tests:
+          - "test_name (verify registry name)"
+          - "test_is_available_when_installed"
+          - "test_is_available_when_missing"
+          - "test_scan_parses_findings (against fixture output)"
+          - "test_install_command"
+          - "test_no_secret_leakage (if scanner output ever contains source-code excerpts — see CLAUDE.md → secret leak audit)"
 
-      - action: "Add SDK scanner module"
-        location: "argus/scanners/{name}.py"
-        purpose: "Implement Scanner protocol for the new scanner"
+      - action: "Verify registration"
+        command: "argus scan {name} --path . --severity-threshold none"
+        note: "Works immediately after SCANNER_REGISTRY registration — reporters, viewers, MCP, and shell completions all consume the registry dynamically"
 
-      - action: "Register with docsite"
-        location: ".github/actions/scanner-{name}/.docsite.yml"
-        content: "category: <valid-category>"
+      - action: "Update .ai/architecture.yaml"
+        purpose: "Add the scanner to the appropriate category under `scanners:` so AI agents see it"
+
+      - action: "(Optional) Add composite action wrapper"
+        location: ".github/actions/scanner-{name}/"
+        purpose: "Only needed for GHA-only consumers who can't `pip install argus-security`. Per ADR-013/ADR-016, modern composites are thin wrappers that pip-install argus-security and call `argus scan {name}` — they no longer ship parse-results.py or generate-summary.py logic of their own."
+        files:
+          - "action.yml (template: .github/actions/scanner-bandit/action.yml)"
+          - ".docsite.yml (declares docsite category)"
+          - "tests/ (smoke test for the action)"
         validate: "cd scripts && python -m docsite --validate"
 
-      - action: "Document"
-        file: "docs/scanners.md"
-        pattern: "Add scanner reference"
-
-    reference_implementation: ".github/actions/scanner-bandit/"
-    contributing_guide: "CONTRIBUTING.md"
+    reference_implementation: "argus/scanners/bandit.py (SDK), .github/actions/scanner-bandit/ (composite wrapper)"
+    contributing_guide: "CONTRIBUTING.md → Adding a Scanner via the SDK"
+    key_points:
+      - "The SDK module is the single source of truth — composite actions, viewers, MCP tools, and SARIF/JSON reporters all consume it through SCANNER_REGISTRY"
+      - "Replacing a scanner = swap the class internals, keep the registered name; no downstream changes needed"
+      - "If your scanner's raw output ever contains source-code literals (passwords, code excerpts), you MUST scrub them before building Finding objects — use argus.core.redact helpers and add a regression test"
+      - "Shell completions update automatically (argus completion zsh) — no manual sync"
 
   add_new_linter:
     description: "Add a new linter module to the SDK"
@@ -388,14 +399,15 @@ testing:
     what_it_tests: "Full action execution in GitHub Actions environment"
 
   local_scanner_test:
-    description: "Test scanner locally before pushing"
+    description: "Test a scanner locally via the SDK before pushing"
     steps:
-      - "Install scanner binary (e.g., trivy, bandit)"
-      - "Run scanner on test fixtures"
-      - "Pipe output through parse script"
-      - "Verify JSON structure"
+      - "Install Argus in editable mode: pip install -e ."
+      - "Install scanner tool locally OR ensure Docker is available (SDK falls back to container backend)"
+      - "Run via SDK: argus scan {name} --path tests/fixtures/test-apps/<lang>-app --severity-threshold none --format json"
+      - "Inspect argus-results.json for the expected Finding shape"
     example: |
-      bandit -r tests/fixtures/test-apps/python-app -f json | python .github/actions/scanner-bandit/scripts/parse-results.py counts -
+      argus scan bandit --path tests/fixtures/test-apps/python-app --severity-threshold none --format json
+      # then jq '.results[] | select(.scanner=="bandit") | .findings[0]' argus-results.json
 
 # ==============================================================================
 # QUICK REFERENCE - Most common commands
