@@ -590,6 +590,19 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Disable DB cache volume mounts. Forces scanners to re-download "
              "vulnerability databases on every container run.",
     )
+    scan_parser.add_argument(
+        "--no-keep-raw",
+        action="store_true",
+        dest="no_keep_raw",
+        help="Do not persist raw per-scanner output files alongside the "
+             "canonical argus-results.json. Source scans normally drop "
+             "each scanner's results.json / *.sarif / stdout.txt under "
+             "<output_dir>/raw/<scanner>/; container scans drop "
+             "trivy-results.json / grype-results.json / syft-sbom.json "
+             "under <output_dir>/raw/<image>/. Pass --no-keep-raw to "
+             "skip that step in tight CI environments. The same effect "
+             "is available via 'reporting.keep_raw: false' in argus.yml.",
+    )
 
     # Container-specific flags (used with: argus scan container)
     container_group = scan_parser.add_argument_group(
@@ -1135,6 +1148,15 @@ def _load_container_config(args: argparse.Namespace) -> dict:
             )
         config = dict(containers_section)
 
+        # Pull ``reporting.keep_raw`` from the same file so the
+        # container handler honors the unified config knob — same
+        # default-True semantics as ``_cmd_source_scan``. Stashed
+        # under a synthetic underscore key so it doesn't collide
+        # with any future ``containers:`` field a user might add.
+        reporting_section = file_config.get("reporting", {})
+        if isinstance(reporting_section, dict) and "keep_raw" in reporting_section:
+            config["_reporting_keep_raw"] = bool(reporting_section["keep_raw"])
+
     # CLI overrides — explicit > implicit. --image and --discover both
     # OVERWRITE the corresponding config keys so the user's intent is
     # unambiguous (and so we don't accidentally double-scan an image
@@ -1248,6 +1270,18 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
 
     log.info("Argus scan starting")
 
+    # Decide whether to persist raw per-scanner outputs alongside the
+    # canonical argus-results.json. Default ON — users running
+    # ``argus scan`` reasonably expect each scanner's raw results
+    # (results.json / *.sarif / stdout.txt) to be available for
+    # forensics or manual triage. Opt out via ``--no-keep-raw``
+    # (CLI) or ``reporting.keep_raw: false`` (argus.yml). CLI flag
+    # wins on conflict, matching the dispatcher's
+    # explicit-over-implicit posture used throughout.
+    keep_raw_config = getattr(config.reporting, "keep_raw", True)
+    keep_raw = bool(keep_raw_config) and not getattr(args, "no_keep_raw", False)
+    raw_output_root = str(Path(output_dir) / "raw") if keep_raw else None
+
     # Build engine and register scanners
     engine = ArgusEngine(config)
 
@@ -1352,6 +1386,7 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
                             use_default_excludes=not getattr(args, "no_default_excludes", False),
                             sbom_path=str(info.path),
                             sbom_format=info.format,
+                            raw_output_dir=raw_output_root,
                         )
                     except Exception as exc:
                         log.error(
@@ -1392,6 +1427,7 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
                     allow_local_versions=getattr(args, "allow_local_versions", False),
                     no_cache=getattr(args, "no_cache", False),
                     use_default_excludes=not getattr(args, "no_default_excludes", False),
+                    raw_output_dir=raw_output_root,
                 )
         if args.verbose and getattr(engine, "_last_resolutions", None):
             from argus.core.tool_config import format_resolutions_for_display
@@ -1733,6 +1769,24 @@ def _cmd_container_scan(
     output_dir = _make_run_dir(base_dir)
     formats = args.formats or ["terminal", "markdown"]
 
+    # Decide whether to persist raw per-scanner outputs alongside the
+    # canonical argus-results.json. Default is ON — the user just ran
+    # a scan and would expect those artifacts to be available for
+    # manual triage. Opt out via ``--no-keep-raw`` (CLI) or
+    # ``containers.keep_raw: false`` (argus.yml). CLI flag wins on
+    # conflict, matching the rest of the dispatcher's
+    # explicit-over-implicit posture.
+    # ``reporting.keep_raw`` is the unified config home for raw-output
+    # preservation; the legacy ``containers.keep_raw`` is still read
+    # as a fallback so configs from earlier in this PR's lifecycle
+    # don't break. CLI ``--no-keep-raw`` wins over both.
+    keep_raw_config = config.get(
+        "_reporting_keep_raw", config.get("keep_raw", True),
+    )
+    keep_raw = bool(keep_raw_config) and not getattr(args, "no_keep_raw", False)
+    if keep_raw:
+        config["_raw_output_root"] = str(Path(output_dir) / "raw")
+
     # Run
     try:
         engine = ContainerEngine(config)
@@ -1745,6 +1799,42 @@ def _cmd_container_scan(
         print(f"Error: container scan failed: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
+    # Build a canonical ScanSummary view of the container results so
+    # the standard reporters (json → argus-results.json, sarif) and
+    # ``argus view`` can consume container scans the same way they
+    # consume source scans. Each container target becomes a
+    # ScanResult; the per-image domain metadata (image_ref, build
+    # status, scanner_errors) lifts onto ScanResult.metadata so the
+    # browser dashboard and exporters surface it.
+    from argus.core.models import ScanResult, ScanSummary
+    canonical_results = [
+        ScanResult(
+            scanner=f"container/{r.name}",
+            findings=list(r.combined_findings),
+            metadata={
+                "image_ref": r.image_ref,
+                "build_success": r.build_success,
+                **(
+                    {"scanner_errors": dict(r.scanner_errors)}
+                    if r.scanner_errors else {}
+                ),
+                **(
+                    {"scan_error": r.scan_error}
+                    if getattr(r, "scan_error", None) else {}
+                ),
+            },
+        )
+        for r in summary.results
+    ]
+    canonical_summary = ScanSummary(results=canonical_results)
+
+    # Always emit argus-results.json — same canonical-artifact
+    # contract the source-scan flow established. ``argus view`` and
+    # the audit manifest both consume this regardless of what the
+    # user listed in ``formats``.
+    from argus.reporters import get_reporter
+    get_reporter("json").report(canonical_summary, output_dir)
+
     # Reports
     for fmt in formats:
         if fmt == "markdown":
@@ -1755,16 +1845,15 @@ def _cmd_container_scan(
         elif fmt == "terminal":
             _print_container_terminal(summary)
         elif fmt == "json":
+            # Domain-shaped per-image summary (container_count etc.)
+            # lives at container-scan.json. The canonical
+            # argus-results.json was already written above; this
+            # is the supplementary domain artifact for tooling that
+            # wants per-image stats without parsing findings.
             _write_container_json(summary, output_dir)
         elif fmt == "sarif":
-            from argus.core.models import ScanResult, ScanSummary
-            from argus.reporters import get_reporter
-            results = [
-                ScanResult(scanner=f"container/{r.name}", findings=r.combined_findings)
-                for r in summary.results
-            ]
             sarif_reporter = get_reporter("sarif")
-            sarif_reporter.report(ScanSummary(results=results), output_dir)
+            sarif_reporter.report(canonical_summary, output_dir)
 
     # Exit code — scanner failures are always non-zero
     scan_failures = getattr(summary, "scan_failures", 0)

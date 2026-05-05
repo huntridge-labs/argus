@@ -44,6 +44,14 @@ class ReportingConfig:
     formats: list[str] = field(default_factory=lambda: ["terminal"])
     severity_threshold: Optional[Severity] = None
     output_dir: str = "./argus-results"
+    # When True, the engine persists each scanner's raw output files
+    # (results.json / *.sarif / stdout.txt) under
+    # ``<output_dir>/raw/<scanner>/`` alongside the canonical
+    # ``argus-results.json``. Default ON since most users running
+    # ``argus scan`` would expect the artifacts to be available for
+    # forensics or manual triage; opt out via ``--no-keep-raw`` (CLI)
+    # or ``reporting.keep_raw: false`` for tight CI environments.
+    keep_raw: bool = True
 
 
 @dataclass
@@ -208,6 +216,7 @@ def _parse_reporting_config(raw: dict | None) -> ReportingConfig:
         formats=raw.get("formats", ["terminal"]),
         severity_threshold=_parse_severity(raw.get("severity_threshold")),
         output_dir=raw.get("output_dir", "./argus-results"),
+        keep_raw=bool(raw.get("keep_raw", True)),
     )
 
 

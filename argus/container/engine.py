@@ -6,6 +6,7 @@ on constrained environments like CI runners.
 """
 
 import logging
+from pathlib import Path
 
 from .builder import build_image
 from .discovery import (
@@ -130,10 +131,20 @@ class ContainerEngine:
             self._built_images.append(target.image_ref)
 
         try:
+            # If the dispatcher set ``_raw_output_root`` in the
+            # config dict, persist this target's raw scanner outputs
+            # under ``<root>/<target.name>/``. Caller controls
+            # whether this is set (CLI flag + config opt-out); the
+            # engine just threads it through.
+            raw_root = self.config.get("_raw_output_root")
+            target_raw_dir = (
+                Path(raw_root) / target.name if raw_root else None
+            )
             return scan_image(
                 target,
                 scanners=self._scanners(),
                 sbom=self._sbom_enabled(),
+                raw_output_dir=target_raw_dir,
             )
         except OSError as exc:
             # Disk full, permission denied, etc.

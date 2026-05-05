@@ -55,6 +55,15 @@ reporting:
   severity_threshold: high
   output_dir: "./argus-results"
 
+  # Persist each scanner's raw output (results.json, *.sarif,
+  # stdout.txt) under ``<output_dir>/raw/<scanner>/`` alongside the
+  # canonical argus-results.json. Default true — useful for
+  # forensics, audit trails, and manual triage. Set false (or pass
+  # --no-keep-raw on the CLI) to skip; saves a few MB per scan in
+  # tight CI environments. Applies to both source scans (``argus
+  # scan``) and container scans (``argus scan container``).
+  keep_raw: true
+
 # Container lifecycle targets (consumed by ``argus scan container``).
 # Defining anything under this top-level ``containers:`` key activates
 # config-driven container scans — no need to pass --image / --discover
@@ -101,6 +110,11 @@ reporting:
 #
 #   # Override which sub-scanners run; default is trivy + grype.
 #   scanners: [trivy, grype, syft]
+#
+# Note: raw scanner-output preservation is configured via the
+# unified ``reporting.keep_raw`` knob above — the same flag covers
+# trivy/grype/syft container outputs and source-scan scanner
+# outputs. No separate container-only setting is needed.
 
 # Execution backend configuration
 execution:
