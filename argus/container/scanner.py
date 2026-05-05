@@ -429,6 +429,24 @@ def _run_grype(
         use_container = True
         logger.info("Running grype via container: %s", image)
 
+    # Grype's CLI uses source-scheme prefixes (``docker:``, ``podman:``,
+    # etc.). When we're scanning a locally-built image, force the
+    # docker-daemon source by prepending ``docker:`` to the user's ref.
+    # Two effects:
+    #   (a) For "normal" refs like ``myapp:dev``, this reads as
+    #       "use docker daemon, image ``myapp:dev``" — the desired path.
+    #   (b) For refs that happen to collide with a scheme prefix
+    #       (``docker:argus-scan`` etc.), the explicit prefix flips
+    #       Grype's parser back to "scheme=docker, identifier=<the
+    #       whole user ref>" — so the user's literal name is preserved
+    #       and resolved against the local daemon, not mis-parsed as
+    #       a scheme request.
+    #
+    # For remote (registry) scans we leave the ref untouched — that
+    # path was working before, and forcing a local-daemon source for
+    # an image that doesn't exist locally would itself break.
+    grype_target = f"docker:{image_ref}" if local else image_ref
+
     if use_container:
         from argus import container_runtime
         from argus.containers import get_image
@@ -450,13 +468,13 @@ def _run_grype(
             )
 
         cmd = [rt, "run", "--rm"] + vol_args + [
-            image, image_ref,
+            image, grype_target,
             "-o", "json",
             "--file", "/output/grype-results.json",
         ]
     else:
         cmd = [
-            "grype", image_ref,
+            "grype", grype_target,
             "-o", "json",
             "--file", str(output_file),
         ]

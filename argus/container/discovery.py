@@ -11,6 +11,63 @@ _DOCKERFILE_NAMES = {"Dockerfile"}
 _DOCKERFILE_PREFIX = "Dockerfile."
 _DOCKERFILE_SUFFIX = ".Dockerfile"
 
+# Grype reserves a set of CLI source-scheme prefixes (``docker:``,
+# ``podman:``, ``registry:``, etc.). When an image reference happens
+# to start with one of these — e.g. ``docker:argus-scan`` (image name
+# ``docker``, tag ``argus-scan``) — Grype mis-parses the colon as the
+# scheme separator and looks for a non-existent image ``argus-scan``
+# in the docker daemon, instead of an image ``docker`` with tag
+# ``argus-scan``. Trivy doesn't have this ambiguity (positional arg,
+# no scheme prefixes), so the collision is Grype-specific.
+#
+# We address it in two places:
+#   1. Config-load: warn the user so they can rename before the scan
+#      runs (less time wasted on a build that won't surface findings).
+#   2. Runtime: when scanning a locally-built image, prefix the ref
+#      with ``docker:`` so Grype's parser sees an explicit scheme
+#      regardless of what the user named the image. ``docker:foo``
+#      becomes ``docker:docker:foo`` — Grype treats the first as the
+#      scheme and the rest as the image identifier.
+GRYPE_RESERVED_PREFIXES: tuple[str, ...] = (
+    "docker:",
+    "podman:",
+    "registry:",
+    "dir:",
+    "sbom:",
+    "oci-archive:",
+    "oci-dir:",
+    "singularity:",
+    "attestation:",
+)
+
+
+def warn_on_grype_prefix_collision(image_ref: str) -> str | None:
+    """Return a remediation message when ``image_ref`` collides with a
+    Grype source-scheme prefix; ``None`` otherwise.
+
+    Surfaced at config-load time so users see the issue before the
+    Docker build runs (saves them ~10s on a typical local build that
+    will produce zero Grype findings).
+    """
+    if not isinstance(image_ref, str):
+        return None
+    for prefix in GRYPE_RESERVED_PREFIXES:
+        if image_ref.startswith(prefix):
+            # Suggest a rename that preserves the user's tag if any.
+            tag = image_ref[len(prefix):] if ":" in image_ref else "dev"
+            suggested = f"argus-app:{tag or 'dev'}"
+            return (
+                f"image '{image_ref}' starts with the Grype source-scheme "
+                f"prefix '{prefix}' — Grype will mis-parse this as a "
+                f"scheme request and look for an image named "
+                f"'{image_ref[len(prefix):]}' in the docker daemon, "
+                f"instead of an image '{prefix.rstrip(':')}' with tag "
+                f"'{image_ref[len(prefix):]}'. Rename to e.g. "
+                f"'{suggested}' or 'myorg/{image_ref.split(':', 1)[-1] or 'app'}:dev' "
+                f"to avoid the collision."
+            )
+    return None
+
 
 @dataclass
 class ContainerTarget:
@@ -95,6 +152,14 @@ def parse_container_config(config: dict) -> list[ContainerTarget]:
         image_ref = entry.get("image", "")
         if not image_ref:
             continue
+
+        # Surface Grype prefix-collisions at config-load — well before
+        # the build runs. The warning is non-fatal so users with
+        # build-only or trivy-only flows aren't blocked by a Grype-
+        # specific naming issue.
+        collision = warn_on_grype_prefix_collision(image_ref)
+        if collision:
+            logger.warning(collision)
 
         dockerfile_path = entry.get("dockerfile")
         context_path = entry.get("context")
