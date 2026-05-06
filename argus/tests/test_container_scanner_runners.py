@@ -549,3 +549,135 @@ class TestOrchestratorRecordsScannerError:
         # Combined view doesn't claim grype's missing data is "no
         # vulnerabilities" — it's simply trivy's findings.
         assert len(result.combined_findings) == 1
+
+
+# ───────────────────────────────────────────────
+# Engine error-path dockerfile propagation
+# ───────────────────────────────────────────────
+
+
+class TestEngineErrorPathsCarryDockerfile:
+    """Every engine path that builds a ContainerScanResult must
+    carry the originating Dockerfile + context, including the failure
+    paths. Otherwise a build error or an OS error would lose the
+    dockerfile reference and a security reviewer couldn't trace which
+    container the error belongs to.
+    """
+
+    def _engine(self):
+        from argus.container.engine import ContainerEngine
+        return ContainerEngine({})
+
+    def _build_target(self, tmp_path):
+        from argus.container.discovery import ContainerTarget
+        return ContainerTarget(
+            name="myapp",
+            image_ref="myapp:argus-scan",
+            dockerfile=tmp_path / "Dockerfile",
+            context=tmp_path,
+        )
+
+    def test_build_failure_preserves_dockerfile(self, tmp_path, monkeypatch):
+        target = self._build_target(tmp_path)
+        # Pretend build failed.
+        monkeypatch.setattr(
+            "argus.container.engine.build_image", lambda t: False,
+        )
+        # Disk-space probe — return enough to avoid the OOD message branch.
+        monkeypatch.setattr(
+            "argus.container.engine.check_disk_space", lambda: 10 * 1024**3,
+        )
+        result = self._engine()._process_target(target)
+        assert result.build_success is False
+        assert result.dockerfile == str(tmp_path / "Dockerfile")
+        assert result.context == str(tmp_path)
+
+    def test_oserror_during_scan_preserves_dockerfile(self, tmp_path, monkeypatch):
+        target = self._build_target(tmp_path)
+        monkeypatch.setattr(
+            "argus.container.engine.build_image", lambda t: True,
+        )
+        monkeypatch.setattr(
+            "argus.container.engine.scan_image",
+            lambda *a, **kw: (_ for _ in ()).throw(OSError("disk full")),
+        )
+        result = self._engine()._process_target(target)
+        assert "OS error" in result.scan_error
+        assert result.dockerfile == str(tmp_path / "Dockerfile")
+        assert result.context == str(tmp_path)
+
+    def test_generic_exception_during_scan_preserves_dockerfile(
+        self, tmp_path, monkeypatch,
+    ):
+        target = self._build_target(tmp_path)
+        monkeypatch.setattr(
+            "argus.container.engine.build_image", lambda t: True,
+        )
+        monkeypatch.setattr(
+            "argus.container.engine.scan_image",
+            lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("oops")),
+        )
+        result = self._engine()._process_target(target)
+        assert "Scan failed" in result.scan_error
+        assert result.dockerfile == str(tmp_path / "Dockerfile")
+        assert result.context == str(tmp_path)
+
+
+# ───────────────────────────────────────────────
+# scan_image happy-path threading
+# ───────────────────────────────────────────────
+
+
+class TestScanImageThreadsDockerfile:
+    """The happy-path ContainerScanResult from ``scan_image`` must
+    also carry dockerfile/context from the target."""
+
+    def test_scan_image_populates_dockerfile_from_target(
+        self, tmp_path, monkeypatch,
+    ):
+        from argus.container.discovery import ContainerTarget
+        from argus.container.scanner import scan_image
+
+        target = ContainerTarget(
+            name="myapp",
+            image_ref="myapp:argus-scan",
+            dockerfile=tmp_path / "Dockerfile.x",
+            context=tmp_path,
+        )
+
+        # Stub out the actual scanners — we only need scan_image to
+        # construct the result and return.
+        monkeypatch.setattr(
+            "argus.container.scanner._run_trivy",
+            lambda *a, **kw: [],
+        )
+        monkeypatch.setattr(
+            "argus.container.scanner._run_grype",
+            lambda *a, **kw: [],
+        )
+
+        result = scan_image(target, scanners=("trivy", "grype"))
+        assert result.dockerfile == str(tmp_path / "Dockerfile.x")
+        assert result.context == str(tmp_path)
+
+    def test_scan_image_remote_pull_leaves_dockerfile_empty(
+        self, tmp_path, monkeypatch,
+    ):
+        from argus.container.discovery import ContainerTarget
+        from argus.container.scanner import scan_image
+
+        # Remote-pull entry — no dockerfile, no context.
+        target = ContainerTarget(name="webapp", image_ref="myorg/webapp:1.0")
+
+        monkeypatch.setattr(
+            "argus.container.scanner._run_trivy",
+            lambda *a, **kw: [],
+        )
+        monkeypatch.setattr(
+            "argus.container.scanner._run_grype",
+            lambda *a, **kw: [],
+        )
+
+        result = scan_image(target, scanners=("trivy", "grype"))
+        assert result.dockerfile == ""
+        assert result.context == ""
