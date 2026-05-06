@@ -967,6 +967,53 @@ class TestRunInContainer:
         # uid can write to /output regardless of its image's USER.
         assert captured_mode["mode"] == 0o777
 
+    def test_container_parse_exception_marks_parse_failed_not_raised(self, monkeypatch):
+        """A parser exception is the third state the user asked for:
+        the scanner *did* run and produced output we just couldn't
+        interpret. The engine's container path catches the exception,
+        sets ``metadata['parse_failed']=True`` with the reason, and
+        leaves ``execution_failed`` unset — so the reporter can show
+        'OSV produced 12KB of output we couldn't parse' rather than
+        the misleading 'no output produced'. Crucially, the rest of
+        the scan keeps running; one parser bug doesn't crash the
+        whole pipeline."""
+        engine = self._make_engine()
+
+        def explode(_path):
+            raise ValueError("Expecting value: line 1 column 1 (char 0)")
+
+        scanner = self._make_scanner(parse_results=explode)
+
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+
+        def mock_run(cmd, **_kwargs):
+            for arg in cmd:
+                if ":/output" in str(arg):
+                    Path(arg.split(":")[0]).joinpath("results.json").write_text(
+                        "this is not valid json"
+                    )
+                    break
+            # Scanner exits 1 — findings-found path. A passing test
+            # here proves "non-zero exit + valid output file path"
+            # routes through parse, exactly the OSV acceptance case.
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=1, stdout="", stderr="",
+            )
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        # Engine must not propagate the parser exception.
+        result = engine._run_in_container(scanner, "/src", {})
+        assert result.findings == []
+        assert result.metadata.get("parse_failed") is True
+        # Distinct from execution_failed — these are orthogonal signals.
+        assert result.metadata.get("execution_failed") is not True
+        reason = result.metadata.get("parse_failure_reason", "")
+        assert "ValueError" in reason
+        # The output head is included so the user can see what came out.
+        assert "this is not valid" in reason
+
     def test_container_no_output_marks_execution_failed(self, monkeypatch):
         """Empty result_files + no stdout means the container ran but
         produced nothing. Mark the ScanResult so reporters and the

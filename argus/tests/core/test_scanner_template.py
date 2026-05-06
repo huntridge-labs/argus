@@ -226,17 +226,33 @@ class TestFailures:
         assert "No output produced" in reason
         assert "boom" in reason
 
-    def test_unexpected_exception_propagates(self, tmp_path):
-        # Bugs in scanner.parse_results shouldn't be silently translated.
+    def test_parse_exception_emits_parse_failed_metadata(self, tmp_path):
+        # Parse failures are a third state distinct from execution
+        # failures: the scanner *did* run and produced output we
+        # couldn't interpret (schema drift, truncated JSON, mixed
+        # text+JSON output). The template translates parser
+        # exceptions into ``parse_failed`` metadata + a reason instead
+        # of crashing the scan — the rest of the run is still useful,
+        # and reporters render parse failures distinctly from
+        # execution failures.
         scanner = _FakeScanner(parse=lambda p: (_ for _ in ()).throw(ValueError("bad json")))
 
         def fake_run(cmd, **kwargs):
-            Path(cmd[cmd.index("--out") + 1]).write_text("{}")
+            Path(cmd[cmd.index("--out") + 1]).write_text("{not valid json")
             return _completed()
 
         with patch("subprocess.run", side_effect=fake_run):
-            with pytest.raises(ValueError, match="bad json"):
-                run_subprocess_scan(scanner, str(tmp_path))
+            result = run_subprocess_scan(scanner, str(tmp_path))
+
+        assert result.findings == []
+        assert result.metadata.get("parse_failed") is True
+        # ``execution_failed`` must NOT also be set — these are
+        # mutually distinct signals so reporters can show "OSV
+        # produced 12KB we couldn't parse" vs "OSV crashed" cleanly.
+        assert result.metadata.get("execution_failed") is not True
+        reason = result.metadata.get("parse_failure_reason", "")
+        assert "ValueError" in reason
+        assert "bad json" in reason
 
 
 # --------------------------------------------------------------------- #

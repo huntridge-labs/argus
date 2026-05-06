@@ -65,6 +65,43 @@ class TestOsvScannerMeta:
     def test_supports_sbom(self):
         assert OsvScanner.supports_sbom is True
 
+    def test_parse_results_succeeds_when_json_valid_regardless_of_exit_code(self, fixtures_dir):
+        """Acceptance criterion: OSV exits 1 when vulnerabilities are
+        found (it's the documented happy path). The engine parses
+        ``results.json`` whenever the file exists — exit code is
+        irrelevant. This test locks in that the parser successfully
+        extracts findings from real OSV output that came out of an
+        exit-1 run; if it ever stops doing so, the user sees
+        '0 findings' on a vulnerable workspace."""
+        scanner = OsvScanner()
+        path = fixtures_dir / "osv" / "results-with-findings.json"
+        findings = scanner.parse_results(path)
+        # Fixture is captured from a real osv-scanner exit-1 run.
+        # 4 findings means: 1 critical + 1 high + 1 medium + 1 low.
+        assert len(findings) == 4
+        assert all(f.scanner == "osv" for f in findings)
+
+    def test_parse_results_zero_findings_returns_empty_list_no_exception(self, fixtures_dir):
+        """OSV exits 0 with an empty ``results`` array when nothing's
+        vulnerable. Parser returns [] cleanly — must NOT raise (a raise
+        would be misclassified as parse_failed by the engine)."""
+        scanner = OsvScanner()
+        path = fixtures_dir / "osv" / "results-zero-findings.json"
+        findings = scanner.parse_results(path)
+        assert findings == []
+
+    def test_parse_results_malformed_json_raises_for_engine_to_catch(self, tmp_path):
+        """When the fixture is junk, parse_results must raise so the
+        engine's parse-failed wrapper can mark
+        ``parse_failed=True`` with a useful reason. Silently
+        returning [] would hide schema-drift breakages and make every
+        OSV run report '0 findings' indefinitely."""
+        scanner = OsvScanner()
+        bad = tmp_path / "results.json"
+        bad.write_text("this is not json at all")
+        with pytest.raises((ValueError, Exception)):
+            scanner.parse_results(bad)
+
     def test_container_entrypoint_uses_absolute_path(self):
         """Regression: ``--entrypoint osv-scanner`` (bare) exited 127
         because the official ghcr.io/google/osv-scanner image declares

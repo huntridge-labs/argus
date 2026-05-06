@@ -182,7 +182,35 @@ def run_subprocess_scan(
                     },
                 )
 
-        parsed = scanner.parse_results(output_file)
+        try:
+            parsed = scanner.parse_results(output_file)
+        except Exception as exc:
+            # ``parse_failed`` is a distinct state from ``execution_failed``:
+            # the scanner *did* run and produced an output file we just
+            # couldn't interpret. Schema drift (e.g. osv-scanner v2
+            # rev'd its JSON), truncated output, or non-JSON content
+            # land here. Surface it as its own signal — reporters
+            # render parse failures separately, and ``--fail-on-scanner-
+            # error`` keys off both flags. We deliberately don't
+            # re-raise: a parser bug shouldn't crash the whole scan
+            # when the rest of the run is still useful.
+            head = ""
+            try:
+                head = output_file.read_text()[:200]
+            except OSError:
+                head = "<unreadable>"
+            return ScanResult(
+                scanner=scanner.name,
+                raw_report=output_file,
+                metadata={
+                    "parse_failed": True,
+                    "parse_failure_reason": (
+                        f"{type(exc).__name__}: {exc}. "
+                        f"output head: {head!r}"
+                    ),
+                },
+            )
+
         # ``parse_results`` may return ``list[Finding]`` (most scanners),
         # a ``(list, int)`` tuple (linter passed-count channel — used by
         # checkov), or a ``(list, dict)`` tuple (extra metadata). Engine

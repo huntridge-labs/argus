@@ -38,7 +38,27 @@ class YamllintLinter:
         config = config or {}
         cmd = self._build_command(path, config)
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+        except FileNotFoundError as exc:
+            # ``is_available`` is checked before scan() is called, but
+            # there's a race between that check and the subprocess
+            # invocation (the binary could be uninstalled between
+            # them). Treating this as an execution failure — rather
+            # than letting it propagate — keeps the engine's exception
+            # handler from rendering a stack trace and lets the
+            # reporter surface a clean "yamllint not found" reason
+            # the user can act on.
+            return ScanResult(
+                scanner=self.name,
+                metadata={
+                    "execution_failed": True,
+                    "execution_failure_reason": (
+                        f"yamllint binary not found: "
+                        f"{exc.filename or 'yamllint'}"
+                    ),
+                },
+            )
 
         findings = self._parse_output(result.stdout)
         metadata: dict = {"returncode": result.returncode}

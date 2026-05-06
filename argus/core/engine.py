@@ -863,35 +863,63 @@ class ArgusEngine:
                         f"no output files and no stdout (exit={proc.returncode})"
                     )
             if result_files and hasattr(scanner, "parse_results"):
-                parsed = scanner.parse_results(result_files[0])
-                # parse_results may return either a list of Findings,
-                # a ``(list, int)`` tuple (legacy passed_count channel,
-                # used by linters), or a ``(list, dict)`` tuple (extra
-                # metadata merged into ScanResult.metadata — used by
-                # Grype to flag "source.target=unknown" which means
-                # "couldn't identify packages" rather than "nothing
-                # vulnerable").
-                if isinstance(parsed, tuple):
-                    findings, extra = parsed
-                    if isinstance(extra, int):
-                        metadata_extra["passed_count"] = extra
-                    elif isinstance(extra, dict):
-                        metadata_extra.update(extra)
-                        # Warn at the engine layer too so the signal is
-                        # visible even when a reporter doesn't render
-                        # per-scanner metadata.
-                        if "warning" in extra:
-                            logger.warning(
-                                "Scanner '%s': %s",
-                                scanner.name, extra["warning"],
-                            )
+                try:
+                    parsed = scanner.parse_results(result_files[0])
+                except Exception as exc:
+                    # Scanner produced output but the parser couldn't
+                    # interpret it (e.g. osv-scanner v2 rev'd its
+                    # schema, truncated output, mixed text+JSON). This
+                    # is a third state distinct from "execution failed"
+                    # and "ran clean" — we surface it as
+                    # ``parse_failed`` so the reporter can show "OSV
+                    # produced 12KB of output we couldn't parse" rather
+                    # than the misleading "no output produced". The
+                    # parser bug doesn't crash the rest of the scan;
+                    # other scanners' results are still useful.
+                    head = ""
+                    try:
+                        head = result_files[0].read_text()[:200]
+                    except OSError:
+                        head = "<unreadable>"
+                    metadata_extra["parse_failed"] = True
+                    metadata_extra["parse_failure_reason"] = (
+                        f"{type(exc).__name__}: {exc}. "
+                        f"output head: {head!r}"
+                    )
+                    logger.warning(
+                        "Scanner '%s' produced output but parse failed: %s",
+                        scanner.name, exc,
+                    )
+                    findings = []
                 else:
-                    findings = parsed
-                logger.debug(
-                    "Parsed %d finding(s) from %s",
-                    len(findings),
-                    result_files[0].name,
-                )
+                    # parse_results may return either a list of Findings,
+                    # a ``(list, int)`` tuple (legacy passed_count channel,
+                    # used by linters), or a ``(list, dict)`` tuple (extra
+                    # metadata merged into ScanResult.metadata — used by
+                    # Grype to flag "source.target=unknown" which means
+                    # "couldn't identify packages" rather than "nothing
+                    # vulnerable").
+                    if isinstance(parsed, tuple):
+                        findings, extra = parsed
+                        if isinstance(extra, int):
+                            metadata_extra["passed_count"] = extra
+                        elif isinstance(extra, dict):
+                            metadata_extra.update(extra)
+                            # Warn at the engine layer too so the signal is
+                            # visible even when a reporter doesn't render
+                            # per-scanner metadata.
+                            if "warning" in extra:
+                                logger.warning(
+                                    "Scanner '%s': %s",
+                                    scanner.name, extra["warning"],
+                                )
+                    else:
+                        findings = parsed
+                    logger.debug(
+                        "Parsed %d finding(s) from %s",
+                        len(findings),
+                        result_files[0].name,
+                    )
 
             return ScanResult(
                 scanner=scanner.name,

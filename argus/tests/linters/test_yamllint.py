@@ -100,3 +100,23 @@ class TestYamllintScanExitCodes:
         with patch("subprocess.run", return_value=_completed(returncode=0)):
             result = linter.scan(".")
         assert "returncode" in result.metadata
+
+    def test_filenotfound_returns_execution_failed_not_raised(self):
+        """If the yamllint binary disappears between is_available()
+        and subprocess.run() (rare but possible: race in CI cleanup,
+        manual uninstall mid-scan), scan() must not raise. Letting
+        FileNotFoundError propagate triggers the engine's exception
+        handler and renders a stack trace; a clean
+        ``execution_failed`` ScanResult lets the reporter surface
+        the actual reason."""
+        linter = YamllintLinter()
+        with patch(
+            "subprocess.run",
+            side_effect=FileNotFoundError(2, "no such file", "yamllint"),
+        ):
+            result = linter.scan(".")
+        assert result.findings == []
+        assert result.metadata.get("execution_failed") is True
+        reason = result.metadata.get("execution_failure_reason", "")
+        assert "yamllint" in reason
+        assert "not found" in reason

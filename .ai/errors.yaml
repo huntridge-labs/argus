@@ -434,7 +434,31 @@ scn_detector_errors:
     solution:
       steps:
         - "Reporter checks for any result.metadata.get('execution_failed')"
-        - "If passed and any failed: print 'Status: PASS (degraded — some scanners did not run)'"
+        - "If passed and any failed: print 'Status: PASS (degraded — N did not run, M unparsable)'"
         - "Add --fail-on-scanner-error in CI for hard-fail behavior"
 
     reference: "argus/reporters/terminal.py::_print_status"
+
+  - pattern: "0 findings.*known to be vulnerable|JSONDecodeError.*results.json"
+    category: scanner-execution
+    context: "Scanner produced output but parser couldn't interpret it (third state)"
+
+    root_cause: |
+      Distinct from execution-failure: the scanner ran, exited, and
+      wrote a results file — we just couldn't parse what came out
+      (schema drift, truncated JSON, mixed text+JSON). Previously
+      this surfaced as a stack trace from the engine's exception
+      handler and got rolled up as a generic "scanner failed".
+      Reporters and CI gates now have a fourth state for it:
+      ``parse_failed`` + ``parse_failure_reason`` (carries the
+      exception type and a clipped output head).
+
+    solution:
+      steps:
+        - "Engine's container path wraps scanner.parse_results in try/except"
+        - "On any Exception, set metadata['parse_failed']=True and metadata['parse_failure_reason']"
+        - "scanner_template.run_subprocess_scan does the same for local execution"
+        - "TerminalReporter renders parse_failed in its own warning block"
+        - "--fail-on-scanner-error fires on parse_failed too"
+
+    reference: "argus/core/engine.py::_run_in_container — try/except around parse_results"
