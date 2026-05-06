@@ -1754,8 +1754,15 @@ def _cmd_container_scan(
     that path is kept for backward compatibility with any caller that
     still bypasses ``cmd_scan``.
     """
+    from argus.audit import get_logger
     from argus.container import ContainerEngine
     from argus.reporters.container_markdown import ContainerMarkdownReporter
+
+    # Configure the ``argus`` logger so engine-level INFO/DEBUG output
+    # actually reaches the terminal under ``--verbose``. Without this
+    # the container engine's logger.info() calls go nowhere — same
+    # setup the source-scan handler does at the top of its body.
+    get_logger("argus", verbose=getattr(args, "verbose", False))
 
     if container_config is None:
         try:
