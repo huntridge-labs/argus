@@ -36,12 +36,14 @@ class TestContainersValid:
         cfg = {"containers": {"images": [{"image": "nginx:latest"}]}}
         assert _errors(cfg) == []
 
-    def test_dockerfile_entry(self):
+    def test_dockerfile_only_entry(self):
+        # Option A: dockerfile-build entries don't carry an image: ref
+        # — the build tag is auto-derived from the dockerfile path
+        # (or a per-entry name: override).
         cfg = {
             "containers": {
                 "images": [
                     {
-                        "image": "myapp:dev",
                         "dockerfile": "docker/Dockerfile",
                         "context": ".",
                     }
@@ -49,6 +51,34 @@ class TestContainersValid:
             }
         }
         assert _errors(cfg) == []
+
+    def test_dockerfile_with_explicit_name(self):
+        cfg = {
+            "containers": {
+                "images": [
+                    {
+                        "dockerfile": "docker/Dockerfile.web",
+                        "name": "scanner-web",
+                    }
+                ]
+            }
+        }
+        assert _errors(cfg) == []
+
+    def test_image_and_dockerfile_together_is_error(self):
+        # The whole point of option A — these are mutually exclusive.
+        cfg = {
+            "containers": {
+                "images": [
+                    {
+                        "image": "myapp:dev",
+                        "dockerfile": "docker/Dockerfile",
+                    }
+                ]
+            }
+        }
+        errors = _errors(cfg)
+        assert _has_error_at(errors, "containers.images[0]", "mutually exclusive")
 
     def test_discover_only(self):
         cfg = {"containers": {"discover": True, "search_paths": ["docker/"]}}
@@ -101,7 +131,7 @@ class TestImageEntryErrors:
     def test_image_entry_missing_image_and_dockerfile(self):
         cfg = {"containers": {"images": [{"context": "."}]}}
         errors = _errors(cfg)
-        assert _has_error_at(errors, "containers.images[0]", "must have either")
+        assert _has_error_at(errors, "containers.images[0]", "must declare either")
         assert _has_error_at(errors, "containers.images[0]", "dockerfile")
 
     def test_unknown_image_entry_key_is_warning(self):
@@ -158,6 +188,65 @@ class TestSubScannerValidation:
 # --------------------------------------------------------------------- #
 # Unknown top-level containers key                                      #
 # --------------------------------------------------------------------- #
+
+
+class TestPerContainerCleanup:
+    """``cleanup:`` is the per-target override of the engine-wide flag."""
+
+    def test_cleanup_true_accepted(self):
+        cfg = {
+            "containers": {
+                "images": [{"image": "x:1", "cleanup": True}],
+            },
+        }
+        assert _errors(cfg) == []
+
+    def test_cleanup_false_accepted(self):
+        cfg = {
+            "containers": {
+                "images": [
+                    {"dockerfile": "Dockerfile", "name": "base", "cleanup": False},
+                ],
+            },
+        }
+        assert _errors(cfg) == []
+
+    def test_cleanup_must_be_boolean(self):
+        cfg = {
+            "containers": {
+                "images": [{"image": "x:1", "cleanup": "yes"}],
+            },
+        }
+        errors = _errors(cfg)
+        assert _has_error_at(errors, "containers.images[0].cleanup", "boolean")
+
+
+class TestBuildOnlyKeysOnRemotePulls:
+    """``context:`` and ``name:`` only apply to dockerfile builds."""
+
+    def test_context_on_image_only_warns(self):
+        cfg = {
+            "containers": {
+                "images": [{"image": "x:1", "context": "."}],
+            },
+        }
+        warnings = _warnings(cfg)
+        assert any(
+            "context" in w.path and "build" in w.message
+            for w in warnings
+        )
+
+    def test_name_on_image_only_warns(self):
+        cfg = {
+            "containers": {
+                "images": [{"image": "x:1", "name": "myname"}],
+            },
+        }
+        warnings = _warnings(cfg)
+        assert any(
+            "name" in w.path and "build" in w.message
+            for w in warnings
+        )
 
 
 class TestUnknownKeys:

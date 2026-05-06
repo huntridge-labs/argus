@@ -85,8 +85,15 @@ class ContainerEngine:
             result = self._process_target(target)
             results.append(result)
 
-            # Post-scan cleanup — free disk for the next container
-            if self._cleanup:
+            # Post-scan cleanup — free disk for the next container.
+            # Per-target ``cleanup:`` overrides the engine-level default
+            # so a long-lived base image can stay cached across runs
+            # while ad-hoc dev images get torn down. None on the target
+            # means "no override — use the global setting".
+            target_cleanup = (
+                target.cleanup if target.cleanup is not None else self._cleanup
+            )
+            if target_cleanup:
                 self._cleanup_after_scan(target)
 
         # Final cleanup pass

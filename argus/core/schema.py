@@ -43,7 +43,7 @@ _EXECUTION_KEYS = {"backend", "registry", "pull_policy"}
 _CONTAINERS_KEYS = {"images", "discover", "search_paths", "scanners"}
 
 # Per-image entry keys (under containers.images[*])
-_CONTAINER_IMAGE_KEYS = {"image", "dockerfile", "context", "name"}
+_CONTAINER_IMAGE_KEYS = {"image", "dockerfile", "context", "name", "cleanup"}
 
 # Sub-scanners argus scan container can dispatch to
 _CONTAINER_SUB_SCANNERS = {"trivy", "grype", "syft"}
@@ -342,13 +342,24 @@ def _validate_containers(path: str, data: Any) -> list[ConfigError]:
 
 
 def _validate_container_image_entry(path: str, entry: Any) -> list[ConfigError]:
-    """Validate a single ``containers.images[*]`` entry."""
+    """Validate a single ``containers.images[*]`` entry.
+
+    Schema option A — ``image:`` and ``dockerfile:`` are *mutually
+    exclusive*. ``image:`` means "pull this from a registry";
+    ``dockerfile:`` (+ optional ``context:`` and ``name:``) means
+    "build locally and scan the result". The previous shape doubled
+    ``image:`` as both "pull source" and "tag the build as" — the
+    docker-compose precedent — and the doubling was the source of the
+    UX confusion that motivated this change. Argus doesn't push images
+    after building, so the compose semantic was never load-bearing for
+    us; the cleaner separation reflects what the tool actually does.
+    """
     errors: list[ConfigError] = []
 
     if not isinstance(entry, dict):
         errors.append(ConfigError(
             path,
-            f"Must be a mapping with at least an 'image:' field, "
+            f"Must be a mapping with either 'image:' or 'dockerfile:', "
             f"got {type(entry).__name__}",
         ))
         return errors
@@ -363,13 +374,37 @@ def _validate_container_image_entry(path: str, entry: Any) -> list[ConfigError]:
                 level="warning",
             ))
 
-    # An entry must declare either an image ref or a dockerfile to build.
-    if "image" not in entry and "dockerfile" not in entry:
+    has_image = "image" in entry
+    has_dockerfile = "dockerfile" in entry
+
+    if not has_image and not has_dockerfile:
         errors.append(ConfigError(
             path,
-            "Image entry must have either 'image:' (registry reference) "
-            "or 'dockerfile:' (build-then-scan) set.",
+            "Image entry must declare either 'image:' (remote registry "
+            "reference, pulled and scanned) or 'dockerfile:' (built "
+            "locally from a Dockerfile, then scanned).",
         ))
+    elif has_image and has_dockerfile:
+        errors.append(ConfigError(
+            path,
+            "Image entry has both 'image:' and 'dockerfile:' set — these "
+            "are mutually exclusive. Use 'image:' for remote pulls; use "
+            "'dockerfile:' (+ optional 'context:' and 'name:') for local "
+            "builds. Argus does not push the build to a registry, so the "
+            "'image:' tag-after-build semantic from docker-compose is not "
+            "supported.",
+        ))
+
+    # ``context:`` / ``name:`` only make sense for build-mode entries.
+    if has_image and not has_dockerfile:
+        for build_only in ("context", "name"):
+            if build_only in entry:
+                errors.append(ConfigError(
+                    f"{path}.{build_only}",
+                    f"'{build_only}:' only applies to dockerfile-build "
+                    f"entries; ignored when 'image:' is set.",
+                    level="warning",
+                ))
 
     # Type checks for present fields
     for field in ("image", "dockerfile", "context", "name"):
@@ -377,6 +412,11 @@ def _validate_container_image_entry(path: str, entry: Any) -> list[ConfigError]:
             errors.append(ConfigError(
                 f"{path}.{field}", "Must be a string",
             ))
+
+    if "cleanup" in entry and not isinstance(entry["cleanup"], bool):
+        errors.append(ConfigError(
+            f"{path}.cleanup", "Must be a boolean (true/false)",
+        ))
 
     return errors
 

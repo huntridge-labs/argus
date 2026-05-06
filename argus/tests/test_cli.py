@@ -885,8 +885,8 @@ class TestCmdValidate:
             "containers:\n"
             "  images:\n"
             "    - image: ghcr.io/myorg/app:1.0\n"
-            "    - image: myorg/inhouse:dev\n"
-            "      dockerfile: docker/Dockerfile\n"
+            "    - dockerfile: docker/Dockerfile\n"
+            "      name: inhouse\n"
         )
         args = argparse.Namespace(
             config=str(config_file),
@@ -899,7 +899,8 @@ class TestCmdValidate:
         out = capsys.readouterr().out
         assert "Containers: 2 image(s)" in out
         assert "ghcr.io/myorg/app:1.0" in out
-        assert "myorg/inhouse:dev" in out
+        # Build-mode entry surfaces by its dockerfile path (no image: ref).
+        assert "docker/Dockerfile" in out
 
     def test_validate_summary_omits_containers_line_when_block_absent(
         self, tmp_path, capsys,
@@ -923,6 +924,53 @@ class TestCmdValidate:
         assert result == EXIT_SUCCESS
         out = capsys.readouterr().out
         assert "Containers:" not in out
+
+    def test_validate_warns_when_schema_directive_missing(self, tmp_path, capsys):
+        """Configs without the ``# yaml-language-server:`` comment lose
+        IDE schema validation. Surface a soft warning so the user can
+        opt back in by adding one line.
+        """
+        config_file = tmp_path / "argus.yml"
+        # No schema directive — just plain config.
+        config_file.write_text(
+            "scanners:\n"
+            "  bandit:\n"
+            "    enabled: true\n"
+        )
+        args = argparse.Namespace(
+            config=str(config_file),
+            check_tools=False,
+            strict=False,
+        )
+        result = cmd_validate(args)
+
+        assert result == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "yaml-language-server" in out
+        assert "$schema=" in out
+
+    def test_validate_silent_when_schema_directive_present(
+        self, tmp_path, capsys,
+    ):
+        """When the directive is present, no schema-related warning fires."""
+        config_file = tmp_path / "argus.yml"
+        config_file.write_text(
+            "# yaml-language-server: $schema=https://example.com/argus.json\n"
+            "scanners:\n"
+            "  bandit:\n"
+            "    enabled: true\n"
+        )
+        args = argparse.Namespace(
+            config=str(config_file),
+            check_tools=False,
+            strict=False,
+        )
+        result = cmd_validate(args)
+
+        assert result == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        # The hint shouldn't fire — directive is present.
+        assert "Missing IDE schema directive" not in out
 
     def test_validate_summary_shows_discover_when_set(self, tmp_path, capsys):
         """``discover: true`` should surface in the summary alongside

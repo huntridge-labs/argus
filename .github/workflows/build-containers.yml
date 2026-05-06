@@ -56,9 +56,13 @@ jobs:
         # is safe to compose inline.
         run: |
           set -euo pipefail
+          # Schema option A: build entries declare ``dockerfile:`` +
+          # ``name:`` (no ``image:`` — that key is for remote pulls
+          # only). The matrix derives the short image name from
+          # ``name:`` and lets the build step prefix it with the
+          # ghcr.io registry path + commit SHA tag for publishing.
           matrix=$(yq -o=json '.containers.images | map({
-            "image": (.image | split(":") | .[0] | split("/") | .[-1]),
-            "image_ref_template": .image,
+            "image": .name,
             "dockerfile": .dockerfile,
             "context": (.context // ".")
           })' argus.yml)

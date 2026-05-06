@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import re
 import sys
 import threading
 import time
@@ -2535,6 +2536,24 @@ def _list_scanners(engine) -> int:
     return EXIT_SUCCESS
 
 
+_SCHEMA_DIRECTIVE_RE = re.compile(
+    r"^\s*#\s*yaml-language-server\s*:\s*\$schema\s*=", re.IGNORECASE,
+)
+
+
+def _has_schema_directive(raw_text: str, head_lines: int = 5) -> bool:
+    """Return True if the raw YAML has a ``# yaml-language-server:`` directive near the top.
+
+    Editors recognize the directive only when it sits in the first
+    handful of lines, so we don't bother scanning the entire file.
+    Tolerant about leading blank lines and a possible UTF-8 BOM.
+    """
+    for line in raw_text.splitlines()[:head_lines]:
+        if _SCHEMA_DIRECTIVE_RE.match(line):
+            return True
+    return False
+
+
 def cmd_validate(args: argparse.Namespace) -> int:
     """Execute the validate subcommand — check config file."""
     import yaml
@@ -2556,10 +2575,18 @@ def cmd_validate(args: argparse.Namespace) -> int:
         print(f"Config file not found: {config_path}", file=sys.stderr)
         return EXIT_ERROR
 
-    # Load and validate
+    # Load and validate. Also peek at the raw text first so we can
+    # check the schema-directive comment that yaml.safe_load discards
+    # (it's a YAML comment, not a key).
     try:
         with open(config_path, "r") as fh:
-            data = yaml.safe_load(fh)
+            raw_text = fh.read()
+    except OSError as exc:
+        print(f"Could not read {config_path}: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    try:
+        data = yaml.safe_load(raw_text)
     except yaml.YAMLError as exc:
         print(f"Invalid YAML in {config_path}: {exc}", file=sys.stderr)
         return EXIT_ERROR
@@ -2572,10 +2599,25 @@ def cmd_validate(args: argparse.Namespace) -> int:
     warnings = [e for e in errors if e.level == "warning"]
     fatal = [e for e in errors if e.level == "error"]
 
+    # IDE-schema directive — check the first few lines for the
+    # ``# yaml-language-server: $schema=...`` comment that drives
+    # in-editor validation in VS Code, IntelliJ, and other tools that
+    # speak the language-server-protocol YAML spec. Soft warning so a
+    # user editing argus.yml without an IDE isn't penalized.
+    if not _has_schema_directive(raw_text):
+        warnings.append(ConfigError(
+            "",
+            "Missing IDE schema directive. Add this as the first line "
+            "of your argus.yml so editors get inline validation: "
+            "# yaml-language-server: $schema="
+            "https://raw.githubusercontent.com/huntridge-labs/argus/main/argus-config.schema.json",
+            level="warning",
+        ))
+
     strict = getattr(args, "strict", False)
     report_issue = getattr(args, "report_issue", False)
 
-    if not errors:
+    if not warnings and not fatal:
         print(f"✅ {config_path} is valid")
     else:
         for w in warnings:
