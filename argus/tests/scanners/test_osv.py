@@ -90,6 +90,51 @@ class TestOsvScannerMeta:
         findings = scanner.parse_results(path)
         assert findings == []
 
+    def test_parse_results_handles_non_ascii_utf8_bytes(self, tmp_path):
+        """Bug 2 regression: OSV vulnerability summaries and file paths
+        can contain non-ASCII characters (CVE titles in non-English
+        locales, paths with unicode segments, contributor names with
+        accents). The parser reads the file with explicit UTF-8 so
+        Windows hosts (default cp1252) don't raise
+        UnicodeDecodeError on bytes like 0x8f that decode fine in
+        UTF-8 but not in cp1252."""
+        import json
+        scanner = OsvScanner()
+        f = tmp_path / "results.json"
+        # 'café' contains 0xc3 0xa9 in UTF-8 — both bytes are
+        # invalid in cp1252's mapping (0xc3 is valid but 0xa9
+        # decodes differently and the *combination* breaks). The
+        # crash byte the user hit was 0x8f at position 18203 — same
+        # category of failure mode.
+        f.write_text(
+            json.dumps({
+                "results": [{
+                    "source": {"path": "/src/café/Krürzungen.json"},
+                    "packages": [{
+                        "package": {
+                            "name": "lodash",
+                            "version": "4.17.20",
+                            "ecosystem": "npm",
+                        },
+                        "vulnerabilities": [{
+                            "id": "GHSA-xxxx",
+                            "summary": "Précis: prototype pollution attack — café",
+                            "aliases": ["CVE-2021-23337"],
+                            "database_specific": {"severity": "HIGH"},
+                        }],
+                    }],
+                }],
+            }),
+            encoding="utf-8",
+        )
+        findings = scanner.parse_results(f)
+        assert len(findings) == 1
+        # The non-ASCII content survived the round-trip — no
+        # mojibake, no replacement chars (because the file was
+        # genuinely UTF-8 and we read it as UTF-8).
+        assert "Précis" in findings[0].title
+        assert "café" in findings[0].location
+
     def test_parse_results_malformed_json_raises_for_engine_to_catch(self, tmp_path):
         """When the fixture is junk, parse_results must raise so the
         engine's parse-failed wrapper can mark

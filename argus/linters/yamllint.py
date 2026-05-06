@@ -1,9 +1,14 @@
 """YAML linter wrapping yamllint."""
 
+import logging
 import shutil
 import subprocess
+import sys
 
 from argus.core.models import Finding, ScanResult, Severity
+
+
+logger = logging.getLogger("argus.scanner")
 
 
 class YamllintLinter:
@@ -39,7 +44,7 @@ class YamllintLinter:
         cmd = self._build_command(path, config)
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = self._run_with_windows_fallback(cmd)
         except FileNotFoundError as exc:
             # ``is_available`` is checked before scan() is called, but
             # there's a race between that check and the subprocess
@@ -56,6 +61,20 @@ class YamllintLinter:
                     "execution_failure_reason": (
                         f"yamllint binary not found: "
                         f"{exc.filename or 'yamllint'}"
+                    ),
+                },
+            )
+        except OSError as exc:
+            # Both the direct binary launch AND the Windows
+            # ``python -m yamllint`` fallback failed. Surface the
+            # original error so the user sees the actual permission /
+            # OS reason instead of a generic stack trace.
+            return ScanResult(
+                scanner=self.name,
+                metadata={
+                    "execution_failed": True,
+                    "execution_failure_reason": (
+                        f"yamllint launch failed: {type(exc).__name__}: {exc}"
                     ),
                 },
             )
@@ -103,6 +122,70 @@ class YamllintLinter:
             return None
         except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
             return None
+
+    def _run_with_windows_fallback(
+        self, cmd: list[str],
+    ) -> subprocess.CompletedProcess:
+        """Run ``yamllint`` directly, with a Windows-only ``python -m``
+        fallback for AppLocker / Software Restriction Policy hosts.
+
+        On Windows machines with AppLocker or SRP, executables installed
+        under user AppData (typical pip --user / virtualenv install
+        location) get blocked by policy and ``subprocess.run`` raises
+        ``PermissionError`` — but loading the same package via the
+        Python interpreter (which is whitelisted) works. ``python -m
+        yamllint`` invokes yamllint's ``__main__`` module and is
+        argv-compatible with the binary, so we can swap argv[0] and
+        retry without touching the result-parsing logic.
+
+        The fallback is platform-guarded (``sys.platform == 'win32'``)
+        so the Linux invocation path is **byte-identical** to before
+        — no PATH lookups change, no extra subprocess on the happy
+        path, no behavioral drift on existing CI runs.
+
+        FileNotFoundError is re-raised here so the outer ``scan()``
+        handler can convert it to a clean ``execution_failed``
+        ScanResult. PermissionError / other OSError on Linux is also
+        re-raised (Linux doesn't have AppLocker; if the binary can't
+        execute there it's a genuine permission bug, not the policy
+        case this fallback exists for).
+
+        Encoding: explicit ``encoding='utf-8'`` + ``errors='replace'``
+        replaces the platform default (cp1252 on Windows) which would
+        otherwise raise ``UnicodeDecodeError`` on yamllint output
+        containing non-ASCII characters in user file paths or YAML
+        values.
+        """
+        try:
+            return subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+        except FileNotFoundError:
+            # Re-raise so the outer handler renders "binary not found"
+            # cleanly. The fallback ``python -m yamllint`` would also
+            # fail (yamllint isn't installed at all), so retrying is
+            # pointless.
+            raise
+        except OSError as exc:
+            if sys.platform != "win32":
+                raise
+            logger.warning(
+                "yamllint direct invocation blocked on Windows (%s) — "
+                "retrying via 'python -m yamllint'",
+                exc,
+            )
+            fallback_cmd = [sys.executable, "-m", "yamllint"] + cmd[1:]
+            return subprocess.run(
+                fallback_cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
 
     def _build_command(self, path: str, config: dict) -> list[str]:
         """Build the yamllint CLI command."""

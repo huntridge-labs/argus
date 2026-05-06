@@ -106,7 +106,7 @@ class TrivyScanner:
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse Trivy JSON output into Finding objects."""
         try:
-            data = json.loads(Path(raw_output_path).read_text())
+            data = json.loads(Path(raw_output_path).read_text(encoding="utf-8", errors="replace"))
         except (json.JSONDecodeError, OSError):
             return []
         findings: list[Finding] = []

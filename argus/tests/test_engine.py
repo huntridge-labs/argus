@@ -967,6 +967,40 @@ class TestRunInContainer:
         # uid can write to /output regardless of its image's USER.
         assert captured_mode["mode"] == 0o777
 
+    def test_docker_subprocess_uses_utf8_encoding(self, monkeypatch):
+        """Bug 2 regression: docker container output is always UTF-8.
+        Without explicit ``encoding='utf-8'`` on the subprocess call,
+        ``text=True`` falls back to the platform default — cp1252 on
+        Windows — and ``UnicodeDecodeError`` fires on any non-ASCII
+        byte in scanner output (CVE descriptions with accented chars,
+        file paths with non-ASCII characters, etc.). This test locks
+        in the explicit encoding + ``errors='replace'`` fallback."""
+        engine = self._make_engine()
+        scanner = self._make_scanner()
+
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+
+        captured: dict = {}
+
+        def mock_run(cmd, **kwargs):
+            captured.update(kwargs)
+            for arg in cmd:
+                if ":/output" in str(arg):
+                    Path(arg.split(":")[0]).joinpath("results.json").write_text("{}")
+                    break
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="", stderr="",
+            )
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+        engine._run_in_container(scanner, "/src", {})
+
+        # The docker subprocess must read its output as UTF-8 with
+        # replace fallback, identical on every host OS.
+        assert captured.get("encoding") == "utf-8"
+        assert captured.get("errors") == "replace"
+
     def test_container_parse_exception_marks_parse_failed_not_raised(self, monkeypatch):
         """A parser exception is the third state the user asked for:
         the scanner *did* run and produced output we just couldn't

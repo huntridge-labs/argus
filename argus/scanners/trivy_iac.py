@@ -99,7 +99,7 @@ class TrivyIacScanner:
 
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse Trivy IaC JSON output into findings."""
-        data = json.loads(raw_output_path.read_text())
+        data = json.loads(raw_output_path.read_text(encoding="utf-8", errors="replace"))
         results = data.get("Results", [])
 
         findings = []

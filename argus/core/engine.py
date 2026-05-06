@@ -747,10 +747,21 @@ class ArgusEngine:
             )
 
             start = time.monotonic()
+            # Docker container output is always UTF-8. Without
+            # ``encoding='utf-8'``, ``text=True`` falls back to the
+            # platform default — cp1252 on Windows — which raises
+            # ``UnicodeDecodeError`` on any non-ASCII byte the
+            # scanner emits (CVE descriptions, file paths with
+            # non-ASCII characters, etc.). ``errors='replace'`` is
+            # a safe fallback over ``strict``: a security tool
+            # showing ``�`` is better than crashing the whole
+            # scan on output we'd otherwise be able to use.
             proc = subprocess.run(
                 docker_cmd,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
             )
             elapsed = int((time.monotonic() - start) * 1000)
 
@@ -878,7 +889,9 @@ class ArgusEngine:
                     # other scanners' results are still useful.
                     head = ""
                     try:
-                        head = result_files[0].read_text()[:200]
+                        head = result_files[0].read_text(
+                            encoding="utf-8", errors="replace",
+                        )[:200]
                     except OSError:
                         head = "<unreadable>"
                     metadata_extra["parse_failed"] = True

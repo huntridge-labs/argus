@@ -101,6 +101,98 @@ class TestYamllintScanExitCodes:
             result = linter.scan(".")
         assert "returncode" in result.metadata
 
+    def test_permission_error_on_windows_falls_back_to_python_module(self, monkeypatch):
+        """On Windows hosts with AppLocker / Software Restriction
+        Policy blocking executables in user AppData paths,
+        ``yamllint.exe`` raises PermissionError on direct launch but
+        loading the same package via ``python -m yamllint`` works
+        (the interpreter is whitelisted). The linter must detect
+        that path and retry — without disturbing the Linux flow.
+
+        The test pretends to be on Windows and asserts the second
+        ``subprocess.run`` call is the ``python -m`` invocation."""
+        from argus.linters import yamllint as ymod
+        monkeypatch.setattr(ymod.sys, "platform", "win32")
+
+        calls = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(cmd)
+            if len(calls) == 1:
+                # First call: direct yamllint invocation — simulate
+                # AppLocker blocking it.
+                raise PermissionError(13, "Access is denied", "yamllint.exe")
+            # Second call: Windows fallback — succeeds.
+            return _completed(stdout="path:1:1: [error] msg (rule)", returncode=1)
+
+        with patch("subprocess.run", side_effect=fake_run):
+            result = ymod.YamllintLinter().scan(".")
+
+        # Both subprocess.run calls fired (direct + fallback).
+        assert len(calls) == 2, f"expected 2 calls, got {len(calls)}: {calls}"
+        # First was the direct binary invocation.
+        assert calls[0][0] == "yamllint"
+        # Second was 'python -m yamllint' with sys.executable as argv[0].
+        assert calls[1][0] == ymod.sys.executable
+        assert calls[1][1] == "-m"
+        assert calls[1][2] == "yamllint"
+        # Result-parsing logic is unchanged — the finding from the
+        # fallback's stdout still made it through.
+        assert len(result.findings) == 1
+        assert result.metadata.get("execution_failed") is not True
+
+    def test_permission_error_on_linux_does_not_fall_back(self, monkeypatch):
+        """Cross-platform safety: Linux must NOT use the Windows
+        fallback. AppLocker doesn't exist on Linux; a PermissionError
+        there indicates a genuine permission bug (chmod, mount
+        options) that the user needs to see, not a policy case the
+        fallback compensates for. We re-raise and let the outer
+        handler mark execution_failed with the actual reason."""
+        from argus.linters import yamllint as ymod
+        monkeypatch.setattr(ymod.sys, "platform", "linux")
+
+        calls = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(cmd)
+            raise PermissionError(13, "Permission denied", "yamllint")
+
+        with patch("subprocess.run", side_effect=fake_run):
+            result = ymod.YamllintLinter().scan(".")
+
+        # Exactly ONE subprocess.run call — no fallback retry.
+        # Linux happy-path / failure-path bytes are unchanged from
+        # before this fix.
+        assert len(calls) == 1
+        # The PermissionError surfaces as execution_failed (caught by
+        # the outer OSError handler in scan()), not as a stack trace.
+        assert result.metadata.get("execution_failed") is True
+        assert "PermissionError" in result.metadata.get(
+            "execution_failure_reason", "",
+        )
+
+    def test_subprocess_uses_utf8_encoding(self, monkeypatch):
+        """Bug 2 regression: container / CLI scanner output is UTF-8.
+        Without explicit ``encoding='utf-8'`` the platform default
+        (cp1252 on Windows) raises UnicodeDecodeError on non-ASCII
+        bytes in YAML file paths or value content. We assert the
+        subprocess.run call passes ``encoding='utf-8'`` and
+        ``errors='replace'`` so Windows decodes container output
+        the same way Linux does."""
+        from argus.linters import yamllint as ymod
+
+        captured: dict = {}
+
+        def fake_run(cmd, **kwargs):
+            captured.update(kwargs)
+            return _completed(returncode=0)
+
+        with patch("subprocess.run", side_effect=fake_run):
+            ymod.YamllintLinter().scan(".")
+
+        assert captured.get("encoding") == "utf-8"
+        assert captured.get("errors") == "replace"
+
     def test_filenotfound_returns_execution_failed_not_raised(self):
         """If the yamllint binary disappears between is_available()
         and subprocess.run() (rare but possible: race in CI cleanup,

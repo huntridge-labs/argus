@@ -136,11 +136,19 @@ def run_subprocess_scan(
         logger.debug("[%s] running: %s", scanner.name, " ".join(cmd))
 
         try:
+            # Explicit UTF-8 encoding for stdout/stderr capture: the
+            # platform default (cp1252 on Windows) raises
+            # ``UnicodeDecodeError`` on non-ASCII output (path names,
+            # CVE descriptions, scanner banners). All container and
+            # CLI scanner output is UTF-8, so we lock that in
+            # uniformly across local- and container-execution paths.
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                encoding="utf-8",
+                errors="replace",
             )
         except FileNotFoundError as exc:
             return ScanResult(
@@ -196,7 +204,9 @@ def run_subprocess_scan(
             # when the rest of the run is still useful.
             head = ""
             try:
-                head = output_file.read_text()[:200]
+                head = output_file.read_text(
+                    encoding="utf-8", errors="replace",
+                )[:200]
             except OSError:
                 head = "<unreadable>"
             return ScanResult(

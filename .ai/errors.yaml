@@ -462,3 +462,50 @@ scn_detector_errors:
         - "--fail-on-scanner-error fires on parse_failed too"
 
     reference: "argus/core/engine.py::_run_in_container — try/except around parse_results"
+
+  # ==============================================================================
+  # WINDOWS-SPECIFIC SCANNER ERRORS
+  # ==============================================================================
+
+  - pattern: "PermissionError.*WinError 5.*Access is denied|yamllint.*Access is denied"
+    category: scanner-execution
+    context: "yamllint launches with PermissionError on Windows hosts with AppLocker / SRP"
+
+    root_cause: |
+      AppLocker or Software Restriction Policy on Windows blocks
+      executable launches from user AppData paths (where pip --user
+      and virtualenv typically install scripts). The python
+      interpreter itself is whitelisted, so loading the same
+      package via ``python -m yamllint`` works on the same
+      machine.
+
+    solution:
+      steps:
+        - "YamllintLinter._run_with_windows_fallback wraps subprocess.run"
+        - "On sys.platform == 'win32', PermissionError/OSError triggers a retry with [sys.executable, '-m', 'yamllint'] + cmd[1:]"
+        - "FileNotFoundError still propagates so 'yamllint not installed' renders cleanly"
+        - "Linux/macOS bypass the fallback — Linux PermissionError is a genuine bug, not a policy case"
+
+    reference: "argus/linters/yamllint.py::_run_with_windows_fallback"
+
+  - pattern: "UnicodeDecodeError.*charmap codec.*can't decode byte"
+    category: scanner-execution
+    context: "Scanner result decode fails on Windows with cp1252 default encoding"
+
+    root_cause: |
+      Docker container output (and most CLI tool output) is UTF-8.
+      ``subprocess.run(text=True)`` and ``Path.read_text()`` fall
+      back to the platform default encoding when ``encoding=`` is
+      omitted — cp1252 on Windows. Any non-ASCII byte (CVE
+      descriptions, accented file paths, scanner banners) raises
+      UnicodeDecodeError mid-scan.
+
+    solution:
+      steps:
+        - "Engine docker subprocess: encoding='utf-8', errors='replace'"
+        - "scanner_template subprocess: same"
+        - "All scanner.parse_results read_text() calls: same"
+        - "Yamllint subprocess + Windows fallback: same"
+      note: "errors='replace' is preferred over 'strict' — a security tool showing � is better than crashing on otherwise-usable output"
+
+    reference: "argus/core/engine.py and every argus/scanners/*.py read_text()"

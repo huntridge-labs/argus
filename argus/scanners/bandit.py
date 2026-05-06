@@ -83,7 +83,7 @@ class BanditScanner:
 
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse Bandit JSON output into findings."""
-        data = json.loads(raw_output_path.read_text())
+        data = json.loads(raw_output_path.read_text(encoding="utf-8", errors="replace"))
         return [self._parse_finding(item) for item in data.get("results", [])]
 
     def _parse_finding(self, item: dict) -> Finding:

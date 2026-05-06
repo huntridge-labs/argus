@@ -62,7 +62,7 @@ class GitleaksScanner:
 
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse Gitleaks JSON output into findings."""
-        text = raw_output_path.read_text().strip()
+        text = raw_output_path.read_text(encoding="utf-8", errors="replace").strip()
         if not text:
             return []
 
