@@ -17,6 +17,19 @@ argus [--version] [--help] <command> [options]
 |------|-------------|---------|
 | `--version` | show program's version number and exit |  |
 
+## Output and verbosity
+
+`argus scan` exposes four flags that compose orthogonally — `--quiet` controls log verbosity, `--no-spinner` controls UI rendering, and `--debug` (alias `--verbose`) is the explicit troubleshooting opt-in. The four most useful modes:
+
+| Invocation | When to use | What you see |
+|---|---|---|
+| `argus scan` | Default — interactive terminal | Phase-aware spinner that updates per image and per scan phase |
+| `argus scan --quiet` | Daily runs you don't want narrating | Spinner stays drawing, but per-phase chatter is suppressed; only WARNING/ERROR lines and the final summary print |
+| `argus scan --no-spinner` | CI logs, step-away monitoring | Persistent `[idx/total] name — phase (Ns)` lines on stderr instead of a self-overwriting spinner |
+| `argus scan --debug` (or `--verbose`) | Troubleshooting | Full firehose: subprocess output, vulnerability-DB updates, every engine log line |
+
+Compose flags for additional modes — `--quiet --no-spinner` is the fully-silent CI exit-code-only combination; `--debug --no-spinner` is identical to `--debug` since debug auto-disables the spinner.
+
 ## Commands
 
 ### `argus init`
