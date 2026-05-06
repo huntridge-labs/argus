@@ -398,6 +398,32 @@ class TestCmdScan:
             _load_container_config(args)
         assert "YAML parse error" in str(excinfo.value)
 
+    def test_container_lifecycle_auto_loads_argus_yml_without_config_flag(
+        self, tmp_path, monkeypatch,
+    ):
+        """``argus scan container`` with NO --config should pick up the
+        nearest argus.yml automatically — same UX as ``argus scan``.
+
+        Previously the container dispatcher required ``--config FILE``
+        explicitly, which made config-driven scans feel inconsistent
+        with the source-scan flow that has always auto-detected
+        argus.yml at the project root.
+        """
+        from argus.cli import _container_config_has_targets, _load_container_config
+
+        config_file = tmp_path / "argus.yml"
+        config_file.write_text(
+            "containers:\n  images:\n    - image: nginx:1.27\n"
+        )
+        # Run from inside tmp_path so argus.yml resolves relative to cwd —
+        # no --config flag, no --image, no --discover.
+        monkeypatch.chdir(tmp_path)
+        args = _make_scan_args(scanner="container")
+
+        loaded = _load_container_config(args)
+        assert _container_config_has_targets(loaded) is True
+        assert loaded["images"] == [{"image": "nginx:1.27"}]
+
     def test_scan_source_always_emits_canonical_json(self, monkeypatch, tmp_path):
         """Regression for Option C: argus-results.json must be written
         regardless of the user's ``reporting.formats``. Captures the
@@ -845,6 +871,85 @@ class TestCmdValidate:
         assert result == EXIT_ERROR
         captured = capsys.readouterr()
         assert "strict" in captured.out.lower() or "warning" in captured.out.lower()
+
+    def test_validate_summary_lists_containers_when_block_present(
+        self, tmp_path, capsys,
+    ):
+        """The summary should surface configured container targets so
+        the user knows the ``containers:`` block was inspected."""
+        config_file = tmp_path / "argus.yml"
+        config_file.write_text(
+            "scanners:\n"
+            "  bandit:\n"
+            "    enabled: true\n"
+            "containers:\n"
+            "  images:\n"
+            "    - image: ghcr.io/myorg/app:1.0\n"
+            "    - image: myorg/inhouse:dev\n"
+            "      dockerfile: docker/Dockerfile\n"
+        )
+        args = argparse.Namespace(
+            config=str(config_file),
+            check_tools=False,
+            strict=False,
+        )
+        result = cmd_validate(args)
+
+        assert result == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "Containers: 2 image(s)" in out
+        assert "ghcr.io/myorg/app:1.0" in out
+        assert "myorg/inhouse:dev" in out
+
+    def test_validate_summary_omits_containers_line_when_block_absent(
+        self, tmp_path, capsys,
+    ):
+        """When no ``containers:`` block exists, the summary should not
+        mention containers at all — the block is optional and silence
+        is the right signal."""
+        config_file = tmp_path / "argus.yml"
+        config_file.write_text(
+            "scanners:\n"
+            "  bandit:\n"
+            "    enabled: true\n"
+        )
+        args = argparse.Namespace(
+            config=str(config_file),
+            check_tools=False,
+            strict=False,
+        )
+        result = cmd_validate(args)
+
+        assert result == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "Containers:" not in out
+
+    def test_validate_summary_shows_discover_when_set(self, tmp_path, capsys):
+        """``discover: true`` should surface in the summary alongside
+        any configured search_paths."""
+        config_file = tmp_path / "argus.yml"
+        config_file.write_text(
+            "scanners:\n"
+            "  bandit:\n"
+            "    enabled: true\n"
+            "containers:\n"
+            "  discover: true\n"
+            "  search_paths:\n"
+            "    - docker/\n"
+            "    - .\n"
+        )
+        args = argparse.Namespace(
+            config=str(config_file),
+            check_tools=False,
+            strict=False,
+        )
+        result = cmd_validate(args)
+
+        assert result == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "Containers:" in out
+        assert "discover from" in out
+        assert "docker/" in out
 
 
 class TestCmdReport:

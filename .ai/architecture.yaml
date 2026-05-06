@@ -494,15 +494,15 @@ docsite:
     config_file: "argus.yml"
     cli_commands:
       - "argus scan [scanner] --path --config --severity-threshold --format [--interface=terminal|browser]"
-      - "argus scan container [--image REF | --discover [PATH]] [--scanners trivy,grype,syft] [--no-keep-raw]"
+      - "argus scan container [--config argus.yml | --image REF | --discover [PATH]] [--scanners trivy,grype,syft] [--no-keep-raw]"
       - "argus init [--force] — generate tailored argus.yml from auto-detection"
-      - "argus list — show registered scanners (SCANNER_REGISTRY)"
-      - "argus validate [argus.yml] — JSON Schema validation"
+      - "argus validate — JSON Schema validation of the auto-detected argus.yml"
       - "argus report <format> --results-dir --output-dir — re-emit canonical results"
       - "argus view [terminal|browser] [PATH] [--port N] [--no-open]"
       - "argus mcp — start MCP server over stdio"
       - "argus completion {bash,zsh,fish} — shell completion (dynamic from registry)"
       - "argus cache info|clean — manage scanner DB cache volumes"
+      - "argus --version — top-level flag (no `argus version` subcommand exists)"
 
 directory_structure:
   "argus/": "Standalone Python SDK (primary interface, ADR-013)"
