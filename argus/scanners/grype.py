@@ -110,7 +110,7 @@ class GrypeScanner:
             data = json.loads(res.stdout)
             v = data.get("version")
             return v if isinstance(v, str) else None
-        except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception):
+        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, OSError):
             return None
 
     def parse_results(self, raw_output_path: Path) -> list[Finding]:

@@ -2,12 +2,12 @@
 
 import json
 import shutil
-import subprocess
-import tempfile
 from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
+from argus.core.scanner_template import ScanPaths, run_subprocess_scan
+from argus.core.version import parse_tool_version
 
 
 class OpengrepScanner:
@@ -19,50 +19,28 @@ class OpengrepScanner:
     languages = ["python", "javascript", "typescript", "go", "java", "ruby", "c", "cpp"]
     container_image = get_image("semgrep")
 
-    def container_args(self, config: dict | None = None) -> list[str]:
-        """Build container args from config — mirrors _build_command.
+    def scan(self, path: str, config: dict | None = None) -> ScanResult:
+        """Run OpenGrep against the given path and return results."""
+        return run_subprocess_scan(self, path, config)
 
-        The semgrep image ENTRYPOINT is not semgrep, so we prefix the command.
+    def build_args(self, paths: ScanPaths, config: dict) -> list[str]:
+        """Build the full argv (including the binary name).
+
+        Note: local execution uses the ``opengrep`` binary; container
+        execution (semgrep image) uses ``semgrep scan`` — if you need
+        the semgrep image to work, override ``container_args`` or set
+        the container image to one that ships the ``opengrep`` binary.
         """
-        config = config or {}
-        args = ["semgrep", "scan", "--json", "--output", "/output/results.json"]
+        args = [
+            "opengrep",
+            "--json",
+            "--output", paths.output,
+        ]
         rules_config = config.get("config")
         if rules_config:
             args.extend(["--config", rules_config])
-        args.append("/workspace")
+        args.append(paths.workspace)
         return args
-
-    def scan(self, path: str, config: dict | None = None) -> ScanResult:
-        """Run OpenGrep against the given path and return results."""
-        config = config or {}
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            output_file = Path(tmp_dir) / "opengrep-results.json"
-            cmd = self._build_command(path, output_file, config)
-
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-            )
-
-            # OpenGrep returns non-zero on findings or errors;
-            # check for output file to distinguish
-            if not output_file.exists():
-                return ScanResult(
-                    scanner=self.name,
-                    metadata={
-                        "error": result.stderr.strip() or "No output file produced",
-                        "returncode": result.returncode,
-                    },
-                )
-
-            findings = self.parse_results(output_file)
-            return ScanResult(
-                scanner=self.name,
-                findings=findings,
-                raw_report=output_file,
-            )
 
     def is_available(self) -> bool:
         """Check if OpenGrep is installed."""
@@ -76,21 +54,7 @@ class OpengrepScanner:
         """Return the installed OpenGrep version, or None if not available."""
         if not self.is_available():
             return None
-        try:
-            result = subprocess.run(
-                ["opengrep", "--version"],
-                capture_output=True, text=True, timeout=5,
-            )
-            # Parse the version string from output
-            version_text = result.stdout.strip()
-            if not version_text:
-                return None
-            # Take the last token of the first line as the version
-            first_line = version_text.splitlines()[0]
-            parts = first_line.split()
-            return parts[-1] if parts else None
-        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
-            return None
+        return parse_tool_version(["opengrep", "--version"], r"(\d+\.\d+\.\S+)")
 
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse OpenGrep JSON output into findings."""
@@ -129,20 +93,3 @@ class OpengrepScanner:
                 "column": start.get("col", 0),
             },
         )
-
-    def _build_command(
-        self, path: str, output_file: Path, config: dict
-    ) -> list[str]:
-        """Build the OpenGrep CLI command."""
-        cmd = [
-            "opengrep",
-            "--json",
-            "--output", str(output_file),
-        ]
-
-        rules_config = config.get("config")
-        if rules_config:
-            cmd.extend(["--config", rules_config])
-
-        cmd.append(path)
-        return cmd

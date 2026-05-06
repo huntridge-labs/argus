@@ -52,18 +52,8 @@ def run_init(
     root = Path(target_dir)
     config_path = root / "argus.yml"
 
-    # Show banner on interactive terminals with scroll effect
     if sys.stderr.isatty():
-        import time
-        lines = _load_banner().splitlines()
-        for i, line in enumerate(lines):
-            print(line, file=sys.stderr)
-            if not line.strip():
-                time.sleep(0.15)
-            elif "A R G U S" in line or "Perception is Protection" in line:
-                time.sleep(0.20)
-            else:
-                time.sleep(0.06)
+        print(_load_banner(), file=sys.stderr)
         print(file=sys.stderr)
 
     if config_path.exists() and not force:
@@ -112,20 +102,21 @@ def _extract_enabled_scanners(config_content: str) -> list[str]:
 
 
 def _check_local_readiness(scanner_names: list[str]) -> dict[str, int] | None:
-    """Return a {local, container, missing} bucket summary, or None on error.
+    """Return a {local, container, missing} bucket summary, or None when unavailable.
 
-    Swallows all errors from the readiness check — init must never fail
-    because a scanner registry import blew up. A None return skips the
-    readiness block entirely in `_print_summary`.
+    Catches ImportError only — readiness check is best-effort and an
+    optional preflight import (the [preflight] extra is not always
+    installed) shouldn't fail init. Bugs inside the readiness logic
+    itself should surface, not get silently swallowed.
     """
     if not scanner_names:
         return None
     try:
         from argus.preflight.tool_check import check_scanner_readiness, summarize
-        statuses = check_scanner_readiness(scanner_names, backend="auto")
-        return summarize(statuses)
-    except Exception:
+    except ImportError:
         return None
+    statuses = check_scanner_readiness(scanner_names, backend="auto")
+    return summarize(statuses)
 
 
 def detect_project(root: Path) -> dict[str, list[str]]:

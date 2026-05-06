@@ -70,11 +70,17 @@ class TestScannerContainerImages:
             )
 
     def test_all_scanners_have_container_args(self):
+        """Scanners must expose container CLI args via build_args or container_args."""
+        from argus.core.scanner_template import ScanPaths
+
         for name, cls in self._security_scanners().items():
             scanner = cls()
-            assert hasattr(scanner, "container_args"), (
-                f"{name} missing container_args method"
+            has_build_args = hasattr(scanner, "build_args")
+            has_container_args = hasattr(scanner, "container_args")
+            assert has_build_args or has_container_args, (
+                f"{name} missing both build_args and container_args"
             )
+
             # SBOM-only scanners refuse to build args without an sbom_path
             # because the SBOM is required for the invocation; pass a
             # placeholder so this protocol test still exercises them.
@@ -84,9 +90,14 @@ class TestScannerContainerImages:
                     "sbom_path": "/host/sbom.json",
                     "sbom_mount_path": "/sbom/sbom.json",
                 }
-            args = scanner.container_args(cfg)
+
+            if has_build_args:
+                paths = ScanPaths(workspace="/workspace", output="/output/results.json")
+                args = scanner.build_args(paths, cfg or {})
+            else:
+                args = scanner.container_args(cfg)
             assert isinstance(args, list), (
-                f"{name}.container_args() should return list"
+                f"{name} container args method should return list"
             )
 
 

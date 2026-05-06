@@ -294,14 +294,36 @@ class TestCheckLocalReadiness:
     def test_empty_names_returns_none(self):
         assert _check_local_readiness([]) is None
 
-    def test_swallows_exceptions(self, monkeypatch):
+    def test_swallows_import_error(self, monkeypatch):
+        """Missing optional preflight import → silently skip readiness."""
+        import builtins
+
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if "preflight" in name:
+                raise ImportError("preflight extra not installed")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        assert _check_local_readiness(["a"]) is None
+
+    def test_runtime_errors_surface(self, monkeypatch):
+        """Bugs inside check_scanner_readiness propagate (ADR-016).
+
+        Init silently swallowing arbitrary exceptions hid real bugs;
+        the readiness check is best-effort *only* against the optional
+        import being absent, not against logic errors in the check
+        itself.
+        """
         def boom(*args, **kwargs):
             raise RuntimeError("registry exploded")
 
         monkeypatch.setattr(
             "argus.preflight.tool_check.check_scanner_readiness", boom
         )
-        assert _check_local_readiness(["a"]) is None
+        with pytest.raises(RuntimeError, match="registry exploded"):
+            _check_local_readiness(["a"])
 
 
 class TestRunInitReadinessOutput:

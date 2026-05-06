@@ -100,94 +100,88 @@ This is the primary way to add a new scanner. Each scanner is a single Python mo
 
 ### Step 1: Create the Scanner Module
 
-Create `argus/scanners/my_scanner.py` implementing the `Scanner` protocol:
+Create `argus/scanners/my_scanner.py`. The SDK provides two helpers — `parse_tool_version` (for `tool_version()`) and `run_subprocess_scan` (for `scan()`) — so a typical scanner is ~50 lines:
 
 ```python
 """My Scanner - brief description of what it scans."""
 
 import json
 import shutil
-import subprocess
-import tempfile
 from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
+from argus.core.scanner_template import ScanPaths, run_subprocess_scan
+from argus.core.version import parse_tool_version
 
 
 class MyScanner:
     """Wraps MyTool to scan for security issues."""
 
     name = "my-scanner"
+    description = "What it scans, in one line"
+    category = "sast"  # or "secrets", "iac", "sca", "container", "linter", ...
     container_image = get_image("my-scanner")
+    # Set this if your container image declares ``ENTRYPOINT ["my-tool"]``.
+    # The engine drops argv[0] when this attr is present, so build_args
+    # can return the same argv shape for both local and container paths.
+    container_entrypoint = "my-tool"
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
-        """Run the scanner against the given path and return results."""
-        config = config or {}
+        """One-line wrapper — the template handles tempdir, subprocess, errors."""
+        return run_subprocess_scan(self, path, config)
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            output_file = Path(tmp_dir) / "results.json"
-            cmd = self._build_command(path, output_file, config)
+    def build_args(self, paths: ScanPaths, config: dict) -> list[str]:
+        """Build the FULL argv (binary name as args[0]).
 
-            result = subprocess.run(cmd, capture_output=True, text=True)
-
-            if result.returncode != 0:
-                return ScanResult(
-                    scanner=self.name,
-                    metadata={"error": result.stderr.strip()},
-                )
-
-            if not output_file.exists():
-                return ScanResult(
-                    scanner=self.name,
-                    metadata={"error": "No output file produced"},
-                )
-
-            findings = self.parse_results(output_file)
-            return ScanResult(
-                scanner=self.name,
-                findings=findings,
-                raw_report=output_file,
-            )
+        Single source of truth for both local and container execution.
+        Local path: ``paths.workspace`` is the host path the user gave;
+        container path: ``paths.workspace`` is ``/workspace`` and
+        ``paths.output`` is ``/output/results.json``. The engine handles
+        the path translation; this method just consumes whatever paths
+        it's handed.
+        """
+        args = [
+            "my-tool", "scan",
+            paths.workspace,
+            "--format", "json",
+            "--output", paths.output,
+        ]
+        if config.get("exclude"):
+            args.extend(["--exclude", config["exclude"]])
+        return args
 
     def is_available(self) -> bool:
-        """Check if the underlying tool is installed."""
         return shutil.which("my-tool") is not None
 
     def install_command(self) -> str | None:
-        """Return the shell command to install the tool, or None."""
         return "pip install my-tool"
 
-    def container_args(self, config: dict | None = None) -> list[str]:
-        """Return CLI args for running the tool in a container."""
-        return [
-            "my-tool", "scan", "/workspace",
-            "-f", "json",
-            "-o", "/output/results.json",
-        ]
+    def tool_version(self) -> str | None:
+        if not self.is_available():
+            return None
+        # Tool output: "my-tool X.Y.Z (build info)"
+        return parse_tool_version(["my-tool", "--version"], r"^my-tool (\S+)")
 
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse tool output into normalized Finding objects."""
         data = json.loads(raw_output_path.read_text())
-        return [self._parse_finding(item) for item in data.get("results", [])]
-
-    def _parse_finding(self, item: dict) -> Finding:
-        """Convert a single result into a Finding."""
-        return Finding(
-            id=item.get("rule_id", "UNKNOWN"),
-            severity=Severity.from_string(item.get("severity", "UNKNOWN")),
-            title=item.get("message", ""),
-            description=item.get("message", ""),
-            location=item.get("file", ""),
-            scanner=self.name,
-        )
-
-    def _build_command(
-        self, path: str, output_file: Path, config: dict
-    ) -> list[str]:
-        """Build the CLI command."""
-        return ["my-tool", "scan", path, "-f", "json", "-o", str(output_file)]
+        return [
+            Finding(
+                id=item.get("rule_id", "UNKNOWN"),
+                severity=Severity.from_string(item.get("severity", "UNKNOWN")),
+                title=item.get("message", ""),
+                description=item.get("message", ""),
+                location=item.get("file", ""),
+                scanner=self.name,
+            )
+            for item in data.get("results", [])
+        ]
 ```
+
+**Why this shape**: `build_args(paths, config)` replaces the historical pair of `_build_command(path, output, config)` (local) + `container_args(config)` (container). The two used to drift — different `--output` vs `--output-file` flag names, different exit-code handling — and the engine had to know about both. With one method that takes a `ScanPaths` value object, local and container execution share the same definition; the engine builds the right `ScanPaths` for the context (host paths locally, `/workspace` + `/output/...` in containers) and the scanner stays oblivious.
+
+**When to skip the template**: if your tool emits results to stdout instead of a file (`grype version -o json`, ClamAV's text output) or runs an orchestration of multiple binaries (`supply_chain` → zizmor + actionlint), write a custom `scan()`. The template doesn't fit every shape and shouldn't be forced — see `grype.py`, `clamav.py`, `supply_chain.py` for examples.
 
 **Scanner protocol requirements** (from `argus/core/scanner.py`):
 
@@ -197,9 +191,11 @@ class MyScanner:
 | `scan(path, config) -> ScanResult` | Yes | Run the scanner and return normalized results |
 | `is_available() -> bool` | Yes | Check if the tool is installed locally |
 | `install_command() -> str \| None` | Yes | Shell command to install the tool |
+| `tool_version() -> str \| None` | Recommended | Installed tool version. Use `parse_tool_version()` from `argus.core.version` for the common case (regex match against `<tool> --version` output) — see `bandit.py`, `clamav.py`, `trivy.py`, `gitleaks.py` for examples. Only fall back to custom parsing for tools with structured output (JSON, etc.) — see `grype.py` |
+| `build_args(paths, config) -> list[str]` | Yes (subprocess scanners) | Build the full argv for the tool. Used by both local and container execution paths — single source of truth. `paths` is a `ScanPaths(workspace, output)` value object. Drop `argv[0]` automatically when the image has an `ENTRYPOINT` — declare `container_entrypoint = "<bin>"` on the class |
 | `container_image: str` | Optional | Docker image for container fallback |
-| `container_args(config) -> list[str]` | Optional | CLI args for containerized execution |
-| `parse_results(path) -> list[Finding]` | Optional | Parse raw output file into findings |
+| `container_entrypoint: str` | Optional | Set when the container image has `ENTRYPOINT ["<bin>"]`; engine drops `argv[0]` from `build_args` output |
+| `parse_results(path) -> list[Finding]` | Yes | Parse raw output file into findings. May return `(list[Finding], dict)` to attach scanner-level metadata (e.g. `passed_count` for linters) |
 
 **Reference implementation**: See `argus/scanners/bandit.py` for a complete, well-documented example.
 

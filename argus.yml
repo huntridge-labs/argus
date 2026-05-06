@@ -36,12 +36,12 @@ scanners:
   lint-dockerfile:
     enabled: true
 
-  # Not applicable to this repo as part of the default scan:
+  # Not applicable to this repo as part of the default source scan:
   # - trivy-iac / checkov target Terraform / CloudFormation / K8s — none here
   # - container / zap operate on built images / running endpoints, not
-  #   source paths; run them on demand:
-  #     argus scan container --discover .
-  #     argus scan zap --target http://...
+  #   source paths. Container targets are configured in the
+  #   ``containers:`` block below and run via ``argus scan container``;
+  #   ZAP is on-demand: ``argus scan zap --target http://...``
   trivy-iac:
     enabled: false
   checkov:
@@ -50,6 +50,28 @@ scanners:
     enabled: false
   zap:
     enabled: false
+
+# Container lifecycle targets — drives ``argus scan container`` without
+# needing CLI flags. Each entry is a Dockerfile-built image that the
+# scanner builds locally (so the scan reflects exactly the bytes that
+# ship from this branch) and then hands to trivy + grype + syft. The
+# build-containers workflow can read this same list rather than
+# hard-coding a parallel matrix — single source of truth.
+containers:
+  images:
+    - image: ghcr.io/huntridge-labs/argus/scanner-bandit:dev
+      dockerfile: docker/Dockerfile.bandit
+      context: .
+    - image: ghcr.io/huntridge-labs/argus/scanner-opengrep:dev
+      dockerfile: docker/Dockerfile.opengrep
+      context: .
+    - image: ghcr.io/huntridge-labs/argus/scanner-supply-chain:dev
+      dockerfile: docker/Dockerfile.supply-chain
+      context: .
+    - image: ghcr.io/huntridge-labs/argus/cli:dev
+      dockerfile: docker/Dockerfile.cli
+      context: .
+  scanners: [trivy, grype, syft]
 
 reporting:
   formats:

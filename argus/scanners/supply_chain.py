@@ -9,6 +9,7 @@ from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
+from argus.core.version import parse_tool_version
 
 # zizmor security-severity score thresholds
 _ZIZMOR_CRITICAL_THRESHOLD = 9.0
@@ -122,21 +123,7 @@ class SupplyChainScanner:
         """
         if shutil.which("zizmor") is None:
             return None
-        try:
-            result = subprocess.run(
-                ["zizmor", "--version"],
-                capture_output=True, text=True, timeout=5,
-            )
-            # Output: "zizmor X.Y.Z"
-            text = result.stdout.strip()
-            if not text:
-                return None
-            parts = text.splitlines()[0].split()
-            if len(parts) >= 2 and parts[0] == "zizmor":
-                return parts[1]
-            return None
-        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
-            return None
+        return parse_tool_version(["zizmor", "--version"], r"^zizmor (\S+)")
 
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse combined results. Detects format automatically.

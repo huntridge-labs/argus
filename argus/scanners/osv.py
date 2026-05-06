@@ -2,12 +2,12 @@
 
 import json
 import shutil
-import subprocess
-import tempfile
 from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
+from argus.core.scanner_template import ScanPaths, run_subprocess_scan
+from argus.core.version import parse_tool_version
 
 
 class OsvScanner:
@@ -19,66 +19,66 @@ class OsvScanner:
     languages = ["all"]
     container_image = get_image("osv-scanner")
     supports_sbom = True
+    # The official osv-scanner image uses ENTRYPOINT ["osv-scanner"]; engine
+    # strips argv[0] for ENTRYPOINT-based images.
+    container_entrypoint = "osv-scanner"
 
-    def container_args(self, config: dict | None = None) -> list[str]:
-        """Build container args from config — mirrors _build_command."""
-        config = config or {}
+    def scan(self, path: str, config: dict | None = None) -> ScanResult:
+        """Run OSV-Scanner against the given path and return results."""
+        return run_subprocess_scan(self, path, config)
+
+    def build_args(self, paths: ScanPaths, config: dict) -> list[str]:
+        """Build the full argv (including the binary name).
+
+        Engine drops argv[0] when the container image declares an
+        ENTRYPOINT, so the same method works for both local and
+        container execution.
+
+        Two modes:
+        - SBOM mode (``config["sbom_path"]`` set): passes the SBOM via
+          ``-L`` to ``scan`` (osv-scanner v2 API).
+        - Source mode (default): passes the workspace path to
+          ``scan source``, with optional ``-L <lockfile>`` and
+          ``--recursive``.
+        """
         sbom_path = config.get("sbom_path")
-        # osv-scanner v2: `scan --sbom` for SBOMs, `scan source` for source trees
         if sbom_path:
-            sbom_in_container = config.get("sbom_mount_path") or f"/workspace/{sbom_path}"
-            return ["scan", "--format", "json", "--output-file", "/output/results.json",
-                    "-L", sbom_in_container]
-        args = ["scan", "source", "--format", "json", "--output-file", "/output/results.json"]
+            # The engine sets ``sbom_mount_path`` for container execution
+            # (it mounts the host SBOM into a known container path).
+            # Otherwise: absolute SBOM paths pass through; relative ones
+            # resolve against the workspace.
+            mount_path = config.get("sbom_mount_path")
+            if mount_path:
+                sbom_in_context = mount_path
+            elif sbom_path.startswith("/"):
+                sbom_in_context = sbom_path
+            else:
+                sbom_in_context = f"{paths.workspace}/{sbom_path}"
+            return [
+                "osv-scanner",
+                "scan",
+                "--format", "json",
+                "--output-file", paths.output,
+                "-L", sbom_in_context,
+            ]
+
+        args = [
+            "osv-scanner",
+            "scan", "source",
+            "--format", "json",
+            "--output-file", paths.output,
+        ]
         lockfile = config.get("lockfile")
         if lockfile:
-            args.extend(["-L", f"/workspace/{lockfile}"])
+            args.extend(["-L", f"{paths.workspace}/{lockfile}"])
         else:
             recursive = config.get("recursive", True)
             if str(recursive).lower() not in ("false", "0", "no"):
                 args.append("--recursive")
-            args.append("/workspace")
+            args.append(paths.workspace)
         if config.get("config_file"):
-            args.extend(["--config", f"/workspace/{config['config_file']}"])
+            args.extend(["--config", f"{paths.workspace}/{config['config_file']}"])
         return args
-
-    def scan(self, path: str, config: dict | None = None) -> ScanResult:
-        """Run OSV-Scanner against the given path and return results."""
-        config = config or {}
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            output_file = Path(tmp_dir) / "osv-results.json"
-            cmd = self._build_command(path, output_file, config)
-
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-            )
-
-            # osv-scanner exits non-zero when vulnerabilities are found,
-            # so we only treat truly unexpected failures as errors
-            if result.returncode != 0 and not output_file.exists():
-                return ScanResult(
-                    scanner=self.name,
-                    metadata={
-                        "error": result.stderr.strip(),
-                        "returncode": result.returncode,
-                    },
-                )
-
-            if not output_file.exists():
-                return ScanResult(
-                    scanner=self.name,
-                    metadata={"error": "No output file produced"},
-                )
-
-            findings = self.parse_results(output_file)
-            return ScanResult(
-                scanner=self.name,
-                findings=findings,
-                raw_report=output_file,
-            )
 
     def is_available(self) -> bool:
         """Check if OSV-Scanner is installed."""
@@ -92,24 +92,10 @@ class OsvScanner:
         """Return the installed OSV-Scanner version, or None if not available."""
         if not self.is_available():
             return None
-        try:
-            result = subprocess.run(
-                ["osv-scanner", "--version"],
-                capture_output=True, text=True, timeout=5,
-            )
-            # Output varies: "osv-scanner version X.Y.Z" or similar
-            text = result.stdout.strip()
-            if not text:
-                return None
-            # Look for a version-like token (digits and dots)
-            for line in text.splitlines():
-                for part in line.split():
-                    stripped = part.lstrip("v")
-                    if stripped and stripped[0].isdigit() and "." in stripped:
-                        return stripped
-            return None
-        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
-            return None
+        return parse_tool_version(
+            ["osv-scanner", "--version"],
+            r"v?(\d+\.\d+(?:\.\d+)?[\w.-]*)",
+        )
 
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse OSV-Scanner JSON output into findings."""
@@ -196,34 +182,3 @@ class OsvScanner:
         if cwe_ids:
             return cwe_ids[0]
         return None
-
-    def _build_command(
-        self, path: str, output_file: Path, config: dict
-    ) -> list[str]:
-        """Build the OSV-Scanner CLI command."""
-        cmd = [
-            "osv-scanner",
-            "scan",
-            "--format", "json",
-            "--output", str(output_file),
-        ]
-
-        config_file = config.get("config_file")
-        if config_file:
-            cmd.extend(["--config", config_file])
-
-        sbom_path = config.get("sbom_path")
-        if sbom_path:
-            cmd.extend(["--sbom", str(sbom_path)])
-            return cmd
-
-        lockfile = config.get("lockfile")
-        if lockfile:
-            cmd.extend(["-L", lockfile])
-        else:
-            recursive = config.get("recursive", True)
-            if str(recursive).lower() not in ("false", "0", "no"):
-                cmd.append("--recursive")
-            cmd.append(path)
-
-        return cmd
