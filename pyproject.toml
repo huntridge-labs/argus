@@ -32,6 +32,14 @@ classifiers = [
 ]
 dependencies = [
     "PyYAML>=6.0",
+    # Linting is a core scan capability, not optional. Tools that are
+    # themselves Python packages get bundled directly so
+    # ``argus scan lint-*`` works after a clean
+    # ``pip install argus-security`` with no extra setup. Native-binary
+    # linters (hadolint, terraform, tflint) come in via the container
+    # backend instead.
+    "yamllint>=1.30",   # lint-yaml
+    "flake8>=6.0",      # lint-python
 ]
 
 [project.optional-dependencies]

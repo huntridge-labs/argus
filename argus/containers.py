@@ -21,6 +21,14 @@ OFFICIAL_IMAGES = {
     "osv-scanner": "ghcr.io/google/osv-scanner:v2.3.6",
     "zap": "ghcr.io/zaproxy/zaproxy:2.17.0",
     "hadolint": "hadolint/hadolint:v2.14.0",
+    # lint-terraform docker fallbacks. terraform fmt/validate run via
+    # the official Hashicorp image; tflint via its official image.
+    "terraform": "hashicorp/terraform:1.9.8",
+    "tflint": "ghcr.io/terraform-linters/tflint:v0.55.1",
+    # lint-javascript via eslint. pipelinecomponents/eslint is the most
+    # widely-used multi-arch eslint image — keeps argus out of the
+    # business of maintaining a Node container ourselves.
+    "eslint": "pipelinecomponents/eslint:0.20.0",
 }
 
 # Custom images built and published by Argus to ghcr.io/huntridge-labs/argus/
