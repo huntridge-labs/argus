@@ -173,6 +173,8 @@ class ContainerEngine:
                 return ContainerScanResult(
                     name=target.name,
                     image_ref=target.image_ref,
+                    dockerfile=str(target.dockerfile) if target.dockerfile else "",
+                    context=str(target.context) if target.context else "",
                     build_success=False,
                     scan_error=error_msg,
                 )
@@ -206,6 +208,8 @@ class ContainerEngine:
             return ContainerScanResult(
                 name=target.name,
                 image_ref=target.image_ref,
+                dockerfile=str(target.dockerfile) if target.dockerfile else "",
+                context=str(target.context) if target.context else "",
                 scan_error=f"OS error: {exc}",
             )
         except Exception:
@@ -213,6 +217,8 @@ class ContainerEngine:
             return ContainerScanResult(
                 name=target.name,
                 image_ref=target.image_ref,
+                dockerfile=str(target.dockerfile) if target.dockerfile else "",
+                context=str(target.context) if target.context else "",
                 scan_error=f"Scan failed for {target.image_ref}",
             )
 

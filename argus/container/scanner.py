@@ -20,11 +20,23 @@ _parser = ContainerScanner()
 
 @dataclass
 class ContainerScanResult:
-    """Results for a single container image scan."""
+    """Results for a single container image scan.
+
+    ``dockerfile`` and ``context`` capture the source the image was
+    built from — empty strings for remote-pull entries, populated for
+    local builds. Without these, downstream artifacts (argus-results.
+    json, per-image markdown, SARIF, audit manifest) only carry the
+    auto-derived tag like ``scanner-bandit:argus-scan``, which is
+    meaningless to a security reviewer asking "which Dockerfile
+    produced this finding?". Plumbing them through here lets every
+    consumer surface a real source path alongside the image.
+    """
 
     name: str
     image_ref: str
     digest: str = ""
+    dockerfile: str = ""
+    context: str = ""
     trivy_findings: list[Finding] = field(default_factory=list)
     grype_findings: list[Finding] = field(default_factory=list)
     combined_findings: list[Finding] = field(default_factory=list)
@@ -205,6 +217,8 @@ def scan_image(
     return ContainerScanResult(
         name=target.name,
         image_ref=target.image_ref,
+        dockerfile=str(target.dockerfile) if target.dockerfile else "",
+        context=str(target.context) if target.context else "",
         trivy_findings=trivy_findings,
         grype_findings=grype_findings,
         combined_findings=combined,

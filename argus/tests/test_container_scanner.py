@@ -87,6 +87,66 @@ class TestContainerScanResult:
         assert result.total_count == 0
 
 
+class TestContainerScanResultDockerfileFields:
+    """``dockerfile`` / ``context`` should flow with the result so a security
+    reviewer can trace any artifact back to its source without cross-
+    referencing the workflow."""
+
+    def test_remote_pull_entry_leaves_dockerfile_empty(self):
+        # Default (remote pull) — both empty strings.
+        result = ContainerScanResult(name="x", image_ref="x:1")
+        assert result.dockerfile == ""
+        assert result.context == ""
+
+    def test_build_entry_carries_dockerfile_and_context(self):
+        result = ContainerScanResult(
+            name="myapp",
+            image_ref="myapp:argus-scan",
+            dockerfile="docker/Dockerfile.app",
+            context=".",
+        )
+        assert result.dockerfile == "docker/Dockerfile.app"
+        assert result.context == "."
+
+
+class TestCanonicalContainerMetadata:
+    """The cli helper that maps ContainerScanResult → ScanResult metadata.
+
+    Locks in the dict shape so security reviewers and the audit-archive
+    layer always see ``dockerfile_path`` for build-mode targets.
+    """
+
+    def test_remote_pull_omits_dockerfile_keys(self):
+        from argus.cli import _canonical_container_metadata
+        result = ContainerScanResult(name="x", image_ref="x:1")
+        meta = _canonical_container_metadata(result)
+        assert meta["image_ref"] == "x:1"
+        assert meta["build_success"] is True
+        assert "dockerfile_path" not in meta
+        assert "context_path" not in meta
+
+    def test_build_entry_includes_dockerfile_path(self):
+        from argus.cli import _canonical_container_metadata
+        result = ContainerScanResult(
+            name="myapp",
+            image_ref="myapp:argus-scan",
+            dockerfile="docker/Dockerfile.app",
+            context=".",
+        )
+        meta = _canonical_container_metadata(result)
+        assert meta["dockerfile_path"] == "docker/Dockerfile.app"
+        assert meta["context_path"] == "."
+
+    def test_scanner_errors_surfaced(self):
+        from argus.cli import _canonical_container_metadata
+        result = ContainerScanResult(
+            name="x", image_ref="x:1",
+            scanner_errors={"trivy": "DB pull failed"},
+        )
+        meta = _canonical_container_metadata(result)
+        assert meta["scanner_errors"] == {"trivy": "DB pull failed"}
+
+
 class TestDeduplicateFindings:
     """Test deduplicate_findings merging logic."""
 

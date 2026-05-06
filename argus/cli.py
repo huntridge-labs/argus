@@ -103,6 +103,35 @@ class _TerminalSpinner:
             self._stream.flush()
 
 
+def _canonical_container_metadata(result) -> dict:
+    """Build the metadata dict for a container ScanResult row.
+
+    Surfaces the originating Dockerfile + context for build-mode
+    targets so security reviewers and audit archives can trace any
+    finding back to its source. Empty dockerfile/context fields
+    (remote-pull entries) are *omitted* rather than written as empty
+    strings so downstream readers don't have to special-case them.
+
+    Extracted from the inline list comprehension that builds
+    ``canonical_results`` in ``_cmd_container_scan`` so the dict
+    shape is unit-testable without spinning up the full container
+    engine.
+    """
+    metadata: dict = {
+        "image_ref": result.image_ref,
+        "build_success": result.build_success,
+    }
+    if getattr(result, "dockerfile", ""):
+        metadata["dockerfile_path"] = result.dockerfile
+    if getattr(result, "context", ""):
+        metadata["context_path"] = result.context
+    if getattr(result, "scanner_errors", None):
+        metadata["scanner_errors"] = dict(result.scanner_errors)
+    if getattr(result, "scan_error", None):
+        metadata["scan_error"] = result.scan_error
+    return metadata
+
+
 def _configure_logger(args: argparse.Namespace, output_dir: str | None = None):
     """Set up the ``argus`` logger at the level the user's flags imply.
 
@@ -1909,6 +1938,33 @@ def _cmd_container_scan(
     output_dir = _make_run_dir(base_dir)
     formats = args.formats or ["terminal", "markdown"]
 
+    # Now that we know the output dir, re-attach the logger's file
+    # handler so engine logs land in <output_dir>/argus.log alongside
+    # the rest of the audit trail — same shape as the source-scan
+    # path. ``_configure_logger`` is idempotent on the stream handler;
+    # passing output_dir adds the file handler when it's missing.
+    log = _configure_logger(args, output_dir=output_dir)
+
+    # Audit manifest — captures the exact targets, config path, and
+    # outcome so a security reviewer (or CI archive) can trace any
+    # finding back to its inputs without cross-referencing the
+    # workflow. Source scans have always done this; container scans
+    # used to skip it entirely. ``scan_targets`` lists the originating
+    # source per target — Dockerfile path for build-mode entries,
+    # image ref for remote-pull entries — so the audit manifest
+    # answers "which container produced this artifact?" by name.
+    from argus.audit import create_manifest, finalize_manifest
+    from argus.container.discovery import parse_container_config
+    _audit_targets = [
+        str(t.dockerfile) if t.dockerfile else t.image_ref
+        for t in parse_container_config(config)
+    ]
+    manifest = create_manifest(
+        config_path=getattr(args, "config", None),
+        scan_targets=_audit_targets,
+    )
+    manifest.execution_backend = config.get("backend", "auto")
+
     # Decide whether to persist raw per-scanner outputs alongside the
     # canonical argus-results.json. Default is ON — the user just ran
     # a scan and would expect those artifacts to be available for
@@ -1944,6 +2000,7 @@ def _cmd_container_scan(
             summary = engine.run()
     except Exception as exc:
         print(f"Error: container scan failed: {exc}", file=sys.stderr)
+        finalize_manifest(manifest, exit_code=EXIT_ERROR, output_dir=output_dir)
         return EXIT_ERROR
 
     # Build a canonical ScanSummary view of the container results so
@@ -1958,18 +2015,7 @@ def _cmd_container_scan(
         ScanResult(
             scanner=f"container/{r.name}",
             findings=list(r.combined_findings),
-            metadata={
-                "image_ref": r.image_ref,
-                "build_success": r.build_success,
-                **(
-                    {"scanner_errors": dict(r.scanner_errors)}
-                    if r.scanner_errors else {}
-                ),
-                **(
-                    {"scan_error": r.scan_error}
-                    if getattr(r, "scan_error", None) else {}
-                ),
-            },
+            metadata=_canonical_container_metadata(r),
         )
         for r in summary.results
     ]
@@ -2009,16 +2055,29 @@ def _cmd_container_scan(
             f"\n{scan_failures} scanner failure(s) — results are incomplete",
             file=sys.stderr,
         )
-        return EXIT_ERROR
-
-    if args.severity_threshold and args.severity_threshold != "none":
+        exit_code = EXIT_ERROR
+    elif args.severity_threshold and args.severity_threshold != "none":
         from argus.core.models import Severity
         threshold = Severity.from_string(args.severity_threshold)
+        exit_code = EXIT_SUCCESS
         for r in summary.results:
-            for f in r.combined_findings:
-                if f.severity >= threshold:
-                    return EXIT_FINDINGS
-    return EXIT_SUCCESS
+            if any(f.severity >= threshold for f in r.combined_findings):
+                exit_code = EXIT_FINDINGS
+                break
+    else:
+        exit_code = EXIT_SUCCESS
+
+    # Finalize the audit manifest with the canonical summary so the
+    # archived ``argus-audit.json`` reflects what actually ran. Same
+    # shape as the source-scan flow.
+    finalize_manifest(
+        manifest,
+        summary=canonical_summary,
+        exit_code=exit_code,
+        output_dir=output_dir,
+    )
+    log.info("Audit manifest written to %s/argus-audit.json", output_dir)
+    return exit_code
 
 
 def _cmd_dast_scan(args: argparse.Namespace) -> int:
