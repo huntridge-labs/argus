@@ -34,23 +34,53 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ── Step 0: Build matrix from argus.yml ──────────────────────────────
+  # Single source of truth for the image list — argus.yml ``containers:``
+  # block. Removes the duplication where build/, scan/ and test-cli/
+  # each had a separate hardcoded matrix that could drift out of sync
+  # with the dogfood scan target list.
+  matrix:
+    name: Resolve image matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.build.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Build matrix from argus.yml
+        id: build
+        # yq is preinstalled on ubuntu-latest. Reads only the local
+        # checked-out argus.yml (no untrusted input) so the run-step
+        # is safe to compose inline.
+        run: |
+          set -euo pipefail
+          matrix=$(yq -o=json '.containers.images | map({
+            "image": (.image | split(":") | .[0] | split("/") | .[-1]),
+            "image_ref_template": .image,
+            "dockerfile": .dockerfile,
+            "context": (.context // ".")
+          })' argus.yml)
+          count=$(echo "$matrix" | yq 'length')
+          if [ "$count" -eq 0 ]; then
+            echo "::error::argus.yml containers.images is empty — no images to build/scan/test."
+            exit 1
+          fi
+          echo "Resolved $count image(s) from argus.yml"
+          echo "$matrix" | yq -P
+          echo "matrix=$(echo "$matrix" | jq -c .)" >> "$GITHUB_OUTPUT"
+
   # ── Step 1: Build all custom images ──────────────────────────────────
   build:
     name: Build Images
+    needs: matrix
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: true
       matrix:
-        include:
-          - image: scanner-bandit
-            dockerfile: docker/Dockerfile.bandit
-          - image: scanner-opengrep
-            dockerfile: docker/Dockerfile.opengrep
-          - image: scanner-supply-chain
-            dockerfile: docker/Dockerfile.supply-chain
-          - image: cli
-            dockerfile: docker/Dockerfile.cli
+        include: ${{ fromJson(needs.matrix.outputs.matrix) }}
 
     steps:
       - name: Checkout
@@ -89,17 +119,13 @@ jobs:
   # ── Step 2: Scan each image with Trivy + Grype ──────────────────────
   scan:
     name: Scan ${{ matrix.image }}
-    needs: [build]
+    needs: [matrix, build]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - image: scanner-bandit
-          - image: scanner-opengrep
-          - image: scanner-supply-chain
-          - image: cli
+        include: ${{ fromJson(needs.matrix.outputs.matrix) }}
 
     steps:
       - name: Download image artifact
@@ -220,7 +246,7 @@ jobs:
   # ── Step 3: Test argus CLI using built images ───────────────────────
   test-cli:
     name: Test Argus CLI
-    needs: [build]
+    needs: [matrix, build]
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -251,12 +277,18 @@ jobs:
           path: /tmp/images
 
       - name: Load and retag images
+        # Image names come from the matrix output (resolved from
+        # argus.yml) — no hardcoded list to drift from the dogfood scan
+        # configuration. ``IMAGE_NAMES`` is a JSON array; jq extracts
+        # the short names. Reads only env vars and JSON we constructed
+        # ourselves; no untrusted input.
         run: |
+          set -euo pipefail
           for tarball in /tmp/images/*.tar.gz; do
             gunzip -c "$tarball" | docker load
           done
           # Retag from SHA to version tag that containers.py expects
-          for image in scanner-bandit scanner-opengrep scanner-supply-chain cli; do
+          for image in $(echo "$IMAGE_NAMES_JSON" | jq -r '.[].image'); do
             SHA_TAG="ghcr.io/huntridge-labs/argus/${image}:${GITHUB_SHA}"
             VERSION_TAG="ghcr.io/huntridge-labs/argus/${image}:0.7.0"
             if docker image inspect "$SHA_TAG" > /dev/null 2>&1; then
@@ -265,6 +297,7 @@ jobs:
           done
         env:
           GITHUB_SHA: ${{ github.sha }}
+          IMAGE_NAMES_JSON: ${{ needs.matrix.outputs.matrix }}
 
       - name: Package safety check
         run: python -m scripts.ci.check_package

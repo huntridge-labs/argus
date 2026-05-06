@@ -41,14 +41,16 @@ entrypoints:
   cli_subcommands:
     scan: "argus scan [scanner ...] — primary entry; supports source, container, lint flows"
     init: "argus init — generate a tailored argus.yml from project auto-detection"
-    list: "argus list — enumerate registered scanners (SCANNER_REGISTRY + LINTER_REGISTRY)"
+    classify: "argus classify — classify findings by category"
+    collect: "argus collect — collect scanner outputs"
     validate: "argus validate — typecheck argus.yml against the JSON Schema"
     view: "argus view [terminal|browser] — interactive triage of argus-results.json"
     report: "argus report <format> — re-emit results in another format without re-scanning"
     completion: "argus completion {bash,zsh,fish} — shell completion (dynamic from registry)"
     mcp: "argus mcp — start the MCP server over stdio for AI-assistant integration"
     cache: "argus cache info|clean — manage per-scanner DB cache volumes"
-    version: "argus version"
+  cli_flags:
+    version: "argus --version (top-level flag, NOT a subcommand)"
   mcp_server: "argus mcp"
   mcp_install: "pip install argus-security[mcp]"
   viewer_extras:

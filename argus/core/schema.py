@@ -39,6 +39,15 @@ _REPORTING_KEYS = {"formats", "severity_threshold", "output_dir"}
 # Known execution keys
 _EXECUTION_KEYS = {"backend", "registry", "pull_policy"}
 
+# Top-level containers block keys
+_CONTAINERS_KEYS = {"images", "discover", "search_paths", "scanners"}
+
+# Per-image entry keys (under containers.images[*])
+_CONTAINER_IMAGE_KEYS = {"image", "dockerfile", "context", "name"}
+
+# Sub-scanners argus scan container can dispatch to
+_CONTAINER_SUB_SCANNERS = {"trivy", "grype", "syft"}
+
 
 class ConfigError:
     """A single configuration issue."""
@@ -102,6 +111,11 @@ def validate_config(data: dict) -> list[ConfigError]:
     execution = data.get("execution")
     if execution is not None:
         errors.extend(_validate_execution("execution", execution))
+
+    # Containers (top-level lifecycle targets for ``argus scan container``)
+    containers = data.get("containers")
+    if containers is not None:
+        errors.extend(_validate_containers("containers", containers))
 
     return errors
 
@@ -235,6 +249,133 @@ def _validate_execution(path: str, data: Any) -> list[ConfigError]:
                 f"{path}.pull_policy",
                 f"Invalid value '{data['pull_policy']}'. "
                 f"Must be one of: {', '.join(sorted(_PULL_POLICY_VALUES))}",
+            ))
+
+    return errors
+
+
+def _validate_containers(path: str, data: Any) -> list[ConfigError]:
+    """Validate the top-level ``containers:`` block.
+
+    Catches the common authoring mistakes that previously only surfaced
+    at scan time (or got silently ignored): typo'd image-entry keys,
+    discover without search_paths, an empty images list, sub-scanner
+    names that aren't trivy/grype/syft, and image entries that name
+    neither a registry ref nor a Dockerfile.
+    """
+    errors: list[ConfigError] = []
+
+    if not isinstance(data, dict):
+        errors.append(ConfigError(
+            path, f"Must be a mapping, got {type(data).__name__}",
+        ))
+        return errors
+
+    # Unknown keys
+    for key in data:
+        if key not in _CONTAINERS_KEYS:
+            errors.append(ConfigError(
+                f"{path}.{key}",
+                f"Unknown containers key '{key}'. "
+                f"Valid keys: {', '.join(sorted(_CONTAINERS_KEYS))}",
+                level="warning",
+            ))
+
+    images = data.get("images")
+    discover = data.get("discover", False)
+
+    # At least one source of targets must be configured.
+    if not images and not discover:
+        errors.append(ConfigError(
+            path,
+            "containers: must declare at least one of `images:` (a list) "
+            "or `discover: true` — otherwise `argus scan container --config` "
+            "has no targets to scan.",
+        ))
+
+    # images: list of mappings
+    if images is not None:
+        if not isinstance(images, list):
+            errors.append(ConfigError(
+                f"{path}.images", "Must be a list of image entries",
+            ))
+        elif len(images) == 0:
+            errors.append(ConfigError(
+                f"{path}.images",
+                "Empty images list — drop the key entirely or add at least one entry.",
+                level="warning",
+            ))
+        else:
+            for i, entry in enumerate(images):
+                errors.extend(
+                    _validate_container_image_entry(f"{path}.images[{i}]", entry)
+                )
+
+    # discover requires search_paths (or defaults to ["."])
+    if "search_paths" in data:
+        sp = data["search_paths"]
+        if not isinstance(sp, list) or not all(isinstance(p, str) for p in sp):
+            errors.append(ConfigError(
+                f"{path}.search_paths",
+                "Must be a list of path strings",
+            ))
+
+    # scanners: must be a list of valid sub-scanner names
+    if "scanners" in data:
+        sc = data["scanners"]
+        if not isinstance(sc, list):
+            errors.append(ConfigError(
+                f"{path}.scanners",
+                f"Must be a list. Valid values: "
+                f"{', '.join(sorted(_CONTAINER_SUB_SCANNERS))}",
+            ))
+        else:
+            for i, s in enumerate(sc):
+                if s not in _CONTAINER_SUB_SCANNERS:
+                    errors.append(ConfigError(
+                        f"{path}.scanners[{i}]",
+                        f"Unknown container sub-scanner '{s}'. "
+                        f"Valid values: {', '.join(sorted(_CONTAINER_SUB_SCANNERS))}",
+                    ))
+
+    return errors
+
+
+def _validate_container_image_entry(path: str, entry: Any) -> list[ConfigError]:
+    """Validate a single ``containers.images[*]`` entry."""
+    errors: list[ConfigError] = []
+
+    if not isinstance(entry, dict):
+        errors.append(ConfigError(
+            path,
+            f"Must be a mapping with at least an 'image:' field, "
+            f"got {type(entry).__name__}",
+        ))
+        return errors
+
+    # Unknown keys
+    for key in entry:
+        if key not in _CONTAINER_IMAGE_KEYS:
+            errors.append(ConfigError(
+                f"{path}.{key}",
+                f"Unknown image-entry key '{key}'. "
+                f"Valid keys: {', '.join(sorted(_CONTAINER_IMAGE_KEYS))}",
+                level="warning",
+            ))
+
+    # An entry must declare either an image ref or a dockerfile to build.
+    if "image" not in entry and "dockerfile" not in entry:
+        errors.append(ConfigError(
+            path,
+            "Image entry must have either 'image:' (registry reference) "
+            "or 'dockerfile:' (build-then-scan) set.",
+        ))
+
+    # Type checks for present fields
+    for field in ("image", "dockerfile", "context", "name"):
+        if field in entry and not isinstance(entry[field], str):
+            errors.append(ConfigError(
+                f"{path}.{field}", "Must be a string",
             ))
 
     return errors

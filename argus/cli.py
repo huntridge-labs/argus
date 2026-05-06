@@ -1122,6 +1122,21 @@ def _load_container_config(args: argparse.Namespace) -> dict:
     """
     config: dict = {}
     config_path = getattr(args, "config", None)
+
+    # When --config wasn't supplied, auto-detect argus.yml the same way
+    # ``argus scan`` (source) does. Source scans have always done this;
+    # the container subcommand used to require an explicit --config,
+    # which made config-driven container scans feel inconsistent with
+    # the rest of the CLI. Search the project root for the canonical
+    # filenames; if none exist, fall through with no config (CLI flags
+    # alone may still supply targets).
+    if not config_path:
+        from argus.core.config import _DEFAULT_CONFIG_NAMES
+        for candidate in _DEFAULT_CONFIG_NAMES:
+            if Path(candidate).is_file():
+                config_path = candidate
+                break
+
     if config_path:
         try:
             import yaml
