@@ -59,7 +59,7 @@ components:
       "yamllint.py": "YAML linting via yamllint"
       "jsonlint.py": "JSON linting"
       "python_lint.py": "Python linting"
-      "jshint.py": "JavaScript linting via jshint"
+      "eslint.py": "JavaScript / TypeScript linting via ESLint"
       "hadolint.py": "Dockerfile linting via hadolint"
       "terraform.py": "Terraform linting"
 
@@ -256,7 +256,7 @@ scanners:
       purpose: "Python code style and syntax linting"
       output: "Finding (Severity.INFO)"
     - name: lint-javascript
-      purpose: "JavaScript linting via jshint"
+      purpose: "JavaScript / TypeScript linting via ESLint (with container fallback)"
       output: "Finding (Severity.INFO)"
     - name: lint-dockerfile
       purpose: "Dockerfile linting via hadolint"

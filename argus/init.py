@@ -232,7 +232,10 @@ def detect_project(root: Path) -> dict[str, list[str]]:
         "setup.cfg": "python-config",
         ".hadolint.yaml": "hadolint-config",
         ".yamllint.yml": "yamllint-config",
-        ".jshintrc": "jshint-config",
+        ".eslintrc.json": "eslint-config",
+        ".eslintrc.js": "eslint-config",
+        "eslint.config.js": "eslint-config",
+        "eslint.config.mjs": "eslint-config",
         "tflint.hcl": "tflint-config",
         ".tflint.hcl": "tflint-config",
     }

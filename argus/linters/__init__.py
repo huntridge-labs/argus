@@ -1,15 +1,15 @@
 """Argus linter registry."""
 
+from .eslint import EslintLinter
 from .hadolint import HadolintLinter
-from .jshint import JshintLinter
 from .jsonlint import JsonlintLinter
 from .python_lint import PythonLinter
 from .terraform import TerraformLinter
 from .yamllint import YamllintLinter
 
 __all__ = [
+    "EslintLinter",
     "HadolintLinter",
-    "JshintLinter",
     "JsonlintLinter",
     "PythonLinter",
     "TerraformLinter",
@@ -24,7 +24,7 @@ LINTER_REGISTRY = {
     "lint-yaml": YamllintLinter,
     "lint-json": JsonlintLinter,
     "lint-python": PythonLinter,
-    "lint-javascript": JshintLinter,
+    "lint-javascript": EslintLinter,
     "lint-dockerfile": HadolintLinter,
     "lint-terraform": TerraformLinter,
 }

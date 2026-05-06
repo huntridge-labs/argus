@@ -21,6 +21,18 @@ OFFICIAL_IMAGES = {
     "osv-scanner": "ghcr.io/google/osv-scanner:v2.3.6",
     "zap": "ghcr.io/zaproxy/zaproxy:2.17.0",
     "hadolint": "hadolint/hadolint:v2.14.0",
+    # lint-terraform docker fallbacks. terraform fmt/validate run via
+    # the official Hashicorp image; tflint via its official image.
+    "terraform": "hashicorp/terraform:1.9.8",
+    "tflint": "ghcr.io/terraform-linters/tflint:v0.55.1",
+    # lint-javascript via eslint. pipelinecomponents/eslint is the most
+    # widely-used multi-arch eslint image. The upstream tags by commit
+    # SHA + ``:latest`` + ``:edge``, not semver — so we pin ``:latest``
+    # and rely on Renovate's ``pinDigests: true`` rule (renovate.yaml)
+    # to append an immutable ``@sha256:...`` digest on the first run.
+    # Renovate will then bump the digest on a 7-day stability lag the
+    # same way it tracks the rest of the image manifest.
+    "eslint": "pipelinecomponents/eslint:latest",
 }
 
 # Custom images built and published by Argus to ghcr.io/huntridge-labs/argus/
