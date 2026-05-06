@@ -8,6 +8,7 @@ from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
+from argus.core.version import parse_tool_version
 
 
 class OsvScanner:
@@ -92,24 +93,10 @@ class OsvScanner:
         """Return the installed OSV-Scanner version, or None if not available."""
         if not self.is_available():
             return None
-        try:
-            result = subprocess.run(
-                ["osv-scanner", "--version"],
-                capture_output=True, text=True, timeout=5,
-            )
-            # Output varies: "osv-scanner version X.Y.Z" or similar
-            text = result.stdout.strip()
-            if not text:
-                return None
-            # Look for a version-like token (digits and dots)
-            for line in text.splitlines():
-                for part in line.split():
-                    stripped = part.lstrip("v")
-                    if stripped and stripped[0].isdigit() and "." in stripped:
-                        return stripped
-            return None
-        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
-            return None
+        return parse_tool_version(
+            ["osv-scanner", "--version"],
+            r"v?(\d+\.\d+(?:\.\d+)?[\w.-]*)",
+        )
 
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse OSV-Scanner JSON output into findings."""

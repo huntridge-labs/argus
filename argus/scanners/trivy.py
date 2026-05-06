@@ -16,6 +16,7 @@ from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
+from argus.core.version import parse_tool_version
 
 from argus.scanners._vuln_parsers import parse_trivy_vuln
 
@@ -100,18 +101,7 @@ class TrivyScanner:
     def tool_version(self) -> str | None:
         if not self.is_available():
             return None
-        try:
-            res = subprocess.run(
-                ["trivy", "--version"],
-                capture_output=True, text=True, timeout=5,
-            )
-            # Output: "Version: 0.58.1\n..."
-            for line in res.stdout.splitlines():
-                if line.startswith("Version:"):
-                    return line.split(":", 1)[1].strip()
-            return None
-        except (subprocess.TimeoutExpired, Exception):
-            return None
+        return parse_tool_version(["trivy", "--version"], r"^Version: (\S+)")
 
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse Trivy JSON output into Finding objects."""

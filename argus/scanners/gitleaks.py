@@ -8,6 +8,7 @@ from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
+from argus.core.version import parse_tool_version
 
 
 class GitleaksScanner:
@@ -82,18 +83,7 @@ class GitleaksScanner:
         """Return the installed Gitleaks version, or None if not available."""
         if not self.is_available():
             return None
-        try:
-            result = subprocess.run(
-                ["gitleaks", "version"],
-                capture_output=True, text=True, timeout=5,
-            )
-            # Output: "vX.Y.Z" — strip the leading v
-            version_text = result.stdout.strip()
-            if not version_text:
-                return None
-            return version_text.lstrip("v")
-        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
-            return None
+        return parse_tool_version(["gitleaks", "version"], r"v?([0-9]\S*)")
 
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse Gitleaks JSON output into findings."""

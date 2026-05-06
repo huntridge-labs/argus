@@ -8,6 +8,7 @@ from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
+from argus.core.version import parse_tool_version
 
 
 class TrivyIacScanner:
@@ -79,18 +80,7 @@ class TrivyIacScanner:
         """Return the installed Trivy version, or None if not available."""
         if not self.is_available():
             return None
-        try:
-            result = subprocess.run(
-                ["trivy", "--version"],
-                capture_output=True, text=True, timeout=5,
-            )
-            # Output includes "Version: X.Y.Z" among other lines
-            for line in result.stdout.strip().splitlines():
-                if line.startswith("Version:"):
-                    return line.split(":", 1)[1].strip()
-            return None
-        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
-            return None
+        return parse_tool_version(["trivy", "--version"], r"^Version: (\S+)")
 
     def container_args(self, config: dict | None = None) -> list[str]:
         """Return CLI args for running Trivy IaC in a container."""

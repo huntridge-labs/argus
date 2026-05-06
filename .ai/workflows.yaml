@@ -275,8 +275,11 @@ contributor_workflows:
     steps:
       - action: "Create scanner module"
         location: "argus/scanners/{name}.py"
-        purpose: "Implement Scanner protocol — name, scan(path, config), is_available(), install_command()"
+        purpose: "Implement Scanner protocol — name, scan(path, config), is_available(), install_command(), tool_version()"
         template: "argus/scanners/bandit.py"
+        helpers:
+          tool_version: "Use argus.core.version.parse_tool_version(cmd, regex) — collapses the ~17-line subprocess+regex+exception boilerplate into one line. Only fall back to custom parsing when the tool emits structured output (JSON, etc.) — see grype.py"
+          secret_redaction: "If raw output ever contains source-code literals (passwords, code excerpts), use argus.core.redact helpers and add a regression test (see CLAUDE.md → secret leak audit)"
 
       - action: "Register in SCANNER_REGISTRY"
         location: "argus/scanners/__init__.py"

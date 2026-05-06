@@ -1,5 +1,6 @@
 """Core data models for Argus scan results."""
 
+import functools
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 from typing import Optional
@@ -31,6 +32,7 @@ _SEVERITY_ALIASES = {
 }
 
 
+@functools.total_ordering
 class Severity(Enum):
     """Security finding severity levels with comparison support."""
 
@@ -56,21 +58,6 @@ class Severity(Enum):
     @property
     def _order(self) -> int:
         return _SEVERITY_ORDER[self.value]
-
-    def __ge__(self, other: "Severity") -> bool:
-        if not isinstance(other, Severity):
-            return NotImplemented
-        return self._order >= other._order
-
-    def __gt__(self, other: "Severity") -> bool:
-        if not isinstance(other, Severity):
-            return NotImplemented
-        return self._order > other._order
-
-    def __le__(self, other: "Severity") -> bool:
-        if not isinstance(other, Severity):
-            return NotImplemented
-        return self._order <= other._order
 
     def __lt__(self, other: "Severity") -> bool:
         if not isinstance(other, Severity):

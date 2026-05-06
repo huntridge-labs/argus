@@ -113,6 +113,7 @@ from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
+from argus.core.version import parse_tool_version
 
 
 class MyScanner:
@@ -158,6 +159,22 @@ class MyScanner:
         """Return the shell command to install the tool, or None."""
         return "pip install my-tool"
 
+    def tool_version(self) -> str | None:
+        """Return the installed tool version, or None if not available.
+
+        Use ``argus.core.version.parse_tool_version`` for the common
+        case of running ``<tool> --version`` and extracting a version
+        string with a regex. The helper handles missing-binary, timeout,
+        and OS errors uniformly. Only fall back to a custom
+        implementation when the tool emits structured output (JSON, etc.)
+        that doesn't fit a single regex — see ``grype.py`` for that
+        shape.
+        """
+        if not self.is_available():
+            return None
+        # Tool output: "my-tool X.Y.Z (build info)"
+        return parse_tool_version(["my-tool", "--version"], r"^my-tool (\S+)")
+
     def container_args(self, config: dict | None = None) -> list[str]:
         """Return CLI args for running the tool in a container."""
         return [
@@ -197,6 +214,7 @@ class MyScanner:
 | `scan(path, config) -> ScanResult` | Yes | Run the scanner and return normalized results |
 | `is_available() -> bool` | Yes | Check if the tool is installed locally |
 | `install_command() -> str \| None` | Yes | Shell command to install the tool |
+| `tool_version() -> str \| None` | Recommended | Installed tool version. Use `parse_tool_version()` from `argus.core.version` for the common case (regex match against `<tool> --version` output) — see `bandit.py`, `clamav.py`, `trivy.py`, `gitleaks.py` for examples. Only fall back to custom parsing for tools with structured output (JSON, etc.) — see `grype.py` |
 | `container_image: str` | Optional | Docker image for container fallback |
 | `container_args(config) -> list[str]` | Optional | CLI args for containerized execution |
 | `parse_results(path) -> list[Finding]` | Optional | Parse raw output file into findings |

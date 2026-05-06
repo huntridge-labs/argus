@@ -7,6 +7,7 @@ from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
+from argus.core.version import parse_tool_version
 
 
 class HadolintLinter:
@@ -49,24 +50,7 @@ class HadolintLinter:
         """Return the installed hadolint version, or None if not available."""
         if not self.is_available():
             return None
-        try:
-            result = subprocess.run(
-                ["hadolint", "--version"],
-                capture_output=True, text=True, timeout=5,
-            )
-            # Output: "Haskell Dockerfile Linter X.Y.Z-no-git"
-            text = result.stdout.strip()
-            if not text:
-                return None
-            # Last token is the version, possibly with a suffix
-            parts = text.splitlines()[0].split()
-            if parts:
-                version = parts[-1]
-                # Strip git/build suffixes like "-no-git"
-                return version.split("-")[0] if version else None
-            return None
-        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
-            return None
+        return parse_tool_version(["hadolint", "--version"], r"Linter (\d+\.\d+\.\d+)")
 
     def _find_dockerfiles(self, target: Path) -> list[Path]:
         """Find all Dockerfile-like files under the target path."""

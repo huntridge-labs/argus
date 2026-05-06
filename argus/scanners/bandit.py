@@ -8,6 +8,7 @@ from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
+from argus.core.version import parse_tool_version
 
 
 class BanditScanner:
@@ -68,19 +69,8 @@ class BanditScanner:
         """Return the installed Bandit version, or None if not available."""
         if not self.is_available():
             return None
-        try:
-            result = subprocess.run(
-                ["bandit", "--version"],
-                capture_output=True, text=True, timeout=5,
-            )
-            # Output: "bandit X.Y.Z ..."
-            for line in result.stdout.strip().splitlines():
-                parts = line.split()
-                if len(parts) >= 2 and parts[0] == "bandit":
-                    return parts[1]
-            return None
-        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
-            return None
+        # Output: "bandit X.Y.Z ..."
+        return parse_tool_version(["bandit", "--version"], r"^bandit (\S+)")
 
     def container_args(self, config: dict | None = None) -> list[str]:
         """Build container args from config -- mirrors _build_command.
