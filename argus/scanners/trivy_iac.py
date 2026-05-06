@@ -8,6 +8,7 @@ from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
+from argus.core.scanner_template import ScanPaths
 from argus.core.version import parse_tool_version
 
 
@@ -19,21 +20,24 @@ class TrivyIacScanner:
     category = "iac"
     languages = ["terraform", "kubernetes", "dockerfile"]
     container_image = get_image("trivy")
+    # The official Trivy image uses ENTRYPOINT ["trivy"]; engine strips
+    # argv[0] for ENTRYPOINT-based images.
+    container_entrypoint = "trivy"
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
-        """Run Trivy IaC scan against the given path and return results."""
+        """Run Trivy IaC scan against the given path and return results.
+
+        Runs the JSON scan via the shared template and additionally
+        produces a SARIF report (best-effort, non-blocking) to attach as
+        ``sarif_report`` on the returned :class:`ScanResult`.
+        """
         with tempfile.TemporaryDirectory() as tmp_dir:
             json_output = Path(tmp_dir) / "trivy-iac-results.json"
             sarif_output = Path(tmp_dir) / "trivy-iac-results.sarif"
 
-            # Run JSON scan
+            json_paths = ScanPaths(workspace=path, output=str(json_output))
             json_result = subprocess.run(
-                [
-                    "trivy", "config",
-                    "--format", "json",
-                    "--output", str(json_output),
-                    path,
-                ],
+                self.build_args(json_paths, config or {}),
                 capture_output=True,
                 text=True,
             )
@@ -47,17 +51,14 @@ class TrivyIacScanner:
                     },
                 )
 
-            # Run SARIF scan (best-effort, non-blocking)
-            subprocess.run(
-                [
-                    "trivy", "config",
-                    "--format", "sarif",
-                    "--output", str(sarif_output),
-                    path,
-                ],
-                capture_output=True,
-                text=True,
-            )
+            # SARIF scan — best-effort, non-blocking
+            sarif_args = [
+                "trivy", "config",
+                "--format", "sarif",
+                "--output", str(sarif_output),
+                path,
+            ]
+            subprocess.run(sarif_args, capture_output=True, text=True)
 
             findings = self.parse_results(json_output) if json_output.exists() else []
 
@@ -67,6 +68,20 @@ class TrivyIacScanner:
                 raw_report=json_output if json_output.exists() else None,
                 sarif_report=sarif_output if sarif_output.exists() else None,
             )
+
+    def build_args(self, paths: ScanPaths, config: dict) -> list[str]:
+        """Build the full argv (including the binary name).
+
+        Engine drops argv[0] when the container image declares an
+        ENTRYPOINT, so the same method works for both local and
+        container execution.
+        """
+        return [
+            "trivy", "config",
+            "--format", "json",
+            "--output", paths.output,
+            paths.workspace,
+        ]
 
     def is_available(self) -> bool:
         """Check if Trivy is installed."""
@@ -81,15 +96,6 @@ class TrivyIacScanner:
         if not self.is_available():
             return None
         return parse_tool_version(["trivy", "--version"], r"^Version: (\S+)")
-
-    def container_args(self, config: dict | None = None) -> list[str]:
-        """Return CLI args for running Trivy IaC in a container."""
-        return [
-            "config",
-            "--format", "json",
-            "--output", "/output/results.json",
-            "/workspace",
-        ]
 
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse Trivy IaC JSON output into findings."""

@@ -1,14 +1,30 @@
 """Bandit SAST scanner for Python code."""
 
 import json
+import re
 import shutil
-import subprocess
-import tempfile
 from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
+from argus.core.redact import REDACTED_PLACEHOLDER
+from argus.core.scanner_template import ScanPaths, run_subprocess_scan
 from argus.core.version import parse_tool_version
+
+
+# Bandit tests that detect hardcoded credentials. Their ``issue_text``
+# interpolates the matched literal verbatim
+# (e.g. ``Possible hardcoded password: 'hunter2'``) and the ``code``
+# excerpt contains the offending source line — both leak the secret to
+# terminal output, exports, and (most acutely) the MCP server's
+# AI-assistant context. We redact both for these IDs.
+_HARDCODED_SECRET_TESTS = frozenset({
+    "B105",   # hardcoded_password_string
+    "B106",   # hardcoded_password_funcarg
+    "B107",   # hardcoded_password_default
+})
+
+_QUOTED_LITERAL_RE = re.compile(r":\s*['\"][^'\"]*['\"]")
 
 
 class BanditScanner:
@@ -19,43 +35,37 @@ class BanditScanner:
     category = "sast"
     languages = ["python"]
     container_image = get_image("bandit")
+    # The custom argus bandit image uses ENTRYPOINT ["bandit"]; engine
+    # strips argv[0] for ENTRYPOINT-based images.
+    container_entrypoint = "bandit"
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
-        """Run Bandit against the given path and return results."""
-        config = config or {}
+        """Run Bandit against *path* and return results."""
+        return run_subprocess_scan(self, path, config)
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            output_file = Path(tmp_dir) / "bandit-results.json"
-            cmd = self._build_command(path, output_file, config)
+    def build_args(self, paths: ScanPaths, config: dict) -> list[str]:
+        """Build the full argv (including the binary name).
 
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-            )
-
-            # Bandit uses --exit-zero so non-zero means a real error
-            if result.returncode != 0:
-                return ScanResult(
-                    scanner=self.name,
-                    metadata={
-                        "error": result.stderr.strip(),
-                        "returncode": result.returncode,
-                    },
-                )
-
-            if not output_file.exists():
-                return ScanResult(
-                    scanner=self.name,
-                    metadata={"error": "No output file produced"},
-                )
-
-            findings = self.parse_results(output_file)
-            return ScanResult(
-                scanner=self.name,
-                findings=findings,
-                raw_report=output_file,
-            )
+        Engine drops argv[0] when the container image declares an
+        ENTRYPOINT, so the same method works for both local and
+        container execution.
+        """
+        args = [
+            "bandit",
+            "-r", paths.workspace,
+            "-f", "json",
+            "-o", paths.output,
+            "--exit-zero",
+        ]
+        config_file = config.get("config_file")
+        if config_file:
+            # Local: caller passes the host path; container: prefix
+            # /workspace/ since the file is mounted there.
+            args.extend(["-c", config_file if "/" in config_file else f"{paths.workspace}/{config_file}"])
+        exclude = config.get("exclude")
+        if exclude:
+            args.extend(["--exclude", exclude])
+        return args
 
     def is_available(self) -> bool:
         """Check if Bandit is installed."""
@@ -69,63 +79,22 @@ class BanditScanner:
         """Return the installed Bandit version, or None if not available."""
         if not self.is_available():
             return None
-        # Output: "bandit X.Y.Z ..."
         return parse_tool_version(["bandit", "--version"], r"^bandit (\S+)")
-
-    def container_args(self, config: dict | None = None) -> list[str]:
-        """Build container args from config -- mirrors _build_command.
-
-        NOTE: The custom bandit image (ghcr.io/huntridge-labs/argus/
-        scanner-bandit) uses ENTRYPOINT ["bandit"], so these args are
-        appended directly to the bandit command.  Do NOT include the
-        ``bandit`` executable name here; the container entrypoint
-        already provides it.
-        """
-        config = config or {}
-        args = [
-            "-r", "/workspace",
-            "-f", "json",
-            "-o", "/output/results.json",
-            "--exit-zero",
-        ]
-        exclude = config.get("exclude")
-        if exclude:
-            args.extend(["--exclude", exclude])
-        config_file = config.get("config_file")
-        if config_file:
-            args.extend(["-c", f"/workspace/{config_file}"])
-        return args
 
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse Bandit JSON output into findings."""
         data = json.loads(raw_output_path.read_text())
-        results = data.get("results", [])
-
-        return [self._parse_finding(item) for item in results]
-
-    # Bandit tests that detect hardcoded credentials. Their ``issue_text``
-    # interpolates the matched literal verbatim
-    # (e.g. ``Possible hardcoded password: 'hunter2'``) and the ``code``
-    # excerpt contains the offending source line — both leak the secret
-    # to terminal output, exports, and (most acutely) the MCP server's
-    # AI-assistant context. We redact both for these IDs.
-    _HARDCODED_SECRET_TESTS = frozenset({
-        "B105",   # hardcoded_password_string
-        "B106",   # hardcoded_password_funcarg
-        "B107",   # hardcoded_password_default
-    })
+        return [self._parse_finding(item) for item in data.get("results", [])]
 
     def _parse_finding(self, item: dict) -> Finding:
         """Convert a single Bandit result into a Finding.
 
         Redaction commitment: for the hardcoded-credential tests
-        (B105 / B106 / B107) bandit's ``issue_text`` and ``code``
-        fields contain the matched secret value literally. Both
-        are replaced with the redaction placeholder before they
-        reach the Finding — see ``argus/core/redact.py``.
+        (B105 / B106 / B107) bandit's ``issue_text`` and ``code`` fields
+        contain the matched secret value literally. Both are replaced
+        with the redaction placeholder before they reach the Finding —
+        see ``argus/core/redact.py``.
         """
-        from argus.core.redact import REDACTED_PLACEHOLDER
-
         severity = Severity.from_string(item.get("issue_severity", "UNKNOWN"))
 
         cwe = None
@@ -141,16 +110,9 @@ class BanditScanner:
         issue_text = item.get("issue_text", "")
         code_excerpt = item.get("code", "")
 
-        if test_id in self._HARDCODED_SECRET_TESTS:
-            # Strip the quoted literal from the message — bandit's
-            # template is ``...: '<value>'``. Anchored to the colon-quote
-            # boundary so we don't false-positive on messages with
-            # other punctuation.
-            import re
-            issue_text = re.sub(
-                r":\s*['\"][^'\"]*['\"]",
-                f": {REDACTED_PLACEHOLDER}",
-                issue_text,
+        if test_id in _HARDCODED_SECRET_TESTS:
+            issue_text = _QUOTED_LITERAL_RE.sub(
+                f": {REDACTED_PLACEHOLDER}", issue_text,
             )
             code_excerpt = REDACTED_PLACEHOLDER
 
@@ -169,25 +131,3 @@ class BanditScanner:
                 "code": code_excerpt,
             },
         )
-
-    def _build_command(
-        self, path: str, output_file: Path, config: dict
-    ) -> list[str]:
-        """Build the Bandit CLI command."""
-        cmd = [
-            "bandit",
-            "-r", path,
-            "-f", "json",
-            "-o", str(output_file),
-            "--exit-zero",
-        ]
-
-        exclude = config.get("exclude")
-        if exclude:
-            cmd.extend(["--exclude", exclude])
-
-        config_file = config.get("config_file")
-        if config_file:
-            cmd.extend(["-c", config_file])
-
-        return cmd

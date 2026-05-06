@@ -2,12 +2,11 @@
 
 import json
 import shutil
-import subprocess
-import tempfile
 from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
+from argus.core.scanner_template import ScanPaths, run_subprocess_scan
 from argus.core.version import parse_tool_version
 
 
@@ -19,11 +18,31 @@ class CheckovScanner:
     category = "iac"
     languages = ["terraform", "kubernetes", "cloudformation"]
     container_image = get_image("checkov")
+    # The official Checkov image uses ENTRYPOINT ["checkov"]; engine strips
+    # argv[0] for ENTRYPOINT-based images.
+    container_entrypoint = "checkov"
 
-    def container_args(self, config: dict | None = None) -> list[str]:
-        """Build container args from config — mirrors _build_command."""
-        config = config or {}
-        args = ["-d", "/workspace", "-o", "json", "--quiet", "--output-file-path", "/output"]
+    def scan(self, path: str, config: dict | None = None) -> ScanResult:
+        """Run Checkov against the given path and return results."""
+        return run_subprocess_scan(self, path, config)
+
+    def build_args(self, paths: ScanPaths, config: dict) -> list[str]:
+        """Build the full argv (including the binary name).
+
+        Engine drops argv[0] when the container image declares an
+        ENTRYPOINT, so the same method works for both local and
+        container execution.
+
+        Checkov writes JSON to stdout when given ``-o json``. The
+        template's stdout fallback captures it and writes to the
+        expected output file automatically.
+        """
+        args = [
+            "checkov",
+            "-d", paths.workspace,
+            "-o", "json",
+            "--quiet",
+        ]
         framework = config.get("framework")
         if framework:
             args.extend(["--framework", framework])
@@ -34,45 +53,6 @@ class CheckovScanner:
         if skip_check:
             args.extend(["--skip-check", skip_check])
         return args
-
-    def scan(self, path: str, config: dict | None = None) -> ScanResult:
-        """Run Checkov against the given path and return results."""
-        config = config or {}
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            output_file = Path(tmp_dir) / "checkov-results.json"
-            cmd = self._build_command(path, config)
-
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-            )
-
-            # Checkov outputs JSON to stdout with -o json
-            if result.stdout.strip():
-                output_file.write_text(result.stdout)
-            elif result.returncode != 0:
-                return ScanResult(
-                    scanner=self.name,
-                    metadata={
-                        "error": result.stderr.strip(),
-                        "returncode": result.returncode,
-                    },
-                )
-            else:
-                return ScanResult(
-                    scanner=self.name,
-                    metadata={"error": "No output produced"},
-                )
-
-            findings, passed_count = self.parse_results(output_file)
-            return ScanResult(
-                scanner=self.name,
-                findings=findings,
-                raw_report=output_file,
-                metadata={"passed_count": passed_count},
-            )
 
     def is_available(self) -> bool:
         """Check if Checkov is installed."""
@@ -153,26 +133,3 @@ class CheckovScanner:
                 ),
             },
         )
-
-    def _build_command(self, path: str, config: dict) -> list[str]:
-        """Build the Checkov CLI command."""
-        cmd = [
-            "checkov",
-            "-d", path,
-            "-o", "json",
-            "--quiet",
-        ]
-
-        framework = config.get("framework")
-        if framework:
-            cmd.extend(["--framework", framework])
-
-        check = config.get("check")
-        if check:
-            cmd.extend(["--check", check])
-
-        skip_check = config.get("skip_check")
-        if skip_check:
-            cmd.extend(["--skip-check", skip_check])
-
-        return cmd

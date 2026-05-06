@@ -674,7 +674,24 @@ class ArgusEngine:
                 docker_cmd.extend(["--entrypoint", entrypoint])
                 logger.debug("Overriding entrypoint: %s", entrypoint)
 
-            container_args = scanner.container_args(config)
+            # Prefer the unified ``build_args(ScanPaths)`` shape (single
+            # source of truth for both local and container CLI args).
+            # Fall back to legacy ``container_args(config)`` for scanners
+            # not yet migrated. Once every scanner declares
+            # ``build_args``, the legacy branch and container_args
+            # method go away.
+            if hasattr(scanner, "build_args"):
+                from argus.core.scanner_template import ScanPaths
+                paths = ScanPaths(
+                    workspace="/workspace",
+                    output="/output/results.json",
+                )
+                container_args = scanner.build_args(paths, config or {})
+                # ENTRYPOINT-based images supply the binary; drop argv[0].
+                if getattr(scanner, "container_entrypoint", None):
+                    container_args = container_args[1:]
+            else:
+                container_args = scanner.container_args(config)
             docker_cmd.extend([image] + container_args)
 
             logger.debug(

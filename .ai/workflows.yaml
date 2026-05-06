@@ -275,9 +275,11 @@ contributor_workflows:
     steps:
       - action: "Create scanner module"
         location: "argus/scanners/{name}.py"
-        purpose: "Implement Scanner protocol — name, scan(path, config), is_available(), install_command(), tool_version()"
+        purpose: "Implement Scanner protocol — name, scan(), build_args(), is_available(), install_command(), tool_version(), parse_results()"
         template: "argus/scanners/bandit.py"
         helpers:
+          scan_template: "Use argus.core.scanner_template.run_subprocess_scan(self, path, config) — collapses the tempdir+subprocess+output-file+error-handling boilerplate into a one-line scan() body. Each scanner declares the WHAT (build_args, parse_results) instead of the HOW (subprocess plumbing). Skip when the tool runs multiple binaries or emits to stdout (see grype.py, clamav.py, supply_chain.py for the bypass shape)."
+          build_args: "Implement build_args(self, paths: ScanPaths, config: dict) — single source of truth for both local and container execution. Returns the FULL argv (binary name as args[0]). Engine drops args[0] when ``container_entrypoint`` is declared on the class (i.e. the image has ENTRYPOINT). Replaces the legacy _build_command + container_args pair, which used to drift."
           tool_version: "Use argus.core.version.parse_tool_version(cmd, regex) — collapses the ~17-line subprocess+regex+exception boilerplate into one line. Only fall back to custom parsing when the tool emits structured output (JSON, etc.) — see grype.py"
           secret_redaction: "If raw output ever contains source-code literals (passwords, code excerpts), use argus.core.redact helpers and add a regression test (see CLAUDE.md → secret leak audit)"
 
