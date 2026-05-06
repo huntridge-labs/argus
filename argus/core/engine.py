@@ -992,12 +992,19 @@ class ArgusEngine:
                         f"set backend to 'auto'/'local' to use the "
                         f"scanner's own scan() method."
                     )
+                # auto: the scanner takes ownership of dispatch. It
+                # likely has a custom flow (file-discovery linters that
+                # walk the workspace and run their tool per-batch) and
+                # handles local vs container internally — including the
+                # docker-run fallback when the local binary is absent.
+                # We hand off to scan() unconditionally rather than
+                # falling through to the is_available() gate.
                 logger.debug(
                     "Backend 'auto': scanner '%s' has no build_args/"
-                    "container_args — deferring to scanner.scan() instead "
-                    "of the container path",
+                    "container_args — handing off to scanner.scan()",
                     scanner.name,
                 )
+                return scanner.scan(path, config)
 
             # docker backend requires containers — fail explicitly
             if backend == "docker":
