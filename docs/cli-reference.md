@@ -72,9 +72,9 @@ argus scan [-h] [--path PATH] [--config CONFIG]
                   [--severity-threshold {critical,high,medium,low,none}]
                   [--format {terminal,markdown,sarif,json}] [--list]
                   [--verbose] [--debug] [--quiet] [--no-spinner]
-                  [--no-timestamp] [--output-vars FILE] [--exclude PATTERNS]
-                  [--no-default-excludes] [--dry-run] [--sbom PATH]
-                  [--interface {terminal,browser}] [--fail-fast]
+                  [--no-update-check] [--no-timestamp] [--output-vars FILE]
+                  [--exclude PATTERNS] [--no-default-excludes] [--dry-run]
+                  [--sbom PATH] [--interface {terminal,browser}] [--fail-fast]
                   [--fail-on-scanner-error] [--timeout SECONDS]
                   [--no-parallel] [--allow-local-versions] [--no-cache]
                   [--no-keep-raw] [--discover [PATH]] [--image REF]
@@ -102,6 +102,7 @@ argus scan [-h] [--path PATH] [--config CONFIG]
 | `--debug` | Full firehose: subprocess output, vulnerability-DB updates, every engine log line. Use when troubleshooting; the default phase-aware progress is enough for normal scans. | `false` |
 | `--quiet`, `-q` | Suppress per-phase progress lines. The spinner still draws (use --no-spinner to suppress that too). Final summary still prints. Compose with --no-spinner for fully silent CI exit-code-only mode. | `false` |
 | `--no-spinner` | Disable animated spinner output | `false` |
+| `--no-update-check` | Skip the once-per-day check for a newer argus release. The check runs in the background during the scan (zero latency cost) and prints a soft notice at the end of the command when an upgrade is available. Also disabled by setting the ARGUS_NO_UPDATE_CHECK environment variable, which is the right move for CI / air-gapped environments. Override the PyPI URL via ARGUS_UPDATE_CHECK_URL for TestPyPI or private mirrors. | `false` |
 | `--no-timestamp` | Write output directly to --output-dir without a timestamped subdirectory. Useful in CI where a predictable output path is needed. | `false` |
 | `--output-vars` | Write scan result counts as key=value pairs to FILE. Useful in CI: cat FILE >> $GITHUB_OUTPUT. Keys: critical_count, high_count, medium_count, low_count, total_count, passed. |  |
 | `--exclude`, `-e` | Comma-separated paths or patterns to exclude from scanning. Added on top of .gitignore, .dockerignore, and built-in defaults. | `` |
