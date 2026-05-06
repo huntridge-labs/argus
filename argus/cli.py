@@ -2609,6 +2609,31 @@ def cmd_validate(args: argparse.Namespace) -> int:
     backend = data.get("execution", {}).get("backend", "auto")
     print(f"   Backend: {backend}")
 
+    # Containers: only printed when the block exists and is structurally
+    # sound (validate already surfaced any errors above). The line gives
+    # the user a "yes, your containers config was inspected" signal that
+    # was missing — without it, a typo'd top-level key like ``containerz``
+    # used to fail silently here too.
+    containers = data.get("containers")
+    if isinstance(containers, dict):
+        images = containers.get("images") or []
+        discover = containers.get("discover", False)
+        search_paths = containers.get("search_paths") or []
+        parts = []
+        if isinstance(images, list) and images:
+            parts.append(f"{len(images)} image(s)")
+        if discover:
+            paths_str = ", ".join(search_paths) if search_paths else "."
+            parts.append(f"discover from {paths_str}")
+        summary = " + ".join(parts) if parts else "no targets"
+        print(f"   Containers: {summary}")
+        if isinstance(images, list) and images:
+            for entry in images:
+                if not isinstance(entry, dict):
+                    continue
+                ref = entry.get("image") or entry.get("dockerfile") or "<unknown>"
+                print(f"     - {ref}")
+
     # Tool readiness check
     unavailable = []
     tool_statuses = []

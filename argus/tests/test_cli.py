@@ -872,6 +872,85 @@ class TestCmdValidate:
         captured = capsys.readouterr()
         assert "strict" in captured.out.lower() or "warning" in captured.out.lower()
 
+    def test_validate_summary_lists_containers_when_block_present(
+        self, tmp_path, capsys,
+    ):
+        """The summary should surface configured container targets so
+        the user knows the ``containers:`` block was inspected."""
+        config_file = tmp_path / "argus.yml"
+        config_file.write_text(
+            "scanners:\n"
+            "  bandit:\n"
+            "    enabled: true\n"
+            "containers:\n"
+            "  images:\n"
+            "    - image: ghcr.io/myorg/app:1.0\n"
+            "    - image: myorg/inhouse:dev\n"
+            "      dockerfile: docker/Dockerfile\n"
+        )
+        args = argparse.Namespace(
+            config=str(config_file),
+            check_tools=False,
+            strict=False,
+        )
+        result = cmd_validate(args)
+
+        assert result == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "Containers: 2 image(s)" in out
+        assert "ghcr.io/myorg/app:1.0" in out
+        assert "myorg/inhouse:dev" in out
+
+    def test_validate_summary_omits_containers_line_when_block_absent(
+        self, tmp_path, capsys,
+    ):
+        """When no ``containers:`` block exists, the summary should not
+        mention containers at all — the block is optional and silence
+        is the right signal."""
+        config_file = tmp_path / "argus.yml"
+        config_file.write_text(
+            "scanners:\n"
+            "  bandit:\n"
+            "    enabled: true\n"
+        )
+        args = argparse.Namespace(
+            config=str(config_file),
+            check_tools=False,
+            strict=False,
+        )
+        result = cmd_validate(args)
+
+        assert result == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "Containers:" not in out
+
+    def test_validate_summary_shows_discover_when_set(self, tmp_path, capsys):
+        """``discover: true`` should surface in the summary alongside
+        any configured search_paths."""
+        config_file = tmp_path / "argus.yml"
+        config_file.write_text(
+            "scanners:\n"
+            "  bandit:\n"
+            "    enabled: true\n"
+            "containers:\n"
+            "  discover: true\n"
+            "  search_paths:\n"
+            "    - docker/\n"
+            "    - .\n"
+        )
+        args = argparse.Namespace(
+            config=str(config_file),
+            check_tools=False,
+            strict=False,
+        )
+        result = cmd_validate(args)
+
+        assert result == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "Containers:" in out
+        assert "discover from" in out
+        assert "docker/" in out
+
 
 class TestCmdReport:
     """Integration tests for cmd_report."""
