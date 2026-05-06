@@ -204,7 +204,9 @@ All 16 scanner/linter actions refactored to call `argus scan` internally. Action
 **Future (post-release):**
 - [ ] Additional reporters: `github.py`, `gitlab.py`, `junit.py`, plugin registration system
 - [ ] Additional scanners: `codeql.py`, `dependency_review.py` (GitHub-specific)
-- [ ] Performance: profiling, pull_policy evaluation, pre-warming, lazy pulls, progress indicators
+- [x] ~~Progress indicators~~ — `argus/cli.py::Spinner` ships phase-aware progress with `--no-spinner` opt-out (PR #2c46fce: `feat(cli): phase-aware scan progress and clearer verbosity flags`)
+- [x] ~~`pull_policy` evaluation~~ — `ArgusConfig.execution.pull_policy` accepts `always | if-not-present | never`; engine + container_runtime honor it
+- [ ] Performance: profiling, pre-warming, lazy pulls (the remaining items from the original bundle)
 
 ---
 
@@ -284,7 +286,7 @@ The `argus-portal` web app at `/Users/collinpesicka/Documents/HRL/github.com/arg
 - [ ] **Does the portal consume `argus-results.json` natively?** If yes, the TUI's role is "local-dev triage before pushing to portal." If no, we'd want a shared schema/loader library to avoid format drift between CLI and web.
 - [ ] **"Send to portal" keybinding** — `P` from the TUI uploads the current results (or currently filtered subset) to a configured portal instance. Needs portal API (or upload endpoint) defined first.
 - [ ] **"Open in portal"** — deep-link to a scan view: `argus-portal://scan/<id>` or HTTP URL. Works if scans have portal-assigned IDs.
-- [ ] **Shared findings renderer** — if the portal wants identical per-finding layout to the TUI detail pane, factor the detail rendering into a shared module (core of a future `argus.findings_view` package — portal consumes via API/SDK, TUI consumes via import).
+- [x] ~~**Shared findings renderer**~~ — `argus/core/findings_view.py` is the shared module: TUI imports it from `argus/viewers/terminal/app.py` and the browser interface imports it from `argus/viewers/browser/app.py` + `log_view.py`. Portal can consume the same module if/when it wants identical per-finding layout. (Note: bullets above this — portal protocol questions — remain open product decisions.)
 
 Not all of these belong to the TUI itself — the portal integration items are primarily portal-side concerns. Tracked here so the CLI/TUI side doesn't drift from whatever the portal lands on.
 
@@ -292,7 +294,8 @@ Not all of these belong to the TUI itself — the portal integration items are p
 
 - [ ] Multi-select for batch actions (export a subset, copy CVE list to clipboard)
 - [x] `argus scan --interface=terminal` convenience flag — auto-launches the terminal viewer after the scan finishes
-- [ ] Screenshot + quickstart in `docs/view-terminal.md`
+- [x] ~~Quickstart in `docs/view-terminal.md`~~ — install + launch + key bindings + workflows shipped
+- [ ] Screenshot pass for `docs/view-terminal.md` — doc has no images yet
 
 ---
 
