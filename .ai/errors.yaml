@@ -374,3 +374,67 @@ scn_detector_errors:
           how: "Set enable_ai_fallback: true and provide ANTHROPIC_API_KEY"
         - description: "Review manually"
           how: "MANUAL_REVIEW is the expected safe default for unrecognized changes"
+
+  # ==============================================================================
+  # SCANNER EXECUTION FAILURES
+  # ==============================================================================
+
+  - pattern: "exit 127|exec.*not found"
+    category: scanner-execution
+    context: "Container scanner exits 127 immediately (e.g. osv-scanner)"
+
+    root_cause: |
+      Docker's --entrypoint override does NOT consult the image's $PATH
+      when given a bare binary name. Some images declare an absolute
+      entrypoint (e.g. ghcr.io/google/osv-scanner uses
+      ENTRYPOINT ["/osv-scanner"]) and require the absolute path on
+      the override. A bare ``osv-scanner`` resolves nowhere and exits
+      127.
+
+    solution:
+      steps:
+        - "Run ``docker image inspect <image>`` and read ``Config.Entrypoint``"
+        - "Set ``container_entrypoint`` on the scanner class to the absolute path from that field"
+      verification: "Engine strips argv[0] for ENTRYPOINT-based images, so build_args may keep the bare name"
+
+    reference: "argus/scanners/osv.py — see container_entrypoint = '/osv-scanner'"
+
+  - pattern: "yamllint.*PASS.*0 findings|lint-yaml.*passes despite errors"
+    category: scanner-execution
+    context: "Linter exits non-zero but reports zero findings and Status: PASS"
+
+    root_cause: |
+      Tools like yamllint use exit codes to differentiate happy-path
+      lint failures (exit 1, with parseable findings on stdout) from
+      runtime errors (exit ≥ 2, empty stdout). Naive callers that map
+      empty stdout to ``[]`` lose the runtime-error signal entirely
+      and surface ``Status: PASS`` even when the tool failed to run.
+
+    solution:
+      steps:
+        - "Distinguish exit codes: 0 = clean, 1 = findings, ≥2 = real failure"
+        - "When exit ≥ 2 with empty findings, set metadata['execution_failed']=True and metadata['execution_failure_reason']=<stderr summary>"
+        - "Use the same shape the engine container path emits — the terminal reporter and --fail-on-scanner-error key off these exact field names"
+
+    reference: "argus/linters/yamllint.py — scan() exit-code branching"
+
+  - pattern: "scanner produced no output|execution_failed"
+    category: scanner-execution
+    context: "Reporter shows Warning row but Status: PASS contradicts it"
+
+    root_cause: |
+      Threshold compliance (``ScanSummary.passed``) and execution
+      success are independent signals. A scanner that fails to run
+      produces zero findings, which alone passes any threshold. The
+      reporter must label PASS as ``PASS (degraded — some scanners
+      did not run)`` whenever any scanner has
+      metadata['execution_failed']=True, otherwise the Warning above
+      and the Status below contradict each other.
+
+    solution:
+      steps:
+        - "Reporter checks for any result.metadata.get('execution_failed')"
+        - "If passed and any failed: print 'Status: PASS (degraded — some scanners did not run)'"
+        - "Add --fail-on-scanner-error in CI for hard-fail behavior"
+
+    reference: "argus/reporters/terminal.py::_print_status"

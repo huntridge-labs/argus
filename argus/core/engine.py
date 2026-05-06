@@ -2,6 +2,7 @@
 
 import logging
 import os
+import platform
 import shutil
 import subprocess
 import tempfile
@@ -674,7 +675,15 @@ class ArgusEngine:
             #  - holds only one scan's transient output (no secrets;
             #    findings travel through ``parse_results`` and end up
             #    in the user-specified output_dir, never here).
-            os.chmod(output_dir, 0o777)
+            #
+            # Skip on Windows: NTFS doesn't honor POSIX bits, ``os.chmod``
+            # only flips the read-only attribute, and Docker Desktop on
+            # Windows handles uid mapping for bind mounts differently
+            # (it doesn't suffer from the macOS uid-mismatch failure mode
+            # this guard exists for). Calling ``chmod 0o777`` there is
+            # at best a no-op and at worst confusing in stack traces.
+            if platform.system() != "Windows":
+                os.chmod(output_dir, 0o777)
 
             docker_cmd = [
                 self._runtime, "run", "--rm",

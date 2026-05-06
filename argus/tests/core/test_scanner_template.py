@@ -66,7 +66,7 @@ class TestRunSubprocessScan:
 
         assert result.scanner == "fake"
         assert result.findings == [finding]
-        assert "error" not in result.metadata
+        assert result.metadata.get("execution_failed") is not True
 
     def test_passes_workspace_path_through_to_build_args(self, tmp_path):
         scanner = _FakeScanner()
@@ -192,29 +192,39 @@ class TestRunSubprocessScan:
 
 class TestFailures:
 
-    def test_missing_binary_returns_error_metadata(self, tmp_path):
+    def test_missing_binary_returns_execution_failed_metadata(self, tmp_path):
+        # The template uses the same metadata contract as the engine's
+        # container path: ``execution_failed`` (bool) +
+        # ``execution_failure_reason`` (string). The terminal reporter,
+        # ``--fail-on-scanner-error`` gate, and CI viewers all key off
+        # those exact field names, so the local-execution path has to
+        # match — otherwise a missing binary would be invisible to the
+        # warning row and silently roll up as PASS.
         scanner = _FakeScanner()
         with patch("subprocess.run", side_effect=FileNotFoundError(2, "no such file", "fake")):
             result = run_subprocess_scan(scanner, str(tmp_path))
         assert result.findings == []
-        assert "Tool not found" in result.metadata.get("error", "")
+        assert result.metadata.get("execution_failed") is True
+        assert "Tool not found" in result.metadata.get("execution_failure_reason", "")
 
-    def test_timeout_returns_error_metadata(self, tmp_path):
+    def test_timeout_returns_execution_failed_metadata(self, tmp_path):
         scanner = _FakeScanner()
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("fake", 5)):
             result = run_subprocess_scan(scanner, str(tmp_path), timeout=5)
-        assert "timed out" in result.metadata.get("error", "")
+        assert result.metadata.get("execution_failed") is True
+        assert "timed out" in result.metadata.get("execution_failure_reason", "")
 
-    def test_no_output_no_stdout_returns_error_metadata(self, tmp_path):
+    def test_no_output_no_stdout_returns_execution_failed_metadata(self, tmp_path):
         scanner = _FakeScanner()
         with patch(
             "subprocess.run",
             return_value=_completed(stdout="", stderr="boom", returncode=2),
         ):
             result = run_subprocess_scan(scanner, str(tmp_path))
-        err = result.metadata.get("error", "")
-        assert "No output produced" in err
-        assert "boom" in err
+        assert result.metadata.get("execution_failed") is True
+        reason = result.metadata.get("execution_failure_reason", "")
+        assert "No output produced" in reason
+        assert "boom" in reason
 
     def test_unexpected_exception_propagates(self, tmp_path):
         # Bugs in scanner.parse_results shouldn't be silently translated.

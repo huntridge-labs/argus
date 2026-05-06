@@ -852,6 +852,88 @@ class TestRunInContainer:
         assert result.findings[0].title == "from stdout"
         assert captured_file["path"].name == "stdout.txt"
 
+    def test_chmod_skipped_on_windows(self, monkeypatch):
+        """On Windows, NTFS doesn't honor POSIX bits and ``os.chmod``
+        only flips the read-only attribute — the uid-mismatch failure
+        mode that the chmod guards against doesn't exist there. We
+        skip the call so a Windows-native run doesn't trip on confused
+        permission semantics in stack traces.
+
+        Linux and macOS keep the chmod (covered by the next test) so
+        existing behavior is unchanged."""
+        engine = self._make_engine()
+        scanner = self._make_scanner()
+
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+        # Pretend we're on Windows for this test.
+        from argus.core import engine as engine_mod
+        monkeypatch.setattr(
+            engine_mod.platform, "system", lambda: "Windows",
+        )
+
+        chmod_calls = []
+        monkeypatch.setattr(
+            engine_mod.os, "chmod",
+            lambda *args, **kwargs: chmod_calls.append(args),
+        )
+
+        def mock_run(cmd, **_kwargs):
+            for arg in cmd:
+                if ":/output" in str(arg):
+                    host_dir = arg.split(":")[0]
+                    Path(host_dir).joinpath("results.json").write_text("{}")
+                    break
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="", stderr="",
+            )
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+        engine._run_in_container(scanner, "/src", {})
+        # No chmod on the temp output dir on Windows. Other code paths
+        # may still call chmod (e.g., cache mount setup), so we filter
+        # to confirm the *output_dir* chmod specifically didn't fire
+        # by checking no call used mode 0o777 — that's the unique
+        # signature of the output-dir chmod this test guards.
+        assert not any(
+            len(call) >= 2 and call[1] == 0o777
+            for call in chmod_calls
+        ), f"chmod 0o777 should be skipped on Windows; got: {chmod_calls}"
+
+    def test_chmod_runs_on_non_windows(self, monkeypatch):
+        """Linux/macOS keep the chmod 0o777 — non-Windows scanners
+        running as a different uid than the host user need it to
+        write /output/results.json. This test guards the Linux-safety
+        side of the Windows fix: skipping on Windows must not also
+        skip on the platforms where the chmod is load-bearing."""
+        engine = self._make_engine()
+        scanner = self._make_scanner()
+
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+
+        from argus.core import engine as engine_mod
+        monkeypatch.setattr(engine_mod.platform, "system", lambda: "Linux")
+
+        captured_mode = {}
+
+        def mock_run(cmd, **_kwargs):
+            for arg in cmd:
+                if ":/output" in str(arg):
+                    host_dir = arg.split(":")[0]
+                    captured_mode["mode"] = os.stat(host_dir).st_mode & 0o777
+                    Path(host_dir).joinpath("results.json").write_text("{}")
+                    break
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="", stderr="",
+            )
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+        engine._run_in_container(scanner, "/src", {})
+        # The chmod must have fired before docker run, exactly as
+        # before the Windows guard was added.
+        assert captured_mode["mode"] == 0o777
+
     def test_container_output_dir_is_world_writable(self, monkeypatch):
         """Regression: scanners running as USER non-root (uid 1000)
         couldn't write /output/results.json on hosts with uid != 1000

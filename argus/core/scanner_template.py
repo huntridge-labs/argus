@@ -118,7 +118,13 @@ def run_subprocess_scan(
 
     Returns:
         A :class:`ScanResult` with ``findings`` populated on success or
-        an ``error`` metadata key when execution fails.
+        ``metadata["execution_failed"] = True`` when the underlying
+        tool failed to run. The terminal reporter, viewers, and
+        ``--fail-on-scanner-error`` all key off ``execution_failed``;
+        using the same metadata shape that the engine's container path
+        emits (see ``argus/core/engine.py::_run_in_container``) keeps
+        local-execution and container-execution failures uniformly
+        visible without per-path special-casing.
     """
     config = config or {}
 
@@ -139,12 +145,22 @@ def run_subprocess_scan(
         except FileNotFoundError as exc:
             return ScanResult(
                 scanner=scanner.name,
-                metadata={"error": f"Tool not found: {exc.filename or cmd[0]}"},
+                metadata={
+                    "execution_failed": True,
+                    "execution_failure_reason": (
+                        f"Tool not found: {exc.filename or cmd[0]}"
+                    ),
+                },
             )
         except subprocess.TimeoutExpired:
             return ScanResult(
                 scanner=scanner.name,
-                metadata={"error": f"Scanner timed out after {timeout}s"},
+                metadata={
+                    "execution_failed": True,
+                    "execution_failure_reason": (
+                        f"Scanner timed out after {timeout}s"
+                    ),
+                },
             )
 
         if not output_file.exists():
@@ -158,7 +174,8 @@ def run_subprocess_scan(
                 return ScanResult(
                     scanner=scanner.name,
                     metadata={
-                        "error": (
+                        "execution_failed": True,
+                        "execution_failure_reason": (
                             f"No output produced (exit={result.returncode}). "
                             f"stderr: {(result.stderr or '').strip()[:400]}"
                         ),

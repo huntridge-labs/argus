@@ -119,7 +119,13 @@ class TerminalReporter:
             print("  the scan when this happens.")
 
         if summary.passed:
-            print("Status: PASS")
+            if failed:
+                # Threshold passed, but execution was incomplete — flag it.
+                # Without this, a single bad scanner produces "Status: PASS"
+                # alongside the warning above, contradicting itself.
+                print("Status: PASS (degraded — some scanners did not run)")
+            else:
+                print("Status: PASS")
         else:
             threshold = summary.severity_threshold.value if summary.severity_threshold else "none"
             print(f"Status: FAIL (findings above threshold: {threshold})")

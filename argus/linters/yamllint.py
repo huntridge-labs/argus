@@ -15,17 +15,45 @@ class YamllintLinter:
     languages = ["yaml"]
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
-        """Run yamllint against the given path and return results."""
+        """Run yamllint against the given path and return results.
+
+        yamllint exit codes (per its docs):
+          * 0 — no problems found
+          * 1 — lint problems found (this is the expected happy path
+            when violations exist; NOT an execution failure)
+          * 2+ — yamllint itself failed to run (bad config file path,
+            unreadable input, internal error). stderr carries the
+            reason; stdout is empty in this case.
+
+        Previously, exit ≥ 2 was silently dropped: ``_parse_output("")``
+        returned ``[]`` and the caller saw a clean ``ScanResult`` with
+        zero findings. The terminal reporter would then print
+        ``Scanner: lint-yaml (0 findings)`` followed by ``Status: PASS``,
+        masking a real execution failure. Now we set the
+        ``execution_failed`` metadata flag (same shape the engine's
+        container path produces) so the reporter's
+        ``Warning: scanner produced no output`` block surfaces it and
+        ``--fail-on-scanner-error`` correctly fails the run.
+        """
         config = config or {}
         cmd = self._build_command(path, config)
 
         result = subprocess.run(cmd, capture_output=True, text=True)
 
         findings = self._parse_output(result.stdout)
+        metadata: dict = {"returncode": result.returncode}
+        # Exit ≥ 2 with no findings parsed = real runtime/config error.
+        # Exit 1 with findings is the lint-violations-found happy path.
+        if result.returncode > 1 and not findings:
+            metadata["execution_failed"] = True
+            metadata["execution_failure_reason"] = (
+                f"yamllint exited {result.returncode}. "
+                f"stderr: {(result.stderr or '').strip()[:400]}"
+            )
         return ScanResult(
             scanner=self.name,
             findings=findings,
-            metadata={"returncode": result.returncode},
+            metadata=metadata,
         )
 
     def is_available(self) -> bool:

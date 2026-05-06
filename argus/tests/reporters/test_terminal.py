@@ -124,6 +124,72 @@ class TestTerminalReporter:
         output = capsys.readouterr().out
         assert "produced no output" not in output
 
+    def test_report_status_pass_degraded_when_any_scanner_failed(self, capsys):
+        """Regression: when one scanner fails to execute but the rest
+        are clean against threshold, the status line previously read
+        ``Status: PASS`` — directly contradicting the warning row above
+        it. Status must annotate ``(degraded — some scanners did not
+        run)`` so a quick scroll to the bottom doesn't lie. The
+        ``passed`` boolean stays True (threshold-only); the degraded
+        label is purely a UX cue."""
+        reporter = TerminalReporter()
+        summary = ScanSummary(
+            results=[
+                ScanResult(scanner="gitleaks", findings=[]),
+                ScanResult(
+                    scanner="bandit", findings=[],
+                    metadata={"execution_failed": True},
+                ),
+            ],
+            severity_threshold=None,
+        )
+        reporter.report(summary)
+        output = capsys.readouterr().out
+        # The threshold check still passes — that's the contract.
+        assert summary.passed is True
+        # But the displayed status must call out the degraded run so
+        # the user doesn't read "Warning: ..." then "PASS" and shrug.
+        assert "Status: PASS (degraded" in output
+        # And the plain "Status: PASS" string must not appear *as a
+        # standalone status line* — only as part of the degraded label.
+        # We assert the plain newline-bounded form is absent:
+        assert "\nStatus: PASS\n" not in output
+
+    def test_report_status_pass_clean_when_no_failures(self, capsys):
+        """Clean runs must still show the unqualified ``Status: PASS``."""
+        reporter = TerminalReporter()
+        summary = _make_summary(threshold=None)
+        reporter.report(summary)
+        output = capsys.readouterr().out
+        # Clean PASS is the default rendering — no degraded suffix.
+        assert "Status: PASS" in output
+        assert "degraded" not in output
+
+    def test_report_status_fail_takes_priority_over_degraded(self, capsys):
+        """If findings exceed the threshold, the run is FAIL — not
+        a degraded PASS — even when other scanners failed to execute.
+        Threshold violations dominate the exit policy."""
+        reporter = TerminalReporter()
+        summary = ScanSummary(
+            results=[
+                ScanResult(
+                    scanner="bandit",
+                    findings=[Finding(id="B102", severity=Severity.HIGH, title="t")],
+                ),
+                ScanResult(
+                    scanner="gitleaks", findings=[],
+                    metadata={"execution_failed": True},
+                ),
+            ],
+            severity_threshold=Severity.MEDIUM,
+        )
+        reporter.report(summary)
+        output = capsys.readouterr().out
+        assert "FAIL" in output
+        # Don't display PASS at all when the run is FAIL — even with
+        # an executed-but-degraded scanner mixed in.
+        assert "Status: PASS" not in output
+
     def test_report_empty_results(self, capsys):
         reporter = TerminalReporter()
         summary = ScanSummary()

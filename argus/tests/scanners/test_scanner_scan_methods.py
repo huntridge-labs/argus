@@ -216,7 +216,7 @@ class TestBanditScan:
         result = scanner.scan("nonexistent/")
 
         assert result.scanner == "bandit"
-        assert "error" in result.metadata
+        assert result.metadata.get("execution_failed") is True
 
 
 # =====================================================================
@@ -301,7 +301,7 @@ class TestGitleaksScan:
         result = scanner.scan(".")
 
         assert result.scanner == "gitleaks"
-        assert "error" in result.metadata
+        assert result.metadata.get("execution_failed") is True
 
 
 # =====================================================================
@@ -359,7 +359,7 @@ class TestOsvScan:
         result = scanner.scan(".")
 
         assert result.scanner == "osv"
-        assert "error" in result.metadata
+        assert result.metadata.get("execution_failed") is True
 
 
 # =====================================================================
@@ -432,7 +432,7 @@ class TestCheckovScan:
         result = scanner.scan(".")
 
         assert result.scanner == "checkov"
-        assert "error" in result.metadata
+        assert result.metadata.get("execution_failed") is True
 
     def test_scan_no_output(self, monkeypatch):
         scanner = CheckovScanner()
@@ -444,7 +444,7 @@ class TestCheckovScan:
         result = scanner.scan(".")
 
         assert result.scanner == "checkov"
-        assert "error" in result.metadata
+        assert result.metadata.get("execution_failed") is True
 
 
 # =====================================================================
@@ -501,4 +501,4 @@ class TestOpengrepScan:
         result = scanner.scan(".")
 
         assert result.scanner == "opengrep"
-        assert "error" in result.metadata
+        assert result.metadata.get("execution_failed") is True

@@ -65,6 +65,20 @@ class TestOsvScannerMeta:
     def test_supports_sbom(self):
         assert OsvScanner.supports_sbom is True
 
+    def test_container_entrypoint_uses_absolute_path(self):
+        """Regression: ``--entrypoint osv-scanner`` (bare) exited 127
+        because the official ghcr.io/google/osv-scanner image declares
+        ``ENTRYPOINT ["/osv-scanner"]`` (absolute) and Docker's
+        ``--entrypoint`` does NOT consult the image's $PATH for bare
+        names. We pin the absolute path so the engine's
+        ``--entrypoint`` override resolves the binary the same way the
+        image's own ENTRYPOINT does."""
+        assert OsvScanner.container_entrypoint == "/osv-scanner"
+        assert OsvScanner.container_entrypoint.startswith("/"), (
+            "container_entrypoint must be absolute — Docker --entrypoint "
+            "does not resolve bare names against the image $PATH"
+        )
+
 
 class TestOsvSbomMode:
     """SBOM mode (config['sbom_path'] set) → uses ``-L`` (osv-scanner v2)."""
