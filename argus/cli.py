@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import re
 import sys
 import threading
 import time
@@ -80,14 +81,116 @@ class _TerminalSpinner:
         self._stream.write("\r" + (" " * 80) + "\r")
         self._stream.flush()
 
+    @property
+    def enabled(self) -> bool:
+        """True when the spinner thread is actively drawing."""
+        return self._enabled
+
+    def update_message(self, message: str) -> None:
+        """Replace the spinner's status text in place.
+
+        Called from progress callbacks at phase transitions so the
+        user sees ``[2/4] scanner-opengrep — trivy (12s)`` updating
+        instead of a static "Running container scan". No-op when the
+        spinner isn't drawing — callers can pass through unconditionally.
+        """
+        # Pad with trailing spaces to overwrite any longer previous
+        # message without leaving stale characters on the line.
+        prev = self._message
+        self._message = message
+        if self._enabled and len(prev) > len(message):
+            self._stream.write("\r" + (" " * len(prev)) + "\r")
+            self._stream.flush()
+
+
+def _configure_logger(args: argparse.Namespace, output_dir: str | None = None):
+    """Set up the ``argus`` logger at the level the user's flags imply.
+
+    Mapping:
+      * ``--verbose`` / ``--debug``: DEBUG (full firehose)
+      * ``--quiet``: WARNING (suppress INFO lines from the engine)
+      * default:    INFO (per-phase status, no DEBUG noise)
+
+    Returns the configured logger so callers can also use it directly.
+    """
+    import logging
+    from argus.audit import get_logger
+
+    log = get_logger(
+        "argus",
+        output_dir=output_dir,
+        verbose=_verbose_enabled(args),
+    )
+    if _quiet_enabled(args):
+        for handler in log.handlers:
+            if isinstance(handler, logging.StreamHandler) and not isinstance(
+                handler, logging.FileHandler,
+            ):
+                handler.setLevel(logging.WARNING)
+    return log
+
+
+def _verbose_enabled(args: argparse.Namespace) -> bool:
+    """``--verbose`` / ``--debug`` — full firehose mode.
+
+    The two are aliases: ``--verbose`` is preserved for backward
+    compatibility, ``--debug`` is the clearer name new users learn.
+    """
+    return getattr(args, "verbose", False) or getattr(args, "debug", False)
+
+
+def _quiet_enabled(args: argparse.Namespace) -> bool:
+    """``--quiet`` / ``-q`` — suppress per-phase INFO lines.
+
+    Spinner stays drawing (just doesn't update its message) unless
+    ``--no-spinner`` is also passed. Composes with ``--no-spinner``:
+    ``--quiet --no-spinner`` means fully silent (CI exit-code-only).
+    """
+    return getattr(args, "quiet", False)
+
 
 def _spinner_enabled(args: argparse.Namespace) -> bool:
     """Enable spinner for interactive terminals unless explicitly disabled."""
     if getattr(args, "no_spinner", False):
         return False
-    if getattr(args, "verbose", False):
+    if _verbose_enabled(args):
         return False
     return sys.stderr.isatty()
+
+
+def _make_progress_emitter(
+    args: argparse.Namespace,
+    spinner: "_TerminalSpinner | None",
+):
+    """Return a progress callback that routes phase events to the right surface.
+
+    Output target depends on the flag combination:
+      * ``--quiet`` or ``--verbose``: no-op (logger handles verbose; quiet
+        suppresses progress on purpose).
+      * Spinner is drawing: update its message in place.
+      * No spinner (``--no-spinner`` or non-TTY): print a persistent
+        INFO line to stderr per phase event so CI logs and step-away
+        terminals get scrollback.
+    """
+    if _quiet_enabled(args) or _verbose_enabled(args):
+        return lambda *a, **kw: None
+
+    if spinner is not None and spinner.enabled:
+        def update_spinner(idx: int, total: int, name: str, phase: str, elapsed_ms: int):
+            elapsed_s = elapsed_ms // 1000
+            spinner.update_message(
+                f"[{idx}/{total}] {name} — {phase} ({elapsed_s}s)"
+            )
+        return update_spinner
+
+    def print_line(idx: int, total: int, name: str, phase: str, elapsed_ms: int):
+        elapsed_s = elapsed_ms // 1000
+        print(
+            f"[{idx}/{total}] {name} — {phase} ({elapsed_s}s)",
+            file=sys.stderr,
+            flush=True,
+        )
+    return print_line
 
 
 def _make_run_dir(base_dir: str) -> str:
@@ -485,9 +588,25 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         help="List available scanners and exit",
     )
     scan_parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
         action="store_true",
-        help="Enable verbose output",
+        help="Alias for --debug. Full firehose: subprocess output, "
+             "vulnerability-DB updates, every engine log line.",
+    )
+    scan_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Full firehose: subprocess output, vulnerability-DB updates, "
+             "every engine log line. Use when troubleshooting; the default "
+             "phase-aware progress is enough for normal scans.",
+    )
+    scan_parser.add_argument(
+        "--quiet", "-q",
+        action="store_true",
+        help="Suppress per-phase progress lines. The spinner still draws "
+             "(use --no-spinner to suppress that too). Final summary "
+             "still prints. Compose with --no-spinner for fully silent "
+             "CI exit-code-only mode.",
     )
     scan_parser.add_argument(
         "--no-spinner",
@@ -1756,6 +1875,12 @@ def _cmd_container_scan(
     from argus.container import ContainerEngine
     from argus.reporters.container_markdown import ContainerMarkdownReporter
 
+    # Configure the ``argus`` logger at the user's chosen level —
+    # default INFO, --quiet WARNING, --verbose/--debug DEBUG. Without
+    # this the container engine's logger.info() calls would go
+    # nowhere even under --verbose.
+    _configure_logger(args)
+
     if container_config is None:
         try:
             container_config = _load_container_config(args)
@@ -1804,11 +1929,18 @@ def _cmd_container_scan(
 
     # Run
     try:
-        engine = ContainerEngine(config)
+        # Build the spinner first so the engine's progress callback
+        # can update its message in place. ``_make_progress_emitter``
+        # picks the right routing (spinner vs persistent INFO line vs
+        # no-op) based on the user's --quiet/--debug/--no-spinner mix.
         with _TerminalSpinner(
             message="Running container scan",
             enabled=_spinner_enabled(args),
-        ):
+        ) as spinner:
+            engine = ContainerEngine(
+                config,
+                progress_callback=_make_progress_emitter(args, spinner),
+            )
             summary = engine.run()
     except Exception as exc:
         print(f"Error: container scan failed: {exc}", file=sys.stderr)
@@ -2535,6 +2667,24 @@ def _list_scanners(engine) -> int:
     return EXIT_SUCCESS
 
 
+_SCHEMA_DIRECTIVE_RE = re.compile(
+    r"^\s*#\s*yaml-language-server\s*:\s*\$schema\s*=", re.IGNORECASE,
+)
+
+
+def _has_schema_directive(raw_text: str, head_lines: int = 5) -> bool:
+    """Return True if the raw YAML has a ``# yaml-language-server:`` directive near the top.
+
+    Editors recognize the directive only when it sits in the first
+    handful of lines, so we don't bother scanning the entire file.
+    Tolerant about leading blank lines and a possible UTF-8 BOM.
+    """
+    for line in raw_text.splitlines()[:head_lines]:
+        if _SCHEMA_DIRECTIVE_RE.match(line):
+            return True
+    return False
+
+
 def cmd_validate(args: argparse.Namespace) -> int:
     """Execute the validate subcommand — check config file."""
     import yaml
@@ -2556,10 +2706,18 @@ def cmd_validate(args: argparse.Namespace) -> int:
         print(f"Config file not found: {config_path}", file=sys.stderr)
         return EXIT_ERROR
 
-    # Load and validate
+    # Load and validate. Also peek at the raw text first so we can
+    # check the schema-directive comment that yaml.safe_load discards
+    # (it's a YAML comment, not a key).
     try:
         with open(config_path, "r") as fh:
-            data = yaml.safe_load(fh)
+            raw_text = fh.read()
+    except OSError as exc:
+        print(f"Could not read {config_path}: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    try:
+        data = yaml.safe_load(raw_text)
     except yaml.YAMLError as exc:
         print(f"Invalid YAML in {config_path}: {exc}", file=sys.stderr)
         return EXIT_ERROR
@@ -2572,10 +2730,25 @@ def cmd_validate(args: argparse.Namespace) -> int:
     warnings = [e for e in errors if e.level == "warning"]
     fatal = [e for e in errors if e.level == "error"]
 
+    # IDE-schema directive — check the first few lines for the
+    # ``# yaml-language-server: $schema=...`` comment that drives
+    # in-editor validation in VS Code, IntelliJ, and other tools that
+    # speak the language-server-protocol YAML spec. Soft warning so a
+    # user editing argus.yml without an IDE isn't penalized.
+    if not _has_schema_directive(raw_text):
+        warnings.append(ConfigError(
+            "",
+            "Missing IDE schema directive. Add this as the first line "
+            "of your argus.yml so editors get inline validation: "
+            "# yaml-language-server: $schema="
+            "https://raw.githubusercontent.com/huntridge-labs/argus/main/argus-config.schema.json",
+            level="warning",
+        ))
+
     strict = getattr(args, "strict", False)
     report_issue = getattr(args, "report_issue", False)
 
-    if not errors:
+    if not warnings and not fatal:
         print(f"✅ {config_path} is valid")
     else:
         for w in warnings:

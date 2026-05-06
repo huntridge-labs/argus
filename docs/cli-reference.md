@@ -1,6 +1,6 @@
 # Argus CLI Reference (v0.7.2)
 
-> Auto-generated from argparse definitions on 2026-05-05.
+> Auto-generated from argparse definitions on 2026-05-06.
 > Do not edit manually — run `python -m scripts.ci.gen_cli_docs` to regenerate.
 
 Argus Security Scanner — comprehensive security scanning for your codebase
@@ -16,6 +16,19 @@ argus [--version] [--help] <command> [options]
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--version` | show program's version number and exit |  |
+
+## Output and verbosity
+
+`argus scan` exposes four flags that compose orthogonally — `--quiet` controls log verbosity, `--no-spinner` controls UI rendering, and `--debug` (alias `--verbose`) is the explicit troubleshooting opt-in. The four most useful modes:
+
+| Invocation | When to use | What you see |
+|---|---|---|
+| `argus scan` | Default — interactive terminal | Phase-aware spinner that updates per image and per scan phase |
+| `argus scan --quiet` | Daily runs you don't want narrating | Spinner stays drawing, but per-phase chatter is suppressed; only WARNING/ERROR lines and the final summary print |
+| `argus scan --no-spinner` | CI logs, step-away monitoring | Persistent `[idx/total] name — phase (Ns)` lines on stderr instead of a self-overwriting spinner |
+| `argus scan --debug` (or `--verbose`) | Troubleshooting | Full firehose: subprocess output, vulnerability-DB updates, every engine log line |
+
+Compose flags for additional modes — `--quiet --no-spinner` is the fully-silent CI exit-code-only combination; `--debug --no-spinner` is identical to `--debug` since debug auto-disables the spinner.
 
 ## Commands
 
@@ -58,8 +71,8 @@ argus scan [-h] [--path PATH] [--config CONFIG]
                   [--output-dir OUTPUT_DIR]
                   [--severity-threshold {critical,high,medium,low,none}]
                   [--format {terminal,markdown,sarif,json}] [--list]
-                  [--verbose] [--no-spinner] [--no-timestamp]
-                  [--output-vars FILE] [--exclude PATTERNS]
+                  [--verbose] [--debug] [--quiet] [--no-spinner]
+                  [--no-timestamp] [--output-vars FILE] [--exclude PATTERNS]
                   [--no-default-excludes] [--dry-run] [--sbom PATH]
                   [--interface {terminal,browser}] [--fail-fast]
                   [--fail-on-scanner-error] [--timeout SECONDS]
@@ -85,7 +98,9 @@ argus scan [-h] [--path PATH] [--config CONFIG]
 | `--severity-threshold`, `-s` | Fail threshold severity level (default: from config) (critical, high, medium, low, none) |  |
 | `--format`, `-f` | Output format (can be repeated; default: terminal) (terminal, markdown, sarif, json) |  |
 | `--list` | List available scanners and exit | `false` |
-| `--verbose`, `-v` | Enable verbose output | `false` |
+| `--verbose` | Alias for --debug. Full firehose: subprocess output, vulnerability-DB updates, every engine log line. | `false` |
+| `--debug` | Full firehose: subprocess output, vulnerability-DB updates, every engine log line. Use when troubleshooting; the default phase-aware progress is enough for normal scans. | `false` |
+| `--quiet`, `-q` | Suppress per-phase progress lines. The spinner still draws (use --no-spinner to suppress that too). Final summary still prints. Compose with --no-spinner for fully silent CI exit-code-only mode. | `false` |
 | `--no-spinner` | Disable animated spinner output | `false` |
 | `--no-timestamp` | Write output directly to --output-dir without a timestamped subdirectory. Useful in CI where a predictable output path is needed. | `false` |
 | `--output-vars` | Write scan result counts as key=value pairs to FILE. Useful in CI: cat FILE >> $GITHUB_OUTPUT. Keys: critical_count, high_count, medium_count, low_count, total_count, passed. |  |

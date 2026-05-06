@@ -107,36 +107,95 @@ class TestParseContainerConfig:
     """Test parse_container_config with explicit images and discovery."""
 
     def test_explicit_images(self):
+        # Option A: image: and dockerfile: are mutually exclusive. A
+        # dockerfile-only entry derives its build tag from the
+        # Dockerfile path the same way --discover does.
         config = {
             "containers": {
                 "images": [
-                    {"image": "myapp:latest", "dockerfile": "Dockerfile"},
+                    {"dockerfile": "Dockerfile.web", "name": "web"},
                     {"image": "worker:1.0"},
                 ],
             },
         }
         targets = parse_container_config(config)
         assert len(targets) == 2
-        assert targets[0].image_ref == "myapp:latest"
-        assert targets[0].name == "myapp"
-        assert targets[0].dockerfile == Path("Dockerfile")
+        # Build entry: name is the explicit override, image_ref auto.
+        assert targets[0].name == "web"
+        assert targets[0].image_ref == "web:argus-scan"
+        assert targets[0].dockerfile == Path("Dockerfile.web")
+        # Remote-pull entry: image_ref is exactly what the user wrote.
         assert targets[1].image_ref == "worker:1.0"
         assert targets[1].dockerfile is None
 
-    def test_image_with_context(self):
+    def test_dockerfile_with_context(self):
         config = {
             "containers": {
                 "images": [
                     {
-                        "image": "myapp:latest",
                         "dockerfile": "docker/Dockerfile",
                         "context": ".",
+                        "name": "myapp",
                     },
                 ],
             },
         }
         targets = parse_container_config(config)
         assert targets[0].context == Path(".")
+        assert targets[0].image_ref == "myapp:argus-scan"
+
+    def test_per_target_cleanup_override(self):
+        # ``cleanup:`` flows from each entry to the ContainerTarget,
+        # where the engine uses it to override the global default.
+        config = {
+            "containers": {
+                "images": [
+                    {"image": "myapp:1", "cleanup": False},
+                    {"image": "myapp:2"},                   # no override
+                    {"dockerfile": "Dockerfile.base", "name": "base", "cleanup": True},
+                ],
+            },
+        }
+        targets = parse_container_config(config)
+        assert targets[0].cleanup is False
+        assert targets[1].cleanup is None  # defer to engine default
+        assert targets[2].cleanup is True
+
+    def test_dockerfile_only_derives_name_from_path_when_omitted(self):
+        # When ``name:`` is absent on a build entry, derive the build
+        # tag from the Dockerfile path (same logic as --discover).
+        config = {
+            "containers": {
+                "images": [
+                    {"dockerfile": "docker/Dockerfile.web"},
+                ],
+            },
+        }
+        targets = parse_container_config(config)
+        assert len(targets) == 1
+        assert targets[0].name == "web"
+        assert targets[0].image_ref == "web:argus-scan"
+
+    def test_image_with_dockerfile_skipped_with_warning(self, caplog):
+        # Defensive: even though the schema validator errors on this,
+        # a stale config shouldn't crash the parser. Skip + warn.
+        import logging
+        caplog.set_level(logging.WARNING, logger="argus.container")
+        config = {
+            "containers": {
+                "images": [
+                    {"image": "myapp:1.0", "dockerfile": "Dockerfile"},
+                    {"image": "ok:1"},
+                ],
+            },
+        }
+        targets = parse_container_config(config)
+        # Only the valid second entry is resolved.
+        assert len(targets) == 1
+        assert targets[0].image_ref == "ok:1"
+        assert any(
+            "mutually exclusive" in record.message for record in caplog.records
+        )
 
     def test_discover_true(self, tmp_path):
         (tmp_path / "Dockerfile").write_text("FROM alpine")
@@ -214,23 +273,22 @@ class TestParseContainerConfigUnwrappedShape:
     """
 
     def test_unwrapped_shape_resolves_explicit_images(self):
-        # The user's exact repro from the bug report — top-level
-        # ``containers:`` block in argus.yml with one image entry,
-        # extracted into the inner-mapping shape by the CLI before
-        # being passed to the engine.
+        # Top-level ``containers:`` extracted to the inner-mapping
+        # shape by the CLI before being passed to the engine.
+        # Option A — dockerfile-only entry, image_ref auto-derived.
         config = {
             "images": [
                 {
-                    "image": "docker:argus-scan",
                     "dockerfile": "docker/Dockerfile",
                     "context": ".",
+                    "name": "myapp",
                 },
             ],
         }
         targets = parse_container_config(config)
         assert len(targets) == 1
         target = targets[0]
-        assert target.image_ref == "docker:argus-scan"
+        assert target.image_ref == "myapp:argus-scan"
         assert target.dockerfile == Path("docker/Dockerfile")
         assert target.context == Path(".")
 
@@ -328,7 +386,7 @@ class TestGrypePrefixCollisionWarning:
 
         config = {
             "images": [
-                {"image": "docker:argus-scan", "dockerfile": "Dockerfile"},
+                {"image": "docker:argus-scan"},
             ],
         }
         targets = parse_container_config(config)

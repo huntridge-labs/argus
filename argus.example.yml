@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argus/main/argus-config.schema.json
 # Argus Security Scanner Configuration
 # Copy to argus.yml and customize for your project
 version: "1.0"
@@ -70,34 +71,57 @@ reporting:
 # on the CLI. CLI flags, when supplied, override the matching keys
 # below: explicit > implicit.
 #
-# RECOMMENDED: pin every image to an immutable digest. ``:tag``
-# references are mutable — the same ``myorg/app:1.4.0`` can publish
-# different bytes over time, which means CVE attribution drifts and
-# scan results aren't reproducible. ``@sha256:...`` references are
-# byte-level immutable: the scanner reads exactly what you pinned,
-# every run, forever. Renovate and Dependabot can both update
-# digest-pinned references automatically.
+# Each ``images:`` entry uses ONE of two shapes — never both:
+#
+#   image:        Remote-pull entry. argus pulls and scans this exact
+#                 reference. Pin to an immutable ``@sha256:...`` digest
+#                 when possible — :tag references are mutable, so CVE
+#                 attribution drifts as upstream republishes. Renovate
+#                 and Dependabot can update digest pins automatically.
+#
+#   dockerfile:   Build-then-scan entry. argus runs ``docker build``
+#                 against the Dockerfile, tags the result as
+#                 ``<name>:argus-scan``, then scans that image. Argus
+#                 doesn't push the build to a registry — the resulting
+#                 image only exists locally for the duration of the
+#                 scan (cleanup: true by default).
+#
+# ``image:`` and ``dockerfile:`` are mutually exclusive — argus does
+# not push images, so the docker-compose pattern of "build, then tag
+# as ``image:`` for publishing" doesn't apply here.
 #
 # containers:
 #   images:
-#     # PREFERRED: tag + digest (human-readable + immutable)
+#     # PREFERRED remote pull: tag + digest (human-readable + immutable)
 #     - image: ghcr.io/myorg/app:1.4.0@sha256:f1e2d3c4b5a6f7e8d9c0b1a2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2
 #
-#     # ALSO PREFERRED: digest-only (immutable, no tag noise)
+#     # ALSO PREFERRED remote pull: digest-only (immutable, no tag noise)
 #     - image: ghcr.io/myorg/worker@sha256:0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b
 #
-#     # Build-then-scan: digest only meaningful after first publish.
-#     # The dockerfile is built and tagged locally, so it's reproducible
-#     # within one CI run even without a pinned digest.
-#     - image: myorg/inhouse:dev
-#       dockerfile: docker/Dockerfile
-#       context: .
-#
-#     # ACCEPTABLE FALLBACK: tag-only. Easier to read, but mutable —
-#     # use only for ad-hoc scans or in environments where digest
-#     # discovery isn't yet wired up. Plan to migrate to a pinned
-#     # form before relying on the scan output for an audit trail.
+#     # ACCEPTABLE FALLBACK remote pull: tag-only. Mutable; use only
+#     # for ad-hoc scans or environments where digest discovery isn't
+#     # yet wired up. Migrate to a pinned form before relying on the
+#     # scan output for an audit trail.
 #     # - image: myorg/legacy:1.0.0
+#
+#     # Build-then-scan: ``dockerfile:`` + optional ``context:`` and
+#     # ``name:``. ``name:`` becomes the build tag (``<name>:argus-scan``)
+#     # and the row identifier in argus-results.json; if omitted, argus
+#     # derives a name from the Dockerfile path the same way
+#     # ``argus scan container --discover`` does.
+#     - dockerfile: docker/Dockerfile
+#       context: .
+#       name: inhouse-app
+#
+#     # Per-target override of the engine-level ``cleanup:`` default.
+#     # Useful when one base image should stay cached across runs while
+#     # the rest of the dev images get torn down. ``true`` removes the
+#     # built image after the scan; ``false`` leaves it; omit to defer
+#     # to the engine default (``cleanup: true`` unless the engine is
+#     # configured otherwise).
+#     - dockerfile: docker/Dockerfile.base
+#       name: my-base
+#       cleanup: false
 #
 #   # OR auto-discovery. Walks ``search_paths`` for Dockerfile,
 #   # Dockerfile.<name>, <name>.Dockerfile, then builds + scans each

@@ -71,12 +71,21 @@ def warn_on_grype_prefix_collision(image_ref: str) -> str | None:
 
 @dataclass
 class ContainerTarget:
-    """A container image to scan."""
+    """A container image to scan.
+
+    ``cleanup`` overrides the engine's global ``cleanup:`` default for
+    this single target. ``None`` (the default) defers to the global
+    setting; ``True``/``False`` is an explicit per-target choice. Useful
+    for the case where a long-lived base image should stay cached
+    across runs while ad-hoc dev images are torn down — set
+    ``cleanup: false`` on the base entry, leave the others alone.
+    """
 
     name: str
     image_ref: str
     dockerfile: Path | None = None
     context: Path | None = None
+    cleanup: bool | None = None
 
 
 def discover_dockerfiles(search_paths: list[str]) -> list[ContainerTarget]:
@@ -149,29 +158,58 @@ def parse_container_config(config: dict) -> list[ContainerTarget]:
     for entry in containers.get("images", []):
         if not isinstance(entry, dict):
             continue
-        image_ref = entry.get("image", "")
-        if not image_ref:
+
+        image_ref_explicit = entry.get("image", "")
+        dockerfile_path = entry.get("dockerfile")
+        cleanup_override = entry.get("cleanup")
+        if cleanup_override is not None and not isinstance(cleanup_override, bool):
+            cleanup_override = None  # validator already warned; ignore here
+
+        if image_ref_explicit and dockerfile_path:
+            # Schema validator rejects this combination; defensive skip
+            # so a stale config (pre-option-A) doesn't crash the parser.
+            logger.warning(
+                "Skipping container entry: 'image:' and 'dockerfile:' "
+                "are mutually exclusive (entry: %s).", entry,
+            )
             continue
 
-        # Surface Grype prefix-collisions at config-load — well before
-        # the build runs. The warning is non-fatal so users with
-        # build-only or trivy-only flows aren't blocked by a Grype-
-        # specific naming issue.
-        collision = warn_on_grype_prefix_collision(image_ref)
-        if collision:
-            logger.warning(collision)
+        if image_ref_explicit:
+            # Remote-pull entry. ``image_ref`` is what we hand to
+            # trivy/grype/syft directly; ``name`` is a sanitized
+            # human-readable identifier used in result rows.
+            collision = warn_on_grype_prefix_collision(image_ref_explicit)
+            if collision:
+                logger.warning(collision)
 
-        dockerfile_path = entry.get("dockerfile")
-        context_path = entry.get("context")
+            name = image_ref_explicit.split(":")[0].replace("/", "-")
+            targets.append(ContainerTarget(
+                name=name,
+                image_ref=image_ref_explicit,
+                cleanup=cleanup_override,
+            ))
+            continue
 
-        name = image_ref.split(":")[0].replace("/", "-")
-        target = ContainerTarget(
-            name=name,
-            image_ref=image_ref,
-            dockerfile=Path(dockerfile_path) if dockerfile_path else None,
-            context=Path(context_path) if context_path else None,
-        )
-        targets.append(target)
+        if dockerfile_path:
+            # Build-then-scan entry. Derive the build tag the same way
+            # ``--discover`` does so explicit-config and auto-discovery
+            # produce the same on-disk image names — easier debugging
+            # for users grepping ``docker images | grep :argus-scan``.
+            df_path = Path(dockerfile_path)
+            root = Path(entry.get("context", df_path.parent))
+            name = entry.get("name") or _derive_name(df_path, root)
+            image_ref = f"{name}:argus-scan"
+            targets.append(ContainerTarget(
+                name=name,
+                image_ref=image_ref,
+                dockerfile=df_path,
+                context=root if entry.get("context") else None,
+                cleanup=cleanup_override,
+            ))
+            continue
+
+        # Neither image: nor dockerfile: — schema validator surfaced
+        # this; skip silently to avoid double-noise.
 
     if containers.get("discover", False):
         search_paths = containers.get("search_paths", ["."])

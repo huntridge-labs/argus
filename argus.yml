@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argus/main/argus-config.schema.json
 # Argus dogfood configuration — we scan our own production code.
 # Test fixtures (tests/fixtures/) are excluded — those contain
 # intentionally vulnerable code for scanner validation, not our
@@ -59,18 +60,24 @@ scanners:
 # hard-coding a parallel matrix — single source of truth.
 containers:
   images:
-    - image: ghcr.io/huntridge-labs/argus/scanner-bandit:dev
-      dockerfile: docker/Dockerfile.bandit
+    # Build-then-scan entries: dockerfile: + name: pin the build tag.
+    # Under schema option A, image: is for *remote pulls only* — these
+    # are local builds, so we declare the dockerfile and let argus
+    # tag the resulting image as ``<name>:argus-scan``. The
+    # build-containers workflow re-tags from ``<name>:argus-scan`` to
+    # ``ghcr.io/huntridge-labs/argus/<name>:<sha>`` for publishing.
+    - dockerfile: docker/Dockerfile.bandit
       context: .
-    - image: ghcr.io/huntridge-labs/argus/scanner-opengrep:dev
-      dockerfile: docker/Dockerfile.opengrep
+      name: scanner-bandit
+    - dockerfile: docker/Dockerfile.opengrep
       context: .
-    - image: ghcr.io/huntridge-labs/argus/scanner-supply-chain:dev
-      dockerfile: docker/Dockerfile.supply-chain
+      name: scanner-opengrep
+    - dockerfile: docker/Dockerfile.supply-chain
       context: .
-    - image: ghcr.io/huntridge-labs/argus/cli:dev
-      dockerfile: docker/Dockerfile.cli
+      name: scanner-supply-chain
+    - dockerfile: docker/Dockerfile.cli
       context: .
+      name: cli
   scanners: [trivy, grype, syft]
 
 reporting:
