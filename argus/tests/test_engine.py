@@ -222,6 +222,82 @@ class TestDockerExecutionBackend:
         assert len(summary.results) == 1
         assert summary.results[0].metadata.get("execution_failed") is True
 
+    def test_auto_backend_defers_to_scan_when_no_build_args(self, monkeypatch):
+        """Scanners with a custom ``scan()`` flow but no ``build_args``/
+        ``container_args`` (e.g. linters that walk the workspace and
+        invoke their tool per file) should defer to ``scanner.scan()``
+        instead of the engine's container path.
+
+        Regression for the lint-dockerfile bug: HadolintLinter has
+        ``container_image`` set but no ``build_args``, so the engine
+        used to AttributeError inside ``_run_in_container`` and the
+        scanner silently disappeared from results.
+        """
+        engine = self._make_engine(backend="auto")
+        # Pretend Docker is available so the engine would have chosen
+        # the container path if it could.
+        monkeypatch.setattr(engine, "_is_docker_available", lambda: True)
+
+        captured: dict = {}
+
+        class CustomScanScanner:
+            name = "custom"
+            container_image = "example/custom:1.0"
+            # Deliberately no build_args or container_args.
+
+            def scan(self, path, config=None):
+                captured["scan_called"] = (path, config)
+                return ScanResult(
+                    scanner=self.name,
+                    findings=[Finding(
+                        id="X", severity=Severity.LOW, title="from scan()",
+                    )],
+                )
+
+            def is_available(self):
+                return True
+
+            def install_command(self):
+                return None
+
+        engine.register_scanner(CustomScanScanner())
+        summary = engine.run(scanner_names=["custom"])
+
+        # scan() was called, container path was bypassed, findings flow through.
+        assert captured.get("scan_called") is not None
+        assert len(summary.results) == 1
+        assert len(summary.results[0].findings) == 1
+        assert summary.results[0].findings[0].title == "from scan()"
+
+    def test_docker_backend_rejects_scanner_without_build_args(self, monkeypatch):
+        """``backend: docker`` must fail loudly when a scanner has a
+        container image but no way to run in one — the user explicitly
+        opted into container-only execution and silent fallback would
+        violate that contract."""
+        engine = self._make_engine(backend="docker")
+        monkeypatch.setattr(engine, "_is_docker_available", lambda: True)
+
+        class CustomScanScanner:
+            name = "custom"
+            container_image = "example/custom:1.0"
+
+            def scan(self, path, config=None):
+                return ScanResult(scanner=self.name)
+
+            def is_available(self):
+                return False
+
+            def install_command(self):
+                return None
+
+        engine.register_scanner(CustomScanScanner())
+        summary = engine.run(scanner_names=["custom"])
+        # Surfaces as a failure row with the loud error.
+        assert len(summary.results) == 1
+        meta = summary.results[0].metadata
+        assert meta.get("execution_failed") is True
+        assert "build_args" in meta.get("execution_failure_reason", "")
+
     def test_resolve_image_no_registry(self):
         engine = self._make_engine(registry="")
         scanner = MockScanner("trivy", container_image="aquasec/trivy:0.58.0")

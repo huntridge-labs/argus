@@ -624,6 +624,45 @@ All engine, scanner, and testing issues from the migration have been resolved.
 
 ---
 
+## FileDiscoveryScanner Template
+
+Linters (`lint-yaml`, `lint-json`, `lint-python`, `lint-javascript`, `lint-dockerfile`, `lint-terraform`) and a few security scanners share a shape that doesn't fit the standard `build_args(ScanPaths) → list[str]` contract introduced in PR #117: they need to **discover files of a specific shape under a workspace, then run their tool against those file paths** (not against the workspace as a whole). Today each one rolls its own `_find_*` walk + per-file subprocess loop in its `scan()` method, which has three problems:
+
+1. **Multi-subprocess inefficiency.** `HadolintLinter.scan()` (pre-PR #120) ran `subprocess.run(['hadolint', dockerfile])` once per Dockerfile in a Python loop — N startup costs for N files. Most of these tools accept a list of paths in a single invocation (`hadolint file1 file2 ...`), so the loop is unnecessary.
+2. **No container-execution support.** The custom `scan()` flows hardcode `subprocess.run(['<binary>', ...])` and crash with `FileNotFoundError` when the binary isn't installed locally. The engine's container backend was added later and never extended to cover the discovery shape.
+3. **Discovery patterns are duplicated.** Every linter implements its own `_find_dockerfiles` / `_find_yaml_files` / etc. with subtly different exclusion logic.
+
+**Proposed shape**: a `FileDiscoveryScanner` mixin or template (analogous to `argus.core.scanner_template.run_subprocess_scan`) that:
+
+```python
+class HadolintLinter(FileDiscoveryScanner):
+    name = "lint-dockerfile"
+    file_glob = "Dockerfile*"            # workspace-relative pattern
+    container_image = get_image("hadolint")
+
+    def build_args(self, files: list[str], output: str) -> list[str]:
+        # Tool that accepts multiple file paths in one invocation.
+        return ["hadolint", "--format", "json", *files]
+
+    def parse_results(self, output_path) -> list[Finding]:
+        ...
+```
+
+The shared template handles:
+- Workspace walk + glob matching with the standard exclusion set
+- Single subprocess call (or `docker run`) with all matched files
+- Container vs local routing via the existing `is_available()` / `container_image` mechanism
+- Output file lifecycle + `parse_results` dispatch
+- Empty-discovery case (return clean ScanResult with `no <files> found` info, not a failure row)
+
+**Why deferred**: PR #120's engine fallback (`scanner.scan()` is honored when `build_args` is missing) gives every scanner a working escape hatch today, and PR #119's failure-row contract makes any remaining edge case visible. The template is a quality-of-life improvement for adding new linters that don't fit the standard shape — worth the design conversation but not load-bearing for any current functionality.
+
+**Trigger to revisit**: when the second new linter contributor copy-pastes the file-discovery boilerplate from `HadolintLinter`. At that point the duplication has earned the abstraction.
+
+**If/when we ship it**: likely `argus/core/file_discovery_scanner.py` exporting the template, plus migrations for the existing 6 linters + any security scanner with a similar shape (e.g. clamav's recursive directory scan). Each migration is a self-contained PR.
+
+---
+
 ## Secret Redaction Hardening
 
 The current redaction model (per-scanner, at the parser) is documented in [`docs/mcp.md` → Secrets handling](../mcp.md). Each scanner that emits potentially-sensitive content audits its own output and replaces secret-bearing fields with the `<redacted>` placeholder before the `Finding` is built. Downstream consumers (terminal reporter, JSON / Markdown / SARIF exports, MCP tool responses, the LLM context window) therefore never see raw values.
