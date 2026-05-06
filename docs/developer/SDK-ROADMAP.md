@@ -196,8 +196,8 @@ All 16 scanner/linter actions refactored to call `argus scan` internally. Action
 **Release blockers (Post-PyPI Cleanup):**
 - [ ] README.md and QUICK-START.md: remove TestPyPI `--index-url` flags
 - [x] ~~Update all 16 action wrappers: `pip install pyyaml` → `pip install argus-security`~~ — **approach changed:** install SDK from composite's own checkout (`pip install "${{ github.action_path }}/../../.."`) instead of PyPI, which implicitly pins SDK version to composite ref and sidesteps PyPI-release lag. Applied to `scanner-container` and `scanner-zap` in PR #91.
-- [ ] Apply the install-from-source pattern to the remaining 14 wrappers (`scanner-bandit`, `scanner-gitleaks`, `scanner-opengrep`, `scanner-clamav`, `scanner-trivy-iac`, `scanner-checkov`, `scanner-osv`, `scanner-supply-chain`, `scanner-dependency-review`, and the 6 linter wrappers)
-- [ ] Rename action step "Install dependencies" → "Install Argus SDK" (done in 2 wrappers)
+- [x] ~~Apply the install-from-source pattern to the remaining 14 wrappers~~ — completed for `scanner-bandit`, `scanner-gitleaks`, `scanner-opengrep`, `scanner-clamav`, `scanner-trivy-iac`, `scanner-checkov`, `scanner-osv`, `scanner-supply-chain`, plus the 6 linter wrappers. (`scanner-dependency-review` was mistakenly listed — it wraps GitHub's `dependency-review-action` and doesn't use the SDK.)
+- [x] ~~Rename action step "Install dependencies" → "Install Argus SDK"~~ — applied across all 16 SDK-using wrappers as part of the install-from-source migration
 - [ ] Remove `bin/argus` wrapper (pip creates the entry point)
 - [ ] `argus init` summary: show `pip install argus-security` command
 
