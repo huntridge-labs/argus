@@ -643,6 +643,18 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Disable animated spinner output",
     )
     scan_parser.add_argument(
+        "--no-update-check",
+        action="store_true",
+        help="Skip the once-per-day check for a newer argus release. The "
+             "check runs in the background during the scan (zero latency "
+             "cost) and prints a soft notice at the end of the command "
+             "when an upgrade is available. Also disabled by setting the "
+             "ARGUS_NO_UPDATE_CHECK environment variable, which is the "
+             "right move for CI / air-gapped environments. Override the "
+             "PyPI URL via ARGUS_UPDATE_CHECK_URL for TestPyPI or "
+             "private mirrors.",
+    )
+    scan_parser.add_argument(
         "--no-timestamp",
         action="store_true",
         help="Write output directly to --output-dir without a timestamped subdirectory. "
@@ -1425,6 +1437,14 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
         output_dir = _make_run_dir(config.reporting.output_dir)
     config.reporting.output_dir = output_dir
     log = get_logger("argus", output_dir=output_dir, verbose=args.verbose)
+
+    # Kick off the update check in a daemon thread now so it runs in
+    # parallel with the scan — by end-of-command it's already done.
+    # Returns ``None`` when suppressed (env var, --no-update-check,
+    # --quiet, or dev install); callers must null-check.
+    from argus.update_check import start_background_check
+    update_check = start_background_check(args)
+
     manifest = create_manifest(
         config_path=args.config,
         scan_targets=[args.path],
@@ -1701,6 +1721,14 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
     if view_interface:
         _launch_view_after_scan(view_interface, output_dir)
 
+    # Surface the update notice as the very last thing — past PASS/FAIL
+    # status, past viewer launch, so it never hides scan results behind
+    # version chatter. ``None`` when suppressed or when up-to-date.
+    if update_check is not None:
+        notice = update_check.notice()
+        if notice:
+            print(notice, file=sys.stderr)
+
     return exit_code
 
 
@@ -1965,6 +1993,12 @@ def _cmd_container_scan(
     )
     manifest.execution_backend = config.get("backend", "auto")
 
+    # Kick off the update check in a daemon thread now so it runs in
+    # parallel with the (typically multi-minute) container scan. By
+    # end-of-command the result is already cached in memory.
+    from argus.update_check import start_background_check
+    update_check = start_background_check(args)
+
     # Decide whether to persist raw per-scanner outputs alongside the
     # canonical argus-results.json. Default is ON — the user just ran
     # a scan and would expect those artifacts to be available for
@@ -2077,6 +2111,14 @@ def _cmd_container_scan(
         output_dir=output_dir,
     )
     log.info("Audit manifest written to %s/argus-audit.json", output_dir)
+
+    # Surface the update notice last — past PASS/FAIL, past audit
+    # finalize — so it never hides scan results behind version chatter.
+    if update_check is not None:
+        notice = update_check.notice()
+        if notice:
+            print(notice, file=sys.stderr)
+
     return exit_code
 
 
