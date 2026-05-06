@@ -25,6 +25,31 @@ SBOM_FORMAT_EXTENSIONS: dict[str, str] = {
 }
 
 
+def _failure_result(
+    scanner_name: str,
+    exc: BaseException,
+    duration_ms: int | None = None,
+) -> ScanResult:
+    """Build a ScanResult representing a scanner that raised during execution.
+
+    Mirrors the ``execution_failed`` metadata that ``_run_in_container``
+    produces for output-less docker runs, so the canonical results
+    contract is uniform regardless of which path produced the failure.
+    A user reviewing argus-results.json sees the scanner with its
+    error reason; without this, scanners whose ``scan()`` raises (e.g.
+    a missing local binary that subprocess.run can't find) silently
+    disappear from the results — exactly the silent-failure pattern
+    ADR-016 was written to prevent.
+    """
+    metadata: dict = {
+        "execution_failed": True,
+        "execution_failure_reason": f"{type(exc).__name__}: {exc}",
+    }
+    if duration_ms is not None:
+        metadata["duration_ms"] = duration_ms
+    return ScanResult(scanner=scanner_name, metadata=metadata)
+
+
 class ArgusEngine:
     """Orchestrates registered scanners and aggregates their results."""
 
@@ -312,11 +337,18 @@ class ArgusEngine:
                     scanner.name, elapsed, result.total_count,
                 )
                 results.append(result)
-            except Exception:
+            except Exception as exc:
                 elapsed = int((time.monotonic() - start) * 1000)
                 logger.exception(
                     "Scanner '%s' failed after %dms", scanner.name, elapsed,
                 )
+                # Append a failure-row ScanResult so the user sees the
+                # scanner in the canonical results — silently dropping
+                # it makes a hard failure look identical to "ran clean
+                # with zero findings". Mirrors the execution_failed
+                # metadata that ``_run_in_container`` produces for
+                # output-less docker runs.
+                results.append(_failure_result(scanner.name, exc, elapsed))
                 if fail_fast:
                     logger.error(
                         "Aborting scan — --fail-fast is set and '%s' failed",
@@ -386,8 +418,12 @@ class ArgusEngine:
                         result.total_count,
                     )
                     results.append(result)
-                except Exception:
+                except Exception as exc:
                     logger.exception("Scanner '%s' failed", name)
+                    # See _run_sequential for rationale — failure rows
+                    # surface in canonical results instead of silently
+                    # dropping the scanner.
+                    results.append(_failure_result(name, exc))
                     if fail_fast:
                         logger.error(
                             "Aborting scan — --fail-fast and '%s' failed",

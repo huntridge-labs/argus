@@ -100,14 +100,19 @@ class TestArgusEngine:
         assert len(summary.results) == 1
         assert summary.results[0].scanner == "bandit"
 
-    def test_run_skips_unavailable_scanners(self):
+    def test_run_surfaces_unavailable_scanner_as_failure_row(self):
+        """A scanner the user enabled in config but that isn't installed
+        locally surfaces as a failure row, not a silent skip — the user
+        explicitly asked for it, so they should see why it didn't run.
+        """
         engine = self._make_engine(
             scanners_config={"bandit": {"enabled": True}}
         )
         engine.register_scanner(MockScanner("bandit", available=False))
 
         summary = engine.run()
-        assert len(summary.results) == 0
+        assert len(summary.results) == 1
+        assert summary.results[0].metadata.get("execution_failed") is True
 
     def test_run_skips_unregistered_scanners(self):
         engine = self._make_engine()
@@ -177,7 +182,11 @@ class TestArgusEngine:
 
         engine.register_scanner(FailingScanner())
         summary = engine.run()
-        assert len(summary.results) == 0
+        # Failure row surfaces in canonical results (ADR-016) — silent
+        # drops were the bug behind ``lint-dockerfile`` going missing.
+        assert len(summary.results) == 1
+        assert summary.results[0].metadata.get("execution_failed") is True
+        assert summary.results[0].total_count == 0
 
 
 class TestDockerExecutionBackend:
@@ -207,9 +216,11 @@ class TestDockerExecutionBackend:
         scanner = MockScanner("bandit", available=False)
         engine.register_scanner(scanner)
 
-        # Engine catches exceptions and logs them
+        # Engine surfaces the failure as a row with execution_failed
+        # metadata (ADR-016 — no silent drops).
         summary = engine.run(scanner_names=["bandit"])
-        assert len(summary.results) == 0
+        assert len(summary.results) == 1
+        assert summary.results[0].metadata.get("execution_failed") is True
 
     def test_resolve_image_no_registry(self):
         engine = self._make_engine(registry="")
@@ -238,7 +249,8 @@ class TestDockerExecutionBackend:
         engine.register_scanner(scanner)
 
         summary = engine.run(scanner_names=["bandit"])
-        assert len(summary.results) == 0
+        assert len(summary.results) == 1
+        assert summary.results[0].metadata.get("execution_failed") is True
 
     def test_auto_backend_prefers_container(self, monkeypatch):
         """auto backend uses containers first when Docker is available."""
@@ -325,8 +337,13 @@ class TestFailFast:
         engine.register_scanner(good)
 
         summary = engine.run(fail_fast=True, parallel=False)
-        # Scanner "a" fails, "b" should never run (sequential mode)
-        assert len(summary.results) == 0
+        # Scanner "a" produces a failure row (recorded for visibility)
+        # then the loop breaks before running "b". No silent drop.
+        assert len(summary.results) == 1
+        failed = summary.results[0]
+        assert failed.scanner == "a"
+        assert failed.metadata.get("execution_failed") is True
+        assert "boom" in failed.metadata.get("execution_failure_reason", "")
         assert good.scan_called_with is None
 
     def test_without_fail_fast_continues_after_failure(self):
@@ -348,9 +365,13 @@ class TestFailFast:
         engine.register_scanner(good)
 
         summary = engine.run(fail_fast=False)
-        # Scanner "a" fails, "b" still runs
-        assert len(summary.results) == 1
+        # Both scanners present in canonical results: "a" as a
+        # failure row, "b" as a normal success row.
+        assert len(summary.results) == 2
         assert good.scan_called_with is not None
+        by_name = {r.scanner: r for r in summary.results}
+        assert by_name["a"].metadata.get("execution_failed") is True
+        assert by_name["b"].metadata.get("execution_failed") is None
 
 
 class TestParallelExecution:
@@ -370,6 +391,40 @@ class TestParallelExecution:
 
         summary = engine.run(parallel=True)
         assert len(summary.results) == 3
+
+    def test_parallel_failure_surfaces_as_failure_row(self):
+        """Regression for ADR-016: a scanner that raises in parallel mode
+        produces a ScanResult with execution_failed metadata, not a
+        silent drop. This is the bug behind ``lint-dockerfile`` going
+        missing from results when hadolint isn't installed locally —
+        custom scan() implementations that raise FileNotFoundError used
+        to disappear from canonical results entirely.
+        """
+        engine = self._make_engine(2)  # config has scanners s0, s1
+
+        class FailingScanner:
+            name = "s0"
+            def scan(self, path, config=None):
+                raise FileNotFoundError(2, "No such file", "broken-tool")
+            def is_available(self):
+                return True
+            def install_command(self):
+                return None
+
+        good = MockScanner("s1", findings=[
+            Finding(id="1", severity=Severity.LOW, title="f"),
+        ])
+        engine.register_scanner(FailingScanner())
+        engine.register_scanner(good)
+
+        summary = engine.run(parallel=True)
+        assert len(summary.results) == 2
+        by_name = {r.scanner: r for r in summary.results}
+        assert by_name["s0"].metadata.get("execution_failed") is True
+        assert "FileNotFoundError" in by_name["s0"].metadata.get(
+            "execution_failure_reason", "",
+        )
+        assert by_name["s1"].metadata.get("execution_failed") is None
 
     def test_parallel_faster_than_sequential(self):
         """Parallel should be faster when scanners have I/O wait."""
@@ -463,8 +518,9 @@ class TestTimeout:
 
         engine.register_scanner(SlowScanner())
         summary = engine.run(timeout=1)
-        # Scanner should time out and produce no results
-        assert len(summary.results) == 0
+        # Timeout surfaces as a failure row, not a silent drop.
+        assert len(summary.results) == 1
+        assert summary.results[0].metadata.get("execution_failed") is True
 
     def test_no_timeout_allows_completion(self):
         engine = self._make_engine()
@@ -1399,9 +1455,11 @@ class TestToolVersionEnforcement:
             lambda name: "1.0.0",
         )
 
-        # Engine catches exceptions — scanner produces no results
+        # Version mismatch surfaces as a failure row instead of a
+        # silent drop.
         summary = engine.run(scanner_names=["bandit"])
-        assert len(summary.results) == 0
+        assert len(summary.results) == 1
+        assert summary.results[0].metadata.get("execution_failed") is True
 
     def test_version_mismatch_allowed_with_flag(self, monkeypatch):
         """With allow_local_versions=True, mismatch logs warning but proceeds."""
@@ -1477,8 +1535,9 @@ class TestToolVersionEnforcement:
         )
 
         summary = engine.run(scanner_names=["bandit"])
-        # Version mismatch should cause failure
-        assert len(summary.results) == 0
+        # Version mismatch surfaces as a failure row.
+        assert len(summary.results) == 1
+        assert summary.results[0].metadata.get("execution_failed") is True
 
     def test_tool_version_recorded_in_metadata(self, monkeypatch):
         """Tool version should be recorded in result metadata."""
