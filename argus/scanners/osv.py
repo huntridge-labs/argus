@@ -19,9 +19,13 @@ class OsvScanner:
     languages = ["all"]
     container_image = get_image("osv-scanner")
     supports_sbom = True
-    # The official osv-scanner image uses ENTRYPOINT ["osv-scanner"]; engine
-    # strips argv[0] for ENTRYPOINT-based images.
-    container_entrypoint = "osv-scanner"
+    # The official osv-scanner image uses ENTRYPOINT ["/osv-scanner"]
+    # — note the absolute path. ``$PATH`` inside the image does NOT
+    # resolve a bare ``osv-scanner``; ``--entrypoint osv-scanner``
+    # would exit 127. Pass the absolute path explicitly. Engine strips
+    # argv[0] for ENTRYPOINT-based images so the binary name in
+    # build_args() is informational only.
+    container_entrypoint = "/osv-scanner"
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run OSV-Scanner against the given path and return results."""
@@ -99,7 +103,7 @@ class OsvScanner:
 
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse OSV-Scanner JSON output into findings."""
-        text = raw_output_path.read_text().strip()
+        text = raw_output_path.read_text(encoding="utf-8", errors="replace").strip()
         if not text:
             return []
 

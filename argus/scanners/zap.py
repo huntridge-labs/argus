@@ -95,7 +95,7 @@ class ZapScanner:
 
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse ZAP JSON output into findings."""
-        data = json.loads(raw_output_path.read_text())
+        data = json.loads(raw_output_path.read_text(encoding="utf-8", errors="replace"))
         findings: list[Finding] = []
 
         for site in data.get("site", []):

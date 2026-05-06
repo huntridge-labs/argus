@@ -1693,20 +1693,37 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
         r.scanner for r in summary.results
         if r.metadata.get("execution_failed")
     ]
+    scanner_parse_failures = [
+        r.scanner for r in summary.results
+        if r.metadata.get("parse_failed")
+    ]
     if not summary.passed:
         exit_code = EXIT_FINDINGS
     elif sbom_batch_failures:
         exit_code = EXIT_ERROR
     elif (
         getattr(args, "fail_on_scanner_error", False)
-        and scanner_execution_failures
+        and (scanner_execution_failures or scanner_parse_failures)
     ):
-        log.error(
-            "Exiting non-zero: %d scanner(s) produced no output (%s) and "
-            "--fail-on-scanner-error is set.",
-            len(scanner_execution_failures),
-            ", ".join(scanner_execution_failures),
-        )
+        # Both states represent "the scan didn't fully succeed":
+        # execution_failed = couldn't run; parse_failed = ran but
+        # output unintelligible. From a CI gating perspective they're
+        # equivalent — the user asked for a hard fail when scanners
+        # don't deliver clean results.
+        if scanner_execution_failures:
+            log.error(
+                "Exiting non-zero: %d scanner(s) did not run cleanly "
+                "(%s) and --fail-on-scanner-error is set.",
+                len(scanner_execution_failures),
+                ", ".join(scanner_execution_failures),
+            )
+        if scanner_parse_failures:
+            log.error(
+                "Exiting non-zero: %d scanner(s) produced unparsable "
+                "output (%s) and --fail-on-scanner-error is set.",
+                len(scanner_parse_failures),
+                ", ".join(scanner_parse_failures),
+            )
         exit_code = EXIT_ERROR
     else:
         exit_code = EXIT_SUCCESS

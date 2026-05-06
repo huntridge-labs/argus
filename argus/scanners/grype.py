@@ -127,7 +127,7 @@ class GrypeScanner:
         the metadata gets attached.
         """
         try:
-            data = json.loads(Path(raw_output_path).read_text())
+            data = json.loads(Path(raw_output_path).read_text(encoding="utf-8", errors="replace"))
         except (json.JSONDecodeError, OSError):
             return []
         matches = data.get("matches") or []

@@ -133,7 +133,7 @@ class ContainerScanner:
 
     def parse_trivy_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse Trivy container JSON output into findings."""
-        data = json.loads(raw_output_path.read_text())
+        data = json.loads(raw_output_path.read_text(encoding="utf-8", errors="replace"))
         findings: list[Finding] = []
 
         for target in data.get("Results", []):
@@ -144,7 +144,7 @@ class ContainerScanner:
 
     def parse_grype_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse Grype JSON output into findings."""
-        data = json.loads(raw_output_path.read_text())
+        data = json.loads(raw_output_path.read_text(encoding="utf-8", errors="replace"))
         findings: list[Finding] = []
 
         for match in data.get("matches", []):

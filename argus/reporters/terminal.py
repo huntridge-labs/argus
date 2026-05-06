@@ -100,26 +100,64 @@ class TerminalReporter:
             print()
 
     def _print_status(self, summary: ScanSummary) -> None:
-        # Scanner-execution failures (no output produced) are flagged
-        # separately so a single bad scanner image doesn't quietly slip
-        # past a "Status: PASS" line. The PASS/FAIL line still reflects
-        # *threshold* outcome; this row reflects *execution* outcome.
-        # CI-callers who want hard-fail behavior on missing output use
-        # ``--fail-on-scanner-error``.
-        failed = [
-            r.scanner for r in summary.results
+        # Three orthogonal signals get rendered here:
+        #   * threshold outcome — drives Status: PASS / FAIL
+        #   * scanner execution outcome — ran-or-not, surfaced as
+        #     ``execution_failed`` by the engine and adapters
+        #   * parse outcome — ran-and-produced-output-but-couldn't-be-
+        #     interpreted, surfaced as ``parse_failed``
+        # Each gets its own warning block carrying the scanner-specific
+        # reason (engine collects ``execution_failure_reason`` /
+        # ``parse_failure_reason`` per scanner). Generic "uid mismatch
+        # / crashed / wrong entrypoint" boilerplate is *not* printed —
+        # it was misleading for OSV exit-1-with-findings and yamllint
+        # binary-not-found cases. The reason from the adapter wins.
+        exec_failed = [
+            r for r in summary.results
             if r.metadata.get("execution_failed")
         ]
-        if failed:
-            names = ", ".join(failed)
-            print(f"Warning: {len(failed)} scanner(s) produced no output: {names}")
-            print("  These scanners likely failed to execute (uid mismatch on")
-            print("  /output mount, crashed, or wrong entrypoint). Re-run with")
-            print("  --verbose for stderr; pass --fail-on-scanner-error to fail")
-            print("  the scan when this happens.")
+        parse_failed = [
+            r for r in summary.results
+            if r.metadata.get("parse_failed")
+        ]
+
+        if exec_failed:
+            print(f"Warning: {len(exec_failed)} scanner(s) did not run cleanly:")
+            for r in exec_failed:
+                reason = r.metadata.get(
+                    "execution_failure_reason", "no reason recorded",
+                )
+                print(f"  - {r.scanner}: {reason}")
+            print(
+                "  Pass --fail-on-scanner-error to fail the scan when "
+                "this happens."
+            )
+
+        if parse_failed:
+            print(
+                f"Warning: {len(parse_failed)} scanner(s) produced "
+                f"output that could not be parsed:"
+            )
+            for r in parse_failed:
+                reason = r.metadata.get(
+                    "parse_failure_reason", "no reason recorded",
+                )
+                print(f"  - {r.scanner}: {reason}")
+            print(
+                "  This usually means a scanner output schema changed; "
+                "report at https://github.com/huntridge-labs/argus/issues."
+            )
 
         if summary.passed:
-            print("Status: PASS")
+            if exec_failed or parse_failed:
+                parts = []
+                if exec_failed:
+                    parts.append(f"{len(exec_failed)} did not run")
+                if parse_failed:
+                    parts.append(f"{len(parse_failed)} unparsable")
+                print(f"Status: PASS (degraded — {', '.join(parts)})")
+            else:
+                print("Status: PASS")
         else:
             threshold = summary.severity_threshold.value if summary.severity_threshold else "none"
             print(f"Status: FAIL (findings above threshold: {threshold})")

@@ -66,7 +66,7 @@ class TestRunSubprocessScan:
 
         assert result.scanner == "fake"
         assert result.findings == [finding]
-        assert "error" not in result.metadata
+        assert result.metadata.get("execution_failed") is not True
 
     def test_passes_workspace_path_through_to_build_args(self, tmp_path):
         scanner = _FakeScanner()
@@ -192,41 +192,67 @@ class TestRunSubprocessScan:
 
 class TestFailures:
 
-    def test_missing_binary_returns_error_metadata(self, tmp_path):
+    def test_missing_binary_returns_execution_failed_metadata(self, tmp_path):
+        # The template uses the same metadata contract as the engine's
+        # container path: ``execution_failed`` (bool) +
+        # ``execution_failure_reason`` (string). The terminal reporter,
+        # ``--fail-on-scanner-error`` gate, and CI viewers all key off
+        # those exact field names, so the local-execution path has to
+        # match — otherwise a missing binary would be invisible to the
+        # warning row and silently roll up as PASS.
         scanner = _FakeScanner()
         with patch("subprocess.run", side_effect=FileNotFoundError(2, "no such file", "fake")):
             result = run_subprocess_scan(scanner, str(tmp_path))
         assert result.findings == []
-        assert "Tool not found" in result.metadata.get("error", "")
+        assert result.metadata.get("execution_failed") is True
+        assert "Tool not found" in result.metadata.get("execution_failure_reason", "")
 
-    def test_timeout_returns_error_metadata(self, tmp_path):
+    def test_timeout_returns_execution_failed_metadata(self, tmp_path):
         scanner = _FakeScanner()
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("fake", 5)):
             result = run_subprocess_scan(scanner, str(tmp_path), timeout=5)
-        assert "timed out" in result.metadata.get("error", "")
+        assert result.metadata.get("execution_failed") is True
+        assert "timed out" in result.metadata.get("execution_failure_reason", "")
 
-    def test_no_output_no_stdout_returns_error_metadata(self, tmp_path):
+    def test_no_output_no_stdout_returns_execution_failed_metadata(self, tmp_path):
         scanner = _FakeScanner()
         with patch(
             "subprocess.run",
             return_value=_completed(stdout="", stderr="boom", returncode=2),
         ):
             result = run_subprocess_scan(scanner, str(tmp_path))
-        err = result.metadata.get("error", "")
-        assert "No output produced" in err
-        assert "boom" in err
+        assert result.metadata.get("execution_failed") is True
+        reason = result.metadata.get("execution_failure_reason", "")
+        assert "No output produced" in reason
+        assert "boom" in reason
 
-    def test_unexpected_exception_propagates(self, tmp_path):
-        # Bugs in scanner.parse_results shouldn't be silently translated.
+    def test_parse_exception_emits_parse_failed_metadata(self, tmp_path):
+        # Parse failures are a third state distinct from execution
+        # failures: the scanner *did* run and produced output we
+        # couldn't interpret (schema drift, truncated JSON, mixed
+        # text+JSON output). The template translates parser
+        # exceptions into ``parse_failed`` metadata + a reason instead
+        # of crashing the scan — the rest of the run is still useful,
+        # and reporters render parse failures distinctly from
+        # execution failures.
         scanner = _FakeScanner(parse=lambda p: (_ for _ in ()).throw(ValueError("bad json")))
 
         def fake_run(cmd, **kwargs):
-            Path(cmd[cmd.index("--out") + 1]).write_text("{}")
+            Path(cmd[cmd.index("--out") + 1]).write_text("{not valid json")
             return _completed()
 
         with patch("subprocess.run", side_effect=fake_run):
-            with pytest.raises(ValueError, match="bad json"):
-                run_subprocess_scan(scanner, str(tmp_path))
+            result = run_subprocess_scan(scanner, str(tmp_path))
+
+        assert result.findings == []
+        assert result.metadata.get("parse_failed") is True
+        # ``execution_failed`` must NOT also be set — these are
+        # mutually distinct signals so reporters can show "OSV
+        # produced 12KB we couldn't parse" vs "OSV crashed" cleanly.
+        assert result.metadata.get("execution_failed") is not True
+        reason = result.metadata.get("parse_failure_reason", "")
+        assert "ValueError" in reason
+        assert "bad json" in reason
 
 
 # --------------------------------------------------------------------- #

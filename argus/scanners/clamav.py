@@ -83,7 +83,7 @@ class ClamavScanner:
 
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse ClamAV text output file into findings."""
-        text = raw_output_path.read_text()
+        text = raw_output_path.read_text(encoding="utf-8", errors="replace")
         return self.parse_results_text(text)
 
     def parse_results_text(self, text: str) -> list[Finding]:

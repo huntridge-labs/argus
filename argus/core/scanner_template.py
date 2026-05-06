@@ -118,7 +118,13 @@ def run_subprocess_scan(
 
     Returns:
         A :class:`ScanResult` with ``findings`` populated on success or
-        an ``error`` metadata key when execution fails.
+        ``metadata["execution_failed"] = True`` when the underlying
+        tool failed to run. The terminal reporter, viewers, and
+        ``--fail-on-scanner-error`` all key off ``execution_failed``;
+        using the same metadata shape that the engine's container path
+        emits (see ``argus/core/engine.py::_run_in_container``) keeps
+        local-execution and container-execution failures uniformly
+        visible without per-path special-casing.
     """
     config = config or {}
 
@@ -130,21 +136,39 @@ def run_subprocess_scan(
         logger.debug("[%s] running: %s", scanner.name, " ".join(cmd))
 
         try:
+            # Explicit UTF-8 encoding for stdout/stderr capture: the
+            # platform default (cp1252 on Windows) raises
+            # ``UnicodeDecodeError`` on non-ASCII output (path names,
+            # CVE descriptions, scanner banners). All container and
+            # CLI scanner output is UTF-8, so we lock that in
+            # uniformly across local- and container-execution paths.
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                encoding="utf-8",
+                errors="replace",
             )
         except FileNotFoundError as exc:
             return ScanResult(
                 scanner=scanner.name,
-                metadata={"error": f"Tool not found: {exc.filename or cmd[0]}"},
+                metadata={
+                    "execution_failed": True,
+                    "execution_failure_reason": (
+                        f"Tool not found: {exc.filename or cmd[0]}"
+                    ),
+                },
             )
         except subprocess.TimeoutExpired:
             return ScanResult(
                 scanner=scanner.name,
-                metadata={"error": f"Scanner timed out after {timeout}s"},
+                metadata={
+                    "execution_failed": True,
+                    "execution_failure_reason": (
+                        f"Scanner timed out after {timeout}s"
+                    ),
+                },
             )
 
         if not output_file.exists():
@@ -158,14 +182,45 @@ def run_subprocess_scan(
                 return ScanResult(
                     scanner=scanner.name,
                     metadata={
-                        "error": (
+                        "execution_failed": True,
+                        "execution_failure_reason": (
                             f"No output produced (exit={result.returncode}). "
                             f"stderr: {(result.stderr or '').strip()[:400]}"
                         ),
                     },
                 )
 
-        parsed = scanner.parse_results(output_file)
+        try:
+            parsed = scanner.parse_results(output_file)
+        except Exception as exc:
+            # ``parse_failed`` is a distinct state from ``execution_failed``:
+            # the scanner *did* run and produced an output file we just
+            # couldn't interpret. Schema drift (e.g. osv-scanner v2
+            # rev'd its JSON), truncated output, or non-JSON content
+            # land here. Surface it as its own signal — reporters
+            # render parse failures separately, and ``--fail-on-scanner-
+            # error`` keys off both flags. We deliberately don't
+            # re-raise: a parser bug shouldn't crash the whole scan
+            # when the rest of the run is still useful.
+            head = ""
+            try:
+                head = output_file.read_text(
+                    encoding="utf-8", errors="replace",
+                )[:200]
+            except OSError:
+                head = "<unreadable>"
+            return ScanResult(
+                scanner=scanner.name,
+                raw_report=output_file,
+                metadata={
+                    "parse_failed": True,
+                    "parse_failure_reason": (
+                        f"{type(exc).__name__}: {exc}. "
+                        f"output head: {head!r}"
+                    ),
+                },
+            )
+
         # ``parse_results`` may return ``list[Finding]`` (most scanners),
         # a ``(list, int)`` tuple (linter passed-count channel — used by
         # checkov), or a ``(list, dict)`` tuple (extra metadata). Engine

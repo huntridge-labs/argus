@@ -58,7 +58,7 @@ class OpengrepScanner:
 
     def parse_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse OpenGrep JSON output into findings."""
-        data = json.loads(raw_output_path.read_text())
+        data = json.loads(raw_output_path.read_text(encoding="utf-8", errors="replace"))
         results = data.get("results", [])
 
         return [self._parse_finding(item) for item in results]

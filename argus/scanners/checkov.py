@@ -74,7 +74,7 @@ class CheckovScanner:
 
     def parse_results(self, raw_output_path: Path) -> tuple[list[Finding], int]:
         """Parse Checkov JSON output into findings and passed count."""
-        text = raw_output_path.read_text().strip()
+        text = raw_output_path.read_text(encoding="utf-8", errors="replace").strip()
         if not text:
             return [], 0
 
