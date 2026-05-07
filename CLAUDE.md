@@ -319,6 +319,8 @@ examples/workflows/                   # User-facing workflow examples
 
 ## Adding a New Scanner
 
+> **Some scanners stay composite-only by design.** If your tool's primary signal comes from the GitHub API (e.g. requires `GITHUB_TOKEN` + a `pull_request` event context to do anything useful), or its CLI is licence-restricted such that off-platform consumers can't legally run it, route it through a composite action under `.github/actions/scanner-<name>/` and skip the SDK port. The two existing instances are `scanner-codeql` (licence-encumbered CLI + bundle distribution cost) and `scanner-dependency-review` (thin client over GitHub's dependency-graph compare API). The full boundary rule, the test for future contributors, and the rationale for these two specifically lives in [`.ai/decisions.yaml` ADR-021](.ai/decisions.yaml).
+
 ### SDK Scanner Module (preferred)
 
 Create a single Python file implementing the `Scanner` protocol:
