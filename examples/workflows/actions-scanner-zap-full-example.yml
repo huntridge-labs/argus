@@ -1,5 +1,19 @@
 name: ZAP DAST - Full Input Exercise
 
+# Exercises every input on the current scanner-zap composite action.
+# Earlier revisions of this example covered docker-build / docker-
+# compose / api-spec / healthcheck-poll / max-duration / cmd-options
+# flows — those inputs were removed from scanner-zap when the action
+# was scoped down. Build / health-check / start logic that used to
+# live inside the action now lives in workflow steps before the
+# scanner runs (see the "Start <target>" steps below).
+#
+# scanner-zap's current input surface:
+#   scan_name, scan_mode, scan_type, target_url,
+#   app_image_ref, app_ports, app_env, startup_timeout,
+#   fail_on_severity, post_pr_comment, enable_code_security,
+#   job_id, python_version
+
 on:
   workflow_dispatch:
 
@@ -17,105 +31,52 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # ------------------------------------------------------------
+          # url mode — caller is responsible for the running target.
+          # We start nginx via ``docker run`` in a previous step.
+          # ------------------------------------------------------------
           - name: url-baseline
             scan_name: url-baseline
             scan_mode: url
             scan_type: baseline
             target_url: http://127.0.0.1:8080
-            healthcheck_url: http://127.0.0.1:8080
-            max_duration_minutes: 5
             fail_on_severity: none
-            allow_failure: 'false'
             post_pr_comment: 'false'
-            cmd_options: ''
-            rules_file_name: zap-rules.tsv
+
+          # ------------------------------------------------------------
+          # docker-run mode — scanner-zap brings up app_image_ref as
+          # a sidecar on the configured ports. app_env is forwarded
+          # into the container; startup_timeout caps the wait for the
+          # container to become reachable.
+          # ------------------------------------------------------------
           - name: docker-run-full-image
             scan_name: docker-run-full-image
             scan_mode: docker-run
             scan_type: full
             app_image_ref: nginx:alpine
             app_ports: '8081:80'
+            app_env: ''
+            startup_timeout: '60'
             target_url: http://127.0.0.1:8081
-            healthcheck_url: http://127.0.0.1:8081
-            max_duration_minutes: 5
             fail_on_severity: none
-            allow_failure: 'false'
             post_pr_comment: 'false'
-            cmd_options: ''
-            rules_file_name: zap-rules.tsv
-          - name: docker-run-baseline-build
-            scan_name: docker-run-baseline-build
-            scan_mode: docker-run
-            scan_type: baseline
-            app_build_context: ./zap-test-app
-            app_dockerfile: Dockerfile
-            app_image_tag: local-zap-test:${{ github.run_id }}
-            app_ports: '8082:8080'
-            target_url: http://127.0.0.1:8082
-            healthcheck_url: http://127.0.0.1:8082
-            max_duration_minutes: 5
-            fail_on_severity: none
-            allow_failure: 'false'
-            post_pr_comment: 'false'
-            cmd_options: '-I'
-            rules_file_name: zap-rules.tsv
-          - name: compose-baseline
-            scan_name: compose-baseline
-            scan_mode: compose
-            scan_type: baseline
-            compose_file: zap-compose.yml
-            compose_build: 'true'
-            target_url: http://127.0.0.1:8083
-            healthcheck_url: http://127.0.0.1:8083
-            max_duration_minutes: 5
-            fail_on_severity: none
-            allow_failure: 'false'
-            post_pr_comment: 'false'
-            cmd_options: ''
-            rules_file_name: zap-rules.tsv
+
+          # ------------------------------------------------------------
+          # api scan — scan_type=api with a target_url. The previous
+          # api_spec input was removed; ZAP discovers endpoints from
+          # the URL itself.
+          # ------------------------------------------------------------
           - name: api-scan
             scan_name: api-scan
             scan_mode: url
             scan_type: api
-            api_spec: http://127.0.0.1:8084/openapi.json
-            healthcheck_url: http://127.0.0.1:8084/openapi.json
-            max_duration_minutes: 5
+            target_url: http://127.0.0.1:8084
             fail_on_severity: medium
-            allow_failure: 'true'
             post_pr_comment: 'true'
-            cmd_options: ''
-            rules_file_name: zap-rules.tsv
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - name: Create ZAP rules file
-        run: |
-          echo "# ZAP ignore rules (empty for full input test)" > zap-rules.tsv
-
-      - name: Prepare local Docker build context
-        if: matrix.app_build_context != ''
-        run: |
-          mkdir -p zap-test-app
-          cat > zap-test-app/Dockerfile <<'EOF'
-          FROM python:3.12-slim
-          WORKDIR /app
-          RUN printf "<!doctype html><title>ZAP Test</title><h1>ZAP Test App</h1>" > /app/index.html
-          EXPOSE 8080
-          CMD ["python", "-m", "http.server", "8080", "--directory", "/app"]
-          EOF
-
-      - name: Prepare compose file
-        if: matrix.scan_mode == 'compose'
-        run: |
-          cat > zap-compose.yml <<'EOF'
-          services:
-            zap-test:
-              image: nginx:alpine
-              ports:
-                - "8083:80"
-          EOF
 
       - name: Start URL target (manual)
         if: matrix.scan_mode == 'url' && matrix.scan_type != 'api'
@@ -123,11 +84,13 @@ jobs:
           docker run -d --rm --name zap-url-target -p 8080:80 nginx:alpine
           echo "URL_CONTAINER_NAME=zap-url-target" >> "$GITHUB_ENV"
 
-      - name: Start API spec server
+      - name: Start API target
         if: matrix.scan_type == 'api'
         run: |
-          mkdir -p zap-api-spec
-          cat > zap-api-spec/openapi.json <<'EOF'
+          # Trivial OpenAPI server — replace with your real API
+          # under test. ZAP scan_type=api crawls from the target_url.
+          mkdir -p zap-api
+          cat > zap-api/openapi.json <<'EOF'
           {
             "openapi": "3.0.0",
             "info": { "title": "ZAP Sample API", "version": "1.0.0" },
@@ -140,34 +103,25 @@ jobs:
             }
           }
           EOF
-          python -m http.server 8084 --directory zap-api-spec >/tmp/zap-api.log 2>&1 &
+          python -m http.server 8084 --directory zap-api >/tmp/zap-api.log 2>&1 &
+          # Brief wait for the server to bind. scanner-zap doesn't
+          # poll a healthcheck_url anymore; consumers handle readiness
+          # before the action runs.
           sleep 2
 
-      - name: Run ZAP scanner (all inputs)
+      - name: Run ZAP scanner (current input set)
         uses: huntridge-labs/argus/.github/actions/scanner-zap@0.7.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           scan_name: ${{ matrix.scan_name }}
-          scan_mode: ${{ matrix.scan_mode }}
           scan_type: ${{ matrix.scan_type }}
           target_url: ${{ matrix.target_url || '' }}
-          api_spec: ${{ matrix.api_spec || '' }}
-          healthcheck_url: ${{ matrix.healthcheck_url || '' }}
           app_image_ref: ${{ matrix.app_image_ref || '' }}
-          app_build_context: ${{ matrix.app_build_context || '' }}
-          app_dockerfile: ${{ matrix.app_dockerfile || '' }}
-          app_image_tag: ${{ matrix.app_image_tag || '' }}
           app_ports: ${{ matrix.app_ports || '' }}
-          compose_file: ${{ matrix.compose_file || '' }}
-          compose_build: ${{ matrix.compose_build || 'true' }}
-          registry_username: ${{ secrets.REGISTRY_USERNAME || '' }}
-          registry_password: ${{ secrets.REGISTRY_PASSWORD || '' }}
-          max_duration_minutes: ${{ matrix.max_duration_minutes }}
-          rules_file_name: ${{ matrix.rules_file_name }}
-          cmd_options: ${{ matrix.cmd_options }}
+          app_env: ${{ matrix.app_env || '' }}
+          startup_timeout: ${{ matrix.startup_timeout || '60' }}
           fail_on_severity: ${{ matrix.fail_on_severity }}
-          allow_failure: ${{ matrix.allow_failure }}
           post_pr_comment: ${{ matrix.post_pr_comment }}
 
       - name: Stop URL target

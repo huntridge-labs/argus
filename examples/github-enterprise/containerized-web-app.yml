@@ -133,8 +133,6 @@ jobs:
           container_name: 'my-app'
           scanners: 'trivy,grype,syft'
           fail_on_severity: 'high'
-          allow_failure: 'false'
-          scan_mode: 'discover'  # Image was built locally
 
   # ============================================
   # DAST - Dynamic Application Security Testing
