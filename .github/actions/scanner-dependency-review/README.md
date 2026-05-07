@@ -2,6 +2,8 @@
 
 Scans pull request dependency changes for vulnerabilities and license compliance using [GitHub's dependency-review-action](https://github.com/actions/dependency-review-action).
 
+> **Composite-only by design.** Dependency-review has no `argus.scanners.dependency_review` SDK module and won't get one. The whole feature is a thin client over GitHub's `/repos/{owner}/{repo}/dependency-graph/compare/{basehead}` API — the intelligence is server-side, the data only exists for repos with GitHub's Dependency Graph enabled, and the comparison only makes sense in a `pull_request` event context. There's no off-platform shape worth porting. See [`.ai/decisions.yaml` ADR-021](../../../.ai/decisions.yaml) for the SDK-vs-composite-action boundary rule.
+
 ## Overview
 
 - Compares dependency changes between PR base and head via the GitHub Dependency Graph API

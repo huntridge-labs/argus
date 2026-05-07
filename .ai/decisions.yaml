@@ -1265,3 +1265,128 @@ decisions:
     pr_references:
       - "#117 (build_args contract for security scanners — the parallel pattern this complements)"
       - "#120 (HadolintLinter pre-batching — the optimization this PR's base captures generically)"
+
+  - id: ADR-021
+    title: "SDK-vs-composite-action boundary: when a scanner stays composite-only"
+    status: accepted
+    date: 2026-05-08
+    context: |
+      Argus's primary contribution shape is the SDK module (an
+      argus.scanners.<name> class implementing the Scanner protocol).
+      Composite actions exist as wrappers that delegate to the SDK
+      so GitHub Actions consumers get a paved path. The default
+      assumption — captured in CONTRIBUTING.md and the SDK-first
+      framing throughout — is that every new scanner gets an SDK
+      module first, and the composite wrapper is a thin convenience
+      layer.
+
+      Two existing scanners deliberately break that pattern:
+      scanner-codeql and scanner-dependency-review have composite
+      actions but no argus.scanners.codeql / argus.scanners.dependency_review
+      modules, and the SDK-ROADMAP.md previously listed both as open
+      items waiting to get SDK ports.
+
+      Auditing those two more carefully showed neither scanner can
+      ever justify the SDK port:
+
+      * **CodeQL.** The CodeQL CLI is licence-restricted (free use
+        only for OSS or GHAS-entitled private repos), the bundle
+        is ~500MB to redistribute across architectures, and the
+        primary value of running it (SARIF upload to the GitHub
+        Security tab) only exists on github.com / GHES. An SDK
+        consumer scanning proprietary code without GHAS is on
+        questionable licence ground, and the maintenance cost of
+        tracking the bundle's release cadence is substantial.
+
+      * **Dependency-review.** The action is a thin client over
+        GitHub's GET /repos/{owner}/{repo}/dependency-graph/compare/
+        {basehead} endpoint. The intelligence is server-side; the
+        compare data only exists for repos with the Dependency
+        Graph enabled (free for public repos, GHAS for private);
+        and the comparison is meaningless outside a pull_request
+        event context. Wrapping it in the SDK would be a
+        GitHub-API client masquerading as a Scanner protocol.
+
+      Both motivated a deliberate "wontfix on SDK, ship as
+      composite-only" decision. We need that recorded so a future
+      contributor doesn't reopen #206 or a sibling issue without
+      seeing the rationale.
+    decision: |
+      A scanner stays composite-action-only (no SDK module) when
+      EITHER condition holds:
+
+      1. **GitHub-API-bound primary signal.** The scanner's main
+         output comes from a GitHub API endpoint (not from running
+         a binary against local files). It needs GITHUB_TOKEN, a
+         specific event payload, or server-side data that doesn't
+         exist off-platform. Examples: dependency-graph diff,
+         secret-scanning-alerts API, code-scanning-alerts API.
+
+      2. **Licence-restricted CLI distribution.** The scanner's CLI
+         can't be redistributed to all consumers under terms argus
+         is willing to accept on their behalf. Either the licence
+         restricts use cases (CodeQL: OSS or GHAS only), or the
+         distribution itself is encumbered (sealed bundle requiring
+         GitHub auth to download).
+
+      Either condition makes the SDK port a net negative —
+      bigger maintenance surface for a feature only some consumers
+      can legally use, with no off-platform value.
+
+      Both existing instances stay composite-only:
+
+      * .github/actions/scanner-codeql/ — keeps its current shape;
+        consumers wanting CodeQL via argus go through the action.
+      * .github/actions/scanner-dependency-review/ — same.
+
+      Neither will gain argus.scanners.codeql.py or
+      argus.scanners.dependency_review.py modules. The two
+      composite actions' README.md files carry the rationale
+      inline so a contributor browsing the action sees it before
+      filing an SDK-port issue.
+
+      CLAUDE.md's "Adding a New Scanner" section was updated with
+      a one-paragraph carve-out pointing at this ADR, so the
+      default ("SDK-first") guidance has the carve-out attached
+      to it instead of having to be discovered separately.
+    alternatives_considered:
+      - name: "Port both scanners to the SDK anyway, with disclaimers"
+        rejected_because: |
+          For CodeQL, the licence restrictions don't go away just
+          because we add a docstring. Consumers running it under
+          argus's uniform interface against proprietary code without
+          GHAS are still on the wrong side of GitHub's terms; we'd
+          be making it easier for them to get into trouble. For
+          dependency-review, the SDK port would be a single API
+          endpoint wrapper that requires GITHUB_TOKEN + base_ref +
+          head_ref to do anything — which is the composite-action
+          shape, just dressed up differently. No off-platform value
+          gained, real maintenance cost added.
+
+      - name: "Drop the composite actions too — let consumers use the upstream actions directly"
+        rejected_because: |
+          The composite wrappers add real value: uniform input
+          surface (fail_on_severity, post_pr_comment, etc.),
+          security-summary integration, the standard SARIF upload
+          + PR-comment + artifact-upload flow. Consumers using
+          actions/dependency-review-action or
+          github/codeql-action directly miss all of that. The
+          wrappers stay; the SDK ports don't happen.
+
+      - name: "Add an 'SDK-eligible' marker on every action.yml"
+        rejected_because: |
+          Over-engineering. Two scanners are composite-only today,
+          and the rule for adding more is a single sentence. A
+          paragraph in CLAUDE.md + this ADR + a callout in each
+          composite action's README is enough scaffolding. If we
+          ever have 5+ composite-only scanners we can revisit.
+    consequences:
+      - "Roadmap item ``#206 (codeql.py + dependency_review.py)`` closed: composite-only by design, never an SDK port."
+      - "Future contributors filing 'add SDK module for <X>' issues hit the boundary rule in CLAUDE.md and the per-action README before opening the issue. Reduces the chance of a partially-implemented SDK port that later gets ripped out."
+      - "Two existing composite actions are explicitly paved cowpaths, not omissions waiting to be filled in."
+      - "The rule is testable from the contributor's side: 'Does my scanner need GITHUB_TOKEN + a specific event for its primary output?' OR 'Is the CLI licence-restricted?' If yes to either, ship as composite-only."
+    related:
+      - ADR-001  # Composite actions as primary architecture (the dual-track shape this disambiguates)
+      - ADR-013  # Python SDK as primary interface (the default this carves out from)
+    pr_references:
+      - "(roadmap closure for #206 — see SDK-ROADMAP.md line 207)"

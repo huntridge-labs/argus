@@ -204,7 +204,7 @@ All 16 scanner/linter actions refactored to call `argus scan` internally. Action
 **Future (post-release):**
 - [x] ~~Additional reporters: `github.py`, `gitlab.py`, `junit.py`~~ — three new reporters shipped: GitHub Actions annotations, GitLab Code Quality JSON (codeclimate-compatible), JUnit XML
 - [ ] Reporter plugin registration system (the broader item — still open as a follow-up)
-- [ ] Additional scanners: `codeql.py`, `dependency_review.py` (GitHub-specific)
+- [x] ~~Additional scanners: `codeql.py`, `dependency_review.py`~~ — **decided: composite-action-only.** Both stay as `.github/actions/scanner-codeql/` and `.github/actions/scanner-dependency-review/` and never gain SDK ports. CodeQL's CLI is licence-restricted (free use only for OSS or GHAS-entitled private repos) and its bundle is ~500MB to redistribute. Dependency-review is fundamentally a thin client over GitHub's `/dependency-graph/compare/{basehead}` API and is meaningless off a PR. The SDK-vs-composite boundary rule + rationale lives in [`.ai/decisions.yaml` ADR-021](../../.ai/decisions.yaml).
 - [x] ~~Progress indicators~~ — `argus/cli.py::Spinner` ships phase-aware progress with `--no-spinner` opt-out (PR #2c46fce: `feat(cli): phase-aware scan progress and clearer verbosity flags`)
 - [x] ~~`pull_policy` evaluation~~ — `ArgusConfig.execution.pull_policy` accepts `always | if-not-present | never`; engine + container_runtime honor it
 - [ ] Performance: profiling, pre-warming, lazy pulls (the remaining items from the original bundle)
