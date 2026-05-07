@@ -509,6 +509,34 @@ runs:
 - Use `continue-on-error: true` for optional steps (SARIF, PR comments)
 - Follow naming conventions for artifacts: `{scanner}-reports-{job_id}`
 
+**Install the Argus SDK from the composite checkout, not from PyPI.**
+Every SDK-using wrapper installs the SDK with this exact step (see
+ADR-019 in `.ai/decisions.yaml` for the full rationale):
+
+```yaml
+- name: Install Argus SDK
+  shell: bash
+  # Install the SDK from the checked-out composite source. This matches
+  # the consumer-scoped intent of composite actions (``uses: .../<wrapper>@tag``
+  # implicitly pins the SDK version to the same tag) and sidesteps the
+  # PyPI-release lag that would break ``pip install argus-security>=X``
+  # for consumers until after the release ships.
+  run: pip install "${{ github.action_path }}/../../.."
+```
+
+When `uses: org/argus/.github/actions/<wrapper>@<ref>` resolves on a
+runner, GitHub clones the entire repo at `<ref>` into
+`_actions/.../<ref>/`. `${{ github.action_path }}/../../..` is that
+clone root, which contains `pyproject.toml` and the `argus/` package —
+pip-installable directly. Don't replace this with `pip install
+argus-security==<X>`: action releases would block on the PyPI publish
+landing first, and air-gapped GHES setups would also need a private
+PyPI mirror in addition to the repo mirror.
+
+A CI guard (`validate-install-from-source` in `.github/workflows/test-actions.yml`)
+fails the build if any SDK-using wrapper drifts back to `pip install
+pyyaml` or any other shape.
+
 ### Step 3: Create Parser Script
 
 Create `scripts/parse-results.py`:

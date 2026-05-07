@@ -1070,3 +1070,83 @@ decisions:
     pr_references:
       - "#111 (canonical argus-results.json contract for source scans)"
       - "#116 (canonical contract for container scans + raw output preservation)"
+
+  - id: ADR-019
+    title: "Composite wrappers install Argus SDK from their own checkout, not from PyPI"
+    status: accepted
+    date: 2026-05-06
+    context: |
+      Composite action wrappers under .github/actions/scanner-* and
+      .github/actions/linter-* call ``argus scan`` internally and need
+      the SDK installed in their Python env. Two ways to do that:
+
+      1. ``pip install argus-security==<X>`` — pulls from PyPI, version
+         pinned by the action.
+      2. ``pip install "${{ github.action_path }}/../../.."`` — installs
+         from the composite's own checkout (the runner clones the
+         entire repo at the action's ref into ``_actions/<owner>/<repo>/<ref>/``
+         when ``uses: org/repo/path@ref`` resolves; ``github.action_path``
+         points inside that clone, and ``../../..`` walks back to the
+         repo root, which contains ``pyproject.toml`` and the
+         ``argus/`` package).
+
+      The choice has knock-on effects across release coordination,
+      version pinning, and air-gapped GHES deployments.
+    decision: |
+      Every SDK-using wrapper installs the Argus SDK from its own
+      composite checkout via:
+
+          pip install "${{ github.action_path }}/../../.."
+
+      The legacy ``pip install pyyaml`` pattern (which relied on a
+      ``bin/argus`` shim that added the repo root to ``sys.path``)
+      is removed; the shim itself is deleted in PR #126.
+
+      Wrappers that don't use the SDK (e.g. scanner-dependency-review,
+      scanner-codeql, scanner-syft, *-summary aggregators) are exempt —
+      they wrap GitHub-native or non-SDK tooling and don't need the
+      SDK in their step env.
+
+      A CI guard (``validate-install-from-source`` in
+      .github/workflows/test-actions.yml) rejects any drift back to
+      ``pip install pyyaml`` or ``pip install argus-security`` so the
+      pattern is non-regressable.
+    alternatives_considered:
+      - name: "Install from PyPI: pip install argus-security==<X>"
+        rejected_because: |
+          Couples action releases to PyPI publish: every release
+          tag has to wait for the PyPI workflow before the action's
+          install line can be bumped. Air-gapped GHES instances
+          would need a private PyPI mirror with argus-security and
+          all its deps in addition to mirroring the argus repo —
+          two distribution channels for the same artifact.
+          Consumers pinning ``@main`` would get whatever's latest
+          on PyPI (often stale) rather than the matching commit.
+
+      - name: "Bundle the SDK into a single-file PyInstaller binary in the repo"
+        rejected_because: |
+          Architecture-specific binaries break GHES heterogeneity
+          (Linux x86_64 vs ARM64 vs self-hosted Windows runners).
+          Updating dependencies requires a new binary rebuild.
+          ``pip install <path>`` reuses the runner's existing
+          Python and pip — already installed by the wrapper's
+          ``setup-python`` step.
+
+      - name: "Make the action a Docker action with the SDK preinstalled in the image"
+        rejected_because: |
+          Docker actions don't run on Windows or macOS hosted
+          runners, and on GHES the registry-pull adds latency and
+          another dependency on registry access. Composite
+          actions stay portable across all runner OSes.
+    consequences:
+      - "Action ref @<ref> implicitly pins the SDK to the same ref. No second pin to maintain."
+      - "Action releases never block on PyPI publish. Tag the repo, the action consumes it."
+      - "Air-gapped GHES setups mirror only the repo. No private PyPI mirror needed (transitive deps still need a Python package source, but that's a runner-level decision the admin already makes)."
+      - "Each runner job clones the argus repo once per action ref it uses (deduped if multiple actions share a ref). Cheap — same as any other composite action."
+      - "Removes the ``bin/argus`` shim entirely. Pip's ``[project.scripts]`` entry (``argus = \"argus.cli:main\"``) is the canonical CLI launcher for every consumer (composite wrappers, ``pip install argus-security``, ``uvx argus``, dev installs)."
+    related:
+      - ADR-001  # Composite actions as primary architecture (defends GHES portability)
+      - ADR-013  # Python SDK as primary interface
+    pr_references:
+      - "#91 (initial pattern in scanner-container and scanner-zap)"
+      - "#126 (migration of remaining 14 SDK-using wrappers + bin/argus removal)"
