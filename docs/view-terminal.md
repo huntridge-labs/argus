@@ -70,6 +70,7 @@ Press `?` inside the TUI for the same reference, grouped by purpose.
 | `r` | reveal last export in file manager |
 | **Other** | |
 | `d` | executive dashboard overlay |
+| `D` (shift+d) | scan-over-scan diff — pick another `argus-results.json` and bucket changes |
 | `?` | help overlay |
 | `Ctrl+P` | command palette (fuzzy-search every action) |
 | `q` | quit |
@@ -101,6 +102,31 @@ answer to "what's the state of our security posture?":
 - Per-scanner contribution counts
 
 Dismiss with `ESC`, `q`, or `d` again.
+
+### Scan-over-scan diff (`D` — shift+d)
+
+Modal overlay for the most common follow-up question after "what's
+there now?": *what changed since the last run?*
+
+`D` opens a small picker where you type or paste a path to another
+`argus-results.json` (or its containing run directory). On submit the
+TUI loads the second scan and renders four buckets, with counts at the
+top:
+
+| Bucket | Meaning |
+|--------|---------|
+| **New** | finding present in the current scan only — fresh issue introduced since the comparison |
+| **Fixed** | finding present in the comparison only — resolved between runs |
+| **Severity changed** | same `(scanner, id, location)` identity tuple in both, but the severity rating shifted (e.g. CVE re-scored MEDIUM → HIGH) |
+| **Still open** | identity tuple matches AND severity unchanged — finding persists |
+
+Identity is the `(scanner, id, location)` tuple — bucketing logic
+lives in `argus.core.findings_view.diff_scans` and is shared with the
+browser interface's `/diff` route, so both surfaces stay aligned.
+
+Dismiss with `ESC`, `q`, or `D` again. The browser interface
+(`argus view browser` → `/diff`) renders the same buckets if you'd
+prefer a wider canvas with clickable rows.
 
 ### Help overlay (`?`)
 
