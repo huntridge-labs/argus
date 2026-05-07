@@ -287,6 +287,13 @@ jobs:
           exit $fail
 
       - name: End-to-end smoke — pip install <repo-root> works
+        # ARGUS_NO_UPDATE_CHECK=1 disables the background PyPI poll
+        # daemon thread that races C-extension imports on hosted
+        # Python 3.13.13 (the suspected root cause of the SIGSEGV
+        # flake — see scripts/ci/argus_smoke.sh header). The retry
+        # helper stays as belt-and-suspenders.
+        env:
+          ARGUS_NO_UPDATE_CHECK: "1"
         run: |
           set -euo pipefail
           python -m venv /tmp/install-smoke
@@ -294,11 +301,8 @@ jobs:
           version=$(/tmp/install-smoke/bin/argus --version)
           echo "Installed: $version"
 
-          # Run ``argus scan --list`` from the venv with retry-on-
-          # transient-SIGSEGV. The shared helper hides the GitHub-
-          # hosted Python 3.13.13 flake (see script header for full
-          # rationale). PATH override puts the venv first so the
-          # helper's bare ``argus`` resolves there.
+          # PATH override puts the venv first so the helper's bare
+          # ``argus`` resolves there.
           PATH="/tmp/install-smoke/bin:$PATH" \
             scripts/ci/argus_smoke.sh > /dev/null
 
