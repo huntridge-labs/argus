@@ -43,10 +43,17 @@ jobs:
         run: python -m scripts.ci.check_package
 
       - name: Smoke test
+        # ARGUS_NO_UPDATE_CHECK=1 disables the background PyPI poll
+        # daemon thread that races C-extension imports on hosted
+        # Python 3.13.13 (the suspected root cause of the SIGSEGV
+        # flake — see scripts/ci/argus_smoke.sh header). The retry
+        # helper stays as belt-and-suspenders.
+        env:
+          ARGUS_NO_UPDATE_CHECK: "1"
         run: |
           pip install dist/*.whl
           argus --version
-          argus scan --list
+          scripts/ci/argus_smoke.sh
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
