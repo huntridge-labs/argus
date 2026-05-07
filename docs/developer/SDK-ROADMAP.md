@@ -278,7 +278,7 @@ Post-scan triage workflow. Engineers sitting with a fresh scan need a way to fil
 - [x] **Product × scanner scope** — `p` / `c` bindings open picker modals; status bar shows active filters
 - [x] **Executive summary view** — `d` binding opens dashboard overlay (per-product severity counts, top-3 criticals per product, per-scanner contribution, quality warnings)
   - Works as a standalone command too: `argus summary <results-dir>` — *still open*, keep on roadmap for when `argus view browser` lands and wants the same computation.
-- [ ] **Timeline / diff view** — compare a new results set against a previous one. Powers "what changed this scan-over-scan" workflow.
+- [x] **Timeline / diff view** — compare a new results set against a previous one. Powers "what changed this scan-over-scan" workflow. Both viewers consume `argus.core.findings_view.diff_scans` (TUI: `D` opens DiffPickerScreen → DiffScreen; browser: `/diff?a=&b=`).
 
 #### Integration with argus-portal
 

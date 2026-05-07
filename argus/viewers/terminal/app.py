@@ -40,6 +40,7 @@ from argus.core.findings_view import (
     SORT_LABELS,
     ViewState,
     compute_summary,
+    diff_scans,
     finding_detail_rows,
     unique_products,
     unique_scanners,
@@ -106,6 +107,9 @@ _HELP_TEXT = """\
 [b]Other[/b]
   [b]d[/b]                executive summary dashboard
                    (totals, per-product, per-scanner, quality warnings)
+  [b]D[/b] (shift+d)      scan-over-scan diff — compare current findings
+                   against another argus-results.json. Buckets: new,
+                   fixed, severity-changed, still-open.
   [b]ctrl+p[/b]           command palette — fuzzy-search every action by name
                    (also shows Textual builtins: Keys help, Theme, Screenshot)
   [b]?[/b]                show this help
@@ -367,6 +371,202 @@ class ScannerPickerScreen(ModalScreen[str | None]):
         self.dismiss(None)
 
 
+class DiffPickerScreen(ModalScreen[str | None]):
+    """Modal that asks the user to type / paste a comparison-scan path.
+
+    The companion ``argus-results.json`` for the comparison can live
+    anywhere on disk — there's no enforced search root from the TUI
+    side (unlike the browser interface, which is bound to its launch
+    root by design). We accept a directory or a direct file path,
+    same shape ``argus.viewers.terminal.loader.locate_results``
+    accepts.
+
+    Returns the entered path on submit, or ``None`` on ESC. The caller
+    is responsible for actually loading the second scan and wiring up
+    the resulting ``DiffScreen``.
+    """
+
+    BINDINGS = [
+        Binding("escape", "dismiss", show=False),
+        Binding("q", "dismiss", show=False),
+    ]
+
+    CSS = _PICKER_CSS
+
+    def compose(self) -> ComposeResult:
+        with Container(id="picker-body"):
+            yield Static(
+                "[b]Compare against scan…[/b] · enter a path to another "
+                "argus-results.json (or a results directory) · ESC to cancel"
+            )
+            yield Input(
+                placeholder="./run-2026-04-24/argus-results.json",
+                id="diff-path",
+            )
+
+    def on_mount(self) -> None:
+        self.query_one("#diff-path", Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "diff-path":
+            value = (event.value or "").strip()
+            if not value:
+                self.dismiss(None)
+                return
+            self.dismiss(value)
+
+    def action_dismiss(self) -> None:
+        self.dismiss(None)
+
+
+class DiffScreen(ModalScreen):
+    """Scan-over-scan diff overlay — buckets findings by how they moved.
+
+    Renders the four buckets returned by
+    ``argus.core.findings_view.diff_scans`` (new, fixed, severity-changed,
+    still-open) with counts at the top and a per-bucket listing below.
+    Identity tuple is (scanner, id, location); a finding whose severity
+    shifts but whose key persists lands in ``severity_changed`` rather
+    than being double-counted in ``new`` + ``fixed``.
+
+    The detail pane on the main app already knows how to render any
+    finding via ``finding_detail_rows``; we mirror that here as text so
+    the diff overlay remains a one-screen read without a second pane.
+    """
+
+    BINDINGS = [
+        Binding("escape", "app.pop_screen", show=False),
+        Binding("q", "app.pop_screen", show=False),
+        Binding("D", "app.pop_screen", show=False),
+    ]
+
+    CSS = """
+    DiffScreen { align: center middle; }
+    #diff-body {
+        background: $surface;
+        border: thick $accent;
+        padding: 1 2;
+        width: 90%;
+        max-width: 130;
+        height: auto;
+        max-height: 90%;
+    }
+    """
+
+    def __init__(
+        self,
+        before: list[Finding],
+        after: list[Finding],
+        *,
+        before_label: str,
+        after_label: str,
+    ):
+        super().__init__()
+        self._before = before
+        self._after = after
+        self._before_label = before_label
+        self._after_label = after_label
+
+    def compose(self) -> ComposeResult:
+        diff = diff_scans(self._before, self._after)
+        new = diff["new"]
+        fixed = diff["fixed"]
+        sev = diff["severity_changed"]
+        still = diff["still_open"]
+
+        lines: list[str] = [
+            "[b]🔀 Scan-over-scan diff[/b]",
+            f"[dim]Before: {self._before_label}[/dim]",
+            f"[dim]After:  {self._after_label}[/dim]",
+            "",
+            (
+                f"[b green]{len(new)}[/b green] new  ·  "
+                f"[b yellow]{len(fixed)}[/b yellow] fixed  ·  "
+                f"[b magenta]{len(sev)}[/b magenta] severity changed  ·  "
+                f"[b]{len(still)}[/b] still open"
+            ),
+            "",
+        ]
+
+        # Per-bucket sections — every section renders even when empty so
+        # the user can confirm the bucket's contents at a glance rather
+        # than guessing why a label is missing.
+        lines += self._render_bucket("[b green]New[/b green]", new)
+        lines += self._render_bucket("[b yellow]Fixed[/b yellow]", fixed)
+        lines += self._render_severity_changed(sev)
+        lines += self._render_bucket("[b]Still open[/b]", still)
+
+        lines.append("")
+        lines.append("[dim]Press ESC, q, or D to return to the findings list.[/dim]")
+
+        with VerticalScroll(id="diff-body"):
+            yield Static("\n".join(lines))
+
+    def on_mount(self) -> None:
+        # Land focus on the scroll container so arrow keys work the
+        # moment the diff opens (no need to click first).
+        self.query_one("#diff-body", VerticalScroll).focus()
+
+    def _render_bucket(
+        self, header: str, findings: list[Finding]
+    ) -> list[str]:
+        """Render a flat list bucket (new / fixed / still-open)."""
+        lines = [header + f" [dim]({len(findings)})[/dim]"]
+        if not findings:
+            lines.append("  [dim](none)[/dim]")
+            lines.append("")
+            return lines
+        for f in findings[:25]:
+            lines.append(f"  {_one_line(f)}")
+        if len(findings) > 25:
+            lines.append(
+                f"  [dim]… {len(findings) - 25} more (filter or use "
+                f"the browser interface for the full list)[/dim]"
+            )
+        lines.append("")
+        return lines
+
+    def _render_severity_changed(
+        self, pairs: list[dict]
+    ) -> list[str]:
+        """Render the severity_changed bucket — pairs of before/after."""
+        lines = [
+            f"[b magenta]Severity changed[/b magenta] [dim]({len(pairs)})[/dim]"
+        ]
+        if not pairs:
+            lines.append("  [dim](none)[/dim]")
+            lines.append("")
+            return lines
+        for pair in pairs[:25]:
+            b = pair["before"]
+            a = pair["after"]
+            before_glyph = _SEVERITY_GLYPH.get(b.severity, "?")
+            after_glyph = _SEVERITY_GLYPH.get(a.severity, "?")
+            lines.append(
+                f"  {a.id:<24}  {before_glyph} → {after_glyph}  "
+                f"[dim]{(a.location or a.scanner or '')[:60]}[/dim]"
+            )
+        if len(pairs) > 25:
+            lines.append(
+                f"  [dim]… {len(pairs) - 25} more[/dim]"
+            )
+        lines.append("")
+        return lines
+
+
+def _one_line(f: Finding) -> str:
+    """One-line summary of a finding for the diff bucket lists.
+
+    Keeps the diff overlay scannable without recreating the full
+    DataTable detail pane. Severity glyph + ID + location/scanner is
+    enough to identify the row; users wanting the full detail can
+    cross-reference the main findings list.
+    """
+    glyph = _SEVERITY_GLYPH.get(f.severity, "?")
+    locator = f.location or f.scanner or "—"
+    return f"{glyph}  {(f.id or '—')[:30]:<30}  [dim]{locator[:60]}[/dim]"
+
+
 class ArgusBrowseCommands(Provider):
     """Expose the browse app's actions in Textual's Ctrl+P command palette.
 
@@ -385,6 +585,7 @@ class ArgusBrowseCommands(Provider):
         commands = [
             ("Help: Show keyboard shortcuts", "Open the full help overlay", app.action_show_help),
             ("Dashboard: Executive summary", "Open the exec-summary overlay (totals, per-product, per-scanner)", app.action_show_dashboard),
+            ("Diff: Compare against another scan", "Pick another argus-results.json and bucket changes (new / fixed / severity-changed / still-open)", app.action_diff_against),
             ("Search findings",          "Focus the search box", app.action_focus_search),
             ("Filter: Critical only",    "Show only CRITICAL findings", app.action_filter_critical),
             ("Filter: High severity and above", "Show HIGH + CRITICAL findings", app.action_filter_high),
@@ -507,6 +708,10 @@ class BrowseApp(App):
         Binding("s", "cycle_sort", "Sort"),
         Binding("e", "export_csv", "CSV"),
         Binding("d", "show_dashboard", "Dash"),
+        # Scan-over-scan diff. ``d`` is taken by the dashboard, so the
+        # capital form (shift+d) drives the diff picker. Keeps both
+        # overlays one keystroke away from the findings list.
+        Binding("D", "diff_against", "Diff", show=True),
         # Multi-select — drives the bulk-action workflows (export N rows,
         # paste a CVE list into a bug tracker). ``space``/``a``/``A``
         # manage the selection set; ``c`` copies CVEs from it. ``e``
@@ -709,6 +914,51 @@ class BrowseApp(App):
         self.push_screen(
             DashboardScreen(self.all_findings, source_label=self.sub_title or ""),
         )
+
+    def action_diff_against(self) -> None:
+        """Open the comparison-scan picker (shift+d).
+
+        On submit, loads the picked scan via the same loader the main
+        app uses (``argus.viewers.terminal.loader.load_summary`` →
+        ``flatten_findings``), then pushes a ``DiffScreen`` overlay
+        that buckets findings via the shared
+        ``argus.core.findings_view.diff_scans`` function. The
+        currently-loaded scan is treated as the "after" side and the
+        picked scan as the "before" side — that's the natural framing
+        when you've just opened the latest results and want to know
+        what changed since the previous run.
+        """
+        def _on_pick(choice: str | None) -> None:
+            if choice is None:
+                return
+            try:
+                summary, resolved = load_summary(choice)
+            except FileNotFoundError as exc:
+                self.notify(
+                    f"Couldn't load comparison scan: {exc}",
+                    severity="error", timeout=8,
+                )
+                return
+            except (ValueError, OSError) as exc:
+                # ValueError covers malformed JSON / wrong shape; OSError
+                # covers permission / decode failures from read_text.
+                self.notify(
+                    f"Couldn't parse comparison scan: {exc}",
+                    severity="error", timeout=8,
+                )
+                return
+
+            before_findings = flatten_findings(summary)
+            self.push_screen(
+                DiffScreen(
+                    before=before_findings,
+                    after=self.all_findings,
+                    before_label=str(resolved),
+                    after_label=self.sub_title or "(current scan)",
+                ),
+            )
+
+        self.push_screen(DiffPickerScreen(), _on_pick)
 
     def action_pick_scanner(self) -> None:
         scanners = unique_scanners(self.all_findings)
