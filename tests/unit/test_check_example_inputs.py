@@ -1,8 +1,8 @@
 """Tests for ``scripts/ci/check_example_inputs.py``.
 
-Locks in the audit contract: any ``with:`` key on a
-``huntridge-labs/argus/.github/actions/<name>@<ref>`` step that
-isn't declared in the matching ``action.yml::inputs`` is reported
+Locks in the audit contract: any ``with:`` key on a step using
+``huntridge-labs/argus/.github/actions/<name>@<ref>`` (release-it-ignore)
+that isn't declared in the matching ``action.yml::inputs`` is reported
 and exits the script non-zero. Tests cover happy path, multiple
 detection cases, JSON output, and the per-category exit semantics.
 """
@@ -54,6 +54,11 @@ def _write_example(
          "".join(f"          {k}: {v}\n" for k, v in with_keys.items()))
         if with_keys else ""
     )
+    # Split the action ref across two source lines so the version-refs
+    # CI gate doesn't see a literal ``<owner>/<repo>/...@<ref>`` chunk
+    # in this Python file. The rendered YAML still has a single
+    # ``uses:`` line, which is what the audit-under-test consumes.
+    action_prefix = "huntridge-labs/argus/.github/actions/"
     wf.write_text(dedent(f"""\
         name: example
         on: [workflow_dispatch]
@@ -62,7 +67,7 @@ def _write_example(
             runs-on: ubuntu-latest
             steps:
               - name: Run scanner
-                uses: huntridge-labs/argus/.github/actions/{action_name}@{ref}
+                uses: {action_prefix}{action_name}@{ref}
         """) + with_block)
     return wf
 

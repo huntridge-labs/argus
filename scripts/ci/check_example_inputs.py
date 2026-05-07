@@ -58,7 +58,7 @@ ARGUS_ACTIONS_DIR = Path(".github/actions")
 DEFAULT_EXAMPLE_ROOTS = ("examples/workflows", "examples/github-enterprise")
 
 # Action references look like
-#   uses: huntridge-labs/argus/.github/actions/<name>@<ref>
+#   uses: huntridge-labs/argus/.github/actions/<name>@<ref>  # release-it-ignore
 # Ref can be a tag, branch, or SHA — we don't care which.
 _ACTION_USES_RE = re.compile(
     r"^huntridge-labs/argus/\.github/actions/([^@]+)@"
@@ -68,7 +68,7 @@ _ACTION_USES_RE = re.compile(
 def collect_action_inputs(actions_dir: Path) -> dict[str, set[str]]:
     """Return ``{action_name: {input_name, ...}}`` for every action.yml.
 
-    Missing or unparseable ``action.yml`` files are reported but do not
+    Missing or unparsable ``action.yml`` files are reported but do not
     halt the walk — they'll surface as "missing action" errors when an
     example references them.
     """
