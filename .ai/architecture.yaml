@@ -489,6 +489,18 @@ docsite:
       - zap
       - container
     linters:
+      # Implementation patterns:
+      #   * lint-dockerfile (HadolintLinter) — subclass of
+      #     argus.core.linter_template.FileDiscoveryScanner
+      #     (workspace walk → batched subprocess → local-or-container
+      #     dispatch → parse). See ADR-020.
+      #   * lint-javascript (EslintLinter), lint-terraform — custom
+      #     scan() flows that consume the shared
+      #     argus.core.linter_template.build_docker_command helper.
+      #   * lint-yaml, lint-python — "tool walks workspace itself"
+      #     shape; tool takes the path and discovers files internally.
+      #   * lint-json — Python json.loads fallback when the jsonlint
+      #     binary is absent.
       - lint-yaml
       - lint-json
       - lint-python

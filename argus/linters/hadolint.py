@@ -1,4 +1,12 @@
-"""Dockerfile linter wrapping hadolint."""
+"""Dockerfile linter wrapping hadolint.
+
+Implemented on top of :class:`argus.core.linter_template.FileDiscoveryScanner`:
+the base does workspace discovery (glob ``Dockerfile*``), local→
+container dispatch, UTF-8 subprocess, and the
+``execution_failed`` / ``parse_failed`` metadata shape. Hadolint
+specifics live in three short methods: ``_build_local_args``,
+``_build_container_args``, and ``_parse_results``.
+"""
 
 import json
 import shutil
@@ -6,11 +14,12 @@ import subprocess
 from pathlib import Path
 
 from argus.containers import get_image
-from argus.core.models import Finding, ScanResult, Severity
+from argus.core.linter_template import FileDiscoveryScanner
+from argus.core.models import Finding, Severity
 from argus.core.version import parse_tool_version
 
 
-class HadolintLinter:
+class HadolintLinter(FileDiscoveryScanner):
     """Wraps hadolint to lint Dockerfiles for best-practice violations."""
 
     name = "lint-dockerfile"
@@ -18,172 +27,60 @@ class HadolintLinter:
     category = "linter"
     languages = ["dockerfile"]
     container_image = get_image("hadolint")
+    binary = "hadolint"
+    file_glob = "Dockerfile*"
 
-    def scan(self, path: str, config: dict | None = None) -> ScanResult:
-        """Find Dockerfiles under *path* and lint them all in one hadolint invocation.
-
-        Hadolint accepts multiple file paths on its CLI (``hadolint
-        file1 file2 ...``) and emits a single JSON array spanning every
-        file's findings. Doing one batched call beats spawning
-        ``len(dockerfiles)`` subprocesses by N startup costs and keeps
-        the per-finding ``file`` field intact in the parsed output.
-
-        When the local ``hadolint`` binary isn't installed, falls back
-        to the official ``hadolint/hadolint`` Docker image (declared as
-        ``container_image`` and pulled by argus's standard mechanism).
-        Hadolint is a single Haskell binary with no Python wrapper on
-        PyPI — the container is the cleanest way to run it on a
-        machine that doesn't have the binary, and avoids requiring
-        contributors to install yet another tool just to lint our
-        Dockerfiles.
-        """
-        config = config or {}
-        target = Path(path)
-
-        dockerfiles = self._find_dockerfiles(target)
-        if not dockerfiles:
-            return ScanResult(
-                scanner=self.name,
-                metadata={"info": "No Dockerfiles found"},
-            )
-
-        if self.is_available():
-            cmd = self._build_command(dockerfiles, config)
-        else:
-            cmd = self._build_docker_command(target, dockerfiles, config)
-            if cmd is None:
-                return ScanResult(
-                    scanner=self.name,
-                    metadata={
-                        "execution_failed": True,
-                        "execution_failure_reason": (
-                            "hadolint not installed and Docker not available. "
-                            "Install hadolint from "
-                            "https://github.com/hadolint/hadolint/releases "
-                            "or install Docker to use the container backend."
-                        ),
-                    },
-                )
-
-        result = subprocess.run(cmd, capture_output=True, text=True)
-
-        # hadolint exits 0 when clean, non-zero when findings exist —
-        # both are the happy path. Empty stdout means a real error
-        # (binary missing, parse failure inside hadolint, etc.).
-        if not result.stdout.strip():
-            return ScanResult(
-                scanner=self.name,
-                metadata={
-                    "execution_failed": True,
-                    "execution_failure_reason": (
-                        f"hadolint produced no output (exit={result.returncode}). "
-                        f"stderr: {(result.stderr or '').strip()[:400]}"
-                    ),
-                },
-            )
-
-        try:
-            data = json.loads(result.stdout)
-        except json.JSONDecodeError as exc:
-            return ScanResult(
-                scanner=self.name,
-                metadata={
-                    "execution_failed": True,
-                    "execution_failure_reason": f"Invalid JSON from hadolint: {exc}",
-                },
-            )
-
-        findings = [self._parse_item(item) for item in data]
-        return ScanResult(scanner=self.name, findings=findings)
+    # hadolint: 0 = clean, 1 = findings (happy path); we accept both.
+    accept_returncodes = (0, 1)
 
     def is_available(self) -> bool:
-        """Check if hadolint is installed."""
         return shutil.which("hadolint") is not None
 
     def install_command(self) -> str | None:
-        """Return install instructions for hadolint."""
         return "Install from https://github.com/hadolint/hadolint/releases"
 
     def tool_version(self) -> str | None:
-        """Return the installed hadolint version, or None if not available."""
         if not self.is_available():
             return None
         return parse_tool_version(["hadolint", "--version"], r"Linter (\d+\.\d+\.\d+)")
 
-    def _find_dockerfiles(self, target: Path) -> list[Path]:
-        """Find all Dockerfile-like files under the target path."""
-        if target.is_file():
-            return [target]
-        return sorted(target.rglob("Dockerfile*"))
+    def _build_local_args(
+        self, files: list[Path], config: dict
+    ) -> list[str]:
+        cmd = ["hadolint", "--format", "json"]
+        config_file = config.get("config_file")
+        if config_file:
+            cmd.extend(["--config", config_file])
+        for rule in config.get("ignore_rules", []) or []:
+            cmd.extend(["--ignore", rule])
+        cmd.extend(str(p) for p in files)
+        return cmd
 
-    def _build_docker_command(
-        self, target: Path, dockerfiles: list[Path], config: dict,
-    ) -> list[str] | None:
-        """Build a ``docker run hadolint ...`` command — local fallback for the container.
-
-        Returns ``None`` when Docker isn't available (the caller turns
-        that into a clean ``execution_failed`` row with both install
-        paths in the diagnostic). The mount is read-only; hadolint
-        only reads the Dockerfile contents and writes JSON to stdout.
-        """
-        if shutil.which("docker") is None:
-            return None
-
-        target_abs = target.resolve()
-        # Translate discovered host paths to their container-side
-        # equivalent under /workspace. dockerfiles came back from
-        # ``rglob`` on ``target`` so they're guaranteed to be under it.
-        container_paths = [
-            f"/workspace/{df.resolve().relative_to(target_abs).as_posix()}"
-            for df in dockerfiles
-        ]
-
+    def _build_container_args(
+        self, container_files: list[str], config: dict
+    ) -> list[str]:
         # The hadolint/hadolint image has no ENTRYPOINT — its CMD is
         # ``["/bin/hadolint", "-"]`` so passing args at the end of
         # ``docker run`` replaces CMD entirely. Include the binary
         # name explicitly as the first arg.
-        cmd = [
-            "docker", "run", "--rm",
-            "-v", f"{target_abs}:/workspace:ro",
-            self.container_image,
-            "hadolint",
-            "--format", "json",
-        ]
+        args = ["hadolint", "--format", "json"]
         config_file = config.get("config_file")
         if config_file:
-            cmd.extend(["--config", f"/workspace/{config_file}"])
+            args.extend(["--config", f"/workspace/{config_file}"])
         for rule in config.get("ignore_rules", []) or []:
-            cmd.extend(["--ignore", rule])
-        cmd.extend(container_paths)
-        return cmd
+            args.extend(["--ignore", rule])
+        args.extend(container_files)
+        return args
 
-    def _build_command(
-        self, dockerfiles: list[Path], config: dict
-    ) -> list[str]:
-        """Build a single hadolint command covering every Dockerfile.
-
-        Hadolint takes multiple file arguments and emits one combined
-        JSON array — far cheaper than spawning a process per file.
-        """
-        cmd = ["hadolint", "--format", "json"]
-
-        config_file = config.get("config_file")
-        if config_file:
-            cmd.extend(["--config", config_file])
-
-        for rule in config.get("ignore_rules", []) or []:
-            cmd.extend(["--ignore", rule])
-
-        cmd.extend(str(p) for p in dockerfiles)
-        return cmd
+    def _parse_results(
+        self, stdout: str, completed: subprocess.CompletedProcess
+    ) -> list[Finding]:
+        if not stdout:
+            return []
+        data = json.loads(stdout)
+        return [self._parse_item(item) for item in data]
 
     def _parse_item(self, item: dict) -> Finding:
-        """Convert a single hadolint JSON result into a Finding.
-
-        Hadolint emits the source file as ``item["file"]`` when it ran
-        against multiple paths — we use that directly instead of
-        threading the path in via the caller.
-        """
         rule_code = item.get("code", "UNKNOWN")
         line_num = item.get("line", 0)
         dockerfile = item.get("file", "")

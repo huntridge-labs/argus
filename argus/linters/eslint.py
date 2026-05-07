@@ -21,6 +21,7 @@ import subprocess
 from pathlib import Path
 
 from argus.containers import get_image
+from argus.core.linter_template import build_docker_command
 from argus.core.models import Finding, ScanResult, Severity
 from argus.core.version import parse_tool_version
 
@@ -187,28 +188,29 @@ class EslintLinter:
     def _build_docker_command(
         self, target: Path, config: dict,
     ) -> list[str] | None:
-        """Build a ``docker run pipelinecomponents/eslint`` command, or None when Docker is unavailable."""
+        """Build a ``docker run pipelinecomponents/eslint`` command, or None when Docker is unavailable.
+
+        The ``pipelinecomponents/eslint`` image ships with eslint on
+        PATH and an ENTRYPOINT that passes its argv straight through,
+        so the in-container args are ``eslint --format json
+        --no-error-on-unmatched-pattern [--config ...] .``. The
+        workspace mount + ``-w /workspace`` come from the shared
+        ``build_docker_command`` helper.
+        """
         if shutil.which("docker") is None:
             return None
 
-        target_abs = str(target.resolve())
-        # ``pipelinecomponents/eslint`` ships with eslint on PATH and an
-        # ENTRYPOINT that lets us pass eslint args directly. Mount the
-        # workspace at /workspace so eslint can read both the source
-        # files and the project's eslint config from the same root.
-        cmd = [
-            "docker", "run", "--rm",
-            "-v", f"{target_abs}:/workspace:ro",
-            "-w", "/workspace",
-            self.container_image,
+        args = [
             "eslint",
             "--format", "json",
             "--no-error-on-unmatched-pattern",
         ]
         if config.get("config_file"):
-            cmd.extend(["--config", f"/workspace/{config['config_file']}"])
-        cmd.append(".")
-        return cmd
+            args.extend(["--config", f"/workspace/{config['config_file']}"])
+        args.append(".")
+        return build_docker_command(
+            self.container_image, target, args, workdir="/workspace",
+        )
 
     def _parse_message(self, msg: dict, file_path: str) -> Finding:
         """Convert a single ESLint message dict into a Finding."""

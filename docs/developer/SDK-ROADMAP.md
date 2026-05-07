@@ -628,7 +628,26 @@ All engine, scanner, and testing issues from the migration have been resolved.
 
 ---
 
-## FileDiscoveryScanner Template
+## FileDiscoveryScanner Template ✅ shipped
+
+Initial implementation: `argus/core/linter_template.py` exports
+`FileDiscoveryScanner` (workspace walk → batched subprocess →
+local-or-container dispatch → parse) plus three building-block
+helpers (`discover_files`, `build_docker_command`, `run_utf8`).
+`HadolintLinter` is migrated to subclass it (~30 lines saved
+versus the old custom `_find_dockerfiles` + duplicated
+`_build_docker_command` flow). `EslintLinter` and
+`TerraformLinter` switched their custom docker-fallback builders
+to the shared `build_docker_command` helper. Three linters
+remaining (`yamllint`, `python_lint`, `jsonlint`) keep their
+"tool walks the workspace itself" or "Python-stdlib fallback" flow
+since neither fits the FileDiscoveryScanner shape — `discover_files`
++ `run_utf8` are available if a future change ever needs them.
+Rationale + alternatives: ADR-020 in `.ai/decisions.yaml`.
+
+Original analysis below kept for context.
+
+---
 
 Linters (`lint-yaml`, `lint-json`, `lint-python`, `lint-javascript`, `lint-dockerfile`, `lint-terraform`) and a few security scanners share a shape that doesn't fit the standard `build_args(ScanPaths) → list[str]` contract introduced in PR #117: they need to **discover files of a specific shape under a workspace, then run their tool against those file paths** (not against the workspace as a whole). Today each one rolls its own `_find_*` walk + per-file subprocess loop in its `scan()` method, which has three problems:
 
