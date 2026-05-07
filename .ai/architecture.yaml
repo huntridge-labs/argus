@@ -44,7 +44,7 @@ components:
       "viewers/browser/": "`argus view --interface=browser` — FastAPI + Jinja2 web UI, 127.0.0.1 only ([browser] extra)"
       "scanners/": "Scanner modules implementing Scanner protocol (SCANNER_REGISTRY includes linters via auto-merge)"
       "linters/": "Linter modules implementing Scanner protocol (LINTER_REGISTRY auto-merges into SCANNER_REGISTRY)"
-      "reporters/": "Output reporters (terminal, markdown, sarif, json)"
+      "reporters/": "Output reporters (terminal, markdown, sarif, json, github, gitlab, junit)"
       "preflight/": "CI preflight: provider detection, living issue reporting (GitHub/GitLab), network deps, scanner tool-readiness checks (tool_check.py)"
 
   - name: argus-linters
@@ -460,7 +460,7 @@ docsite:
       "viewers/browser/": "`argus view --interface=browser` — FastAPI + Jinja2 web UI, 127.0.0.1 only ([browser] extra)"
       "scanners/": "Scanner modules implementing Scanner protocol (SCANNER_REGISTRY includes linters via auto-merge)"
       "linters/": "Linter modules implementing Scanner protocol (LINTER_REGISTRY auto-merges into SCANNER_REGISTRY)"
-      "reporters/": "Output reporters (terminal, markdown, sarif, json)"
+      "reporters/": "Output reporters (terminal, markdown, sarif, json, github, gitlab, junit)"
       "tests/": "Co-located pytest tests (180 tests, 83%+ coverage)"
     scanners:
       - bandit
@@ -485,6 +485,9 @@ docsite:
       - markdown
       - sarif
       - json
+      - github
+      - gitlab
+      - junit
     dependencies:
       core: "pyyaml, click, jsonschema, rich (terminal output), packaging"
       optional_extras:
@@ -509,7 +512,7 @@ directory_structure:
   "argus/core/": "Core models, protocols, config, and engine"
   "argus/scanners/": "Scanner modules (one per scanner, SCANNER_REGISTRY includes linters)"
   "argus/linters/": "Linter modules (one per linter, LINTER_REGISTRY auto-merges into SCANNER_REGISTRY)"
-  "argus/reporters/": "Output reporters (terminal, markdown, sarif, json)"
+  "argus/reporters/": "Output reporters (terminal, markdown, sarif, json, github, gitlab, junit)"
   "argus/tests/": "SDK test suite"
   ".github/actions/": "Composite actions (GitHub Actions interface)"
   ".github/workflows/": "CI/CD and test workflows"

@@ -5,6 +5,9 @@ from .markdown import MarkdownReporter
 from .container_markdown import ContainerMarkdownReporter
 from .sarif import SarifReporter
 from .json_report import JsonReporter
+from .github import GitHubReporter
+from .gitlab import GitLabReporter
+from .junit import JUnitReporter
 
 REPORTER_REGISTRY = {
     'terminal': TerminalReporter,
@@ -12,6 +15,9 @@ REPORTER_REGISTRY = {
     'container_markdown': ContainerMarkdownReporter,
     'sarif': SarifReporter,
     'json': JsonReporter,
+    'github': GitHubReporter,
+    'gitlab': GitLabReporter,
+    'junit': JUnitReporter,
 }
 
 

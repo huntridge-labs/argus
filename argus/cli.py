@@ -15,7 +15,7 @@ EXIT_FINDINGS = 1
 EXIT_ERROR = 2
 
 SEVERITY_CHOICES = ["critical", "high", "medium", "low", "none"]
-FORMAT_CHOICES = ["terminal", "markdown", "sarif", "json"]
+FORMAT_CHOICES = ["terminal", "markdown", "sarif", "json", "github", "gitlab", "junit"]
 _SPINNER_STYLES = [
     ["⠁", "⠂", "⠄", "⡀", "⢀", "⠠", "⠐", "⠈"],
     ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
@@ -2541,7 +2541,7 @@ _argus() {{
 
     scanners=({scanners})
     severity=(critical high medium low none)
-    formats=(terminal markdown sarif json)
+    formats=(terminal markdown sarif json github gitlab junit)
     interfaces=(terminal browser)
 
     _arguments -C \\
@@ -2660,7 +2660,7 @@ _argus_completions() {{
     commands="init scan classify collect report validate mcp completion cache view"
     scanners="{scanners}"
     severity="critical high medium low none"
-    formats="terminal markdown sarif json"
+    formats="terminal markdown sarif json github gitlab junit"
     interfaces="terminal browser"
 
     if [ "$COMP_CWORD" -eq 1 ]; then

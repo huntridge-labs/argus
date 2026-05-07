@@ -202,7 +202,8 @@ All 16 scanner/linter actions refactored to call `argus scan` internally. Action
 - [ ] `argus init` summary: show `pip install argus-security` command
 
 **Future (post-release):**
-- [ ] Additional reporters: `github.py`, `gitlab.py`, `junit.py`, plugin registration system
+- [x] ~~Additional reporters: `github.py`, `gitlab.py`, `junit.py`~~ — three new reporters shipped: GitHub Actions annotations, GitLab Code Quality JSON (codeclimate-compatible), JUnit XML
+- [ ] Reporter plugin registration system (the broader item — still open as a follow-up)
 - [ ] Additional scanners: `codeql.py`, `dependency_review.py` (GitHub-specific)
 - [x] ~~Progress indicators~~ — `argus/cli.py::Spinner` ships phase-aware progress with `--no-spinner` opt-out (PR #2c46fce: `feat(cli): phase-aware scan progress and clearer verbosity flags`)
 - [x] ~~`pull_policy` evaluation~~ — `ArgusConfig.execution.pull_policy` accepts `always | if-not-present | never`; engine + container_runtime honor it
