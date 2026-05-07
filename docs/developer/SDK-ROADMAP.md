@@ -293,7 +293,7 @@ Not all of these belong to the TUI itself — the portal integration items are p
 
 #### Existing polish items (pre-roadtest)
 
-- [ ] Multi-select for batch actions (export a subset, copy CVE list to clipboard)
+- [x] Multi-select for batch actions (export a subset, copy CVE list to clipboard)
 - [x] `argus scan --interface=terminal` convenience flag — auto-launches the terminal viewer after the scan finishes
 - [x] ~~Quickstart in `docs/view-terminal.md`~~ — install + launch + key bindings + workflows shipped
 - [ ] Screenshot pass for `docs/view-terminal.md` — doc has no images yet
