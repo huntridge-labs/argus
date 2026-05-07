@@ -231,7 +231,7 @@ Born out of the medsecops-golden-path SDK-integration post-mortem. The pre-refac
 ### Remaining
 
 - [ ] Verify medsecops-golden-path demo pipeline no longer reproduces the silent-failure scenarios once PR #91 is merged to `feat/argus-portability`
-- [ ] Apply the same silent-failure audit to other aggregators (`linting-summary`) — they may have the same "no artifact = no findings" failure mode
+- [x] Apply the same silent-failure audit to other aggregators (`linting-summary`) — same `scan_statuses` JSON input, `fail_on_scanner_failure` gating, `overall_status`/`failed_count` outputs, status table at the top of the report; logic extracted to stdlib-only `scripts/generate_summary.py` with 29 integration tests
 
 ---
 

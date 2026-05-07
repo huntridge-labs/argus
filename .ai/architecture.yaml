@@ -112,6 +112,21 @@ components:
         that did not succeed.
     security-summary_script: ".github/actions/security-summary/scripts/generate_summary.py"
     security-summary_tests: "tests/integration/test_security_summary.py"
+    linting-summary_inputs:
+      # linting-summary mirrors the security-summary contract — the same
+      # silent-failure class (no artifact = "no findings") existed for
+      # linters and is closed by the same scan_statuses table.
+      scan_statuses: |
+        Optional JSON object mapping linter name -> job result
+        (success|failure|cancelled|skipped). When provided, a status table
+        is rendered at the top of the report and the composite exits non-zero
+        on any failure unless `fail_on_scanner_failure` is set to "false".
+      fail_on_scanner_failure: |
+        Default "true". When combined with `scan_statuses`, drives the
+        composite's own exit code so consumer workflows fail on any linter
+        that did not succeed.
+    linting-summary_script: ".github/actions/linting-summary/scripts/generate_summary.py"
+    linting-summary_tests: "tests/integration/test_linting_summary.py"
 
   - name: agent-skills
     location: ".agents/skills/"
