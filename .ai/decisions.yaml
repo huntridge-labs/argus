@@ -1150,3 +1150,118 @@ decisions:
     pr_references:
       - "#91 (initial pattern in scanner-container and scanner-zap)"
       - "#126 (migration of remaining 14 SDK-using wrappers + bin/argus removal)"
+
+  - id: ADR-020
+    title: "FileDiscoveryScanner template + shared linter helpers"
+    status: accepted
+    date: 2026-05-07
+    context: |
+      Linters (lint-yaml, lint-json, lint-python, lint-javascript,
+      lint-dockerfile, lint-terraform) duplicated three concerns
+      across their adapters:
+
+      * File discovery — each linter that walks files in Python
+        (HadolintLinter._find_dockerfiles, JsonlintLinter inline
+        rglob) re-implemented the walk.
+      * Container fallback — HadolintLinter._build_docker_command,
+        EslintLinter._build_docker_command, and
+        TerraformLinter._docker_command each built nearly identical
+        ``docker run -v <ws>:/workspace[:ro] <image> <args>`` shapes,
+        differing only in mount mode and workdir.
+      * UTF-8 subprocess — most linters needed
+        ``encoding='utf-8', errors='replace'`` to avoid the cp1252
+        UnicodeDecodeError on Windows runners. Each one carried it
+        inline.
+
+      The original SDK-ROADMAP.md "FileDiscoveryScanner Template"
+      section called for a unified subclass-based abstraction.
+      Reading the actual linters showed two execution shapes:
+      "tool-walks-itself" (yamllint, python_lint, eslint) and
+      "discover-then-batch" (hadolint, jsonlint). A single forced
+      hierarchy didn't fit both.
+    decision: |
+      Ship a hybrid: helper functions for the deduplication that's
+      always useful, and a base class for the cases that genuinely
+      share a flow.
+
+      argus/core/linter_template.py exports:
+
+      * ``discover_files(target, patterns, exclusions=None)`` — walk
+        helper used by FileDiscoveryScanner internally and available
+        to any custom flow (e.g. jsonlint).
+      * ``build_docker_command(image, workspace, container_args,
+        mount_rw=False, ws_mount='/workspace', workdir=None)`` — the
+        single source of truth for the docker-run command shape.
+        EslintLinter and TerraformLinter migrate to it.
+      * ``run_utf8(cmd, *, cwd=None, timeout=None)`` — explicit
+        UTF-8 subprocess wrapper. Replaces inline encoding+errors
+        keyword args.
+      * ``FileDiscoveryScanner`` — base class for the discover-then-
+        batch flow. Subclasses declare ``name``, ``file_glob``,
+        ``binary``, optionally ``container_image``, and override
+        ``_build_local_args`` / ``_build_container_args`` /
+        ``_parse_results``. The base does discovery, dispatch
+        (local-or-container), error handling (execution_failed for
+        bad exit + empty stdout, parse_failed for parser exceptions
+        — same metadata shape the engine's container path emits),
+        and the engine-compatible ScanResult shape.
+
+      Migrations in this PR:
+      * HadolintLinter — full migration to FileDiscoveryScanner
+        (~30 lines saved). Custom _find_dockerfiles and
+        _build_docker_command gone.
+      * EslintLinter — switches its custom docker-fallback builder
+        to build_docker_command (~10 lines saved); keeps its
+        config-detection flow.
+      * TerraformLinter — same. Multi-step fmt/validate/tflint flow
+        stays bespoke (it doesn't fit FileDiscoveryScanner's
+        single-batched-call shape).
+      * yamllint, python_lint, jsonlint — keep their existing flow.
+        yamllint and python_lint use the "tool walks the workspace
+        itself" shape that doesn't benefit from discovery in Python.
+        jsonlint has a Python-stdlib fallback that the
+        FileDiscoveryScanner abstraction doesn't model. The new
+        helpers are available to them if a future change makes the
+        migration valuable.
+    alternatives_considered:
+      - name: "Single FileDiscoveryScanner base, force-fit every linter"
+        rejected_because: |
+          The "tool-walks-itself" linters (yamllint, python_lint,
+          eslint) never discover files in Python — the binary takes
+          a directory. Forcing them through a discovery layer would
+          add overhead without value, and break their config-aware
+          flows (eslint's no-eslint-config detection,
+          yamllint's Windows AppLocker fallback). Multi-step linters
+          like terraform fundamentally don't match a single-batch
+          shape.
+
+      - name: "Helpers only — skip the base class"
+        rejected_because: |
+          HadolintLinter and a future jsonlint migration genuinely
+          share a 5-step flow (discover → dispatch → run → check
+          for execution failure → parse). Open-coding it in each
+          subclass duplicates the metadata-shape contract that the
+          engine, reporters, and --fail-on-scanner-error all key
+          off of. The base class makes that contract enforceable.
+
+      - name: "Co-locate the helpers in scanner_template.py"
+        rejected_because: |
+          scanner_template.py targets security scanners that write
+          findings to an output file (run_subprocess_scan reads
+          back results.json from a tempdir). Linters typically
+          write findings to stdout and don't need a tempdir. The
+          two surfaces diverged enough that a separate module is
+          clearer.
+    consequences:
+      - "New linter contributors have a clear pattern: subclass FileDiscoveryScanner for discover-then-batch, or use the helpers in a custom scan() flow."
+      - "Adding container fallback to a new linter is one helper call (build_docker_command) instead of ~25 lines of duplicated ``docker run`` boilerplate."
+      - "UTF-8 + errors='replace' is the implicit default via run_utf8 — no more per-linter forgetting to add encoding='utf-8'."
+      - "Migrations are independent and additive: yamllint / python_lint / jsonlint can adopt the helpers later if a future change makes it useful, without coupling release cycles to this refactor."
+      - "The FileDiscoveryScanner base imposes its execution_failed / parse_failed metadata shape — keeps reporters' surface uniform across linters and security scanners."
+    related:
+      - ADR-013  # Python SDK as primary interface
+      - ADR-016  # Silent-failure gating (the metadata shape this preserves)
+      - ADR-018  # Canonical scanner output contract (parallel design choice)
+    pr_references:
+      - "#117 (build_args contract for security scanners — the parallel pattern this complements)"
+      - "#120 (HadolintLinter pre-batching — the optimization this PR's base captures generically)"

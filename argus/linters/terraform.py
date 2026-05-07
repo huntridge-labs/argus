@@ -3,9 +3,9 @@
 import json
 import shutil
 import subprocess
-from pathlib import Path
 
 from argus.containers import get_image
+from argus.core.linter_template import build_docker_command
 from argus.core.models import Finding, ScanResult, Severity
 from argus.core.version import parse_tool_version
 
@@ -69,39 +69,32 @@ class TerraformLinter:
                 ["terraform", *args],
                 capture_output=True, text=True, cwd=path,
             )
-        cmd = self._docker_command(get_image("terraform"), path, args)
+        cmd = build_docker_command(
+            get_image("terraform"), path, args,
+            mount_rw=True, workdir="/workspace",
+        )
         return subprocess.run(cmd, capture_output=True, text=True)
 
     def _run_tflint_subprocess(self, args: list[str], path: str) -> subprocess.CompletedProcess | None:
-        """Run ``tflint <args>``, returning None when neither local nor docker is available."""
+        """Run ``tflint <args>``, returning None when neither local nor docker is available.
+
+        The mount is read-write because ``terraform init`` and
+        ``tflint --init`` write plugin state under ``.terraform/`` and
+        ``.tflint.d/`` respectively. The user's repo is already where
+        terraform would write locally; RW preserves that contract.
+        """
         if shutil.which("tflint"):
             return subprocess.run(
                 ["tflint", *args],
                 capture_output=True, text=True, cwd=path,
             )
         if shutil.which("docker"):
-            cmd = self._docker_command(get_image("tflint"), path, args)
+            cmd = build_docker_command(
+                get_image("tflint"), path, args,
+                mount_rw=True, workdir="/workspace",
+            )
             return subprocess.run(cmd, capture_output=True, text=True)
         return None
-
-    @staticmethod
-    def _docker_command(image: str, workspace: str, args: list[str]) -> list[str]:
-        """Build a ``docker run -v <workspace>:/workspace -w /workspace <image> <args>``.
-
-        The mount is read-write so ``terraform init`` can write
-        ``.terraform/`` plugin state. tflint also writes to a
-        ``.tflint.d/`` subdir on init. The user's repo is already where
-        terraform would write locally; mounting RW preserves that
-        contract.
-        """
-        workspace_abs = str(Path(workspace).resolve())
-        return [
-            "docker", "run", "--rm",
-            "-v", f"{workspace_abs}:/workspace",
-            "-w", "/workspace",
-            image,
-            *args,
-        ]
 
     # ------------------------------------------------------------------
     # Per-tool runners
