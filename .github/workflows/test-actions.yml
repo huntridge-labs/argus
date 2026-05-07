@@ -202,6 +202,120 @@ jobs:
           STEPS_COVERAGE_OUTPUTS_MISSING: ${{ steps.coverage.outputs.missing }}
 
   # ============================================================================
+  # Install-From-Source Pattern Guard
+  # Locks in ADR-019: every SDK-using composite wrapper must install the
+  # SDK from its own checkout via
+  #   pip install "github.action_path-dir/../../.."
+  # not from PyPI. Drift back to ``pip install pyyaml`` (the legacy
+  # ``bin/argus`` shim pattern) or to ``pip install argus-security==X``
+  # silently breaks the version-pin guarantee — a consumer pinned at
+  # action ref @0.7.5 would still pull whatever's on PyPI. This grep-
+  # based guard catches that drift before review.
+  #
+  # End-to-end smoke verifies the install line actually resolves and
+  # the resulting CLI works in a clean Python venv.
+  # ============================================================================
+  validate-install-from-source:
+    name: Validate install-from-source pattern
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.13'
+
+      - name: Lint wrapper install lines
+        # Patterns live in env so GitHub Actions' expression parser
+        # never sees ``${{ ... }}`` inside the run script. Forbidden
+        # patterns are anchored to ``run:`` lines so legitimate
+        # rationale comments (which mention the *bad* patterns as
+        # counter-examples) don't trip false positives.
+        env:
+          FORBIDDEN_PYYAML_REGEX: "^[[:space:]]*run:[[:space:]]+pip install pyyaml"
+          FORBIDDEN_PYPI_REGEX: "^[[:space:]]*run:[[:space:]]+pip install ['\"]?argus-security"
+          REQUIRED_SUBSTRING: "github.action_path }}/../../.."
+        run: |
+          set -euo pipefail
+          # Wrappers that don't call ``argus scan`` (codeql, dependency-
+          # review, syft, *-summary aggregators, scn-detector) are
+          # exempt — they wrap GitHub-native or non-SDK tooling and
+          # don't need the SDK in their step env.
+          exempt=(
+            scanner-codeql
+            scanner-dependency-review
+            scanner-syft
+            scanner-container-summary
+            scanner-zap-summary
+            scn-detector
+            comment-pr
+            get-job-id
+            ai-summary
+            security-summary
+            linting-summary
+            parse-container-config
+          )
+          fail=0
+          for d in .github/actions/scanner-* .github/actions/linter-*; do
+            [ -d "$d" ] || continue
+            name=$(basename "$d")
+            for ex in "${exempt[@]}"; do
+              if [ "$name" = "$ex" ]; then continue 2; fi
+            done
+            yaml="$d/action.yml"
+            if grep -qE "$FORBIDDEN_PYYAML_REGEX" "$yaml"; then
+              echo "::error file=$yaml::Wrapper $name still uses 'pip install pyyaml' — switch to install-from-source (see ADR-019 / CONTRIBUTING.md)"
+              fail=1
+              continue
+            fi
+            if grep -qE "$FORBIDDEN_PYPI_REGEX" "$yaml"; then
+              echo "::error file=$yaml::Wrapper $name installs argus-security from PyPI — switch to install-from-source (see ADR-019 / CONTRIBUTING.md)"
+              fail=1
+              continue
+            fi
+            if ! grep -qF "$REQUIRED_SUBSTRING" "$yaml"; then
+              echo "::error file=$yaml::Wrapper $name is missing the install-from-source line (see ADR-019 / CONTRIBUTING.md)"
+              fail=1
+              continue
+            fi
+            echo "✓ $name"
+          done
+          exit $fail
+
+      - name: End-to-end smoke — pip install <repo-root> works
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/install-smoke
+          /tmp/install-smoke/bin/pip install --quiet "$PWD"
+          version=$(/tmp/install-smoke/bin/argus --version)
+          echo "Installed: $version"
+
+          # ``argus scan --list`` exercises scanner registration end-
+          # to-end. We retry up to 3 times because GitHub-hosted
+          # Python 3.13.13 has a known transient SIGSEGV in this
+          # specific subprocess pattern (observed on PR #125 — green
+          # on first re-run, reproduces on no other host or local
+          # build). A real registration bug fails all 3 attempts.
+          scanners=0
+          for attempt in 1 2 3; do
+            out=$(/tmp/install-smoke/bin/argus scan --list 2>&1 || true)
+            scanners=$(printf '%s\n' "$out" | grep -cE '^\s+[a-z]' || true)
+            if [ "$scanners" -ge 15 ]; then
+              echo "Attempt $attempt: listed $scanners scanner(s)"
+              exit 0
+            fi
+            echo "Attempt $attempt: only $scanners scanner(s) listed (likely transient SIGSEGV) — retrying"
+          done
+          echo "::error::argus scan --list failed to enumerate >= 15 scanners after 3 attempts"
+          echo "Last output:"
+          printf '%s\n' "$out"
+          exit 1
+
+  # ============================================================================
   # SAST Scanners (Static Application Security Testing)
   # Tests: scanner-bandit, scanner-opengrep
   # ============================================================================

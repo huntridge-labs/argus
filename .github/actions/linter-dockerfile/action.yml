@@ -58,9 +58,18 @@ runs:
       with:
         python-version: ${{ inputs.python_version }}
 
-    - name: Install dependencies
+    - name: Install Argus SDK
       shell: bash
-      run: pip install pyyaml
+      # Install the SDK from the checked-out composite source. This matches
+      # the consumer-scoped intent of composite actions (``uses: .../<wrapper>@tag``
+      # implicitly pins the SDK version to the same tag) and sidesteps the
+      # PyPI-release lag that would break ``pip install argus-security>=X``
+      # for consumers until after the release ships. Works identically for
+      # internal test-actions runs (where the argus repo is the consumer
+      # checkout) and for external consumers (where the composite's own
+      # checkout under ``$GITHUB_ACTION_PATH`` is the SDK source). See
+      # scanner-container/action.yml for the original rationale.
+      run: pip install "${{ github.action_path }}/../../.."
 
     - name: Run Dockerfile Linter via Argus SDK
       id: scan
