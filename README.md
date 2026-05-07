@@ -196,6 +196,7 @@ See [examples/github-enterprise/](examples/github-enterprise/) for complete GHES
 - [Scanner Reference](docs/scanners.md) - Complete configuration for all scanners
 - [Container Scanning](docs/container-scanning.md) - Config-driven matrix container scanning
 - [Failure Control](docs/failure-control.md) - Severity-based workflow failure configuration
+- [Docker Troubleshooting](docs/troubleshooting/docker.md) - Runtime detection, bind-mount permissions, image pulls, proxies, and execution-failure signals
 
 ### Developer Docs
 
