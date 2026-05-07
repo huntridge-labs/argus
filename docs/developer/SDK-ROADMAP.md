@@ -623,7 +623,7 @@ Each is independent of the others; ship as bandwidth allows. Update the *"Where 
 All engine, scanner, and testing issues from the migration have been resolved.
 
 **Open:**
-- [ ] No troubleshooting guide for Docker execution failures
+- [x] No troubleshooting guide for Docker execution failures — see [`docs/troubleshooting/docker.md`](../troubleshooting/docker.md)
 
 ---
 
