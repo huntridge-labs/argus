@@ -628,6 +628,104 @@ All engine, scanner, and testing issues from the migration have been resolved.
 
 ---
 
+## DAST + Container Scanner Parity (Post-1.0 Regressions)
+
+The SDK refactor between 0.6.8 and the 1.0.0 line shrank the
+`scanner-zap`, `scanner-container`, and `scanner-gitleaks`
+composite-action input surfaces. The simpler contracts make the
+common case easier and cleaner, but they dropped legitimate
+patterns that 0.6.8 consumers depended on. Surfaced during the
+medsecops-argus-workflows GHES migration audit (where every
+removed input had to be stripped from real consumer workflows).
+
+**Framing.** These are *known regressions versus 0.6.8*, not new
+feature requests. Each sub-item is one of two things: **must
+restore** (the simpler contract loses an enterprise-shaped use
+case argus is meant to support) or **intentional simplification**
+(0.6.8 carried complexity that's better off owned by the
+consumer's workflow steps). The decision is a product call, but
+they all need to be tracked instead of silently dropped — so a
+future contributor knows whether to re-add them with thought or
+respect the deliberate trim.
+
+### Sub-items
+
+- [ ] **scanner-zap target setup parity.** 14 inputs were removed:
+  `api_spec`, `app_build_context`, `app_dockerfile`,
+  `app_image_tag`, `compose_build`, `compose_file`, `cmd_options`,
+  `healthcheck_url`, `max_duration_minutes`, `registry_password`,
+  `registry_username`, `rules_file_name`, `scan_mode`,
+  `allow_issue_writing`. The new contract handles "URL is already
+  running" (`target_url`) and "bring up a pre-built image as a
+  sidecar" (`app_image_ref` + `app_ports`) cleanly, but excludes:
+
+  - **Build-image-as-part-of-scan** — Dockerfile builds (`app_build_context` + `app_dockerfile` + `app_image_tag`) and docker-compose stacks (`compose_file` + `compose_build`).
+  - **API-spec scans** — `api_spec` URL passthrough for `scan_type=api`. The new shape relies on ZAP discovering endpoints from `target_url`, which is a real behavior difference for OpenAPI-driven testing.
+  - **Healthcheck poll** — `healthcheck_url`. Consumers must now poll readiness in their own step before the action runs.
+  - **Authenticated registry pulls** — `registry_username` + `registry_password` (private images for `app_image_ref`).
+  - **ZAP customization** — `rules_file_name` (ZAP `.tsv` ignore rules) and `cmd_options` (additional `zap-baseline.py` flags).
+  - **Long-running scans** — `max_duration_minutes`. The new action uses ZAP's defaults; consumers can't cap scan time anymore.
+
+  *Decision pending*: which of these are must-restore vs.
+  intentional-simplification (build flows in particular are a
+  reasonable "consumer's workflow does the build" boundary, but
+  api-spec / healthcheck / registry-auth feel load-bearing for
+  enterprise users).
+
+- [ ] **scanner-container `scan_mode` recovery.** `scan_mode`
+  (alongside `allow_failure` and `skip_summary`) was removed from
+  scanner-container. The old `discover` mode auto-found
+  Dockerfiles in the repo, built them, and scanned the resulting
+  images — closing a gap where users with a multi-image monorepo
+  didn't have to enumerate `image_ref` for each. The new contract
+  takes a single `image_ref` + `container_name` per invocation.
+  Consumers wanting discover semantics now have to:
+  1. Build their own Dockerfile-discovery + docker-build step
+     (or use `parse-container-config` with a hand-maintained list).
+  2. Loop over the result with a matrix.
+
+  *Decision pending*: re-introduce `scan_mode: discover` as a
+  first-class flow, OR formalize the
+  `parse-container-config` + matrix pattern as the canonical
+  multi-image entry point and document it loudly.
+
+- [ ] **scanner-gitleaks user-mention notifications.** The
+  removed `gitleaks_notify_user_list` input took a comma-separated
+  list of GitHub usernames to `@`-mention in the PR comment when
+  secrets were detected. The new contract has no equivalent —
+  `post_pr_comment` controls comment presence but not who gets
+  pinged. Low priority but worth recording **as removed-on-purpose
+  vs. removed-by-omission** so a future contributor doesn't
+  silently re-add it under a different name without considering
+  whether `@`-mention spam is the right escalation.
+
+  *Decision pending*: confirm intentional removal (mostly likely)
+  or wire a `notify_users` input back through that's noisier than
+  a generic PR comment, e.g. only-on-secrets.
+
+### Companion items already addressed
+
+- `gitleaks_enable_summary`, `gitleaks_enable_upload_artifact`,
+  `gitleaks_enable_comments` — already always-on or covered by
+  `post_pr_comment` in the new shape. No restoration needed.
+- `scanner-container.allow_failure` / `skip_summary` — covered by
+  the standard `fail_on_severity: none` pattern (allow_failure)
+  and the canonical security-summary aggregation flow
+  (skip_summary).
+
+### How the regression went unnoticed
+
+Composite-action consumers passing removed inputs only see a
+runtime warning, not a failure. The action.yml input lists are
+the source of truth, but nothing in `test-examples-functional.yml`
+or `test-actions.yml` audits consumer `with:` blocks against
+that list. **Tracked as a follow-up**: wire the audit
+(parse `action.yml` inputs, walk every `examples/**/*.yml` `with:`
+block, diff) into CI so future contract trims can't silently
+break the documented examples.
+
+---
+
 ## FileDiscoveryScanner Template ✅ shipped
 
 Initial implementation: `argus/core/linter_template.py` exports
