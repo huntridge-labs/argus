@@ -46,7 +46,11 @@ jobs:
         run: |
           pip install dist/*.whl
           argus --version
-          argus scan --list
+          # Wrap ``argus scan --list`` with retry-on-transient-SIGSEGV
+          # so the GitHub-hosted Python 3.13.13 flake doesn't fail
+          # release-time validation. See scripts/ci/argus_smoke.sh
+          # for full rationale.
+          scripts/ci/argus_smoke.sh
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0

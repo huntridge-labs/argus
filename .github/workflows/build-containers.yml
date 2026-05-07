@@ -308,10 +308,14 @@ jobs:
 
       - name: Verify wheel installation
         run: |
-          # Verify the installed package works, not the repo checkout
+          # Verify the installed package works, not the repo checkout.
+          # ``argus_smoke.sh`` wraps ``argus scan --list`` with retry-
+          # on-transient-SIGSEGV so the GitHub-hosted Python 3.13.13
+          # SIGSEGV flake doesn't gate merges. See script header for
+          # full rationale.
           which argus
           argus --version
-          OUTPUT=$(argus scan --list)
+          OUTPUT=$(scripts/ci/argus_smoke.sh)
           echo "$OUTPUT"
           for scanner in bandit clamav trivy-iac gitleaks osv checkov opengrep supply-chain zap container; do
             echo "$OUTPUT" | grep -q "$scanner" || { echo "FAIL: $scanner not listed"; exit 1; }
