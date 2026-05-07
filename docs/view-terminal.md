@@ -56,11 +56,16 @@ Press `?` inside the TUI for the same reference, grouped by purpose.
 | `3` | MEDIUM severity and above |
 | `4` | clear severity filter (all) |
 | `p` | pick a product (SBOM source) to focus on — modal |
-| `c` | pick a scanner to focus on — modal |
+| `N` (shift+n) | pick a scanner to focus on — modal |
+| **Multi-select (batch actions)** | |
+| `space` | toggle selection on the focused row |
+| `a` | select every row in the current filter (additive) |
+| `A` (shift+a) | clear all selections |
+| `c` | copy selected findings' CVE IDs to the clipboard |
 | **Sort** | |
 | `s` | cycle: severity desc → asc → package → id (toast + header arrow) |
 | **Export** | |
-| `e` | export visible findings as CSV |
+| `e` | export visible findings (or selection) as CSV |
 | `o` | open last export with your default app |
 | `r` | reveal last export in file manager |
 | **Other** | |
@@ -112,6 +117,53 @@ switcher, Screenshot-as-SVG) also appear.
 The **Screenshot** command is genuinely useful: saves the current TUI view
 as an SVG you can drop into a ticket or doc — better than cropping a
 terminal screenshot manually.
+
+## Multi-select for batch actions
+
+Triage workflows often want to act on a subset of findings — export N
+rows as CSV for a spreadsheet, or paste a list of CVE IDs into a
+bug-tracker comment. The TUI keeps a per-session selection set you can
+build with `space` / `a` / `A`:
+
+| Key | Action |
+|-----|--------|
+| `space` | toggle selection on the focused row (adds a `✓` glyph in the leading column) |
+| `a` | select every visible row (additive — preserves any cross-filter picks) |
+| `A` (shift+a) | clear every selection |
+| `c` | copy selected findings' CVE IDs to the clipboard, one per line |
+
+The status bar shows `<N> selected` whenever the selection is
+non-empty. Selection survives filter changes — a row that gets
+filtered out and back retains its mark.
+
+### How `e` and `c` use the selection
+
+- **`e` (Export)** — when the selection is non-empty, the export
+  writes only the selected rows; the filename's scope marker is
+  `selection`. With nothing selected, `e` keeps its original behavior
+  (writes the entire filtered view).
+- **`c` (Copy CVEs)** — copies the CVE IDs of the selected rows.
+  Findings without a CVE (SAST, secret-scanner) fall back to
+  `<scanner>:<id>` so each line is still identifiable. Order is
+  visible-rows-first, then any cross-filter selections, so the paste
+  reflects what you saw on screen.
+
+### Clipboard fallback chain
+
+The TUI tries each mechanism in order until one succeeds, then names
+the winner in the toast:
+
+| Platform | Order |
+|----------|-------|
+| Any | `pyperclip` (when installed) |
+| macOS | → `pbcopy` |
+| Linux | → `xclip -selection clipboard`, then `wl-copy` (Wayland) |
+| Windows | → `clip` |
+
+If nothing works (e.g. headless Linux without `xclip`/`wl-copy`),
+the TUI shows a graceful "no clipboard mechanism available" toast
+rather than crashing — install `pyperclip` (`pip install pyperclip`)
+or your distro's clipboard CLI to enable it.
 
 ## Export formats
 

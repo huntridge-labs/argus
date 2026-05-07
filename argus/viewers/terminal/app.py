@@ -11,7 +11,11 @@ the footer automatically):
   / (slash)     — focus the search input
   1 / 2 / 3 / 4 — filter to CRITICAL / HIGH+ / MEDIUM+ / ALL severities
   s             — cycle sort (severity desc, severity asc, package, id)
-  e             — export the currently filtered view to CSV
+  space         — toggle selection on the focused row
+  a             — select every row in the current filter
+  A (shift+a)   — clear all selections
+  e             — export the currently filtered view (or the selection) to CSV
+  C (shift+c)   — copy CVE IDs of selected findings to the clipboard
   q             — quit
 """
 
@@ -74,14 +78,24 @@ _HELP_TEXT = """\
   [b]3[/b]                MEDIUM and above
   [b]4[/b]                all severities (clear filter)
   [b]p[/b]                pick a product (SBOM source) to focus on
-  [b]c[/b]                pick a scanner to focus on
+  [b]N[/b]                pick a scanner to focus on (shift+n)
+
+[b]Multi-select (batch actions)[/b]
+  [b]space[/b]            toggle selection on the focused row
+  [b]a[/b]                select every row in the current filter
+  [b]A[/b]                clear all selections (shift+a)
+  [b]c[/b]                copy selected findings' CVE IDs to the clipboard
+                   (falls back to <scanner>:<id> when no CVE)
+                   When nothing is selected, [b]e[/b] still exports the
+                   filtered view; with a selection, [b]e[/b] exports
+                   only the selected rows.
 
 [b]Sort[/b]
   [b]s[/b]                cycle: Severity desc → Severity asc → Package → ID
                    active column shows ↓/↑ in its header
 
 [b]Export[/b]
-  [b]e[/b]                export the currently filtered view as CSV
+  [b]e[/b]                export the currently filtered view (or selection) as CSV
                    (timestamped filename, stored in cwd)
   [b]o[/b]                open the last export with your default app
                    (Numbers/Excel/LibreOffice on macOS; default handler elsewhere)
@@ -379,12 +393,16 @@ class ArgusBrowseCommands(Provider):
             ("Product: Pick a product filter", "Filter findings by SBOM source / product", app.action_pick_product),
             ("Scanner: Pick a scanner filter", "Filter findings by reporting scanner", app.action_pick_scanner),
             ("Sort: Cycle sort mode",    "Cycle severity desc → asc → package → id", app.action_cycle_sort),
-            ("Export: CSV of current view", "Write the filtered findings to a timestamped CSV", app.action_export_csv),
-            ("Export: JSON",             "Write the filtered findings as JSON", app.action_export_json),
-            ("Export: Markdown",         "Write the filtered findings as a paste-ready Markdown table", app.action_export_markdown),
-            ("Export: SARIF",            "Write the filtered findings as SARIF 2.1.0", app.action_export_sarif),
+            ("Export: CSV of current view", "Write the filtered findings (or selection) to a timestamped CSV", app.action_export_csv),
+            ("Export: JSON",             "Write the filtered findings (or selection) as JSON", app.action_export_json),
+            ("Export: Markdown",         "Write the filtered findings (or selection) as a paste-ready Markdown table", app.action_export_markdown),
+            ("Export: SARIF",            "Write the filtered findings (or selection) as SARIF 2.1.0", app.action_export_sarif),
             ("Open: Last export",        "Open the last export with the system's default app", app.action_open_last_export),
             ("Reveal: Last export",      "Show the last export in the OS file manager", app.action_reveal_last_export),
+            ("Select: Toggle row",       "Toggle multi-select on the focused row (space)", app.action_toggle_selection),
+            ("Select: All visible",      "Add every visible row to the selection (a)", app.action_select_all),
+            ("Select: Clear",            "Clear all multi-select selections (shift+a)", app.action_clear_selection),
+            ("Copy: Selected CVE IDs",   "Copy selected findings' CVE IDs to the clipboard (c)", app.action_copy_cves),
         ]
         for label, help_text, callback in commands:
             score = matcher.match(label)
@@ -489,10 +507,22 @@ class BrowseApp(App):
         Binding("s", "cycle_sort", "Sort"),
         Binding("e", "export_csv", "CSV"),
         Binding("d", "show_dashboard", "Dash"),
+        # Multi-select — drives the bulk-action workflows (export N rows,
+        # paste a CVE list into a bug tracker). ``space``/``a``/``A``
+        # manage the selection set; ``c`` copies CVEs from it. ``e``
+        # already existed; its action method now picks the selection
+        # over the filtered view when one is active.
+        Binding("space", "toggle_selection", "Select", show=True),
+        Binding("a", "select_all", "Select all", show=False),
+        Binding("A", "clear_selection", "Clear sel", show=False),
+        Binding("c", "copy_cves", "Copy CVEs", show=True),
         Binding("o", "open_last_export", "Open export", show=False),
         Binding("r", "reveal_last_export", "Reveal export", show=False),
         Binding("p", "pick_product", "Product", show=False),
-        Binding("c", "pick_scanner", "Scanner", show=False),
+        # Scanner picker moved to ``shift+n`` to free ``c`` for the
+        # multi-select clipboard action. Still discoverable via the
+        # Ctrl+P command palette and via the Help overlay.
+        Binding("N", "pick_scanner", "Scanner", show=False),
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
     ]
@@ -505,6 +535,14 @@ class BrowseApp(App):
         self.all_findings: list[Finding] = []
         self.view_state = ViewState()
         self._visible: list[Finding] = []
+        # Selection set keyed by stable Finding identity so a row that
+        # gets filtered out and back in retains its selection. We use
+        # ``id(f)`` rather than serializing the Finding because Finding
+        # is a frozen dataclass with all-defaults-comparable fields and
+        # ``hash(Finding)`` depends on the full content equality model.
+        # Storing the live object reference is the cheapest stable key
+        # for an in-memory session.
+        self._selected: set[int] = set()
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
@@ -536,9 +574,12 @@ class BrowseApp(App):
         self.all_findings = flatten_findings(summary)
         table = self.query_one(DataTable)
         # Column keys are kept so we can re-label the active sort column
-        # with an arrow glyph whenever the sort cycles.
+        # with an arrow glyph whenever the sort cycles. The leading
+        # checkbox column ("✓") is updated row-by-row as the selection
+        # changes — it stays unsorted (selection is a per-row state,
+        # not a sort key).
         self._col_keys = table.add_columns(
-            "Sev", "ID", "Package@Version", "Scanner", "Location",
+            " ", "Sev", "ID", "Package@Version", "Scanner", "Location",
         )
         self._refresh_list()
         self._update_sort_indicator()
@@ -565,6 +606,7 @@ class BrowseApp(App):
             installed = f.metadata.get("installed_version")
             pkg_label = f"{pkg}@{installed}" if pkg else (f.location or "—")
             table.add_row(
+                "✓" if id(f) in self._selected else " ",
                 _SEVERITY_GLYPH.get(f.severity, "?"),
                 f.id[:36],
                 pkg_label[:36],
@@ -593,9 +635,19 @@ class BrowseApp(App):
         if self.view_state.query:
             parts.append(f"query='{self.view_state.query}'")
         sort = self.view_state.sort_key.replace("_", " ")
+        # Selection is shown only when non-empty so the status bar stays
+        # quiet during normal browsing. The count tracks the global
+        # selection set, not just the rows visible right now — that
+        # matches user expectations after a filter change ("I selected
+        # 5 things; how many did I select total?").
+        selection_str = (
+            f" · [b]{len(self._selected)}[/b] selected"
+            if self._selected else ""
+        )
         self.query_one("#status", Static).update(
             f"[b]{shown}[/b] / {total} findings · "
             f"filter: {' · '.join(parts)} · sort: {sort}"
+            f"{selection_str}"
         )
 
     def _update_detail(self, row: int) -> None:
@@ -716,9 +768,12 @@ class BrowseApp(App):
         DataTable allows updating a column's ``label`` via its
         internal Column object. We restore the base labels on every
         call so switching columns leaves no stale indicator behind.
+
+        Column 0 is the multi-select checkbox column — never a sort
+        target — so the data-column offsets all start at 1.
         """
         table = self.query_one(DataTable)
-        base_labels = ["Sev", "ID", "Package@Version", "Scanner", "Location"]
+        base_labels = [" ", "Sev", "ID", "Package@Version", "Scanner", "Location"]
         # When running under stubbed textual in tests, columns may be
         # an empty mapping or missing; bail silently so the test path
         # (which only exercises view-state logic) stays green.
@@ -727,13 +782,13 @@ class BrowseApp(App):
         arrow_col = None
         arrow_glyph = ""
         if self.view_state.sort_key == "severity_desc":
-            arrow_col, arrow_glyph = 0, " ↓"
-        elif self.view_state.sort_key == "severity_asc":
-            arrow_col, arrow_glyph = 0, " ↑"
-        elif self.view_state.sort_key == "package":
-            arrow_col, arrow_glyph = 2, " ↓"
-        elif self.view_state.sort_key == "id":
             arrow_col, arrow_glyph = 1, " ↓"
+        elif self.view_state.sort_key == "severity_asc":
+            arrow_col, arrow_glyph = 1, " ↑"
+        elif self.view_state.sort_key == "package":
+            arrow_col, arrow_glyph = 3, " ↓"
+        elif self.view_state.sort_key == "id":
+            arrow_col, arrow_glyph = 2, " ↓"
         for idx, key in enumerate(self._col_keys):
             try:
                 col = table.columns[key]
@@ -750,38 +805,204 @@ class BrowseApp(App):
     def action_cursor_up(self) -> None:
         self.query_one(DataTable).action_cursor_up()
 
+    # ------------------------------------------------------------------
+    # Multi-select actions
+    # ------------------------------------------------------------------
+
+    def _focused_row_index(self) -> int | None:
+        """Return the visible-row index the cursor is on, or None.
+
+        Wraps DataTable's ``cursor_coordinate`` attribute so the action
+        handlers don't have to handle "table has no cursor yet" / stub
+        objects in tests. Returns ``None`` when no row is focusable
+        (empty filter set, table not yet mounted).
+        """
+        try:
+            table = self.query_one(DataTable)
+        except Exception:
+            return None
+        coord = getattr(table, "cursor_coordinate", None)
+        if coord is None:
+            return None
+        try:
+            row = coord[0]
+        except (TypeError, IndexError):
+            return None
+        if not isinstance(row, int) or row < 0 or row >= len(self._visible):
+            return None
+        return row
+
+    def action_toggle_selection(self) -> None:
+        """Toggle selection on the focused row (``space`` keybind).
+
+        No-op when no row is focused (e.g. empty filter result). The
+        cursor position is preserved across the refresh so the user can
+        space-down-space-down through a list without losing their
+        place.
+        """
+        row = self._focused_row_index()
+        if row is None:
+            return
+        finding = self._visible[row]
+        key = id(finding)
+        if key in self._selected:
+            self._selected.discard(key)
+        else:
+            self._selected.add(key)
+        self._refresh_keep_cursor(row)
+
+    def action_select_all(self) -> None:
+        """Select every row in the current filter (``a`` keybind).
+
+        Adds to — rather than replaces — the existing selection so a
+        user who already cherry-picked a few rows from another filter
+        doesn't lose them. The status bar's "N selected" count makes
+        the cumulative effect visible.
+        """
+        if not self._visible:
+            return
+        for f in self._visible:
+            self._selected.add(id(f))
+        # Keep cursor where it is so the user can keep navigating.
+        row = self._focused_row_index() or 0
+        self._refresh_keep_cursor(row)
+        self.notify(
+            f"Selected {len(self._visible)} visible row(s).",
+            severity="information", timeout=2,
+        )
+
+    def action_clear_selection(self) -> None:
+        """Drop every selected row (``A`` / shift+a keybind).
+
+        Clears the *global* selection set, not just the visible
+        portion. That matches the keybind name ("clear") — users who
+        want a per-filter clear can re-select-all then refine.
+        """
+        if not self._selected:
+            return
+        count = len(self._selected)
+        self._selected.clear()
+        row = self._focused_row_index() or 0
+        self._refresh_keep_cursor(row)
+        self.notify(
+            f"Cleared {count} selection(s).",
+            severity="information", timeout=2,
+        )
+
+    def _refresh_keep_cursor(self, row: int) -> None:
+        """Re-render the table while keeping the cursor on ``row``.
+
+        ``_refresh_list`` re-seats the cursor at row 0 by design (it's
+        the right behavior after a filter change), but the multi-select
+        flow is high-frequency: hitting ``space`` ten times to mark a
+        run of rows shouldn't fling the cursor back to the top each
+        time. This thin wrapper restores the cursor afterward.
+        """
+        self._refresh_list()
+        try:
+            table = self.query_one(DataTable)
+        except Exception:
+            return
+        if 0 <= row < len(self._visible):
+            try:
+                table.cursor_coordinate = (row, 0)
+            except Exception:
+                pass
+
+    def action_copy_cves(self) -> None:
+        """Copy selected findings' CVE IDs to the clipboard (``c`` keybind).
+
+        One identifier per line. Falls back to ``<scanner>:<id>`` for
+        rows without a CVE so a SAST or secret-scanner finding still
+        ends up in a paste-ready form. Toast names the mechanism that
+        worked (pyperclip / pbcopy / xclip / wl-copy / clip) so users
+        can debug "did it land in the X11 selection or the GNOME
+        Wayland one?" cases.
+        """
+        from argus.viewers.terminal.clipboard import (
+            copy_to_clipboard,
+            format_findings_for_clipboard,
+        )
+        if not self._selected:
+            self.notify(
+                "No findings selected. Use [b]space[/b] to toggle a row "
+                "or [b]a[/b] to select the current filter.",
+                severity="warning", timeout=4,
+            )
+            return
+        # Preserve the current visible order in the clipboard payload —
+        # the user's filter+sort already tells them which view they
+        # were in, and pasting should reflect that ordering. Selected
+        # rows that aren't in the current filter still go in (so a
+        # cross-filter selection doesn't silently drop entries) but
+        # land at the end.
+        in_view = [f for f in self._visible if id(f) in self._selected]
+        in_view_ids = {id(f) for f in in_view}
+        out_of_view = [
+            f for f in self.all_findings
+            if id(f) in self._selected and id(f) not in in_view_ids
+        ]
+        ordered = in_view + out_of_view
+        payload = format_findings_for_clipboard(ordered)
+        ok, mechanism = copy_to_clipboard(payload)
+        n = len(ordered)
+        if ok:
+            self.notify(
+                f"{n} CVE(s) copied to clipboard via {mechanism}.",
+                severity="information", timeout=3,
+            )
+        else:
+            self.notify(
+                "No clipboard mechanism available "
+                "(install pyperclip, xclip, wl-copy, pbcopy, or clip). "
+                f"{n} finding(s) would have been copied.",
+                severity="warning", timeout=6,
+            )
+
     # Format dispatch lives in argus.viewers.terminal.export — these action methods
     # just wrap the shared writers with filename assembly and toast.
 
     def action_export_csv(self) -> None:
-        """Export the currently visible findings as CSV (bound to ``e``)."""
+        """Export the current view (or selection if non-empty) as CSV (bound to ``e``)."""
         self._export_in_format("csv")
 
     def action_export_json(self) -> None:
-        """Export the currently visible findings as JSON."""
+        """Export the current view (or selection if non-empty) as JSON."""
         self._export_in_format("json")
 
     def action_export_markdown(self) -> None:
-        """Export the currently visible findings as Markdown (paste-ready for tickets)."""
+        """Export the current view (or selection if non-empty) as Markdown."""
         self._export_in_format("markdown")
 
     def action_export_sarif(self) -> None:
-        """Export the currently visible findings as SARIF 2.1.0."""
+        """Export the current view (or selection if non-empty) as SARIF 2.1.0."""
         self._export_in_format("sarif")
 
     def _export_in_format(self, fmt: str) -> None:
         from argus.viewers.terminal.export import WRITERS, make_export_path
         writer, extension = WRITERS[fmt]
-        scope = (
-            self.view_state.min_severity.value
-            if self.view_state.min_severity else "all"
-        )
+        # Selection-aware export: when the user has marked a subset, we
+        # export only those rows; without a selection, the previous
+        # "filtered view" semantics still apply. The scope label in the
+        # filename reflects which path we took so a "selection" export
+        # never silently overwrites a "filter" export.
+        if self._selected:
+            findings = [
+                f for f in self.all_findings if id(f) in self._selected
+            ]
+            scope = "selection"
+        else:
+            findings = self._visible
+            scope = (
+                self.view_state.min_severity.value
+                if self.view_state.min_severity else "all"
+            )
         dest = make_export_path(extension, scope=scope)
-        writer(self._visible, dest)
+        writer(findings, dest)
         self._last_export_path = dest
         uri = dest.as_uri()
         self.notify(
-            f"Exported {len(self._visible)} finding(s) as {fmt.upper()} to:\n"
+            f"Exported {len(findings)} finding(s) as {fmt.upper()} to:\n"
             f"{dest}\n"
             f"{uri}\n"
             f"Press [b]o[/b] to open with default app · "
