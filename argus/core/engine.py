@@ -62,6 +62,12 @@ class ArgusEngine:
         self._sbom_path: str | None = None
         self._sbom_format: str | None = None
         self._raw_output_root: str | None = None
+        # Image pre-warm orchestrator. Lazily constructed in ``run()``
+        # when the engine has a job list and pull_policy is compatible.
+        # Held as engine state (not a per-run local) so ``_run_in_container``
+        # can consult it from a worker thread without arg-threading every
+        # internal call site.
+        self._prewarmer = None
 
     def register_scanner(self, scanner: Scanner) -> None:
         """Register a scanner instance for use by the engine."""
@@ -165,11 +171,26 @@ class ArgusEngine:
                 severity_threshold=self.config.reporting.severity_threshold,
             )
 
-        # Run sequentially for single scanner or when parallel disabled
-        if len(jobs) == 1 or not parallel:
-            results = self._run_sequential(jobs, timeout, fail_fast)
-        else:
-            results = self._run_parallel(jobs, timeout, fail_fast)
+        # Pre-warm container images in the background while the engine
+        # spins up. Best-effort: a failed warm just means the inline
+        # ``_pull_image`` in ``_run_in_container`` does the work.
+        # ``pull_policy=never`` skips pre-warm entirely (would be wasted
+        # work — the engine refuses to pull anyway). The orchestrator
+        # is a no-op when ``prewarm_images: false`` is set in config.
+        self._start_prewarm(jobs)
+
+        try:
+            # Run sequentially for single scanner or when parallel disabled
+            if len(jobs) == 1 or not parallel:
+                results = self._run_sequential(jobs, timeout, fail_fast)
+            else:
+                results = self._run_parallel(jobs, timeout, fail_fast)
+        finally:
+            # Shut down the prewarmer regardless of how the run ends.
+            # ``wait=False`` cancels pending pulls and lets in-flight
+            # ones drain on their own (the subprocess holding the
+            # network already has the bandwidth — no point racing it).
+            self._shutdown_prewarm()
 
         # TODO: Add total_duration_ms to ScanSummary for audit trail.
         # Requires a model change (new field on the ScanSummary dataclass).
@@ -368,11 +389,13 @@ class ArgusEngine:
         """Run scanners concurrently using a thread pool."""
         import concurrent.futures
 
-        # PERFORMANCE TODO: Consider pre-warming — pull all scanner images in parallel
-        # before the scan phase. Currently images are pulled on-demand when each scanner
-        # starts, which serializes the first-run pull latency.
-        # Also investigate lazy pulls: start scanning tools that are already available
-        # while others are still pulling.
+        # Pre-warm + lazy pulls are wired in via ``_start_prewarm`` (called
+        # from ``run()``) and ``_run_in_container`` (consults the prewarmer
+        # before falling back to inline pull). Scanners whose images are
+        # already cached — either because pre-warm finished or a prior
+        # run populated the local store — start scanning immediately
+        # instead of contending for registry bandwidth. See
+        # ``argus/core/prewarm.py``.
 
         results: list[ScanResult] = []
         max_workers = min(len(jobs), 8)
@@ -534,6 +557,74 @@ class ArgusEngine:
             pass
         return "unknown"
 
+    def _start_prewarm(self, jobs: list[tuple]) -> None:
+        """Kick off background pulls for every distinct image in ``jobs``.
+
+        No-op when:
+        - ``execution.prewarm_images`` is False (user opt-out)
+        - ``execution.pull_policy`` is "never" (would never pull anyway)
+        - No container runtime is available (would fail every pull)
+        - No scanner in the job list declares a container image (linters
+          running locally, or backend=local)
+
+        The orchestrator is best-effort: pre-warm pulls that fail are
+        absorbed by the prewarmer, and ``_run_in_container`` falls back
+        to inline ``_pull_image`` when ``wait_for`` reports a failed
+        warm. This means a missing prewarmer (False, no runtime, etc.)
+        and a failed prewarm produce identical user-visible behaviour:
+        the existing inline pull path runs.
+        """
+        from .prewarm import ImagePrewarmer
+
+        execution = self.config.execution
+        if not getattr(execution, "prewarm_images", True):
+            logger.debug("Pre-warm: disabled via execution.prewarm_images=false")
+            return
+        if execution.pull_policy == "never":
+            logger.debug("Pre-warm: skipped (pull_policy=never)")
+            return
+        if not self._is_docker_available():
+            logger.debug("Pre-warm: skipped (no container runtime)")
+            return
+
+        # Build the dedup'd image list using the same _resolve_image
+        # path the scan-time code uses, so registry overrides are applied
+        # consistently.
+        images: list[str] = []
+        seen: set[str] = set()
+        for scanner, _scan_path, _config_dict, _patterns in jobs:
+            image = self._resolve_image(scanner)
+            if not image or image in seen:
+                continue
+            seen.add(image)
+            images.append(image)
+
+        if not images:
+            logger.debug("Pre-warm: no container images in this run")
+            return
+
+        workers = getattr(execution, "prewarm_workers", 4)
+        self._prewarmer = ImagePrewarmer(
+            pull_fn=self._pull_image, max_workers=workers,
+        )
+        self._prewarmer.start(images)
+        logger.debug(
+            "Pre-warm: warming %d distinct image(s) with %d worker(s)",
+            len(images), workers,
+        )
+
+    def _shutdown_prewarm(self) -> None:
+        """Tear down the prewarmer. Idempotent and safe to call twice."""
+        if self._prewarmer is None:
+            return
+        # ``wait=False`` cancels queued pulls; in-flight ones detach.
+        # On a normal scan completion they're typically already done;
+        # on KeyboardInterrupt this is what frees the threads.
+        try:
+            self._prewarmer.shutdown(wait=False)
+        finally:
+            self._prewarmer = None
+
     def _pull_image(self, image: str) -> bool:
         """Pull a container image based on pull policy.
 
@@ -643,8 +734,30 @@ class ArgusEngine:
         """Run a scanner in a Docker container."""
         image = self._resolve_image(scanner)
 
-        if not self._pull_image(image):
-            raise RuntimeError(f"Failed to pull container image: {image}")
+        # Consult the pre-warm orchestrator first. In parallel mode, this
+        # is the lazy-pull path: scanners whose image is already cached
+        # (because pre-warm finished, or a prior run populated the local
+        # store) start immediately without contending for registry
+        # bandwidth. ``NOT_WARMED`` means we never registered this
+        # image (e.g. ``pull_policy=never``, prewarm disabled, or the
+        # image was registered after start()) — fall through to inline
+        # pull. ``False`` means pre-warm tried and failed — same fall-
+        # through path so the inline pull's retry / amd64 fallback kicks
+        # in.
+        warmed = None
+        if self._prewarmer is not None:
+            from .prewarm import NOT_WARMED
+            warmed = self._prewarmer.wait_for(image)
+            if warmed is NOT_WARMED:
+                warmed = None  # treat as "try inline pull"
+
+        if warmed is not True:
+            # Either pre-warm failed, was disabled, or didn't cover this
+            # image — run the canonical inline pull. This is the same
+            # path that existed before the prewarmer was added; the only
+            # change here is we may skip it on a warm cache hit.
+            if not self._pull_image(image):
+                raise RuntimeError(f"Failed to pull container image: {image}")
 
         digest = self._get_image_digest(image)
         logger.info(
