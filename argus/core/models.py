@@ -67,7 +67,16 @@ class Severity(Enum):
 
 @dataclass(frozen=True)
 class Finding:
-    """A single security finding from a scanner."""
+    """A single security finding from a scanner.
+
+    Defence-in-depth on secret leakage: the constructor runs every
+    text field through ``argus.core.redact.redact_finding_text``
+    so any high-confidence-prefix secret a scanner forgot to redact
+    (a new GitHub PAT pattern, a Slack token in a description, a
+    JWT in metadata) gets replaced before the Finding can flow to
+    reporters / the MCP server / log files. See ADR-022 in
+    ``.ai/decisions.yaml`` for the full layering rationale.
+    """
 
     id: str
     severity: Severity
@@ -78,6 +87,18 @@ class Finding:
     cve: Optional[str] = None
     scanner: str = ""
     metadata: dict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # Frozen dataclass — fields can only be set via
+        # ``object.__setattr__``. Run the second-pass redactor and
+        # patch the text fields in place.
+        from argus.core.redact import redact_finding_text
+        title, description, metadata = redact_finding_text(
+            self.title, self.description, self.metadata,
+        )
+        object.__setattr__(self, "title", title)
+        object.__setattr__(self, "description", description)
+        object.__setattr__(self, "metadata", metadata)
 
     def to_dict(self) -> dict:
         """Serialize to a plain dictionary."""

@@ -355,7 +355,7 @@ Create a single Python file implementing the `Scanner` protocol:
 
 3. **Add tests** at `argus/tests/scanners/test_my_scanner.py`
 
-4. **Audit for secret leaks.** If the scanner's raw output ever contains matched literals from source code (passwords, API keys, the `code` excerpt that triggered a finding), drop or redact those fields before building the `Finding`. Use `argus.core.redact.redact_secret(value)` for fields that hold the raw value, `redact_secret_in_message(msg, value)` to scrub interpolated descriptions. Add a test asserting the original literal never appears in `Finding.to_dict()` JSON output. Full audit checklist + rationale: [`docs/mcp.md` → Secrets handling](docs/mcp.md#secrets-handling).
+4. **Audit for secret leaks.** If the scanner's raw output ever contains matched literals from source code (passwords, API keys, the `code` excerpt that triggered a finding), drop or redact those fields before building the `Finding`. Use `argus.core.redact.redact_secret(value)` for fields that hold the raw value, `redact_secret_in_message(msg, value)` to scrub interpolated descriptions. Add a test asserting the original literal never appears in `Finding.to_dict()` JSON output. Full audit checklist + rationale: [`docs/mcp.md` → Secrets handling](docs/mcp.md#secrets-handling). A pattern-based second pass runs in `Finding.__post_init__` as a backstop for known vendor-prefix tokens (GitHub PATs, AWS keys, Slack tokens, JWTs, PEM private keys, etc.) — it's defence-in-depth, not a replacement for the per-scanner audit. Anything without a recognizable prefix (raw passwords, custom tokens) still relies on the first pass.
 
 5. **Update documentation** and `.ai/architecture.yaml`
 

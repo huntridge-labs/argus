@@ -1390,3 +1390,137 @@ decisions:
       - ADR-013  # Python SDK as primary interface (the default this carves out from)
     pr_references:
       - "(roadmap closure for #206 — see SDK-ROADMAP.md line 207)"
+
+  - id: ADR-022
+    title: "Pattern-based secret redaction as Finding-construction backstop"
+    status: accepted
+    date: 2026-05-08
+    context: |
+      Argus's secret-leakage commitment (documented in
+      docs/mcp.md → Secrets handling) is that no raw secret value
+      ever leaves a scanner's parser. Every consumer downstream —
+      terminal reporter, JSON / Markdown / SARIF exports, MCP tool
+      responses, the AI assistant's context window — sees only
+      ``<redacted>`` placeholders. The primary mechanism is the
+      per-scanner first-pass: each scanner that detects credential-
+      shaped content (gitleaks, bandit B105/B106/B107) audits its
+      own output and replaces secret-bearing fields before
+      constructing the Finding.
+
+      The risk is that a future scanner gets added without that
+      audit. The CONTRIBUTING.md "Adding a New Scanner" checklist
+      step 4 says to do it, the docstrings on existing parsers
+      document it, but a contributor working from a non-canonical
+      example or skipping the checklist could quietly leak secrets.
+
+      Roadmap-wise, the "Pattern-based second-pass scanner" was an
+      open Secret Redaction Hardening item with three deferral
+      reasons:
+        1. Per-scanner approach is sufficient when followed.
+        2. Pattern-based duplicates gitleaks's domain.
+        3. False-positive risk on legitimate non-secret strings.
+
+      Surface analysis showed reasons 2 and 3 only apply to a
+      *generic high-entropy* approach. A *known-vendor-prefix-only*
+      approach has a near-zero false-positive rate (vendor formats
+      are documented and stable) and doesn't try to compete with
+      gitleaks's broader pattern surface. That refined scope made
+      the safety net cheap enough to ship by default rather than
+      gated behind a flag.
+    decision: |
+      Implement a pattern-based second pass that runs in
+      ``Finding.__post_init__``, with the explicit scope:
+
+      * Patterns are limited to known-vendor-prefix tokens with
+        documented format specs. Each pattern's regex cites the
+        issuer's documentation in a source comment.
+      * Generic high-entropy heuristics are excluded. Adding one
+        requires a separate ADR with concrete false-positive data.
+      * Always-on; no opt-in flag, no env-var override. Findings
+        without a matching pattern incur zero cost (the regex
+        pass is O(text length × pattern count) and pattern count
+        is small).
+      * Applies to ``title``, ``description``, and every string
+        value in ``metadata`` (recursively through nested dicts /
+        lists / tuples). Other Finding fields (``id``, ``severity``,
+        ``location``, ``cwe``, ``cve``, ``scanner``) are
+        structural and don't carry free-form text.
+      * The placeholder is the same ``REDACTED_PLACEHOLDER``
+        constant the per-scanner first pass uses — exporters /
+        log scrapers can grep for the same token regardless of
+        which pass redacted.
+
+      Initial pattern set:
+        github_token   gh[opusr]_<36+>
+        aws_access_key (AKIA|ASIA|AIDA|AGPA|...|ACCA)<16>
+        slack_token    xox[abprs]-<10+>
+        gitlab_pat     glpat-<20+>
+        npm_token      npm_<36>
+        google_api_key AIza<35>
+        stripe_live    (sk|rk)_live_<24+>     (test keys NOT matched)
+        jwt            eyJ.<8+>.eyJ.<8+>.<8+>
+        pem_private    -----BEGIN [A-Z ]+PRIVATE KEY-----
+
+      Lives in ``argus/core/redact.py``. Adding a new pattern
+      requires (a) the issuer's documented format spec cited in
+      a source comment and (b) a positive + a negative test in
+      ``argus/tests/core/test_redact.py::TestHighRiskPatterns``.
+
+      Per-scanner first-pass remains the primary defense. The
+      backstop is for scanners that get added without the audit
+      and for vendor formats whose values reach Finding text via
+      paths the scanner author didn't enumerate (e.g., a
+      ``raw_match`` field copied into metadata for forensics).
+    alternatives_considered:
+      - name: "Generic high-entropy heuristic in addition to vendor-prefix"
+        rejected_because: |
+          False-positive rate is real. Finding bodies routinely
+          contain rule IDs, file paths, package versions, hex
+          digests, base64-encoded fingerprints, and
+          configuration snippets — many of which are 32-64 char
+          high-entropy strings with no actual secret value.
+          Tuning a Shannon-entropy threshold to suppress those
+          while catching real raw-bearing tokens is a different
+          quality of work than the prefix-based safety net, and
+          gitleaks already does it well in its primary domain.
+          We can revisit if a real leak shows the prefix-based
+          set isn't enough.
+
+      - name: "Off by default, gated by --strict-redaction or MCP-only"
+        rejected_because: |
+          The whole point of a backstop is that contributors who
+          DIDN'T audit their parser still get the safety net. An
+          opt-in defaults that group to "off" leaves the people
+          most likely to need it without it. The cost is a
+          handful of regex matches per Finding — trivial vs. the
+          cost-of-leak.
+
+      - name: "Run the pass at reporter / MCP boundary instead of Finding construction"
+        rejected_because: |
+          Multiple reporter paths and the MCP server consume
+          findings via different code paths. Putting the pass at
+          ``Finding.__post_init__`` means redaction happens once
+          at the source-of-truth boundary; downstream paths
+          can't accidentally observe pre-redacted state. Also
+          simpler to test (one assertion at the model level
+          rather than per-reporter).
+
+      - name: "Lift the per-scanner audit responsibility entirely to the backstop"
+        rejected_because: |
+          Per-scanner audits catch values that don't have
+          recognizable prefixes — raw passwords, custom auth
+          schemes, bandit's B105 ``"mypass"`` literal, gitleaks's
+          ``Match`` field with arbitrary content. The backstop
+          has nothing to grep for in those cases. Both layers
+          do necessary work.
+    consequences:
+      - "New scanner contributors get backstop redaction for free; the per-scanner audit checklist is now defence-in-depth, not the only defence."
+      - "Adding a new vendor pattern requires a documented format spec citation. Keeps the false-positive risk pinned at near-zero by raising the bar for new entries."
+      - "Findings without a matching pattern are unchanged at the byte level — no behavior drift in 99%+ of findings."
+      - "The placeholder is shared with the first pass, so consumers can't tell which pass redacted a particular value (and shouldn't need to)."
+      - "Frozen-dataclass ``Finding`` had no ``__post_init__`` before; now it does. Subclasses (none today) would need to call ``super().__post_init__()`` if they ever override."
+    related:
+      - ADR-016  # Silent-failure gating (the "make failures loud" discipline this extends to secret leakage)
+      - ADR-013  # Python SDK as primary interface (the model layer this hooks into)
+    pr_references:
+      - "(closes Secret Redaction Hardening 'open' item — see SDK-ROADMAP.md → Secret Redaction Hardening)"

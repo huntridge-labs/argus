@@ -225,7 +225,7 @@ When you wire up a new scanner module under `argus/scanners/`, run through this 
 4. Add a test that loads a representative fixture and asserts the original literal does not appear anywhere in the `Finding.to_dict()` JSON dump (see `argus/tests/scanners/test_gitleaks.py` `TestGitleaksRedaction` for the pattern).
 5. Note the redaction policy in the scanner's module docstring so future maintainers don't accidentally re-add the leak.
 
-**Defense-in-depth pattern-pass safety net:** a follow-up roadmap item (see [`docs/developer/SDK-ROADMAP.md` → Secret Redaction Hardening](developer/SDK-ROADMAP.md#secret-redaction-hardening)) — would catch a future scanner that gets added without a per-parser audit. Deferred for now because the per-scanner approach is the primary defense and pattern-based double-pass duplicates gitleaks's domain.
+**Defense-in-depth pattern-pass safety net:** ✅ shipped. `Finding.__post_init__` now runs every text field (`title`, `description`, every string value in `metadata`) through `argus.core.redact.redact_high_risk_patterns` before the constructor returns. Patterns are conservative and vendor-prefixed only — GitHub PATs (`gh[opusr]_<36>`), AWS access keys (`AKIA…`/`ASIA…`), Slack tokens (`xox[abprs]-…`), GitLab PATs (`glpat-…`), npm publish tokens, Google API keys (`AIza…`), Stripe live keys (`sk_live_…`), JWTs (`eyJ.…eyJ.….…`), and PEM private-key headers. Generic high-entropy heuristics are deliberately excluded (false-positive rate on legitimate finding bodies is too high). Rationale + boundary rule: [`.ai/decisions.yaml` ADR-022](../.ai/decisions.yaml). The per-scanner first pass remains the primary defense; this catches new scanners that get added without the audit.
 
 ---
 

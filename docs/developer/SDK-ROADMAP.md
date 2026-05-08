@@ -793,12 +793,9 @@ The current redaction model (per-scanner, at the parser) is documented in [`docs
 - [x] `argus/scanners/gitleaks.py` — drops `Match` / `Secret` / `Email` / `Date` / `Message` from finding metadata; keeps `RuleID`, `Commit`, `Fingerprint`, `match_length`, line/col positions
 - [x] `argus/scanners/bandit.py` — strips the literal value from `issue_text` and replaces `code` excerpt for B105 / B106 / B107 (hardcoded-credential tests). Other bandit rules pass through unchanged.
 
-**Open — defense-in-depth safety net:**
+**Defense-in-depth safety net** ✅ shipped:
 
-- [ ] Pattern-based second-pass scanner that audits every `Finding`'s `description` and `metadata` values for high-entropy or known-prefix strings (`ghp_…`, `AKIA…`, `xoxb-…`, `glpat-…`, `xoxp-…`, etc.). Catches future scanners that get added without a per-parser redaction audit.
-  - **Why deferred:** the per-scanner approach is the primary defense and is sufficient when contributors follow the audit checklist for new scanners. A pattern-based pass duplicates gitleaks's domain (and falls behind upstream rules immediately), risks false positives on legitimate non-secret strings (e.g., a CWE ID that happens to start with `AKIA`), and adds a per-finding regex pass that scales linearly with scan size.
-  - **Trigger to revisit:** a real-world leak via a scanner whose parser was missed. At that point we have concrete data to tune false-positive thresholds against and a known cost of *not* having the safety net.
-  - **If/when we ship it:** likely a `argus/core/redact_safety_net.py` module that runs at `Finding.__post_init__` time. Configurable allow/deny lists. Off by default for performance; gated by a per-scan flag and on by default for the MCP server's responses (where the cost-of-leak is highest).
+- [x] ~~Pattern-based second-pass scanner that audits every `Finding`'s `description` and `metadata` values for high-confidence-prefix tokens.~~ Implemented as `argus.core.redact.redact_high_risk_patterns` and wired into `Finding.__post_init__`. Patterns are conservative (vendor-prefixed only — GitHub PATs `gh[opusr]_<36>`, AWS keys `AKIA…`/`ASIA…`, Slack tokens `xox[abprs]-…`, GitLab PATs `glpat-…`, npm publish tokens, Google API keys, Stripe live keys, JWTs, PEM private-key headers). Generic high-entropy heuristics deliberately excluded — false-positive rate on legitimate finding bodies (rule IDs, file paths, descriptions) was the primary concern in the original deferral and the conservative approach addresses it. Always-on (no opt-in flag); zero cost for findings without a matching pattern. Rationale + scope decisions: `.ai/decisions.yaml` ADR-022.
 
 **Audit checklist for new scanners** (the "follow this and the per-scanner approach holds" list):
 
