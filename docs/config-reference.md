@@ -214,6 +214,8 @@ Controls how scanner tools are executed — locally, in containers, or auto-dete
 | `backend` | string | `"auto"` | Execution backend: `auto`, `local`, or `docker`. |
 | `registry` | string | | Override the default container registry (e.g. `registry.internal.corp/argus`). |
 | `pull_policy` | string | `"if-not-present"` | Container image pull policy: `always`, `if-not-present`, or `never`. |
+| `prewarm_images` | boolean | `true` | Pull container images in the background during scan startup so scanners with cached images don't wait on the registry. Disable on metered connections. |
+| `prewarm_workers` | integer | `4` | Concurrency cap for the pre-warm thread pool. Lower for stricter registry rate-limits; higher only with first-class network. |
 
 ### Backend Modes
 

@@ -37,7 +37,13 @@ _SCANNER_KNOWN_KEYS = {
 _REPORTING_KEYS = {"formats", "severity_threshold", "output_dir"}
 
 # Known execution keys
-_EXECUTION_KEYS = {"backend", "registry", "pull_policy"}
+_EXECUTION_KEYS = {
+    "backend",
+    "registry",
+    "pull_policy",
+    "prewarm_images",
+    "prewarm_workers",
+}
 
 # Top-level containers block keys
 _CONTAINERS_KEYS = {"images", "discover", "search_paths", "scanners"}
@@ -249,6 +255,23 @@ def _validate_execution(path: str, data: Any) -> list[ConfigError]:
                 f"{path}.pull_policy",
                 f"Invalid value '{data['pull_policy']}'. "
                 f"Must be one of: {', '.join(sorted(_PULL_POLICY_VALUES))}",
+            ))
+
+    # Pre-warm flag — bool
+    if "prewarm_images" in data and not isinstance(data["prewarm_images"], bool):
+        errors.append(ConfigError(
+            f"{path}.prewarm_images",
+            f"Must be a boolean (true/false), got "
+            f"{type(data['prewarm_images']).__name__}",
+        ))
+
+    # Pre-warm workers — positive int
+    if "prewarm_workers" in data:
+        workers = data["prewarm_workers"]
+        if not isinstance(workers, int) or isinstance(workers, bool) or workers < 1:
+            errors.append(ConfigError(
+                f"{path}.prewarm_workers",
+                f"Must be a positive integer (>=1), got {workers!r}",
             ))
 
     return errors

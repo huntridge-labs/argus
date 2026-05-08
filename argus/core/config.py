@@ -35,6 +35,16 @@ class ExecutionConfig:
     backend: str = "auto"  # auto | local | docker
     registry: str = ""  # override for private registries
     pull_policy: str = "if-not-present"  # always | if-not-present | never
+    # Pre-warm container images in the background before scanning.
+    # Off-by-default would penalise the common case (most users have
+    # broadband and want their multi-scanner runs to be as fast as
+    # possible); on-by-default + opt-out matches the existing parallel
+    # mode default. Users on metered connections set this to False.
+    prewarm_images: bool = True
+    # Concurrency cap for the pre-warm thread pool. 4 is registry-friendly:
+    # enough overlap to win on a 5-scanner run with distinct images, low
+    # enough that ghcr.io / dockerhub don't throttle.
+    prewarm_workers: int = 4
 
 
 @dataclass
@@ -229,4 +239,6 @@ def _parse_execution_config(raw: dict | None) -> ExecutionConfig:
         backend=raw.get("backend", "auto"),
         registry=raw.get("registry", ""),
         pull_policy=raw.get("pull_policy", "if-not-present"),
+        prewarm_images=bool(raw.get("prewarm_images", True)),
+        prewarm_workers=int(raw.get("prewarm_workers", 4)),
     )

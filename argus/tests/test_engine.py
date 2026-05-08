@@ -1934,3 +1934,235 @@ class TestEngineParseResultsDictExtra:
         # Warning logged at WARN so it's visible without DEBUG
         msgs = [r.message for r in caplog.records if r.levelname == "WARNING"]
         assert any("Scanner 'grype':" in m and "source.target" in m for m in msgs)
+
+
+class TestPrewarmIntegration:
+    """Engine-level wiring of the image pre-warm orchestrator.
+
+    The orchestrator itself is unit-tested in ``test_prewarm.py``;
+    these tests confirm the engine starts/stops it under the right
+    conditions and that ``_run_in_container`` falls through to inline
+    pull when pre-warm fails or doesn't cover the image.
+    """
+
+    def _engine(self, **overrides):
+        """Build a docker-backend engine with optional execution overrides."""
+        data = {"execution": {"backend": "docker", **overrides}}
+        return ArgusEngine(ArgusConfig.from_dict(data))
+
+    def _scanner(self, name="trivy", image="img:trivy"):
+        return MockScanner(name=name, container_image=image)
+
+    def _stub_container_run(self, monkeypatch):
+        """Make ``subprocess.run`` write a fake results file so
+        ``_run_in_container`` returns a successful ScanResult without
+        actually invoking docker."""
+        def mock_run(cmd, **kwargs):
+            for arg in cmd:
+                if ":/output" in str(arg):
+                    Path(arg.split(":")[0]).joinpath("results.json").write_text("{}")
+                    break
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="", stderr="",
+            )
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+    def test_prewarm_runs_before_scan(self, monkeypatch):
+        """Pre-warm pulls fire before the scan thread enters _pull_image."""
+        engine = self._engine()
+        engine.register_scanner(self._scanner("trivy", "img:trivy"))
+
+        warmed: list[str] = []
+        inline_called: list[str] = []
+
+        def fake_pull(img):
+            # pull_fn is shared between prewarm and inline pull, so
+            # disambiguate by thread name.
+            import threading
+            if threading.current_thread().name.startswith("argus-prewarm"):
+                warmed.append(img)
+            else:
+                inline_called.append(img)
+            return True
+
+        monkeypatch.setattr(engine, "_pull_image", fake_pull)
+        monkeypatch.setattr(engine, "_is_docker_available", lambda: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+        self._stub_container_run(monkeypatch)
+
+        summary = engine.run(scanner_names=["trivy"], parallel=False)
+
+        # Pre-warm pulled exactly the one image; the inline path skipped
+        # the redundant pull because the warm hit succeeded.
+        assert warmed == ["img:trivy"]
+        assert inline_called == []
+        assert len(summary.results) == 1
+
+    def test_prewarm_dedups_shared_images(self, monkeypatch):
+        """Two scanners with the same container image trigger one pre-warm pull."""
+        engine = self._engine()
+        engine.register_scanner(self._scanner("a", "img:shared"))
+        engine.register_scanner(self._scanner("b", "img:shared"))
+
+        warmed: list[str] = []
+
+        def fake_pull(img):
+            import threading
+            if threading.current_thread().name.startswith("argus-prewarm"):
+                warmed.append(img)
+            return True
+
+        monkeypatch.setattr(engine, "_pull_image", fake_pull)
+        monkeypatch.setattr(engine, "_is_docker_available", lambda: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+        self._stub_container_run(monkeypatch)
+
+        summary = engine.run(scanner_names=["a", "b"], parallel=True)
+
+        # The shared image was warmed once, despite two scanners using it.
+        assert warmed == ["img:shared"]
+        assert len(summary.results) == 2
+
+    def test_prewarm_failure_falls_back_to_inline_pull(self, monkeypatch):
+        """A failed pre-warm doesn't fail the scan — the inline pull runs."""
+        engine = self._engine()
+        engine.register_scanner(self._scanner("trivy", "img:trivy"))
+
+        # First call (from prewarm thread) returns False; second call
+        # (inline pull on the scan thread) returns True. The behaviour
+        # we want is: failed warm => falls through to inline => scan
+        # still completes.
+        call_log: list[tuple] = []
+
+        def fake_pull(img):
+            import threading
+            tname = threading.current_thread().name
+            is_prewarm = tname.startswith("argus-prewarm")
+            call_log.append((tname, img, is_prewarm))
+            return not is_prewarm  # prewarm fails, inline succeeds
+
+        monkeypatch.setattr(engine, "_pull_image", fake_pull)
+        monkeypatch.setattr(engine, "_is_docker_available", lambda: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+        self._stub_container_run(monkeypatch)
+
+        summary = engine.run(scanner_names=["trivy"], parallel=False)
+
+        # Both prewarm and inline ran; scan still completed.
+        prewarm_calls = [c for c in call_log if c[2]]
+        inline_calls = [c for c in call_log if not c[2]]
+        assert len(prewarm_calls) == 1
+        assert len(inline_calls) == 1
+        assert len(summary.results) == 1
+        # Result is a normal success, not an execution_failed row.
+        assert summary.results[0].metadata.get("execution_failed") is None
+
+    def test_prewarm_skipped_when_pull_policy_never(self, monkeypatch):
+        """``pull_policy=never`` skips pre-warm — no wasted work."""
+        engine = self._engine(pull_policy="never")
+        engine.register_scanner(self._scanner("trivy", "img:trivy"))
+
+        prewarm_calls: list[str] = []
+
+        def fake_pull(img):
+            import threading
+            if threading.current_thread().name.startswith("argus-prewarm"):
+                prewarm_calls.append(img)
+            return True
+
+        monkeypatch.setattr(engine, "_pull_image", fake_pull)
+        monkeypatch.setattr(engine, "_is_docker_available", lambda: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+        self._stub_container_run(monkeypatch)
+
+        engine.run(scanner_names=["trivy"], parallel=False)
+
+        # Pre-warm orchestrator was not started — no prewarm-thread pulls.
+        assert prewarm_calls == []
+        # Engine state confirms no orchestrator survived the run.
+        assert engine._prewarmer is None
+
+    def test_prewarm_disabled_via_config(self, monkeypatch):
+        """``execution.prewarm_images: false`` skips the orchestrator."""
+        engine = self._engine(prewarm_images=False)
+        engine.register_scanner(self._scanner("trivy", "img:trivy"))
+
+        prewarm_calls: list[str] = []
+
+        def fake_pull(img):
+            import threading
+            if threading.current_thread().name.startswith("argus-prewarm"):
+                prewarm_calls.append(img)
+            return True
+
+        monkeypatch.setattr(engine, "_pull_image", fake_pull)
+        monkeypatch.setattr(engine, "_is_docker_available", lambda: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+        self._stub_container_run(monkeypatch)
+
+        engine.run(scanner_names=["trivy"], parallel=False)
+
+        assert prewarm_calls == []
+        assert engine._prewarmer is None
+
+    def test_prewarm_workers_respected(self):
+        """``execution.prewarm_workers`` flows through to the orchestrator."""
+        engine = self._engine(prewarm_workers=2)
+        assert engine.config.execution.prewarm_workers == 2
+
+    def test_parallel_cached_image_skips_inline_pull(self, monkeypatch):
+        """Parallel mode: a cached image (warm hit) means the scan thread
+        skips the redundant pull. This is the lazy-pull win."""
+        engine = self._engine()
+        engine.register_scanner(self._scanner("a", "img:trivy"))
+        engine.register_scanner(self._scanner("b", "img:grype"))
+
+        prewarm_calls: list[str] = []
+        inline_calls: list[str] = []
+
+        def fake_pull(img):
+            import threading
+            if threading.current_thread().name.startswith("argus-prewarm"):
+                prewarm_calls.append(img)
+            else:
+                inline_calls.append(img)
+            return True
+
+        monkeypatch.setattr(engine, "_pull_image", fake_pull)
+        monkeypatch.setattr(engine, "_is_docker_available", lambda: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+        self._stub_container_run(monkeypatch)
+
+        summary = engine.run(scanner_names=["a", "b"], parallel=True)
+
+        # Both images warmed once; no scan-thread pulls happened because
+        # the warm cache was hit.
+        assert sorted(prewarm_calls) == ["img:grype", "img:trivy"]
+        assert inline_calls == []
+        assert len(summary.results) == 2
+
+    def test_prewarm_skipped_when_no_runtime(self, monkeypatch):
+        """No container runtime => no pre-warm (would fail every pull)."""
+        engine = self._engine()
+        engine.register_scanner(self._scanner("trivy", "img:trivy"))
+
+        prewarm_calls: list[str] = []
+
+        def fake_pull(img):
+            import threading
+            if threading.current_thread().name.startswith("argus-prewarm"):
+                prewarm_calls.append(img)
+            return True
+
+        monkeypatch.setattr(engine, "_pull_image", fake_pull)
+        # Critical: no runtime available
+        monkeypatch.setattr(engine, "_is_docker_available", lambda: False)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+
+        # docker backend without runtime => RuntimeError at scan time;
+        # we just need to verify _start_prewarm bails before that.
+        engine._start_prewarm([
+            (self._scanner("trivy", "img:trivy"), "/src", {}, []),
+        ])
+        assert prewarm_calls == []
+        assert engine._prewarmer is None
