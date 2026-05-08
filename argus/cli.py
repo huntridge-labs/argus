@@ -15,7 +15,54 @@ EXIT_FINDINGS = 1
 EXIT_ERROR = 2
 
 SEVERITY_CHOICES = ["critical", "high", "medium", "low", "none"]
-FORMAT_CHOICES = ["terminal", "markdown", "sarif", "json", "github", "gitlab", "junit"]
+
+
+# Curated display order for the seven user-facing built-ins. ``terminal``
+# leads because it's the default and most users only ever pass that one;
+# the rest follow in roughly the order users encounter them in CI configs
+# (file artifacts → SARIF → JSON → CI integrations). Third-party plugins
+# discovered via the entry-point group are appended after the built-ins.
+_BUILTIN_FORMAT_ORDER = (
+    "terminal",
+    "markdown",
+    "sarif",
+    "json",
+    "github",
+    "gitlab",
+    "junit",
+)
+
+
+def _build_format_choices() -> list[str]:
+    """Build the ``--format`` choice list from the live reporter registry.
+
+    Recomputed at parser-construction time so any third-party reporter
+    plugin installed alongside Argus shows up in
+    ``argus scan --format <name>`` and ``argus scan --help`` without a
+    code change here. ``container_markdown`` is registered for internal
+    use (the container-scan flow constructs it directly) so it's
+    filtered out of the user-facing list. Failure to import the
+    registry falls back to the historical built-ins so a misconfigured
+    environment doesn't kill the CLI.
+    """
+    try:
+        from argus.reporters import available_reporters
+
+        registered = [
+            name for name in available_reporters() if name != "container_markdown"
+        ]
+    except Exception:  # noqa: BLE001 — fall back, never crash the CLI
+        return list(_BUILTIN_FORMAT_ORDER)
+
+    # Built-ins keep their curated order; plugins follow in
+    # ``available_reporters`` order (already sorted, so deterministic).
+    builtin_set = set(_BUILTIN_FORMAT_ORDER)
+    head = [name for name in _BUILTIN_FORMAT_ORDER if name in registered]
+    tail = [name for name in registered if name not in builtin_set]
+    return head + tail
+
+
+FORMAT_CHOICES = _build_format_choices()
 _SPINNER_STYLES = [
     ["⠁", "⠂", "⠄", "⡀", "⢀", "⠠", "⠐", "⠈"],
     ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
