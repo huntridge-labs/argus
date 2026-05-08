@@ -71,6 +71,24 @@ all = ["argus-security[ai,completion,mcp,terminal,browser]"]
 [project.scripts]
 argus = "argus.cli:main"
 
+# Reporter plugin discovery. Built-in reporters are registered through the
+# same Python entry-point group third-party plugins use — see
+# ``docs/contributing-reporters.md`` for the contributor guide and ADR-023
+# for the design rationale. Any package on the user's PYTHONPATH that
+# declares ``[project.entry-points."argus.reporters"]`` is auto-discovered
+# at runtime and exposed via ``argus scan --format <name>``. Built-in
+# names always win on collision; the loader logs and skips broken plugins
+# rather than crashing the CLI.
+[project.entry-points."argus.reporters"]
+terminal = "argus.reporters.terminal:TerminalReporter"
+markdown = "argus.reporters.markdown:MarkdownReporter"
+container_markdown = "argus.reporters.container_markdown:ContainerMarkdownReporter"
+sarif = "argus.reporters.sarif:SarifReporter"
+json = "argus.reporters.json_report:JsonReporter"
+github = "argus.reporters.github:GitHubReporter"
+gitlab = "argus.reporters.gitlab:GitLabReporter"
+junit = "argus.reporters.junit:JUnitReporter"
+
 [project.urls]
 Homepage = "https://argus.huntridgelabs.com"
 Documentation = "https://huntridge-labs.github.io/argus"

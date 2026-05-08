@@ -44,7 +44,7 @@ components:
       "viewers/browser/": "`argus view --interface=browser` — FastAPI + Jinja2 web UI, 127.0.0.1 only ([browser] extra). Routes include ``/diff?a=<path>&b=<path>`` powered by argus.core.findings_view.diff_scans, sharing the bucketing logic with the TUI's ``D`` keybind."
       "scanners/": "Scanner modules implementing Scanner protocol (SCANNER_REGISTRY includes linters via auto-merge)"
       "linters/": "Linter modules implementing Scanner protocol (LINTER_REGISTRY auto-merges into SCANNER_REGISTRY)"
-      "reporters/": "Output reporters (terminal, markdown, sarif, json, github, gitlab, junit)"
+      "reporters/": "Output reporters (terminal, markdown, sarif, json, github, gitlab, junit). Discovered via the ``argus.reporters`` Python entry-point group (built-ins declared in pyproject.toml; third-party packages register additional formats without forking — see docs/contributing-reporters.md and ADR-023)."
       "preflight/": "CI preflight: provider detection, living issue reporting (GitHub/GitLab), network deps, scanner tool-readiness checks (tool_check.py)"
 
   - name: argus-linters
@@ -475,7 +475,7 @@ docsite:
       "viewers/browser/": "`argus view --interface=browser` — FastAPI + Jinja2 web UI, 127.0.0.1 only ([browser] extra). Routes include ``/diff?a=<path>&b=<path>`` powered by argus.core.findings_view.diff_scans, sharing the bucketing logic with the TUI's ``D`` keybind."
       "scanners/": "Scanner modules implementing Scanner protocol (SCANNER_REGISTRY includes linters via auto-merge)"
       "linters/": "Linter modules implementing Scanner protocol (LINTER_REGISTRY auto-merges into SCANNER_REGISTRY)"
-      "reporters/": "Output reporters (terminal, markdown, sarif, json, github, gitlab, junit)"
+      "reporters/": "Output reporters (terminal, markdown, sarif, json, github, gitlab, junit). Discovered via the ``argus.reporters`` Python entry-point group (built-ins declared in pyproject.toml; third-party packages register additional formats without forking — see docs/contributing-reporters.md and ADR-023)."
       "tests/": "Co-located pytest tests (180 tests, 83%+ coverage)"
     scanners:
       - bandit

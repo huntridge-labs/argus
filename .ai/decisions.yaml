@@ -1524,3 +1524,123 @@ decisions:
       - ADR-013  # Python SDK as primary interface (the model layer this hooks into)
     pr_references:
       - "(closes Secret Redaction Hardening 'open' item — see SDK-ROADMAP.md → Secret Redaction Hardening)"
+
+  - id: ADR-023
+    title: "Reporter plugin registration via Python entry-points"
+    status: accepted
+    date: 2026-05-08
+    context: |
+      Through 0.7.x, ``argus/reporters/__init__.py`` held a hardcoded
+      ``REPORTER_REGISTRY`` dict literal — every supported output
+      format had to live under ``argus/reporters/`` and be added to
+      that dict. A third party who wanted to ship
+      ``argus-reporter-slack`` or ``argus-reporter-pagerduty`` had to
+      fork and patch the registry, then keep the fork in sync with
+      every Argus release. That's a high enough barrier that nobody
+      did it.
+
+      The seven built-in reporters (``terminal``, ``markdown``,
+      ``container_markdown``, ``sarif``, ``json``, ``github``,
+      ``gitlab``, ``junit``) cover the formats Argus itself uses, but
+      the long tail (Slack, PagerDuty, Opsgenie, custom ticket
+      systems, internal dashboards) is precisely the work users want
+      to extend with — and precisely the work that doesn't belong
+      upstream. We needed a plugin extension point, and we needed it
+      cheap enough that built-ins didn't get a special-cased
+      "internal" path.
+    decision: |
+      Use Python's standard ``importlib.metadata`` entry-point
+      mechanism, with the group name ``argus.reporters``.
+
+      Built-ins are registered via the same mechanism third-party
+      plugins use — ``pyproject.toml`` declares an entry-point per
+      built-in. There is no parallel "internal" registry: one source
+      of truth, one code path, one set of failure semantics.
+
+      The loader (``argus/reporters/__init__.py``):
+
+      * Walks ``importlib.metadata.entry_points().select(group="argus.reporters")``
+        once per process and caches the result. Tests force a rebuild
+        via ``_reset_registry_cache_for_tests()``.
+      * Validates each entry-point by ``ep.load()`` then
+        ``cls()`` then ``isinstance(instance, Reporter)``. Any
+        failure logs a WARNING and skips that plugin — argus continues
+        with whatever else loaded successfully.
+      * Resolves name collisions:
+          - **Built-in vs plugin: built-in wins.** The plugin claim is
+            logged as shadowed and discarded.
+          - **Plugin vs plugin: first-wins.** ``importlib.metadata``
+            iteration order is deterministic across runs of the same
+            install set, so this is a stable resolution. The losing
+            plugin is logged.
+
+      ``REPORTER_REGISTRY`` is preserved as a thin read-only proxy
+      backed by the cached registry, so legacy
+      ``from argus.reporters import REPORTER_REGISTRY`` keeps working.
+
+      ``argus scan --format <name>`` (and the parallel ``argus report``
+      argument) is populated from ``available_reporters()`` at
+      parser-construction time, so newly-installed plugins light up
+      after a fresh ``pip install`` without an Argus release.
+    alternatives_considered:
+      - name: "Config-file scan (~/.argus/reporters.d/*.py)"
+        rejected_because: |
+          Reinvents the wheel — Python entry-points exist for exactly
+          this use case, integrate with pip / wheels / dependency
+          resolution, and don't require us to define a config schema,
+          a directory layout, a discovery order, or rules for what
+          counts as "installed." Plugin authors get versioning and
+          dependency declarations for free with pyproject.toml; a
+          config-file approach would have us re-implement all of that.
+
+      - name: "Environment-variable-driven loading (ARGUS_REPORTERS=mod1,mod2)"
+        rejected_because: |
+          Forces every consumer (CI scripts, MCP server, the
+          ``argus`` CLI) to set the variable, doesn't survive shells
+          that don't propagate the env, and gives no signal at install
+          time whether a plugin is registered. Entry-points are
+          discoverable via ``pip show`` / ``importlib.metadata`` and
+          require no runtime configuration.
+
+      - name: "Last-wins on plugin collision"
+        rejected_because: |
+          Implicit override semantics are a known footgun. If a user
+          has two plugins both registering ``slack`` and one wins
+          because it sorts later in site-packages, the user can't
+          predict which one's behavior they get without reading the
+          loader source. First-wins matches Python import precedence
+          (the first ``import`` of a name wins) and surfaces the
+          conflict via a WARNING — the user can then uninstall
+          whichever one they don't want.
+
+      - name: "Explicit override via config (reporting.reporter_overrides)"
+        rejected_because: |
+          Adds ceremony for a problem that's vanishingly rare in
+          practice (two plugins fighting over the same name) and
+          forces every user-facing config to grow a new section.
+          The first-wins + warning combination is loud enough that
+          a user encountering the conflict immediately knows what to
+          do (uninstall one) without learning a new config knob.
+
+      - name: "Hard-fail (raise) on plugin import error"
+        rejected_because: |
+          A single broken third-party reporter would break ``argus
+          list`` and ``argus scan`` for users who installed it
+          alongside other plugins. The principle here matches ADR-016
+          (silent-failure gating) inverted: argus's own defaults
+          must not become unusable because a plugin author shipped a
+          broken release. Logging at WARNING preserves the diagnostic
+          signal without taking the rest of the toolchain down.
+    consequences:
+      - "Third parties can ship ``pip install argus-reporter-<name>`` packages that auto-register at install time — no fork, no PR, no Argus release coupling."
+      - "Built-ins go through the same code path as plugins, so the loader is exercised on every CLI invocation. A regression in entry-point discovery would surface as failing reporter tests, not as a silent loss of `argus scan --format slack`."
+      - "Adding a new built-in reporter now means writing the module *and* declaring its entry-point in pyproject.toml. The latter is a one-liner, but contributors can't forget it — there's no longer a hardcoded dict to add to."
+      - "``REPORTER_REGISTRY`` remains importable for backwards compat, but it's a read-only proxy now; in-process mutation no longer works. No known consumer mutates it."
+      - "``argus scan --format`` choices are computed at parser-construction time, not import time. Plugin install → restart shell → new format works. No compile-time coupling."
+      - "A buggy plugin can't break the rest of the registry — but it *can* show up in WARNING logs, which is the diagnostic surface we want."
+    related:
+      - ADR-013  # Python SDK as primary interface
+      - ADR-016  # Silent-failure gating (this is its inverse: third-party failures stay loud-but-non-fatal)
+      - ADR-020  # FileDiscoveryScanner shared template for linters (parallel "extract a registration mechanism" play)
+    pr_references:
+      - "(closes Phase 4 — Distribution + Multi-Platform → Reporter plugin registration system; see docs/developer/SDK-ROADMAP.md)"
