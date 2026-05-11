@@ -1644,3 +1644,211 @@ decisions:
       - ADR-020  # FileDiscoveryScanner shared template for linters (parallel "extract a registration mechanism" play)
     pr_references:
       - "(closes Phase 4 — Distribution + Multi-Platform → Reporter plugin registration system; see docs/developer/SDK-ROADMAP.md)"
+
+  - id: ADR-024
+    title: "DAST scanner tuning moves to argus.yml; composite action stays minimal"
+    status: accepted
+    date: 2026-05-11
+    context: |
+      The SDK refactor between 0.6.8 and the 1.0.0 line shrank the
+      ``scanner-zap`` composite-action input surface from ~19
+      inputs to 5. The simpler contract makes the common case
+      easier and cleaner, but it dropped 14 patterns that 0.6.8
+      consumers depended on — API-spec scans, ZAP ignore-rules
+      customization, additional ZAP CLI flags, max-duration caps,
+      registry-auth for private app images, healthcheck polling,
+      build-image-as-part-of-scan flows, and a few others. The
+      regression was surfaced during the medsecops-argus-workflows
+      GHES migration audit, where every removed input had to be
+      stripped from real consumer workflows. Tracked in
+      ``docs/developer/SDK-ROADMAP.md`` under "DAST + Container
+      Scanner Parity (Post-1.0 Regressions)".
+
+      Two paths to restoration were viable:
+
+      1. Re-add the 14 inputs to ``action.yml``, returning to a
+         ~19-input pre-refactor action surface. Easy to implement,
+         keeps the action-only mental model — but creates a
+         contract bloat that biases users toward "configure
+         everything through GitHub Actions inputs" and forces
+         SDK-direct users on GitLab / Jenkins / local dev to lose
+         access to the same tuning knobs.
+
+      2. Move scanner-specific tuning into ``scanners.zap.*`` in
+         ``argus.yml`` and keep the composite-action surface
+         minimal — matching the config-passthrough pattern already
+         in use for ``container``, ``osv``, ``checkov``, and
+         ``supply-chain``. Single source of truth (the config
+         file) works for both SDK-direct and composite-action
+         users identically.
+
+      Credentials added a third complication. Registry auth (for
+      pulling a private SUT image) and web-app authentication (for
+      logging into the running target app) are different problems:
+
+      - Registry auth — ``docker pull`` credentials, used before
+        ZAP starts.
+      - Web-app auth — ZAP's own auth machinery: login URL, form
+        selectors (XPath/CSS), logged-in detection regex, session
+        management. The DOM specification is per-app and not
+        something argus can abstract cleanly without becoming a
+        leaky wrapper around ZAP's context-file format.
+
+      Neither belongs as YAML literals — ``argus.yml`` is
+      typically VCS-tracked.
+    decision: |
+      Adopt path (2): scanner-specific tuning moves to
+      ``scanners.zap.*`` in ``argus.yml``. The composite-action
+      surface stays minimal — target identification (``target_url``
+      or ``app_image_ref`` + ``app_ports``) plus the common
+      cross-scanner inputs (``fail_on_severity``,
+      ``post_pr_comment``, ``enable_code_security``).
+
+      **Disposition of each removed input:**
+
+      *Restore via config passthrough* (``scanners.zap.<key>``):
+        api_spec              — explicit URL/path for OpenAPI scans
+        rules_file            — renamed from rules_file_name; .tsv ignore-rules path
+        cmd_options           — list[str] appended to ZAP CLI verbatim
+        max_duration_minutes  — int hard cap on scan duration
+        scan_type             — already exists: baseline | full; api implicit when api_spec is set
+        healthcheck_url       — argus polls 2xx before invoking ZAP (default timeout 60s)
+
+      *Restore via env-var-referenced config* (registry auth for
+      private ``app_image_ref``):
+        scanners.zap.registry_username: "${REGISTRY_USER}"
+        scanners.zap.registry_password: "${REGISTRY_TOKEN}"
+      Reuses the existing ``container`` scanner interpolation
+      pattern. Validator warns on literal values that don't match
+      ``${...}`` at config-load time. CLI override
+      ``--registry-password-stdin`` reads the password from stdin
+      (mirrors ``docker login --password-stdin``) for ad-hoc local
+      runs where setting an env var is friction.
+
+      *Web-app authentication (V1)* — ZAP context-file passthrough:
+        scanners.zap.auth.context_file = ".zap/context.xml"
+        scanners.zap.auth.username_env = "ZAP_APP_USER"
+        scanners.zap.auth.password_env = "ZAP_APP_PASSWORD"
+      Argus mounts the context file into the container at a known
+      path and exports the named env vars; ZAP's standard
+      ``{%username%}`` / ``{%password%}`` placeholders in the
+      context file pick them up. The user owns the DOM
+      specification (login URL, form selectors via XPath/CSS,
+      logged-in regex, session management). Argus stays out of
+      that surface.
+
+      *Web-app authentication (V2, deferred)* — an argus-native
+      ``scanners.zap.auth.form`` block we'd translate into a ZAP
+      context. Defer until we have real consumer apps to validate
+      against. Abstracting the DOM is inherently leaky per-app.
+
+      *NOT restoring — intentional simplification* (these belong
+      in the consumer's pipeline, not in argus's surface):
+        app_build_context, app_dockerfile, app_image_tag — image
+          builds belong in a prior workflow step; argus accepts
+          ``app_image_ref`` (pre-built image as sidecar) or a
+          started ``target_url``.
+        compose_file, compose_build — multi-service orchestration
+          belongs in the consumer's pipeline.
+        allow_issue_writing — conflicts with the silent-failure-
+          loud principle (ADR-016); scan findings already ride
+          PR-comments, summary aggregation, and SARIF upload.
+
+      **Composite action surface after the change**
+      (``.github/actions/scanner-zap/action.yml``):
+        target_url, app_image_ref, app_ports, fail_on_severity,
+        post_pr_comment, enable_code_security.
+      Everything else lives in ``argus.yml``.
+
+      The same ``argus.yml`` shape works for SDK-direct users on
+      any CI platform (GitLab, Jenkins, Azure DevOps, local dev) —
+      parity with composite-action users, no per-platform input
+      drift.
+    alternatives_considered:
+      - name: "Re-add all 14 inputs to action.yml (path 1)"
+        rejected_because: |
+          Bloats the composite-action surface back to pre-refactor
+          levels, creates two sources of truth (action inputs vs.
+          argus.yml), and forces SDK-direct users on GitLab /
+          Jenkins / local-dev to lose access to the same tuning
+          knobs. The simpler-contract win of the original refactor
+          goes away. Also biases users toward "configure
+          everything through GitHub Actions" — argus's design
+          principle is that the SDK is the primary interface
+          (ADR-013) and composite actions are thin wrappers
+          (ADR-019).
+
+      - name: "Split: some removed inputs to action.yml, others to config"
+        rejected_because: |
+          Picking which subset goes which way is bikeshedding
+          without a principle. The principle "scanner-specific
+          tuning lives in argus.yml, common cross-scanner inputs
+          live in the composite" is clean and matches existing
+          patterns (container, osv, checkov, supply-chain).
+
+      - name: "Native argus auth block for web-app authentication (V1)"
+        rejected_because: |
+          DOM specification (form selectors, logged-in detection
+          regex, session management) is per-app and not something
+          argus can abstract cleanly. We'd either invent a narrow
+          DSL that misses real apps (custom JS auth flows, SAML
+          redirects, MFA screens, refresh-token rotation) or
+          expose so many knobs that we're re-implementing ZAP's
+          context-file format with worse tooling. Context-file
+          passthrough lets users author auth in ZAP's native
+          language with ZAP's existing tooling (the ZAP GUI can
+          record auth flows and emit context files). A V2 native
+          block remains on the table if real demand surfaces.
+
+      - name: "Plaintext credentials in argus.yml"
+        rejected_because: |
+          ``argus.yml`` is typically VCS-tracked. Plaintext
+          credentials there would be a baseline security violation
+          and would force every team to add it to .gitignore (or
+          accept the leak). Env-var interpolation
+          (``${REGISTRY_PASSWORD}``) plus the
+          ``--registry-password-stdin`` CLI flag covers both CI
+          (env var set by the runner) and ad-hoc local scans
+          (stdin pipe). Validator-side rejection of literals turns
+          the rule into a config-load-time error, not a runtime
+          regret.
+
+      - name: "Restore allow_issue_writing"
+        rejected_because: |
+          GitHub Issues from scan findings creates noise that
+          competes with the existing surfaces (PR comments,
+          summary aggregation, SARIF in the Security tab) and
+          conflicts with the silent-failure-loud principle
+          (ADR-016). The signal users need ("did this scan fail or
+          pass") rides those existing channels. Adding issue
+          writing reopens a question (which findings warrant an
+          issue, who owns the issue, how does it get closed) that
+          we're better off staying out of.
+
+      - name: "Restore the build-image-as-part-of-scan flows"
+        rejected_because: |
+          ``app_build_context`` + ``app_dockerfile`` +
+          ``app_image_tag`` (and ``compose_file`` +
+          ``compose_build``) embed image-build orchestration into
+          the scanner's responsibility. That's a CI-pipeline
+          concern with well-established patterns in every CI
+          platform (``docker build``, ``docker compose up``,
+          ``buildx``). Consumers retain full control by running
+          those steps before invoking argus and passing the
+          resulting ``app_image_ref`` or ``target_url``. Argus
+          stays focused on scanning, not on image lifecycle.
+    consequences:
+      - "SDK-direct users on GitLab, Jenkins, Azure DevOps, or local dev get parity with composite-action users — same scanner tuning, same config file, same behavior."
+      - "Composite-action surface stays small: scanner-zap action.yml keeps target identification and common cross-scanner inputs, nothing else. Easier for new users to read."
+      - "Migrating from 0.6.8 inputs to 1.x config is a one-time YAML rewrite — move scanner-specific tuning from `with:` blocks into `argus.yml`. A side-by-side migration guide ships with the implementation PR."
+      - "Web-app authentication remains a ZAP-native concern in V1. Users with HTTP basic-auth or static-header setups can already configure those via ``cmd_options`` + env vars; users with form-based auth use a ZAP context file (the path the ZAP team itself recommends)."
+      - "Adding scanner-zap configuration knobs in the future means editing ``scanners.zap.*`` in the config schema, not adding action.yml inputs. The composite-action surface stays stable across releases."
+      - "Validator-enforced env-var interpolation for credentials prevents accidental literal-password commits at config-load time. Users who try to commit ``registry_password: hunter2`` get a warning before the scan starts, not after the secret hits VCS."
+      - "Three credential surfaces are now distinct and documented: registry creds (env-var-referenced YAML), web-app creds (ZAP context-file + env-var-named-references), and CLI-stdin (ad-hoc override). Each has a clear use case and none overlap."
+    related:
+      - ADR-001  # Composite actions as primary architecture (this preserves the composite surface for what it's good at)
+      - ADR-013  # Python SDK as primary interface (the config-file path this leans into)
+      - ADR-016  # Silent-failure gating (rationale for not restoring allow_issue_writing)
+      - ADR-019  # Install-from-source pattern (the composite-action thinness this preserves)
+    pr_references:
+      - "(addresses DAST + Container Scanner Parity → scanner-zap target setup parity; see docs/developer/SDK-ROADMAP.md)"
