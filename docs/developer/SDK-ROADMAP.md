@@ -650,27 +650,51 @@ respect the deliberate trim.
 
 ### Sub-items
 
-- [ ] **scanner-zap target setup parity.** 14 inputs were removed:
-  `api_spec`, `app_build_context`, `app_dockerfile`,
-  `app_image_tag`, `compose_build`, `compose_file`, `cmd_options`,
-  `healthcheck_url`, `max_duration_minutes`, `registry_password`,
-  `registry_username`, `rules_file_name`, `scan_mode`,
-  `allow_issue_writing`. The new contract handles "URL is already
-  running" (`target_url`) and "bring up a pre-built image as a
-  sidecar" (`app_image_ref` + `app_ports`) cleanly, but excludes:
+- [ ] **scanner-zap target setup parity — decided** (see ADR-024 in `.ai/decisions.yaml`).
+  Scanner-specific tuning moves to `scanners.zap.*` in `argus.yml`, matching the
+  config-passthrough pattern already in use for `container`, `osv`, `checkov`,
+  and `supply-chain`. The composite-action surface stays minimal (target
+  identification + common cross-scanner inputs). One source of truth — SDK-
+  direct users on GitLab / Jenkins / local dev get parity with composite-action
+  users, no surface bloat on either side.
 
-  - **Build-image-as-part-of-scan** — Dockerfile builds (`app_build_context` + `app_dockerfile` + `app_image_tag`) and docker-compose stacks (`compose_file` + `compose_build`).
-  - **API-spec scans** — `api_spec` URL passthrough for `scan_type=api`. The new shape relies on ZAP discovering endpoints from `target_url`, which is a real behavior difference for OpenAPI-driven testing.
-  - **Healthcheck poll** — `healthcheck_url`. Consumers must now poll readiness in their own step before the action runs.
-  - **Authenticated registry pulls** — `registry_username` + `registry_password` (private images for `app_image_ref`).
-  - **ZAP customization** — `rules_file_name` (ZAP `.tsv` ignore rules) and `cmd_options` (additional `zap-baseline.py` flags).
-  - **Long-running scans** — `max_duration_minutes`. The new action uses ZAP's defaults; consumers can't cap scan time anymore.
+  **Restore via config passthrough (`scanners.zap.<key>` in `argus.yml`):**
+  - `api_spec` — explicit URL/path for OpenAPI scans; setting it implicitly switches scan mode to `api`.
+  - `rules_file` (renamed from `rules_file_name`) — path to a ZAP `.tsv` ignore-rules file, mounted into the container.
+  - `cmd_options` — `list[str]` appended to the ZAP CLI invocation verbatim (escape hatch for ZAP knobs we don't model explicitly).
+  - `max_duration_minutes` — int hard cap on scan duration.
+  - `scan_type` (already in schema: `baseline` | `full`) — `api` becomes implicit when `api_spec` is set.
+  - `healthcheck_url` — argus polls for 2xx readiness (configurable timeout, default 60s) before invoking ZAP.
 
-  *Decision pending*: which of these are must-restore vs.
-  intentional-simplification (build flows in particular are a
-  reasonable "consumer's workflow does the build" boundary, but
-  api-spec / healthcheck / registry-auth feel load-bearing for
-  enterprise users).
+  **Restore via env-var-referenced config (registry auth for private `app_image_ref`):**
+  - `scanners.zap.registry_username: "${REGISTRY_USER}"` — reuses the existing `container` scanner interpolation pattern.
+  - `scanners.zap.registry_password: "${REGISTRY_TOKEN}"` — same; validator warns on literal values that don't match `${...}`.
+  - CLI override: `--registry-password-stdin` reads from stdin (mirrors `docker login --password-stdin`) for ad-hoc local runs where setting an env var is friction.
+
+  **Web-app authentication (V1) — ZAP context-file passthrough:**
+  - `scanners.zap.auth.context_file: ".zap/context.xml"` — user authors the ZAP context (login URL, form selectors via XPath/CSS, logged-in regex, session management) and argus mounts it into the container at a known path.
+  - `scanners.zap.auth.username_env: "ZAP_APP_USER"` / `password_env: "ZAP_APP_PASSWORD"` — env-var *name* references (never literal credentials). Argus exports the named env vars into the container; ZAP's standard `{%username%}` / `{%password%}` placeholders in the context file pick them up.
+  - The user owns the DOM specification (form selectors, logged-in regex). Argus stays out of that surface — DOM abstraction is leaky per-app and ZAP's context-file format is the supported path with first-class ZAP-GUI tooling for recording auth flows.
+
+  **Web-app authentication (V2, deferred):** an argus-native `scanners.zap.auth.form` block we'd translate into a ZAP context. Defer until we have real consumer apps to validate against — abstracting the DOM is inherently leaky and we don't have signal yet that the context-file path is insufficient.
+
+  **NOT restoring — intentional simplification:**
+  - `app_build_context` / `app_dockerfile` / `app_image_tag` — image builds belong in a prior workflow step; argus accepts `app_image_ref` (for a pre-built image to bring up as sidecar) or a started `target_url`.
+  - `compose_file` / `compose_build` — multi-service orchestration belongs in the consumer's pipeline.
+  - `allow_issue_writing` — conflicts with the silent-failure-loud principle (ADR-016); scan findings already ride PR comments, summary aggregation, and SARIF upload.
+
+  **Composite action surface after the change** (`.github/actions/scanner-zap`):
+  `target_url`, `app_image_ref`, `app_ports`, `fail_on_severity`, `post_pr_comment`, `enable_code_security`. Everything else lives in `argus.yml`.
+
+  **Implementation tasks** (separate PRs, all gated by ADR-024):
+  - [ ] Schema: extend `ScannerConfig` and `docs/config-reference.md` with the new `scanners.zap.*` keys plus the `scanners.zap.auth.*` sub-block.
+  - [ ] Validator: env-var-interpolation requirement for `registry_password`, `auth.password_env`, `auth.username_env` — warn on literal values at config-load time, not at scan time.
+  - [ ] `argus/scanners/zap.py`: read the new config keys, build the ZAP CLI with `rules_file` / `cmd_options` / `max_duration_minutes` / `api_spec` / context-file mount. Honor `healthcheck_url` with a pre-scan poll.
+  - [ ] CLI: `--registry-password-stdin` flag, wired through to the engine for both `zap` and `container`.
+  - [ ] Composite action trim: remove `api_spec`, `rules_file_name`, `cmd_options`, `max_duration_minutes`, `healthcheck_url`, `registry_username`, `registry_password` from `.github/actions/scanner-zap/action.yml`. Add a deprecation note pointing at the config-file path for any 0.6.8-shaped consumer workflows.
+  - [ ] Tests: `argus/tests/scanners/test_zap.py` covers config passthrough; integration test for env-var-referenced auth substitution.
+  - [ ] Docs: extend `docs/scanners.md` and `docs/config-reference.md` with the new keys and an authenticated-scan worked example (ZAP context-file pattern + env-var credentials).
+  - [ ] Migration note: 0.6.8 `with:` block → 1.x `argus.yml` shape, side-by-side, appended to `docs/developer/release-management.md` or a new `docs/migration/0.6.x-to-1.x.md`.
 
 - [ ] **scanner-container `scan_mode` recovery.** `scan_mode`
   (alongside `allow_failure` and `skip_summary`) was removed from
