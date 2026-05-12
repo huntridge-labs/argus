@@ -146,13 +146,36 @@ error_patterns:
 
     solution:
       steps:
-        - "Add registry credentials to GitHub Secrets"
-        - "Pass credentials to workflow"
+        - "Store credentials as environment variables (CI runner env, .envrc, etc.) — never as YAML literals."
+        - "Reference the env-var *name* from argus.yml using the <field>_env shape; argus.core.secrets.resolve_secret reads os.environ at scan time."
+        - "For composite-action consumers on GitHub Actions, the runner-side env can still be wired from `${{ secrets.X }}`."
       code: |
-        with:
-          registry_username: ${{ secrets.REGISTRY_USER }}
-          registry_password: ${{ secrets.REGISTRY_TOKEN }}
-      warning: "Never put credentials in config file"
+        # Preferred — argus.yml
+        scanners:
+          container:
+            registry_username_env: REGISTRY_USER     # name of env var
+            registry_password_env: REGISTRY_TOKEN    # name of env var
+      ci_example: |
+        # GitHub Actions: export the secret into the runner env
+        - name: Run argus scan
+          env:
+            REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+            REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+          run: argus scan --config argus.yml
+      legacy_supported: |
+        # Still works (warned at config-load if the value matches
+        # a known vendor secret prefix):
+        scanners:
+          container:
+            registry_username: "user"
+            registry_password: "literal"
+      warning: |
+        Never commit literal credentials to argus.yml. The
+        <field>_env shape keeps secret values out of VCS entirely;
+        argus.core.secrets emits a warning if a literal value
+        matches a known vendor-secret prefix (gh*, AKIA, AIza,
+        glpat-, etc.) at config-load time so the leak is caught
+        before the scan runs.
 
   # ==============================================================================
   # PR COMMENT ERRORS

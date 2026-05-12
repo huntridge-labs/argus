@@ -1243,6 +1243,163 @@ class TestRunInContainer:
         assert captured_cmd["cmd"][ep_idx + 1] == "/bin/custom"
 
 
+class TestContainerEnvHook:
+    """Verify scanners can inject env vars into the container via container_env."""
+
+    def _make_engine(self):
+        data = {"execution": {"backend": "docker"}}
+        return ArgusEngine(ArgusConfig.from_dict(data))
+
+    def _make_scanner_with_env(self, env_dict):
+        scanner = MockScanner(name="zap", container_image="zap:latest")
+        scanner.container_env = lambda config: env_dict
+        return scanner
+
+    def _capture_cmd_runner(self, captured):
+        def mock_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            # Write a fake result so the engine doesn't bail.
+            for arg in cmd:
+                if ":/output" in str(arg):
+                    host_dir = arg.split(":")[0]
+                    Path(host_dir).joinpath("results.json").write_text("{}")
+                    break
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="", stderr="",
+            )
+        return mock_run
+
+    def test_env_vars_passed_via_dash_e(self, monkeypatch):
+        engine = self._make_engine()
+        scanner = self._make_scanner_with_env({
+            "ZAP_AUTH_USERNAME": "alice",
+            "ZAP_AUTH_PASSWORD": "s3cret",
+        })
+
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+
+        captured = {}
+        monkeypatch.setattr(subprocess, "run", self._capture_cmd_runner(captured))
+
+        engine._run_in_container(scanner, "/src", {})
+
+        cmd = captured["cmd"]
+        # ``-e NAME=VALUE`` flags must appear as a pair
+        assert "-e" in cmd
+        assert "ZAP_AUTH_USERNAME=alice" in cmd
+        assert "ZAP_AUTH_PASSWORD=s3cret" in cmd
+
+    def test_none_value_skipped(self, monkeypatch):
+        # resolve_secret returns None when an env-var-name reference
+        # points at an unset env var; the engine should NOT emit a
+        # bogus ``-e NAME=None`` flag.
+        engine = self._make_engine()
+        scanner = self._make_scanner_with_env({
+            "ZAP_AUTH_USERNAME": "alice",
+            "ZAP_AUTH_PASSWORD": None,
+        })
+
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+
+        captured = {}
+        monkeypatch.setattr(subprocess, "run", self._capture_cmd_runner(captured))
+
+        engine._run_in_container(scanner, "/src", {})
+
+        cmd = captured["cmd"]
+        assert "ZAP_AUTH_USERNAME=alice" in cmd
+        assert not any("ZAP_AUTH_PASSWORD" in str(a) for a in cmd)
+
+    def test_no_container_env_method_no_extra_flags(self, monkeypatch):
+        # Existing scanners without container_env continue to work.
+        engine = self._make_engine()
+        scanner = MockScanner(name="bandit", container_image="bandit:latest")
+        # Ensure no container_env attribute.
+        assert not hasattr(scanner, "container_env")
+
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+
+        captured = {}
+        monkeypatch.setattr(subprocess, "run", self._capture_cmd_runner(captured))
+
+        engine._run_in_container(scanner, "/src", {})
+
+        # ``-e`` flags should only appear if the scanner asked for them.
+        assert "-e" not in captured["cmd"]
+
+
+class TestContainerMountsHook:
+    """Verify scanners can request extra bind mounts via container_mounts."""
+
+    def _make_engine(self):
+        data = {"execution": {"backend": "docker"}}
+        return ArgusEngine(ArgusConfig.from_dict(data))
+
+    def _capture_cmd_runner(self, captured):
+        def mock_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            for arg in cmd:
+                if ":/output" in str(arg):
+                    host_dir = arg.split(":")[0]
+                    Path(host_dir).joinpath("results.json").write_text("{}")
+                    break
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="", stderr="",
+            )
+        return mock_run
+
+    def test_existing_file_mounted_read_only(self, monkeypatch, tmp_path):
+        rules_file = tmp_path / "rules.tsv"
+        rules_file.write_text("# fake zap rules\n")
+
+        scanner = MockScanner(name="zap", container_image="zap:latest")
+        scanner.container_mounts = lambda config: [
+            (str(rules_file), "/zap/wrk/rules.tsv"),
+        ]
+
+        engine = self._make_engine()
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+
+        captured = {}
+        monkeypatch.setattr(subprocess, "run", self._capture_cmd_runner(captured))
+
+        engine._run_in_container(scanner, "/src", {})
+
+        cmd = captured["cmd"]
+        # Mount appears as ``-v <abs_host>:/zap/wrk/rules.tsv:ro``
+        expected = f"{rules_file.resolve()}:/zap/wrk/rules.tsv:ro"
+        assert expected in cmd
+
+    def test_missing_file_skipped_with_warning(self, monkeypatch, caplog):
+        scanner = MockScanner(name="zap", container_image="zap:latest")
+        scanner.container_mounts = lambda config: [
+            ("/does/not/exist/rules.tsv", "/zap/wrk/rules.tsv"),
+        ]
+
+        engine = self._make_engine()
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+
+        captured = {}
+        monkeypatch.setattr(subprocess, "run", self._capture_cmd_runner(captured))
+
+        import logging
+        with caplog.at_level(logging.WARNING, logger="argus"):
+            engine._run_in_container(scanner, "/src", {})
+
+        # The missing mount is skipped — the scan still runs.
+        assert not any(
+            "/does/not/exist" in str(a) for a in captured["cmd"]
+        )
+        assert any(
+            "does not exist" in r.message for r in caplog.records
+        )
+
+
 class TestExclusions:
     """Test the exclusions module — path filtering and ignore file parsing."""
 

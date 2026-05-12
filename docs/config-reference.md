@@ -105,17 +105,66 @@ Some scanners accept additional properties, passed through as extra configuratio
 | Property | Type | Applicable Scanners | Description |
 |----------|------|---------------------|-------------|
 | `image_ref` | string | `container` | Container image to scan (e.g. `myapp:latest`). |
-| `target_url` | string | `zap` | URL of the target web application. |
+| `target_url` | string | `zap` | URL of the running app to scan (the system under test). |
 | `scanners` | string | `container` | Comma-separated sub-scanners: `trivy`, `grype`, `syft`. |
-| `scan_type` | string | `zap` | Scan type: `baseline` or `full`. |
+| `scan_type` | string | `zap` | Scan type: `baseline`, `full`, or `api`. Auto-set to `api` when `api_spec` is provided. |
+| `api_spec` | string | `zap` | OpenAPI/Swagger spec URL or path; switches the scan to `zap-api-scan.py`. |
+| `rules_file` | string | `zap` | Path to a ZAP `.tsv` ignore-rules file. Mounted into the container at `/zap/wrk/rules.tsv`. |
+| `cmd_options` | list[string] | `zap` | Extra ZAP CLI flags appended verbatim after the built-in arguments. |
+| `max_duration_minutes` | integer | `zap` | Hard cap on scan duration (translates to `-T <minutes>`). |
+| `app_image_ref` | string | `zap` | Pre-built container image to bring up as the sidecar SUT (no `target_url` needed). |
+| `app_ports` | string | `zap` | Port-forward spec for `app_image_ref` (e.g. `8080:8080`). |
+| `auth` | mapping | `zap` | Web-app authentication block — see [Web-app authentication](#web-app-authentication-zap) below. |
 | `framework` | string | `checkov` | Framework filter (e.g. `terraform`, `kubernetes`). |
 | `check` | string | `checkov`, `bandit` | Specific check IDs to run. |
 | `skip_check` | string | `checkov`, `bandit` | Specific check IDs to skip. |
 | `config` | string | *(any)* | Inline scanner configuration string. |
-| `registry_username` | string | `container` | Username for private container registry auth. |
-| `registry_password` | string | `container` | Password/token for private registry auth. Prefer environment variables. |
+| `registry_username` | string | `container`, `zap` | Username for private registry auth. Prefer `registry_username_env` (see [Credential fields](#credential-fields)). |
+| `registry_password` | string | `container`, `zap` | Password/token for private registry auth. Prefer `registry_password_env`. |
+| `registry_username_env` | string | `container`, `zap` | **Name** of an environment variable holding the registry username. Resolved at scan time. |
+| `registry_password_env` | string | `container`, `zap` | **Name** of an environment variable holding the registry password/token. Resolved at scan time. |
 
 Unknown scanner keys produce a validation warning but are passed through as extra config.
+
+### Credential fields
+
+Credential fields accept two forms:
+
+```yaml
+# Preferred — only the env-var *name* lives in argus.yml.
+# Argus reads os.environ at scan time. No secret in VCS.
+registry_password_env: REGISTRY_TOKEN
+
+# Back-compat — accepts a literal string. ``argus validate`` warns
+# at config-load time if the value matches a known vendor secret
+# prefix (gh*, AKIA, AIza, glpat-, etc.), so the leak is caught
+# before the scan runs.
+registry_password: "literal-value"
+```
+
+The same shape applies to **any** credential field across scanners — both forms are interchangeable, and the `*_env` form always wins when both are set. Validation rules:
+
+- `<field>_env` must be a valid POSIX shell identifier (`[A-Za-z_][A-Za-z0-9_]*`); invalid names are a config error.
+- `<field>` literal that matches a vendor-secret prefix produces a warning suggesting `<field>_env`.
+- Setting both `<field>` and `<field>_env` is a warning; `*_env` takes precedence at resolution.
+- Unset env-var-name references resolve to `None` and skip the credential entirely (logged at WARNING) — the scan still runs.
+
+### Web-app authentication (`zap`)
+
+ZAP's web-app authentication uses a ZAP context file as the source of truth for login URL, form selectors, logged-in regex, and session management. Argus mounts the file into the container and exports credentials via `ZAP_AUTH_USERNAME` / `ZAP_AUTH_PASSWORD`, which the context file references via ZAP's native `{%username%}` / `{%password%}` placeholders.
+
+```yaml
+scanners:
+  zap:
+    target_url: "https://app.example.com"
+    auth:
+      context_file: ".zap/context.xml"  # mounted at /zap/wrk/context.xml
+      username_env: ZAP_APP_USER         # env-var name
+      password_env: ZAP_APP_PASSWORD     # env-var name
+      # username / password literal forms are also accepted (warned).
+```
+
+The DOM specification (form selectors via XPath/CSS, logged-in detection regex) lives in the user-authored context file — the ZAP GUI can record and emit one. Argus stays out of the DOM-mapping business intentionally.
 
 ### Examples
 
@@ -146,7 +195,7 @@ scanners:
     exclude: "tests,docs"
 ```
 
-**Container scanning:**
+**Container scanning with private registry:**
 
 ```yaml
 scanners:
@@ -154,11 +203,14 @@ scanners:
     enabled: true
     image_ref: "myapp:latest"
     scanners: "trivy,grype,syft"
-    registry_username: "${REGISTRY_USER}"
-    registry_password: "${REGISTRY_TOKEN}"
+    # Env-var name references — the actual values live in
+    # the runner's environment (e.g. exported from
+    # `${{ secrets.REGISTRY_USER }}` on GitHub Actions).
+    registry_username_env: REGISTRY_USER
+    registry_password_env: REGISTRY_TOKEN
 ```
 
-**DAST scanning:**
+**DAST baseline scan:**
 
 ```yaml
 scanners:
@@ -166,6 +218,34 @@ scanners:
     enabled: true
     target_url: "http://localhost:3000"
     scan_type: baseline
+```
+
+**DAST API scan with custom rules and time cap:**
+
+```yaml
+scanners:
+  zap:
+    enabled: true
+    target_url: "https://api.example.com"
+    api_spec: "https://api.example.com/openapi.json"
+    rules_file: ".zap/api-rules.tsv"
+    max_duration_minutes: 30
+    cmd_options:
+      - "-z"
+      - "-config view.locale=en_GB"
+```
+
+**DAST authenticated scan (ZAP context-file passthrough):**
+
+```yaml
+scanners:
+  zap:
+    enabled: true
+    target_url: "https://app.example.com"
+    auth:
+      context_file: ".zap/context.xml"   # mounted at /zap/wrk/context.xml
+      username_env: ZAP_APP_USER          # env-var name
+      password_env: ZAP_APP_PASSWORD      # env-var name
 ```
 
 ---

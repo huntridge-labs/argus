@@ -39,10 +39,30 @@ scanners:
   #   enabled: false
   #   image_ref: "myapp:latest"
   #   scanners: "trivy,grype,syft"
+  #   # Private-registry auth: name an env var, never paste a literal.
+  #   # The runner / shell exports the value; argus reads it at scan time.
+  #   registry_username_env: REGISTRY_USER
+  #   registry_password_env: REGISTRY_TOKEN
 
   # zap:
   #   enabled: false
   #   target_url: "http://localhost:3000"
+  #   #
+  #   # Optional tuning (decided in ADR-024; container backend only):
+  #   #
+  #   # scan_type: baseline           # baseline | full | api
+  #   # api_spec: "http://localhost:3000/openapi.json"   # auto-switches to api scan
+  #   # rules_file: ".zap/rules.tsv"  # ZAP ignore rules; mounted into container
+  #   # max_duration_minutes: 30      # hard cap on scan time
+  #   # cmd_options:                  # appended verbatim after built-in flags
+  #   #   - "-z"
+  #   #   - "-config view.locale=en_GB"
+  #   #
+  #   # Authenticated scan via ZAP context file (user-authored):
+  #   # auth:
+  #   #   context_file: ".zap/context.xml"
+  #   #   username_env: ZAP_APP_USER       # env-var *name*
+  #   #   password_env: ZAP_APP_PASSWORD
 
 reporting:
   # ``argus-results.json`` is the canonical scan artifact and is

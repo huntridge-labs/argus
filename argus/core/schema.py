@@ -10,6 +10,11 @@ No external dependencies — pure Python stdlib.
 import logging
 from typing import Any
 
+from argus.core.secrets import (
+    looks_like_literal_secret,
+    validate_env_var_name,
+)
+
 logger = logging.getLogger("argus")
 
 # ── Schema definition ────────────────────────────────────────────────
@@ -30,7 +35,30 @@ _SCANNER_KNOWN_KEYS = {
     # Scanner-specific keys that are valid in extra
     "image_ref", "target_url", "scanners", "scan_type",
     "framework", "check", "skip_check", "config",
+    # Credential fields (either form: literal or <field>_env)
     "registry_username", "registry_password",
+    "registry_username_env", "registry_password_env",
+    # ZAP-specific tuning (decided in ADR-024)
+    "api_spec", "rules_file", "cmd_options",
+    "max_duration_minutes", "healthcheck_url",
+    "app_image_ref", "app_ports",
+    "auth",  # nested block; sub-keys validated separately
+}
+
+# ZAP web-app auth sub-block keys (under scanners.zap.auth.*)
+_ZAP_AUTH_KEYS = {
+    "context_file",
+    "username", "username_env",
+    "password", "password_env",
+}
+
+# Credential fields per scanner — drives validate_secret_field rules.
+# Each entry is (scanner_name, field_path).
+_CREDENTIAL_FIELDS: dict[str, tuple[str, ...]] = {
+    "container": ("registry_username", "registry_password"),
+    "zap": ("registry_username", "registry_password"),
+    # zap.auth.username / zap.auth.password handled separately
+    # because they live in a nested block.
 }
 
 # Known reporting keys
@@ -158,7 +186,36 @@ def _validate_scanner(path: str, data: Any) -> list[ConfigError]:
     if "exclude" in data and not isinstance(data["exclude"], str):
         errors.append(ConfigError(f"{path}.exclude", "Must be a comma-separated string"))
 
-    # Warn on unknown keys
+    # Credential fields — validate either-form contract (literal or *_env).
+    # Scanner name is the last path segment ("scanners.<name>").
+    scanner_name = path.rsplit(".", 1)[-1]
+    for cred_field in _CREDENTIAL_FIELDS.get(scanner_name, ()):
+        errors.extend(_validate_secret_field(data, cred_field, path))
+
+    # ZAP web-app auth sub-block (nested under scanners.zap.auth.*)
+    if scanner_name == "zap" and "auth" in data:
+        errors.extend(_validate_zap_auth(f"{path}.auth", data["auth"]))
+
+    # ZAP cmd_options must be a list of strings
+    if scanner_name == "zap" and "cmd_options" in data:
+        opts = data["cmd_options"]
+        if not isinstance(opts, list) or not all(isinstance(o, str) for o in opts):
+            errors.append(ConfigError(
+                f"{path}.cmd_options",
+                "Must be a list of strings (passed verbatim to the ZAP CLI)",
+            ))
+
+    # ZAP max_duration_minutes must be a positive int
+    if scanner_name == "zap" and "max_duration_minutes" in data:
+        v = data["max_duration_minutes"]
+        if not isinstance(v, int) or isinstance(v, bool) or v <= 0:
+            errors.append(ConfigError(
+                f"{path}.max_duration_minutes",
+                f"Must be a positive integer, got {v!r}",
+            ))
+
+    # Warn on unknown keys (after credential / nested-block handling so
+    # we don't double-warn on the keys we already validated).
     for key in data:
         if key not in _SCANNER_KNOWN_KEYS:
             errors.append(ConfigError(
@@ -166,6 +223,91 @@ def _validate_scanner(path: str, data: Any) -> list[ConfigError]:
                 f"Unknown scanner key '{key}'. Will be passed as extra config.",
                 level="warning",
             ))
+
+    return errors
+
+
+def _validate_secret_field(
+    data: dict, field: str, path: str,
+) -> list[ConfigError]:
+    """Validate a credential field that follows the <field>/<field>_env contract.
+
+    - ``<field>_env`` must be a valid POSIX shell identifier.
+    - ``<field>`` literal is allowed but warned if it looks like a
+      known vendor secret (gh*, AKIA, AIza, etc.).
+    - Both set is a warning (the resolver uses _env).
+    """
+    errors: list[ConfigError] = []
+    env_field = f"{field}_env"
+
+    if env_field in data:
+        name = data[env_field]
+        if not isinstance(name, str):
+            errors.append(ConfigError(
+                f"{path}.{env_field}",
+                f"Must be a string environment variable name, "
+                f"got {type(name).__name__}",
+            ))
+        elif not validate_env_var_name(name):
+            errors.append(ConfigError(
+                f"{path}.{env_field}",
+                f"'{name}' is not a valid environment variable name "
+                f"(must match [A-Za-z_][A-Za-z0-9_]*)",
+            ))
+
+    if field in data:
+        value = data[field]
+        if isinstance(value, str) and looks_like_literal_secret(value):
+            errors.append(ConfigError(
+                f"{path}.{field}",
+                f"Looks like a literal vendor secret. Prefer "
+                f"'{env_field}: <ENV_VAR_NAME>' to keep credentials "
+                f"out of argus.yml.",
+                level="warning",
+            ))
+
+    if field in data and env_field in data:
+        errors.append(ConfigError(
+            f"{path}.{field}",
+            f"Both '{field}' and '{env_field}' are set — only one "
+            f"should be used. '{env_field}' takes precedence at resolution.",
+            level="warning",
+        ))
+
+    return errors
+
+
+def _validate_zap_auth(path: str, data: Any) -> list[ConfigError]:
+    """Validate the ``scanners.zap.auth`` sub-block.
+
+    Holds the ZAP context-file path plus credential references for
+    web-app authentication. Credentials follow the same <field> /
+    <field>_env contract as registry auth.
+    """
+    errors: list[ConfigError] = []
+
+    if not isinstance(data, dict):
+        errors.append(ConfigError(
+            path, f"Must be a mapping, got {type(data).__name__}",
+        ))
+        return errors
+
+    for key in data:
+        if key not in _ZAP_AUTH_KEYS:
+            errors.append(ConfigError(
+                f"{path}.{key}",
+                f"Unknown auth key '{key}'. "
+                f"Valid keys: {', '.join(sorted(_ZAP_AUTH_KEYS))}",
+                level="warning",
+            ))
+
+    if "context_file" in data and not isinstance(data["context_file"], str):
+        errors.append(ConfigError(
+            f"{path}.context_file", "Must be a string path",
+        ))
+
+    errors.extend(_validate_secret_field(data, "username", path))
+    errors.extend(_validate_secret_field(data, "password", path))
 
     return errors
 

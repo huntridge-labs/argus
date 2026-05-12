@@ -493,6 +493,54 @@ jobs:
 
 ---
 
+#### Configuring ZAP via `argus.yml` (recommended for SDK users)
+
+ADR-024 decided that ZAP-specific tuning lives in the standard `argus.yml`
+under `scanners.zap.*`, working identically across SDK-direct, composite-
+action, and any-CI use. The composite action surface stays minimal
+(target identification + common cross-scanner inputs); everything else
+configures from one place.
+
+```yaml
+scanners:
+  zap:
+    enabled: true
+    target_url: "https://app.example.com"
+
+    # Tuning (container backend; all optional)
+    scan_type: baseline                 # baseline | full | api (api is implicit
+                                         # when api_spec is set)
+    api_spec: "https://app.example.com/openapi.json"
+    rules_file: ".zap/rules.tsv"         # mounted at /zap/wrk/rules.tsv
+    max_duration_minutes: 30
+    cmd_options:
+      - "-z"
+      - "-config view.locale=en_GB"
+
+    # Registry auth for app_image_ref pulls (private images).
+    # Name the env var; argus reads os.environ at scan time.
+    # Setting registry_password directly is back-compat-supported
+    # but warned at config-load if the value looks like a vendor secret.
+    registry_username_env: REGISTRY_USER
+    registry_password_env: REGISTRY_TOKEN
+
+    # Web-app authentication — ZAP context-file passthrough.
+    # User authors the context file (DOM selectors, logged-in regex,
+    # session management); argus mounts it and exports ZAP_AUTH_USERNAME
+    # / ZAP_AUTH_PASSWORD into the container for the {%username%} /
+    # {%password%} placeholders to substitute.
+    auth:
+      context_file: ".zap/context.xml"
+      username_env: ZAP_APP_USER
+      password_env: ZAP_APP_PASSWORD
+```
+
+See [`docs/config-reference.md`](config-reference.md#credential-fields) for
+the full credential-field contract and the list of every `scanners.zap.*`
+key.
+
+---
+
 <details>
 <summary><strong>Configuration Options</strong></summary>
 

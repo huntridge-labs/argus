@@ -162,10 +162,23 @@ class ContainerScanner:
         return [s.strip().lower() for s in raw.split(",") if s.strip()]
 
     def _build_env(self, config: dict) -> dict[str, str]:
-        """Build environment dict with optional registry credentials."""
+        """Build environment dict with optional registry credentials.
+
+        Credentials are resolved via ``argus.core.secrets.resolve_secret``,
+        which accepts either form:
+
+          registry_username:     "literal"            # back-compat, warned
+                                                      # if vendor-shaped
+          registry_username_env: ENV_VAR_NAME         # preferred
+
+        The resolved values are exported to the env vars Trivy / Grype /
+        Syft each natively read for registry authentication.
+        """
+        from argus.core.secrets import resolve_secret
+
         env = dict(os.environ)
-        username = config.get("registry_username")
-        password = config.get("registry_password")
+        username = resolve_secret(config, "registry_username")
+        password = resolve_secret(config, "registry_password")
 
         if username:
             env["TRIVY_USERNAME"] = username
