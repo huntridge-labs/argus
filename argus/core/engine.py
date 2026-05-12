@@ -832,6 +832,48 @@ class ArgusEngine:
                 docker_cmd.extend(["--entrypoint", entrypoint])
                 logger.debug("Overriding entrypoint: %s", entrypoint)
 
+            # Optional per-scanner env vars — e.g. credentials resolved
+            # via ``argus.core.secrets.resolve_secret``. Scanners that
+            # need to pass authentication or runtime parameters to the
+            # tool implement ``container_env(config) -> dict[str, str]``;
+            # the engine forwards each entry as ``-e NAME=VALUE``.
+            # Values are passed by content, not by name-passthrough,
+            # so unset host env vars don't accidentally inherit.
+            if hasattr(scanner, "container_env"):
+                extra_env = scanner.container_env(config or {}) or {}
+                for env_name, env_value in extra_env.items():
+                    if env_value is None:
+                        continue
+                    docker_cmd.extend(["-e", f"{env_name}={env_value}"])
+                if extra_env:
+                    logger.debug(
+                        "Scanner '%s' injected %d env var(s) into container",
+                        scanner.name, len([v for v in extra_env.values() if v is not None]),
+                    )
+
+            # Optional per-scanner read-only bind mounts — e.g. ZAP
+            # context files or ignore-rules files. Scanners return a
+            # list of ``(host_path, container_path)`` tuples from
+            # ``container_mounts(config)``. Host paths are resolved to
+            # absolute paths; entries pointing at non-existent files
+            # are skipped with a warning so a typo'd config doesn't
+            # take down the whole scan.
+            if hasattr(scanner, "container_mounts"):
+                for mount in scanner.container_mounts(config or {}) or []:
+                    host_path, container_path = mount
+                    abs_host = str(Path(host_path).resolve())
+                    if not Path(abs_host).exists():
+                        logger.warning(
+                            "Scanner '%s' requested mount of '%s' but the "
+                            "path does not exist — skipping",
+                            scanner.name, host_path,
+                        )
+                        continue
+                    docker_cmd.extend(["-v", f"{abs_host}:{container_path}:ro"])
+                    logger.debug(
+                        "Scanner mount: %s → %s (ro)", abs_host, container_path,
+                    )
+
             # Prefer the unified ``build_args(ScanPaths)`` shape (single
             # source of truth for both local and container CLI args).
             # Fall back to legacy ``container_args(config)`` for scanners
