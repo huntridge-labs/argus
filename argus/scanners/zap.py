@@ -135,11 +135,16 @@ class ZapScanner:
         context files reference via ``{%username%}`` / ``{%password%}``
         placeholders.
         """
+        from argus.core.secrets import get_stdin_override
+
         config = config or {}
         env: dict[str, str | None] = {}
 
         reg_user = resolve_secret(config, "registry_username")
-        reg_pass = resolve_secret(config, "registry_password")
+        reg_pass = resolve_secret(
+            config, "registry_password",
+            stdin_override=get_stdin_override("registry_password"),
+        )
         if reg_user:
             env["ZAP_REGISTRY_USERNAME"] = reg_user
         if reg_pass:
@@ -147,7 +152,10 @@ class ZapScanner:
 
         auth_block = config.get("auth") or {}
         auth_user = resolve_secret(auth_block, "username")
-        auth_pass = resolve_secret(auth_block, "password")
+        auth_pass = resolve_secret(
+            auth_block, "password",
+            stdin_override=get_stdin_override("zap_auth_password"),
+        )
         if auth_user:
             env["ZAP_AUTH_USERNAME"] = auth_user
         if auth_pass:

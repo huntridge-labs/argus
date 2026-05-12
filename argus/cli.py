@@ -811,6 +811,30 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
              "is available via 'reporting.keep_raw: false' in argus.yml.",
     )
 
+    # Credential stdin flags — read a password from stdin and use it
+    # as the highest-precedence credential for the named slot. Mirrors
+    # ``docker login --password-stdin``: keeps the value off the
+    # process argv (no ``ps``/``docker inspect`` exposure), off the
+    # shell history, and out of the config file. At most one stdin
+    # flag may be used per invocation (stdin is a single stream).
+    scan_parser.add_argument(
+        "--registry-password-stdin",
+        action="store_true",
+        dest="registry_password_stdin",
+        help="Read the private-registry password from stdin and use it "
+             "for any scanner that needs registry auth (container, zap "
+             "with app_image_ref). Overrides registry_password / "
+             "registry_password_env in argus.yml.",
+    )
+    scan_parser.add_argument(
+        "--zap-auth-password-stdin",
+        action="store_true",
+        dest="zap_auth_password_stdin",
+        help="Read the ZAP web-app authentication password from stdin. "
+             "Overrides scanners.zap.auth.password / password_env in "
+             "argus.yml.",
+    )
+
     # Container-specific flags (used with: argus scan container)
     container_group = scan_parser.add_argument_group(
         "container scanning",
@@ -1206,6 +1230,72 @@ def _build_report_parser(subparsers: argparse._SubParsersAction) -> None:
     )
 
 
+_STDIN_PASSWORD_FLAGS = {
+    # CLI flag attr name on argparse.Namespace -> credential slot
+    "registry_password_stdin": "registry_password",
+    "zap_auth_password_stdin": "zap_auth_password",
+}
+
+
+def _consume_stdin_password_flags(args: argparse.Namespace) -> int:
+    """Read a password from stdin for any ``--*-password-stdin`` flag.
+
+    Mirrors ``docker login --password-stdin``: the value is read once,
+    stored in ``argus.core.secrets`` under a named slot, and consumed
+    by scanner modules via ``get_stdin_override(slot)`` at scan time.
+    The value never reaches the per-scanner config dict, so it can't
+    leak into argus-audit.json / argus.log.
+
+    Returns ``EXIT_SUCCESS`` on success (including when no stdin flag was
+    provided) or ``EXIT_ERROR`` on a usage / TTY violation. Logs no
+    secret material.
+    """
+    active = [
+        slot for attr, slot in _STDIN_PASSWORD_FLAGS.items()
+        if getattr(args, attr, False)
+    ]
+    if not active:
+        return EXIT_SUCCESS
+
+    if len(active) > 1:
+        print(
+            f"Error: only one stdin password flag may be used per "
+            f"invocation (got: {', '.join(sorted(active))}). "
+            f"stdin is a single stream — pass other credentials via "
+            f"<field>_env config keys instead.",
+            file=sys.stderr,
+        )
+        return EXIT_ERROR
+
+    if sys.stdin.isatty():
+        print(
+            "Error: --*-password-stdin requires piped input.\n"
+            "Example:\n"
+            "  echo \"$REGISTRY_TOKEN\" | "
+            "argus scan --registry-password-stdin --config argus.yml",
+            file=sys.stderr,
+        )
+        return EXIT_ERROR
+
+    raw = sys.stdin.read()
+    # Strip a single trailing newline if present (matches
+    # ``docker login --password-stdin`` behavior — handles
+    # ``echo $X | ...`` cleanly without eating multi-line tokens).
+    if raw.endswith("\n"):
+        raw = raw[:-1]
+    if not raw:
+        print(
+            "Error: stdin was empty. The password must be supplied "
+            "as the body of the pipe.",
+            file=sys.stderr,
+        )
+        return EXIT_ERROR
+
+    from argus.core.secrets import set_stdin_override
+    set_stdin_override(active[0], raw)
+    return EXIT_SUCCESS
+
+
 def cmd_scan(args: argparse.Namespace) -> int:
     """Execute the scan subcommand.
 
@@ -1215,6 +1305,14 @@ def cmd_scan(args: argparse.Namespace) -> int:
       - zap + --image/--target → DAST lifecycle
       - everything else → source code scanning
     """
+    # Consume any --*-password-stdin flags before further dispatch.
+    # Done first so a usage error surfaces before the scanner-registry
+    # import (which is slower) and so the stdin value is in place for
+    # both the container and DAST lifecycle paths below.
+    rc = _consume_stdin_password_flags(args)
+    if rc != EXIT_SUCCESS:
+        return rc
+
     # Validate scanner name against registry
     if args.scanner and not args.list:
         try:

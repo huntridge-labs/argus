@@ -142,7 +142,25 @@ registry_password_env: REGISTRY_TOKEN
 registry_password: "literal-value"
 ```
 
-The same shape applies to **any** credential field across scanners — both forms are interchangeable, and the `*_env` form always wins when both are set. Validation rules:
+The same shape applies to **any** credential field across scanners — both forms are interchangeable, and the `*_env` form always wins when both are set.
+
+**Third form — CLI stdin** (highest precedence; overrides both YAML forms):
+
+```bash
+echo "$REGISTRY_TOKEN" | argus scan --registry-password-stdin --config argus.yml
+echo "$APP_PASSWORD"   | argus scan zap --zap-auth-password-stdin --target https://app
+```
+
+Mirrors `docker login --password-stdin`: the value is read once from stdin, stored in a process-local slot, and consumed by scanners at scan time. The value never reaches the per-scanner config dict, so it can't leak into `argus-audit.json` or `argus.log`. At most **one** `--*-password-stdin` flag per invocation (stdin is a single stream); use `<field>_env` for the other credentials. Argus errors out with a usage hint if stdin is a TTY or if more than one stdin flag is set.
+
+Available CLI stdin flags:
+
+| Flag | Slot it fills |
+|---|---|
+| `--registry-password-stdin` | Registry password for any scanner that needs registry auth (`container`, `zap` with `app_image_ref`). |
+| `--zap-auth-password-stdin` | ZAP web-app authentication password (`scanners.zap.auth.password`). |
+
+**Validation rules:**
 
 - `<field>_env` must be a valid POSIX shell identifier (`[A-Za-z_][A-Za-z0-9_]*`); invalid names are a config error.
 - `<field>` literal that matches a vendor-secret prefix produces a warning suggesting `<field>_env`.

@@ -124,6 +124,47 @@ def resolve_secret(
     return None
 
 
+# ── CLI ``--*-password-stdin`` plumbing ─────────────────────────────
+#
+# A module-level mapping populated by ``argus/cli.py`` after reading
+# a password from stdin (one CLI flag per logical credential slot).
+# Scanner modules look up by *slot* — a stable cross-scanner name —
+# rather than by raw field name so that, e.g., ``registry_password``
+# in container.py and zap.py both pick up the same stdin value but
+# zap's ``auth.password`` does not.
+#
+# Lives in this module (not the CLI) for three reasons:
+#   - the consuming code (resolve_secret callers in scanner modules)
+#     already imports from here;
+#   - tests can clear state via ``clear_stdin_overrides``;
+#   - the stdin value never reaches the per-scanner config dict, so
+#     it can't accidentally leak into argus-audit.json / argus.log
+#     (both of which serialize the per-scanner config block).
+_STDIN_OVERRIDES: dict[str, str] = {}
+
+
+def set_stdin_override(slot: str, value: str) -> None:
+    """Record a stdin-supplied credential under a named slot.
+
+    Slots are stable cross-scanner names — e.g. ``"registry_password"``
+    fills the registry password for every scanner that uses it; an
+    invocation never reaches both ``container.registry_password`` and
+    ``zap.auth.password`` via the same stdin pipe (stdin is a single
+    stream), so distinct slots stay decoupled.
+    """
+    _STDIN_OVERRIDES[slot] = value
+
+
+def get_stdin_override(slot: str) -> str | None:
+    """Return the stdin-supplied value for ``slot``, or None."""
+    return _STDIN_OVERRIDES.get(slot)
+
+
+def clear_stdin_overrides() -> None:
+    """Reset all stdin overrides — test seam, not for production use."""
+    _STDIN_OVERRIDES.clear()
+
+
 def validate_env_var_name(name: str) -> bool:
     """Return ``True`` if ``name`` is a valid POSIX shell identifier."""
     return isinstance(name, str) and bool(_ENV_NAME_VALID.match(name))

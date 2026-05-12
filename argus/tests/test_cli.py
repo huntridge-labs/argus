@@ -269,6 +269,8 @@ def _make_scan_args(**overrides) -> argparse.Namespace:
         "env_vars": None,
         "scan_type": "baseline",
         "startup_timeout": 60,
+        "registry_password_stdin": False,
+        "zap_auth_password_stdin": False,
     }
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -1965,3 +1967,158 @@ class TestCmdMcp:
         assert rc == EXIT_ERROR
         err = capsys.readouterr().err
         assert "argus-security[mcp]" in err
+
+
+class TestStdinPasswordFlags:
+    """``--registry-password-stdin`` / ``--zap-auth-password-stdin``.
+
+    Verifies the helper that reads stdin and routes the value into the
+    secrets module's slot registry. The TTY guard and the multi-flag
+    guard both produce EXIT_ERROR; the value never reaches the per-
+    scanner config dict.
+    """
+
+    def setup_method(self):
+        from argus.core.secrets import clear_stdin_overrides
+        clear_stdin_overrides()
+
+    def teardown_method(self):
+        from argus.core.secrets import clear_stdin_overrides
+        clear_stdin_overrides()
+
+    def _set_piped_stdin(self, monkeypatch, payload: str):
+        """Replace sys.stdin with an io.StringIO that reports isatty=False."""
+        import io
+        stdin = io.StringIO(payload)
+        stdin.isatty = lambda: False  # type: ignore[method-assign]
+        from argus import cli
+        monkeypatch.setattr(cli.sys, "stdin", stdin)
+
+    def test_no_flag_set_is_noop(self):
+        from argus.cli import _consume_stdin_password_flags, EXIT_SUCCESS
+        from argus.core.secrets import get_stdin_override
+
+        args = _make_scan_args()
+        rc = _consume_stdin_password_flags(args)
+
+        assert rc == EXIT_SUCCESS
+        assert get_stdin_override("registry_password") is None
+        assert get_stdin_override("zap_auth_password") is None
+
+    def test_registry_password_stdin_populates_slot(self, monkeypatch):
+        from argus.cli import _consume_stdin_password_flags, EXIT_SUCCESS
+        from argus.core.secrets import get_stdin_override
+
+        self._set_piped_stdin(monkeypatch, "s3cret-from-pipe\n")
+        args = _make_scan_args(registry_password_stdin=True)
+
+        rc = _consume_stdin_password_flags(args)
+
+        assert rc == EXIT_SUCCESS
+        assert get_stdin_override("registry_password") == "s3cret-from-pipe"
+        # ZAP slot unaffected.
+        assert get_stdin_override("zap_auth_password") is None
+
+    def test_zap_auth_password_stdin_populates_distinct_slot(self, monkeypatch):
+        from argus.cli import _consume_stdin_password_flags, EXIT_SUCCESS
+        from argus.core.secrets import get_stdin_override
+
+        self._set_piped_stdin(monkeypatch, "zap-app-pass\n")
+        args = _make_scan_args(zap_auth_password_stdin=True)
+
+        rc = _consume_stdin_password_flags(args)
+
+        assert rc == EXIT_SUCCESS
+        assert get_stdin_override("zap_auth_password") == "zap-app-pass"
+        # Registry slot unaffected.
+        assert get_stdin_override("registry_password") is None
+
+    def test_trailing_newline_stripped(self, monkeypatch):
+        from argus.cli import _consume_stdin_password_flags
+        from argus.core.secrets import get_stdin_override
+
+        self._set_piped_stdin(monkeypatch, "no-newline-please\n")
+        args = _make_scan_args(registry_password_stdin=True)
+        _consume_stdin_password_flags(args)
+
+        assert get_stdin_override("registry_password") == "no-newline-please"
+
+    def test_value_without_trailing_newline_preserved(self, monkeypatch):
+        from argus.cli import _consume_stdin_password_flags
+        from argus.core.secrets import get_stdin_override
+
+        # No trailing newline — preserved exactly.
+        self._set_piped_stdin(monkeypatch, "raw")
+        args = _make_scan_args(registry_password_stdin=True)
+        _consume_stdin_password_flags(args)
+
+        assert get_stdin_override("registry_password") == "raw"
+
+    def test_both_flags_set_returns_error(self, monkeypatch, capsys):
+        from argus.cli import _consume_stdin_password_flags, EXIT_ERROR
+        from argus.core.secrets import get_stdin_override
+
+        # Even if stdin had a value, we must reject up front because
+        # stdin is single-stream.
+        self._set_piped_stdin(monkeypatch, "should-not-be-consumed")
+        args = _make_scan_args(
+            registry_password_stdin=True,
+            zap_auth_password_stdin=True,
+        )
+
+        rc = _consume_stdin_password_flags(args)
+
+        assert rc == EXIT_ERROR
+        # Neither slot populated.
+        assert get_stdin_override("registry_password") is None
+        assert get_stdin_override("zap_auth_password") is None
+        # Helpful diagnostic in stderr — names which flags collided.
+        err = capsys.readouterr().err
+        assert "registry_password" in err
+        assert "zap_auth_password" in err
+
+    def test_tty_stdin_returns_error(self, monkeypatch, capsys):
+        from argus.cli import _consume_stdin_password_flags, EXIT_ERROR
+        from argus.core.secrets import get_stdin_override
+        import io
+
+        # Simulate a TTY (interactive shell).
+        stdin = io.StringIO("should-never-read-this")
+        stdin.isatty = lambda: True  # type: ignore[method-assign]
+        from argus import cli
+        monkeypatch.setattr(cli.sys, "stdin", stdin)
+
+        args = _make_scan_args(registry_password_stdin=True)
+        rc = _consume_stdin_password_flags(args)
+
+        assert rc == EXIT_ERROR
+        assert get_stdin_override("registry_password") is None
+        err = capsys.readouterr().err
+        assert "piped input" in err
+
+    def test_empty_stdin_returns_error(self, monkeypatch, capsys):
+        from argus.cli import _consume_stdin_password_flags, EXIT_ERROR
+        from argus.core.secrets import get_stdin_override
+
+        self._set_piped_stdin(monkeypatch, "")
+        args = _make_scan_args(registry_password_stdin=True)
+
+        rc = _consume_stdin_password_flags(args)
+
+        assert rc == EXIT_ERROR
+        assert get_stdin_override("registry_password") is None
+        err = capsys.readouterr().err
+        assert "empty" in err
+
+    def test_multiline_password_preserved(self, monkeypatch):
+        """Only a *single* trailing newline is stripped — multi-line
+        tokens (rare but valid, e.g. PEM contents passed inline) stay
+        intact for legitimate use cases."""
+        from argus.cli import _consume_stdin_password_flags
+        from argus.core.secrets import get_stdin_override
+
+        self._set_piped_stdin(monkeypatch, "line1\nline2\nline3\n")
+        args = _make_scan_args(registry_password_stdin=True)
+        _consume_stdin_password_flags(args)
+
+        assert get_stdin_override("registry_password") == "line1\nline2\nline3"
