@@ -831,6 +831,72 @@ The current redaction model (per-scanner, at the parser) is documented in [`docs
 
 ---
 
+## Secret Handling & Credential Surface Hardening
+
+Companion to *Secret Redaction Hardening* above. **Redaction** scrubs
+literal secret values that pass *through* the system on their way to
+findings / reports / MCP responses. **Handling** is upstream of that —
+how user-supplied credentials enter argus, how they get to the
+scanner process, and what other surfaces (process tree, docker
+inspect, audit trail, supply chain) they're exposed on along the way.
+
+Audit performed 2026-05-11 against the just-landed `argus/core/secrets.py`
++ engine `container_env` / `container_mounts` hooks (PR #142). Findings
+are split into "what's already safe" and "real risks today" so a
+future contributor understands both the threat model we *are*
+defending against and the gaps we knowingly carry.
+
+### Already safe
+
+| Surface | Why |
+|---|---|
+| Code injection via config | `argus.core.secrets.resolve_secret` is `os.environ.get(name)` — no `eval`, no `os.path.expandvars`, no shell expansion. Schema validator uses regex. |
+| Shell injection via subprocess | All `subprocess.run` calls use `argv` arrays, never `shell=True`. Credential strings can't terminate or extend the command. |
+| Logging | `secrets.py` logs field *names* only, never values. The engine's debug log joins `container_args` (post-image scanner argv) — the `-e NAME=VALUE` flags live in `docker_cmd` before the image and are not logged. `argus/audit/logger.py` and `manifest.py` don't capture command lines or env dicts. |
+| Findings text | Redact module (ADR-022) scrubs vendor-prefix tokens at `Finding.__post_init__`. Downstream consumers see `<redacted>`. |
+| Tracebacks | Env vars are set at process-spawn time, not on the call stack — exceptions don't capture them. |
+| Stdlib-only credential path | `argus/core/secrets.py` has zero third-party deps; a compromised wheel in `requirements.txt` can't pivot through it. |
+
+### Real risks today
+
+1. **`docker run -e NAME=VALUE` puts credentials on the docker daemon's command line.** The engine assembles `-e NAME=VALUE` flags (`argus/core/engine.py` around line 847). On a shared host during a scan, this means: `ps -ef | grep "docker run"` shows the credential to any local user; `docker inspect <container>` shows it to anyone with docker socket access; the docker daemon's audit log captures the full command; shell history captures it if anyone copies the invocation from a log. Severity: **medium** — exploitable only by an attacker who already has local user access to the scan host, but trivial once they do.
+
+2. **No cosign-verify on pulled images.** GHCR-published argus images are cosign-signed at publish time, but the engine doesn't verify signatures when pulling. Renovate-triggered image updates can therefore introduce an unsigned image without challenge. Severity: **low-medium** depending on threat model.
+
+3. **Credentials flow into third-party scanner containers** (Trivy, Grype, Syft, ZAP). If any of those tools is compromised upstream, they have full access to the credential string we hand them. Irreducible "we trust the scanners we wrap" assumption. We pin scanner versions and update via Dependabot/Renovate; we don't verify upstream-image attestations beyond Docker Hub / GHCR trust.
+
+4. **Composite-action consumers can still pass literals via GitHub Actions `${{ secrets.X }}` inputs.** That's a GHA path, not an argus one — the value lands in argus as a plain config string and gets the same treatment as a YAML literal (warned at config-load if vendor-shaped). Out of scope to fix on the argus side; in scope to document.
+
+### Credential entry paths today
+
+| Path | Status |
+|---|---|
+| `argus.yml` literal (`registry_password: "..."`) | Supported, warned at config-load if vendor-shaped |
+| `argus.yml` env-var-name reference (`registry_password_env: REGISTRY_TOKEN`) | **Preferred**. Resolved from `os.environ` at scan time. |
+| CLI flag (`--registry-password`, `--password-stdin`) | **None today** — `stdin_override` parameter plumbed in `resolve_secret` but no CLI caller yet (item 2 below) |
+
+### Hardening PRs — ordered by payoff
+
+- [ ] **(1) Switch engine from `-e NAME=VALUE` to `-e NAME` passthrough.** Argus sets the resolved value in its own process env before invoking docker; docker inherits by name (no value on the command line). Closes the `ps` / `docker inspect` leak from risk (1) above. ~20-line change in `argus/core/engine.py` plus updated tests in `argus/tests/test_engine.py::TestContainerEnvHook`. Highest payoff for smallest change; do this first.
+
+- [ ] **(2) Land the `--registry-password-stdin` CLI flag** (and equivalent for ZAP web-app password). Stdin avoids argv exposure for ad-hoc runs. `argus.core.secrets.resolve_secret(stdin_override=...)` is already plumbed. Wires the value through `argus/cli.py` into the engine's per-scanner config dict. Mirrors `docker login --password-stdin`.
+
+- [ ] **(3) Cosign-verify scanner container images on pull.** New `argus/core/image_verify.py` (or extension of `argus/containers.py`) that verifies cosign signatures on argus-owned GHCR images by default; opt-out for unsigned third-party scanner images via an explicit allow-list. Config knob: `execution.verify_image_signatures: true` (default true for GHCR-published argus images, opt-in elsewhere). Closes risk (2).
+
+- [ ] **(4) Document the written secret-handling policy** in a new `docs/security.md`. Sections: threat model we defend against (config-load-time leak detection, no logging of values, no audit-trail capture of values, redaction at finding construction), threat model we do NOT defend against (root-on-host attacker, compromised scanner image, malicious YAML literal that doesn't match a vendor prefix), where secrets can/cannot live, audit-trail promises. Pull citations from this section once the PRs above land.
+
+- [ ] **(5) Defensive redaction pass at audit-trail write time.** `argus/audit/manifest.py` and `argus/audit/logger.py` don't capture credentials today, but the only thing preventing a future regression is reviewer vigilance. Add a defensive pass (reusing `argus.core.redact.redact_high_risk_patterns`) at audit-write time so a regression that accidentally serializes a `docker_cmd` or env dict can't leak. Belt-and-suspenders.
+
+### Sequencing notes
+
+- (1) is independent and lands first.
+- (2) is independent of (1) but the test harness for stdin reads is easier to wire after (1) since the engine end-to-end test scaffold gets cleaner.
+- (3) is independent of (1)/(2) but touches `argus/containers.py` — schedule when nothing else in that area is in flight.
+- (4) lands *after* (1) and (2) so the doc reflects shipped behavior, not aspirations.
+- (5) is independent of all of the above and could land any time.
+
+---
+
 ## Dependency Maintenance — Full Coverage
 
 | Dependency Type | Tool | Config Location | Status |
