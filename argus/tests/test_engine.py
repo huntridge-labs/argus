@@ -1258,6 +1258,7 @@ class TestContainerEnvHook:
     def _capture_cmd_runner(self, captured):
         def mock_run(cmd, **kwargs):
             captured["cmd"] = cmd
+            captured["env"] = kwargs.get("env")
             # Write a fake result so the engine doesn't bail.
             for arg in cmd:
                 if ":/output" in str(arg):
@@ -1269,7 +1270,15 @@ class TestContainerEnvHook:
             )
         return mock_run
 
-    def test_env_vars_passed_via_dash_e(self, monkeypatch):
+    def test_env_vars_passed_by_name_not_value(self, monkeypatch):
+        """Values must never appear on the docker run command line.
+
+        Closes the ``ps -ef`` / ``docker inspect`` leak: docker
+        inherits the named env var from the subprocess, so its argv
+        only carries the NAME (visible everywhere) while the VALUE
+        lives in the subprocess's private env (visible only to the
+        subprocess and its children).
+        """
         engine = self._make_engine()
         scanner = self._make_scanner_with_env({
             "ZAP_AUTH_USERNAME": "alice",
@@ -1285,15 +1294,29 @@ class TestContainerEnvHook:
         engine._run_in_container(scanner, "/src", {})
 
         cmd = captured["cmd"]
-        # ``-e NAME=VALUE`` flags must appear as a pair
-        assert "-e" in cmd
-        assert "ZAP_AUTH_USERNAME=alice" in cmd
-        assert "ZAP_AUTH_PASSWORD=s3cret" in cmd
+        # ``-e NAME`` appears (name only); ``NAME=VALUE`` does NOT
+        assert "ZAP_AUTH_USERNAME" in cmd
+        assert "ZAP_AUTH_PASSWORD" in cmd
+        assert not any("=alice" in str(a) for a in cmd)
+        assert not any("=s3cret" in str(a) for a in cmd)
+        assert not any("ZAP_AUTH_USERNAME=" in str(a) for a in cmd)
+        assert not any("ZAP_AUTH_PASSWORD=" in str(a) for a in cmd)
+
+        # Values live in the subprocess env, where docker inherits from.
+        env = captured["env"]
+        assert env is not None
+        assert env["ZAP_AUTH_USERNAME"] == "alice"
+        assert env["ZAP_AUTH_PASSWORD"] == "s3cret"
+        # Parent env is preserved (PATH at minimum) so docker itself
+        # still resolves.
+        assert "PATH" in env
 
     def test_none_value_skipped(self, monkeypatch):
         # resolve_secret returns None when an env-var-name reference
-        # points at an unset env var; the engine should NOT emit a
-        # bogus ``-e NAME=None`` flag.
+        # points at an unset env var; the engine must NOT emit a bogus
+        # ``-e NAME`` flag (docker would inherit *whatever* the parent
+        # has for that name, which is exactly the case we just said
+        # was missing).
         engine = self._make_engine()
         scanner = self._make_scanner_with_env({
             "ZAP_AUTH_USERNAME": "alice",
@@ -1309,14 +1332,15 @@ class TestContainerEnvHook:
         engine._run_in_container(scanner, "/src", {})
 
         cmd = captured["cmd"]
-        assert "ZAP_AUTH_USERNAME=alice" in cmd
-        assert not any("ZAP_AUTH_PASSWORD" in str(a) for a in cmd)
+        assert "ZAP_AUTH_USERNAME" in cmd
+        assert "ZAP_AUTH_PASSWORD" not in cmd
+        # The None value should not have made it into the subprocess env.
+        assert "ZAP_AUTH_PASSWORD" not in (captured["env"] or {})
 
     def test_no_container_env_method_no_extra_flags(self, monkeypatch):
         # Existing scanners without container_env continue to work.
         engine = self._make_engine()
         scanner = MockScanner(name="bandit", container_image="bandit:latest")
-        # Ensure no container_env attribute.
         assert not hasattr(scanner, "container_env")
 
         monkeypatch.setattr(engine, "_pull_image", lambda img: True)
@@ -1329,6 +1353,31 @@ class TestContainerEnvHook:
 
         # ``-e`` flags should only appear if the scanner asked for them.
         assert "-e" not in captured["cmd"]
+        # And subprocess.run runs with env=None (inherits parent env).
+        assert captured["env"] is None
+
+    def test_all_none_values_no_subprocess_env_override(self, monkeypatch):
+        """When every container_env entry resolves to None (every env
+        var was unset), we should drop the subprocess env override
+        entirely so the call behaves identically to a scanner without
+        a container_env method.
+        """
+        engine = self._make_engine()
+        scanner = self._make_scanner_with_env({
+            "ZAP_AUTH_USERNAME": None,
+            "ZAP_AUTH_PASSWORD": None,
+        })
+
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+
+        captured = {}
+        monkeypatch.setattr(subprocess, "run", self._capture_cmd_runner(captured))
+
+        engine._run_in_container(scanner, "/src", {})
+
+        assert "-e" not in captured["cmd"]
+        assert captured["env"] is None
 
 
 class TestContainerMountsHook:
