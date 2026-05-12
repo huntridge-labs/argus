@@ -1,6 +1,6 @@
 # Argus CLI Reference (v0.7.2)
 
-> Auto-generated from argparse definitions on 2026-05-08.
+> Auto-generated from argparse definitions on 2026-05-12.
 > Do not edit manually — run `python -m scripts.ci.gen_cli_docs` to regenerate.
 
 Argus Security Scanner — comprehensive security scanning for your codebase
@@ -77,9 +77,11 @@ argus scan [-h] [--path PATH] [--config CONFIG]
                   [--sbom PATH] [--interface {terminal,browser}] [--fail-fast]
                   [--fail-on-scanner-error] [--timeout SECONDS]
                   [--no-parallel] [--allow-local-versions] [--no-cache]
-                  [--no-keep-raw] [--discover [PATH]] [--image REF]
-                  [--scanners SCANNERS] [--target URL] [--port PORT]
-                  [--env KEY=VALUE] [--scan-type {baseline,full}]
+                  [--no-keep-raw] [--registry-password-stdin]
+                  [--zap-auth-password-stdin] [--discover [PATH]]
+                  [--image REF] [--scanners SCANNERS] [--target URL]
+                  [--port PORT] [--env KEY=VALUE]
+                  [--scan-type {baseline,full}]
                   [--startup-timeout STARTUP_TIMEOUT]
                   [scanner]
 ```
@@ -117,6 +119,8 @@ argus scan [-h] [--path PATH] [--config CONFIG]
 | `--allow-local-versions` | Allow local tool versions that differ from argus-pinned versions. Use in airgapped environments where tool updates are constrained. | `false` |
 | `--no-cache` | Disable DB cache volume mounts. Forces scanners to re-download vulnerability databases on every container run. | `false` |
 | `--no-keep-raw` | Do not persist raw per-scanner output files alongside the canonical argus-results.json. Source scans normally drop each scanner's results.json / *.sarif / stdout.txt under <output_dir>/raw/<scanner>/; container scans drop trivy-results.json / grype-results.json / syft-sbom.json under <output_dir>/raw/<image>/. Pass --no-keep-raw to skip that step in tight CI environments. The same effect is available via 'reporting.keep_raw: false' in argus.yml. | `false` |
+| `--registry-password-stdin` | Read the private-registry password from stdin and use it for any scanner that needs registry auth (container, zap with app_image_ref). Overrides registry_password / registry_password_env in argus.yml. | `false` |
+| `--zap-auth-password-stdin` | Read the ZAP web-app authentication password from stdin. Overrides scanners.zap.auth.password / password_env in argus.yml. | `false` |
 
 **Container Scanning:**
 

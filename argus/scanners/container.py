@@ -174,11 +174,14 @@ class ContainerScanner:
         The resolved values are exported to the env vars Trivy / Grype /
         Syft each natively read for registry authentication.
         """
-        from argus.core.secrets import resolve_secret
+        from argus.core.secrets import get_stdin_override, resolve_secret
 
         env = dict(os.environ)
         username = resolve_secret(config, "registry_username")
-        password = resolve_secret(config, "registry_password")
+        password = resolve_secret(
+            config, "registry_password",
+            stdin_override=get_stdin_override("registry_password"),
+        )
 
         if username:
             env["TRIVY_USERNAME"] = username

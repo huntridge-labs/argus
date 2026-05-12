@@ -209,3 +209,69 @@ class TestLooksLikeLiteralSecret:
     def test_non_string_returns_false(self):
         assert looks_like_literal_secret(None) is False
         assert looks_like_literal_secret(12345) is False
+
+
+class TestStdinOverrideSlots:
+    """Slot-based stdin override registry — populated by the CLI's
+    ``--*-password-stdin`` flags, consumed by scanners via
+    ``get_stdin_override(slot)``.
+    """
+
+    def setup_method(self):
+        from argus.core.secrets import clear_stdin_overrides
+        clear_stdin_overrides()
+
+    def teardown_method(self):
+        # Process-level state: tests must reset to avoid leaking
+        # values to other tests in the same pytest run.
+        from argus.core.secrets import clear_stdin_overrides
+        clear_stdin_overrides()
+
+    def test_set_and_get_roundtrip(self):
+        from argus.core.secrets import get_stdin_override, set_stdin_override
+
+        set_stdin_override("registry_password", "from-stdin")
+        assert get_stdin_override("registry_password") == "from-stdin"
+
+    def test_unset_slot_returns_none(self):
+        from argus.core.secrets import get_stdin_override
+
+        assert get_stdin_override("never_set") is None
+
+    def test_distinct_slots_dont_collide(self):
+        from argus.core.secrets import get_stdin_override, set_stdin_override
+
+        set_stdin_override("registry_password", "reg-pass")
+        set_stdin_override("zap_auth_password", "app-pass")
+
+        assert get_stdin_override("registry_password") == "reg-pass"
+        assert get_stdin_override("zap_auth_password") == "app-pass"
+
+    def test_clear_resets_all_slots(self):
+        from argus.core.secrets import (
+            clear_stdin_overrides,
+            get_stdin_override,
+            set_stdin_override,
+        )
+
+        set_stdin_override("registry_password", "x")
+        set_stdin_override("zap_auth_password", "y")
+        clear_stdin_overrides()
+
+        assert get_stdin_override("registry_password") is None
+        assert get_stdin_override("zap_auth_password") is None
+
+    def test_resolve_secret_uses_stdin_override_arg(self):
+        """The resolver's existing ``stdin_override=`` kwarg still wins
+        even when nothing is set in the slot registry. Slot lookup is
+        the caller's responsibility — the resolver itself does not
+        introspect the registry."""
+        from argus.core.secrets import resolve_secret
+
+        result = resolve_secret(
+            {"registry_password_env": "ANY"},
+            "registry_password",
+            env={},
+            stdin_override="explicit-override",
+        )
+        assert result == "explicit-override"
