@@ -835,20 +835,43 @@ class ArgusEngine:
             # Optional per-scanner env vars — e.g. credentials resolved
             # via ``argus.core.secrets.resolve_secret``. Scanners that
             # need to pass authentication or runtime parameters to the
-            # tool implement ``container_env(config) -> dict[str, str]``;
-            # the engine forwards each entry as ``-e NAME=VALUE``.
-            # Values are passed by content, not by name-passthrough,
-            # so unset host env vars don't accidentally inherit.
+            # tool implement ``container_env(config) -> dict[str, str]``.
+            #
+            # Passthrough strategy: ``docker run -e NAME`` (no value)
+            # tells Docker to inherit the named env var from the *parent*
+            # process. We put the resolved value into the subprocess's
+            # own env via the ``subprocess_env`` dict below, so the value
+            # never appears on the ``docker run`` command line — keeping
+            # it out of ``ps``, ``docker inspect``, docker daemon audit
+            # logs, and anywhere else argv strings get persisted. The
+            # subprocess env is private to the python child and its
+            # ``docker run`` grandchild; not visible to other local users
+            # except those who can already read /proc/<pid>/environ for
+            # this process (which is a strictly tighter access set than
+            # ``ps``).
+            subprocess_env: dict[str, str] | None = None
             if hasattr(scanner, "container_env"):
                 extra_env = scanner.container_env(config or {}) or {}
+                # Inherit the parent env so docker, PATH, HOME, etc. still
+                # resolve normally; we only *add* the scanner's keys.
+                subprocess_env = dict(os.environ)
+                injected = 0
                 for env_name, env_value in extra_env.items():
                     if env_value is None:
                         continue
-                    docker_cmd.extend(["-e", f"{env_name}={env_value}"])
-                if extra_env:
+                    subprocess_env[env_name] = env_value
+                    docker_cmd.extend(["-e", env_name])
+                    injected += 1
+                if injected == 0:
+                    # Nothing to inject — drop the override so subprocess
+                    # uses the inherited env unmodified (matches behavior
+                    # for scanners without a container_env method).
+                    subprocess_env = None
+                else:
                     logger.debug(
-                        "Scanner '%s' injected %d env var(s) into container",
-                        scanner.name, len([v for v in extra_env.values() if v is not None]),
+                        "Scanner '%s' injected %d env var(s) into container "
+                        "(values passthrough via subprocess env, names only on argv)",
+                        scanner.name, injected,
                     )
 
             # Optional per-scanner read-only bind mounts — e.g. ZAP
@@ -917,6 +940,9 @@ class ArgusEngine:
                 text=True,
                 encoding="utf-8",
                 errors="replace",
+                env=subprocess_env,  # carries scanner-injected secrets
+                                     # by NAME→value; None = inherit
+                                     # the parent env unmodified
             )
             elapsed = int((time.monotonic() - start) * 1000)
 
