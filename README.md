@@ -112,6 +112,7 @@ jobs:
 | **Container** | Trivy Container | Comprehensive vulnerability scanner |
 | | Grype | Fast, accurate CVE detection |
 | | Syft | Software Bill of Materials (SBOM) |
+| | Exposed-port surface | Reports declared Dockerfile `EXPOSE` ports as findings (MEDIUM for risky-defaults watchlist: SSH, MySQL, Redis, etc.) |
 | **Infrastructure** | Trivy IaC | Infrastructure as Code scanner |
 | | Checkov | Policy as Code for cloud configs |
 | **Malware** | ClamAV | Open-source antivirus engine |
@@ -131,8 +132,9 @@ For detailed scanner configuration, see [Scanner Reference](docs/scanners.md).
 - **[Severity-based failure control](docs/failure-control.md)** - Set thresholds for workflow failures
 - **[Container configuration](docs/container-scanning.md)** - Scan multiple containers from a single config file
 - **Matrix execution** - Parallel scanning for multiple targets
-- **Private registry support** - Authenticate to container registries
-- **Environment variable expansion** - Dynamic configuration values
+- **[Credential handling](docs/security.md)** - Secrets stay out of `argus.yml`: name an env var via `<field>_env`, pipe via `--registry-password-stdin`, or both. Validator warns on literal vendor-shaped values; resolved values never reach logs / audit trail.
+- **[Supply-chain verification](docs/security.md#container-image-provenance)** - Cosign-verify on every argus-owned image pull (Sigstore keyless), implicit `@sha256:` digest verification on every third-party image. Failure aborts the scanner.
+- **[Shell tab-completion](docs/cli-reference.md)** - `argus completion zsh >> ~/.zshrc` (or `bash`) — Tab-completes subcommands, scanner / linter names, common flags. Auto-refreshes from the live scanner registry.
 - **[Optional AI summary](.github/actions/ai-summary/README.md)** - Generate executive security summaries from scan results using your own AI provider and API key (Copilot, Claude, or Gemini)
 - **[Interactive findings TUI](docs/view-terminal.md)** - `argus view terminal` — keyboard-driven triage browser (`pip install 'argus-security[terminal]'`)
 - **[Local web UI](docs/view-browser.md)** - `argus view browser` — localhost dashboard for non-engineer stakeholders (`pip install 'argus-security[browser]'`)
@@ -195,6 +197,8 @@ See [examples/github-enterprise/](examples/github-enterprise/) for complete GHES
 - [Scanner Reference](docs/scanners.md) - Complete configuration for all scanners
 - [Container Scanning](docs/container-scanning.md) - Config-driven matrix container scanning
 - [Failure Control](docs/failure-control.md) - Severity-based workflow failure configuration
+- [Security Policy](docs/security.md) - Threat model, credential handling, supply-chain verification, vulnerability reporting
+- [Migration 0.6.x → 1.x](docs/migration/0.6.x-to-1.x.md) - Side-by-side guide for upgrading consumer workflows
 - [Docker Troubleshooting](docs/troubleshooting/docker.md) - Runtime detection, bind-mount permissions, image pulls, proxies, and execution-failure signals
 
 ### Developer Docs
