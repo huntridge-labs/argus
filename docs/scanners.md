@@ -335,6 +335,72 @@ secrets:
 
 </details>
 
+### Exposed-port surface
+
+Reports the network endpoints a container image declares via Dockerfile
+`EXPOSE` — separate from whether those endpoints have known CVEs. "Image
+exposes 6379/tcp" is a different question from "image has a vulnerable
+Redis package" and most security reviewers want both. Runs as a
+sub-scanner inside the container scanner (no new module); the data is
+free since the container scanner already runs `docker inspect` on every
+pull.
+
+**Output shape:** one `Finding` per declared port:
+
+```
+INFO   EXPOSE-8080-tcp    Port 8080/tcp declared exposed
+MEDIUM EXPOSE-22-tcp      Port 22/tcp (SSH) declared exposed
+MEDIUM EXPOSE-3306-tcp    Port 3306/tcp (MySQL) declared exposed
+```
+
+Findings flow through every reporter (terminal, markdown, sarif, json,
+github, gitlab, junit), `--severity-threshold` filtering, audit trail,
+and the view-terminal / view-browser UIs without per-reporter custom
+code.
+
+**Built-in risky-defaults watchlist** (MEDIUM severity by default — each
+entry's rationale is cited in `argus/scanners/container.py::RISKY_PORTS`):
+
+| Port | Service | Port | Service |
+|------|---------|------|---------|
+| 21/tcp | FTP | 3306/tcp | MySQL |
+| 22/tcp | SSH | 3389/tcp | RDP |
+| 23/tcp | Telnet | 5432/tcp | PostgreSQL |
+| 25/tcp | SMTP | 6379/tcp | Redis |
+| 110/tcp | POP3 | 9200/tcp | Elasticsearch |
+| 143/tcp | IMAP | 11211/tcp | Memcached |
+| 161/udp | SNMP | 27017/tcp | MongoDB |
+| 389/tcp | LDAP | | |
+| 445/tcp | SMB | | |
+
+**Configuring via argus.yml:**
+
+```yaml
+scanners:
+  container:
+    image_ref: "myapp:latest"
+    # Default sub-scanner set; remove "exposure" to opt out
+    scanners: "trivy,grype,syft,exposure"
+    # Override the built-in WARN list (replaces the defaults).
+    # Pass [] to demote every declared port to INFO.
+    expose_warn_ports:
+      - 22/tcp
+      - 3306/tcp
+      - 8080/tcp           # promote app port to WARN
+    # Suppress findings entirely for ports the team has accepted.
+    expose_ignore_ports:
+      - 443/tcp
+      - 9090/tcp
+```
+
+Both lists accept `"PORT/PROTO"` strings; bare `"PORT"` defaults to tcp.
+Schema validator errors on malformed entries at config-load time. See
+[`docs/config-reference.md`](config-reference.md) for the full schema.
+
+**Out of scope:** *runtime* port enumeration (start the container, probe
+with `nmap`/`ss`). Static `EXPOSE` data is the bulk of the value at a
+fraction of the operational cost.
+
 ## Infrastructure Scanners
 
 ### Trivy IaC
