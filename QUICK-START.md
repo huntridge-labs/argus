@@ -7,8 +7,7 @@ Get running with Argus in minutes. The argus SDK is the primary interface; compo
 ### Install
 
 ```bash
-# Install from TestPyPI (pre-release — will become: pip install argus-security)
-pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ argus-security
+pip install argus-security
 ```
 
 ### Enable shell tab-completion (recommended)

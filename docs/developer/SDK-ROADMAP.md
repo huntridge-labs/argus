@@ -194,12 +194,12 @@ All 16 scanner/linter actions refactored to call `argus scan` internally. Action
 ### Remaining
 
 **Release blockers (Post-PyPI Cleanup):**
-- [ ] README.md and QUICK-START.md: remove TestPyPI `--index-url` flags
+- [x] ~~README.md and QUICK-START.md: remove TestPyPI `--index-url` flags~~ — both install snippets now read simply `pip install argus-security`. The TestPyPI variant remains documented in `docs/developer/test-pypi-validation.md` where it belongs (that doc is the canonical TestPyPI dev playbook).
 - [x] ~~Update all 16 action wrappers: `pip install pyyaml` → `pip install argus-security`~~ — **approach changed:** install SDK from composite's own checkout (`pip install "${{ github.action_path }}/../../.."`) instead of PyPI, which implicitly pins SDK version to composite ref and sidesteps PyPI-release lag. Applied to `scanner-container` and `scanner-zap` in PR #91.
 - [x] ~~Apply the install-from-source pattern to the remaining 14 wrappers~~ — completed for `scanner-bandit`, `scanner-gitleaks`, `scanner-opengrep`, `scanner-clamav`, `scanner-trivy-iac`, `scanner-checkov`, `scanner-osv`, `scanner-supply-chain`, plus the 6 linter wrappers. (`scanner-dependency-review` was mistakenly listed — it wraps GitHub's `dependency-review-action` and doesn't use the SDK.)
 - [x] ~~Rename action step "Install dependencies" → "Install Argus SDK"~~ — applied across all 16 SDK-using wrappers as part of the install-from-source migration
 - [x] ~~Remove `bin/argus` wrapper~~ — deleted; pip's `[project.scripts]` entry (`argus = "argus.cli:main"`) is the canonical entry point. All doc references were already pointing at the pip-installed `.venv/bin/argus`, not the repo shim.
-- [ ] `argus init` summary: show `pip install argus-security` command
+- [x] ~~`argus init` summary: show `pip install argus-security` command~~ — added as a "Share with your team" footer line after the numbered Next-Steps list. `argus init` runs once locally but the `argus.yml` it produces is typically committed for teammates / CI, so surfacing the canonical install command here means the operator can paste it directly into onboarding without hunting for the right invocation.
 
 **Future (post-release):**
 - [x] ~~Additional reporters: `github.py`, `gitlab.py`, `junit.py`~~ — three new reporters shipped: GitHub Actions annotations, GitLab Code Quality JSON (codeclimate-compatible), JUnit XML
