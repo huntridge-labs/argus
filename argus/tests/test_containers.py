@@ -46,6 +46,61 @@ class TestContainerManifest:
             assert name in CUSTOM_IMAGES, f"Missing custom image: {name}"
 
 
+class TestOfficialImagesDigestPinned:
+    """Every third-party image in OFFICIAL_IMAGES must carry a
+    ``@sha256:...`` digest pin alongside its tag. The pin is what makes
+    the image content-addressable — Docker enforces the content-hash
+    match at pull time, which paired with argus.core.image_verify
+    routes third-party images through the ``VERIFIED_DIGEST_PIN``
+    path instead of the warn-only ``SKIPPED_TAG_PIN`` path.
+
+    Surfaced by the post-PR-146 supply-chain audit; guarding it here
+    so a future Renovate-driven update that loses the digest segment
+    (or a manual edit that strips it) fails the test rather than
+    silently demoting all third-party images back to tag-only trust.
+    """
+
+    def test_every_official_image_has_digest(self):
+        import re
+        digest_re = re.compile(r"@sha256:[a-f0-9]{64}$")
+        for name, image in OFFICIAL_IMAGES.items():
+            assert digest_re.search(image), (
+                f"{name} image lacks @sha256: digest pin: {image}"
+            )
+
+    def test_digest_pin_classified_by_image_verify(self):
+        from argus.core.image_verify import has_digest_pin
+        for name, image in OFFICIAL_IMAGES.items():
+            assert has_digest_pin(image), (
+                f"{name} not recognised by image_verify.has_digest_pin: "
+                f"{image}"
+            )
+
+    def test_expected_version_strips_digest_suffix(self):
+        """The tool-version comparator must extract the version segment
+        without the digest tail. Without this, every container_runtime
+        version check would compare against ``sha256`` and fail."""
+        from argus.containers import expected_version
+        assert expected_version(
+            "aquasec/trivy:0.70.0@sha256:" + "a" * 64,
+        ) == "0.70.0"
+        assert expected_version(
+            "anchore/grype:v0.112.0@sha256:" + "b" * 64,
+        ) == "0.112.0"  # leading ``v`` stripped
+
+    def test_expected_version_works_on_each_official_image(self):
+        """End-to-end: every OFFICIAL_IMAGES entry yields a parseable
+        version string (not ``sha256``, not an empty tail)."""
+        from argus.containers import expected_version, OFFICIAL_IMAGES as imgs
+        for name, image in imgs.items():
+            v = expected_version(image)
+            assert v is not None and v, f"{name}: no version parsed from {image}"
+            assert v != "sha256", (
+                f"{name}: expected_version returned digest tail "
+                f"(parser missed the @ split): {image}"
+            )
+
+
 class TestScannerContainerImages:
     """Verify all security scanner modules have container_image set.
 

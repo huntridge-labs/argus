@@ -36,14 +36,19 @@ minimumReleaseAge: 7 days
 
 customManagers:
 
-  # Container image tags pinned in argus/containers.py
-  # e.g. "aquasec/trivy:0.70.0" → detects trivy, checks Docker Hub/GHCR
+  # Container image references pinned in argus/containers.py.
+  # e.g. "aquasec/trivy:0.70.0@sha256:be1190..." → tag + digest both
+  # tracked, both updated atomically on every Renovate run.
+  # The optional ``@sha256:...`` capture group is what enables digest
+  # tracking — without ``currentDigest``, Renovate would treat the
+  # whole tail as ``currentValue`` and the supply-chain digest pin
+  # would drift out of sync with the tag.
   - customType: regex
-    description: Container image tags in argus/containers.py
+    description: Container image refs (tag + digest) in argus/containers.py
     fileMatch:
       - argus/containers\.py
     matchStrings:
-      - '"(?<depName>[a-z0-9./-]+):(?<currentValue>[^"]+)"'
+      - '"(?<depName>[a-z0-9./-]+):(?<currentValue>[^"@]+)(?:@(?<currentDigest>sha256:[a-f0-9]+))?"'
     datasourceTemplate: docker
 
   # Tool versions pinned as ARG in Dockerfiles (GitHub-released binaries)
