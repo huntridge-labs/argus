@@ -897,6 +897,187 @@ defending against and the gaps we knowingly carry.
 
 ---
 
+## Attack Surface Visibility — Port & Service Exposure
+
+Companion to the vulnerability scanning argus already does
+(Trivy / Grype find CVEs in installed packages, Bandit / Opengrep
+find SAST issues in source). This section tracks features that
+report *attack surface* — what network endpoints an image
+declares — separate from whether those endpoints have known CVEs.
+"Image exposes 6379/tcp" is a different question from "image has
+a vulnerable Redis package" and most security reviewers want both.
+
+### Container image exposed ports — actionable
+
+- [ ] **Surface declared EXPOSE ports as findings.** Extend the
+  existing `argus/scanners/container.py` sub-scanner flow
+  (alongside trivy / grype / syft). No new scanner module — the
+  data is already free: `docker inspect <image>` returns
+  `Config.ExposedPorts` and the container scanner already inspects
+  every image it scans.
+
+  **Output shape:** one `Finding` per declared port:
+  ```
+  INFO   EXPOSE-8080     Port 8080/tcp declared exposed
+  WARN   EXPOSE-22       Port 22/tcp (SSH) declared exposed — review necessity
+  WARN   EXPOSE-3306     Port 3306/tcp (MySQL) declared exposed — review necessity
+  ```
+  Severity defaults to `INFO` for ordinary application ports and
+  `WARN` for ports on a built-in risky-defaults list (services that
+  shouldn't normally be exposed from a container image without a
+  deliberate reason). The list is config-overridable so teams can
+  tune it for their context.
+
+  **Built-in risky-port defaults (warn):**
+  - `21/tcp` (FTP), `22/tcp` (SSH), `23/tcp` (Telnet)
+  - `25/tcp` (SMTP), `110/tcp` (POP3), `143/tcp` (IMAP)
+  - `161/udp` (SNMP), `389/tcp` (LDAP), `445/tcp` (SMB)
+  - `3306/tcp` (MySQL), `3389/tcp` (RDP)
+  - `5432/tcp` (PostgreSQL), `6379/tcp` (Redis)
+  - `9200/tcp` (Elasticsearch), `11211/tcp` (Memcached)
+  - `27017/tcp` (MongoDB)
+  Source: services that historically ship with weak defaults or
+  that fronting via a container without auth/TLS in front of them
+  is a recurring incident pattern. Each entry cites a "why" in the
+  scanner module's docstring so future contributors don't tune the
+  list blindly.
+
+  **Config knob** (in `argus.yml`):
+  ```yaml
+  scanners:
+    container:
+      expose_warn_ports:                # override the built-in WARN list
+        - 22/tcp
+        - 6379/tcp
+      expose_ignore_ports:              # don't emit a finding at all
+        - 8080/tcp
+        - 443/tcp
+  ```
+
+  **Why findings (not metadata):** flows through the existing
+  reporter pipeline (terminal table, markdown, SARIF, JSON, GitHub
+  annotations, GitLab Code Quality, JUnit), `--severity-threshold`
+  works on them, audit-trail captures them, and the
+  `argus view terminal` / `argus view browser` UIs render them
+  alongside CVE findings without per-reporter custom code.
+
+  **Implementation tasks** (single PR, no new dependencies):
+  - [ ] `argus/scanners/container.py`: new `_scan_exposed_ports`
+    sub-method that reads `Config.ExposedPorts` from the existing
+    `docker inspect` output. Emits one `Finding` per port with
+    `id=f"EXPOSE-{port}"`, `scanner="container"`,
+    `metadata={"port": ..., "protocol": ..., "common_service": ...}`.
+  - [ ] Built-in `RISKY_PORTS: dict[tuple[int, str], str]` mapping
+    `(port, protocol) -> service_name` with the WARN-list above;
+    cited entries in the docstring.
+  - [ ] Config schema additions: `expose_warn_ports` and
+    `expose_ignore_ports` (both `list[str]`, parsed as `"port/proto"`).
+    Validator errors on malformed entries.
+  - [ ] Tests in `argus/tests/scanners/test_container.py`: fixture
+    with a multi-port `Config.ExposedPorts` blob; assert one finding
+    per port with correct severity, ignore-list suppresses, override
+    warn-list changes the severity.
+  - [ ] Docs: `docs/scanners.md` container section gets an
+    "Exposed ports" subsection with config examples;
+    `docs/config-reference.md` adds the two new keys.
+  - [ ] `.ai/architecture.yaml`: container scanner description
+    updated to mention the new sub-scanner capability.
+
+  **Out of scope for this PR:** *runtime* port enumeration (actually
+  start the container, probe with `nmap` / `ss`). Static `EXPOSE`
+  data is the bulk of the value at a fraction of the operational
+  cost. A runtime variant can become a separate roadmap item if
+  consumer demand surfaces.
+
+### OS image port enumeration — research item
+
+Same question as above but for OS-level images: AWS AMIs, Azure VHDs,
+GCP disk images, on-prem VMware OVA/VMDK, ISO files, raw disk dumps,
+rootfs tarballs. What network endpoints would this image bind on boot?
+
+- [ ] **Research: in-scope, out-of-scope, or wrap-existing?**
+  Before scoping any implementation, answer three questions:
+
+  **Is offline OS-image inspection in argus's scope at all?**
+  Argus today operates on (a) source-code directories and (b)
+  container image references. An OS image is a fundamentally
+  different artifact — it's a bootable disk, not a layered
+  filesystem manifest. Inspecting it offline typically requires
+  one of:
+  - **libguestfs / `virt-customize` / `virt-inspect`** — mount the
+    disk image, walk the filesystem, read systemd unit files
+    (`/etc/systemd/system/*.service`, `/lib/systemd/system/*.service`),
+    SysV init scripts, common service configs (sshd_config,
+    postgresql.conf, nginx.conf, etc.). Linux-only on the host;
+    needs root or libvirt group; libguestfs is a heavy install
+    (~hundreds of MB once a guest kernel is included).
+  - **Boot-and-inspect** — actually boot the image in a sandbox VM,
+    let services start, capture listening sockets via SSH or guest
+    agent, tear down. Heaviest path; needs hypervisor (KVM, QEMU,
+    or cloud-provider API). Argus's container-or-source-code model
+    doesn't extend here cleanly.
+  - **Cloud-provider native** — AWS Inspector (AMIs), Azure
+    Defender for Cloud, GCP Security Command Center. These run
+    server-side, no local install.
+
+  **Are there existing tools that solve this well enough that argus
+  should not reimplement?** Candidates to evaluate:
+  - **OpenSCAP + `oscap-vm` / `oscap-docker`** — SCAP content with
+    OVAL definitions can audit a running or mounted system; covers
+    listening-port checks via STIG/CIS profiles. Output is XCCDF
+    XML — would need an argus reporter shim.
+  - **Lynis** — system audit tool. Runs against a live root
+    filesystem; can chroot into a mounted image. Output is text;
+    parser would be needed.
+  - **CIS-CAT** — CIS benchmark scanner. Commercial license tier
+    needed for production use; OSS version exists but limited.
+  - **AWS Inspector v2** — first-class AMI scanning, no install
+    required if you're already on AWS. Doesn't help users on
+    other clouds or with on-prem images.
+  - **Anchore Enterprise** / **Aqua** / **Sysdig Secure** — all
+    have on-prem image scanning but are commercial/freemium.
+  - **`debootstrap` + chroot + `ss`** — DIY for Linux rootfs
+    tarballs only. Possible but argus-specific implementation.
+
+  **Or is this a "different product" feeling?** The audience for
+  OS-image hardening (DevSecOps building golden AMIs, on-prem VM
+  templates, FedRAMP-bound infrastructure teams) overlaps with
+  argus's audience but the operational model is different:
+  - Argus runs in PR CI / dev loops; OS image scans are
+    typically pre-release gates on infrastructure-as-code
+    pipelines (Packer builds, Terraform deploys).
+  - Argus expects sub-minute scan times; OS-image inspection via
+    libguestfs is minutes-to-tens-of-minutes per image.
+  - Argus's container-scanner model assumes Docker is available;
+    OS-image inspection assumes libguestfs / KVM / cloud API
+    access, which is a different host requirement.
+
+  **Specific research deliverables** (one investigation, output is
+  a short ADR — not code):
+  - [ ] Inventory of 3-5 actual user requests / use cases for OS
+    image inspection. Without concrete demand, this stays
+    deferred.
+  - [ ] Comparison matrix: argus-native (libguestfs) vs. wrap
+    OpenSCAP vs. defer to AWS Inspector vs. out-of-scope.
+    Dimensions: install footprint, host OS requirements, supported
+    image formats, scan latency, license cost, reporting fidelity.
+  - [ ] Scope decision in `.ai/decisions.yaml` (likely ADR-025 or
+    later): one of "argus native", "argus wraps OpenSCAP", "argus
+    out of scope; recommend X", "deferred until more demand".
+  - [ ] If "out of scope": note in `docs/scanners.md` pointing
+    users at the right tool for OS-image port enumeration so they
+    don't open issues asking for it later.
+
+  **My strong prior** (to be tested against the research):
+  argus stays focused on source-code + container images;
+  OS-image inspection is best served by purpose-built tools
+  (OpenSCAP for offline, cloud-native scanners for AMIs). The
+  argus answer for users would be a documentation pointer plus,
+  if compelling, a `docs/security.md` paragraph naming the tools
+  we recommend for each cloud + on-prem path.
+
+---
+
 ## Dependency Maintenance — Full Coverage
 
 | Dependency Type | Tool | Config Location | Status |
