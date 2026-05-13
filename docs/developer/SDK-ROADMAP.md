@@ -696,36 +696,9 @@ respect the deliberate trim.
   - [x] ~~Docs: extend `docs/scanners.md` and `docs/config-reference.md` with the new keys and an authenticated-scan worked example (ZAP context-file pattern + env-var credentials).~~ Shipped in PR #142 — `docs/config-reference.md` carries the credential-precedence section + `scanners.zap.auth` walkthrough, and `docs/scanners.md` got the "Configuring ZAP via argus.yml" subsection.
   - [x] ~~Migration note: 0.6.8 `with:` block → 1.x `argus.yml` shape, side-by-side, appended to `docs/developer/release-management.md` or a new `docs/migration/0.6.x-to-1.x.md`.~~ Shipped as [`docs/migration/0.6.x-to-1.x.md`](../migration/0.6.x-to-1.x.md). Quick-reference table covering all seven moved inputs + side-by-side 0.6.x → 1.x snippets for every config key + registry-auth migration path (literal `${{ secrets.X }}` → `*_env` reference) + a "what to do next" checklist (`argus init` → move keys → wire env vars → `argus validate`).
 
-- [ ] **scanner-container `scan_mode` recovery.** `scan_mode`
-  (alongside `allow_failure` and `skip_summary`) was removed from
-  scanner-container. The old `discover` mode auto-found
-  Dockerfiles in the repo, built them, and scanned the resulting
-  images — closing a gap where users with a multi-image monorepo
-  didn't have to enumerate `image_ref` for each. The new contract
-  takes a single `image_ref` + `container_name` per invocation.
-  Consumers wanting discover semantics now have to:
-  1. Build their own Dockerfile-discovery + docker-build step
-     (or use `parse-container-config` with a hand-maintained list).
-  2. Loop over the result with a matrix.
+- [x] ~~**scanner-container `scan_mode` recovery.**~~ **Decided: do NOT restore.** The discover semantic already lives in the SDK as a first-class `argus.yml` block — `containers.discover: true` + `containers.search_paths: [...]` walks the repo, builds every `Dockerfile*` it finds, and scans the result; the explicit `containers.images: [...]` list covers the manifest case. Same posture as ADR-024 for ZAP: scanner-specific orchestration lives in the config file; the composite action's `with:` surface stays minimal. Same SDK config works locally / on GitLab CI / on Jenkins / on Azure DevOps without changes. Shipped: (a) deprecation note + 0.6.x→1.x mapping table in `.github/actions/scanner-container/action.yml` description block (visible in the docsite + auto-generated workflow pages); (b) new "Discover mode (multi-image monorepos)" section in `docs/container-scanning.md` with worked examples; (c) `scanner-container` section in `docs/migration/0.6.x-to-1.x.md` covering `scan_mode: discover` → `containers.discover`, `scan_mode: manifest` → `containers.images`, and the 1:1 mappings for `allow_failure` (use `fail_on_severity: none`) and `skip_summary` (use `security-summary`'s `scan_statuses` input). The SDK schema already validates the `containers:` block; the audit gate (`scripts/ci/check_example_inputs.py`) already guards examples.
 
-  *Decision pending*: re-introduce `scan_mode: discover` as a
-  first-class flow, OR formalize the
-  `parse-container-config` + matrix pattern as the canonical
-  multi-image entry point and document it loudly.
-
-- [ ] **scanner-gitleaks user-mention notifications.** The
-  removed `gitleaks_notify_user_list` input took a comma-separated
-  list of GitHub usernames to `@`-mention in the PR comment when
-  secrets were detected. The new contract has no equivalent —
-  `post_pr_comment` controls comment presence but not who gets
-  pinged. Low priority but worth recording **as removed-on-purpose
-  vs. removed-by-omission** so a future contributor doesn't
-  silently re-add it under a different name without considering
-  whether `@`-mention spam is the right escalation.
-
-  *Decision pending*: confirm intentional removal (mostly likely)
-  or wire a `notify_users` input back through that's noisier than
-  a generic PR comment, e.g. only-on-secrets.
+- [x] ~~**scanner-gitleaks user-mention notifications.**~~ **Decided: intentional removal confirmed.** `@`-mention escalation is tightly coupled to GitHub-as-notification, gets noisy fast (transient false positives ping the entire security team on every PR), and doesn't compose with the alert pipelines most teams already own (Slack, PagerDuty, Opsgenie). `post_pr_comment` already gives visibility on the PR itself; teams wanting paging behavior route SARIF or `argus-results.json` into their existing alert system at the workflow level — keeps the *who/when/how loud* decision owned by the team's alerting config rather than the scanner's. Shipped a new "Alert routing — paging and escalation" section in `docs/security.md` with a worked Slack-webhook example so a future contributor proposing to re-add `notify_users` (or any equivalent) lands here first and sees the rationale + the alternative.
 
 ### Companion items already addressed
 

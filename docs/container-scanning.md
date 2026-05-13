@@ -141,6 +141,48 @@ image:
 image: "nginx:latest@sha256:abc123..."
 ```
 
+## Discover mode (multi-image monorepos)
+
+If your repo has multiple `Dockerfile`s scattered across services or
+component directories and you don't want to maintain a hand-written
+`containers.images` list, enable auto-discovery:
+
+```yaml
+containers:
+  discover: true
+  search_paths:
+    - "services"
+    - "tools"
+  scanners:
+    - trivy
+    - grype
+    - syft
+```
+
+argus walks each path, treats every `Dockerfile*` it finds as a
+build-then-scan target, builds the image locally (no registry push),
+and runs the configured sub-scanners against the built artifact.
+Cleanup defaults to `true` — the temporary image is removed once the
+scan completes.
+
+You can mix discovery with an explicit list — discovered Dockerfiles
+augment the `containers.images` entries rather than replacing them:
+
+```yaml
+containers:
+  images:
+    - image: ghcr.io/myorg/external-runtime:1.4.0   # explicit pull
+  discover: true
+  search_paths:
+    - "services"                                     # in-tree builds
+```
+
+This is the SDK-driven replacement for the `scan_mode: discover` input
+the `scanner-container` composite action carried in 0.6.x. Use the
+[`parse-container-config`](../README.md#composite-actions) action to
+emit a GitHub Actions matrix from the `containers.images` list when
+you want one job per image.
+
 ## Environment Variables
 
 Use `${VAR_NAME}` syntax for dynamic values:
