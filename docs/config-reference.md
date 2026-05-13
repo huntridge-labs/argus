@@ -83,7 +83,7 @@ A mapping of scanner names to their configuration. Each key must be a registered
 | `checkov` | Infrastructure | Multi-framework IaC scanning |
 | `clamav` | Malware | File-based malware detection |
 | `supply-chain` | Supply Chain | GitHub Actions workflow security |
-| `container` | Container | Container image scanning (Trivy + Grype + Syft) |
+| `container` | Container | Container image scanning (Trivy + Grype + Syft + declared-port exposure surface) |
 | `zap` | DAST | Web application dynamic scanning |
 
 ### Scanner Properties
@@ -106,7 +106,9 @@ Some scanners accept additional properties, passed through as extra configuratio
 |----------|------|---------------------|-------------|
 | `image_ref` | string | `container` | Container image to scan (e.g. `myapp:latest`). |
 | `target_url` | string | `zap` | URL of the running app to scan (the system under test). |
-| `scanners` | string | `container` | Comma-separated sub-scanners: `trivy`, `grype`, `syft`. |
+| `scanners` | string | `container` | Comma-separated sub-scanners: `trivy`, `grype`, `syft`, `exposure`. Default `"trivy,grype,syft,exposure"`. |
+| `expose_warn_ports` | list[string] | `container` | Override the built-in WARN-list for the `exposure` sub-scanner. Replaces the defaults (SSH 22/tcp, MySQL 3306/tcp, Redis 6379/tcp, etc.). Pass `[]` to demote every declared port to INFO. Entries are `"PORT/PROTO"` strings; bare `"PORT"` defaults to tcp. |
+| `expose_ignore_ports` | list[string] | `container` | Suppress findings entirely for these ports (use for ports the team has explicitly accepted, e.g. the app's known 8080/tcp). |
 | `scan_type` | string | `zap` | Scan type: `baseline`, `full`, or `api`. Auto-set to `api` when `api_spec` is provided. |
 | `api_spec` | string | `zap` | OpenAPI/Swagger spec URL or path; switches the scan to `zap-api-scan.py`. |
 | `rules_file` | string | `zap` | Path to a ZAP `.tsv` ignore-rules file. Mounted into the container at `/zap/wrk/rules.tsv`. |
@@ -220,12 +222,34 @@ scanners:
   container:
     enabled: true
     image_ref: "myapp:latest"
-    scanners: "trivy,grype,syft"
+    # Default sub-scanner set; drop any you don't want
+    scanners: "trivy,grype,syft,exposure"
     # Env-var name references — the actual values live in
     # the runner's environment (e.g. exported from
     # `${{ secrets.REGISTRY_USER }}` on GitHub Actions).
     registry_username_env: REGISTRY_USER
     registry_password_env: REGISTRY_TOKEN
+```
+
+**Attack-surface tuning (exposed ports):**
+
+```yaml
+scanners:
+  container:
+    enabled: true
+    image_ref: "myapp:latest"
+    # The default WARN list flags SSH/MySQL/Redis/etc. Add or replace
+    # entries here when your image legitimately exposes one of them
+    # and you want a different severity (or omit the override and
+    # use ``expose_ignore_ports`` to suppress entirely).
+    expose_warn_ports:
+      - 22/tcp
+      - 3306/tcp
+      - 8080/tcp        # promote this app port to WARN
+    # Ports the team has explicitly accepted — suppressed entirely.
+    expose_ignore_ports:
+      - 443/tcp
+      - 9090/tcp
 ```
 
 **DAST baseline scan:**

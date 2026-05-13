@@ -38,7 +38,15 @@ scanners:
   # container:
   #   enabled: false
   #   image_ref: "myapp:latest"
-  #   scanners: "trivy,grype,syft"
+  #   # Default set: trivy + grype CVEs, syft SBOM, exposure declared-ports.
+  #   scanners: "trivy,grype,syft,exposure"
+  #   # Attack-surface knobs for the exposure sub-scanner:
+  #   #   expose_warn_ports:  override the built-in WARN list
+  #   #                       (defaults: 22 SSH, 3306 MySQL, 6379 Redis,
+  #   #                       5432 PostgreSQL, 27017 MongoDB, etc.)
+  #   #   expose_ignore_ports: suppress findings entirely
+  #   # expose_warn_ports: ["22/tcp", "3306/tcp"]
+  #   # expose_ignore_ports: ["443/tcp", "8080/tcp"]
   #   # Private-registry auth: name an env var, never paste a literal.
   #   # The runner / shell exports the value; argus reads it at scan time.
   #   registry_username_env: REGISTRY_USER
