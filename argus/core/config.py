@@ -45,6 +45,14 @@ class ExecutionConfig:
     # enough overlap to win on a 5-scanner run with distinct images, low
     # enough that ghcr.io / dockerhub don't throttle.
     prewarm_workers: int = 4
+    # Supply-chain: cosign-verify argus-owned container images on pull
+    # (third-party with @sha256: digest pins are trusted by Docker's
+    # pull-time content match; tag-only third-party images log one
+    # WARNING per scan run). Default True — fail-closed for the
+    # 4 images argus itself publishes. Opt out wholesale by setting
+    # this to False (e.g., air-gapped environments with no Sigstore /
+    # Rekor network access). See docs/security.md.
+    verify_image_signatures: bool = True
 
 
 @dataclass
@@ -241,4 +249,5 @@ def _parse_execution_config(raw: dict | None) -> ExecutionConfig:
         pull_policy=raw.get("pull_policy", "if-not-present"),
         prewarm_images=bool(raw.get("prewarm_images", True)),
         prewarm_workers=int(raw.get("prewarm_workers", 4)),
+        verify_image_signatures=bool(raw.get("verify_image_signatures", True)),
     )

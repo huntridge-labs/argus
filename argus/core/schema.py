@@ -71,6 +71,7 @@ _EXECUTION_KEYS = {
     "pull_policy",
     "prewarm_images",
     "prewarm_workers",
+    "verify_image_signatures",
 }
 
 # Top-level containers block keys
@@ -415,6 +416,16 @@ def _validate_execution(path: str, data: Any) -> list[ConfigError]:
                 f"{path}.prewarm_workers",
                 f"Must be a positive integer (>=1), got {workers!r}",
             ))
+
+    # Supply-chain signature verification flag — bool
+    if "verify_image_signatures" in data and not isinstance(
+        data["verify_image_signatures"], bool,
+    ):
+        errors.append(ConfigError(
+            f"{path}.verify_image_signatures",
+            f"Must be a boolean (true/false), got "
+            f"{type(data['verify_image_signatures']).__name__}",
+        ))
 
     return errors
 

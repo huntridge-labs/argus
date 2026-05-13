@@ -68,6 +68,12 @@ class ArgusEngine:
         # can consult it from a worker thread without arg-threading every
         # internal call site.
         self._prewarmer = None
+        # Supply-chain verification results, one per container pull this
+        # run. Consumed by ``report_tag_pinned_summary`` at end of
+        # ``run()`` to emit a single WARNING listing tag-pinned third-
+        # party images (rather than N warnings for N scanners).
+        from argus.core.image_verify import VerifyResult  # local import
+        self._verify_results: list[VerifyResult] = []
 
     def register_scanner(self, scanner: Scanner) -> None:
         """Register a scanner instance for use by the engine."""
@@ -191,6 +197,13 @@ class ArgusEngine:
             # ones drain on their own (the subprocess holding the
             # network already has the bandwidth — no point racing it).
             self._shutdown_prewarm()
+
+            # Supply-chain: one WARNING per run listing all third-party
+            # tag-pinned images. Logged here (not per-scanner) so a
+            # user with N scanners pointing at trivy doesn't see N
+            # identical warnings.
+            from argus.core.image_verify import report_tag_pinned_summary
+            report_tag_pinned_summary(self._verify_results)
 
         # TODO: Add total_duration_ms to ScanSummary for audit trail.
         # Requires a model change (new field on the ScanSummary dataclass).
@@ -758,6 +771,43 @@ class ArgusEngine:
             # change here is we may skip it on a warm cache hit.
             if not self._pull_image(image):
                 raise RuntimeError(f"Failed to pull container image: {image}")
+
+        # Supply-chain verification (ADR-024 + roadmap item #3):
+        #   - argus-owned images get cosign-verified against the
+        #     publish workflow's identity; failure aborts the scanner;
+        #   - third-party images with @sha256: digest pins are trusted
+        #     by Docker's pull-time content-hash enforcement;
+        #   - third-party tag-only pins log nothing here — the engine
+        #     emits a single summary WARNING at end of ``run()``.
+        # Default is verify_image_signatures=True (security-first); the
+        # user can opt out wholesale via execution.verify_image_signatures.
+        from argus.core.image_verify import verify_image, VerifyStatus
+        verify_signatures = getattr(
+            self.config.execution, "verify_image_signatures", True,
+        )
+        v = verify_image(image, verify_signatures=verify_signatures)
+        self._verify_results.append(v)
+        if v.is_fatal:
+            logger.error(
+                "Supply-chain verification FAILED for '%s' (%s): %s",
+                image, v.status.value, v.message,
+            )
+            raise RuntimeError(
+                f"Supply-chain verification failed for {image}: "
+                f"{v.message}"
+            )
+        if v.status == VerifyStatus.VERIFIED_COSIGN:
+            logger.info(
+                "Supply-chain: %s — cosign verified (argus-owned)", image,
+            )
+        elif v.status == VerifyStatus.VERIFIED_DIGEST_PIN:
+            logger.debug(
+                "Supply-chain: %s — verified via digest pin", image,
+            )
+        elif v.status == VerifyStatus.SKIPPED_BY_CONFIG:
+            logger.debug(
+                "Supply-chain: %s — verification disabled by config", image,
+            )
 
         digest = self._get_image_digest(image)
         logger.info(

@@ -1449,6 +1449,204 @@ class TestContainerMountsHook:
         )
 
 
+class TestSupplyChainVerificationGate:
+    """Engine's verify-then-run gate: abort the scanner on fatal
+    verification failure, log per-status messages on success, and
+    skip wholesale when execution.verify_image_signatures=False.
+    """
+
+    def _make_engine(self, *, verify=True):
+        data = {
+            "execution": {
+                "backend": "docker",
+                "verify_image_signatures": verify,
+            },
+        }
+        return ArgusEngine(ArgusConfig.from_dict(data))
+
+    def _setup_pulls_ok(self, engine, monkeypatch):
+        monkeypatch.setattr(engine, "_pull_image", lambda img: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda img: "sha256:abc")
+
+    def _ok_runner(self):
+        def mock_run(cmd, **kwargs):
+            for arg in cmd:
+                if ":/output" in str(arg):
+                    host_dir = arg.split(":")[0]
+                    Path(host_dir).joinpath("results.json").write_text("{}")
+                    break
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="", stderr="",
+            )
+        return mock_run
+
+    def test_argus_owned_cosign_pass_proceeds(self, monkeypatch, caplog):
+        """Argus-owned image + cosign success → scan runs, INFO logged."""
+        engine = self._make_engine()
+        scanner = MockScanner(
+            name="bandit",
+            container_image="ghcr.io/huntridge-labs/argus/scanner-bandit:0.7.0",
+        )
+
+        self._setup_pulls_ok(engine, monkeypatch)
+        monkeypatch.setattr(subprocess, "run", self._ok_runner())
+
+        # Stub cosign verify to return success without invoking the binary.
+        from argus.core import image_verify
+        monkeypatch.setattr(
+            image_verify, "_default_cosign_runner",
+            lambda cmd: subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="", stderr="",
+            ),
+        )
+        # Pretend cosign binary is on PATH for the shutil.which check.
+        monkeypatch.setattr(image_verify.shutil, "which", lambda _: "/bin/cosign")
+
+        import logging
+        with caplog.at_level(logging.INFO, logger="argus"):
+            engine._run_in_container(scanner, "/src", {})
+
+        assert any(
+            "cosign verified" in r.message for r in caplog.records
+        ), "expected INFO line confirming cosign passed"
+
+    def test_argus_owned_cosign_fail_aborts_scanner(self, monkeypatch):
+        """Argus-owned image + cosign failure → RuntimeError, scanner does NOT run."""
+        engine = self._make_engine()
+        scanner = MockScanner(
+            name="bandit",
+            container_image="ghcr.io/huntridge-labs/argus/scanner-bandit:0.7.0",
+        )
+
+        self._setup_pulls_ok(engine, monkeypatch)
+        ran = {"subprocess": False}
+
+        def fail_run(cmd, **kwargs):
+            ran["subprocess"] = True
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="", stderr="",
+            )
+        monkeypatch.setattr(subprocess, "run", fail_run)
+
+        from argus.core import image_verify
+        # Cosign returns rc=1 (verification failure)
+        monkeypatch.setattr(
+            image_verify, "_default_cosign_runner",
+            lambda cmd: subprocess.CompletedProcess(
+                args=cmd, returncode=1, stdout="",
+                stderr="error: no matching signatures found",
+            ),
+        )
+        monkeypatch.setattr(image_verify.shutil, "which", lambda _: "/bin/cosign")
+
+        with pytest.raises(RuntimeError, match="Supply-chain verification failed"):
+            engine._run_in_container(scanner, "/src", {})
+
+        # Critical assertion: the scanner subprocess never ran.
+        assert ran["subprocess"] is False
+
+    def test_third_party_digest_pin_proceeds_without_cosign(
+        self, monkeypatch,
+    ):
+        """Third-party image with @sha256: pin → no cosign call, scan runs."""
+        engine = self._make_engine()
+        scanner = MockScanner(
+            name="trivy",
+            container_image="aquasec/trivy@sha256:abcdef123",
+        )
+
+        self._setup_pulls_ok(engine, monkeypatch)
+        monkeypatch.setattr(subprocess, "run", self._ok_runner())
+
+        # Trip if anything tries to invoke cosign for a third-party image.
+        from argus.core import image_verify
+        def fail_cosign(_cmd):
+            raise AssertionError("cosign should NOT be invoked for third-party image")
+        monkeypatch.setattr(image_verify, "_default_cosign_runner", fail_cosign)
+
+        # Should run cleanly.
+        engine._run_in_container(scanner, "/src", {})
+
+    def test_third_party_tag_only_warns_once_at_end_of_run(
+        self, monkeypatch, caplog,
+    ):
+        """Tag-only third-party images yield one WARNING at end of run."""
+        engine = self._make_engine()
+        scanner_a = MockScanner(
+            name="trivy", container_image="aquasec/trivy:0.70.0",
+        )
+        scanner_b = MockScanner(
+            name="grype", container_image="anchore/grype:v0.112.0",
+        )
+
+        self._setup_pulls_ok(engine, monkeypatch)
+        monkeypatch.setattr(subprocess, "run", self._ok_runner())
+
+        # Drive two pulls so two SKIPPED_TAG_PIN results accumulate.
+        engine._run_in_container(scanner_a, "/src", {})
+        engine._run_in_container(scanner_b, "/src", {})
+
+        # Now invoke the summary directly (run() would invoke it at end).
+        from argus.core.image_verify import report_tag_pinned_summary
+        import logging
+        with caplog.at_level(logging.WARNING, logger="argus"):
+            report_tag_pinned_summary(engine._verify_results)
+
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1, "expected exactly one summary warning"
+        msg = warnings[0].message
+        assert "aquasec/trivy:0.70.0" in msg
+        assert "anchore/grype:v0.112.0" in msg
+
+    def test_verification_disabled_skips_everything(
+        self, monkeypatch, caplog,
+    ):
+        """execution.verify_image_signatures: false → no cosign, no warnings."""
+        engine = self._make_engine(verify=False)
+        scanner = MockScanner(
+            name="bandit",
+            container_image="ghcr.io/huntridge-labs/argus/scanner-bandit:0.7.0",
+        )
+
+        self._setup_pulls_ok(engine, monkeypatch)
+        monkeypatch.setattr(subprocess, "run", self._ok_runner())
+
+        from argus.core import image_verify
+        def fail_cosign(_cmd):
+            raise AssertionError(
+                "cosign should NOT be invoked when verify_image_signatures=False"
+            )
+        monkeypatch.setattr(image_verify, "_default_cosign_runner", fail_cosign)
+
+        import logging
+        with caplog.at_level(logging.DEBUG, logger="argus"):
+            engine._run_in_container(scanner, "/src", {})
+
+        # DEBUG line announces the opt-out so a user investigating
+        # "why didn't this fail?" can see the reason.
+        assert any(
+            "verification disabled by config" in r.message
+            for r in caplog.records
+        )
+
+    def test_missing_cosign_binary_aborts(self, monkeypatch):
+        """Cosign missing while verification is enabled → fatal with install hint."""
+        engine = self._make_engine()
+        scanner = MockScanner(
+            name="bandit",
+            container_image="ghcr.io/huntridge-labs/argus/scanner-bandit:0.7.0",
+        )
+
+        self._setup_pulls_ok(engine, monkeypatch)
+
+        from argus.core import image_verify
+        # No cosign binary on PATH.
+        monkeypatch.setattr(image_verify.shutil, "which", lambda _: None)
+
+        with pytest.raises(RuntimeError, match="Supply-chain verification failed"):
+            engine._run_in_container(scanner, "/src", {})
+
+
 class TestExclusions:
     """Test the exclusions module — path filtering and ignore file parsing."""
 
