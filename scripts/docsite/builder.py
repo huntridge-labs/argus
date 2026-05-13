@@ -45,10 +45,17 @@ CUSTOM_CSS = (
 
 # ─── Build ───────────────────────────────────────────────────────────────────
 
-def build(repo_root: Path, output_dir: Path) -> None:
-    """Generate the full MkDocs documentation site."""
+def build(repo_root: Path, output_dir: Path, *, ref: str | None = None) -> None:
+    """Generate the full MkDocs documentation site.
+
+    ``ref`` controls the git ref embedded in cross-repo blob URLs (see
+    ``config.load_site_config``). Pass the release tag for versioned
+    builds; ``main`` (or ``None``) for unversioned / dev builds. The
+    docsite CLI's ``--ref`` flag and ``ARGUS_DOCS_REF`` env var are
+    routed through here.
+    """
     # Load site config from docsite.yml before anything else
-    load_site_config(repo_root)
+    load_site_config(repo_root, ref=ref)
 
     version = get_version(repo_root)
     actions_dir = repo_root / ".github" / "actions"

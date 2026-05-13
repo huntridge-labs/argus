@@ -32,11 +32,44 @@ jobs:
       - name: Install dependencies
         run: pip install 'mkdocs>=1.6,<2' 'mkdocs-material>=9.7,<10' pyyaml mike
 
+      - name: Resolve docs ref
+        # Per-trigger blob ref so the docsite's cross-repo links point
+        # to content that actually exists at the matching version,
+        # instead of always hardcoding ``main`` (which is the bug this
+        # step closes — see docs/developer/SDK-ROADMAP.md → Docsite
+        # Maintenance → "Version-aware GITHUB_BLOB rewrite").
+        #
+        #   release           → version tag from version.yaml (e.g. v0.7.2)
+        #   pull_request      → PR head SHA (immutable, exists during the run)
+        #   push:main         → "main"
+        #   workflow_dispatch → "main"
+        #
+        # The PR head SHA comes from ``github.event.pull_request.head.sha``,
+        # which is sourced from a controlled set (hex SHA only) but still
+        # routed through ``env:`` per workflow-injection best practices.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          case "$EVENT_NAME" in
+            release)
+              VERSION=$(head -1 version.yaml | awk '{print $1}')
+              REF="v${VERSION}"
+              ;;
+            pull_request)
+              REF="${PR_HEAD_SHA}"
+              ;;
+            *)
+              REF="main"
+              ;;
+          esac
+          echo "ARGUS_DOCS_REF=${REF}" >> "$GITHUB_ENV"
+
       - name: Validate docsite config
         run: cd scripts && python -m docsite --validate
 
       - name: Build docs
-        run: cd scripts && python -m docsite --output-dir /tmp/argus-docs
+        run: cd scripts && python -m docsite --output-dir /tmp/argus-docs --ref "$ARGUS_DOCS_REF"
 
       - name: Verify site builds
         run: cd /tmp/argus-docs && mkdocs build --strict --site-dir /tmp/site
