@@ -1,4 +1,4 @@
-"""Container scanner orchestrating Trivy, Grype, and Syft."""
+"""Container scanner orchestrating Trivy, Grype, Syft, and exposed-port surface."""
 
 import json
 import logging
@@ -12,6 +12,90 @@ from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
 
 logger = logging.getLogger("argus")
+
+
+# ── Risky-default ports for the ``exposure`` sub-scanner ─────────────
+#
+# Services on this list are not vulnerabilities per se — the port being
+# *declared* via Dockerfile EXPOSE is itself harmless. The risk is that
+# these services historically ship with weak defaults (no-auth Redis,
+# unauthenticated PostgreSQL trust mode, SMB anonymous binding, etc.)
+# *and* are surprisingly often inherited by application images that
+# never actually intend to expose them — e.g. a base image that
+# EXPOSEs port 22 because openssh-server got pulled in as a transitive
+# dependency. The WARN severity prompts a "did you mean to expose
+# this?" review without falsely implying a known CVE.
+#
+# Keys are ``(port, protocol)`` tuples; values are the service name
+# used in the finding title. Operators can override via
+# ``scanners.container.expose_warn_ports`` in argus.yml or suppress
+# any finding entirely via ``scanners.container.expose_ignore_ports``.
+#
+# Sources for each entry:
+#   - 21/tcp, 23/tcp: cleartext protocols (FTP, Telnet) — categorically
+#     unsafe on any public network; CIS Docker Benchmark §5.8.
+#   - 22/tcp: SSH in a container is a recurring image-inheritance leak
+#     (k8s.io/community#kubectl-exec-vs-ssh-in-pod discussion thread).
+#   - 25/tcp, 110/tcp, 143/tcp: legacy mail protocols with cleartext
+#     auth in default configs.
+#   - 161/udp: SNMPv1/v2 default community strings (``public``); CVE-1999-0517.
+#   - 389/tcp: LDAP cleartext bind; 636/tcp (LDAPS) is the encrypted
+#     alternative and is not warned.
+#   - 445/tcp: SMB; never appropriate from a containerized workload
+#     without an explicit reason.
+#   - 3306/tcp (MySQL), 5432/tcp (PostgreSQL), 6379/tcp (Redis),
+#     9200/tcp (Elasticsearch), 11211/tcp (Memcached), 27017/tcp
+#     (MongoDB): default no-auth configurations. The Shodan
+#     "Unauthorized Database Access" reports cite these by name.
+#   - 3389/tcp: RDP — same rationale as SSH plus auth-bypass CVE history.
+#
+# Adding a new entry requires citing a "why" in this docstring; rule
+# is to keep operators from tuning the list blindly.
+RISKY_PORTS: dict[tuple[int, str], str] = {
+    (21, "tcp"): "FTP",
+    (22, "tcp"): "SSH",
+    (23, "tcp"): "Telnet",
+    (25, "tcp"): "SMTP",
+    (110, "tcp"): "POP3",
+    (143, "tcp"): "IMAP",
+    (161, "udp"): "SNMP",
+    (389, "tcp"): "LDAP",
+    (445, "tcp"): "SMB",
+    (3306, "tcp"): "MySQL",
+    (3389, "tcp"): "RDP",
+    (5432, "tcp"): "PostgreSQL",
+    (6379, "tcp"): "Redis",
+    (9200, "tcp"): "Elasticsearch",
+    (11211, "tcp"): "Memcached",
+    (27017, "tcp"): "MongoDB",
+}
+
+
+def _parse_port_proto(raw: str) -> tuple[int, str] | None:
+    """Parse a ``PORT/PROTO`` string into ``(port, protocol)``.
+
+    Accepts ``"22/tcp"`` (canonical), ``"22"`` (defaults to tcp),
+    ``" 22 / TCP "`` (whitespace + case tolerated). Returns ``None``
+    if the input doesn't parse — callers log + skip.
+    """
+    if not isinstance(raw, str):
+        return None
+    cleaned = raw.strip().lower().replace(" ", "")
+    if not cleaned:
+        return None
+    if "/" in cleaned:
+        port_str, proto = cleaned.split("/", 1)
+    else:
+        port_str, proto = cleaned, "tcp"
+    try:
+        port = int(port_str)
+    except ValueError:
+        return None
+    if port < 1 or port > 65535:
+        return None
+    if proto not in ("tcp", "udp", "sctp"):
+        return None
+    return (port, proto)
 
 
 class ContainerScanner:
@@ -98,6 +182,13 @@ class ContainerScanner:
                 )
                 metadata["syft"] = syft_meta
 
+            if "exposure" in enabled:
+                exposure_findings, exposure_meta = self._scan_exposed_ports(
+                    image_ref, config,
+                )
+                all_findings.extend(exposure_findings)
+                metadata["exposure"] = exposure_meta
+
             if not metadata:
                 metadata["error"] = (
                     "None of the enabled scanners "
@@ -157,9 +248,146 @@ class ContainerScanner:
     # ------------------------------------------------------------------
 
     def _enabled_scanners(self, config: dict) -> list[str]:
-        """Return list of enabled sub-scanner names from config."""
-        raw = config.get("scanners", "trivy,grype,syft")
+        """Return list of enabled sub-scanner names from config.
+
+        Default set covers vulnerability scanning (trivy, grype),
+        SBOM generation (syft), and attack-surface visibility
+        (exposure — declared Dockerfile EXPOSE ports). Disable any
+        of them explicitly via the ``scanners`` config key.
+        """
+        raw = config.get("scanners", "trivy,grype,syft,exposure")
         return [s.strip().lower() for s in raw.split(",") if s.strip()]
+
+    def _scan_exposed_ports(
+        self, image_ref: str, config: dict,
+    ) -> tuple[list[Finding], dict]:
+        """Read ``Config.ExposedPorts`` from the image manifest.
+
+        One ``Finding`` per declared port:
+          - severity INFO for ordinary application ports;
+          - severity WARN for ports on the built-in ``RISKY_PORTS``
+            list (or the operator's override).
+        Config knobs:
+          ``scanners.container.expose_warn_ports``  – override the
+              built-in WARN list. Replaces the default; pass an empty
+              list to suppress all WARN-severity findings.
+          ``scanners.container.expose_ignore_ports`` – suppress findings
+              entirely for these ports (intended for ports the team
+              has explicitly accepted, e.g. their app's known 8080/tcp).
+        Both lists take ``"PORT/PROTO"`` strings.
+        """
+        from argus import container_runtime
+
+        rt = container_runtime.runtime_cmd()
+        if not container_runtime.is_available():
+            return [], {
+                "skipped": "no container runtime available — install Docker, "
+                           "Podman, or nerdctl to enable exposed-port discovery",
+            }
+
+        # Ensure the image is present locally before inspecting.
+        # ``if-not-present`` is a fast cache hit when trivy/grype/syft
+        # already pulled the image in this scan run.
+        if not container_runtime.pull_image(image_ref, policy="if-not-present"):
+            return [], {
+                "error": f"could not pull or locate image {image_ref} for inspection",
+            }
+
+        result = subprocess.run(
+            [rt, "image", "inspect", image_ref],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            return [], {
+                "error": (
+                    f"docker inspect failed (rc={result.returncode}): "
+                    f"{result.stderr.strip()[:300]}"
+                ),
+            }
+
+        try:
+            inspected = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            return [], {"error": f"could not parse docker inspect output: {exc}"}
+
+        if not isinstance(inspected, list) or not inspected:
+            return [], {"error": "docker inspect returned no image entries"}
+
+        config_block = inspected[0].get("Config") or {}
+        exposed = config_block.get("ExposedPorts") or {}
+
+        # Resolve config-driven WARN-list override and ignore-list.
+        warn_override = config.get("expose_warn_ports")
+        if warn_override is not None:
+            # Operator-provided list REPLACES the built-in defaults.
+            warn_set = {
+                pp for raw in warn_override
+                if (pp := _parse_port_proto(raw)) is not None
+            }
+        else:
+            warn_set = set(RISKY_PORTS.keys())
+
+        ignore_set = {
+            pp for raw in (config.get("expose_ignore_ports") or [])
+            if (pp := _parse_port_proto(raw)) is not None
+        }
+
+        findings: list[Finding] = []
+        ignored_count = 0
+        for raw_port in sorted(exposed.keys()):
+            parsed = _parse_port_proto(raw_port)
+            if parsed is None:
+                logger.warning(
+                    "Skipping unparsable port reference '%s' in %s ExposedPorts",
+                    raw_port, image_ref,
+                )
+                continue
+            port, proto = parsed
+            if (port, proto) in ignore_set:
+                ignored_count += 1
+                continue
+
+            is_risky = (port, proto) in warn_set
+            service = RISKY_PORTS.get((port, proto))
+            severity = Severity.MEDIUM if is_risky else Severity.INFO
+            title_service = f" ({service})" if service else ""
+            description = (
+                f"Image declares EXPOSE for port {port}/{proto}{title_service}. "
+                + (
+                    "This is on the risky-defaults watchlist — services on "
+                    "this port have a history of weak default configurations. "
+                    "Confirm the container actually intends to listen here "
+                    "and that authentication/TLS is in front of it."
+                    if is_risky else
+                    "Declared exposed port — informational. No action required "
+                    "unless the port is unexpected for this image."
+                )
+            )
+            findings.append(
+                Finding(
+                    id=f"EXPOSE-{port}-{proto}",
+                    severity=severity,
+                    title=(
+                        f"Port {port}/{proto}{title_service} declared exposed"
+                    ),
+                    description=description,
+                    scanner=self.name,
+                    metadata={
+                        "port": port,
+                        "protocol": proto,
+                        "common_service": service or "",
+                        "risky": is_risky,
+                        "image_ref": image_ref,
+                    },
+                ),
+            )
+
+        return findings, {
+            "execution": "local-inspect",
+            "ports_declared": len(exposed),
+            "ports_reported": len(findings),
+            "ports_ignored": ignored_count,
+        }
 
     def _build_env(self, config: dict) -> dict[str, str]:
         """Build environment dict with optional registry credentials.

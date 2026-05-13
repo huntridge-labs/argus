@@ -914,86 +914,54 @@ declares — separate from whether those endpoints have known CVEs.
 "Image exposes 6379/tcp" is a different question from "image has
 a vulnerable Redis package" and most security reviewers want both.
 
-### Container image exposed ports — actionable
+### Container image exposed ports — shipped
 
-- [ ] **Surface declared EXPOSE ports as findings.** Extend the
-  existing `argus/scanners/container.py` sub-scanner flow
-  (alongside trivy / grype / syft). No new scanner module — the
-  data is already free: `docker inspect <image>` returns
-  `Config.ExposedPorts` and the container scanner already inspects
-  every image it scans.
+- [x] ~~**Surface declared EXPOSE ports as findings.**~~ Shipped as a
+  new `exposure` sub-scanner inside `argus/scanners/container.py`
+  (no new scanner module). It runs `<runtime> image inspect <ref>`
+  on the already-pulled image, reads `Config.ExposedPorts`, and
+  emits one `Finding` per declared port. Severity is `INFO` for
+  ordinary application ports and `MEDIUM` for ports on the built-in
+  `RISKY_PORTS` watchlist (SSH 22/tcp, Telnet 23/tcp, FTP 21/tcp,
+  SMTP/POP3/IMAP, SNMP 161/udp, LDAP 389/tcp, SMB 445/tcp,
+  MySQL 3306/tcp, RDP 3389/tcp, PostgreSQL 5432/tcp, Redis 6379/tcp,
+  Elasticsearch 9200/tcp, Memcached 11211/tcp, MongoDB 27017/tcp).
+  Findings flow through the existing reporter pipeline, severity
+  filtering, audit trail, and view-terminal / view-browser UIs.
+  Default sub-scanner set is now `"trivy,grype,syft,exposure"` —
+  opt out by removing `exposure` from the `scanners` config key.
 
-  **Output shape:** one `Finding` per declared port:
-  ```
-  INFO   EXPOSE-8080     Port 8080/tcp declared exposed
-  WARN   EXPOSE-22       Port 22/tcp (SSH) declared exposed — review necessity
-  WARN   EXPOSE-3306     Port 3306/tcp (MySQL) declared exposed — review necessity
-  ```
-  Severity defaults to `INFO` for ordinary application ports and
-  `WARN` for ports on a built-in risky-defaults list (services that
-  shouldn't normally be exposed from a container image without a
-  deliberate reason). The list is config-overridable so teams can
-  tune it for their context.
+  Config knobs:
+  - `scanners.container.expose_warn_ports` — operator override for
+    the WARN list. Replaces the built-in defaults entirely; pass
+    `[]` to demote every port to INFO.
+  - `scanners.container.expose_ignore_ports` — suppress findings
+    entirely for ports the team has explicitly accepted (e.g. the
+    app's known 8080/tcp).
 
-  **Built-in risky-port defaults (warn):**
-  - `21/tcp` (FTP), `22/tcp` (SSH), `23/tcp` (Telnet)
-  - `25/tcp` (SMTP), `110/tcp` (POP3), `143/tcp` (IMAP)
-  - `161/udp` (SNMP), `389/tcp` (LDAP), `445/tcp` (SMB)
-  - `3306/tcp` (MySQL), `3389/tcp` (RDP)
-  - `5432/tcp` (PostgreSQL), `6379/tcp` (Redis)
-  - `9200/tcp` (Elasticsearch), `11211/tcp` (Memcached)
-  - `27017/tcp` (MongoDB)
-  Source: services that historically ship with weak defaults or
-  that fronting via a container without auth/TLS in front of them
-  is a recurring incident pattern. Each entry cites a "why" in the
-  scanner module's docstring so future contributors don't tune the
-  list blindly.
+  Both lists take `"PORT/PROTO"` strings (bare `"PORT"` defaults to
+  tcp; protocol case-insensitive). Validator errors on malformed
+  entries at config-load time. Each entry in the built-in
+  `RISKY_PORTS` list cites a "why" in the `argus/scanners/container.py`
+  docstring (CIS Docker Benchmark §5.8, Shodan unauthorized-database
+  reports, CVE-1999-0517 for SNMPv1/v2 community strings, etc.) so
+  future contributors don't tune the list blindly.
 
-  **Config knob** (in `argus.yml`):
-  ```yaml
-  scanners:
-    container:
-      expose_warn_ports:                # override the built-in WARN list
-        - 22/tcp
-        - 6379/tcp
-      expose_ignore_ports:              # don't emit a finding at all
-        - 8080/tcp
-        - 443/tcp
-  ```
+  29 new tests in `argus/tests/scanners/test_container.py` cover:
+  the `_parse_port_proto` helper (canonical + bare + whitespace +
+  invalid forms via parametrize), `_scan_exposed_ports` happy paths
+  (single non-risky, single risky with service name, multi-port
+  sort + classification, no-ports, no-Config block, empty inspect
+  array, unparsable port logged + skipped), config knobs
+  (ignore-list suppression, warn-override replaces defaults,
+  empty-warn-override demotes everything to INFO), failure modes
+  (no runtime, pull failure), and schema validation for the two
+  new list-typed keys.
 
-  **Why findings (not metadata):** flows through the existing
-  reporter pipeline (terminal table, markdown, SARIF, JSON, GitHub
-  annotations, GitLab Code Quality, JUnit), `--severity-threshold`
-  works on them, audit-trail captures them, and the
-  `argus view terminal` / `argus view browser` UIs render them
-  alongside CVE findings without per-reporter custom code.
-
-  **Implementation tasks** (single PR, no new dependencies):
-  - [ ] `argus/scanners/container.py`: new `_scan_exposed_ports`
-    sub-method that reads `Config.ExposedPorts` from the existing
-    `docker inspect` output. Emits one `Finding` per port with
-    `id=f"EXPOSE-{port}"`, `scanner="container"`,
-    `metadata={"port": ..., "protocol": ..., "common_service": ...}`.
-  - [ ] Built-in `RISKY_PORTS: dict[tuple[int, str], str]` mapping
-    `(port, protocol) -> service_name` with the WARN-list above;
-    cited entries in the docstring.
-  - [ ] Config schema additions: `expose_warn_ports` and
-    `expose_ignore_ports` (both `list[str]`, parsed as `"port/proto"`).
-    Validator errors on malformed entries.
-  - [ ] Tests in `argus/tests/scanners/test_container.py`: fixture
-    with a multi-port `Config.ExposedPorts` blob; assert one finding
-    per port with correct severity, ignore-list suppresses, override
-    warn-list changes the severity.
-  - [ ] Docs: `docs/scanners.md` container section gets an
-    "Exposed ports" subsection with config examples;
-    `docs/config-reference.md` adds the two new keys.
-  - [ ] `.ai/architecture.yaml`: container scanner description
-    updated to mention the new sub-scanner capability.
-
-  **Out of scope for this PR:** *runtime* port enumeration (actually
+  Out of scope (deferred): *runtime* port enumeration (actually
   start the container, probe with `nmap` / `ss`). Static `EXPOSE`
   data is the bulk of the value at a fraction of the operational
-  cost. A runtime variant can become a separate roadmap item if
+  cost. A runtime variant becomes a separate roadmap item if
   consumer demand surfaces.
 
 ### OS image port enumeration — research item

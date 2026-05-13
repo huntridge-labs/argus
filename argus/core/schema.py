@@ -38,6 +38,8 @@ _SCANNER_KNOWN_KEYS = {
     # Credential fields (either form: literal or <field>_env)
     "registry_username", "registry_password",
     "registry_username_env", "registry_password_env",
+    # Container exposure sub-scanner tuning
+    "expose_warn_ports", "expose_ignore_ports",
     # ZAP-specific tuning (decided in ADR-024)
     "api_spec", "rules_file", "cmd_options",
     "max_duration_minutes", "healthcheck_url",
@@ -81,7 +83,7 @@ _CONTAINERS_KEYS = {"images", "discover", "search_paths", "scanners"}
 _CONTAINER_IMAGE_KEYS = {"image", "dockerfile", "context", "name", "cleanup"}
 
 # Sub-scanners argus scan container can dispatch to
-_CONTAINER_SUB_SCANNERS = {"trivy", "grype", "syft"}
+_CONTAINER_SUB_SCANNERS = {"trivy", "grype", "syft", "exposure"}
 
 
 class ConfigError:
@@ -214,6 +216,40 @@ def _validate_scanner(path: str, data: Any) -> list[ConfigError]:
                 f"{path}.max_duration_minutes",
                 f"Must be a positive integer, got {v!r}",
             ))
+
+    # Container exposure sub-scanner tuning — both lists must be
+    # lists of ``"PORT/PROTO"`` strings (protocol defaults to tcp
+    # when omitted; case-insensitive).
+    if scanner_name == "container":
+        for key in ("expose_warn_ports", "expose_ignore_ports"):
+            if key not in data:
+                continue
+            value = data[key]
+            if not isinstance(value, list):
+                errors.append(ConfigError(
+                    f"{path}.{key}",
+                    f"Must be a list of \"PORT/PROTO\" strings, "
+                    f"got {type(value).__name__}",
+                ))
+                continue
+            for entry in value:
+                if not isinstance(entry, str):
+                    errors.append(ConfigError(
+                        f"{path}.{key}",
+                        f"Entry must be a string \"PORT/PROTO\", "
+                        f"got {type(entry).__name__} ({entry!r})",
+                    ))
+                    continue
+                # Validate via the scanner's parser so the schema and
+                # the runtime agree on what's well-formed.
+                from argus.scanners.container import _parse_port_proto
+                if _parse_port_proto(entry) is None:
+                    errors.append(ConfigError(
+                        f"{path}.{key}",
+                        f"'{entry}' is not a valid PORT/PROTO entry. "
+                        "Expected '<port>/<tcp|udp|sctp>' (e.g. '22/tcp') "
+                        "or bare '<port>' which defaults to tcp.",
+                    ))
 
     # Warn on unknown keys (after credential / nested-block handling so
     # we don't double-warn on the keys we already validated).
