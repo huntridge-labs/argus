@@ -41,8 +41,7 @@ Unified security scanning — SAST, containers, IaC, secrets, and DAST from a si
 The argus Python SDK is the primary interface for running security scans. It works locally, in CI, and on any platform with Python 3.11+.
 
 ```bash
-# Install from TestPyPI (pre-release — will become: pip install argus-security)
-pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ argus-security
+pip install argus-security
 
 # Initialize config and scan
 argus init

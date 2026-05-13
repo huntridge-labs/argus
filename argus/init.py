@@ -496,5 +496,13 @@ def _print_summary(
     print(f"    {B}3.{R} Run: {G}argus scan{R}")
     print(f"    {B}4.{R} AI integration: {G}pip install argus-security[mcp]{R} + {G}argus mcp{R}")
 
+    # Shareable install hint — argus init runs once locally but the
+    # config it just wrote is typically committed and used by
+    # teammates / CI. Surface the canonical install command here so
+    # the operator can paste it into a teammate's onboarding message
+    # or a CI workflow without hunting for the right invocation.
+    print(f"\n{G}  Share with your team:{R}")
+    print(f"    {G}pip install argus-security{R}")
+
     print(f"\n  {D}{_DOCS_URL}{R}")
     print()
