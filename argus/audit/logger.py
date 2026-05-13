@@ -55,11 +55,12 @@ class ColoredConsoleFormatter(logging.Formatter):
         self._use_color = use_color
 
     def format(self, record: logging.LogRecord) -> str:
-        record.msg = mask_secrets(str(record.msg))
-
+        # Mask the rendered output, NOT record.msg — see the note in
+        # JsonLogFormatter.format() for why masking the format string
+        # breaks ``%s`` substitution.
         ts = self.formatTime(record, "%H:%M:%S")
         name = record.name.replace("argus.", "")
-        msg = record.getMessage()
+        msg = mask_secrets(record.getMessage())
 
         if not self._use_color:
             return f"{ts} {record.levelname:<8} {name} {msg}"
@@ -78,7 +79,13 @@ class JsonLogFormatter(logging.Formatter):
     """
 
     def format(self, record: logging.LogRecord) -> str:
-        record.msg = mask_secrets(str(record.msg))
+        # NOTE: do NOT mask ``record.msg`` directly. The msg is a
+        # printf-style format string; if its non-whitespace section
+        # matches a secret-masking pattern (e.g., ``"token: %s"`` matches
+        # ``r"token[=:]\s*[^\s]+"``), masking turns the format string
+        # into a literal with no placeholders, and the subsequent
+        # ``record.getMessage()`` raises TypeError on ``%s`` substitution.
+        # Mask the *rendered* message string below instead.
         entry: dict = {
             "timestamp": datetime.fromtimestamp(
                 record.created, tz=timezone.utc
@@ -87,13 +94,25 @@ class JsonLogFormatter(logging.Formatter):
             "module": record.name,
             "function": record.funcName,
             "line": record.lineno,
-            "message": record.getMessage(),
+            # ``getMessage()`` re-renders the format string with
+            # ``record.args`` interpolated back in. If a caller passed
+            # a secret as a printf-style arg
+            # (``logger.info("token: %s", real_token)``), that secret
+            # never touched ``record.msg`` — only ``record.args`` — so
+            # masking ``record.msg`` above wouldn't catch it. We mask
+            # the *rendered* result to cover both paths.
+            "message": mask_secrets(record.getMessage()),
         }
         # Include extra fields if present (scanner name, phase, etc.)
         for key in ("scanner", "phase", "image", "duration_ms"):
             if hasattr(record, key):
                 entry[key] = getattr(record, key)
-        return json.dumps(entry, default=str)
+        # Defense-in-depth: walk the assembled entry and re-mask any
+        # string a contributor might add to the ``extra`` set above
+        # without remembering to mask first. ``mask_secrets_in_obj``
+        # is idempotent — already-masked values pass through unchanged.
+        from argus.audit.secrets import mask_secrets_in_obj
+        return json.dumps(mask_secrets_in_obj(entry), default=str)
 
 
 # ---------------------------------------------------------------------------

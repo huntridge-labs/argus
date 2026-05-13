@@ -49,6 +49,7 @@ components:
       "linters/": "Linter modules implementing Scanner protocol (LINTER_REGISTRY auto-merges into SCANNER_REGISTRY)"
       "reporters/": "Output reporters (terminal, markdown, sarif, json, github, gitlab, junit). Discovered via the ``argus.reporters`` Python entry-point group (built-ins declared in pyproject.toml; third-party packages register additional formats without forking — see docs/contributing-reporters.md and ADR-023)."
       "preflight/": "CI preflight: provider detection, living issue reporting (GitHub/GitLab), network deps, scanner tool-readiness checks (tool_check.py)"
+      "audit/": "Structured audit trail for every scan run. logger.py emits JSONL log records (one per line) into ``argus-results/.../argus.log``; manifest.py writes the per-run AuditManifest summary into ``argus-audit.json``. secrets.py provides mask_secrets (regex masking for token=, password=, Bearer, URL-creds, GitHub PATs, AWS access keys, sk-keys) and the mask_secrets_in_obj recursive walker. Both write paths run mask_secrets_in_obj at serialization time as defense-in-depth — if a future contributor accidentally captures a docker_cmd / env dict / credential-shaped argv into a manifest field or log entry, the redaction pass catches it before the file lands. Both logger formatters mask the rendered ``record.getMessage()`` rather than ``record.msg`` to avoid corrupting %s format strings whose placeholders match secret-shaped patterns."
 
   - name: argus-linters
     location: "argus/linters/"
