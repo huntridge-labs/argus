@@ -1059,7 +1059,7 @@ Open follow-ups for the auto-generated docsite
 (`scripts/docsite/`). Not blockers — the pipeline is fully automated
 today and ships clean — but small hardening items worth tracking.
 
-- [ ] **Version-aware `GITHUB_BLOB` rewrite for relative repo links.**
+- [x] ~~**Version-aware `GITHUB_BLOB` rewrite for relative repo links.**~~ Shipped. `scripts/docsite/config.py` now resolves the blob ref via (1) explicit `--ref` CLI flag, (2) `ARGUS_DOCS_REF` env var, (3) fallback `"main"`. The docsite `__main__.py` exposes `--ref` and `build()` threads it through to `load_site_config`. `.github/workflows/docs.yml` resolves the right ref per trigger before building: release → `v<X.Y.Z>` from `version.yaml`, pull_request → PR head SHA (passed through `env:` per workflow-injection best practice), push:main / workflow_dispatch → `main`. Versioned doc URLs at `/argus/vX.Y.Z/` now link to matching `/blob/vX.Y.Z/` blob URLs, and PR-preview builds link to the PR's own SHA so reviewers can click through to the exact files under review. 7 new tests in `scripts/docsite/tests/test_config.py::TestBlobRefResolution` cover the precedence order (explicit ref > env var > main fallback), whitespace/empty-string handling, and end-to-end propagation through `build()`.
   `scripts/docsite/config.py:59` hardcodes
   `GITHUB_BLOB = f"{repo_url}/blob/main"`. Every relative markdown
   link in source files (`examples/README.md`, scanner READMEs, the
