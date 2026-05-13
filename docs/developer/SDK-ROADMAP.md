@@ -1053,6 +1053,46 @@ rootfs tarballs. What network endpoints would this image bind on boot?
 
 ---
 
+## Docsite Maintenance
+
+Open follow-ups for the auto-generated docsite
+(`scripts/docsite/`). Not blockers — the pipeline is fully automated
+today and ships clean — but small hardening items worth tracking.
+
+- [ ] **Version-aware `GITHUB_BLOB` rewrite for relative repo links.**
+  `scripts/docsite/config.py:59` hardcodes
+  `GITHUB_BLOB = f"{repo_url}/blob/main"`. Every relative markdown
+  link in source files (`examples/README.md`, scanner READMEs, the
+  guide pages, etc.) is rewritten to an absolute
+  `github.com/.../blob/main/<path>` URL before render. Two consequences:
+  - **Pre-release latency:** new files on a feature branch 404 when
+    viewed locally or via PR preview because `main` doesn't have
+    them yet. Resolves on merge to `main`, but the local-dev / PR
+    experience is noisy.
+  - **Versioned-doc drift:** `mike deploy` builds versioned URLs
+    (`/argus/v0.7.2/` alongside `/argus/latest/`), but the linked
+    blob URLs still point at `main`. If `main` moves ahead of the
+    release tag, the versioned doc's blob links can drift to
+    content that didn't exist at that version.
+
+  Fix: take the ref from `version.yaml` (or a `--ref` flag the
+  docsite builder accepts) so release builds use
+  `/blob/v<X.Y.Z>/`, `push:main` builds use `/blob/main/`, and
+  PR builds use the PR's head SHA (or fall back to `main`). One
+  function change in `config.py` + a CLI flag in `__main__.py` +
+  a small tweak in `docs.yml` to pass the right ref per trigger.
+
+  Surfaced by the local docsite review on
+  `docs/sdk-first-nav-and-prune-roadtest` (2026-05-13): every
+  `examples/ci-platforms/...` and SDK-migration file referenced
+  from `examples/README.md` shows 404 against `main` today
+  because the SDK migration hasn't landed there yet. Will
+  self-resolve when `feat/argus-portability` merges to `main`,
+  but the structural fix (version-aware ref) closes the latent
+  drift gap as well.
+
+---
+
 ## Dependency Maintenance — Full Coverage
 
 | Dependency Type | Tool | Config Location | Status |
