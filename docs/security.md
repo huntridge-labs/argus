@@ -275,6 +275,53 @@ dependency.
 
 ---
 
+## Alert routing — paging and escalation
+
+argus stays out of the paging-channel business. The composite
+actions emit findings to:
+
+- The job's stdout / step summary (always)
+- A SARIF artifact (always)
+- The PR as an aggregated comment when `post_pr_comment: true`
+- The GitHub Security tab when `enable_code_security: true`
+
+argus does **not** `@`-mention specific users, post directly to
+Slack / PagerDuty / Opsgenie, or otherwise pick a notification
+channel on the team's behalf. The 0.6.x `gitleaks_notify_user_list`
+input that routed secret-detection events through GitHub
+`@`-mentions was removed intentionally — `@`-mention escalation
+gets noisy fast (transient false positives ping the whole security
+team on every PR), is tightly coupled to GitHub-as-notification,
+and doesn't compose with the alert pipelines most teams already
+own.
+
+If you need broader-than-PR-comment escalation, pipe argus output
+into your existing alert system at the workflow level. SARIF and
+`argus-results.json` are both stable schemas; one extra workflow
+step is usually enough:
+
+```yaml
+- name: Run argus
+  uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.0.0
+  id: scan
+  with:
+    enable_code_security: true
+    fail_on_severity: high
+
+- name: Page on-call (only on high-severity findings)
+  if: failure() && steps.scan.outputs.high_count > 0
+  env:
+    SLACK_WEBHOOK_URL: ${{ secrets.SLACK_SECURITY_WEBHOOK }}
+  run: |
+    curl -X POST -H 'Content-Type: application/json' \
+      -d @argus-results.json "$SLACK_WEBHOOK_URL"
+```
+
+This keeps the paging decision (who, when, how loud) owned by the
+team's alerting config rather than the scanner's config.
+
+---
+
 ## Reporting a vulnerability
 
 Security issues with argus itself (the CLI, SDK, MCP server, or

@@ -4,6 +4,25 @@ description: |
   via the Argus SDK. The SDK handles tool execution, CVE deduplication,
   and report generation.
 
+  ### Migrating from 0.6.x?
+
+  The `scan_mode: discover` input was removed — the auto-find-and-build
+  semantic moved into the `containers:` block in `argus.yml`, matching
+  the rest of the SDK's config-driven posture. The composite action's
+  `with:` surface now takes one image per invocation; multi-image
+  workflows drive a matrix from `containers.images` (config-driven) or
+  let argus auto-discover Dockerfiles via `containers.discover: true`.
+
+  | Removed `with:` key (0.6.x) | New home (1.x) |
+  |---|---|
+  | `scan_mode: discover` | `containers.discover: true` + `containers.search_paths: [...]` in argus.yml |
+  | `scan_mode: manifest` | `containers.images: [...]` list in argus.yml (`parse-container-config` action emits the matrix) |
+  | `allow_failure` | `fail_on_severity: none` (the canonical "informational scan" knob) |
+  | `skip_summary` | Use `security-summary` composite's `scan_statuses` input (silent-failure aware) |
+
+  Worked examples in [`docs/container-scanning.md`](https://github.com/huntridge-labs/argus/blob/main/docs/container-scanning.md)
+  and side-by-side migration in [`docs/migration/0.6.x-to-1.x.md`](https://github.com/huntridge-labs/argus/blob/main/docs/migration/0.6.x-to-1.x.md).
+
 branding:
   icon: 'package'
   color: 'blue'
