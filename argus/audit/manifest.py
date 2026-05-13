@@ -75,12 +75,26 @@ class AuditManifest:
     artifacts: list[dict] = field(default_factory=list)
 
     def save(self, output_dir: str | Path) -> Path:
-        """Write the manifest to ``argus-audit.json``."""
+        """Write the manifest to ``argus-audit.json``.
+
+        Every string in the manifest passes through
+        ``mask_secrets_in_obj`` before serialization — defense-in-depth
+        so a future regression that captures a ``docker_cmd``,
+        environment dict, or credential-shaped argv into a manifest
+        field can't leak. Today the manifest schema doesn't include
+        such fields; the redaction pass is here so it stays that way
+        regardless of contributor vigilance.
+        """
+        from argus.audit.secrets import mask_secrets_in_obj
+
         dest = Path(output_dir)
         dest.mkdir(parents=True, exist_ok=True)
         filepath = dest / "argus-audit.json"
         filepath.write_text(
-            json.dumps(asdict(self), indent=2, default=str),
+            json.dumps(
+                mask_secrets_in_obj(asdict(self)),
+                indent=2, default=str,
+            ),
             encoding="utf-8",
         )
         return filepath

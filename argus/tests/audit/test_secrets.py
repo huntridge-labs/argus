@@ -83,3 +83,104 @@ class TestMaskSecrets:
     def test_case_insensitive_bearer(self):
         result = mask_secrets("bearer abc123def456ghi789jkl")
         assert "abc123def456ghi789jkl" not in result
+
+
+class TestMaskSecretsInObj:
+    """Recursive walker — defense-in-depth for audit-trail writes."""
+
+    def test_masks_string_at_root(self):
+        from argus.audit.secrets import mask_secrets_in_obj
+        result = mask_secrets_in_obj("token=ghp_supersecret123456789")
+        assert REDACTED in result
+        assert "ghp_supersecret" not in result
+
+    def test_masks_string_in_dict_value(self):
+        from argus.audit.secrets import mask_secrets_in_obj
+        result = mask_secrets_in_obj({
+            "config_path": "argus.yml",
+            "auth_header": "Bearer eyJhbGc.signature",
+        })
+        assert result["config_path"] == "argus.yml"
+        assert REDACTED in result["auth_header"]
+        assert "eyJhbGc" not in result["auth_header"]
+
+    def test_masks_nested_dict(self):
+        from argus.audit.secrets import mask_secrets_in_obj
+        result = mask_secrets_in_obj({
+            "phase": "scan",
+            "env": {
+                "REGISTRY_TOKEN": "AKIA1234567890ABCDEF",
+                "PATH": "/usr/bin",
+            },
+        })
+        assert REDACTED in result["env"]["REGISTRY_TOKEN"]
+        assert result["env"]["PATH"] == "/usr/bin"
+        assert result["phase"] == "scan"
+
+    def test_masks_list_of_strings(self):
+        from argus.audit.secrets import mask_secrets_in_obj
+        result = mask_secrets_in_obj([
+            "docker run",
+            "password=hunter2",
+            "myapp:latest",
+        ])
+        assert result[0] == "docker run"
+        assert REDACTED in result[1]
+        assert "hunter2" not in result[1]
+        assert result[2] == "myapp:latest"
+
+    def test_masks_through_tuple(self):
+        from argus.audit.secrets import mask_secrets_in_obj
+        result = mask_secrets_in_obj(("normal", "token=sk-abc123def456ghi789"))
+        assert isinstance(result, tuple)
+        assert result[0] == "normal"
+        assert REDACTED in result[1]
+
+    def test_scalars_pass_through(self):
+        from argus.audit.secrets import mask_secrets_in_obj
+        assert mask_secrets_in_obj(42) == 42
+        assert mask_secrets_in_obj(3.14) == 3.14
+        assert mask_secrets_in_obj(True) is True
+        assert mask_secrets_in_obj(None) is None
+
+    def test_does_not_mutate_input(self):
+        from argus.audit.secrets import mask_secrets_in_obj
+        original = {"creds": {"token": "ghp_supersecret123456"}}
+        result = mask_secrets_in_obj(original)
+        # Caller's original is untouched
+        assert original["creds"]["token"] == "ghp_supersecret123456"
+        # Returned copy is masked
+        assert "ghp_supersecret" not in result["creds"]["token"]
+
+    def test_deeply_nested_mix(self):
+        """Realistic shape: dict of lists of dicts of strings."""
+        from argus.audit.secrets import mask_secrets_in_obj
+        result = mask_secrets_in_obj({
+            "phases": [
+                {"name": "init", "command": ["argus", "scan"]},
+                {"name": "auth", "command": ["docker", "login", "-p",
+                                              "ghp_secret_1234567890abcdef"]},
+            ],
+        })
+        # Non-secret strings preserved
+        assert result["phases"][0]["command"] == ["argus", "scan"]
+        # Secret-shaped string masked even at depth 4
+        assert "ghp_secret" not in result["phases"][1]["command"][3]
+        assert REDACTED in result["phases"][1]["command"][3]
+
+    def test_dict_keys_not_masked(self):
+        """Keys pass through unchanged — masking them would break consumers."""
+        from argus.audit.secrets import mask_secrets_in_obj
+        result = mask_secrets_in_obj({"ghp_keyname": "regular value"})
+        assert "ghp_keyname" in result  # key intact
+        assert result["ghp_keyname"] == "regular value"
+
+    def test_unknown_object_passes_through(self):
+        """Custom types we don't recognize pass through unchanged."""
+        from argus.audit.secrets import mask_secrets_in_obj
+
+        class Custom:
+            pass
+
+        obj = Custom()
+        assert mask_secrets_in_obj(obj) is obj

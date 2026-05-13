@@ -229,3 +229,68 @@ class TestGetLogger:
             h for h in logger.handlers if isinstance(h, logging.StreamHandler)
         )
         assert console_handler.level == logging.DEBUG
+
+
+class TestJsonLogSecretLeakProtection:
+    """End-to-end: planted secrets in log calls never reach the on-disk
+    argus.log file. Defense-in-depth — closes hardening item (5).
+    """
+
+    def _read_log_lines(self, output_dir: Path) -> list[str]:
+        log_path = output_dir / "argus.log"
+        return log_path.read_text().strip().split("\n")
+
+    def test_secret_in_format_string_masked(self, tmp_path):
+        """Caller embeds the secret directly in the format string."""
+        output_dir = tmp_path / "logs"
+        logger = get_logger("argus.test.leak.fmt", output_dir=output_dir)
+        logger.info("auth header: Bearer eyJhbGc.secret-payload.signature")
+        for h in logger.handlers:
+            h.flush()
+
+        for line in self._read_log_lines(output_dir):
+            assert "eyJhbGc.secret-payload.signature" not in line
+
+    def test_secret_in_record_args_masked(self, tmp_path):
+        """Caller passes the secret as a printf-style arg.
+
+        Pre-fix, the formatter masked ``record.msg`` (the format
+        string) but ``record.getMessage()`` re-rendered the message
+        with ``record.args`` interpolated back in — secret bypassed
+        the mask entirely. The mask now runs on the rendered output.
+        """
+        output_dir = tmp_path / "logs"
+        logger = get_logger("argus.test.leak.args", output_dir=output_dir)
+        secret_token = "ghp_abcdef1234567890abcdef1234567890"
+        logger.info("registry token: %s", secret_token)
+        for h in logger.handlers:
+            h.flush()
+
+        for line in self._read_log_lines(output_dir):
+            assert secret_token not in line
+
+    def test_secret_in_extra_field_masked(self, tmp_path):
+        """Caller passes the secret via the ``extra`` kwarg."""
+        output_dir = tmp_path / "logs"
+        logger = get_logger("argus.test.leak.extra", output_dir=output_dir)
+        logger.info(
+            "scan starting",
+            extra={"scanner": "scanner-with-AKIA1234567890ABCDEF-creds"},
+        )
+        for h in logger.handlers:
+            h.flush()
+
+        for line in self._read_log_lines(output_dir):
+            assert "AKIA1234567890ABCDEF" not in line
+
+    def test_non_secret_strings_pass_through_unchanged(self, tmp_path):
+        """Confirm we're not masking ordinary strings."""
+        output_dir = tmp_path / "logs"
+        logger = get_logger("argus.test.leak.clean", output_dir=output_dir)
+        logger.info("scanning %s with %d workers", "argus.yml", 4)
+        for h in logger.handlers:
+            h.flush()
+
+        line = self._read_log_lines(output_dir)[0]
+        assert "argus.yml" in line
+        assert "4 workers" in line

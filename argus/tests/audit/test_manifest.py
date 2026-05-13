@@ -190,3 +190,92 @@ class TestFinalizeManifest:
         finalize_manifest(m, summary=None, output_dir=tmp_path)
         assert m.findings_summary == {}
         assert m.scanners_executed == []
+
+
+class TestManifestSecretLeakProtection:
+    """End-to-end: planted secrets in manifest fields never reach disk.
+
+    The manifest schema today doesn't include credential fields. This
+    test guards against a future regression that adds one (a
+    ``docker_cmd`` capture, an env dict, error messages from phases
+    that quote the failing command) — the redaction pass at save()
+    time catches it before the file lands.
+    """
+
+    def test_secret_in_phase_error_redacted(self, tmp_path):
+        m = AuditManifest(scan_id="leak-test", argus_version="1.0.0")
+        # Future regression: phase capture includes the failing
+        # subprocess argv, which includes a credential.
+        m.phases.append({
+            "name": "container_pull",
+            "status": "failure",
+            "error": "docker login failed with token=ghp_secret_1234567890abcdef",
+        })
+
+        filepath = m.save(tmp_path)
+        content = filepath.read_text()
+
+        assert "ghp_secret_1234567890abcdef" not in content
+        # Phase metadata that isn't a secret survives
+        assert "container_pull" in content
+        assert "failure" in content
+
+    def test_secret_in_artifact_path_redacted(self, tmp_path):
+        m = AuditManifest(scan_id="leak-test", argus_version="1.0.0")
+        # Pathological: an artifact path that embedded a token
+        # (e.g., a URL-shaped path with creds in it).
+        m.artifacts.append({
+            "name": "remote-fetch.log",
+            "path": "https://user:AKIA1234567890ABCDEF@bucket.s3.amazonaws.com/x",
+        })
+
+        filepath = m.save(tmp_path)
+        content = filepath.read_text()
+
+        assert "AKIA1234567890ABCDEF" not in content
+
+    def test_nested_dict_redacted(self, tmp_path):
+        """Secret several levels deep — walker must recurse."""
+        m = AuditManifest(scan_id="leak-test", argus_version="1.0.0")
+        m.phases.append({
+            "name": "auth",
+            "env_snapshot": {
+                "credentials": {
+                    "registry": "Bearer eyJhbGc.realtoken.signature",
+                    "non_secret": "/usr/bin",
+                },
+            },
+        })
+
+        filepath = m.save(tmp_path)
+        content = filepath.read_text()
+
+        assert "eyJhbGc.realtoken.signature" not in content
+        # Non-secret nested value survives
+        assert "/usr/bin" in content
+
+    def test_input_dict_not_mutated_after_save(self, tmp_path):
+        """Caller's manifest object stays unmodified after save()."""
+        m = AuditManifest(scan_id="leak-test", argus_version="1.0.0")
+        m.phases.append({
+            "name": "p",
+            "error": "token=ghp_aaaa1111bbbb2222cccc3333dddd4444",
+        })
+        original_error = m.phases[0]["error"]
+
+        m.save(tmp_path)
+
+        # In-memory view of the manifest unchanged — the redaction
+        # only affects what hits disk.
+        assert m.phases[0]["error"] == original_error
+
+    def test_clean_manifest_writes_no_redaction_tokens(self, tmp_path):
+        """A manifest with zero secret-shaped data has no false-positive
+        ``<REDACTED>`` markers."""
+        m = AuditManifest(scan_id="clean-test", argus_version="1.0.0")
+        m.phases.append({"name": "init", "status": "success"})
+
+        filepath = m.save(tmp_path)
+        content = filepath.read_text()
+
+        assert "<REDACTED>" not in content
