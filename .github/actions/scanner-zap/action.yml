@@ -27,6 +27,28 @@ description: |
 
   Note: Compose mode is not yet supported in the SDK. Use url or container mode.
 
+  ### Migrating from 0.6.x?
+
+  Seven inputs no longer live on this action — they moved into
+  `scanners.zap.*` in your `argus.yml` config file when the SDK
+  became the primary surface (ADR-024). The composite action's
+  `with:` surface is intentionally minimal: target identification
+  (`target_url` / `app_image_ref` + `app_ports`) plus the common
+  cross-scanner inputs (`fail_on_severity`, `post_pr_comment`,
+  `enable_code_security`).
+
+  | Removed `with:` key (0.6.x) | New home (1.x) |
+  |---|---|
+  | `api_spec` | `scanners.zap.api_spec` |
+  | `rules_file_name` | `scanners.zap.rules_file` |
+  | `cmd_options` | `scanners.zap.cmd_options` |
+  | `max_duration_minutes` | `scanners.zap.max_duration_minutes` |
+  | `healthcheck_url` | `scanners.zap.healthcheck_url` |
+  | `registry_username` | `scanners.zap.registry_username_env` (env-var name reference) |
+  | `registry_password` | `scanners.zap.registry_password_env` (env-var name reference) |
+
+  Side-by-side migration walkthrough: `docs/migration/0.6.x-to-1.x.md`.
+
 inputs:
   scan_name:
     description: 'Unique scan identifier (for artifact naming)'
