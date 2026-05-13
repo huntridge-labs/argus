@@ -385,7 +385,7 @@ class TestScanExposedPorts:
         # Garbage entry skipped; valid one still produces a finding.
         assert len(findings) == 1
         assert findings[0].id == "EXPOSE-8080-tcp"
-        assert any("unparseable" in r.message for r in caplog.records)
+        assert any("unparsable" in r.message for r in caplog.records)
 
 
 class TestExposureSchemaValidation:

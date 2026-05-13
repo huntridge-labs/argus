@@ -952,7 +952,7 @@ a vulnerable Redis package" and most security reviewers want both.
   invalid forms via parametrize), `_scan_exposed_ports` happy paths
   (single non-risky, single risky with service name, multi-port
   sort + classification, no-ports, no-Config block, empty inspect
-  array, unparseable port logged + skipped), config knobs
+  array, unparsable port logged + skipped), config knobs
   (ignore-list suppression, warn-override replaces defaults,
   empty-warn-override demotes everything to INFO), failure modes
   (no runtime, pull failure), and schema validation for the two

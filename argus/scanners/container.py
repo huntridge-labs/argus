@@ -338,7 +338,7 @@ class ContainerScanner:
             parsed = _parse_port_proto(raw_port)
             if parsed is None:
                 logger.warning(
-                    "Skipping unparseable port reference '%s' in %s ExposedPorts",
+                    "Skipping unparsable port reference '%s' in %s ExposedPorts",
                     raw_port, image_ref,
                 )
                 continue
