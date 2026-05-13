@@ -136,16 +136,56 @@ def build(repo_root: Path, output_dir: Path) -> None:
     # ── Examples ─────────────────────────────────────────────────────────
     examples_dir = repo_root / "examples"
     examples_out = docs_out / "examples"
+    ci_platform_nav_entries: list[dict] = []
     if examples_dir.exists():
         examples_readme = read(examples_dir / "README.md")
         if examples_readme:
             examples_readme = rewrite_repo_links(examples_readme, "examples/README.md")
         write(examples_out / "index.md", examples_readme or "# Examples\n")
         for yml_file in sorted(examples_dir.rglob("*.yml")):
+            # ci-platforms files get a richer dedicated page (built below)
+            # and are excluded from the generic dump to avoid two copies.
+            if "ci-platforms" in yml_file.parts:
+                continue
             rel = yml_file.relative_to(examples_dir)
             content = read(yml_file)
             page = f"# `{yml_file.name}`\n\n```yaml\n{content}\n```\n"
             write(examples_out / str(rel).replace(".yml", ".md"), page)
+
+        # ── CI platform integrations (Examples > CI > <platform>) ────
+        # argus is platform-agnostic; these are the major non-GitHub CI
+        # surfaces we ship templates for. Each becomes a peer entry to
+        # GitHub Actions in the Examples > CI nav tree.
+        ci_platforms_dir = examples_dir / "ci-platforms"
+        ci_platforms = [
+            # (filename, display name, syntax-highlight hint)
+            ("gitlab-ci.yml",   "GitLab CI",    "yaml"),
+            ("Jenkinsfile",     "Jenkins",      "groovy"),
+            ("azure-devops.yml", "Azure DevOps", "yaml"),
+        ]
+        for filename, display, lang in ci_platforms:
+            src = ci_platforms_dir / filename
+            if not src.exists():
+                continue
+            file_content = read(src)
+            slug = filename.lower().replace(".", "-")
+            page = (
+                f"# {display}\n\n"
+                f"argus is platform-agnostic. Drop this template into a "
+                f"**{display}** project to run the same `argus scan` you "
+                f"run locally — same scanners, same canonical "
+                f"`argus-results.json`, integrated with the platform's "
+                f"native PR-comment / artifact surface.\n\n"
+                f"Canonical source: "
+                f"[`examples/ci-platforms/{filename}`]"
+                f"(https://github.com/huntridge-labs/argus/blob/main/"
+                f"examples/ci-platforms/{filename})\n\n"
+                f"```{lang}\n{file_content}\n```\n"
+            )
+            write(examples_out / "ci" / f"{slug}.md", page)
+            ci_platform_nav_entries.append(
+                {display: f"examples/ci/{slug}.md"},
+            )
 
     # ── Navigation tree ──────────────────────────────────────────────────
     actions_nav = _build_actions_nav(actions_dir, all_action_dirs)
@@ -157,17 +197,41 @@ def build(repo_root: Path, output_dir: Path) -> None:
         for k, v in sorted(extra_pages.items())
     ]
 
+    # Argus is a platform-agnostic Python SDK / CLI; CI integration is
+    # one of many ways to invoke it, and GitHub Actions is one CI among
+    # many. The nav reflects that hierarchy:
+    #   Examples
+    #     ├── Overview
+    #     └── CI
+    #         ├── GitHub Actions    (Actions + Workflows pages)
+    #         ├── GitLab CI
+    #         ├── Jenkins
+    #         └── Azure DevOps
+    # The argus actions + workflows pages are still generated from
+    # .github/actions/ and .github/workflows/ — only their nav placement
+    # changes. URLs stay at /actions/<name>/ and /workflows/<name>/.
     nav = [
         {"Home": "index.md"},
         {"Quick Start": "quick-start.md"},
-        {"Actions": actions_nav},
-        {"Workflows": workflows_nav},
-        {"Changelog": "changelog.md"},
     ]
     if guides_nav:
-        nav.insert(4, {"Guides": guides_nav})
+        nav.append({"Guides": guides_nav})
+
     if (examples_out / "index.md").exists():
-        nav.insert(-1, {"Examples": "examples/index.md"})
+        github_actions_nav = [
+            {"Actions": actions_nav},
+            {"Workflows": workflows_nav},
+        ]
+        ci_nav: list = [{"GitHub Actions": github_actions_nav}]
+        ci_nav.extend(ci_platform_nav_entries)
+
+        examples_nav = [
+            {"Overview": "examples/index.md"},
+            {"CI": ci_nav},
+        ]
+        nav.append({"Examples": examples_nav})
+
+    nav.append({"Changelog": "changelog.md"})
 
     write(output_dir / "mkdocs.yml", build_mkdocs_config(version, nav))
     print("   ✅ mkdocs.yml written")

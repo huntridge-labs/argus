@@ -11,6 +11,31 @@ Get running with Argus in minutes. The argus SDK is the primary interface; compo
 pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ argus-security
 ```
 
+### Enable shell tab-completion (recommended)
+
+Generate and persist a completion script for your shell. Pressing
+`<Tab>` will then auto-complete subcommands (`scan`, `list`, `view`,
+`cache`, …), scanner and linter names (`bandit`, `gitleaks`,
+`lint-yaml`, …), and common flags (`--config`, `--scanners`,
+`--severity`, …).
+
+```bash
+# zsh
+argus completion zsh  >> ~/.zshrc  && source ~/.zshrc
+
+# bash
+argus completion bash >> ~/.bashrc && source ~/.bashrc
+```
+
+For one-off use in the current session only:
+
+```bash
+eval "$(argus completion zsh)"   # or bash
+```
+
+Completions are generated from the live scanner registry, so newly
+added scanners appear after re-running the command.
+
 ### Fast SAST scan
 
 ```bash
