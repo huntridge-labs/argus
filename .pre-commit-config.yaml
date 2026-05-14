@@ -18,7 +18,7 @@ repos:
       - id: check-json
         exclude: ^(tests/invalid\.json)$
       - id: detect-private-key
-        exclude: ^(tests/secrets_test\.py)$
+        exclude: ^(tests/secrets_test\.py|argus/tests/core/test_redact\.py)$
       - id: mixed-line-ending
         args: ["--fix=lf"]
         exclude: \.md$
