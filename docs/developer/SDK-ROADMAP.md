@@ -1034,7 +1034,7 @@ native scanners are far better positioned for the cloud cases.
   - **Lynis** for lighter offline audits.
 
   Shipped alongside ADR-025 so users land on a clear redirect
-  instead of filing issues. Pre-empts the "why doesn't argus
+  instead of filing issues. Preempts the "why doesn't argus
   scan my Packer-built AMI?" support pattern.
 
   Revisitability is preserved: ADRs aren't terminal — if a real
