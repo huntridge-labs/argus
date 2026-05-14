@@ -322,6 +322,43 @@ team's alerting config rather than the scanner's config.
 
 ---
 
+## What argus doesn't cover (offline VM images)
+
+argus is a source-code and **container-artifact** scanner. If
+your OS arrives as a container (stock base image like
+`ubuntu:24.04` / `alpine:3.19` / `redhat/ubi9`, or a multi-service
+/ systemd-in-container bundle), argus's container scanner already
+covers it: CVE scanning via Trivy + Grype, SBOM via Syft, declared
+ports via the `exposure` sub-scanner, and (planned) service
+enumeration via the `services` sub-scanner.
+
+argus **does not** ship offline scanning for VM-shaped artifacts —
+AWS AMIs, Azure VHDs, GCP disk images, on-prem VMware OVA/VMDK,
+ISO files, or raw disk dumps. The operational profile
+(libguestfs at hundreds of MB, Linux-only host, multi-minute scan
+latency) fundamentally doesn't match argus's PR-CI / dev-loop
+posture, and purpose-built tools already cover this space well.
+This is an explicit non-goal — see [ADR-025](../../.ai/decisions.yaml).
+
+If you need offline VM-image scanning, reach for these instead:
+
+| Use case | Recommended tool |
+|---|---|
+| Offline mount + STIG/CIS-profile audit (any cloud, on-prem) | [OpenSCAP](https://www.open-scap.org/) (`oscap-vm` / `oscap-docker`) |
+| AWS AMIs, no host install | [AWS Inspector v2](https://docs.aws.amazon.com/inspector/latest/user/scanning-ec2.html) |
+| Azure VHDs / cloud workloads | [Microsoft Defender for Cloud](https://azure.microsoft.com/en-us/products/defender-for-cloud) |
+| GCP disk images / cloud workloads | [GCP Security Command Center](https://cloud.google.com/security-command-center) |
+| CIS-benchmark compliance | [CIS-CAT](https://www.cisecurity.org/cybersecurity-tools/cis-cat-pro) (free tier; commercial for prod use) |
+| Lighter offline audit on a mounted root filesystem | [Lynis](https://cisofy.com/lynis/) |
+
+Note: this is about the **artifact shape**, not the OS itself.
+argus scans `ubuntu:24.04` (container) fine; argus is not the right
+tool for the same OS packaged as an AMI. If a Packer pipeline
+produces both — scan the container artifact with argus, and the
+AMI with one of the tools above.
+
+---
+
 ## Reporting a vulnerability
 
 Security issues with argus itself (the CLI, SDK, MCP server, or

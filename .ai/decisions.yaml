@@ -1852,3 +1852,153 @@ decisions:
       - ADR-019  # Install-from-source pattern (the composite-action thinness this preserves)
     pr_references:
       - "(addresses DAST + Container Scanner Parity → scanner-zap target setup parity; see docs/developer/SDK-ROADMAP.md)"
+
+  - id: ADR-025
+    title: "OS-image inspection: in-container scope only; offline VM-image scanning is out of scope"
+    status: accepted
+    date: 2026-05-13
+    context: |
+      Two adjacent but materially different problem shapes get
+      conflated in user requests for "OS image scanning":
+
+      1) **OS as a container artifact.** A team ships their OS as
+         a container image — sometimes a stock base image
+         (``ubuntu:24.04``, ``alpine:3.19``, ``redhat/ubi9``),
+         sometimes a multi-service / systemd-in-container bundle
+         that runs as a workload. The container artifact itself
+         is what the scanner has access to: an OCI manifest, a
+         layered filesystem, plus the ``docker inspect`` view of
+         declared config.
+
+      2) **Offline VM images.** AWS AMIs, Azure VHDs, GCP disk
+         images, on-prem VMware OVA/VMDK, ISO files, raw disk
+         dumps, rootfs tarballs. The artifact is a bootable disk;
+         "scanning" requires mounting the filesystem (libguestfs
+         /``virt-customize`` / ``virt-inspect``), booting the
+         image in a sandbox VM, or hitting a cloud-provider API
+         (AWS Inspector v2, Azure Defender for Cloud, GCP Security
+         Command Center).
+
+      These two map to very different operational models:
+
+      - argus's container path: 5–60s scan latency, no extra host
+        deps beyond Docker / Podman / nerdctl, works the same on
+        Linux / macOS / WSL.
+      - Offline VM inspection via libguestfs: minutes-to-tens-of-
+        minutes per image, hundreds of MB of host install
+        (libguestfs ships its own guest kernel), Linux-only host,
+        requires root or libvirt group membership.
+
+      The user-research insight that prompted this ADR: when teams
+      say "we want argus to scan our OS," they almost always mean
+      flavor (1) — they've already containerized the OS image
+      because that's what their deploy pipeline produces and that's
+      what they can hand the scanner. The libguestfs / AMI /
+      VMDK case is a different audience (golden-AMI Packer
+      pipelines, FedRAMP infrastructure teams) with a different
+      operational shape.
+    decision: |
+      Split the OS-image problem into two roadmap entries with
+      explicit, opposite scope decisions:
+
+      **(A) In scope: extend the container scanner with a
+      ``services`` sub-scanner.** Walks systemd unit files
+      (``/etc/systemd/system/*.service``,
+      ``/lib/systemd/system/*.service``), SysV init scripts
+      (``/etc/init.d/*``), and common service configs
+      (``sshd_config``, ``postgresql.conf``, ``pg_hba.conf``,
+      ``nginx.conf``, etc.) **inside the container image's
+      filesystem**. Emits one ``Finding`` per service the image
+      would launch on boot, with severity INFO by default and
+      MEDIUM for services on a risky-default watchlist (sshd,
+      postgresql with ``trust`` auth, redis without password,
+      etc.). Same operational shape as the existing ``exposure``
+      sub-scanner (one ``docker run`` + filesystem walk + parse);
+      no new host dependencies; sits alongside trivy / grype /
+      syft / exposure in the existing
+      ``argus/scanners/container.py`` sub-scanner loop. Scoping
+      details, watchlist sources, and config knobs land as their
+      own actionable roadmap entry; this ADR commits to the
+      direction.
+
+      **(B) Out of scope: offline VM-image inspection.** Argus
+      will not ship libguestfs-based scanning, KVM/QEMU
+      boot-and-inspect, or per-cloud-provider AMI integrations.
+      Users with these needs are pointed at purpose-built tools:
+
+        - **OpenSCAP + ``oscap-vm`` / ``oscap-docker``** — offline
+          mount + scan, STIG/CIS profiles, mature SCAP/OVAL
+          tooling.
+        - **AWS Inspector v2** — first-class AMI scanning,
+          server-side, no install.
+        - **Azure Defender for Cloud / GCP Security Command
+          Center** — cloud-native equivalents.
+        - **CIS-CAT** — CIS benchmark scanner (commercial tier
+          for production use).
+        - **Lynis** — lighter offline audit, runs against a
+          mounted root filesystem.
+
+      The documentation pointer lives in ``docs/security.md``
+      (or a new ``docs/scanners.md`` "what argus doesn't cover"
+      section) so users land on a clear redirect instead of
+      filing issues asking why argus doesn't scan their AMI.
+
+      Why this split: argus's identity stays "source-code +
+      container artifacts," but expands naturally to cover the
+      OS-as-container case that most modern deploy pipelines
+      actually produce. The offline VM case is genuinely a
+      different product shape (operational profile, host
+      requirements, audience) — declaring it out of scope is
+      more honest than half-implementing it.
+    alternatives_considered:
+      - name: "Wrap OpenSCAP via libguestfs as an argus-native OS-image scanner"
+        rejected_because: |
+          Adds a hundreds-of-MB libguestfs install to argus's
+          host requirements, restricts argus to Linux-only on
+          the host (currently Linux / macOS / WSL), and pushes
+          scan latency from seconds into tens of minutes. The
+          operational profile fundamentally doesn't match
+          argus's PR-CI / dev-loop posture. OpenSCAP is also
+          already well-documented and widely used for this exact
+          purpose; argus wrapping it would not differentiate.
+
+      - name: "Add per-cloud-provider integrations (AWS Inspector v2, Azure Defender, GCP SCC)"
+        rejected_because: |
+          Each integration is its own API surface, auth model,
+          and rate-limit story. Argus's strength is "same
+          config, same output, anywhere"; bolting on per-cloud
+          integrations would split that promise. The cloud-native
+          scanners are also positioned closer to the asset they
+          inspect (running server-side) than argus could ever be.
+
+      - name: "Defer the OS-image research item indefinitely"
+        rejected_because: |
+          Leaves a "decision pending" rotting in the roadmap and
+          gives users no documentation pointer when they ask why
+          argus doesn't scan their AMI. The out-of-scope answer
+          + documentation pointer accomplishes the same
+          "don't build it" outcome with a useful redirect; ADRs
+          aren't terminal — if real demand surfaces from the
+          golden-AMI cohort later, we can revisit with concrete
+          data.
+
+      - name: "Argus-native ``services`` sub-scanner that ALSO handles offline VM images"
+        rejected_because: |
+          Tempting because it would be a "single answer" — but
+          the two cases share almost no code. Container
+          filesystems are layered, accessible via standard tools
+          we already use. VM disk images need libguestfs to mount
+          or KVM to boot; nothing about that code reuses with the
+          container path. Combining them creates a heavier
+          dependency footprint for users who only need (A).
+    consequences:
+      - "Container scanner gets a natural follow-up extension (the ``services`` sub-scanner) that addresses the common OS-as-container case without operational profile changes. Same Docker requirement, same scan latency, same cross-platform host story."
+      - "Users with offline AMI / VMDK / ISO needs get a clear, documented redirect to the right tool for their case. No more issues asking ``why doesn't argus scan my Packer-built AMI?``"
+      - "Argus's identity stays focused. We don't accidentally drift into infrastructure-scanning territory where cloud-native and purpose-built tools are far better positioned."
+      - "Future revisitability is preserved: if a cohort of golden-AMI / Packer-pipeline customers emerges with concrete use cases that genuinely don't fit OpenSCAP / AWS Inspector, we can revisit (B). ADRs aren't terminal."
+      - "The roadmap research item resolves cleanly into one actionable scope (``services`` sub-scanner) and one explicit non-goal (offline VM-image scanning), instead of a vague open question."
+    related:
+      - ADR-013  # Python SDK as primary interface (the operational profile this preserves)
+      - ADR-024  # DAST scanner tuning moves to argus.yml (same posture: scanner-specific in config, action surface minimal)
+    pr_references:
+      - "(splits the OS image port enumeration research item in docs/developer/SDK-ROADMAP.md → Attack Surface Visibility)"
