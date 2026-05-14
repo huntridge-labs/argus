@@ -44,11 +44,14 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
       - name: Setup Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
           node-version: '22'
-          cache: 'npm'
+          cache: 'pnpm'
 
       - name: Setup Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
@@ -57,13 +60,13 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
       - name: Run tests
-        run: npm test
+        run: pnpm test
 
       - name: Configure Git
         run: |
@@ -75,14 +78,14 @@ jobs:
 
       - name: Release (Auto)
         if: github.event_name == 'push' || github.event.inputs.releaseType == 'auto'
-        run: npm run release:ci
+        run: pnpm run release:ci
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
           HUSKY: 0
 
       - name: Release (Specific Type)
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.releaseType != 'auto'
-        run: npm run release:ci -- "$RELEASE_TYPE"
+        run: pnpm run release:ci -- "$RELEASE_TYPE"
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
           HUSKY: 0
@@ -103,11 +106,14 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
       - name: Setup Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
           node-version: '22'
-          cache: 'npm'
+          cache: 'pnpm'
 
       - name: Setup Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
@@ -116,13 +122,13 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
       - name: Run tests
-        run: npm test
+        run: pnpm test
 
       - name: Release Preview
         run: |
@@ -130,7 +136,7 @@ jobs:
           echo "Running release-it dry run..."
           echo "Note: A post-processed changelog with categorization will be shown after the dry run output."
           echo ""
-          npm run release:dry 2>&1 | tee release_dry_output.txt
+          pnpm run release:dry 2>&1 | tee release_dry_output.txt
 
           # Extract and process the changelog section to show categorized version
           if grep -q "Changelog:" release_dry_output.txt; then

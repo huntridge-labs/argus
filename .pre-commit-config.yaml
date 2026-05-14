@@ -59,6 +59,8 @@ repos:
           --skip=docs/images/**/*.json,
           --skip=package-lock.json,
           --skip=**/package-lock.json,
+          --skip=pnpm-lock.yaml,
+          --skip=**/pnpm-lock.yaml,
           --ignore-words-list=assertIn,
           -w
         ]
