@@ -296,7 +296,7 @@ Not all of these belong to the TUI itself — the portal integration items are p
 - [x] Multi-select for batch actions (export a subset, copy CVE list to clipboard)
 - [x] `argus scan --interface=terminal` convenience flag — auto-launches the terminal viewer after the scan finishes
 - [x] ~~Quickstart in `docs/view-terminal.md`~~ — install + launch + key bindings + workflows shipped
-- [ ] Screenshot pass for `docs/view-terminal.md` — doc has no images yet
+- [x] ~~Screenshot pass for `docs/view-terminal.md` — doc has no images yet~~ Shipped. Eight SVG screenshots committed under `docs/images/view-terminal/` covering the findings list, severity filters (medium / critical), executive dashboard, help overlay, scanner / product pickers, and scan-over-scan diff. Generated programmatically via `scripts/docsite/capture_view_terminal.py` (Textual `Pilot` driving `BrowseApp` headless), so regenerating after a UI change is one command rather than eight manual captures. Fixtures live under `docs/images/view-terminal/fixtures/` — `nginx:1.27-alpine` (97 findings, 5 CRIT / 32 HIGH / 48 MED / 9 LOW / 3 INFO from EXPOSE-80-tcp + nginx services, the marquee dataset for the new Info column) and `redis:7-alpine` (4 findings including the MEDIUM EXPOSE-6379-tcp from the RISKY_PORTS watchlist) for the diff overlay.
 
 ---
 
@@ -625,6 +625,7 @@ All engine, scanner, and testing issues from the migration have been resolved.
 
 **Open:**
 - [x] No troubleshooting guide for Docker execution failures — see [`docs/troubleshooting/docker.md`](../troubleshooting/docker.md)
+- [ ] **`argus scan container` ignores `--no-timestamp`.** The flag works on source scans (engine.py honors it) but the container lifecycle path (`argus/container/engine.py`) writes into a timestamped subdir + `latest` symlink regardless. Surfaced during fixture-generation for the view-terminal screenshot pipeline (`scripts/docsite/capture_view_terminal.py`); workaround there is to load from `<output_dir>/latest/` instead of `<output_dir>/` directly. CLI help text claims it works ("Write output directly to --output-dir without a timestamped subdirectory") so this is a doc-vs-behavior mismatch the next consumer will trip over. Fix: thread the flag through `ContainerEngine` so it skips the timestamp dir + symlink when set.
 
 ---
 

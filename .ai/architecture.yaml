@@ -354,8 +354,11 @@ data_flow:
     SDK container-scan pipeline (argus scan container):
       argus scan container [--image REF | --discover PATH]
         → ContainerEngine resolves image targets (CLI flags > containers: config)
-        → For each target: scan_image(trivy + grype + syft)
-          → If reporting.keep_raw: copy trivy/grype/syft raw outputs to <output_dir>/raw/<image>/
+        → For each target: scan_image(trivy + grype + syft + exposure + services)
+          → If reporting.keep_raw: copy trivy/grype/syft raw outputs and write
+            exposure-findings.json / services-findings.json to <output_dir>/raw/<image>/
+            (the exposure / services helpers have no upstream JSON output, so the
+            lifecycle path synthesizes one when they produce findings)
         → Map ContainerScanResult → ScanResult(scanner="container/<name>", findings=combined)
         → Same JsonReporter / SARIF reporter pipeline as source scans —
           argus view consumes the canonical argus-results.json without
@@ -541,7 +544,7 @@ docsite:
     config_file: "argus.yml"
     cli_commands:
       - "argus scan [scanner] --path --config --severity-threshold --format [--interface=terminal|browser]"
-      - "argus scan container [--config argus.yml | --image REF | --discover [PATH]] [--scanners trivy,grype,syft] [--no-keep-raw]"
+      - "argus scan container [--config argus.yml | --image REF | --discover [PATH]] [--scanners trivy,grype,exposure,services] [--no-keep-raw]"
       - "argus init [--force] — generate tailored argus.yml from auto-detection"
       - "argus validate — JSON Schema validation of the auto-detected argus.yml"
       - "argus report <format> --results-dir --output-dir — re-emit canonical results"
