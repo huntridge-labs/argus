@@ -26,7 +26,11 @@ repos:
       #   args: [--branch, main]
       - id: pretty-format-json
         args: [--autofix, --no-sort-keys]
-        exclude: ^(docs|tests/invalid\.json)$
+        # docs/images/**/*.json are scan-result fixtures captured
+        # verbatim from `argus scan`; re-emitting them through
+        # json.dump(ensure_ascii=True) escapes em-dashes / non-ASCII
+        # and makes them diverge from real argus output.
+        exclude: ^(docs/images/.*\.json|tests/invalid\.json)$
   # renovate: datasource=github-tags depName=pre-commit/pygrep-hooks versioning=semver
   - repo: https://github.com/pre-commit/pygrep-hooks
     rev: v1.10.0  # Use the ref you want to point at
@@ -51,6 +55,8 @@ repos:
       - id: codespell
         args: [
           --skip=docs/public/*.*,
+          --skip=docs/images/**/*.svg,
+          --skip=docs/images/**/*.json,
           --skip=package-lock.json,
           --skip=**/package-lock.json,
           --ignore-words-list=assertIn,

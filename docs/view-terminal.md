@@ -88,18 +88,33 @@ Two-pane layout: table of findings on the left, detail of the currently
 highlighted row on the right. The status bar lists every active filter
 (severity, product, scanner, query) plus the current sort mode.
 
+![Findings list — sorted by severity, with the Sev / ID / Package@Version / Scanner / Location columns and a detail pane on the right](images/view-terminal/01-findings-list.svg)
+
+Press `3` to drop to medium-and-above only — useful when triage hurts:
+
+![Findings list filtered to medium severity and above](images/view-terminal/02-filter-medium.svg)
+
+`1` narrows further to criticals only, the natural starting point on a
+fresh scan:
+
+![Findings list filtered to critical severity only](images/view-terminal/03-filter-critical.svg)
+
 ### Executive dashboard (`d`)
 
 Modal overlay aimed at owners / managers / execs who want a one-screen
 answer to "what's the state of our security posture?":
 
-- Total findings with per-severity breakdown
+- Total findings with per-severity breakdown (Critical / High / Medium /
+  Low / **Info** — Info covers attack-surface signal like declared
+  EXPOSE ports and enumerated services, not just CVEs)
 - Quality warnings — SPDX-2.1 SBOMs Trivy can't read, SBOMs missing purl
   refs, Grype's "couldn't identify scan subject" warnings — surfaced loudly
   so an empty scan isn't misread as "we're clean"
 - Per-product breakdown — every SBOM source with total + crit + high counts
   and the top-3 findings
 - Per-scanner contribution counts
+
+![Executive dashboard with severity breakdown, quality warnings, per-product and per-scanner contributions](images/view-terminal/04-dashboard.svg)
 
 Dismiss with `ESC`, `q`, or `d` again.
 
@@ -124,6 +139,8 @@ Identity is the `(scanner, id, location)` tuple — bucketing logic
 lives in `argus.core.findings_view.diff_scans` and is shared with the
 browser interface's `/diff` route, so both surfaces stay aligned.
 
+![Scan-over-scan diff overlay showing new / fixed / severity-changed / still-open buckets between two scans](images/view-terminal/08-diff-overlay.svg)
+
 Dismiss with `ESC`, `q`, or `D` again. The browser interface
 (`argus view browser` → `/diff`) renders the same buckets if you'd
 prefer a wider canvas with clickable rows.
@@ -132,6 +149,19 @@ prefer a wider canvas with clickable rows.
 
 Grouped keyboard reference with a one-line explanation of each binding.
 Dismiss with `ESC`, `q`, or `?` again.
+
+![Help overlay showing the grouped keyboard reference](images/view-terminal/05-help.svg)
+
+### Pickers — Product (`p`) / Scanner (`shift+n`)
+
+Filter the table to a single product (per-SBOM source) or a single
+scanner. The picker lists every value present in the current results
+with its row count; selection updates the status bar and the table in
+one keystroke. `Esc` dismisses without applying.
+
+![Scanner picker modal listing every scanner with its row count](images/view-terminal/06-scanner-picker.svg)
+
+![Product picker modal listing every product with its row count](images/view-terminal/07-product-picker.svg)
 
 ### Command palette (`Ctrl+P`)
 
