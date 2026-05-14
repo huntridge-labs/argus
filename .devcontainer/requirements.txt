@@ -1,13 +1,13 @@
 # Development and Testing Requirements
 # Install with: pip install -r .devcontainer/requirements.txt
 
-# Testing framework
-pytest>=8.0.0
-pytest-cov>=4.1.0
-pytest-asyncio>=0.23.0
+# Testing framework — floors bumped past stale-floor noise.
+pytest>=8.3
+pytest-cov>=5.0
+pytest-asyncio>=0.24
 
 # YAML parsing for action schema validation
-pyyaml>=6.0.0
+pyyaml>=6.0.2
 
 # Code quality tools (optional but recommended)
 # black>=24.0.0

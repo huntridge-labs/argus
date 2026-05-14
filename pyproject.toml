@@ -31,15 +31,17 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "PyYAML>=6.0",
+    # Floors bumped past known-CVE versions (CVE-2017-18342 was pre-6.0;
+    # 6.0.0 / 6.0.1 had stability fixes worth requiring at the floor).
+    "PyYAML>=6.0.2",
     # Linting is a core scan capability, not optional. Tools that are
     # themselves Python packages get bundled directly so
     # ``argus scan lint-*`` works after a clean
     # ``pip install argus-security`` with no extra setup. Native-binary
     # linters (hadolint, terraform, tflint) come in via the container
     # backend instead.
-    "yamllint>=1.30",   # lint-yaml
-    "flake8>=6.0",      # lint-python
+    "yamllint>=1.35",   # lint-yaml
+    "flake8>=7.0",      # lint-python
 ]
 
 [project.optional-dependencies]
@@ -51,20 +53,35 @@ dependencies = [
 # that uses ``socks5://`` would otherwise ImportError every test
 # that builds a provider object, even tests that never make an
 # actual HTTP call.
+# Floors bumped past known-CVE versions across the network-facing
+# stack. anthropic + openai keep major versions (1.x SDK floor for
+# openai; anthropic stays in 0.x). httpx[socks] bumped to close the
+# CVE-2024-* line. requests bumped past CVE-2024-35195.
 ai = [
-    "anthropic>=0.39.0",
-    "openai>=1.0.0",
-    "requests>=2.31.0",
-    "httpx[socks]>=0.24",
+    "anthropic>=0.45",
+    "openai>=1.50",
+    "requests>=2.32.3",
+    "httpx[socks]>=0.27",
 ]
 # Shell tab completion
-completion = ["argcomplete>=3.0"]
+completion = ["argcomplete>=3.5"]
 # MCP server for AI assistant integration
-mcp = ["mcp>=1.0.0"]
-# Terminal interface for `argus view --interface=terminal`
+mcp = ["mcp>=1.10"]
+# Terminal interface for `argus view --interface=terminal`.
+# Floor kept at 0.80 — the TUI was developed against that API surface
+# and Textual's 1.0+ line has breaking changes that need a separate
+# compatibility pass before tightening this.
 terminal = ["textual>=0.80"]
-# Browser interface for `argus view --interface=browser` (localhost web UI)
-browser = ["fastapi>=0.110", "uvicorn[standard]>=0.30", "jinja2>=3.1", "python-multipart>=0.0.9"]
+# Browser interface for `argus view --interface=browser` (localhost web UI).
+# jinja2>=3.1.6 closes CVE-2024-56326. python-multipart>=0.0.20 closes
+# CVE-2024-53981. fastapi + uvicorn floors raised past the early-3.x
+# CVE line.
+browser = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "jinja2>=3.1.6",
+    "python-multipart>=0.0.20",
+]
 # All optional features
 all = ["argus-security[ai,completion,mcp,terminal,browser]"]
 
