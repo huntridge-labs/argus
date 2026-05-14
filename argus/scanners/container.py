@@ -98,6 +98,132 @@ def _parse_port_proto(raw: str) -> tuple[int, str] | None:
     return (port, proto)
 
 
+# ── Risky services for the ``services`` sub-scanner ─────────────────
+#
+# When an image declares one of these systemd / SysV services, the
+# ``services`` sub-scanner emits a MEDIUM-severity finding instead of
+# the default INFO. Same rationale as ``RISKY_PORTS`` but at the
+# service-declaration layer: container images that ship a systemd
+# unit for these services *intend* to launch them on boot — even
+# when an empty ``Config.ExposedPorts`` would have suggested
+# otherwise — and the default configurations historically ship
+# without auth.
+#
+# Keys are bare service names (filename without ``.service``);
+# values are ``(default_port, rationale)`` tuples. The rationale is
+# the short blurb that lands in the finding's description. Operators
+# can override via ``scanners.container.services_warn`` in
+# argus.yml or suppress entirely via
+# ``scanners.container.services_ignore``.
+#
+# Sources for each entry:
+#   - sshd: SSH-in-container is a recurring image-inheritance leak
+#     (k8s.io/community#kubectl-exec-vs-ssh-in-pod thread); CIS
+#     Docker Benchmark §5.18 ("ensure SSH is not running within
+#     containers").
+#   - telnetd, vsftpd: cleartext protocols (CIS Docker Benchmark §5.8).
+#   - postgresql / mysqld / mariadb / mongod / redis-server / redis /
+#     memcached / elasticsearch: default no-auth configurations
+#     (Shodan "Unauthorized Database Access" reports name each by
+#     service binding 0.0.0.0).
+#   - snmpd: SNMPv1/v2 default community strings — CVE-1999-0517.
+#   - rpcbind / nfs-server: wide RPC / network filesystem surface
+#     never appropriate from a typical app container.
+#
+# Adding a new entry requires citing a "why" in this docstring —
+# same rule as RISKY_PORTS, keeps operators from tuning the list
+# blindly.
+RISKY_SERVICES: dict[str, tuple[str, str]] = {
+    "sshd":            ("22/tcp",    "SSH service (image-inheritance leak risk; CIS §5.18)"),
+    "telnetd":         ("23/tcp",    "Telnet — cleartext protocol"),
+    "vsftpd":          ("21/tcp",    "FTP — cleartext protocol"),
+    "postgresql":      ("5432/tcp",  "PostgreSQL — default trust-auth misconfigurations"),
+    "mysqld":          ("3306/tcp",  "MySQL — default no-auth + 0.0.0.0 bind common"),
+    "mariadb":         ("3306/tcp",  "MariaDB — same posture as MySQL"),
+    "redis-server":    ("6379/tcp",  "Redis — default no-password; protected-mode bypass via 0.0.0.0"),
+    "redis":           ("6379/tcp",  "Redis — default no-password"),
+    "mongod":          ("27017/tcp", "MongoDB — default no-auth + 0.0.0.0 bind common"),
+    "memcached":       ("11211/tcp", "Memcached — no auth; UDP amplification vector"),
+    "elasticsearch":   ("9200/tcp",  "Elasticsearch — default no-auth on unconfigured installs"),
+    "snmpd":           ("161/udp",   "SNMP — default community string 'public' (CVE-1999-0517)"),
+    "rpcbind":         ("111/tcp",   "RPC portmapper — wide RPC surface"),
+    "nfs-server":      ("2049/tcp",  "NFS server — wide network filesystem surface"),
+}
+
+
+# Standard locations the ``services`` sub-scanner extracts from a
+# container image's filesystem to discover service declarations.
+# Includes both systemd and SysV init paths; missing paths in any
+# given image are silently skipped.
+_SERVICE_PATHS: tuple[str, ...] = (
+    "/etc/systemd/system",
+    "/lib/systemd/system",
+    "/usr/lib/systemd/system",
+    "/etc/init.d",
+)
+
+
+def _service_name_from_path(file_path: str) -> str | None:
+    """Extract the bare service name from a unit-file or init-script path.
+
+    Returns the stem of the filename for systemd unit files
+    (``sshd.service`` → ``sshd``) or the filename itself for SysV
+    init scripts (``/etc/init.d/sshd`` → ``sshd``). Returns ``None``
+    for files that aren't recognizable service declarations
+    (``.timer``, ``.socket``, etc.).
+    """
+    name = Path(file_path).name
+    # systemd unit files we recognize as service declarations.
+    # .timer, .socket, .target, .mount, etc. are deliberately
+    # ignored — they're either trigger metadata or system
+    # primitives, not first-class service-on-boot declarations.
+    if name.endswith(".service"):
+        return name[: -len(".service")]
+    # SysV init scripts live in /etc/init.d/ and have no suffix.
+    if "/init.d/" in file_path:
+        return name
+    return None
+
+
+def _parse_systemd_unit(content: bytes) -> dict[str, str]:
+    """Parse a systemd ``.service`` unit file into a flat dict.
+
+    Returns a dict of ``{section.key: value}`` (e.g.
+    ``{"Unit.Description": "...", "Service.ExecStart": "...",
+    "Service.User": "..."}``). Stdlib-only; no configparser since
+    systemd unit files allow duplicate keys (e.g. multiple
+    ``ExecStartPre=``) and use ``=`` without spaces around the
+    separator. We keep the *last* value for each key — sufficient
+    for the fields the sub-scanner inspects.
+
+    Returns an empty dict when content is unparsable (binary
+    blob, truncated read, etc.) — callers treat that as "skip,
+    not a service file."
+    """
+    result: dict[str, str] = {}
+    try:
+        text = content.decode("utf-8", errors="replace")
+    except Exception:
+        return result
+    section = ""
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or line.startswith(";"):
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            section = line[1:-1].strip()
+            continue
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if not section or not key:
+            continue
+        result[f"{section}.{key}"] = value
+    return result
+
+
 class ContainerScanner:
     """Wraps Trivy, Grype, and Syft for container image scanning."""
 
@@ -189,6 +315,13 @@ class ContainerScanner:
                 all_findings.extend(exposure_findings)
                 metadata["exposure"] = exposure_meta
 
+            if "services" in enabled:
+                services_findings, services_meta = self._scan_services(
+                    image_ref, config,
+                )
+                all_findings.extend(services_findings)
+                metadata["services"] = services_meta
+
             if not metadata:
                 metadata["error"] = (
                     "None of the enabled scanners "
@@ -255,7 +388,7 @@ class ContainerScanner:
         (exposure — declared Dockerfile EXPOSE ports). Disable any
         of them explicitly via the ``scanners`` config key.
         """
-        raw = config.get("scanners", "trivy,grype,syft,exposure")
+        raw = config.get("scanners", "trivy,grype,syft,exposure,services")
         return [s.strip().lower() for s in raw.split(",") if s.strip()]
 
     def _scan_exposed_ports(
@@ -387,6 +520,229 @@ class ContainerScanner:
             "ports_declared": len(exposed),
             "ports_reported": len(findings),
             "ports_ignored": ignored_count,
+        }
+
+    def _extract_paths_from_image(
+        self, image_ref: str, paths: tuple[str, ...] | list[str],
+    ) -> dict[str, bytes]:
+        """Pull files from a container image's filesystem without running it.
+
+        Creates a stopped container from ``image_ref`` (no entrypoint
+        execution; works on distroless / scratch images that don't
+        even have a shell), then uses ``docker cp`` to stream each
+        requested path out as a tar archive. Returns a flat mapping
+        of in-container absolute path -> raw file bytes. Missing
+        paths are silently skipped; the container is removed in a
+        ``finally`` so partial extraction never leaves dangling
+        container IDs.
+
+        This is the read-side primitive shared by the ``services``
+        sub-scanner and any future config-file walker (e.g.
+        ``sshd_config`` parsing). Stdlib + container_runtime only.
+        """
+        from argus import container_runtime
+        import io
+        import tarfile
+
+        rt = container_runtime.runtime_cmd()
+        if not container_runtime.is_available():
+            return {}
+
+        # Ensure the image is locally present. The container scanner's
+        # trivy/grype step normally pulls already; this is the safety
+        # net when ``services`` runs as the only enabled sub-scanner.
+        if not container_runtime.pull_image(image_ref, policy="if-not-present"):
+            return {}
+
+        create = subprocess.run(
+            [rt, "create", image_ref],
+            capture_output=True, text=True,
+        )
+        if create.returncode != 0 or not create.stdout.strip():
+            return {}
+        cid = create.stdout.strip()
+
+        extracted: dict[str, bytes] = {}
+        try:
+            for path in paths:
+                cp = subprocess.run(
+                    [rt, "cp", f"{cid}:{path}", "-"],
+                    capture_output=True,
+                )
+                if cp.returncode != 0 or not cp.stdout:
+                    # Path doesn't exist in the image — common for any
+                    # given image since we walk a superset of paths
+                    # (SysV /etc/init.d won't be on a pure-systemd
+                    # base, /lib/systemd vs /usr/lib/systemd varies by
+                    # distro, etc.).
+                    continue
+
+                # docker cp -- emits a tar archive of the source.
+                # When source is a directory ``/etc/systemd/system``,
+                # tar member names look like ``system/sshd.service``
+                # — relative to the source's parent. Reconstruct the
+                # full in-container path by prepending the parent.
+                parent = str(Path(path).parent).rstrip("/")
+                try:
+                    with tarfile.open(
+                        fileobj=io.BytesIO(cp.stdout), mode="r:*",
+                    ) as tf:
+                        for member in tf.getmembers():
+                            if not member.isfile():
+                                continue
+                            f = tf.extractfile(member)
+                            if f is None:
+                                continue
+                            # Bound a single file's read so a hostile
+                            # image (giant log dropped in /etc/init.d)
+                            # can't blow up memory. 1 MiB is far above
+                            # any real systemd unit or service config.
+                            content = f.read(1024 * 1024)
+                            full_path = (
+                                f"{parent}/{member.name}" if parent != "/"
+                                else f"/{member.name}"
+                            )
+                            extracted[full_path] = content
+                except (tarfile.TarError, OSError) as exc:
+                    logger.debug(
+                        "services: failed to parse tar stream for %s: %s",
+                        path, exc,
+                    )
+                    continue
+        finally:
+            subprocess.run(
+                [rt, "rm", "-f", cid],
+                capture_output=True,
+            )
+
+        return extracted
+
+    def _scan_services(
+        self, image_ref: str, config: dict,
+    ) -> tuple[list[Finding], dict]:
+        """Enumerate services the image would launch on boot.
+
+        Walks systemd unit files (``/etc/systemd/system``,
+        ``/lib/systemd/system``, ``/usr/lib/systemd/system``) and
+        SysV init scripts (``/etc/init.d``) from the image's
+        filesystem; emits one ``Finding`` per service with severity
+        INFO by default and MEDIUM for services on the built-in
+        ``RISKY_SERVICES`` watchlist (sshd, postgresql, redis, etc.).
+
+        Same operational shape as ``_scan_exposed_ports`` — one
+        offline filesystem extraction + parse; no container runtime
+        execution; works on distroless / scratch / systemd-in-
+        container images alike.
+
+        Config knobs:
+          ``scanners.container.services_warn``  -- list[str] of
+              service names that should be elevated to MEDIUM,
+              replacing the built-in ``RISKY_SERVICES`` set entirely.
+              Pass an empty list to suppress all WARN-severity
+              findings (every service becomes INFO).
+          ``scanners.container.services_ignore`` -- list[str] of
+              service names to suppress entirely (intended for
+              services the team has explicitly accepted).
+        """
+        from argus import container_runtime
+
+        if not container_runtime.is_available():
+            return [], {
+                "skipped": "no container runtime available — install Docker, "
+                           "Podman, or nerdctl to enable service enumeration",
+            }
+
+        files = self._extract_paths_from_image(image_ref, _SERVICE_PATHS)
+        if not files:
+            return [], {
+                "execution": "local-extract",
+                "services_declared": 0,
+                "services_reported": 0,
+                "services_ignored": 0,
+            }
+
+        # Resolve config-driven WARN-list override and ignore-list.
+        warn_override = config.get("services_warn")
+        if warn_override is not None:
+            warn_set = {str(s).strip().lower() for s in warn_override if s}
+        else:
+            warn_set = set(RISKY_SERVICES.keys())
+
+        ignore_set = {
+            str(s).strip().lower()
+            for s in (config.get("services_ignore") or [])
+            if s
+        }
+
+        findings: list[Finding] = []
+        ignored_count = 0
+        # Sort for deterministic order across runs (helpful for tests
+        # and for diff-friendly markdown / SARIF output).
+        for file_path in sorted(files.keys()):
+            svc_name = _service_name_from_path(file_path)
+            if not svc_name:
+                continue
+            svc_lower = svc_name.lower()
+
+            if svc_lower in ignore_set:
+                ignored_count += 1
+                continue
+
+            unit_fields: dict[str, str] = {}
+            if file_path.endswith(".service"):
+                unit_fields = _parse_systemd_unit(files[file_path])
+
+            is_risky = svc_lower in warn_set
+            risky_meta = RISKY_SERVICES.get(svc_lower)
+            severity = Severity.MEDIUM if is_risky else Severity.INFO
+
+            description = (
+                unit_fields.get("Unit.Description", "").strip()
+                or "Service declared by image filesystem"
+            )
+            if risky_meta:
+                port, rationale = risky_meta
+                description = (
+                    f"{rationale} (default bind: {port}). "
+                    f"Confirm the image actually intends to launch this "
+                    f"service and that authentication / TLS is in front "
+                    f"of it. Source: {file_path}"
+                )
+            else:
+                description = (
+                    f"{description}. Declared exposed service — "
+                    f"informational. Source: {file_path}"
+                )
+
+            findings.append(
+                Finding(
+                    id=f"SVC-{svc_lower}",
+                    severity=severity,
+                    title=(
+                        f"Service {svc_name} declared by image"
+                        + (f" ({risky_meta[0]})" if risky_meta else "")
+                    ),
+                    description=description,
+                    scanner=self.name,
+                    metadata={
+                        "service": svc_name,
+                        "source": file_path,
+                        "exec_start": unit_fields.get("Service.ExecStart", ""),
+                        "user": unit_fields.get("Service.User", ""),
+                        "default_port": risky_meta[0] if risky_meta else "",
+                        "risky": is_risky,
+                        "image_ref": image_ref,
+                    },
+                ),
+            )
+
+        return findings, {
+            "execution": "local-extract",
+            "services_declared": len([
+                p for p in files if _service_name_from_path(p)
+            ]),
+            "services_reported": len(findings),
+            "services_ignored": ignored_count,
         }
 
     def _build_env(self, config: dict) -> dict[str, str]:

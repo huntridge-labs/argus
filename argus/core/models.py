@@ -134,6 +134,10 @@ class ScanResult:
         return self._count_severity(Severity.LOW)
 
     @property
+    def info_count(self) -> int:
+        return self._count_severity(Severity.INFO)
+
+    @property
     def total_count(self) -> int:
         return len(self.findings)
 
@@ -152,6 +156,7 @@ class ScanResult:
             "high_count": self.high_count,
             "medium_count": self.medium_count,
             "low_count": self.low_count,
+            "info_count": self.info_count,
             "total_count": self.total_count,
         }
 
@@ -203,6 +208,10 @@ class ScanSummary:
         return sum(r.low_count for r in self.results)
 
     @property
+    def info_count(self) -> int:
+        return sum(r.info_count for r in self.results)
+
+    @property
     def total_count(self) -> int:
         return sum(r.total_count for r in self.results)
 
@@ -230,6 +239,7 @@ class ScanSummary:
             "high_count": self.high_count,
             "medium_count": self.medium_count,
             "low_count": self.low_count,
+            "info_count": self.info_count,
             "total_count": self.total_count,
             "passed": self.passed,
         }

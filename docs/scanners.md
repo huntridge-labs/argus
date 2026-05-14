@@ -401,6 +401,73 @@ Schema validator errors on malformed entries at config-load time. See
 with `nmap`/`ss`). Static `EXPOSE` data is the bulk of the value at a
 fraction of the operational cost.
 
+### Service enumeration
+
+Walks the container image's filesystem at scan time, parses systemd
+unit files (`/etc/systemd/system`, `/lib/systemd/system`,
+`/usr/lib/systemd/system`) and SysV init scripts (`/etc/init.d/`),
+and emits one `Finding` per declared service. Runs as a sub-scanner
+inside the container scanner — same Docker requirement, no new
+heavy dependencies. Works on distroless / scratch images because
+file extraction goes through `docker create` + `docker cp` (tar
+stream) rather than `docker run`. Per-file reads are bounded at 1
+MB to prevent hostile-image memory blow-up.
+
+**Output shape:** one `Finding` per service:
+
+```
+INFO   SVC-nginx       Service "nginx" declared (systemd unit)
+MEDIUM SVC-sshd        Service "sshd" declared (systemd unit)
+MEDIUM SVC-postgresql  Service "postgresql" declared (systemd unit)
+```
+
+Findings flow through every reporter (terminal, markdown, sarif,
+json, github, gitlab, junit), `--severity-threshold` filtering,
+audit trail, and the view-terminal / view-browser UIs without
+per-reporter custom code.
+
+**Built-in risky-defaults watchlist** (MEDIUM severity by default —
+each entry cites a "why" in
+`argus/scanners/container.py::RISKY_SERVICES`):
+
+| Service | Service | Service |
+|---------|---------|---------|
+| sshd | postgresql | redis-server |
+| telnetd | mysqld | redis |
+| vsftpd | mariadb | mongod |
+| memcached | elasticsearch | snmpd |
+| rpcbind | nfs-server | |
+
+**Configuring via argus.yml:**
+
+```yaml
+scanners:
+  container:
+    image_ref: "myapp:latest"
+    # Default sub-scanner set; remove "services" to opt out
+    scanners: "trivy,grype,syft,exposure,services"
+    # Override the built-in WARN list (replaces the defaults).
+    # Pass [] to demote every declared service to INFO.
+    services_warn:
+      - sshd
+      - postgresql
+      - nginx               # promote app service to WARN
+    # Suppress findings entirely for services the team has accepted.
+    services_ignore:
+      - cron
+      - rsyslog
+```
+
+Matching is case-insensitive. `.timer`, `.socket`, `.target`, and
+`.mount` units are skipped (only `.service` units and init.d
+scripts are reported). Schema validator errors on malformed entries
+at config-load time. See
+[`docs/config-reference.md`](config-reference.md) for the full schema.
+
+**Out of scope:** *runtime* service probing (start the container,
+observe what binds). Static unit-file declarations are the bulk of
+the value at a fraction of the operational cost.
+
 ## Infrastructure Scanners
 
 ### Trivy IaC

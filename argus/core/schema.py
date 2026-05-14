@@ -40,6 +40,8 @@ _SCANNER_KNOWN_KEYS = {
     "registry_username_env", "registry_password_env",
     # Container exposure sub-scanner tuning
     "expose_warn_ports", "expose_ignore_ports",
+    # Container services sub-scanner tuning (ADR-025)
+    "services_warn", "services_ignore",
     # ZAP-specific tuning (decided in ADR-024)
     "api_spec", "rules_file", "cmd_options",
     "max_duration_minutes", "healthcheck_url",
@@ -83,7 +85,7 @@ _CONTAINERS_KEYS = {"images", "discover", "search_paths", "scanners"}
 _CONTAINER_IMAGE_KEYS = {"image", "dockerfile", "context", "name", "cleanup"}
 
 # Sub-scanners argus scan container can dispatch to
-_CONTAINER_SUB_SCANNERS = {"trivy", "grype", "syft", "exposure"}
+_CONTAINER_SUB_SCANNERS = {"trivy", "grype", "syft", "exposure", "services"}
 
 
 class ConfigError:
@@ -249,6 +251,34 @@ def _validate_scanner(path: str, data: Any) -> list[ConfigError]:
                         f"'{entry}' is not a valid PORT/PROTO entry. "
                         "Expected '<port>/<tcp|udp|sctp>' (e.g. '22/tcp') "
                         "or bare '<port>' which defaults to tcp.",
+                    ))
+
+    # Container services sub-scanner tuning — both lists must be
+    # lists of bare service names (e.g. ``sshd``, ``postgresql``).
+    if scanner_name == "container":
+        for key in ("services_warn", "services_ignore"):
+            if key not in data:
+                continue
+            value = data[key]
+            if not isinstance(value, list):
+                errors.append(ConfigError(
+                    f"{path}.{key}",
+                    f"Must be a list of service-name strings, "
+                    f"got {type(value).__name__}",
+                ))
+                continue
+            for entry in value:
+                if not isinstance(entry, str):
+                    errors.append(ConfigError(
+                        f"{path}.{key}",
+                        f"Entry must be a string service name, "
+                        f"got {type(entry).__name__} ({entry!r})",
+                    ))
+                    continue
+                if not entry.strip():
+                    errors.append(ConfigError(
+                        f"{path}.{key}",
+                        "Service-name entries must be non-empty",
                     ))
 
     # Warn on unknown keys (after credential / nested-block handling so
