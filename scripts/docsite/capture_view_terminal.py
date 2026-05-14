@@ -105,7 +105,7 @@ def _run_scan(image_ref: str, output_dir: Path, config_file: Path) -> None:
         )
 
 
-async def _capture(
+async def _capture(  # pragma: no cover — integration-tested by running the script
     filename: str, keys: list[str], fixture_dir: Path, *,
     settle: float = 0.2,
 ) -> None:
@@ -128,7 +128,7 @@ async def _capture(
         print(f"  wrote {out.relative_to(REPO_ROOT)}")
 
 
-async def _capture_diff(
+async def _capture_diff(  # pragma: no cover — integration-tested by running the script
     filename: str, scan_a_dir: Path, scan_b_dir: Path, *,
     settle: float = 0.2,
 ) -> None:
@@ -156,7 +156,9 @@ async def _capture_diff(
         print(f"  wrote {out.relative_to(REPO_ROOT)}")
 
 
-async def _capture_all(scan_a_dir: Path, scan_b_dir: Path) -> None:
+async def _capture_all(  # pragma: no cover — integration-tested by running the script
+    scan_a_dir: Path, scan_b_dir: Path,
+) -> None:
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     print(f"Writing screenshots to {IMAGES_DIR.relative_to(REPO_ROOT)}")
 
@@ -178,7 +180,7 @@ async def _capture_all(scan_a_dir: Path, scan_b_dir: Path) -> None:
     await _capture_diff("08-diff-overlay.svg", scan_a_dir, scan_b_dir)
 
 
-def main() -> None:
+def main() -> None:  # pragma: no cover — integration-tested by running the script
     with tempfile.TemporaryDirectory(prefix="argus-screenshots-") as tmp:
         tmp_path = Path(tmp)
         config_file = tmp_path / "argus.yml"

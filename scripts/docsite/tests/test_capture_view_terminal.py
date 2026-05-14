@@ -23,8 +23,7 @@ pytest.importorskip("textual")  # the script imports BrowseApp at top level
 
 
 SCRIPT_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "scripts" / "docsite" / "capture_view_terminal.py"
+    Path(__file__).resolve().parents[1] / "capture_view_terminal.py"
 )
 
 
