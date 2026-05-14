@@ -380,7 +380,7 @@ scanners:
   container:
     image_ref: "myapp:latest"
     # Default sub-scanner set; remove "exposure" to opt out
-    scanners: "trivy,grype,syft,exposure"
+    scanners: "trivy,grype,syft,exposure,services"
     # Override the built-in WARN list (replaces the defaults).
     # Pass [] to demote every declared port to INFO.
     expose_warn_ports:

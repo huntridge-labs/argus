@@ -625,6 +625,7 @@ All engine, scanner, and testing issues from the migration have been resolved.
 
 **Open:**
 - [x] No troubleshooting guide for Docker execution failures — see [`docs/troubleshooting/docker.md`](../troubleshooting/docker.md)
+- [ ] **`argus scan container` ignores `--no-timestamp`.** The flag works on source scans (engine.py honors it) but the container lifecycle path (`argus/container/engine.py`) writes into a timestamped subdir + `latest` symlink regardless. Surfaced during fixture-generation for the view-terminal screenshot pipeline (`scripts/docsite/capture_view_terminal.py`); workaround there is to load from `<output_dir>/latest/` instead of `<output_dir>/` directly. CLI help text claims it works ("Write output directly to --output-dir without a timestamped subdirectory") so this is a doc-vs-behavior mismatch the next consumer will trip over. Fix: thread the flag through `ContainerEngine` so it skips the timestamp dir + symlink when set.
 
 ---
 
