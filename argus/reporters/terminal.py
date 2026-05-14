@@ -44,12 +44,13 @@ class TerminalReporter:
         print(f"{border}\n")
 
     def _print_summary_table(self, summary: ScanSummary) -> None:
-        headers = ["Critical", "High", "Medium", "Low", "Total"]
+        headers = ["Critical", "High", "Medium", "Low", "Info", "Total"]
         values = [
             str(summary.critical_count),
             str(summary.high_count),
             str(summary.medium_count),
             str(summary.low_count),
+            str(summary.info_count),
             str(summary.total_count),
         ]
 
