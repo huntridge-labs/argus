@@ -1,9 +1,11 @@
 """Tests for argus.container.scanner — results, summary, deduplication."""
 
+from argus.container import scanner as container_scanner
 from argus.container.scanner import (
     ContainerScanResult,
     ContainerScanSummary,
     deduplicate_findings,
+    scan_image,
 )
 from argus.core.models import Finding, Severity
 
@@ -331,3 +333,168 @@ class TestDeduplicationEdgeCases:
             ],
         )
         assert [f.id for f in combined] == ["T1", "T2", "G1"]
+
+    def test_extra_findings_appended_verbatim(self):
+        """``extra`` (exposure / services) bypasses CVE dedup."""
+        combined = deduplicate_findings(
+            trivy=[_finding(cve="CVE-A", fid="T1")],
+            grype=[_finding(cve="CVE-A", fid="G1")],
+            extra=[
+                _finding(cve=None, fid="EXPOSE-6379-tcp", scanner="container"),
+                _finding(cve=None, fid="SERVICE-sshd", scanner="container"),
+            ],
+        )
+        # T1 keeps CVE-A; G1 deduped; both extras appended unchanged.
+        assert [f.id for f in combined] == [
+            "T1", "EXPOSE-6379-tcp", "SERVICE-sshd",
+        ]
+
+
+class TestScanImageSubScannerWiring:
+    """``argus scan container --image`` lifecycle parity with SDK path.
+
+    Closes a regression where ``argus/scanners/container.py`` had
+    ``exposure`` + ``services`` sub-scanners but ``argus/container/
+    scanner.py`` (the lifecycle path the CLI runs) only knew about
+    trivy / grype / syft. The roadmap claimed both features shipped;
+    they only shipped on one of two parallel code paths until this
+    change.
+    """
+
+    def _target(self):
+        from argus.container.discovery import ContainerTarget
+        return ContainerTarget(name="redis", image_ref="redis:7-alpine")
+
+    def _stub_cve_runners(self, monkeypatch):
+        """Neuter trivy / grype / syft so tests don't hit Docker."""
+        monkeypatch.setattr(
+            container_scanner, "_run_trivy",
+            lambda image_ref, tmp_path, local=False: [],
+        )
+        monkeypatch.setattr(
+            container_scanner, "_run_grype",
+            lambda image_ref, tmp_path, local=False: [],
+        )
+        monkeypatch.setattr(
+            container_scanner, "_run_syft",
+            lambda image_ref, tmp_path: None,
+        )
+
+    def test_default_scanners_include_exposure_and_services(self, monkeypatch):
+        """The default sub-scanner tuple must match the SDK path."""
+        self._stub_cve_runners(monkeypatch)
+
+        called: dict[str, str] = {}
+
+        def fake_exposure(image_ref, cfg):
+            called["exposure"] = image_ref
+            return [
+                _finding(
+                    cve=None,
+                    fid="EXPOSE-6379-tcp",
+                    severity=Severity.MEDIUM,
+                    scanner="container",
+                ),
+            ], {}
+
+        def fake_services(image_ref, cfg):
+            called["services"] = image_ref
+            return [
+                _finding(
+                    cve=None,
+                    fid="SERVICE-redis-server",
+                    severity=Severity.MEDIUM,
+                    scanner="container",
+                ),
+            ], {}
+
+        monkeypatch.setattr(
+            container_scanner._parser, "_scan_exposed_ports", fake_exposure,
+        )
+        monkeypatch.setattr(
+            container_scanner._parser, "_scan_services", fake_services,
+        )
+
+        result = scan_image(self._target(), sbom=False)
+
+        assert called == {
+            "exposure": "redis:7-alpine",
+            "services": "redis:7-alpine",
+        }
+        assert len(result.exposure_findings) == 1
+        assert len(result.services_findings) == 1
+        # Both end up in combined (no CVE — bypass dedup).
+        assert {f.id for f in result.combined_findings} == {
+            "EXPOSE-6379-tcp", "SERVICE-redis-server",
+        }
+
+    def test_exposure_not_called_when_disabled(self, monkeypatch):
+        """Opting out via ``scanners`` keeps the helper untouched."""
+        self._stub_cve_runners(monkeypatch)
+
+        def fail(*args, **kwargs):
+            raise AssertionError("should not be called")
+
+        monkeypatch.setattr(
+            container_scanner._parser, "_scan_exposed_ports", fail,
+        )
+        monkeypatch.setattr(
+            container_scanner._parser, "_scan_services", fail,
+        )
+
+        result = scan_image(
+            self._target(), scanners=("trivy", "grype"), sbom=False,
+        )
+        assert result.exposure_findings == []
+        assert result.services_findings == []
+
+    def test_helper_exception_recorded_in_scanner_errors(self, monkeypatch):
+        """Helper failures land in ``scanner_errors`` instead of bubbling."""
+        self._stub_cve_runners(monkeypatch)
+
+        def boom(image_ref, cfg):
+            raise RuntimeError("docker.sock unreachable")
+
+        monkeypatch.setattr(
+            container_scanner._parser, "_scan_exposed_ports", boom,
+        )
+        monkeypatch.setattr(
+            container_scanner._parser, "_scan_services",
+            lambda image_ref, cfg: ([], {}),
+        )
+
+        result = scan_image(self._target(), sbom=False)
+
+        assert "exposure" in result.scanner_errors
+        assert "docker.sock unreachable" in result.scanner_errors["exposure"]
+        assert result.exposure_findings == []
+
+    def test_config_passed_through_to_helpers(self, monkeypatch):
+        """``config`` reaches ``_scan_exposed_ports`` / ``_scan_services``."""
+        self._stub_cve_runners(monkeypatch)
+
+        seen: dict[str, dict] = {}
+
+        def capture_exposure(image_ref, cfg):
+            seen["exposure"] = cfg
+            return [], {}
+
+        def capture_services(image_ref, cfg):
+            seen["services"] = cfg
+            return [], {}
+
+        monkeypatch.setattr(
+            container_scanner._parser, "_scan_exposed_ports", capture_exposure,
+        )
+        monkeypatch.setattr(
+            container_scanner._parser, "_scan_services", capture_services,
+        )
+
+        cfg = {
+            "expose_ignore_ports": ["8080/tcp"],
+            "services_warn": ["my-custom-service"],
+        }
+        scan_image(self._target(), sbom=False, config=cfg)
+
+        assert seen["exposure"] == cfg
+        assert seen["services"] == cfg

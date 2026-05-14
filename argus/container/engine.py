@@ -199,6 +199,7 @@ class ContainerEngine:
                 scanners=self._scanners(),
                 sbom=self._sbom_enabled(),
                 raw_output_dir=target_raw_dir,
+                config=self.config,
             )
         except OSError as exc:
             # Disk full, permission denied, etc.
@@ -262,8 +263,17 @@ class ContainerEngine:
         return targets
 
     def _scanners(self) -> tuple[str, ...]:
-        """Get enabled sub-scanners from config."""
-        raw = self.config.get("scanners", ["trivy", "grype"])
+        """Get enabled sub-scanners from config.
+
+        The default set matches the SDK Scanner-protocol path
+        (``argus/scanners/container.py``) so ``argus scan container
+        --image`` and ``argus scan --config argus.yml`` produce the
+        same attack-surface signal. ``syft`` is implicit (driven by
+        the ``sbom`` flag) and is not listed here.
+        """
+        raw = self.config.get(
+            "scanners", ["trivy", "grype", "exposure", "services"],
+        )
         if isinstance(raw, str):
             return tuple(s.strip().lower() for s in raw.split(",") if s.strip())
         return tuple(s.strip().lower() for s in raw if s.strip())

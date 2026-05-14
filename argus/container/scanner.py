@@ -39,6 +39,8 @@ class ContainerScanResult:
     context: str = ""
     trivy_findings: list[Finding] = field(default_factory=list)
     grype_findings: list[Finding] = field(default_factory=list)
+    exposure_findings: list[Finding] = field(default_factory=list)
+    services_findings: list[Finding] = field(default_factory=list)
     combined_findings: list[Finding] = field(default_factory=list)
     build_success: bool = True
     scan_error: str = ""
@@ -133,11 +135,22 @@ class ContainerScanSummary:
 
 def scan_image(
     target: ContainerTarget,
-    scanners: tuple[str, ...] = ("trivy", "grype"),
+    scanners: tuple[str, ...] = (
+        "trivy", "grype", "exposure", "services",
+    ),
     sbom: bool = True,
     raw_output_dir: Path | None = None,
+    config: dict | None = None,
 ) -> ContainerScanResult:
-    """Scan a single container image with trivy and/or grype.
+    """Scan a single container image with the enabled sub-scanners.
+
+    Sub-scanners:
+      - ``trivy`` / ``grype`` — CVE scanning against the image's
+        installed packages (deduplicated by CVE).
+      - ``exposure`` — declared EXPOSE ports as INFO/MEDIUM findings
+        (attack-surface visibility, no CVE component).
+      - ``services`` — systemd / SysV units the image would launch
+        on boot, INFO/MEDIUM by service name.
 
     For remote images (not built from a Dockerfile), trivy and grype
     scan directly from the registry without pulling the full image.
@@ -147,19 +160,27 @@ def scan_image(
     Per-scanner errors are caught and recorded, not swallowed.
 
     ``raw_output_dir``: when supplied, the raw scanner output files
-    (``trivy-results.json``, ``grype-results.json``, ``syft-sbom.json``)
-    are copied into this directory before the temp dir is cleaned up.
-    Lets users preserve full per-scanner artifacts for forensics,
-    audit, or manual triage workflows alongside the canonical
-    ``argus-results.json``. ``None`` (the default) means transient
-    output — historic behavior.
+    (``trivy-results.json``, ``grype-results.json``, ``syft-sbom.json``,
+    ``exposure-findings.json``, ``services-findings.json``) are copied
+    into this directory before the temp dir is cleaned up. Lets users
+    preserve full per-scanner artifacts for forensics, audit, or manual
+    triage workflows alongside the canonical ``argus-results.json``.
+    ``None`` (the default) means transient output — historic behavior.
+
+    ``config``: forwarded to the ``exposure`` and ``services`` helpers
+    so config knobs (``expose_warn_ports``, ``expose_ignore_ports``,
+    ``services_warn``, ``services_ignore``) take effect. Ignored by
+    trivy / grype / syft, which have no equivalent knobs at this layer.
     """
     import shutil as _shutil  # local import to avoid shadowing the
                               # module-level ``shutil`` reference used
                               # by ``shutil.which`` checks below.
 
+    cfg = config or {}
     trivy_findings: list[Finding] = []
     grype_findings: list[Finding] = []
+    exposure_findings: list[Finding] = []
+    services_findings: list[Finding] = []
     scanner_errors: dict[str, str] = {}
 
     # Determine if the image is local (built by us) or remote
@@ -189,6 +210,36 @@ def scan_image(
         if sbom and "syft" not in scanners:
             _run_syft(target.image_ref, tmp_path)
 
+        # Attack-surface sub-scanners. They take an image ref + a
+        # config dict, run locally (no DB pulls), and return
+        # ``(findings, metadata)``. Metadata is dropped here — the
+        # canonical ``argus-results.json`` already carries per-scanner
+        # status, and these helpers don't error out: they just return
+        # zero findings when there's nothing to report.
+        if "exposure" in scanners:
+            try:
+                exposure_findings, _meta = _parser._scan_exposed_ports(
+                    target.image_ref, cfg,
+                )
+            except Exception as exc:  # pylint: disable=broad-except
+                logger.error(
+                    "exposure scan failed for %s: %s",
+                    target.image_ref, exc,
+                )
+                scanner_errors["exposure"] = str(exc)
+
+        if "services" in scanners:
+            try:
+                services_findings, _meta = _parser._scan_services(
+                    target.image_ref, cfg,
+                )
+            except Exception as exc:  # pylint: disable=broad-except
+                logger.error(
+                    "services scan failed for %s: %s",
+                    target.image_ref, exc,
+                )
+                scanner_errors["services"] = str(exc)
+
         # Persist raw scanner artifacts (best-effort) before the
         # tempdir is wiped. We copy whatever files exist; missing
         # files (e.g. grype failed before writing) just don't get
@@ -206,13 +257,31 @@ def scan_image(
                     src = tmp_path / fname
                     if src.exists() and src.stat().st_size > 0:
                         _shutil.copy2(src, raw_output_dir / fname)
+                # Exposure / services have no upstream JSON file —
+                # write a structured snapshot of their findings so
+                # forensic consumers see the same per-sub-scanner
+                # layout as trivy / grype.
+                for fname, found in (
+                    ("exposure-findings.json", exposure_findings),
+                    ("services-findings.json", services_findings),
+                ):
+                    if found:
+                        (raw_output_dir / fname).write_text(
+                            json.dumps(
+                                [f.to_dict() for f in found],
+                                indent=2,
+                            )
+                        )
             except OSError as exc:
                 logger.warning(
                     "Failed to persist raw scanner outputs to %s: %s",
                     raw_output_dir, exc,
                 )
 
-    combined = deduplicate_findings(trivy_findings, grype_findings)
+    combined = deduplicate_findings(
+        trivy_findings, grype_findings,
+        extra=[*exposure_findings, *services_findings],
+    )
 
     return ContainerScanResult(
         name=target.name,
@@ -221,6 +290,8 @@ def scan_image(
         context=str(target.context) if target.context else "",
         trivy_findings=trivy_findings,
         grype_findings=grype_findings,
+        exposure_findings=exposure_findings,
+        services_findings=services_findings,
         combined_findings=combined,
         scanner_errors=scanner_errors,
     )
@@ -229,11 +300,16 @@ def scan_image(
 def deduplicate_findings(
     trivy: list[Finding],
     grype: list[Finding],
+    extra: list[Finding] | None = None,
 ) -> list[Finding]:
     """Merge and deduplicate findings from multiple scanners by CVE ID.
 
     Trivy findings take precedence when a CVE appears in both lists.
     Findings without CVE IDs are always included.
+
+    ``extra`` is appended verbatim — used by attack-surface sub-scanners
+    (exposure, services) whose finding identity is the port or service
+    name, not a CVE, so CVE-based dedup doesn't apply.
     """
     combined: list[Finding] = []
     seen_cves: set[str] = set()
@@ -253,6 +329,9 @@ def deduplicate_findings(
                 continue
             seen_cves.add(finding.cve)
         combined.append(finding)
+
+    if extra:
+        combined.extend(extra)
 
     return combined
 

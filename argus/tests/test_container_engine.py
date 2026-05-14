@@ -68,8 +68,16 @@ class TestScanners:
     """Test _scanners parsing."""
 
     def test_default_scanners(self):
+        """Default mirrors the SDK Scanner path (argus/scanners/container.py).
+
+        Both code paths must run the same attack-surface sub-scanners
+        so ``argus scan container --image`` produces identical signal
+        to ``argus scan --config argus.yml`` with ``scanners: [container]``.
+        """
         engine = ContainerEngine({})
-        assert engine._scanners() == ("trivy", "grype")
+        assert engine._scanners() == (
+            "trivy", "grype", "exposure", "services",
+        )
 
     def test_string_scanners(self):
         engine = ContainerEngine({"scanners": "trivy, grype, syft"})
