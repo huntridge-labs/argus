@@ -955,63 +955,7 @@ sub-minute scan latency, same cross-platform host story. The gap
 is that we don't yet enumerate the services that would launch on
 container boot.
 
-- [ ] **New ``services`` sub-scanner inside `argus/scanners/container.py`.**
-  Walks the container image's filesystem at scan time, parses
-  systemd unit files (`/etc/systemd/system/*.service`,
-  `/lib/systemd/system/*.service`), SysV init scripts
-  (`/etc/init.d/*`), and common service configs (`sshd_config`,
-  `postgresql.conf`, `pg_hba.conf`, `nginx.conf`, etc.). Emits one
-  `Finding` per service:
-
-  ```
-  INFO   SVC-sshd       sshd.service declared; default bind 22/tcp
-  MEDIUM SVC-postgres   postgresql.service declared; trust-auth in pg_hba.conf
-  INFO   SVC-nginx      nginx.service declared; listens on 80/tcp
-  ```
-
-  Severity defaults to INFO for ordinary services and MEDIUM for a
-  built-in risky-default watchlist (sshd, postgres with ``trust``
-  auth, redis without password, etc.). Each entry on the watchlist
-  cites a "why" in the scanner module's docstring — same pattern
-  as ``RISKY_PORTS`` in the ``exposure`` sub-scanner.
-
-  **Operational shape** — identical to the existing ``exposure``
-  sub-scanner: one ``docker run`` (or layer-extract via the
-  container runtime) + filesystem walk + parse. No new heavy
-  deps; sits alongside trivy / grype / syft / exposure /
-  ``services`` in the existing sub-scanner orchestration.
-
-  **Config knobs (in `argus.yml`):**
-  - `scanners.container.services_warn`: override the built-in
-    WARN list (replaces defaults; pass `[]` to demote every
-    service to INFO).
-  - `scanners.container.services_ignore`: suppress findings
-    entirely for services the team has explicitly accepted.
-
-  **Implementation tasks** (single PR, no new dependencies):
-  - [ ] `argus/scanners/container.py`: new `_scan_services`
-    sub-method extracting the relevant config files from the
-    image filesystem.
-  - [ ] Parser helpers for systemd `.service` units (ExecStart,
-    User, Description) and the four common service configs
-    above. Stdlib-only.
-  - [ ] Built-in `RISKY_SERVICES: dict[str, str]` with rationale
-    citations in the scanner docstring.
-  - [ ] Schema additions: `services_warn` and `services_ignore`
-    lists with validator coverage.
-  - [ ] Tests in `argus/tests/scanners/test_container.py`:
-    fixture image with multi-service config; assert one finding
-    per service with correct severity, ignore-list suppresses,
-    override warn-list reclassifies.
-  - [ ] Docs: extend `docs/scanners.md` Container Scanners
-    section with a "Service enumeration" subsection;
-    `docs/config-reference.md` adds the two new keys.
-
-  **Out of scope for this sub-scanner:** runtime service probing
-  (actually start the container, observe what binds). Static
-  unit-file declarations are the bulk of the value at a fraction
-  of the operational cost. A runtime variant becomes a separate
-  roadmap item if consumer demand surfaces.
+- [x] ~~**New ``services`` sub-scanner inside `argus/scanners/container.py`.**~~ Shipped. The container scanner now runs a fifth sub-scanner (`services`) alongside trivy / grype / syft / exposure on every container scan. Walks `/etc/systemd/system`, `/lib/systemd/system`, `/usr/lib/systemd/system`, and `/etc/init.d` in the image filesystem, parses systemd `.service` unit files (extracting `Unit.Description`, `Service.ExecStart`, `Service.User`) and SysV init scripts, and emits one `Finding` per declared service. INFO severity for ordinary services; MEDIUM for the built-in `RISKY_SERVICES` watchlist (14 entries: sshd, telnetd, vsftpd, postgresql, mysqld, mariadb, redis-server, redis, mongod, memcached, elasticsearch, snmpd, rpcbind, nfs-server). Each watchlist entry cites a "why" in the module docstring (CIS Docker Benchmark §5.18, Shodan exposure reports, CVE-1999-0517, etc.). File extraction uses `docker create` + `docker cp <cid>:path -` (tar stream) + `docker rm`, so distroless / scratch images are supported (no `docker run` / shell required); per-file reads bounded at 1 MB to prevent hostile-image memory blow-up. `.timer`, `.socket`, `.target`, and `.mount` units are skipped. Config knobs `scanners.container.services_warn` (override built-in WARN list; pass `[]` to demote every service to INFO) and `scanners.container.services_ignore` (suppress entirely) — matching is case-insensitive. Schema additions in `argus/core/schema.py`: both keys must be lists of non-empty strings; `services` added to `_CONTAINER_SUB_SCANNERS`. Default sub-scanner list is now `"trivy,grype,syft,exposure,services"`. 30 new tests in `argus/tests/scanners/test_container.py` cover the module-level helpers (`_service_name_from_path`, `_parse_systemd_unit`), the sub-scanner orchestration (`_scan_services` with single non-risky / risky / multi-service / SysV / ignore / warn-override / empty-warn / case-insensitive / no-files / no-runtime), the path-extraction primitive (`_extract_paths_from_image` happy-path + no-runtime + create-failure), and schema validation (valid / non-list / non-string / empty-entry). Docs: `docs/scanners.md` adds the "Service enumeration" subsection under Container Scanners; `docs/config-reference.md` adds `services_warn` / `services_ignore` rows plus a new "Attack-surface tuning (declared services)" example. Out of scope for this sub-scanner: runtime service probing (start the container, observe what binds). Static unit-file declarations are the bulk of the value at a fraction of the operational cost — a runtime variant becomes a separate roadmap item if consumer demand surfaces.
 
 #### (B) Out of scope: offline VM-image scanning (AMI / VMDK / ISO)
 

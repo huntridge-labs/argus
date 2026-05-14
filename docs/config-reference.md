@@ -106,9 +106,11 @@ Some scanners accept additional properties, passed through as extra configuratio
 |----------|------|---------------------|-------------|
 | `image_ref` | string | `container` | Container image to scan (e.g. `myapp:latest`). |
 | `target_url` | string | `zap` | URL of the running app to scan (the system under test). |
-| `scanners` | string | `container` | Comma-separated sub-scanners: `trivy`, `grype`, `syft`, `exposure`. Default `"trivy,grype,syft,exposure"`. |
+| `scanners` | string | `container` | Comma-separated sub-scanners: `trivy`, `grype`, `syft`, `exposure`, `services`. Default `"trivy,grype,syft,exposure,services"`. |
 | `expose_warn_ports` | list[string] | `container` | Override the built-in WARN-list for the `exposure` sub-scanner. Replaces the defaults (SSH 22/tcp, MySQL 3306/tcp, Redis 6379/tcp, etc.). Pass `[]` to demote every declared port to INFO. Entries are `"PORT/PROTO"` strings; bare `"PORT"` defaults to tcp. |
 | `expose_ignore_ports` | list[string] | `container` | Suppress findings entirely for these ports (use for ports the team has explicitly accepted, e.g. the app's known 8080/tcp). |
+| `services_warn` | list[string] | `container` | Override the built-in WARN-list for the `services` sub-scanner. Replaces the defaults (sshd, postgresql, redis-server, etc.). Pass `[]` to demote every declared service to INFO. Matching is case-insensitive. |
+| `services_ignore` | list[string] | `container` | Suppress findings entirely for these services (use for services the team has explicitly accepted, e.g. `cron`, `rsyslog`). Matching is case-insensitive. |
 | `scan_type` | string | `zap` | Scan type: `baseline`, `full`, or `api`. Auto-set to `api` when `api_spec` is provided. |
 | `api_spec` | string | `zap` | OpenAPI/Swagger spec URL or path; switches the scan to `zap-api-scan.py`. |
 | `rules_file` | string | `zap` | Path to a ZAP `.tsv` ignore-rules file. Mounted into the container at `/zap/wrk/rules.tsv`. |
@@ -250,6 +252,28 @@ scanners:
     expose_ignore_ports:
       - 443/tcp
       - 9090/tcp
+```
+
+**Attack-surface tuning (declared services):**
+
+```yaml
+scanners:
+  container:
+    enabled: true
+    image_ref: "myapp:latest"
+    # The default WARN list flags sshd/postgresql/redis-server/etc.
+    # Replace or extend when your image legitimately declares one of
+    # them and you want a different severity (or omit the override
+    # and use ``services_ignore`` to suppress entirely). Matching is
+    # case-insensitive.
+    services_warn:
+      - sshd
+      - postgresql
+      - nginx           # promote this app service to WARN
+    # Services the team has explicitly accepted — suppressed entirely.
+    services_ignore:
+      - cron
+      - rsyslog
 ```
 
 **DAST baseline scan:**
