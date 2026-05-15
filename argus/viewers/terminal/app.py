@@ -21,6 +21,7 @@ the footer automatically):
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -56,6 +57,27 @@ from argus.core.models import Finding, Severity
 _SEVERITY_ORDER = SEVERITY_ORDER
 _SEVERITY_GLYPH = SEVERITY_GLYPH
 _SORT_LABELS = SORT_LABELS
+
+
+# Textual markup actions look like ``app.action_open_location('arg')`` —
+# the markup parser already validated the shape before emitting the
+# meta, so a forgiving regex is fine here. Group 1 = action name,
+# group 3 = the single string argument.
+_ACTION_RE = re.compile(r"app\.(action_\w+)\(\s*(['\"])(.*?)\2\s*\)")
+
+
+def _parse_click_action(action_str: str) -> tuple[str | None, str | None]:
+    """Extract action name and string arg from a Textual ``@click`` meta value.
+
+    Returns ``(None, None)`` for shapes we don't recognize so callers
+    can no-op rather than crash on a malformed meta string.
+    """
+    if not action_str:
+        return None, None
+    match = _ACTION_RE.match(action_str.strip())
+    if not match:
+        return None, None
+    return match.group(1), match.group(3)
 
 
 # ViewState lives in argus.core.findings_view now — imported at the top
@@ -709,6 +731,45 @@ class OpenLocationPromptScreen(_BackgroundDismissMixin, ModalScreen[str | None])
         self.dismiss(event.option.id or None)
 
 
+class SpanContextMenuScreen(_BackgroundDismissMixin, ModalScreen[str | None]):
+    """Narrow right-click menu for a single clickable span.
+
+    The per-finding ``ContextMenuScreen`` ships every action that could
+    apply to the row; this screen renders only the actions relevant to
+    the span the user actually right-clicked (a path, a CVE link, a
+    package@version). Keeps the menu scannable when the user knows
+    exactly what they want to do.
+
+    Items are a list of ``(label, action_key)`` tuples; the parent
+    dispatches on the action key when the modal dismisses.
+    """
+
+    CSS = _MENU_CSS
+    BINDINGS = [
+        Binding("escape", "dismiss(None)", "Cancel", show=True),
+        Binding("q", "dismiss(None)", "Quit"),
+    ]
+
+    def __init__(self, title: str, items: list[tuple[str, str]]):
+        super().__init__()
+        self._title = title
+        self._items = items
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Static(self._title, id="menu-title")
+            yield OptionList(
+                *(Option(label, id=key) for label, key in self._items),
+                id="menu-list",
+            )
+            yield Static("↑↓ Enter to select  ·  Esc to cancel", id="hint")
+
+    def on_option_list_option_selected(  # pragma: no cover — UI event
+        self, event: OptionList.OptionSelected,
+    ) -> None:
+        self.dismiss(event.option.id or None)
+
+
 def _one_line(f: Finding) -> str:
     """One-line summary of a finding for the diff bucket lists.
 
@@ -1002,6 +1063,10 @@ class BrowseApp(App):
         # built outside the engine).
         from argus.core.models import ScanContext as _SC
         self._scan_context: _SC | None = None
+        # Last hover (row_index, click_action) seen by on_mouse_move.
+        # Used to dedup tooltip updates — mouse_move fires per pixel
+        # of movement, so we skip work when the meta hasn't changed.
+        self._last_hover_key: tuple[int | None, str | None] = (None, None)
 
     @staticmethod
     def _load_view_config() -> ViewConfig:
@@ -1054,16 +1119,14 @@ class BrowseApp(App):
             # saw rather than the contributor's local HEAD.
             self._scan_ref = self._scan_context.commit_sha
         table = self.query_one(DataTable)
-        # Tooltip on the findings table only — the previous detail-
-        # pane tooltip popped up whenever the cursor was anywhere in
-        # the right column, which was noisy. Discoverability of the
-        # underlined click targets stays in the help screen (``?``).
-        # Phrasing is right-click-first because that's the universal
-        # mouse path that works in every terminal we support; left-
-        # click on links is forwarded by Ghostty / WezTerm / Kitty
-        # but eaten by Terminal.app's text-selection layer.
+        # Initial tooltip is the generic blurb; ``on_mouse_move`` swaps
+        # it for a per-row summary (severity / id / package / first
+        # line of description) once the cursor lands on a real row.
+        # Discoverability of the underlined click targets stays in the
+        # help screen (``?``).
         table.tooltip = (
-            "Right-click a row for open / copy actions · "
+            "Hover a row for finding details · "
+            "Right-click for actions · "
             "Click a column header to sort"
         )
         # Column keys are kept so we can re-label the active sort column
@@ -1199,35 +1262,130 @@ class BrowseApp(App):
             self._push_context_menu(self._visible[row])
 
     def on_mouse_down(self, event) -> None:  # pragma: no cover
-        """Right-click on a findings-table row → open context menu.
+        """Right-click → open the right context menu for what's under the cursor.
 
-        Mouse button 3 is the conventional right-click; Textual surfaces
-        it via the same MouseDown event family. We discriminate on
-        ``event.button`` and resolve the underlying row via the
-        DataTable's cursor coordinate (mouse hover-and-right-click
-        first moves the cursor, then fires button-3).
+        Textual emits ``MouseDown(button=3)`` for right-clicks. We
+        discriminate by what the cursor is actually over using the
+        ``event.style.meta`` payload (the same meta that drives the
+        ``[@click=...]`` markup), giving us per-span precision without
+        coordinate math:
 
-        Scoped to the findings-table region: right-click in the detail
-        pane / status bar / footer / search input is a no-op so the
-        context menu only appears when the user is targeting a finding.
+          - meta has ``@click`` → cursor is on a clickable span in the
+            detail pane (path, CVE link, package). Open a *narrow*
+            context menu scoped to that span.
+          - meta has ``row`` → cursor is on a DataTable row. Open the
+            per-finding context menu for that row.
+          - neither → no-op (right-clicking the search box, footer,
+            empty space).
+
+        ``meta['row']`` is the row at the click position, which is
+        what users expect (not the keyboard cursor row, which may be
+        stale).
         """
         if getattr(event, "button", 0) != 3:
             return
+        meta = self._event_meta(event)
+
+        click_action = meta.get("@click", "")
+        if click_action:
+            self._push_span_context_menu(click_action)
+            return
+
+        if "row" in meta:
+            row = meta["row"]
+            if isinstance(row, int) and 0 <= row < len(self._visible):
+                self._push_context_menu(self._visible[row])
+
+    def on_mouse_move(self, event) -> None:  # pragma: no cover
+        """Update tooltips contextually as the cursor moves.
+
+        Two cases share this handler so we can dedup with a single key:
+
+          - Over a DataTable row → set ``table.tooltip`` to the
+            finding's severity/id/package/short description so the
+            user can preview before clicking.
+          - Over an ``@click`` span in the detail pane → set
+            ``detail.tooltip`` to an action-specific hint
+            ("Click to open file · right-click for actions").
+
+        ``meta`` carries the same payload as the click events, so we
+        get per-span resolution without parsing rendered text.
+        """
+        meta = self._event_meta(event)
+        row_idx = meta.get("row") if isinstance(meta.get("row"), int) else None
+        click_action = meta.get("@click") or None
+
+        key = (row_idx, click_action)
+        if key == self._last_hover_key:
+            return
+        self._last_hover_key = key
+
+        # Detail pane: tooltip describes the span under the cursor.
+        try:
+            detail = self.query_one("#detail", FindingDetail)
+        except Exception:
+            detail = None
+        if detail is not None:
+            detail.tooltip = self._span_tooltip_text(click_action) if click_action else None
+
+        # Findings table: tooltip previews the finding under the cursor.
         try:
             table = self.query_one(DataTable)
-        except Exception:  # widget not mounted yet
+        except Exception:
             return
-        # Only fire when the click landed inside the table's region.
-        sx = getattr(event, "screen_x", None)
-        sy = getattr(event, "screen_y", None)
-        if sx is None or sy is None:
-            return
-        region = getattr(table, "region", None)
-        if region is None or not region.contains(sx, sy):
-            return
-        row = table.cursor_row
-        if 0 <= row < len(self._visible):
-            self._push_context_menu(self._visible[row])
+        if row_idx is not None and 0 <= row_idx < len(self._visible):
+            table.tooltip = self._finding_tooltip_text(self._visible[row_idx])
+        else:
+            table.tooltip = (
+                "Hover a row for finding details · "
+                "Right-click for actions · "
+                "Click a column header to sort"
+            )
+
+    @staticmethod
+    def _event_meta(event) -> dict:
+        """Pull the style ``meta`` dict off a mouse event defensively.
+
+        Textual sometimes hands us events with ``style=None`` (e.g.,
+        the cursor moved off any rendered cell) — guard against that
+        so the handler can't blow up on missing attributes.
+        """
+        style = getattr(event, "style", None)
+        meta = getattr(style, "meta", None) if style is not None else None
+        return meta or {}
+
+    def _span_tooltip_text(self, click_action: str) -> str | None:
+        """Action-specific tooltip text for a span in the detail pane."""
+        name, arg = _parse_click_action(click_action)
+        if name == "action_open_advisory":
+            return f"Click to open {arg or 'advisory'} · Right-click for actions"
+        if name == "action_open_location":
+            if arg and mouse_actions.parse_file_line(arg):
+                return "Click to open file · Right-click for editor / GitHub / copy"
+            if arg and "@" in arg:
+                return "Click to open package page · Right-click for actions"
+            return "Click to open · Right-click for actions"
+        return None
+
+    @staticmethod
+    def _finding_tooltip_text(f: Finding) -> str:
+        """Multi-line summary of a finding for the per-row hover tooltip."""
+        sev = f.severity.value.upper() if f.severity else "?"
+        ident = f.id or "—"
+        pkg = f.metadata.get("package")
+        installed = f.metadata.get("installed_version")
+        pkg_label = (
+            f"{pkg}@{installed}" if pkg
+            else (f.location or f.scanner or "—")
+        )
+        desc = (f.description or f.title or "").strip()
+        # Keep the preview short — tooltips wrap badly on most terminals
+        # so a single trimmed line is what users actually read.
+        if len(desc) > 180:
+            desc = desc[:180].rstrip() + "…"
+        if not desc:
+            desc = "(no description)"
+        return f"{sev}  {ident}\n{pkg_label}\n{desc}"
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id == "search":
@@ -1748,6 +1906,79 @@ class BrowseApp(App):
         self.push_screen(
             ContextMenuScreen(finding, self._view_config),
             _on_choice,
+        )
+
+    def _push_span_context_menu(self, click_action: str) -> None:  # pragma: no cover
+        """Push a narrow context menu for the right-clicked span.
+
+        Unlike ``_push_context_menu`` (which lists every action that
+        could apply to the row), this only lists actions relevant to
+        the specific span the user right-clicked — file path → open
+        in editor / GitHub / copy; CVE link → open advisory / copy;
+        package@version → open registry / copy. The argument is
+        already parsed out of the ``@click`` meta so we don't have to
+        re-derive it from the finding.
+        """
+        name, arg = _parse_click_action(click_action)
+        if not name or arg is None:
+            return
+
+        if name == "action_open_advisory":
+            title = f"⚙ {arg}"
+            items = [
+                ("Open advisory in browser", "open_advisory"),
+                (f"Copy {arg}", "copy_value"),
+            ]
+
+            def _on_choice(choice: str | None) -> None:
+                if choice == "open_advisory":
+                    self.action_open_advisory(arg)
+                elif choice == "copy_value":
+                    self._copy_value(arg)
+
+        elif name == "action_open_location":
+            title = f"⚙ {arg}"
+            if mouse_actions.parse_file_line(arg):
+                items = [
+                    ("Open file in local editor", "open_local"),
+                    ("Open file on remote (git blob URL)", "open_remote"),
+                    (f"Copy {arg}", "copy_value"),
+                ]
+            elif "@" in arg:
+                items = [
+                    ("Open package on registry", "open_package"),
+                    (f"Copy {arg}", "copy_value"),
+                ]
+            else:
+                items = [(f"Copy {arg}", "copy_value")]
+
+            def _on_choice(choice: str | None) -> None:
+                if choice == "open_local":
+                    self.action_open_local_file(arg)
+                elif choice == "open_remote":
+                    self.action_open_remote_file(arg)
+                elif choice == "open_package":
+                    self.action_open_package(arg)
+                elif choice == "copy_value":
+                    self._copy_value(arg)
+        else:
+            return
+
+        self.push_screen(SpanContextMenuScreen(title, items), _on_choice)
+
+    def _copy_value(self, value: str) -> None:  # pragma: no cover
+        """Copy ``value`` to the system clipboard with a user notification.
+
+        Shared by the span context menus so the copy UX (success
+        toast vs. fallback warning) stays consistent regardless of
+        whether the user copied a CVE, a path, or a package name.
+        """
+        from argus.viewers.terminal.clipboard import copy_to_clipboard
+        ok, _mechanism = copy_to_clipboard(value)
+        self.notify(
+            f"Copied {value!r} to clipboard"
+            if ok else f"Clipboard unavailable — {value!r}",
+            severity="information" if ok else "warning", timeout=2,
         )
 
     def action_open_advisory(self, advisory_id: str) -> None:  # pragma: no cover
