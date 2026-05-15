@@ -26,7 +26,14 @@ _PULL_POLICY_VALUES = {"always", "if-not-present", "never"}
 _FORMAT_VALUES = {"terminal", "markdown", "sarif", "json"}
 
 # Known top-level keys
-_TOP_LEVEL_KEYS = {"version", "scanners", "reporting", "execution", "containers", "dast"}
+_TOP_LEVEL_KEYS = {
+    "version", "scanners", "reporting", "execution", "containers", "dast", "view",
+}
+
+# argus view (terminal / browser) UX knobs
+_VIEW_KEYS = {"cve_source", "open_location", "editor"}
+_CVE_SOURCE_VALUES = {"nvd", "cve_org", "github", "mitre"}
+_OPEN_LOCATION_VALUES = {"ask", "local", "remote"}
 
 # Known scanner config keys (anything else goes to 'extra' but we warn)
 _SCANNER_KNOWN_KEYS = {
@@ -145,6 +152,10 @@ def validate_config(data: dict) -> list[ConfigError]:
     reporting = data.get("reporting")
     if reporting is not None:
         errors.extend(_validate_reporting("reporting", reporting))
+
+    view = data.get("view")
+    if view is not None:
+        errors.extend(_validate_view("view", view))
 
     # Execution
     execution = data.get("execution")
@@ -491,6 +502,53 @@ def _validate_execution(path: str, data: Any) -> list[ConfigError]:
             f"{path}.verify_image_signatures",
             f"Must be a boolean (true/false), got "
             f"{type(data['verify_image_signatures']).__name__}",
+        ))
+
+    return errors
+
+
+def _validate_view(path: str, data: Any) -> list[ConfigError]:
+    """Validate the ``view:`` block — argus view terminal / browser UX."""
+    errors: list[ConfigError] = []
+
+    if not isinstance(data, dict):
+        errors.append(ConfigError(
+            path, f"Must be a mapping, got {type(data).__name__}",
+        ))
+        return errors
+
+    for key in data:
+        if key not in _VIEW_KEYS:
+            errors.append(ConfigError(
+                f"{path}.{key}",
+                f"Unknown view key '{key}'. "
+                f"Valid keys: {', '.join(sorted(_VIEW_KEYS))}",
+                level="warning",
+            ))
+
+    if "cve_source" in data:
+        val = str(data["cve_source"]).lower()
+        if val not in _CVE_SOURCE_VALUES:
+            errors.append(ConfigError(
+                f"{path}.cve_source",
+                f"Invalid value '{data['cve_source']}'. "
+                f"Must be one of: {', '.join(sorted(_CVE_SOURCE_VALUES))}",
+            ))
+
+    if "open_location" in data:
+        val = str(data["open_location"]).lower()
+        if val not in _OPEN_LOCATION_VALUES:
+            errors.append(ConfigError(
+                f"{path}.open_location",
+                f"Invalid value '{data['open_location']}'. "
+                f"Must be one of: {', '.join(sorted(_OPEN_LOCATION_VALUES))}",
+            ))
+
+    if "editor" in data and not isinstance(data["editor"], str):
+        errors.append(ConfigError(
+            f"{path}.editor",
+            f"Must be a string (editor command, e.g. 'code -g'), got "
+            f"{type(data['editor']).__name__}",
         ))
 
     return errors

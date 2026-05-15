@@ -33,7 +33,9 @@ from textual.screen import ModalScreen
 from textual.widgets import DataTable, Footer, Header, Input, OptionList, Static
 from textual.widgets.option_list import Option
 
+from argus.viewers.terminal import mouse_actions
 from argus.viewers.terminal.loader import flatten_findings, load_summary
+from argus.core.config import ArgusConfig, ViewConfig
 from argus.core.findings_view import (
     SEVERITY_GLYPH,
     SEVERITY_ORDER,
@@ -554,6 +556,133 @@ class DiffScreen(ModalScreen):
         return lines
 
 
+_MENU_CSS = """
+ContextMenuScreen { align: center middle; }
+ContextMenuScreen > Vertical {
+    width: 60; height: auto; padding: 1 2;
+    border: round $accent; background: $surface;
+}
+ContextMenuScreen #menu-title { content-align: left middle; text-style: bold; padding: 0 0 1 0; }
+ContextMenuScreen OptionList { height: auto; max-height: 12; }
+ContextMenuScreen #hint { color: $text-muted; padding: 1 0 0 0; content-align: left middle; }
+"""
+
+
+class ContextMenuScreen(ModalScreen[str | None]):
+    """Right-click / row-click context menu for a finding.
+
+    Lists the actions that target the selected row directly:
+      - Open advisory page (NVD / CVE.org / GHSA, per ``view.cve_source``)
+      - Open file:line locally (in $EDITOR / VS Code / ...)
+      - Open file:line in remote git (GitHub / GitLab blob URL)
+      - Open package page (PyPI / npm)
+      - Copy CVE to clipboard
+      - Export selection (route to existing ``e`` action)
+
+    Items that don't apply to this finding are filtered out before
+    the modal mounts — a Bandit finding with no CVE, no file path,
+    and no package@version location gets only "Export selection".
+    """
+
+    CSS = _MENU_CSS
+    BINDINGS = [
+        Binding("escape", "dismiss(None)", "Cancel", show=True),
+        Binding("q", "dismiss(None)", "Quit"),
+    ]
+
+    def __init__(self, finding: Finding, view_config: ViewConfig):
+        super().__init__()
+        self._finding = finding
+        self._view_config = view_config
+        # Decide which menu items apply to this finding.
+        self._items: list[tuple[str, str]] = []
+        if finding.cve or self._looks_like_advisory(finding.id):
+            advisory = finding.cve or finding.id
+            self._items.append(
+                (f"Open advisory: {advisory}", f"open_advisory:{advisory}"),
+            )
+        if mouse_actions.parse_file_line(finding.location):
+            self._items.append(("Open file in local editor", "open_local"))
+            self._items.append(("Open file on remote (git blob URL)", "open_remote"))
+        if (
+            finding.location
+            and "@" in finding.location
+            and not mouse_actions.parse_file_line(finding.location)
+        ):
+            self._items.append(("Open package on registry", "open_package"))
+        if finding.cve:
+            self._items.append((f"Copy CVE to clipboard ({finding.cve})", "copy_cve"))
+        self._items.append(("Export current selection / view", "export"))
+
+    @staticmethod
+    def _looks_like_advisory(value: str | None) -> bool:
+        if not value:
+            return False
+        upper = value.upper()
+        return upper.startswith("CVE-") or upper.startswith("GHSA-")
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Static(
+                f"⚙ {self._finding.id or '—'}  ·  Actions",
+                id="menu-title",
+            )
+            yield OptionList(
+                *(Option(label, id=key) for label, key in self._items),
+                id="menu-list",
+            )
+            yield Static("↑↓ Enter to select  ·  Esc to cancel", id="hint")
+
+    def on_option_list_option_selected(  # pragma: no cover — UI event
+        self, event: OptionList.OptionSelected,
+    ) -> None:
+        self.dismiss(event.option.id or None)
+
+
+_PROMPT_CSS = """
+OpenLocationPromptScreen { align: center middle; }
+OpenLocationPromptScreen > Vertical {
+    width: 60; height: auto; padding: 1 2;
+    border: round $accent; background: $surface;
+}
+OpenLocationPromptScreen #prompt-title { text-style: bold; padding: 0 0 1 0; }
+OpenLocationPromptScreen OptionList { height: auto; }
+OpenLocationPromptScreen #hint { color: $text-muted; padding: 1 0 0 0; }
+"""
+
+
+class OpenLocationPromptScreen(ModalScreen[str | None]):
+    """Tiny modal asking 'local or remote?' when view.open_location == 'ask'.
+
+    Returns ``"local"``, ``"remote"``, or ``None`` (dismissed).
+    """
+
+    CSS = _PROMPT_CSS
+    BINDINGS = [
+        Binding("escape", "dismiss(None)", "Cancel"),
+        Binding("l", "dismiss('local')", "Local"),
+        Binding("r", "dismiss('remote')", "Remote"),
+    ]
+
+    def __init__(self, location: str):
+        super().__init__()
+        self._location = location
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Static(f"Open {self._location}", id="prompt-title")
+            yield OptionList(
+                Option("Local — open in $EDITOR / VS Code", id="local"),
+                Option("Remote — open at commit on GitHub / GitLab", id="remote"),
+            )
+            yield Static("L for local  ·  R for remote  ·  Esc to cancel", id="hint")
+
+    def on_option_list_option_selected(  # pragma: no cover — UI event
+        self, event: OptionList.OptionSelected,
+    ) -> None:
+        self.dismiss(event.option.id or None)
+
+
 def _one_line(f: Finding) -> str:
     """One-line summary of a finding for the diff bucket lists.
 
@@ -660,10 +789,20 @@ class FindingDetail(Static):
         if f is None:
             self.update("[dim]Select a finding to see details.[/dim]")
             return
+
+        # CVE / GHSA + ``location`` are the high-signal click targets:
+        # one opens the upstream advisory, the other opens the file in
+        # editor or git blob. Wrap them in Textual's ``[@click=...]``
+        # markup so the rendered text becomes interactive without
+        # refactoring the pane into per-cell widgets.
+        header_id = self._linkify_id(f)
+        glyph = _SEVERITY_GLYPH.get(f.severity, "?")
+        lines = [f"[bold]{header_id}[/bold]   {glyph}", ""]
+
         rows = finding_detail_rows(f)
-        lines = [f"[bold]{f.id}[/bold]   {_SEVERITY_GLYPH.get(f.severity, '?')}", ""]
         for label, value in rows:
-            lines.append(f"[b]{label}:[/b]".ljust(13) + f" {value}")
+            rendered = self._linkify_value(label, value)
+            lines.append(f"[b]{label}:[/b]".ljust(13) + f" {rendered}")
         lines += ["", "[b]Title[/b]", f.title or "—"]
         if f.description and f.description != f.title:
             lines += ["", "[b]Description[/b]", f.description]
@@ -671,6 +810,30 @@ class FindingDetail(Static):
         if warning:
             lines += ["", f"[yellow]{warning}[/yellow]"]
         self.update("\n".join(lines))
+
+    @staticmethod
+    def _linkify_id(f: Finding) -> str:
+        """If the finding ID is a CVE / GHSA, render it as a click target."""
+        target = f.cve or f.id or ""
+        if not target:
+            return f.id or "—"
+        upper = target.upper()
+        if upper.startswith("CVE-") or upper.startswith("GHSA-"):
+            return f"[@click=action_open_advisory('{target}')]{f.id}[/]"
+        return f.id or "—"
+
+    @staticmethod
+    def _linkify_value(label: str, value: str) -> str:
+        """Wrap location / package values in click handlers when applicable."""
+        if not value or value == "—":
+            return value
+        # Location row covers both file:line and package@version shapes.
+        # Routing happens in ``BrowseApp.action_open_location``.
+        if label.lower() in ("location", "file", "path", "package"):
+            # Escape single quotes for the action-argument literal.
+            safe = value.replace("'", "\\'")
+            return f"[@click=action_open_location('{safe}')]{value}[/]"
+        return value
 
 
 class BrowseApp(App):
@@ -688,8 +851,27 @@ class BrowseApp(App):
     #list-pane { width: 55%; }
     #detail-pane { width: 45%; padding: 0 2; }
     DataTable { height: 1fr; }
+    /* Mouse hover: row gets a subtle accent background so the
+       click target the user is about to land on is obvious.
+       Cell-level emphasis stays with the cursor (keyboard focus)
+       so keyboard and mouse don't fight for the visual lead. */
+    DataTable > .datatable--hover {
+        background: $boost;
+    }
     Static#detail { height: 1fr; border: solid $accent; padding: 1 2; }
+    /* CVE / file:line / package links in the detail pane render
+       as Textual ``[@click=...]`` markup; underlining them on
+       hover signals "this is interactive" the same way a browser
+       does. */
+    Static#detail .clickable:hover {
+        text-style: underline;
+        color: $accent;
+    }
     #status { height: 1; dock: bottom; background: $panel; padding: 0 1; }
+    /* Status-bar filter chips are clickable; underline on hover. */
+    #status .chip:hover {
+        text-style: underline;
+    }
     """
 
     # Footer-visible bindings are kept tight so the bar fits common
@@ -748,6 +930,27 @@ class BrowseApp(App):
         # Storing the live object reference is the cheapest stable key
         # for an in-memory session.
         self._selected: set[int] = set()
+        # Load ``view:`` config (cve_source / open_location / editor)
+        # from any argus.yml the user has in cwd or beside results_dir.
+        # ArgusConfig.load() auto-detects and falls back to defaults if
+        # no file is present — the TUI works fine with the defaults
+        # (NVD for CVEs, "ask" prompt for file:line). Loaded once at
+        # mount; no live-reload.
+        self._view_config: ViewConfig = self._load_view_config()
+        # Cache the repo root + scan commit SHA so file:line → git
+        # blob URL doesn't re-walk + re-shell on every click. Resolved
+        # lazily on first remote-open request.
+        self._repo_root: Path | None = None
+        self._scan_ref: str = "HEAD"
+
+    @staticmethod
+    def _load_view_config() -> ViewConfig:
+        """Best-effort ArgusConfig.view load. Always returns a usable
+        ViewConfig — defaults if nothing's on disk or anything errors."""
+        try:
+            return ArgusConfig.load().view
+        except Exception:  # pragma: no cover — defensive
+            return ViewConfig()
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
@@ -828,30 +1031,48 @@ class BrowseApp(App):
     def _update_status(self) -> None:
         total = len(self.all_findings)
         shown = len(self._visible)
+
+        # Status-bar chips render as Textual ``[@click=...]`` markup so
+        # the mouse can manipulate filters directly. Each chip:
+        #   - the severity chip cycles back to "all" on click
+        #   - product / scanner / query chips clear that one filter
+        #   - the sort chip cycles sort modes
+        # The keyboard bindings still work in parallel.
         parts: list[str] = []
-        parts.append(
-            f"≥ {self.view_state.min_severity.value}"
-            if self.view_state.min_severity else "all severities"
-        )
+        if self.view_state.min_severity:
+            parts.append(
+                f"[@click=action_filter_all]≥ "
+                f"{self.view_state.min_severity.value}[/]"
+            )
+        else:
+            parts.append("all severities")
         if self.view_state.product:
-            parts.append(f"product={self.view_state.product}")
+            parts.append(
+                f"[@click=action_clear_product]product="
+                f"{self.view_state.product}[/]"
+            )
         if self.view_state.scanner:
-            parts.append(f"scanner={self.view_state.scanner}")
+            parts.append(
+                f"[@click=action_clear_scanner]scanner="
+                f"{self.view_state.scanner}[/]"
+            )
         if self.view_state.query:
-            parts.append(f"query='{self.view_state.query}'")
+            # Escape single quotes so the markup parser doesn't break on
+            # user-typed query text.
+            safe = self.view_state.query.replace("'", "\\'")
+            parts.append(
+                f"[@click=action_clear_query]query='{safe}'[/]"
+            )
         sort = self.view_state.sort_key.replace("_", " ")
-        # Selection is shown only when non-empty so the status bar stays
-        # quiet during normal browsing. The count tracks the global
-        # selection set, not just the rows visible right now — that
-        # matches user expectations after a filter change ("I selected
-        # 5 things; how many did I select total?").
+        sort_chip = f"[@click=action_cycle_sort]{sort}[/]"
+
         selection_str = (
             f" · [b]{len(self._selected)}[/b] selected"
             if self._selected else ""
         )
         self.query_one("#status", Static).update(
             f"[b]{shown}[/b] / {total} findings · "
-            f"filter: {' · '.join(parts)} · sort: {sort}"
+            f"filter: {' · '.join(parts)} · sort: {sort_chip}"
             f"{selection_str}"
         )
 
@@ -865,6 +1086,48 @@ class BrowseApp(App):
 
     def on_data_table_row_highlighted(self, event) -> None:  # pragma: no cover
         self._update_detail(event.cursor_row)
+
+    def on_data_table_header_selected(self, event) -> None:  # pragma: no cover
+        """Mouse: click a column header → cycle through sort modes.
+
+        Wires the same path as the ``s`` keyboard binding so mouse and
+        keyboard behave identically. Textual's DataTable fires this
+        on left-click of any column-header cell.
+        """
+        self.action_cycle_sort()
+
+    def on_data_table_row_selected(self, event) -> None:  # pragma: no cover
+        """Mouse: click a row (or Enter on focused row) → context menu.
+
+        Pushes ContextMenuScreen for the highlighted finding. Single-
+        click still moves the cursor + updates the detail pane via
+        ``on_data_table_row_highlighted`` first; this fires on the
+        secondary click on the same row (Textual emits RowSelected on
+        a fresh click of the already-focused row, mimicking double-
+        click semantics on most platforms).
+        """
+        row = event.cursor_row
+        if 0 <= row < len(self._visible):
+            self._push_context_menu(self._visible[row])
+
+    def on_mouse_down(self, event) -> None:  # pragma: no cover
+        """Right-click on a findings-table row → open context menu.
+
+        Mouse button 3 is the conventional right-click; Textual surfaces
+        it via the same MouseDown event family. We discriminate on
+        ``event.button`` and resolve the underlying row via the
+        DataTable's cursor coordinate (mouse hover-and-right-click
+        first moves the cursor, then fires button-3).
+        """
+        if getattr(event, "button", 0) != 3:
+            return
+        try:
+            table = self.query_one(DataTable)
+        except Exception:  # widget not mounted yet
+            return
+        row = table.cursor_row
+        if 0 <= row < len(self._visible):
+            self._push_context_menu(self._visible[row])
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id == "search":
@@ -997,6 +1260,28 @@ class BrowseApp(App):
 
     def action_filter_all(self) -> None:
         self.view_state.min_severity = None
+        self._refresh_list()
+
+    # Clear-one-filter helpers — invoked from the status-bar chips'
+    # ``[@click=...]`` markup. Mouse-only; no keyboard binding (the
+    # picker modals already handle keyboard clear via Esc → no selection).
+    def action_clear_product(self) -> None:  # pragma: no cover — UI
+        self.view_state.product = None
+        self._refresh_list()
+
+    def action_clear_scanner(self) -> None:  # pragma: no cover — UI
+        self.view_state.scanner = None
+        self._refresh_list()
+
+    def action_clear_query(self) -> None:  # pragma: no cover — UI
+        self.view_state.query = ""
+        # Also clear the visible search input so the chip + input stay
+        # in sync — otherwise clicking the chip would clear the filter
+        # but leave the old query in the search box, confusing the user.
+        try:
+            self.query_one("#search", Input).value = ""
+        except Exception:  # widget not mounted yet
+            pass
         self._refresh_list()
 
     def action_cycle_sort(self) -> None:
@@ -1328,6 +1613,195 @@ class BrowseApp(App):
                 f"Couldn't launch opener ({exc}). File: {path}",
                 severity="error", timeout=8,
             )
+
+    # ------------------------------------------------------------------
+    # Mouse-first actions: open advisories, files, packages, context menu.
+    # The handlers are thin wrappers around argus.viewers.terminal.
+    # mouse_actions so they stay easy to unit-test without Textual.
+    # ------------------------------------------------------------------
+
+    def _push_context_menu(self, finding: Finding) -> None:  # pragma: no cover
+        """Push the right-click / row-click menu for ``finding``."""
+
+        def _on_choice(choice: str | None) -> None:
+            if not choice:
+                return
+            if choice.startswith("open_advisory:"):
+                self.action_open_advisory(choice.split(":", 1)[1])
+            elif choice == "open_local":
+                self.action_open_local_file(finding.location or "")
+            elif choice == "open_remote":
+                self.action_open_remote_file(finding.location or "")
+            elif choice == "open_package":
+                self.action_open_package(finding.location or "")
+            elif choice == "copy_cve" and finding.cve:
+                from argus.viewers.terminal.clipboard import copy_to_clipboard
+                ok, _mechanism = copy_to_clipboard(finding.cve)
+                self.notify(
+                    f"Copied {finding.cve} to clipboard"
+                    if ok else f"Clipboard unavailable — {finding.cve}",
+                    severity="information" if ok else "warning", timeout=2,
+                )
+            elif choice == "export":
+                self.action_export_csv()
+
+        self.push_screen(
+            ContextMenuScreen(finding, self._view_config),
+            _on_choice,
+        )
+
+    def action_open_advisory(self, advisory_id: str) -> None:  # pragma: no cover
+        """Open a CVE / GHSA advisory page in the default browser.
+
+        Triggered from:
+          - ``[@click=action_open_advisory('CVE-xxxx')]`` markup in the
+            detail pane (single-click on the rendered ID).
+          - The ``Open advisory`` item in the row context menu.
+          - The command palette (when discoverable).
+        """
+        url = mouse_actions.advisory_url_for_id(
+            advisory_id, self._view_config.cve_source,
+        )
+        if not url:
+            self.notify(
+                f"No advisory source for {advisory_id!r}",
+                severity="warning", timeout=3,
+            )
+            return
+        if mouse_actions.open_in_browser(url):
+            self.notify(f"Opened {advisory_id}", severity="information", timeout=2)
+        else:
+            self.notify(
+                f"Couldn't open browser for {url}",
+                severity="error", timeout=5,
+            )
+
+    def action_open_location(self, location: str) -> None:  # pragma: no cover
+        """Dispatch a file:line / package@version click per ``view.open_location``.
+
+        Routes:
+          - ``ask`` (default): mini modal lets the user pick local / remote
+          - ``local``: shell out to $EDITOR / VS Code with the file:line
+          - ``remote``: open at the scan's commit SHA on the git remote
+        """
+        if not location:
+            return
+        # Package@version? Route to registry instead — the local /
+        # remote split doesn't apply.
+        if mouse_actions.parse_file_line(location) is None and "@" in location:
+            self.action_open_package(location)
+            return
+
+        mode = self._view_config.open_location
+        if mode == "local":
+            self.action_open_local_file(location)
+        elif mode == "remote":
+            self.action_open_remote_file(location)
+        else:  # "ask"
+            def _on_pick(choice: str | None) -> None:
+                if choice == "local":
+                    self.action_open_local_file(location)
+                elif choice == "remote":
+                    self.action_open_remote_file(location)
+
+            self.push_screen(OpenLocationPromptScreen(location), _on_pick)
+
+    def action_open_local_file(self, location: str) -> None:  # pragma: no cover
+        """Shell out to the user's editor at ``file:line``.
+
+        Editor resolution lives in ``mouse_actions.open_file_local`` and
+        honors (in order): ``view.editor`` config, ``$VISUAL``, ``$EDITOR``,
+        VS Code's ``code -g``, ``xdg-open`` / ``open``.
+        """
+        parsed = mouse_actions.parse_file_line(location)
+        if not parsed:
+            self.notify(
+                f"Can't parse as a file path: {location!r}",
+                severity="warning", timeout=3,
+            )
+            return
+        path, line = parsed
+        # Resolve relative paths against the repo root (or cwd).
+        if not path.is_absolute():
+            repo_root = self._resolve_repo_root()
+            candidate = (repo_root or Path.cwd()) / path
+            if candidate.exists():
+                path = candidate
+        opened = mouse_actions.open_file_local(
+            path, line=line, editor=self._view_config.editor or None,
+        )
+        if opened:
+            display = f"{path.name}" + (f":{line}" if line else "")
+            self.notify(f"Opened {display}", severity="information", timeout=2)
+        else:
+            self.notify(
+                f"Couldn't open {path} — no editor on PATH "
+                f"and no $EDITOR / $VISUAL set",
+                severity="error", timeout=6,
+            )
+
+    def action_open_remote_file(self, location: str) -> None:  # pragma: no cover
+        """Open ``file:line`` on the git origin remote at the scan's SHA."""
+        parsed = mouse_actions.parse_file_line(location)
+        if not parsed:
+            self.notify(
+                f"Can't parse as a file path: {location!r}",
+                severity="warning", timeout=3,
+            )
+            return
+        rel_path, line = parsed
+        repo_root = self._resolve_repo_root()
+        if not repo_root:
+            self.notify(
+                "Not inside a git repo — can't construct a remote URL",
+                severity="warning", timeout=4,
+            )
+            return
+        url = mouse_actions.git_blob_url(
+            repo_root, rel_path, line, self._scan_ref,
+        )
+        if not url:
+            self.notify(
+                "Couldn't build a remote URL (no origin remote, "
+                "or unrecognized remote shape)",
+                severity="warning", timeout=4,
+            )
+            return
+        if mouse_actions.open_in_browser(url):
+            self.notify(f"Opened {url}", severity="information", timeout=2)
+        else:
+            self.notify(
+                f"Couldn't open browser for {url}",
+                severity="error", timeout=5,
+            )
+
+    def action_open_package(self, location: str) -> None:  # pragma: no cover
+        """Open the registry page (PyPI / npm) for a ``name@version`` finding."""
+        url = mouse_actions.package_url(location)
+        if not url:
+            self.notify(
+                f"No registry URL for {location!r}",
+                severity="warning", timeout=3,
+            )
+            return
+        if mouse_actions.open_in_browser(url):
+            self.notify(f"Opened registry page", severity="information", timeout=2)
+        else:
+            self.notify(
+                f"Couldn't open browser for {url}",
+                severity="error", timeout=5,
+            )
+
+    def _resolve_repo_root(self) -> Path | None:
+        """Cached walk-up for ``.git``; starts from results_dir or cwd."""
+        if self._repo_root is not None:
+            return self._repo_root
+        start = Path(self._results_dir or ".").resolve()
+        root = mouse_actions.find_repo_root(start)
+        if root is None:
+            root = mouse_actions.find_repo_root(Path.cwd())
+        self._repo_root = root
+        return root
 
 
 def _platform_opener_argv(mode: str, path: Path) -> list[str] | None:
