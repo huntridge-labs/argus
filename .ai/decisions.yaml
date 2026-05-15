@@ -2002,3 +2002,93 @@ decisions:
       - ADR-024  # DAST scanner tuning moves to argus.yml (same posture: scanner-specific in config, action surface minimal)
     pr_references:
       - "(splits the OS image port enumeration research item in docs/developer/SDK-ROADMAP.md → Attack Surface Visibility)"
+
+  - id: ADR-026
+    title: "Architecture map derived from .ai/architecture.yaml; no parallel JSON source"
+    date: "2026-05-15"
+    status: accepted
+
+    context: |
+      The SDK ships an interactive architecture-map page (column
+      layout × flow-rail × per-node side panel) that needs to be
+      consumed by three surfaces: the docsite build (writes
+      ``architecture/index.html``), the FastAPI viewer
+      (``/architecture`` route), and the MCP server
+      (``argus://architecture`` resource). Each surface needs the
+      same diagram data in JSON shape. The naive answer is a
+      hand-edited ``architecture.json`` next to ``.ai/architecture.yaml``
+      that all three consumers read. That answer is wrong.
+
+      AICaC already declares a schema (``aicac.dev/schema/v1``) for
+      ``.ai/architecture.yaml`` covering the components, scanners,
+      data_flow, and dependency surfaces the diagram renders.
+      Inventing a parallel argus-local JSON contract for the same
+      facts doubles the drift surface: every YAML edit needs a JSON
+      mirror edit, and a single missed mirror produces a silent
+      discrepancy.
+
+    decision: |
+      ``.ai/architecture.yaml`` is the only source of truth. The
+      JSON the MCP server returns and the JSON the HTML page
+      hydrates from are **derived view models** computed at build
+      time — pure functions of the YAML plus runtime SDK
+      introspection (``argus.scanners.SCANNER_REGISTRY``,
+      ``argus.linters.LINTER_REGISTRY``, the ``argus.reporters``
+      entry-point group, the argparse subcommand list). No file
+      shaped like ``architecture.json`` is checked into the repo.
+
+      The transformer is ``scripts/docsite/architecture.py::
+      build_view_model(...)``. It exports one pure function. All
+      three consumers call it; none fork the projection logic.
+
+    alternatives_considered:
+      - name: "Hand-edited architecture.json next to architecture.yaml"
+        rejected_because: |
+          Doubles the drift surface. Every YAML edit needs a
+          mirroring JSON edit; a missed mirror produces a silent
+          divergence between what the YAML says and what the
+          diagram shows. AICaC already has its own schema —
+          inventing a second one is non-orthogonal.
+
+      - name: "Fork the projection per consumer (docsite-specific, viewer-specific, MCP-specific)"
+        rejected_because: |
+          Three near-identical transformers diverge over time.
+          The MCP resource and the docsite-build HTML hydration
+          can't drift in their JSON shape — the MCP contract test
+          is "byte-identical to what the docsite inlined."
+
+      - name: "Ship a python-generated YAML mirror"
+        rejected_because: |
+          Same drift surface as a JSON mirror, with a worse story
+          for IDE / schema validation. AICaC YAML stays canonical.
+
+    consequences:
+      positive:
+        - "Adding a scanner under .ai/architecture.yaml + argus/scanners/ makes it appear on all three surfaces with no further edits."
+        - "The CI source-of-truth check (scripts/ci/check_architecture_sync.py) enforces the registry → YAML half of the contract by introspecting the running SDK."
+        - "AI agents picking up Argus work read the same JSON the docsite renders, so their mental model can't drift from what humans see."
+        - "Reviewers can reject any PR that adds an ``architecture.json``-shaped file."
+      negative:
+        - "Adding a fundamentally new entity to the diagram (a brand-new column, a new node-kind) means a transformer code edit, not just a YAML edit. The transformer is the only place node-shape evolves."
+        - "First-request render builds the view model in-process (~70 nodes, ~70 edges, <50ms locally); cached on app.state thereafter."
+
+    implementation: |
+      - Transformer: scripts/docsite/architecture.py (canonical
+        location); argus/architecture_map.py shim re-exports for
+        runtime consumers in the installed package.
+      - Three consumers:
+          docsite build → scripts/docsite/builder.py calls
+              render_standalone_html(view_model, output_dir/architecture/)
+          FastAPI viewer → argus/viewers/browser/app.py @app.get("/architecture")
+          MCP server → argus/mcp.py @mcp.resource("argus://architecture")
+      - CI gate: scripts/ci/check_architecture_sync.py runs in
+        .github/workflows/test-unit.yml on every push / PR.
+      - Tests: scripts/docsite/tests/test_architecture.py covers
+        determinism, registry coverage, flow node-ID resolution,
+        ADR cross-reference, scanner-snippet roundtrip.
+
+    related:
+      - ADR-018  # canonical argus-results.json — same "single derived shape, many consumers" pattern
+      - ADR-023  # reporter entry-points — same "registry as source of truth" pattern
+    pr_references:
+      - "(introduces scripts/docsite/architecture.py, argus/architecture_map.py, the /architecture route, the argus://architecture MCP resource, and the CI check)"

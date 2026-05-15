@@ -434,3 +434,10 @@ quick_reference:
   docsite_validate: "cd scripts && python -m docsite --validate"
   docsite_build: "cd scripts && python -m docsite --output-dir /tmp/argus-docs"
   docsite_preview: "cd scripts && python -m docsite --output-dir /tmp/argus-docs && cd /tmp/argus-docs && mkdocs serve"
+  # Architecture map (interactive SDK diagram — ADR-026).
+  # Regenerated from .ai/architecture.yaml + runtime SDK introspection;
+  # never hand-edit a JSON mirror.
+  architecture_regen: "python -m docsite --output-dir /tmp/argus-docs  # writes /tmp/argus-docs/docs/architecture/index.html"
+  architecture_view_local: "argus view browser  # then open http://127.0.0.1:8000/architecture"
+  architecture_view_offline: "python -m docsite --output-dir /tmp/argus-docs && open /tmp/argus-docs/docs/architecture/index.html  # standalone, no server"
+  architecture_check: "python -m scripts.ci.check_architecture_sync  # registry / entry-points / CLI must match the YAML"
