@@ -1,0 +1,642 @@
+/*
+ * architecture.css — page-specific styles for the SDK architecture map.
+ *
+ * Inherits the Argus brand palette from argus.css; every color in this
+ * file is a CSS custom property defined there. No CDN fonts, no
+ * external assets — strict CSP compatible.
+ *
+ * Layout: top legend, main grid of seven columns, right-rail flow
+ * list with sticky scroll, optional bottom external-tools row, and
+ * a slide-in side panel for node details.
+ */
+
+/* ─── Page chrome ───────────────────────────────────────────────────── */
+
+.arch-page {
+  display: grid;
+  grid-template-columns: 1fr 22rem;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.arch-page__main {
+  min-width: 0;
+}
+
+.arch-page__sidebar {
+  position: sticky;
+  top: 4rem;
+  max-height: calc(100vh - 5rem);
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+@media (max-width: 64rem) {
+  .arch-page {
+    grid-template-columns: 1fr;
+  }
+  .arch-page__sidebar {
+    position: static;
+    max-height: none;
+  }
+}
+
+/* ─── Legend (column-color reference, top of the page) ───────────── */
+
+.arch-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 0.85rem;
+}
+
+.arch-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--fg-muted);
+}
+
+.arch-legend__swatch {
+  display: inline-block;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+}
+
+.arch-legend__swatch--muted    { background: var(--fg-muted); }
+.arch-legend__swatch--primary  { background: var(--argus-primary-green); }
+.arch-legend__swatch--subtle   { background: var(--surface-alt); }
+.arch-legend__swatch--accent   { background: var(--accent); }
+.arch-legend__swatch--info     { background: var(--severity-info, #4a8fb8); }
+
+/* ─── Column grid ─────────────────────────────────────────────────── */
+
+.arch-columns {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.75rem;
+  align-items: start;
+}
+
+@media (max-width: 96rem) {
+  .arch-columns {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 56rem) {
+  .arch-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.arch-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.arch-column__title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+  margin: 0 0 0.25rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ─── Node boxes ──────────────────────────────────────────────────── */
+
+.arch-node {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  font-family: inherit;
+  color: var(--fg);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease,
+              opacity 0.18s ease, transform 0.12s ease;
+}
+
+.arch-node:hover {
+  background: var(--surface-alt);
+  border-color: var(--accent-dim);
+}
+
+.arch-node:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.arch-node[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--surface-alt);
+}
+
+.arch-node__label {
+  display: block;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.arch-node__sub {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--fg-muted);
+  margin-top: 0.2rem;
+}
+
+.arch-node__badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0 0.35rem;
+  border-radius: 2px;
+  background: var(--accent);
+  color: var(--argus-on-accent);
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+/* Column-tinted left border so the swatch reads instantly. */
+.arch-node[data-column="actors"]    { border-left: 3px solid var(--fg-muted); }
+.arch-node[data-column="surfaces"]  { border-left: 3px solid var(--argus-primary-green); }
+.arch-node[data-column="core"]      { border-left: 3px solid var(--surface-alt); }
+.arch-node[data-column="scanners"]  { border-left: 3px solid var(--accent); }
+.arch-node[data-column="reporters"] { border-left: 3px solid var(--argus-primary-green); }
+.arch-node[data-column="artifacts"] { border-left: 3px solid var(--severity-info, #4a8fb8); }
+.arch-node[data-column="consumers"] { border-left: 3px solid var(--fg-muted); }
+
+/* ─── Flow-highlight state ────────────────────────────────────────── */
+
+/* When a flow is active, the page gets ``data-flow-active``.
+ * Non-path nodes dim; on-path nodes stay full opacity and gain an
+ * accent border. The numeric step badge appears next to the label. */
+
+.arch-page[data-flow-active] .arch-node {
+  opacity: 0.28;
+}
+
+.arch-page[data-flow-active] .arch-node[data-on-path="true"] {
+  opacity: 1;
+  border-color: var(--accent);
+}
+
+.arch-node[data-on-path="true"] .arch-node__step-index {
+  display: inline-block;
+  width: 1.25rem;
+  height: 1.25rem;
+  line-height: 1.25rem;
+  text-align: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--argus-on-accent);
+  font-size: 0.7rem;
+  font-weight: 600;
+  margin-right: 0.4rem;
+}
+
+/* ─── Right rail: flow list ───────────────────────────────────────── */
+
+.arch-flows__title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+  margin: 0 0 0.5rem;
+}
+
+.arch-flows__list {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.arch-flow {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  color: var(--fg);
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.arch-flow:hover {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.arch-flow[aria-pressed="true"] {
+  background: var(--surface);
+  border-color: var(--accent);
+}
+
+.arch-flow__label {
+  display: block;
+  font-weight: 500;
+}
+
+.arch-flow__summary {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--fg-muted);
+  margin-top: 0.2rem;
+  line-height: 1.35;
+}
+
+.arch-flow--overlay .arch-flow__label::before {
+  content: "▣ ";
+  color: var(--accent-dim);
+}
+
+.arch-flows__clear {
+  display: block;
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--fg-muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.35rem 0.65rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.arch-flows__clear:hover {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
+/* ─── Steps panel (below flows when a flow is active) ─────────────── */
+
+.arch-steps {
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.arch-steps__title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+  margin: 0 0 0.5rem;
+}
+
+.arch-steps__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.arch-step {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: var(--fg-muted);
+}
+
+.arch-step__number {
+  flex: 0 0 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--argus-on-accent);
+  font-weight: 600;
+  font-size: 0.7rem;
+  text-align: center;
+  line-height: 1.25rem;
+}
+
+.arch-step__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.arch-step__name {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+/* ─── Side panel (clicking a node opens this) ─────────────────────── */
+
+.arch-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: min(28rem, 90vw);
+  height: 100vh;
+  background: var(--surface);
+  border-left: 1px solid var(--accent);
+  box-shadow: -2px 0 12px rgba(0, 0, 0, 0.25);
+  padding: 1.25rem 1.5rem;
+  overflow-y: auto;
+  z-index: 100;
+  display: none;
+}
+
+.arch-panel[data-open="true"] {
+  display: block;
+}
+
+.arch-panel__close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.2rem 0.55rem;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.arch-panel__close:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.arch-panel__label {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+  color: var(--fg);
+}
+
+.arch-panel__kind {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+  margin-bottom: 0.75rem;
+}
+
+.arch-panel__purpose {
+  margin: 0.5rem 0 1rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--fg);
+}
+
+.arch-panel__section-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+  margin: 1rem 0 0.4rem;
+}
+
+.arch-panel__files {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-family: var(--mono, ui-monospace, "SF Mono", Menlo, monospace);
+  font-size: 0.78rem;
+}
+
+.arch-panel__files li {
+  padding: 0.15rem 0;
+  color: var(--fg-muted);
+}
+
+.arch-panel__adrs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+}
+
+.arch-panel__adr {
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-alt);
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.arch-panel__adr--missing {
+  border-color: var(--severity-medium, #d4a04a);
+  color: var(--severity-medium, #d4a04a);
+}
+
+.arch-panel__code {
+  display: block;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.6rem 0.75rem;
+  font-family: var(--mono, ui-monospace, "SF Mono", Menlo, monospace);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--fg);
+  white-space: pre;
+  overflow-x: auto;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.arch-panel__copy {
+  font-size: 0.72rem;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.2rem 0.55rem;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-family: inherit;
+  margin-left: 0.5rem;
+}
+
+.arch-panel__copy:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+/* ─── External tools side rail ────────────────────────────────────── */
+
+.arch-tools {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--border);
+}
+
+.arch-tools__title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+  margin: 0 0 0.5rem;
+}
+
+.arch-tools__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.arch-tool {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.55rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--fg-muted);
+  cursor: help;
+}
+
+.arch-tool--critical {
+  border-color: var(--accent-dim);
+  color: var(--fg);
+}
+
+/* ─── Configure mode (picker) ─────────────────────────────────────── */
+
+.arch-toolbar {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.arch-toolbar__title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
+  flex: 1 1 auto;
+}
+
+.arch-toolbar__btn {
+  font-size: 0.85rem;
+  padding: 0.4rem 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--fg);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.arch-toolbar__btn:hover {
+  border-color: var(--accent);
+}
+
+.arch-toolbar__btn[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--argus-on-accent);
+  border-color: var(--accent);
+}
+
+.arch-page[data-mode="configure"] .arch-node {
+  cursor: pointer;
+}
+
+.arch-page[data-mode="configure"] .arch-node[data-selected="true"] {
+  background: var(--surface-alt);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(219, 230, 76, 0.18);
+}
+
+/* Picker output panel that slides up when Configure mode is active. */
+.arch-picker {
+  margin-top: 1rem;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--surface);
+  padding: 0.75rem 1rem;
+}
+
+.arch-picker__tabs {
+  display: flex;
+  gap: 0.4rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.75rem;
+}
+
+.arch-picker__tab {
+  font-size: 0.82rem;
+  padding: 0.35rem 0.85rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.arch-picker__tab[aria-selected="true"] {
+  background: var(--surface-alt);
+  border-color: var(--border);
+  color: var(--fg);
+}
+
+.arch-picker__pane {
+  display: none;
+}
+
+.arch-picker__pane[data-active="true"] {
+  display: block;
+}
+
+.arch-picker__controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  font-size: 0.82rem;
+}
+
+.arch-picker__controls label {
+  color: var(--fg-muted);
+}
+
+.arch-picker__controls select {
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--fg);
+  padding: 0.2rem 0.45rem;
+  font-family: inherit;
+  font-size: 0.82rem;
+}
+
+.arch-picker__empty {
+  font-size: 0.85rem;
+  color: var(--fg-muted);
+  padding: 0.5rem 0;
+}

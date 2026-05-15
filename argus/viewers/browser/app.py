@@ -51,6 +51,37 @@ _STATIC_DIR = _SERVE_DIR / "static"
 _CSP = "default-src 'self'; style-src 'self'; script-src 'self'"
 
 
+def _find_repo_root_for_architecture(launch_root: Path) -> Path:
+    """Locate the project repo that owns ``.ai/architecture.yaml``.
+
+    The architecture-map view model is built from canonical ``.ai/``
+    files. Those live at the repo root, NOT next to the installed
+    argus package and NOT necessarily under the viewer's launch
+    directory (``argus view browser /path/to/scan-results`` is a
+    valid invocation that points the launch root at a results dir).
+
+    Resolution order:
+      1. ``launch_root`` (and its parents) if any contains ``.ai/architecture.yaml``
+      2. ``cwd`` and its parents — same probe
+      3. The argus package's grandparent — only useful for the
+         in-repo editable install (``pip install -e .``) case; the
+         shipped wheel doesn't include ``.ai/``.
+      4. Fall back to ``launch_root`` so ``load_inputs`` reads no
+         files and returns its empty-dict stubs — the page still
+         renders, just with nothing in the diagram.
+    """
+    for start in (launch_root, Path.cwd()):
+        for parent in (start, *start.parents):
+            if (parent / ".ai" / "architecture.yaml").exists():
+                return parent
+    # Editable-install / repo-checkout fallback: walk up from this file.
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / ".ai" / "architecture.yaml").exists():
+            return parent
+    return launch_root
+
+
 def _is_within(child: Path, root: Path) -> bool:
     """Return True if ``child`` is ``root`` itself or a descendant of it.
 
@@ -815,6 +846,43 @@ def create_app(root: str | None = None) -> FastAPI:
             log_path,
             media_type="text/plain",
             filename=log_path.name,
+        )
+
+    @app.get("/architecture", response_class=HTMLResponse)
+    async def architecture(request: Request) -> Response:
+        """SDK architecture map — the canonical interactive diagram.
+
+        Renders the same view model the docsite build inlines and
+        the MCP ``argus://architecture`` resource returns. The view
+        model is computed on first request and cached on
+        ``app.state`` — the inputs (``.ai/architecture.yaml``, the
+        SDK's registries) don't change for the lifetime of the
+        running process, so we don't rebuild on every render.
+        """
+        import json as _json
+        from argus.architecture_map import build_view_model_from_repo
+
+        view_model = getattr(app.state, "_architecture_vm", None)
+        if view_model is None:
+            # Repo root resolution: the viewer launches from a
+            # contributor's working directory (most likely the argus
+            # repo root). Fall back to app.state.root for the
+            # ``argus view browser <results-dir>`` shape.
+            repo_root = _find_repo_root_for_architecture(app.state.root)
+            view_model = build_view_model_from_repo(repo_root)
+            app.state._architecture_vm = view_model
+
+        return templates.TemplateResponse(
+            request=request,
+            name="architecture.html.j2",
+            context={
+                **_base_context(None),
+                "view_model": view_model,
+                "view_model_json": _json.dumps(view_model),
+                "static_prefix": "/static/",
+                "scan_param": None,
+                "scan_label": None,
+            },
         )
 
     @app.get("/picker", response_class=HTMLResponse)

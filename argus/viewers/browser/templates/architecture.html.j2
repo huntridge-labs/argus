@@ -1,0 +1,135 @@
+{# Architecture map page — extends the base layout and inlines the
+   view model produced by ``scripts/docsite/architecture.build_view_model``
+   so the page is self-contained and offline-capable.
+
+   Strict CSP: no inline event handlers, no inline styles. All
+   interactivity lives in ``architecture.js`` which reads the JSON
+   from the ``<script type="application/json" id="arch-data">`` block.
+   The optional standalone-build mode replaces ``/static/...`` hrefs
+   with relative paths so the page works under ``file://``. -#}
+{% extends "base.html.j2" %}
+
+{% block title %}Architecture & flows — Argus{% endblock %}
+
+{% block extra_head %}
+  <link rel="stylesheet" href="{{ static_prefix }}architecture.css" />
+{% endblock %}
+
+{% block content %}
+<div class="arch-page" data-mode="view">
+
+  <main class="arch-page__main">
+    <div class="arch-toolbar">
+      <h2 class="arch-toolbar__title">Argus SDK — architecture &amp; flows</h2>
+      <button type="button" id="arch-configure-toggle"
+              class="arch-toolbar__btn" aria-pressed="false">
+        Configure
+      </button>
+    </div>
+
+    <p class="arch-page__intro">
+      Every component that powers <code>argus scan</code>, the CLI
+      surfaces, the SDK core, every scanner / linter / reporter, the
+      artifacts they produce, and the consumers that read them.
+      Pick a flow on the right to highlight the path through the
+      columns; click any box for source paths, related ADRs, and a
+      copy-pasteable config snippet. Toggle <strong>Configure</strong>
+      to multi-select scanners and generate a working
+      <code>argus.yml</code>, CLI invocation, GitHub Actions workflow,
+      or MCP client config from the selection.
+    </p>
+
+    <div class="arch-legend">
+      {% for col in view_model.columns %}
+        <span class="arch-legend__item">
+          <span class="arch-legend__swatch arch-legend__swatch--{{ col.swatch }}"></span>
+          {{ col.label }}
+        </span>
+      {% endfor %}
+    </div>
+
+    <section id="arch-columns" class="arch-columns"
+             aria-label="Architecture columns">
+      {# Columns are populated by JS at boot from #arch-data.
+         An empty placeholder lives here so the layout doesn't
+         shift between initial render and hydration. -#}
+    </section>
+
+    <section id="arch-picker" class="arch-picker" hidden
+             aria-label="Configure mode output">
+      <div class="arch-picker__controls">
+        <label for="arch-sev">severity_threshold:</label>
+        <select id="arch-sev" data-control="severity">
+          <option value="none">none</option>
+          <option value="low">low</option>
+          <option value="medium">medium</option>
+          <option value="high">high</option>
+          <option value="critical">critical</option>
+        </select>
+        <label for="arch-fmt">format:</label>
+        <select id="arch-fmt" data-control="format">
+          <option value="terminal">terminal</option>
+          <option value="markdown">markdown</option>
+          <option value="sarif">sarif</option>
+          <option value="json">json</option>
+          <option value="github">github</option>
+          <option value="gitlab">gitlab</option>
+          <option value="junit">junit</option>
+        </select>
+      </div>
+      <div class="arch-picker__tabs">
+        <button type="button" class="arch-picker__tab"
+                data-tab="yaml" aria-selected="true">argus.yml</button>
+        <button type="button" class="arch-picker__tab"
+                data-tab="cli" aria-selected="false">CLI</button>
+        <button type="button" class="arch-picker__tab"
+                data-tab="github" aria-selected="false">GitHub Actions</button>
+        <button type="button" class="arch-picker__tab"
+                data-tab="mcp" aria-selected="false">MCP client</button>
+      </div>
+      <div class="arch-picker__pane" data-pane="yaml" data-active="true"></div>
+      <div class="arch-picker__pane" data-pane="cli"></div>
+      <div class="arch-picker__pane" data-pane="github"></div>
+      <div class="arch-picker__pane" data-pane="mcp"></div>
+    </section>
+
+    <aside class="arch-tools" aria-label="External tools">
+      <h3 class="arch-tools__title">External tools (scanner-side rail)</h3>
+      <ul id="arch-tools-list" class="arch-tools__list"></ul>
+    </aside>
+  </main>
+
+  <aside class="arch-page__sidebar" aria-label="Flows">
+    <h3 class="arch-flows__title">Flows</h3>
+    <p class="arch-flow__summary">
+      Pick a flow to highlight the path through the columns.
+    </p>
+    <ul id="arch-flows-list" class="arch-flows__list"></ul>
+    <button type="button" id="arch-flow-clear" class="arch-flows__clear">
+      Clear flow
+    </button>
+
+    <section id="arch-steps" class="arch-steps" hidden>
+      <h3 class="arch-steps__title">Steps</h3>
+      <ol id="arch-steps-list" class="arch-steps__list"></ol>
+    </section>
+  </aside>
+
+  <aside id="arch-panel" class="arch-panel" aria-label="Node details">
+    <button type="button" id="arch-panel-close" class="arch-panel__close">
+      Close
+    </button>
+    <h3 class="arch-panel__label"></h3>
+    <p class="arch-panel__kind"></p>
+    <div class="arch-panel__body"></div>
+  </aside>
+
+</div>
+
+{# The view-model is the single source of truth for everything the
+   JS renders. Inlining it as application/json keeps the page
+   self-contained — no fetch() call, no extra round-trip, works
+   under file://. -#}
+<script id="arch-data" type="application/json">{{ view_model_json|safe }}</script>
+<script src="{{ static_prefix }}architecture.js" defer></script>
+{% endblock %}
