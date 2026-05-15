@@ -117,6 +117,14 @@ has no location, etc.):
 - **Copy CVE to clipboard** — only shown for CVE-bearing findings
 - **Export current selection / view** — same path as the `e` key
 
+![Context menu modal showing every menu item for a finding with both a CVE and a file:line location](images/view-terminal/09-context-menu.svg)
+
+When `view.open_location: ask` (the default), clicking a `file:line`
+value pops a tiny "local or remote?" prompt so you can pick per click
+without setting a config preference up front:
+
+![Open-location prompt modal — local vs remote choice](images/view-terminal/10-open-location-prompt.svg)
+
 ### Configuration (`argus.yml` → `view:`)
 
 Defaults are tuned for a developer workstation with Git, a browser,

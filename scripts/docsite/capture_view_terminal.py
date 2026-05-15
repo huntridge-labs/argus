@@ -52,7 +52,14 @@ import tempfile
 import textwrap
 from pathlib import Path
 
-from argus.viewers.terminal.app import BrowseApp, DiffScreen
+from argus.core.config import ViewConfig
+from argus.core.models import Finding, Severity
+from argus.viewers.terminal.app import (
+    BrowseApp,
+    ContextMenuScreen,
+    DiffScreen,
+    OpenLocationPromptScreen,
+)
 from argus.viewers.terminal.loader import flatten_findings, load_summary
 
 
@@ -156,6 +163,57 @@ async def _capture_diff(  # pragma: no cover — integration-tested by running t
         print(f"  wrote {out.relative_to(REPO_ROOT)}")
 
 
+async def _capture_context_menu(  # pragma: no cover — integration-tested by running the script
+    filename: str, scan_a_dir: Path, *, settle: float = 0.2,
+) -> None:
+    """Push ContextMenuScreen with a synthesized finding that exercises
+    every menu item, then snapshot the result.
+
+    A real scan finding usually has *either* a CVE *or* a file:line
+    location, not both — so the context menu in production scans
+    shows a subset of items per row. For documentation we want all
+    menu items visible at once, so we construct a deliberately-rich
+    "demo" finding rather than picking one from the scan output.
+    """
+    demo_finding = Finding(
+        id="CVE-2026-12345",
+        severity=Severity.HIGH,
+        title="Demo finding for screenshot — every menu item visible",
+        description="Constructed for the docs context-menu screenshot.",
+        location="src/argus/cli.py:142",
+        cve="CVE-2026-12345",
+        scanner="bandit",
+    )
+
+    app = BrowseApp(results_dir=str(scan_a_dir))
+    async with app.run_test(headless=True, size=TERM_SIZE) as pilot:
+        await pilot.pause(settle)
+        app.sub_title = _DEMO_SUBTITLE
+        await pilot.pause(settle)
+        await app.push_screen(ContextMenuScreen(demo_finding, ViewConfig()))
+        await pilot.pause(settle)
+        out = IMAGES_DIR / filename
+        app.save_screenshot(str(out))
+        print(f"  wrote {out.relative_to(REPO_ROOT)}")
+
+
+async def _capture_open_location_prompt(  # pragma: no cover — integration-tested by running the script
+    filename: str, scan_a_dir: Path, *, settle: float = 0.2,
+) -> None:
+    """Push OpenLocationPromptScreen (the 'local or remote?' modal that
+    appears in ``view.open_location: ask`` mode) and snapshot it."""
+    app = BrowseApp(results_dir=str(scan_a_dir))
+    async with app.run_test(headless=True, size=TERM_SIZE) as pilot:
+        await pilot.pause(settle)
+        app.sub_title = _DEMO_SUBTITLE
+        await pilot.pause(settle)
+        await app.push_screen(OpenLocationPromptScreen("src/argus/cli.py:142"))
+        await pilot.pause(settle)
+        out = IMAGES_DIR / filename
+        app.save_screenshot(str(out))
+        print(f"  wrote {out.relative_to(REPO_ROOT)}")
+
+
 async def _capture_all(  # pragma: no cover — integration-tested by running the script
     scan_a_dir: Path, scan_b_dir: Path,
 ) -> None:
@@ -178,6 +236,14 @@ async def _capture_all(  # pragma: no cover — integration-tested by running th
 
     print("[scan-over-scan diff overlay]")
     await _capture_diff("08-diff-overlay.svg", scan_a_dir, scan_b_dir)
+
+    print("[context menu — every menu item visible]")
+    await _capture_context_menu("09-context-menu.svg", scan_a_dir)
+
+    print("[open-location prompt — ask mode modal]")
+    await _capture_open_location_prompt(
+        "10-open-location-prompt.svg", scan_a_dir,
+    )
 
 
 def main() -> None:  # pragma: no cover — integration-tested by running the script
