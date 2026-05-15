@@ -1288,11 +1288,18 @@ class BrowseApp(App):
             display_path = local.relative_to(repo_root)
         except ValueError:
             display_path = local
-        from rich.markup import escape
-        header = f"[dim]{escape(str(display_path))}:{line}[/dim]"
+        # NOTE: ``rich.markup.escape`` only escapes bracket sequences
+        # that pattern-match a tag (e.g. ``[dim]``). A bare ``[`` at
+        # end of line — common in Python source (``docker_cmd = [``)
+        # — slips through and breaks Textual's parser. We replace
+        # every ``[`` and ``]`` unconditionally so source content
+        # renders verbatim, then add our own markup tags around it.
+        def _escape(s: str) -> str:
+            return s.replace("[", r"\[").replace("]", r"\]")
+        header = f"[dim]{_escape(str(display_path))}:{line}[/dim]"
         rendered: list[str] = [header]
         for line_no, text, is_flagged in context:
-            safe_text = escape(text)
+            safe_text = _escape(text)
             if is_flagged:
                 # Bold yellow on the flagged line + a chevron marker
                 # so the row jumps out even in a monochrome terminal.
