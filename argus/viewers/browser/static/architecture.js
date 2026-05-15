@@ -477,7 +477,9 @@
       const action = name.startsWith('lint-')
         ? `linter-${name.slice('lint-'.length)}`
         : `scanner-${name}`;
-      steps.push(`      - uses: huntridge-labs/argus/.github/actions/${action}@${ref}`);
+      // ``${ref}`` is computed at runtime from data.version; the static
+      // ref shape would never resolve here, so release-it-ignore the line.
+      steps.push(`      - uses: huntridge-labs/argus/.github/actions/${action}@${ref}`);  // release-it-ignore
       if (state.severityThreshold && state.severityThreshold !== 'none') {
         steps.push('        with:');
         steps.push(`          fail_on_severity: ${state.severityThreshold}`);
