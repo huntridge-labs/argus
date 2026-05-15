@@ -84,9 +84,12 @@ updates:
     cooldown:
       default-days: 7
 
-  # Docker images (Argus custom Dockerfiles)
+  # Docker images (Argus custom Dockerfiles + devcontainer + test fixtures)
   - package-ecosystem: "docker"
-    directory: "/docker"
+    directories:
+      - "/docker"
+      - "/.devcontainer"
+      - "/tests/fixtures/test-apps/node-app"
     schedule:
       interval: "weekly"
       day: "monday"
