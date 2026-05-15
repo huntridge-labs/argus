@@ -136,6 +136,51 @@ class TestVerifyImageArgusOwned:
         assert ("install" in result.message.lower()
                 or "sigstore" in result.message.lower())
 
+    def test_digest_pinned_image_skips_cosign_and_returns_verified(self):
+        """Argus-owned images pinned to ``tag@sha256:...`` are trusted
+        via Docker's content-hash check at pull, same as third-party
+        digest-pinned images. cosign becomes optional / additional —
+        the engine doesn't fail when the binary is missing.
+        """
+        ran_cosign = False
+
+        def runner(cmd):
+            nonlocal ran_cosign
+            ran_cosign = True
+            return _ok()
+
+        result = verify_image(
+            "ghcr.io/huntridge-labs/argus/scanner-bandit:0.7.0"
+            "@sha256:bb5a8b56bd9a1c65a7d6830a3be9b9a2c463fd32d45b5177edadeb2aafe68fd1",
+            cosign_runner=runner,
+        )
+
+        assert result.status == VerifyStatus.VERIFIED_DIGEST_PIN
+        assert not result.is_fatal
+        # cosign was NOT invoked — digest pin alone is sufficient for
+        # argus-owned images now that CUSTOM_IMAGES are digest-pinned.
+        assert ran_cosign is False
+        # The message should hint at cosign as additional verification
+        # so users can opt into it explicitly.
+        assert "cosign" in result.message.lower()
+
+    def test_digest_pinned_image_passes_when_cosign_binary_missing(self):
+        """Regression: dev laptop without cosign should NOT fail on
+        argus-owned digest-pinned images. PR #161 missed this case;
+        every argus-owned scanner was unrunnable on a fresh checkout
+        until CUSTOM_IMAGES got digest pins."""
+        def runner(cmd):
+            raise FileNotFoundError(2, "No such file or directory: 'cosign'")
+
+        result = verify_image(
+            "ghcr.io/huntridge-labs/argus/scanner-bandit:0.7.0"
+            "@sha256:bb5a8b56bd9a1c65a7d6830a3be9b9a2c463fd32d45b5177edadeb2aafe68fd1",
+            cosign_runner=runner,
+        )
+
+        assert result.status == VerifyStatus.VERIFIED_DIGEST_PIN
+        assert not result.is_fatal
+
 
 class TestVerifyImageThirdParty:
     """Third-party images: digest pin = trust; tag-only = warn."""
