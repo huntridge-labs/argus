@@ -194,11 +194,7 @@ class TestExportMenuUI:
         client = TestClient(app)
         resp = client.get("/findings?min_severity=high&sort=id")
         # Download href carries the same filters + download=1.
-        # NOTE: ``&`` between query-string params is HTML-escaped to
-        # ``&amp;`` when emitted into an ``href`` attribute — that's
-        # the correct rendering per HTML spec, and the browser
-        # un-escapes it back to ``&`` when fetching the URL.
-        assert "format=csv&amp;min_severity=high" in resp.text
+        assert "format=csv&min_severity=high" in resp.text
         assert "sort=id" in resp.text
         assert "download=1" in resp.text
         # Copy button carries the same URL without download=1 so the

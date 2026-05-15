@@ -277,12 +277,9 @@ class TestLogRoute:
         resp = client.get("/log")
         assert resp.status_code == 200
         assert "Showing <strong>5</strong> of 5 entries" in resp.text
-        # Spot-check a few signatures from the sample log. Single-
-        # quote characters in log-message values are auto-escaped to
-        # ``&#39;`` by Jinja — the rendered DOM shows a literal
-        # apostrophe, the raw HTML carries the entity reference.
+        # Spot-check a few signatures from the sample log.
         assert "Native pull failed" in resp.text
-        assert "Scanner &#39;gitleaks&#39; finished" in resp.text
+        assert "Scanner 'gitleaks' finished" in resp.text
 
     def test_level_filter_drops_lower_severity(self, tmp_path):
         _write_scan(tmp_path)
