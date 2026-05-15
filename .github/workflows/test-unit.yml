@@ -63,6 +63,10 @@ jobs:
         if: matrix.python-version == '3.13'
         run: python -m scripts.ci.check_container_images
 
+      - name: Check .ai/ files are in sync with the SDK
+        if: matrix.python-version == '3.13'
+        run: python -m scripts.ci.check_architecture_sync
+
       - name: Check for dead fixtures
         if: always()
         run: |
