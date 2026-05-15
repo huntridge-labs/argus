@@ -803,6 +803,21 @@ class SearchInput(Input):
         self.action_back_to_table()
 
 
+_PLACEHOLDER_CHARS = set("—-@ \t")
+"""Characters that, on their own, signal "no data" in detail rows.
+
+``finding_detail_rows`` uses em-dash (``—``) for missing fields, and
+the Package row composes ``f"{pkg} @ {installed}"`` so an unset
+package becomes ``"— @ —"``. Detail-pane rendering treats any value
+made up of only these characters as a placeholder — no click target.
+"""
+
+
+def _looks_placeholder(value: str) -> bool:
+    """Return True when ``value`` is entirely placeholder characters."""
+    return bool(value) and all(ch in _PLACEHOLDER_CHARS for ch in value)
+
+
 class FindingDetail(Static):
     """Right pane — plain-text detail view for the selected finding.
 
@@ -854,8 +869,15 @@ class FindingDetail(Static):
 
     @staticmethod
     def _linkify_value(label: str, value: str) -> str:
-        """Wrap location / package values in click handlers when applicable."""
-        if not value or value == "—":
+        """Wrap location / package values in click handlers when applicable.
+
+        Skips placeholder values where the underlying data is missing
+        (``—``, ``— @ —``, etc.) so users don't get a clickable cell
+        that fails to parse. The Package row uses ``f"{pkg} @ {installed}"``
+        with em-dash defaults, so ``— @ —`` means "no package data" —
+        not a real ``name@version`` value.
+        """
+        if not value or _looks_placeholder(value):
             return value
         # Location row covers both file:line and package@version shapes.
         # Routing happens in ``BrowseApp.action_open_location``.
@@ -1032,17 +1054,17 @@ class BrowseApp(App):
             # saw rather than the contributor's local HEAD.
             self._scan_ref = self._scan_context.commit_sha
         table = self.query_one(DataTable)
-        # Hover-tooltips on the mouse contract. Set after construction
-        # because Textual 8.x's DataTable / Static constructors don't
-        # accept ``tooltip=`` directly — the attribute lives on Widget
-        # and is settable on a mounted instance.
+        # Tooltip on the findings table only — the previous detail-
+        # pane tooltip popped up whenever the cursor was anywhere in
+        # the right column, which was noisy. Discoverability of the
+        # underlined click targets stays in the help screen (``?``).
+        # Phrasing is right-click-first because that's the universal
+        # mouse path that works in every terminal we support; left-
+        # click on links is forwarded by Ghostty / WezTerm / Kitty
+        # but eaten by Terminal.app's text-selection layer.
         table.tooltip = (
-            "Click row to select · Click again or right-click for actions "
-            "· Click column header to sort"
-        )
-        self.query_one("#detail", FindingDetail).tooltip = (
-            "Click an underlined value (CVE / file:line / package) "
-            "to open it in your browser or editor"
+            "Right-click a row for open / copy actions · "
+            "Click a column header to sort"
         )
         # Column keys are kept so we can re-label the active sort column
         # with an arrow glyph whenever the sort cycles. The leading
@@ -1184,12 +1206,24 @@ class BrowseApp(App):
         ``event.button`` and resolve the underlying row via the
         DataTable's cursor coordinate (mouse hover-and-right-click
         first moves the cursor, then fires button-3).
+
+        Scoped to the findings-table region: right-click in the detail
+        pane / status bar / footer / search input is a no-op so the
+        context menu only appears when the user is targeting a finding.
         """
         if getattr(event, "button", 0) != 3:
             return
         try:
             table = self.query_one(DataTable)
         except Exception:  # widget not mounted yet
+            return
+        # Only fire when the click landed inside the table's region.
+        sx = getattr(event, "screen_x", None)
+        sy = getattr(event, "screen_y", None)
+        if sx is None or sy is None:
+            return
+        region = getattr(table, "region", None)
+        if region is None or not region.contains(sx, sy):
             return
         row = table.cursor_row
         if 0 <= row < len(self._visible):
