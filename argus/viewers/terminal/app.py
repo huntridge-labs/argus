@@ -121,7 +121,33 @@ _HELP_TEXT = """\
 """
 
 
-class HelpScreen(ModalScreen):
+class _BackgroundDismissMixin:
+    """Mixin that dismisses a modal when the user clicks its backdrop.
+
+    Textual's ``ModalScreen`` doesn't ship with click-outside-to-close
+    behavior — Esc / q / explicit close buttons are the keyboard
+    affordances, but mouse users expect the dim background area to
+    be a dismiss target. The mixin adds that single behavior.
+
+    Implementation: ``on_click`` fires for every click bubbling up to
+    the screen. ``event.widget is self`` is the way to distinguish a
+    click on the empty area (handled by the screen itself) from a
+    click inside the modal body (handled by whichever child widget
+    received it first). The body click is left untouched; the
+    background click dismisses with ``None`` so the screen's
+    callback (when one is wired) receives a falsy result and treats
+    it as a cancel.
+
+    Plain class, not a generic — mixed in before ``ModalScreen`` /
+    ``ModalScreen[T]`` so generic propagation stays clean.
+    """
+
+    def on_click(self, event) -> None:  # pragma: no cover — UI event
+        if event.widget is self:
+            self.dismiss(None)
+
+
+class HelpScreen(_BackgroundDismissMixin, ModalScreen):
     """Full-screen modal overlay with the keyboard-shortcut reference.
 
     Kept as curated sectioned text rather than a mechanical dump of
@@ -183,7 +209,7 @@ PickerScreen {
 """
 
 
-class DashboardScreen(ModalScreen):
+class DashboardScreen(_BackgroundDismissMixin, ModalScreen):
     """Executive-summary overlay — scan totals, per-product + per-scanner breakdowns.
 
     Intended for owners / managers / execs who want a quick answer to
@@ -289,7 +315,7 @@ class DashboardScreen(ModalScreen):
             yield Static("\n".join(lines))
 
 
-class ProductPickerScreen(ModalScreen[str | None]):
+class ProductPickerScreen(_BackgroundDismissMixin, ModalScreen[str | None]):
     """Modal list of discovered products (SBOM sources) for filtering.
 
     Returns the chosen product name when the user picks one, the
@@ -334,7 +360,7 @@ class ProductPickerScreen(ModalScreen[str | None]):
         self.dismiss(None)
 
 
-class ScannerPickerScreen(ModalScreen[str | None]):
+class ScannerPickerScreen(_BackgroundDismissMixin, ModalScreen[str | None]):
     """Same shape as ProductPickerScreen, but for the Scanner dimension."""
 
     BINDINGS = [
@@ -373,7 +399,7 @@ class ScannerPickerScreen(ModalScreen[str | None]):
         self.dismiss(None)
 
 
-class DiffPickerScreen(ModalScreen[str | None]):
+class DiffPickerScreen(_BackgroundDismissMixin, ModalScreen[str | None]):
     """Modal that asks the user to type / paste a comparison-scan path.
 
     The companion ``argus-results.json`` for the comparison can live
@@ -421,7 +447,7 @@ class DiffPickerScreen(ModalScreen[str | None]):
         self.dismiss(None)
 
 
-class DiffScreen(ModalScreen):
+class DiffScreen(_BackgroundDismissMixin, ModalScreen):
     """Scan-over-scan diff overlay — buckets findings by how they moved.
 
     Renders the four buckets returned by
@@ -568,7 +594,7 @@ ContextMenuScreen #hint { color: $text-muted; padding: 1 0 0 0; content-align: l
 """
 
 
-class ContextMenuScreen(ModalScreen[str | None]):
+class ContextMenuScreen(_BackgroundDismissMixin, ModalScreen[str | None]):
     """Right-click / row-click context menu for a finding.
 
     Lists the actions that target the selected row directly:
@@ -651,7 +677,7 @@ OpenLocationPromptScreen #hint { color: $text-muted; padding: 1 0 0 0; }
 """
 
 
-class OpenLocationPromptScreen(ModalScreen[str | None]):
+class OpenLocationPromptScreen(_BackgroundDismissMixin, ModalScreen[str | None]):
     """Tiny modal asking 'local or remote?' when view.open_location == 'ask'.
 
     Returns ``"local"``, ``"remote"``, or ``None`` (dismissed).
@@ -819,7 +845,11 @@ class FindingDetail(Static):
             return f.id or "—"
         upper = target.upper()
         if upper.startswith("CVE-") or upper.startswith("GHSA-"):
-            return f"[@click=action_open_advisory('{target}')]{f.id}[/]"
+            # ``app.`` prefix routes the markup-action call to the
+            # BrowseApp instance — Static widgets don't look up
+            # action_* methods on the App by default; the namespace
+            # is required.
+            return f"[@click=app.action_open_advisory('{target}')]{f.id}[/]"
         return f.id or "—"
 
     @staticmethod
@@ -832,7 +862,7 @@ class FindingDetail(Static):
         if label.lower() in ("location", "file", "path", "package"):
             # Escape single quotes for the action-argument literal.
             safe = value.replace("'", "\\'")
-            return f"[@click=action_open_location('{safe}')]{value}[/]"
+            return f"[@click=app.action_open_location('{safe}')]{value}[/]"
         return value
 
 
@@ -1054,22 +1084,25 @@ class BrowseApp(App):
         #   - product / scanner / query chips clear that one filter
         #   - the sort chip cycles sort modes
         # The keyboard bindings still work in parallel.
+        # ``app.`` prefix routes the click action to BrowseApp; Static
+        # widgets don't dispatch action_* methods locally and the
+        # markup needs the explicit namespace.
         parts: list[str] = []
         if self.view_state.min_severity:
             parts.append(
-                f"[@click=action_filter_all]≥ "
+                f"[@click=app.action_filter_all]≥ "
                 f"{self.view_state.min_severity.value}[/]"
             )
         else:
             parts.append("all severities")
         if self.view_state.product:
             parts.append(
-                f"[@click=action_clear_product]product="
+                f"[@click=app.action_clear_product]product="
                 f"{self.view_state.product}[/]"
             )
         if self.view_state.scanner:
             parts.append(
-                f"[@click=action_clear_scanner]scanner="
+                f"[@click=app.action_clear_scanner]scanner="
                 f"{self.view_state.scanner}[/]"
             )
         if self.view_state.query:
@@ -1077,10 +1110,10 @@ class BrowseApp(App):
             # user-typed query text.
             safe = self.view_state.query.replace("'", "\\'")
             parts.append(
-                f"[@click=action_clear_query]query='{safe}'[/]"
+                f"[@click=app.action_clear_query]query='{safe}'[/]"
             )
         sort = self.view_state.sort_key.replace("_", " ")
-        sort_chip = f"[@click=action_cycle_sort]{sort}[/]"
+        sort_chip = f"[@click=app.action_cycle_sort]{sort}[/]"
 
         selection_str = (
             f" · [b]{len(self._selected)}[/b] selected"
