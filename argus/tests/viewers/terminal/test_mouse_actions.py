@@ -323,3 +323,81 @@ class TestFindRepoRoot:
             assert (result / ".git").exists()
         # Otherwise we got None as expected — both outcomes are valid
         # depending on the runner's filesystem layout.
+
+
+class TestStripScanPrefix:
+    """``strip_scan_prefix`` maps absolute container/CI paths back to
+    repo-relative form using scan-time context."""
+
+    def _ctx(self, *, cwd="", repo_root="", commit_sha=""):
+        """Build a stand-in for ``argus.core.models.ScanContext`` so
+        the test doesn't depend on the real dataclass — keeps the
+        mouse_actions module decoupled from core."""
+        class _StubContext:
+            def __init__(self, cwd, repo_root, commit_sha):
+                self.cwd = cwd
+                self.repo_root = repo_root
+                self.commit_sha = commit_sha
+        return _StubContext(cwd, repo_root, commit_sha)
+
+    def test_strips_repo_root_prefix(self):
+        from argus.viewers.terminal.mouse_actions import strip_scan_prefix
+        ctx = self._ctx(
+            cwd="/workspace/argus",
+            repo_root="/workspace/argus",
+            commit_sha="abc",
+        )
+        result = strip_scan_prefix(
+            Path("/workspace/argus/preflight/issue_reporter.py"), ctx,
+        )
+        assert result == Path("preflight/issue_reporter.py")
+
+    def test_prefers_repo_root_over_cwd(self):
+        """When cwd is a subdir of repo_root, prefer repo_root so
+        the resulting path is anchored at the repo's top."""
+        from argus.viewers.terminal.mouse_actions import strip_scan_prefix
+        ctx = self._ctx(
+            cwd="/workspace/argus/src",
+            repo_root="/workspace/argus",
+        )
+        result = strip_scan_prefix(
+            Path("/workspace/argus/src/main.py"), ctx,
+        )
+        assert result == Path("src/main.py")
+
+    def test_falls_back_to_cwd_when_repo_root_missing(self):
+        from argus.viewers.terminal.mouse_actions import strip_scan_prefix
+        ctx = self._ctx(cwd="/workspace/argus")  # repo_root="" (non-git)
+        result = strip_scan_prefix(
+            Path("/workspace/argus/foo.py"), ctx,
+        )
+        assert result == Path("foo.py")
+
+    def test_relative_path_returned_unchanged(self):
+        from argus.viewers.terminal.mouse_actions import strip_scan_prefix
+        ctx = self._ctx(repo_root="/workspace/argus")
+        result = strip_scan_prefix(Path("src/foo.py"), ctx)
+        assert result == Path("src/foo.py")
+
+    def test_none_context_returns_unchanged(self):
+        """Older argus-results.json without scan_context — fall
+        through; let the viewer's existing best-effort handle it."""
+        from argus.viewers.terminal.mouse_actions import strip_scan_prefix
+        result = strip_scan_prefix(Path("/abs/path.py"), None)
+        assert result == Path("/abs/path.py")
+
+    def test_path_outside_prefix_returned_unchanged(self):
+        """Absolute path that doesn't share the recorded prefix
+        falls through — strip_scan_prefix doesn't invent mappings."""
+        from argus.viewers.terminal.mouse_actions import strip_scan_prefix
+        ctx = self._ctx(repo_root="/workspace/argus")
+        result = strip_scan_prefix(
+            Path("/usr/lib/python3.13/site-packages/foo.py"), ctx,
+        )
+        assert result == Path("/usr/lib/python3.13/site-packages/foo.py")
+
+    def test_empty_prefixes_returned_unchanged(self):
+        from argus.viewers.terminal.mouse_actions import strip_scan_prefix
+        ctx = self._ctx()  # everything empty
+        result = strip_scan_prefix(Path("/abs/path.py"), ctx)
+        assert result == Path("/abs/path.py")

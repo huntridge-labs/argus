@@ -2057,9 +2057,11 @@ def _merge_sbom_summaries(per_file_summaries, severity_threshold):
         )
         for name, findings in by_scanner.items()
     ]
+    from argus.core.models import ScanContext as _ScanContext
     return ScanSummary(
         results=merged_results,
         severity_threshold=severity_threshold,
+        scan_context=_ScanContext.capture(),
     )
 
 
@@ -2215,7 +2217,11 @@ def _cmd_container_scan(
         )
         for r in summary.results
     ]
-    canonical_summary = ScanSummary(results=canonical_results)
+    from argus.core.models import ScanContext as _ScanContext
+    canonical_summary = ScanSummary(
+        results=canonical_results,
+        scan_context=_ScanContext.capture(),
+    )
 
     # Always emit argus-results.json — same canonical-artifact
     # contract the source-scan flow established. ``argus view`` and

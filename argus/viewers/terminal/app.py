@@ -972,6 +972,14 @@ class BrowseApp(App):
         # lazily on first remote-open request.
         self._repo_root: Path | None = None
         self._scan_ref: str = "HEAD"
+        # Scan-time context (cwd + repo_root + commit_sha) read off
+        # the loaded ScanSummary in on_mount. Lets the click handlers
+        # strip absolute-path prefixes coming from container / CI scans
+        # and use the right commit SHA for git blob URLs. None when
+        # the scan didn't capture context (older results, or scans
+        # built outside the engine).
+        from argus.core.models import ScanContext as _SC
+        self._scan_context: _SC | None = None
 
     @staticmethod
     def _load_view_config() -> ViewConfig:
@@ -1014,6 +1022,15 @@ class BrowseApp(App):
             return
         self.sub_title = str(resolved)
         self.all_findings = flatten_findings(summary)
+        # Read scan-time context (cwd / repo_root / commit_sha) off the
+        # loaded summary. Older argus-results.json files predate the
+        # field — leave self._scan_context as None and the click
+        # handlers fall back to their previous best-effort behavior.
+        self._scan_context = getattr(summary, "scan_context", None)
+        if self._scan_context is not None and self._scan_context.commit_sha:
+            # Pin the remote-URL ref to the commit the scan actually
+            # saw rather than the contributor's local HEAD.
+            self._scan_ref = self._scan_context.commit_sha
         table = self.query_one(DataTable)
         # Hover-tooltips on the mouse contract. Set after construction
         # because Textual 8.x's DataTable / Static constructors don't
@@ -1755,12 +1772,26 @@ class BrowseApp(App):
 
             self.push_screen(OpenLocationPromptScreen(location), _on_pick)
 
+    def _repo_relative_path(self, path: Path) -> Path:
+        """Thin wrapper over ``mouse_actions.strip_scan_prefix``.
+
+        Kept as an instance method so the action handlers can call it
+        without threading ``scan_context`` through every call site.
+        The actual logic lives in mouse_actions so it can be unit-
+        tested without spinning up the Textual app.
+        """
+        return mouse_actions.strip_scan_prefix(path, self._scan_context)
+
     def action_open_local_file(self, location: str) -> None:  # pragma: no cover
         """Shell out to the user's editor at ``file:line``.
 
         Editor resolution lives in ``mouse_actions.open_file_local`` and
         honors (in order): ``view.editor`` config, ``$VISUAL``, ``$EDITOR``,
         VS Code's ``code -g``, ``xdg-open`` / ``open``.
+
+        Path resolution: strips the scan-time repo prefix (so paths
+        from container / CI scans become repo-relative), then maps
+        them onto the viewer's local repo root before opening.
         """
         parsed = mouse_actions.parse_file_line(location)
         if not parsed:
@@ -1770,12 +1801,17 @@ class BrowseApp(App):
             )
             return
         path, line = parsed
-        # Resolve relative paths against the repo root (or cwd).
-        if not path.is_absolute():
+        repo_relative = self._repo_relative_path(path)
+        # If we successfully made it repo-relative, resolve against the
+        # local checkout. Else keep whatever we had — absolute paths
+        # that don't match the scan prefix may still exist on the host.
+        if repo_relative != path or not path.is_absolute():
             repo_root = self._resolve_repo_root()
-            candidate = (repo_root or Path.cwd()) / path
+            candidate = (repo_root or Path.cwd()) / repo_relative
             if candidate.exists():
                 path = candidate
+            else:
+                path = repo_relative if repo_relative != path else path
         opened = mouse_actions.open_file_local(
             path, line=line, editor=self._view_config.editor or None,
         )
@@ -1783,14 +1819,27 @@ class BrowseApp(App):
             display = f"{path.name}" + (f":{line}" if line else "")
             self.notify(f"Opened {display}", severity="information", timeout=2)
         else:
-            self.notify(
-                f"Couldn't open {path} — no editor on PATH "
-                f"and no $EDITOR / $VISUAL set",
-                severity="error", timeout=6,
+            hint = (
+                f"Couldn't open {path}. "
+                f"File doesn't exist locally — scans run in a container "
+                f"or CI emit paths the host can't see directly. "
+                f"Try the Remote option, or set ``view.editor`` in argus.yml."
+                if not path.exists()
+                else f"Couldn't open {path} — no editor on PATH "
+                f"and no $EDITOR / $VISUAL set"
             )
+            self.notify(hint, severity="error", timeout=8)
 
     def action_open_remote_file(self, location: str) -> None:  # pragma: no cover
-        """Open ``file:line`` on the git origin remote at the scan's SHA."""
+        """Open ``file:line`` on the git origin remote at the scan's SHA.
+
+        Uses the scan-time commit SHA (when the scan captured one) so
+        the link points at the code the scan actually saw, not whatever
+        the contributor's HEAD happens to be. Strips the scan-time
+        cwd / repo_root prefix off absolute paths so the URL points
+        at the right file in the repo (not a non-existent
+        ``/workspace/...`` subpath).
+        """
         parsed = mouse_actions.parse_file_line(location)
         if not parsed:
             self.notify(
@@ -1798,7 +1847,19 @@ class BrowseApp(App):
                 severity="warning", timeout=3,
             )
             return
-        rel_path, line = parsed
+        path, line = parsed
+        rel_path = self._repo_relative_path(path)
+        if rel_path.is_absolute():
+            # Couldn't normalize to repo-relative — likely a scan
+            # without ``scan_context`` and an absolute path. Best-effort:
+            # leave it alone and let git_blob_url's lstrip handle the
+            # leading slash.
+            self.notify(
+                "Absolute path with no scan context — remote URL may "
+                "point at the wrong file. Re-run the scan with a "
+                "current argus build to capture scan_context.",
+                severity="warning", timeout=6,
+            )
         repo_root = self._resolve_repo_root()
         if not repo_root:
             self.notify(

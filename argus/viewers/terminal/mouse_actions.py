@@ -281,3 +281,42 @@ def find_repo_root(start: Path) -> Path | None:
         if (parent / ".git").exists():
             return parent
     return None
+
+
+def strip_scan_prefix(path: Path, scan_context) -> Path:
+    """Strip the scan-time cwd / repo_root prefix off an absolute path.
+
+    Scans run inside containers / CI emit paths like
+    ``/workspace/argus/preflight/issue_reporter.py``; the
+    ``/workspace/argus/`` prefix is the scan-time mount point, which
+    on the viewer's host is meaningless. ``scan_context.repo_root`` /
+    ``scan_context.cwd`` (captured by the engine at scan time) tells
+    us what to strip. Falls through to the original path when:
+
+      - the path is already relative
+      - scan_context is None (older results that predate the field)
+      - neither recorded prefix matches the path
+
+    Backwards-compatible with results files that predate the
+    scan_context field — old payloads return the original path
+    unchanged so the viewer's previous best-effort heuristics still
+    apply. ``scan_context`` is typed loosely to avoid a runtime
+    import from mouse_actions into argus.core.models; callers pass a
+    ``ScanContext`` instance or ``None``.
+    """
+    if not path.is_absolute() or scan_context is None:
+        return path
+    candidates: list[str] = []
+    repo_root = getattr(scan_context, "repo_root", "")
+    cwd = getattr(scan_context, "cwd", "")
+    if repo_root:
+        candidates.append(repo_root)
+    if cwd and cwd != repo_root:
+        candidates.append(cwd)
+    for prefix_str in candidates:
+        prefix = Path(prefix_str)
+        try:
+            return path.relative_to(prefix)
+        except ValueError:
+            continue
+    return path

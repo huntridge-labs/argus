@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 from .config import ArgusConfig
-from .models import ScanResult, ScanSummary
+from .models import ScanContext, ScanResult, ScanSummary
 from .scanner import Scanner
 
 logger = logging.getLogger("argus")
@@ -175,6 +175,7 @@ class ArgusEngine:
             return ScanSummary(
                 results=[],
                 severity_threshold=self.config.reporting.severity_threshold,
+                scan_context=ScanContext.capture(),
             )
 
         # Pre-warm container images in the background while the engine
@@ -211,6 +212,7 @@ class ArgusEngine:
         return ScanSummary(
             results=results,
             severity_threshold=self.config.reporting.severity_threshold,
+            scan_context=ScanContext.capture(),
         )
 
     def _prepare_jobs(
