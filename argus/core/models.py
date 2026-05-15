@@ -184,12 +184,118 @@ class ScanResult:
         )
 
 
+@dataclass(frozen=True)
+class ScanContext:
+    """Where + when a scan was actually executed.
+
+    Captured at scan-construction time and serialized into
+    ``argus-results.json`` so downstream consumers (especially the
+    viewers and the MCP layer) can map scanner-emitted paths back to
+    repo-relative paths and construct accurate remote URLs.
+
+    The three fields:
+
+    cwd
+        Absolute path of the directory the scan was launched from.
+        On a developer laptop this is the project root; in a
+        container CI job it's typically a mount point like
+        ``/workspace/argus``. The viewer subtracts this prefix
+        from absolute file:line locations before treating them as
+        repo-relative.
+
+    repo_root
+        Absolute path returned by ``git rev-parse --show-toplevel``
+        if the cwd is inside a git working tree, else empty.
+        Usually identical to ``cwd``; differs when the scan was
+        launched from a subdir (e.g. ``argus scan`` invoked from
+        ``src/`` rather than the repo root). The viewer prefers
+        ``repo_root`` over ``cwd`` for prefix-stripping when both
+        are set.
+
+    commit_sha
+        Output of ``git rev-parse HEAD`` at scan time. Used by the
+        viewer to construct remote blob URLs that point at the
+        commit the scan actually saw — not whatever HEAD happens
+        to be when the viewer runs. Empty when the cwd isn't a git
+        working tree.
+
+    All three fields are best-effort: any subprocess that fails
+    leaves the field empty rather than raising. The capture path
+    is wrapped in a try/except so a non-git cwd, an air-gapped
+    runner, or a missing ``git`` binary never fails the scan.
+    """
+
+    cwd: str = ""
+    repo_root: str = ""
+    commit_sha: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "cwd": self.cwd,
+            "repo_root": self.repo_root,
+            "commit_sha": self.commit_sha,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict | None) -> "ScanContext":
+        if not isinstance(data, dict):
+            return cls()
+        return cls(
+            cwd=str(data.get("cwd", "")),
+            repo_root=str(data.get("repo_root", "")),
+            commit_sha=str(data.get("commit_sha", "")),
+        )
+
+    @classmethod
+    def capture(cls, cwd: str | None = None) -> "ScanContext":
+        """Capture scan context from the given cwd (defaults to os.getcwd).
+
+        Best-effort: errors during git introspection leave the
+        corresponding field empty. Never raises.
+        """
+        import os
+        import shutil
+        import subprocess
+
+        cwd_str = str(cwd) if cwd else os.getcwd()
+        repo_root = ""
+        commit_sha = ""
+
+        if shutil.which("git"):
+            try:
+                result = subprocess.run(
+                    ["git", "-C", cwd_str, "rev-parse", "--show-toplevel"],
+                    capture_output=True, text=True, check=False, timeout=5,
+                )
+                if result.returncode == 0:
+                    repo_root = result.stdout.strip()
+            except (OSError, subprocess.SubprocessError):
+                pass
+            try:
+                result = subprocess.run(
+                    ["git", "-C", cwd_str, "rev-parse", "HEAD"],
+                    capture_output=True, text=True, check=False, timeout=5,
+                )
+                if result.returncode == 0:
+                    commit_sha = result.stdout.strip()
+            except (OSError, subprocess.SubprocessError):
+                pass
+
+        return cls(cwd=cwd_str, repo_root=repo_root, commit_sha=commit_sha)
+
+
 @dataclass
 class ScanSummary:
     """Aggregated results across multiple scanner runs."""
 
     results: list[ScanResult] = field(default_factory=list)
     severity_threshold: Optional[Severity] = None
+    # Scan-time context — where the scan ran + what commit it saw.
+    # Populated by the engine at ScanSummary construction; None when
+    # a ScanSummary is built outside the engine (e.g. tests, the diff
+    # viewer reading two files into memory) so the viewer can fall
+    # back to its existing heuristic resolution.
+    scan_context: Optional[ScanContext] = None
 
     @property
     def critical_count(self) -> int:
@@ -228,7 +334,7 @@ class ScanSummary:
 
     def to_dict(self) -> dict:
         """Serialize to a plain dictionary."""
-        return {
+        out: dict = {
             "results": [r.to_dict() for r in self.results],
             "severity_threshold": (
                 self.severity_threshold.value
@@ -243,6 +349,9 @@ class ScanSummary:
             "total_count": self.total_count,
             "passed": self.passed,
         }
+        if self.scan_context is not None:
+            out["scan_context"] = self.scan_context.to_dict()
+        return out
 
     @classmethod
     def from_dict(cls, data: dict) -> "ScanSummary":
@@ -252,4 +361,11 @@ class ScanSummary:
         ]
         threshold_str = data.get("severity_threshold")
         threshold = Severity.from_string(threshold_str) if threshold_str else None
-        return cls(results=results, severity_threshold=threshold)
+        scan_context = None
+        if "scan_context" in data:
+            scan_context = ScanContext.from_dict(data.get("scan_context"))
+        return cls(
+            results=results,
+            severity_threshold=threshold,
+            scan_context=scan_context,
+        )

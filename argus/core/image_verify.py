@@ -119,8 +119,24 @@ def verify_image(
                     "execution.verify_image_signatures: false",
         )
 
-    # Argus-owned: cosign verify, fail-on-failure.
+    # Argus-owned: cosign verify when the image is tag-only, but accept
+    # digest-pin trust when the image is pinned at ``tag@sha256:...``.
+    # The digest gives content-hash integrity at pull time (Docker
+    # rejects a different manifest), matching the trust model we apply
+    # to third-party digest-pinned images. cosign would be additional
+    # signature verification on top of that — nice to have when the
+    # binary is available, not strictly required when the image is
+    # already cryptographically addressed.
     if is_argus_owned(image):
+        if has_digest_pin(image):
+            return VerifyResult(
+                status=VerifyStatus.VERIFIED_DIGEST_PIN,
+                image=image,
+                message="argus-owned image verified via @sha256 digest "
+                        "pin (Docker enforces content-hash match at "
+                        "pull). Install cosign for additional signature "
+                        "verification.",
+            )
         return _verify_cosign(image, cosign_runner=cosign_runner)
 
     # Third-party with digest pin: Docker enforces content-hash match

@@ -73,6 +73,37 @@ class ReportingConfig:
 
 
 @dataclass
+class ViewConfig:
+    """Configuration for the post-scan triage interfaces.
+
+    ``argus view terminal`` (Textual TUI) and ``argus view browser``
+    (FastAPI web UI) both consume these knobs. Defaults aim for the
+    least-friction UX for a developer running on a workstation with
+    Git, a browser, and an editor available.
+
+    cve_source: where clicked CVE IDs open
+      - nvd (default): https://nvd.nist.gov/vuln/detail/<CVE-ID>
+      - cve_org:       https://www.cve.org/CVERecord?id=<CVE-ID>
+      - github:        github.com/advisories?query=<CVE-ID>
+      - mitre:         legacy MITRE record page
+
+    open_location: how clicked file:line cells resolve
+      - ask (default): tiny modal lets the user pick per click
+      - local:         shell out to $VISUAL / $EDITOR / VS Code (-g)
+      - remote:        open the file at the scan's commit SHA on the
+                       repo's origin remote (GitHub / GitLab blob URL)
+
+    editor: explicit editor command (e.g. "code", "code -w", "nvim").
+            When empty, falls through to $VISUAL → $EDITOR → VS Code
+            on PATH → xdg-open / open.
+    """
+
+    cve_source: str = "nvd"
+    open_location: str = "ask"
+    editor: str = ""
+
+
+@dataclass
 class ArgusConfig:
     """Top-level Argus configuration."""
 
@@ -80,6 +111,7 @@ class ArgusConfig:
     scanners: dict[str, ScannerConfig] = field(default_factory=dict)
     reporting: ReportingConfig = field(default_factory=ReportingConfig)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
+    view: ViewConfig = field(default_factory=ViewConfig)
 
     @classmethod
     def _auto_detect_config(cls) -> "ArgusConfig":
@@ -170,12 +202,14 @@ class ArgusConfig:
 
         reporting = _parse_reporting_config(data.get("reporting", {}))
         execution = _parse_execution_config(data.get("execution", {}))
+        view = _parse_view_config(data.get("view", {}))
 
         return cls(
             version=version,
             scanners=scanners,
             reporting=reporting,
             execution=execution,
+            view=view,
         )
 
     def get_scanner_config(self, scanner_name: str) -> ScannerConfig:
@@ -250,4 +284,16 @@ def _parse_execution_config(raw: dict | None) -> ExecutionConfig:
         prewarm_images=bool(raw.get("prewarm_images", True)),
         prewarm_workers=int(raw.get("prewarm_workers", 4)),
         verify_image_signatures=bool(raw.get("verify_image_signatures", True)),
+    )
+
+
+def _parse_view_config(raw: dict | None) -> ViewConfig:
+    """Build a ViewConfig from a raw dict."""
+    if not isinstance(raw, dict):
+        return ViewConfig()
+
+    return ViewConfig(
+        cve_source=str(raw.get("cve_source", "nvd")).strip().lower() or "nvd",
+        open_location=str(raw.get("open_location", "ask")).strip().lower() or "ask",
+        editor=str(raw.get("editor", "")).strip(),
     )
