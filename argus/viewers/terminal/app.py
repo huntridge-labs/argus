@@ -1183,8 +1183,17 @@ class BrowseApp(App):
     # ------------------------------------------------------------------
 
     def _refresh_list(self) -> None:
-        """Rebuild the DataTable + status bar from the current view state."""
-        table = self.query_one(DataTable)
+        """Rebuild the DataTable + status bar from the current view state.
+
+        Defensive: if the DataTable is missing from the screen (race
+        with screen recompose, mid-shutdown, etc.) we bail rather
+        than crash. Observed in practice when typing into the search
+        input during a screen transition.
+        """
+        try:
+            table = self.query_one(DataTable)
+        except Exception:
+            return
         table.clear()
         self._visible = sorted(
             (f for f in self.all_findings if self.view_state.matches(f)),
@@ -1655,8 +1664,21 @@ class BrowseApp(App):
 
         Column 0 is the multi-select checkbox column — never a sort
         target — so the data-column offsets all start at 1.
+
+        Textual stores ``Column.label`` as a ``rich.text.Text`` (see
+        ``DataTable.add_column`` — it does ``Text.from_markup(label)``
+        on the way in). Assigning a raw ``str`` here would leave the
+        column in a mixed state and cause the next render to throw
+        in the DataTable internals — observed in the wild as the
+        list pane going entirely black after a header-click sort.
+        Round-trip through ``Text.from_markup`` so the type matches
+        what Textual handed back at ``add_columns`` time.
         """
-        table = self.query_one(DataTable)
+        from rich.text import Text
+        try:
+            table = self.query_one(DataTable)
+        except Exception:
+            return
         base_labels = [" ", "Sev", "ID", "Package@Version", "Scanner", "Location"]
         # When running under stubbed textual in tests, columns may be
         # an empty mapping or missing; bail silently so the test path
@@ -1681,7 +1703,7 @@ class BrowseApp(App):
             label = base_labels[idx]
             if idx == arrow_col:
                 label += arrow_glyph
-            col.label = label
+            col.label = Text.from_markup(label)
 
     def action_cursor_down(self) -> None:
         self.query_one(DataTable).action_cursor_down()
