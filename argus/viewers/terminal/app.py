@@ -731,6 +731,18 @@ class OpenLocationPromptScreen(_BackgroundDismissMixin, ModalScreen[str | None])
         self.dismiss(event.option.id or None)
 
 
+_SPAN_MENU_CSS = """
+SpanContextMenuScreen { align: center middle; }
+SpanContextMenuScreen > Vertical {
+    width: 70; height: auto; padding: 1 2;
+    border: round $accent; background: $surface;
+}
+SpanContextMenuScreen #menu-title { content-align: left middle; text-style: bold; padding: 0 0 1 0; }
+SpanContextMenuScreen OptionList { height: auto; max-height: 10; }
+SpanContextMenuScreen #hint { color: $text-muted; padding: 1 0 0 0; content-align: left middle; }
+"""
+
+
 class SpanContextMenuScreen(_BackgroundDismissMixin, ModalScreen[str | None]):
     """Narrow right-click menu for a single clickable span.
 
@@ -744,7 +756,7 @@ class SpanContextMenuScreen(_BackgroundDismissMixin, ModalScreen[str | None]):
     dispatches on the action key when the modal dismisses.
     """
 
-    CSS = _MENU_CSS
+    CSS = _SPAN_MENU_CSS
     BINDINGS = [
         Binding("escape", "dismiss(None)", "Cancel", show=True),
         Binding("q", "dismiss(None)", "Quit"),
@@ -2054,9 +2066,13 @@ class BrowseApp(App):
         honors (in order): ``view.editor`` config, ``$VISUAL``, ``$EDITOR``,
         VS Code's ``code -g``, ``xdg-open`` / ``open``.
 
-        Path resolution: strips the scan-time repo prefix (so paths
-        from container / CI scans become repo-relative), then maps
-        them onto the viewer's local repo root before opening.
+        Path resolution tries (in order):
+          1. ``scan_context``-driven prefix strip (most accurate)
+          2. Known CI / container prefix heuristics for older scans
+             that pre-date the ``scan_context`` field
+          3. The original path as last resort
+
+        First candidate whose ``<local_repo_root>/<rel>`` exists wins.
         """
         parsed = mouse_actions.parse_file_line(location)
         if not parsed:
@@ -2066,44 +2082,83 @@ class BrowseApp(App):
             )
             return
         path, line = parsed
-        repo_relative = self._repo_relative_path(path)
-        # If we successfully made it repo-relative, resolve against the
-        # local checkout. Else keep whatever we had — absolute paths
-        # that don't match the scan prefix may still exist on the host.
-        if repo_relative != path or not path.is_absolute():
-            repo_root = self._resolve_repo_root()
-            candidate = (repo_root or Path.cwd()) / repo_relative
-            if candidate.exists():
-                path = candidate
-            else:
-                path = repo_relative if repo_relative != path else path
+
+        repo_root = self._resolve_repo_root() or Path.cwd()
+        resolved = self._resolve_local_path(path, repo_root)
+        if resolved is None:
+            # No candidate exists on the local checkout. Surface the
+            # candidates we tried so the user can spot the issue
+            # (wrong scan host, missing local clone, etc.).
+            candidates = mouse_actions.candidate_relative_paths(
+                path, self._scan_context,
+            )
+            tried = " / ".join(str(c) for c in candidates[:3])
+            self.notify(
+                f"File not found locally. Tried: {tried}. "
+                f"Scan ran in a container or CI — open Remote instead, "
+                f"or re-scan locally to capture matching paths.",
+                severity="error", timeout=8,
+            )
+            return
+
         opened = mouse_actions.open_file_local(
-            path, line=line, editor=self._view_config.editor or None,
+            resolved, line=line, editor=self._view_config.editor or None,
         )
         if opened:
-            display = f"{path.name}" + (f":{line}" if line else "")
+            display = f"{resolved.name}" + (f":{line}" if line else "")
             self.notify(f"Opened {display}", severity="information", timeout=2)
         else:
-            hint = (
-                f"Couldn't open {path}. "
-                f"File doesn't exist locally — scans run in a container "
-                f"or CI emit paths the host can't see directly. "
-                f"Try the Remote option, or set ``view.editor`` in argus.yml."
-                if not path.exists()
-                else f"Couldn't open {path} — no editor on PATH "
-                f"and no $EDITOR / $VISUAL set"
+            self.notify(
+                f"Couldn't launch editor for {resolved}. "
+                f"Set ``view.editor`` in argus.yml or export $EDITOR.",
+                severity="error", timeout=6,
             )
-            self.notify(hint, severity="error", timeout=8)
+
+    def _resolve_local_path(
+        self, path: Path, repo_root: Path,
+    ) -> Path | None:
+        """Pick the first candidate-relative-path that exists locally.
+
+        Returns the absolute local path, or ``None`` when no candidate
+        resolves to an existing file. Shared by the local-open and
+        remote-open actions so they agree on which repo-relative
+        interpretation of a scan-time path to use.
+        """
+        for rel in mouse_actions.candidate_relative_paths(
+            path, self._scan_context,
+        ):
+            if rel.is_absolute():
+                if rel.exists():
+                    return rel
+                continue
+            candidate = repo_root / rel
+            if candidate.exists():
+                return candidate
+        return None
 
     def action_open_remote_file(self, location: str) -> None:  # pragma: no cover
         """Open ``file:line`` on the git origin remote at the scan's SHA.
 
-        Uses the scan-time commit SHA (when the scan captured one) so
-        the link points at the code the scan actually saw, not whatever
-        the contributor's HEAD happens to be. Strips the scan-time
-        cwd / repo_root prefix off absolute paths so the URL points
-        at the right file in the repo (not a non-existent
-        ``/workspace/...`` subpath).
+        Path resolution picks the first repo-relative candidate that
+        exists on the local checkout (so heuristic prefix stripping
+        for old scans still produces a working URL). When no
+        candidate exists locally, falls back to the most-specific
+        heuristic strip — at least the URL has a chance of resolving
+        if the file simply wasn't pulled to this clone.
+
+        Before opening, runs two lightweight checks so dead links
+        produce a warning instead of a 404 in the user's browser:
+
+          1. ``git status --porcelain`` on the local file — warn if
+             modified or untracked (the URL points at scan-time bytes
+             which won't match local).
+          2. HTTP HEAD on the constructed URL — warn if non-2xx, with
+             the URL in the notification so the user can copy and
+             inspect.
+
+        Uses the scan-time commit SHA (when the scan captured one)
+        so the link points at the code the scan actually saw, not
+        whatever the contributor's HEAD happens to be.
         """
         parsed = mouse_actions.parse_file_line(location)
         if not parsed:
@@ -2113,18 +2168,7 @@ class BrowseApp(App):
             )
             return
         path, line = parsed
-        rel_path = self._repo_relative_path(path)
-        if rel_path.is_absolute():
-            # Couldn't normalize to repo-relative — likely a scan
-            # without ``scan_context`` and an absolute path. Best-effort:
-            # leave it alone and let git_blob_url's lstrip handle the
-            # leading slash.
-            self.notify(
-                "Absolute path with no scan context — remote URL may "
-                "point at the wrong file. Re-run the scan with a "
-                "current argus build to capture scan_context.",
-                severity="warning", timeout=6,
-            )
+
         repo_root = self._resolve_repo_root()
         if not repo_root:
             self.notify(
@@ -2132,6 +2176,17 @@ class BrowseApp(App):
                 severity="warning", timeout=4,
             )
             return
+
+        rel_path = self._pick_remote_rel_path(path, repo_root)
+        if rel_path is None or rel_path.is_absolute():
+            self.notify(
+                "Couldn't normalize the scan-time path to repo-relative. "
+                "Re-run the scan with a current argus build so "
+                "scan_context is captured.",
+                severity="warning", timeout=6,
+            )
+            return
+
         url = mouse_actions.git_blob_url(
             repo_root, rel_path, line, self._scan_ref,
         )
@@ -2142,6 +2197,42 @@ class BrowseApp(App):
                 severity="warning", timeout=4,
             )
             return
+
+        # Dirty-state check: if the local file diverges from the
+        # scan-time bytes, the URL still points at what the scan saw
+        # but the user's local view is different. Warn but don't block.
+        warnings: list[str] = []
+        status = mouse_actions.git_file_status(repo_root, rel_path)
+        if status == "modified":
+            warnings.append(
+                f"Local {rel_path} has uncommitted changes — "
+                "remote view won't match.",
+            )
+        elif status == "untracked":
+            warnings.append(
+                f"Local {rel_path} is untracked — "
+                "remote view may not exist on the branch.",
+            )
+
+        # URL preflight: HEAD the URL to catch 404s before launching
+        # the browser. Short timeout so we don't freeze the UI when
+        # the network is slow.
+        ok, status_msg = mouse_actions.verify_remote_url(url, timeout=2.0)
+        if not ok:
+            joined = " ".join(warnings) + " " if warnings else ""
+            self.notify(
+                f"Remote URL returned {status_msg}.\n{url}\n"
+                f"{joined}File / commit may not be on remote yet — "
+                f"push your branch first, or copy the URL to inspect.",
+                severity="warning", timeout=10,
+            )
+            return
+
+        if warnings:
+            # Surface the dirty-state warning before opening so the
+            # user knows what they're looking at.
+            self.notify(" ".join(warnings), severity="warning", timeout=5)
+
         if mouse_actions.open_in_browser(url):
             self.notify(f"Opened {url}", severity="information", timeout=2)
         else:
@@ -2149,6 +2240,31 @@ class BrowseApp(App):
                 f"Couldn't open browser for {url}",
                 severity="error", timeout=5,
             )
+
+    def _pick_remote_rel_path(
+        self, path: Path, repo_root: Path,
+    ) -> Path | None:
+        """Choose the best repo-relative path for a remote git URL.
+
+        Strategy:
+          1. If any candidate exists on the local checkout, use that
+             (high-confidence — local proves the path is right).
+          2. Else fall back to the first non-absolute candidate.
+             Better to ship a URL that might resolve than no URL.
+          3. If the path is already relative, just return it.
+        """
+        candidates = mouse_actions.candidate_relative_paths(
+            path, self._scan_context,
+        )
+        for rel in candidates:
+            if rel.is_absolute():
+                continue
+            if (repo_root / rel).exists():
+                return rel
+        for rel in candidates:
+            if not rel.is_absolute():
+                return rel
+        return None
 
     def action_open_package(self, location: str) -> None:  # pragma: no cover
         """Open the registry page (PyPI / npm) for a ``name@version`` finding."""

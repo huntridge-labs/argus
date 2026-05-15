@@ -283,6 +283,167 @@ def find_repo_root(start: Path) -> Path | None:
     return None
 
 
+# Known container / CI mount points seen in the wild. When a scan
+# captures no ``scan_context`` (older results, or scans built outside
+# the engine), we fall back to stripping one of these from the front
+# of any absolute path the scanner emitted. Order matters: more-
+# specific prefixes (the GitHub Actions checkout default) come before
+# generic Docker conventions so the right strip wins on a tie.
+_HEURISTIC_PREFIXES: tuple[str, ...] = (
+    "/github/workspace/",
+    "/workspace/",
+    "/builds/",
+    "/code/",
+    "/repo/",
+    "/src/",
+    "/app/",
+)
+
+# Parametric heuristics that don't fit a fixed-string strip. The
+# ``rel`` named group MUST capture the repo-relative remainder so the
+# caller can resolve it against the local checkout.
+_HEURISTIC_PATTERNS: tuple[re.Pattern, ...] = (
+    # GitHub Actions full path:  /home/runner/work/<repo>/<repo>/<rel>
+    re.compile(r"^/home/runner/work/[^/]+/[^/]+/(?P<rel>.*)$"),
+)
+
+
+def candidate_relative_paths(path: Path, scan_context) -> list[Path]:
+    """Yield plausible repo-relative interpretations of ``path``.
+
+    Order:
+      1. The ``scan_context``-driven strip (most accurate when the
+         engine recorded the scan-time cwd / repo_root).
+      2. Each ``_HEURISTIC_PREFIXES`` strip that matches.
+      3. Each ``_HEURISTIC_PATTERNS`` match.
+      4. The original path as last-resort fallback.
+
+    Callers pick the first candidate whose ``<local_repo_root>/<rel>``
+    exists on disk. For paths that are already relative, the only
+    candidate is the path itself — the function still returns a list
+    so callers can iterate uniformly.
+
+    De-duped while preserving order so the same candidate doesn't
+    appear twice when scan_context and heuristics produce the same
+    relative path.
+    """
+    if not path.is_absolute():
+        return [path]
+    seen: set[str] = set()
+    candidates: list[Path] = []
+
+    def _add(p: Path) -> None:
+        # Dedup on string form because Path objects compare by parts;
+        # this keeps the order stable across runs (which matters for
+        # tests) and avoids the "two equal Paths" trap on edge cases.
+        key = p.as_posix()
+        if key in seen:
+            return
+        seen.add(key)
+        candidates.append(p)
+
+    # 1. scan_context strip
+    stripped = strip_scan_prefix(path, scan_context)
+    if stripped != path and not stripped.is_absolute():
+        _add(stripped)
+
+    # 2. Fixed-prefix heuristics
+    str_path = path.as_posix()
+    for prefix in _HEURISTIC_PREFIXES:
+        if str_path.startswith(prefix):
+            remainder = str_path[len(prefix):]
+            if remainder:
+                _add(Path(remainder))
+
+    # 3. Pattern heuristics
+    for pattern in _HEURISTIC_PATTERNS:
+        match = pattern.match(str_path)
+        if match:
+            remainder = match.group("rel")
+            if remainder:
+                _add(Path(remainder))
+
+    # 4. Original path as last resort
+    _add(path)
+    return candidates
+
+
+def verify_remote_url(url: str, timeout: float = 2.0) -> tuple[bool, str]:
+    """HEAD-check ``url`` to see if it resolves on the remote.
+
+    Returns ``(is_good, status_message)``:
+      - ``(True, "HTTP 200")`` for 2xx / 3xx
+      - ``(False, "HTTP 404")`` for 4xx / 5xx
+      - ``(False, "network error: ...")`` on timeout or socket failure
+
+    Used by the TUI before opening a remote URL so a dead link
+    surfaces as a notification with the URL instead of a blank
+    browser tab. Network access is required; the caller is expected
+    to have it (this is the user's machine, not the scan host).
+
+    The default 2-second timeout is short enough that a flaky DNS or
+    rate-limited GitHub doesn't freeze the UI — preferring "fail
+    open and let the user inspect" over "block forever waiting."
+    """
+    if not url:
+        return False, "empty URL"
+    import urllib.error
+    import urllib.request
+    try:
+        req = urllib.request.Request(
+            url, method="HEAD",
+            headers={"User-Agent": "argus-view-terminal"},
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            status = getattr(resp, "status", None) or resp.getcode()
+            if 200 <= status < 400:
+                return True, f"HTTP {status}"
+            return False, f"HTTP {status}"
+    except urllib.error.HTTPError as exc:
+        # urllib raises HTTPError on 4xx/5xx — we still want the code
+        # surfaced to the user so they can tell "not found" from
+        # "rate limited" without guessing.
+        return False, f"HTTP {exc.code}"
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        return False, f"network error: {exc}"
+
+
+def git_file_status(repo_root: Path, rel_path: Path) -> str:
+    """Best-effort working-tree status for a single file.
+
+    Returns one of:
+      - ``"clean"`` — file matches the index and HEAD
+      - ``"modified"`` — uncommitted changes in the working tree
+      - ``"untracked"`` — file isn't tracked by git
+      - ``"unknown"`` — git isn't on PATH, or the command failed
+
+    Used to warn before opening a remote URL: if the local file is
+    dirty, the remote page won't reflect what the user is currently
+    looking at, even when the URL itself resolves.
+    """
+    if not shutil.which("git"):
+        return "unknown"
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_root), "status", "--porcelain", "--", str(rel_path)],
+            capture_output=True, text=True, timeout=2, check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.debug("git status lookup failed for %s: %s", rel_path, exc)
+        return "unknown"
+    if result.returncode != 0:
+        return "unknown"
+    output = result.stdout.strip()
+    if not output:
+        return "clean"
+    # ``git status --porcelain`` prefixes untracked files with ``??``;
+    # everything else (M, A, D, R, etc.) means the file has staged or
+    # unstaged changes.
+    if output.startswith("??"):
+        return "untracked"
+    return "modified"
+
+
 def strip_scan_prefix(path: Path, scan_context) -> Path:
     """Strip the scan-time cwd / repo_root prefix off an absolute path.
 

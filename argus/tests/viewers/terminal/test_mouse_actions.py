@@ -401,3 +401,250 @@ class TestStripScanPrefix:
         ctx = self._ctx()  # everything empty
         result = strip_scan_prefix(Path("/abs/path.py"), ctx)
         assert result == Path("/abs/path.py")
+
+
+class TestCandidateRelativePaths:
+    """``candidate_relative_paths`` is the heuristic layer that lets old
+    scans (no ``scan_context``) still resolve to local files. Ordering
+    matters: scan_context-driven strips come first, then heuristic
+    prefixes in priority order, then the original path as fallback.
+    """
+
+    def _ctx(self, *, cwd="", repo_root="", commit_sha=""):
+        class _StubContext:
+            def __init__(self, cwd, repo_root, commit_sha):
+                self.cwd = cwd
+                self.repo_root = repo_root
+                self.commit_sha = commit_sha
+        return _StubContext(cwd, repo_root, commit_sha)
+
+    def test_relative_path_unchanged(self):
+        from argus.viewers.terminal.mouse_actions import (
+            candidate_relative_paths,
+        )
+        # A path that's already relative has nothing to strip — single
+        # candidate so callers' "first that exists" loop has one shot.
+        result = candidate_relative_paths(Path("src/app.py"), None)
+        assert result == [Path("src/app.py")]
+
+    def test_scan_context_strip_is_first(self):
+        from argus.viewers.terminal.mouse_actions import (
+            candidate_relative_paths,
+        )
+        ctx = self._ctx(repo_root="/workspace/argus")
+        result = candidate_relative_paths(
+            Path("/workspace/argus/preflight/issue_reporter.py"), ctx,
+        )
+        # scan_context strip is the most accurate signal — it must be
+        # at index 0 so callers prefer it over the looser heuristics.
+        assert result[0] == Path("preflight/issue_reporter.py")
+
+    def test_workspace_heuristic_used_when_no_scan_context(self):
+        from argus.viewers.terminal.mouse_actions import (
+            candidate_relative_paths,
+        )
+        # /workspace/ is the canonical Argus container mount — without
+        # scan_context, this heuristic is the user's only chance.
+        result = candidate_relative_paths(
+            Path("/workspace/argus/dast/runner.py"), None,
+        )
+        # First candidate should be the /workspace/ strip → argus/dast/...
+        assert Path("argus/dast/runner.py") in result
+
+    def test_github_workspace_heuristic(self):
+        from argus.viewers.terminal.mouse_actions import (
+            candidate_relative_paths,
+        )
+        # GHA's older checkout convention.
+        result = candidate_relative_paths(
+            Path("/github/workspace/src/app.py"), None,
+        )
+        assert Path("src/app.py") in result
+
+    def test_gha_runner_work_pattern(self):
+        from argus.viewers.terminal.mouse_actions import (
+            candidate_relative_paths,
+        )
+        # GitHub Actions full-path layout: /home/runner/work/<repo>/<repo>/...
+        # is parametric so it lives in _HEURISTIC_PATTERNS, not the
+        # fixed-prefix list. The doubled repo segment must be stripped.
+        result = candidate_relative_paths(
+            Path("/home/runner/work/argus/argus/argus/cli.py"), None,
+        )
+        assert Path("argus/cli.py") in result
+
+    def test_unrecognized_absolute_path_falls_back_to_original(self):
+        from argus.viewers.terminal.mouse_actions import (
+            candidate_relative_paths,
+        )
+        # No prefix matches — the loop returns just the original path
+        # so callers can still try opening it (it may exist on this
+        # host if the scan ran locally with a weird cwd).
+        result = candidate_relative_paths(
+            Path("/some/unrecognized/path.py"), None,
+        )
+        assert Path("/some/unrecognized/path.py") in result
+
+    def test_dedup_preserves_order(self):
+        from argus.viewers.terminal.mouse_actions import (
+            candidate_relative_paths,
+        )
+        # scan_context strip + /workspace/ heuristic happen to produce
+        # the same relative path. The result must NOT duplicate it.
+        ctx = self._ctx(repo_root="/workspace")
+        result = candidate_relative_paths(
+            Path("/workspace/argus/dast/runner.py"), ctx,
+        )
+        # First candidate is the scan_context strip.
+        assert result[0] == Path("argus/dast/runner.py")
+        # And the same path doesn't show up twice.
+        assert result.count(Path("argus/dast/runner.py")) == 1
+
+
+class TestVerifyRemoteUrl:
+    """``verify_remote_url`` is the HEAD-check that catches bad URLs
+    before they hit the user's browser as a 404."""
+
+    def test_empty_url_returns_failure(self):
+        from argus.viewers.terminal.mouse_actions import verify_remote_url
+        ok, message = verify_remote_url("")
+        assert ok is False
+        assert "empty" in message.lower()
+
+    def test_2xx_returns_success(self, monkeypatch):
+        # Patch urllib's opener so the test doesn't hit the network.
+        # The contract under test is "we trust the status code" — the
+        # actual HTTP plumbing is stdlib's responsibility.
+        from argus.viewers.terminal import mouse_actions
+
+        class _FakeResp:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def getcode(self):
+                return 200
+
+        import urllib.request as urllib_request
+        monkeypatch.setattr(
+            urllib_request, "urlopen",
+            lambda req, timeout=None: _FakeResp(),
+        )
+        ok, message = mouse_actions.verify_remote_url("https://example.com")
+        assert ok is True
+        assert "200" in message
+
+    def test_404_returns_failure_with_status(self, monkeypatch):
+        # urllib raises HTTPError on 4xx — verify we catch it and
+        # surface the actual status code so users can tell "not
+        # found" from "rate limited."
+        import urllib.error
+        import urllib.request as urllib_request
+
+        from argus.viewers.terminal import mouse_actions
+
+        def _raises_404(req, timeout=None):
+            raise urllib.error.HTTPError(
+                url=req.full_url, code=404, msg="Not Found",
+                hdrs=None, fp=None,
+            )
+
+        monkeypatch.setattr(urllib_request, "urlopen", _raises_404)
+        ok, message = mouse_actions.verify_remote_url("https://x.test")
+        assert ok is False
+        assert "404" in message
+
+    def test_network_error_returns_failure(self, monkeypatch):
+        import urllib.error
+        import urllib.request as urllib_request
+
+        from argus.viewers.terminal import mouse_actions
+
+        def _raises_url_error(req, timeout=None):
+            raise urllib.error.URLError("DNS failure")
+
+        monkeypatch.setattr(urllib_request, "urlopen", _raises_url_error)
+        ok, message = mouse_actions.verify_remote_url("https://x.test")
+        assert ok is False
+        # Don't pin the exact text — "DNS failure" is what URLError
+        # raised, but the helper just needs to surface enough that
+        # the user can act on it.
+        assert "error" in message.lower() or "dns" in message.lower()
+
+
+class TestGitFileStatus:
+    """``git_file_status`` is best-effort — it should never crash, and
+    should return ``"unknown"`` whenever git isn't usable."""
+
+    def test_no_git_on_path_returns_unknown(self, monkeypatch):
+        from argus.viewers.terminal import mouse_actions
+        # Pretend git isn't installed — the function should bail out
+        # quietly so the viewer doesn't crash on minimal containers.
+        monkeypatch.setattr(mouse_actions.shutil, "which", lambda _: None)
+        result = mouse_actions.git_file_status(Path("/tmp"), Path("foo.py"))
+        assert result == "unknown"
+
+    def test_clean_file(self, monkeypatch):
+        # Empty porcelain output = clean working tree for that path.
+        from argus.viewers.terminal import mouse_actions
+        monkeypatch.setattr(
+            mouse_actions.shutil, "which", lambda _: "/usr/bin/git",
+        )
+        monkeypatch.setattr(
+            mouse_actions.subprocess, "run",
+            lambda *a, **k: __import__("subprocess").CompletedProcess(
+                args=[], returncode=0, stdout="", stderr="",
+            ),
+        )
+        result = mouse_actions.git_file_status(Path("/tmp"), Path("foo.py"))
+        assert result == "clean"
+
+    def test_modified_file(self, monkeypatch):
+        # ``M `` or `` M`` (staged / unstaged) both mean "modified".
+        from argus.viewers.terminal import mouse_actions
+        monkeypatch.setattr(
+            mouse_actions.shutil, "which", lambda _: "/usr/bin/git",
+        )
+        monkeypatch.setattr(
+            mouse_actions.subprocess, "run",
+            lambda *a, **k: __import__("subprocess").CompletedProcess(
+                args=[], returncode=0, stdout=" M foo.py\n", stderr="",
+            ),
+        )
+        result = mouse_actions.git_file_status(Path("/tmp"), Path("foo.py"))
+        assert result == "modified"
+
+    def test_untracked_file(self, monkeypatch):
+        from argus.viewers.terminal import mouse_actions
+        monkeypatch.setattr(
+            mouse_actions.shutil, "which", lambda _: "/usr/bin/git",
+        )
+        monkeypatch.setattr(
+            mouse_actions.subprocess, "run",
+            lambda *a, **k: __import__("subprocess").CompletedProcess(
+                args=[], returncode=0, stdout="?? newfile.py\n", stderr="",
+            ),
+        )
+        result = mouse_actions.git_file_status(
+            Path("/tmp"), Path("newfile.py"),
+        )
+        assert result == "untracked"
+
+    def test_subprocess_error_returns_unknown(self, monkeypatch):
+        # A failing git command (not a repo, broken index, etc.) must
+        # not blow up the viewer — degrade to "unknown" silently.
+        from argus.viewers.terminal import mouse_actions
+        monkeypatch.setattr(
+            mouse_actions.shutil, "which", lambda _: "/usr/bin/git",
+        )
+
+        def _raises(*a, **k):
+            raise OSError("git not executable")
+
+        monkeypatch.setattr(mouse_actions.subprocess, "run", _raises)
+        result = mouse_actions.git_file_status(Path("/tmp"), Path("foo.py"))
+        assert result == "unknown"
