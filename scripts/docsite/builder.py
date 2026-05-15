@@ -240,6 +240,31 @@ def build(repo_root: Path, output_dir: Path, *, ref: str | None = None) -> None:
 
     nav.append({"Changelog": "changelog.md"})
 
+    # ── Architecture page (self-contained interactive diagram) ───────────
+    #
+    # Derived from .ai/architecture.yaml + runtime SDK introspection.
+    # The view model is the same JSON the FastAPI viewer's /architecture
+    # route and the argus://architecture MCP resource serve. Lives at
+    # docs/architecture/index.html as a fully standalone page (no MkDocs
+    # markdown wrapper) so it works under file:// when saved.
+    try:
+        from .architecture import (
+            build_view_model_from_repo,
+            render_standalone_html,
+        )
+        view_model = build_view_model_from_repo(repo_root)
+        arch_out = docs_out / "architecture"
+        render_standalone_html(view_model, arch_out)
+        print(
+            f"   ✅ Architecture page generated "
+            f"({len(view_model.get('nodes', []))} nodes, "
+            f"{len(view_model.get('flows', []))} flows)"
+        )
+    except Exception as exc:
+        # Don't fail the whole docsite build on a missing SDK import.
+        # The page is a nice-to-have; the rest of the docs ship without it.
+        print(f"   ⚠️  Architecture page skipped: {exc}")
+
     write(output_dir / "mkdocs.yml", build_mkdocs_config(version, nav))
     print("   ✅ mkdocs.yml written")
     print(f"\n✨ Done!\n")
