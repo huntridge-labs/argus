@@ -608,10 +608,17 @@ _MENU_CSS = """
 ContextMenuScreen { align: center middle; }
 ContextMenuScreen > Vertical {
     width: 60; height: auto; padding: 1 2;
-    border: round $accent; background: $surface;
+    /* ``solid`` corners (┌ ┐ └ ┘) align more crisply than ``round``
+       on macOS Terminal.app's default font; the rounded glyphs
+       (╭ ╮ ╰ ╯) often wobble against the horizontal/vertical bars
+       depending on the font's box-drawing metrics. */
+    border: solid $accent; background: $surface;
+    /* Clip anything inside so OptionList's highlight bar can't
+       extend past the right border. */
+    overflow: hidden;
 }
 ContextMenuScreen #menu-title { content-align: left middle; text-style: bold; padding: 0 0 1 0; }
-ContextMenuScreen OptionList { height: auto; max-height: 12; }
+ContextMenuScreen OptionList { width: 1fr; height: auto; max-height: 12; }
 ContextMenuScreen #hint { color: $text-muted; padding: 1 0 0 0; content-align: left middle; }
 """
 
@@ -624,8 +631,11 @@ class ContextMenuScreen(_BackgroundDismissMixin, ModalScreen[str | None]):
       - Open file:line locally (in $EDITOR / VS Code / ...)
       - Open file:line in remote git (GitHub / GitLab blob URL)
       - Open package page (PyPI / npm)
-      - Copy CVE to clipboard
       - Export selection (route to existing ``e`` action)
+
+    Copying values isn't in the menu — terminal selection-copy
+    already covers that workflow, and the right-click menu is
+    reserved for actions terminals can't service themselves.
 
     Items that don't apply to this finding are filtered out before
     the modal mounts — a Bandit finding with no CVE, no file path,
@@ -658,8 +668,6 @@ class ContextMenuScreen(_BackgroundDismissMixin, ModalScreen[str | None]):
             and not mouse_actions.parse_file_line(finding.location)
         ):
             self._items.append(("Open package on registry", "open_package"))
-        if finding.cve:
-            self._items.append((f"Copy CVE to clipboard ({finding.cve})", "copy_cve"))
         self._items.append(("Export current selection / view", "export"))
 
     @staticmethod
@@ -691,10 +699,11 @@ _PROMPT_CSS = """
 OpenLocationPromptScreen { align: center middle; }
 OpenLocationPromptScreen > Vertical {
     width: 60; height: auto; padding: 1 2;
-    border: round $accent; background: $surface;
+    border: solid $accent; background: $surface;
+    overflow: hidden;
 }
 OpenLocationPromptScreen #prompt-title { text-style: bold; padding: 0 0 1 0; }
-OpenLocationPromptScreen OptionList { height: auto; }
+OpenLocationPromptScreen OptionList { width: 1fr; height: auto; }
 OpenLocationPromptScreen #hint { color: $text-muted; padding: 1 0 0 0; }
 """
 
@@ -735,10 +744,11 @@ _SPAN_MENU_CSS = """
 SpanContextMenuScreen { align: center middle; }
 SpanContextMenuScreen > Vertical {
     width: 70; height: auto; padding: 1 2;
-    border: round $accent; background: $surface;
+    border: solid $accent; background: $surface;
+    overflow: hidden;
 }
 SpanContextMenuScreen #menu-title { content-align: left middle; text-style: bold; padding: 0 0 1 0; }
-SpanContextMenuScreen OptionList { height: auto; max-height: 10; }
+SpanContextMenuScreen OptionList { width: 1fr; height: auto; max-height: 10; }
 SpanContextMenuScreen #hint { color: $text-muted; padding: 1 0 0 0; content-align: left middle; }
 """
 
@@ -1973,14 +1983,6 @@ class BrowseApp(App):
                 self.action_open_remote_file(finding.location or "")
             elif choice == "open_package":
                 self.action_open_package(finding.location or "")
-            elif choice == "copy_cve" and finding.cve:
-                from argus.viewers.terminal.clipboard import copy_to_clipboard
-                ok, _mechanism = copy_to_clipboard(finding.cve)
-                self.notify(
-                    f"Copied {finding.cve} to clipboard"
-                    if ok else f"Clipboard unavailable — {finding.cve}",
-                    severity="information" if ok else "warning", timeout=2,
-                )
             elif choice == "export":
                 self.action_export_csv()
 
