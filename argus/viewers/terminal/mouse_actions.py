@@ -444,6 +444,60 @@ def git_file_status(repo_root: Path, rel_path: Path) -> str:
     return "modified"
 
 
+def read_source_context(
+    path: Path,
+    line: int,
+    *,
+    before: int = 5,
+    after: int = 5,
+    max_file_size: int = 5 * 1024 * 1024,
+    max_line_width: int = 120,
+) -> list[tuple[int, str, bool]] | None:
+    """Read a window of source lines around ``line`` for the detail pane.
+
+    Returns ``[(line_number, text, is_flagged), ...]`` for lines in
+    the closed range ``[line - before, line + after]``, clamped to
+    the file bounds. ``is_flagged`` is True only for the originally
+    requested line so the renderer can mark it.
+
+    Returns ``None`` when:
+      - ``path`` doesn't exist or isn't a regular file
+      - the file is larger than ``max_file_size`` (5 MB default —
+        guard against accidentally slurping a generated bundle into
+        memory)
+      - the file isn't decodable as text (we replace errors rather
+        than fail, so this case is rare)
+      - ``line`` is outside the file's line range
+
+    Long lines are truncated to ``max_line_width`` characters with
+    an ellipsis so the source block doesn't blow up the detail pane
+    width on minified files / generated assets.
+    """
+    if line is None or line < 1:
+        return None
+    try:
+        if not path.is_file():
+            return None
+        if path.stat().st_size > max_file_size:
+            return None
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        logger.debug("read_source_context failed for %s: %s", path, exc)
+        return None
+    lines = text.splitlines()
+    if not lines or line > len(lines):
+        return None
+    start = max(1, line - before)
+    end = min(len(lines), line + after)
+    out: list[tuple[int, str, bool]] = []
+    for n in range(start, end + 1):
+        content = lines[n - 1]
+        if len(content) > max_line_width:
+            content = content[: max_line_width - 1].rstrip() + "…"
+        out.append((n, content, n == line))
+    return out
+
+
 def strip_scan_prefix(path: Path, scan_context) -> Path:
     """Strip the scan-time cwd / repo_root prefix off an absolute path.
 

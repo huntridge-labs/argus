@@ -648,3 +648,103 @@ class TestGitFileStatus:
         monkeypatch.setattr(mouse_actions.subprocess, "run", _raises)
         result = mouse_actions.git_file_status(Path("/tmp"), Path("foo.py"))
         assert result == "unknown"
+
+
+class TestReadSourceContext:
+    """``read_source_context`` powers the inline source block in the
+    detail pane. It must be safe against missing files, huge files,
+    out-of-range line numbers, and decoding errors so the viewer
+    can't crash on a bad finding."""
+
+    def _make_file(self, tmp_path, content: str) -> Path:
+        p = tmp_path / "sample.py"
+        p.write_text(content, encoding="utf-8")
+        return p
+
+    def test_returns_window_around_line(self, tmp_path):
+        from argus.viewers.terminal.mouse_actions import read_source_context
+        # 10-line file. Asking for line 5 with before=2/after=2 should
+        # return lines 3-7, with 5 flagged.
+        content = "\n".join(f"line {n}" for n in range(1, 11))
+        path = self._make_file(tmp_path, content)
+        result = read_source_context(path, 5, before=2, after=2)
+        assert result is not None
+        assert [n for n, _, _ in result] == [3, 4, 5, 6, 7]
+        flagged = [n for n, _, f in result if f]
+        assert flagged == [5]  # only the requested line is marked
+
+    def test_clamps_to_file_start(self, tmp_path):
+        # before window extends below line 1 — clamp to start, don't
+        # return phantom negative-numbered lines.
+        from argus.viewers.terminal.mouse_actions import read_source_context
+        content = "a\nb\nc\nd\n"
+        path = self._make_file(tmp_path, content)
+        result = read_source_context(path, 1, before=5, after=2)
+        assert result is not None
+        assert result[0][0] == 1  # first line is 1, not -4
+
+    def test_clamps_to_file_end(self, tmp_path):
+        from argus.viewers.terminal.mouse_actions import read_source_context
+        content = "a\nb\nc\n"
+        path = self._make_file(tmp_path, content)
+        result = read_source_context(path, 3, before=2, after=10)
+        assert result is not None
+        # File only has 3 lines — window can't extend past that.
+        assert result[-1][0] == 3
+
+    def test_nonexistent_file_returns_none(self, tmp_path):
+        from argus.viewers.terminal.mouse_actions import read_source_context
+        result = read_source_context(tmp_path / "nope.py", 1)
+        assert result is None
+
+    def test_directory_returns_none(self, tmp_path):
+        # Defensive: parse_file_line could theoretically hand us a
+        # directory path; we should not try to read it.
+        from argus.viewers.terminal.mouse_actions import read_source_context
+        result = read_source_context(tmp_path, 1)
+        assert result is None
+
+    def test_line_out_of_range_returns_none(self, tmp_path):
+        from argus.viewers.terminal.mouse_actions import read_source_context
+        path = self._make_file(tmp_path, "single line\n")
+        result = read_source_context(path, 99)
+        assert result is None
+
+    def test_line_zero_returns_none(self, tmp_path):
+        # 1-indexed by contract — line=0 is a bug upstream, not a
+        # request for "the line above the first one."
+        from argus.viewers.terminal.mouse_actions import read_source_context
+        path = self._make_file(tmp_path, "a\nb\n")
+        result = read_source_context(path, 0)
+        assert result is None
+
+    def test_truncates_long_lines(self, tmp_path):
+        from argus.viewers.terminal.mouse_actions import read_source_context
+        long_line = "x" * 500
+        path = self._make_file(tmp_path, f"short\n{long_line}\nshort\n")
+        result = read_source_context(path, 2, max_line_width=80)
+        assert result is not None
+        # The truncated line ends with the ellipsis marker and is no
+        # longer than the configured width.
+        truncated = result[1][1]  # (line_no, content, is_flagged)
+        assert truncated.endswith("…")
+        assert len(truncated) <= 80
+
+    def test_oversized_file_returns_none(self, tmp_path):
+        # Don't slurp a 50 MB minified bundle into RAM just to render
+        # a snippet — bail with None so the detail pane skips the block.
+        from argus.viewers.terminal.mouse_actions import read_source_context
+        path = self._make_file(tmp_path, "x" * 1024)  # 1 KB
+        result = read_source_context(path, 1, max_file_size=512)
+        assert result is None
+
+    def test_handles_decoding_errors(self, tmp_path):
+        # Binary-ish file with invalid UTF-8 should NOT crash; we
+        # read with errors="replace" so a few replacement chars in
+        # the output is fine.
+        from argus.viewers.terminal.mouse_actions import read_source_context
+        path = tmp_path / "binary.dat"
+        path.write_bytes(b"line1\n\xff\xfe\xfd\nline3\n")
+        result = read_source_context(path, 2, before=1, after=1)
+        assert result is not None
+        assert len(result) == 3

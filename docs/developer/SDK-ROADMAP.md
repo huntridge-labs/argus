@@ -273,6 +273,18 @@ Post-scan triage workflow. Engineers sitting with a fresh scan need a way to fil
 
 - [ ] **Shift+click row-range select, Cmd/Ctrl+click toggle.** Textual's DataTable RowSelected event surface in 8.x doesn't expose modifier state in the documented API; would need a spike against newer Textual or a custom on_mouse_down handler that also tracks the cursor row. Keyboard space / a / A still cover the multi-select workflow; this is mouse-ergonomics polish.
 
+#### In-TUI source triage
+
+User feedback during the mouse-interactivity work: "I'd like to see the offending lines of code and explore them in the TUI, and maybe even mark a line as ignored / justified in future scans without leaving the viewer." Treat as one workflow rather than three discrete items — the source-view feature and the suppression feature share the same path-resolution + file-IO surface.
+
+- [x] **Drop redundant "Copy <value>" items from the span context menu.** Terminal selection-copy already handles this; the right-click menu is for actions terminals can't service themselves (editor launch, browser open, registry navigate).
+- [x] **Source-context block in the detail pane.** Show ~5 lines before/after the offending line, mark the flagged line, work whenever the file resolves to the local checkout via the same `candidate_relative_paths` heuristics that drive Open Local. Read-only — the viewer doesn't modify source.
+- [ ] **Inline ignore / suppression comment workflow.** Add a "Suppress finding" context-menu action that:
+  - Maps scanner → pragma syntax (`# nosec: B101` for bandit, `# nosemgrep: <rule>` for opengrep/semgrep, `# gitleaks:allow` for gitleaks, `// eslint-disable-next-line <rule>` for eslint, `# checkov:skip=CKV_X:<reason>` for checkov, `# trivy:ignore:CVE-…` for trivy-iac, etc.).
+  - Prompts for an optional justification string and inserts the pragma above (or at end of) the flagged line, preserving indentation.
+  - Refuses to write when the working tree shows the file as modified (no surprise edits sitting on top of user WIP).
+  - Tested with a per-scanner pragma matrix in `mouse_actions` + a small filesystem-level test for the edit path. Defers to a follow-up PR because it touches user code and needs careful per-scanner handling.
+
 #### Export UX
 
 - [x] **File path discoverability:** toast now shows the absolute path plus a `file://` URI most modern terminals auto-linkify

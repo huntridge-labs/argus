@@ -899,7 +899,11 @@ class FindingDetail(Static):
     widget only handles the Textual-markup wrapping.
     """
 
-    def update_finding(self, f: Finding | None) -> None:
+    def update_finding(
+        self,
+        f: Finding | None,
+        source_block: str | None = None,
+    ) -> None:
         if f is None:
             self.update("[dim]Select a finding to see details.[/dim]")
             return
@@ -920,6 +924,13 @@ class FindingDetail(Static):
         lines += ["", "[b]Title[/b]", f.title or "—"]
         if f.description and f.description != f.title:
             lines += ["", "[b]Description[/b]", f.description]
+        # Source-context block — only present when ``location`` is a
+        # file:line and the file resolved to a local checkout. The
+        # caller (BrowseApp._update_detail) pre-formats the markup so
+        # this widget stays UI-only and the read-and-format logic is
+        # testable without Textual.
+        if source_block:
+            lines += ["", "[b]Source[/b]", source_block]
         warning = f.metadata.get("warning")
         if warning:
             lines += ["", f"[yellow]{warning}[/yellow]"]
@@ -1240,8 +1251,59 @@ class BrowseApp(App):
         )
 
     def _update_detail(self, row: int) -> None:
-        if 0 <= row < len(self._visible):
-            self.query_one("#detail", FindingDetail).update_finding(self._visible[row])
+        if not (0 <= row < len(self._visible)):
+            return
+        finding = self._visible[row]
+        block = self._source_context_block(finding)
+        self.query_one("#detail", FindingDetail).update_finding(
+            finding, source_block=block,
+        )
+
+    def _source_context_block(self, finding: Finding) -> str | None:
+        """Render the ``[bold]Source[/bold]`` block for the detail pane.
+
+        Returns Textual markup with line numbers and the offending
+        line highlighted, or ``None`` when no source is available
+        (location isn't file:line, or the file doesn't resolve
+        locally, or the file isn't readable).
+        """
+        if not finding.location:
+            return None
+        parsed = mouse_actions.parse_file_line(finding.location)
+        if not parsed:
+            return None
+        path, line = parsed
+        if line is None:
+            return None
+        repo_root = self._resolve_repo_root() or Path.cwd()
+        local = self._resolve_local_path(path, repo_root)
+        if local is None:
+            return None
+        context = mouse_actions.read_source_context(local, line)
+        if not context:
+            return None
+        # Display relative to the repo root when possible so the
+        # header doesn't leak the user's home-directory layout.
+        try:
+            display_path = local.relative_to(repo_root)
+        except ValueError:
+            display_path = local
+        from rich.markup import escape
+        header = f"[dim]{escape(str(display_path))}:{line}[/dim]"
+        rendered: list[str] = [header]
+        for line_no, text, is_flagged in context:
+            safe_text = escape(text)
+            if is_flagged:
+                # Bold yellow on the flagged line + a chevron marker
+                # so the row jumps out even in a monochrome terminal.
+                rendered.append(
+                    f"[bold yellow]>{line_no:5d} | {safe_text}[/]"
+                )
+            else:
+                rendered.append(
+                    f"[dim] {line_no:5d} |[/dim] {safe_text}"
+                )
+        return "\n".join(rendered)
 
     # ------------------------------------------------------------------
     # Event hooks
@@ -1939,14 +2001,11 @@ class BrowseApp(App):
             title = f"⚙ {arg}"
             items = [
                 ("Open advisory in browser", "open_advisory"),
-                (f"Copy {arg}", "copy_value"),
             ]
 
             def _on_choice(choice: str | None) -> None:
                 if choice == "open_advisory":
                     self.action_open_advisory(arg)
-                elif choice == "copy_value":
-                    self._copy_value(arg)
 
         elif name == "action_open_location":
             title = f"⚙ {arg}"
@@ -1954,15 +2013,16 @@ class BrowseApp(App):
                 items = [
                     ("Open file in local editor", "open_local"),
                     ("Open file on remote (git blob URL)", "open_remote"),
-                    (f"Copy {arg}", "copy_value"),
                 ]
             elif "@" in arg:
                 items = [
                     ("Open package on registry", "open_package"),
-                    (f"Copy {arg}", "copy_value"),
                 ]
             else:
-                items = [(f"Copy {arg}", "copy_value")]
+                # No actionable item — drop the menu rather than ship
+                # an empty box. The user can still select/copy the
+                # rendered span text from the terminal itself.
+                return
 
             def _on_choice(choice: str | None) -> None:
                 if choice == "open_local":
@@ -1971,27 +2031,10 @@ class BrowseApp(App):
                     self.action_open_remote_file(arg)
                 elif choice == "open_package":
                     self.action_open_package(arg)
-                elif choice == "copy_value":
-                    self._copy_value(arg)
         else:
             return
 
         self.push_screen(SpanContextMenuScreen(title, items), _on_choice)
-
-    def _copy_value(self, value: str) -> None:  # pragma: no cover
-        """Copy ``value`` to the system clipboard with a user notification.
-
-        Shared by the span context menus so the copy UX (success
-        toast vs. fallback warning) stays consistent regardless of
-        whether the user copied a CVE, a path, or a package name.
-        """
-        from argus.viewers.terminal.clipboard import copy_to_clipboard
-        ok, _mechanism = copy_to_clipboard(value)
-        self.notify(
-            f"Copied {value!r} to clipboard"
-            if ok else f"Clipboard unavailable — {value!r}",
-            severity="information" if ok else "warning", timeout=2,
-        )
 
     def action_open_advisory(self, advisory_id: str) -> None:  # pragma: no cover
         """Open a CVE / GHSA advisory page in the default browser.
