@@ -494,7 +494,10 @@ class TestSeverityHint:
         resp = client.get("/findings?min_severity=nonsense")
         assert resp.status_code == 200
         # Hint is rendered + explains the fallback. Unfiltered rows show.
-        assert "Unrecognized severity 'nonsense'" in resp.text
+        # Single-quote auto-escaped to ``&#39;`` by Jinja inside the
+        # rendered hint text — correct HTML, the browser displays it
+        # as a literal apostrophe.
+        assert "Unrecognized severity &#39;nonsense&#39;" in resp.text
         assert "filter-hint" in resp.text
 
     def test_valid_severity_no_hint(self, tmp_path):
