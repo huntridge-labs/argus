@@ -961,7 +961,11 @@ class BrowseApp(App):
         )
         with Container(id="body"):
             with Vertical(id="list-pane"):
-                yield DataTable(id="findings", cursor_type="row", zebra_stripes=True)
+                yield DataTable(
+                    id="findings",
+                    cursor_type="row",
+                    zebra_stripes=True,
+                )
             with Vertical(id="detail-pane"):
                 yield FindingDetail(id="detail")
         yield Static(id="status")
@@ -981,6 +985,18 @@ class BrowseApp(App):
         self.sub_title = str(resolved)
         self.all_findings = flatten_findings(summary)
         table = self.query_one(DataTable)
+        # Hover-tooltips on the mouse contract. Set after construction
+        # because Textual 8.x's DataTable / Static constructors don't
+        # accept ``tooltip=`` directly — the attribute lives on Widget
+        # and is settable on a mounted instance.
+        table.tooltip = (
+            "Click row to select · Click again or right-click for actions "
+            "· Click column header to sort"
+        )
+        self.query_one("#detail", FindingDetail).tooltip = (
+            "Click an underlined value (CVE / file:line / package) "
+            "to open it in your browser or editor"
+        )
         # Column keys are kept so we can re-label the active sort column
         # with an arrow glyph whenever the sort cycles. The leading
         # checkbox column ("✓") is updated row-by-row as the selection

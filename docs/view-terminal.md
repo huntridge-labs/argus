@@ -80,6 +80,67 @@ JSON, Markdown, and SARIF exports are available via `Ctrl+P` → type
 convention is `argus-findings-YYYYMMDD-HHMMSS-<severity>.<ext>` so repeated
 exports at different filters never clobber each other.
 
+## Mouse interactions
+
+Every visible piece of state in the TUI is a click target. Keyboard
+bindings keep working in parallel — these are additive, not a
+replacement.
+
+| Surface | Mouse action | What it does |
+|---|---|---|
+| Findings table — row | hover | Subtle highlight on the row under the cursor |
+| Findings table — row | left-click | Move the cursor + update the detail pane |
+| Findings table — row | second left-click on focused row, **or** right-click | Open the context menu for that finding |
+| Findings table — column header | left-click | Cycle sort (same modes as `s`) |
+| Detail pane — CVE / GHSA ID | left-click | Open the upstream advisory page in your default browser |
+| Detail pane — `file:line` value | left-click | Open the file at that line (mode controlled by `view.open_location` — see below) |
+| Detail pane — `package@version` value | left-click | Open the package's PyPI or npm registry page |
+| Status bar — severity chip | left-click | Clear the severity filter (back to "all") |
+| Status bar — product / scanner / query chip | left-click | Clear that one filter |
+| Status bar — sort chip | left-click | Cycle sort modes (same as `s`) |
+| Footer — keybind hint | left-click | Run the same action the key would |
+
+### Context menu actions
+
+The right-click / second-click menu lists only the actions that apply
+to the focused finding (no "open file" entry for a Bandit finding that
+has no location, etc.):
+
+- **Open advisory** — opens the CVE or GHSA in your browser
+- **Open file in local editor** — shells out to `$VISUAL` / `$EDITOR`
+  / VS Code (`code -g file:line`) / fallback to `xdg-open` / `open`
+- **Open file on remote (git blob URL)** — opens the file at the
+  scan's commit SHA on the repo's `origin` remote (GitHub, GitLab,
+  or self-hosted of either)
+- **Open package on registry** — PyPI for plain names, npm for
+  scoped (`@scope/pkg`) shapes
+- **Copy CVE to clipboard** — only shown for CVE-bearing findings
+- **Export current selection / view** — same path as the `e` key
+
+### Configuration (`argus.yml` → `view:`)
+
+Defaults are tuned for a developer workstation with Git, a browser,
+and an editor available. The three knobs:
+
+```yaml
+view:
+  cve_source: nvd          # nvd | cve_org | github | mitre
+  open_location: ask       # ask | local | remote
+  editor: ""               # override $EDITOR (e.g. "code -g", "nvim", "subl -w")
+```
+
+- `cve_source` — where clicked CVE IDs land. Default `nvd`
+  (`nvd.nist.gov/vuln/detail/<CVE>`). GHSA IDs always route to
+  `github.com/advisories/<GHSA>` regardless of this setting.
+- `open_location` — how clicked `file:line` cells resolve. Default
+  `ask` pops a tiny modal letting you pick local or remote per
+  click. `local` always shells out to your editor. `remote` always
+  constructs a git blob URL at the scan's recorded commit SHA.
+- `editor` — explicit editor command. When unset, falls through to
+  `$VISUAL` → `$EDITOR` → VS Code on PATH → `xdg-open` / `open`.
+  VS Code's `code -g file:line` goto-line form is special-cased; vim
+  / nvim / emacs / nano use `+<line> <file>`.
+
 ## Views
 
 ### Findings list (default)

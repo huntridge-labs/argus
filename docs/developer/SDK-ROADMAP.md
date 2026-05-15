@@ -263,7 +263,15 @@ Post-scan triage workflow. Engineers sitting with a fresh scan need a way to fil
 - [x] Sort cycle surfaces the new sort mode via toast on each `s` press
 - [x] Sort indicator in the column header (arrow glyph ↓/↑) for the active sort
 - [x] Help modal (`?` keybinding) with grouped keyboard reference
-- [ ] Column-resize / row-count improvements — visual polish from the Textual side
+- [ ] Column-resize / row-count improvements — visual polish from the Textual side. Native DataTable doesn't expose a column-resize hook in 8.x; needs a custom Splitter-style widget or upstream feature request before this lands.
+
+#### Mouse-first interactivity (shipped)
+
+- [x] ~~**Hover highlight + clickable everything pass.**~~ Shipped. Findings list rows highlight on hover; clicking a column header cycles sort; clicking CVE / GHSA / file:line / package@version in the detail pane opens the upstream advisory, file in $EDITOR / git blob URL, or PyPI / npm registry page (respectively); clicking status-bar filter chips clears that one filter; right-click or second-click on a row opens a context menu listing only the actions that apply to that finding. Wired via Textual's ``[@click=...]`` markup actions + ``on_data_table_header_selected`` + ``on_mouse_down`` event hooks. URL construction + editor-launch live in `argus/viewers/terminal/mouse_actions.py` (stdlib + webbrowser, 41 unit tests). Config knobs in `view:`: `cve_source` (nvd / cve_org / github / mitre), `open_location` (ask / local / remote), `editor` (override $EDITOR). Documented in `docs/view-terminal.md` "Mouse interactions" matrix.
+
+#### Mouse multi-select (deferred)
+
+- [ ] **Shift+click row-range select, Cmd/Ctrl+click toggle.** Textual's DataTable RowSelected event surface in 8.x doesn't expose modifier state in the documented API; would need a spike against newer Textual or a custom on_mouse_down handler that also tracks the cursor row. Keyboard space / a / A still cover the multi-select workflow; this is mouse-ergonomics polish.
 
 #### Export UX
 
@@ -296,7 +304,7 @@ Not all of these belong to the TUI itself — the portal integration items are p
 - [x] Multi-select for batch actions (export a subset, copy CVE list to clipboard)
 - [x] `argus scan --interface=terminal` convenience flag — auto-launches the terminal viewer after the scan finishes
 - [x] ~~Quickstart in `docs/view-terminal.md`~~ — install + launch + key bindings + workflows shipped
-- [x] ~~Screenshot pass for `docs/view-terminal.md` — doc has no images yet~~ Shipped. Eight SVG screenshots committed under `docs/images/view-terminal/` covering the findings list, severity filters (medium / critical), executive dashboard, help overlay, scanner / product pickers, and scan-over-scan diff. Generated programmatically via `scripts/docsite/capture_view_terminal.py` (Textual `Pilot` driving `BrowseApp` headless), so regenerating after a UI change is one command rather than eight manual captures. Fixtures live under `docs/images/view-terminal/fixtures/` — `nginx:1.27-alpine` (97 findings, 5 CRIT / 32 HIGH / 48 MED / 9 LOW / 3 INFO from EXPOSE-80-tcp + nginx services, the marquee dataset for the new Info column) and `redis:7-alpine` (4 findings including the MEDIUM EXPOSE-6379-tcp from the RISKY_PORTS watchlist) for the diff overlay.
+- [x] ~~Screenshot pass for `docs/view-terminal.md` — doc has no images yet~~ Shipped. Eight SVG screenshots committed under `docs/images/view-terminal/` covering the findings list, severity filters (medium / critical), executive dashboard, help overlay, scanner / product pickers, and scan-over-scan diff. The capture script (`scripts/docsite/capture_view_terminal.py`) is self-contained: it runs `argus scan container` against pinned images (`nginx:1.27-alpine` + `redis:7-alpine`) into a tempdir, then drives `BrowseApp` headlessly via Textual `Pilot` to snapshot each state. Fixtures never hit disk past the script's exit so the committed screenshots can never drift out of sync with the underlying scan data — re-running regenerates both together.
 
 ---
 
