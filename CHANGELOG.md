@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.0.1](https://github.com/huntridge-labs/argus/compare/1.0.0...1.0.1) (2026-05-16)
+
+### Bug Fixes
+
+* **release:** tighten containers.py regex-bumper, repair 1.0.0 corruption ([dae65f0](https://github.com/huntridge-labs/argus/commit/dae65f044b7bfdc97b41b862f50675e48bec23b8))
+
 ## [1.0.0](https://github.com/huntridge-labs/argus/compare/0.7.2...1.0.0) (2026-05-16)
 
 ### ⚠ BREAKING CHANGES

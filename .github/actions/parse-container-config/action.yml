@@ -16,7 +16,7 @@ description: |
           has_containers: (( steps.parse.outputs.has_containers ))
         steps:
           - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-          - uses: huntridge-labs/argus/.github/actions/parse-container-config@1.0.0
+          - uses: huntridge-labs/argus/.github/actions/parse-container-config@1.0.1
             id: parse
             with:
               config_file: container-config.yml
@@ -28,7 +28,7 @@ description: |
           matrix: (( fromJson(needs.parse.outputs.matrix) ))
         runs-on: ubuntu-latest
         steps:
-          - uses: huntridge-labs/argus/.github/actions/scanner-container@1.0.0
+          - uses: huntridge-labs/argus/.github/actions/scanner-container@1.0.1
             with:
               image_ref: (( matrix.image ))
               container_name: (( matrix.name ))

@@ -62,7 +62,7 @@ jobs:
 
       - name: Run YAML Linter
         id: lint
-        uses: huntridge-labs/argus/.github/actions/linter-yaml@1.0.0
+        uses: huntridge-labs/argus/.github/actions/linter-yaml@1.0.1
 
   json-lint:
     name: JSON Validation
@@ -79,7 +79,7 @@ jobs:
 
       - name: Run JSON Linter
         id: lint
-        uses: huntridge-labs/argus/.github/actions/linter-json@1.0.0
+        uses: huntridge-labs/argus/.github/actions/linter-json@1.0.1
 
   python-lint:
     name: Python Code Quality
@@ -96,7 +96,7 @@ jobs:
 
       - name: Run Python Linter
         id: lint
-        uses: huntridge-labs/argus/.github/actions/linter-python@1.0.0
+        uses: huntridge-labs/argus/.github/actions/linter-python@1.0.1
 
   javascript-lint:
     name: JavaScript Code Quality
@@ -113,7 +113,7 @@ jobs:
 
       - name: Run JavaScript Linter
         id: lint
-        uses: huntridge-labs/argus/.github/actions/linter-javascript@1.0.0
+        uses: huntridge-labs/argus/.github/actions/linter-javascript@1.0.1
 
   dockerfile-lint:
     name: Dockerfile Linting
@@ -130,7 +130,7 @@ jobs:
 
       - name: Run Dockerfile Linter
         id: lint
-        uses: huntridge-labs/argus/.github/actions/linter-dockerfile@1.0.0
+        uses: huntridge-labs/argus/.github/actions/linter-dockerfile@1.0.1
 
   terraform-lint:
     name: Terraform Linting
@@ -147,7 +147,7 @@ jobs:
 
       - name: Run Terraform Linter
         id: lint
-        uses: huntridge-labs/argus/.github/actions/linter-terraform@1.0.0
+        uses: huntridge-labs/argus/.github/actions/linter-terraform@1.0.1
 
   linting-summary:
     name: Linting Summary
@@ -166,7 +166,7 @@ jobs:
 
       - name: Generate Linting Summary
         id: summary
-        uses: huntridge-labs/argus/.github/actions/linting-summary@1.0.0
+        uses: huntridge-labs/argus/.github/actions/linting-summary@1.0.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

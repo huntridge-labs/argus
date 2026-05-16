@@ -299,7 +299,7 @@ step is usually enough:
 
 ```yaml
 - name: Run argus
-  uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.0.0
+  uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.0.1
   id: scan
   with:
     enable_code_security: true
