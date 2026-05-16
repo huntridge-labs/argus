@@ -26,8 +26,14 @@ from __future__ import annotations
 
 import pytest
 
-from argus.core.models import Finding, Severity
-from argus.viewers.terminal.app import (
+# Skip the whole module when the optional ``[terminal]`` extra is not
+# installed — ``argus.viewers.terminal.app`` imports ``textual.app`` at
+# module top, so without textual on PATH pytest collection fails
+# instead of skipping cleanly.
+pytest.importorskip("textual")
+
+from argus.core.models import Finding, Severity  # noqa: E402
+from argus.viewers.terminal.app import (  # noqa: E402
     BrowseApp,
     _parse_click_action,
 )
