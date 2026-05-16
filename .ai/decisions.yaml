@@ -2011,13 +2011,21 @@ decisions:
     context: |
       The SDK ships an interactive architecture-map page (column
       layout × flow-rail × per-node side panel) that needs to be
-      consumed by three surfaces: the docsite build (writes
-      ``architecture/index.html``), the FastAPI viewer
-      (``/architecture`` route), and the MCP server
-      (``argus://architecture`` resource). Each surface needs the
-      same diagram data in JSON shape. The naive answer is a
-      hand-edited ``architecture.json`` next to ``.ai/architecture.yaml``
-      that all three consumers read. That answer is wrong.
+      consumed by two surfaces: the docsite build (writes
+      ``docs/architecture.md`` inlined inside MkDocs Material) and
+      the MCP server (``argus://architecture`` resource). Each
+      surface needs the same diagram data in JSON shape. The naive
+      answer is a hand-edited ``architecture.json`` next to
+      ``.ai/architecture.yaml`` that all consumers read. That
+      answer is wrong.
+
+      (Historical note: an earlier revision of this work shipped
+      the page through a third surface — a ``/architecture`` route
+      on the FastAPI viewer. That route was retired and the page
+      consolidated into the docs site so the scan-results viewer
+      stays narrowly scoped to scan results. The decision below is
+      unchanged by that consolidation: it covers the shape of the
+      derived view model, not the count of consumers.)
 
       AICaC already declares a schema (``aicac.dev/schema/v1``) for
       ``.ai/architecture.yaml`` covering the components, scanners,
@@ -2050,12 +2058,12 @@ decisions:
           diagram shows. AICaC already has its own schema —
           inventing a second one is non-orthogonal.
 
-      - name: "Fork the projection per consumer (docsite-specific, viewer-specific, MCP-specific)"
+      - name: "Fork the projection per consumer (docsite-specific, MCP-specific)"
         rejected_because: |
-          Three near-identical transformers diverge over time.
-          The MCP resource and the docsite-build HTML hydration
-          can't drift in their JSON shape — the MCP contract test
-          is "byte-identical to what the docsite inlined."
+          Near-identical transformers diverge over time. The MCP
+          resource and the docsite-build HTML hydration can't drift
+          in their JSON shape — the MCP contract test is
+          "byte-identical to what the docsite inlined."
 
       - name: "Ship a python-generated YAML mirror"
         rejected_because: |
@@ -2064,22 +2072,23 @@ decisions:
 
     consequences:
       positive:
-        - "Adding a scanner under .ai/architecture.yaml + argus/scanners/ makes it appear on all three surfaces with no further edits."
+        - "Adding a scanner under .ai/architecture.yaml + argus/scanners/ makes it appear on both surfaces (docsite page + MCP resource) with no further edits."
         - "The CI source-of-truth check (scripts/ci/check_architecture_sync.py) enforces the registry → YAML half of the contract by introspecting the running SDK."
         - "AI agents picking up Argus work read the same JSON the docsite renders, so their mental model can't drift from what humans see."
         - "Reviewers can reject any PR that adds an ``architecture.json``-shaped file."
       negative:
         - "Adding a fundamentally new entity to the diagram (a brand-new column, a new node-kind) means a transformer code edit, not just a YAML edit. The transformer is the only place node-shape evolves."
-        - "First-request render builds the view model in-process (~70 nodes, ~70 edges, <50ms locally); cached on app.state thereafter."
+        - "Docsite build computes the view model once at build time (~70 nodes, ~70 edges, <50ms locally); the MCP resource lazy-builds on first read and caches in the running server process."
 
     implementation: |
       - Transformer: scripts/docsite/architecture.py (canonical
         location); argus/architecture_map.py shim re-exports for
-        runtime consumers in the installed package.
-      - Three consumers:
+        runtime consumers in the installed package (MCP).
+      - Two consumers:
           docsite build → scripts/docsite/builder.py calls
-              render_standalone_html(view_model, output_dir/architecture/)
-          FastAPI viewer → argus/viewers/browser/app.py @app.get("/architecture")
+              render_inline_markdown(view_model, docs_out)
+              (writes docs/architecture.md inlined inside MkDocs
+              Material; copies architecture.{css,js} to docs/assets/)
           MCP server → argus/mcp.py @mcp.resource("argus://architecture")
       - CI gate: scripts/ci/check_architecture_sync.py runs in
         .github/workflows/test-unit.yml on every push / PR.
@@ -2091,4 +2100,4 @@ decisions:
       - ADR-018  # canonical argus-results.json — same "single derived shape, many consumers" pattern
       - ADR-023  # reporter entry-points — same "registry as source of truth" pattern
     pr_references:
-      - "(introduces scripts/docsite/architecture.py, argus/architecture_map.py, the /architecture route, the argus://architecture MCP resource, and the CI check)"
+      - "(introduces scripts/docsite/architecture.py, argus/architecture_map.py, the argus://architecture MCP resource, and the CI check; the docs-site integration of the page lives in scripts/docsite/architecture.py::render_inline_markdown)"

@@ -436,8 +436,9 @@ quick_reference:
   docsite_preview: "cd scripts && python -m docsite --output-dir /tmp/argus-docs && cd /tmp/argus-docs && mkdocs serve"
   # Architecture map (interactive SDK diagram — ADR-026).
   # Regenerated from .ai/architecture.yaml + runtime SDK introspection;
-  # never hand-edit a JSON mirror.
-  architecture_regen: "python -m docsite --output-dir /tmp/argus-docs  # writes /tmp/argus-docs/docs/architecture/index.html"
-  architecture_view_local: "argus view browser  # then open http://127.0.0.1:8000/architecture"
-  architecture_view_offline: "python -m docsite --output-dir /tmp/argus-docs && open /tmp/argus-docs/docs/architecture/index.html  # standalone, no server"
+  # never hand-edit a JSON mirror. The page lives inside the docs site
+  # at /argus/architecture/ (MkDocs Material wraps the inline markup);
+  # ``argus view browser`` no longer ships the route.
+  architecture_regen: "python -m scripts.docsite  # writes site-build/docs/architecture.md + site-build/docs/assets/architecture.{css,js}"
+  architecture_view_local: "python -m scripts.docsite && cd site-build && mkdocs serve  # then open http://127.0.0.1:8000/argus/architecture/"
   architecture_check: "python -m scripts.ci.check_architecture_sync  # registry / entry-points / CLI must match the YAML"

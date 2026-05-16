@@ -173,15 +173,13 @@ components:
       argus.reporters entry-point group, argparse subcommands). No
       hand-edited JSON mirror is committed; see ADR-026.
     consumers:
-      - "Docsite build (scripts/docsite/builder.py → docs/architecture/index.html)"
-      - "argus view browser → /architecture route"
+      - "Docsite build (scripts/docsite/builder.py → docs/architecture.md inside MkDocs Material)"
       - "argus mcp → argus://architecture resource"
     structure:
-      "scripts/docsite/architecture.py": "Canonical view-model transformer + standalone HTML renderer"
-      "argus/architecture_map.py": "Runtime shim that re-exports the transformer for installed-package consumers"
-      "argus/viewers/browser/templates/architecture.html.j2": "Jinja2 template extending base.html.j2 for the FastAPI route"
-      "argus/viewers/browser/static/architecture.css": "Column / flow / panel styling using brand custom properties from argus.css"
-      "argus/viewers/browser/static/architecture.js": "Vanilla JS — column rendering, flow highlight, picker mode, URL state"
+      "scripts/docsite/architecture.py": "Canonical view-model transformer + inline-markdown renderer (writes docs/architecture.md + copies CSS/JS to docs/assets/)"
+      "argus/architecture_map.py": "Runtime shim that re-exports the transformer for installed-package consumers (MCP)"
+      "argus/viewers/browser/static/architecture.css": "Column / flow / panel styling — sourced by the docsite build, copied into docs/assets/"
+      "argus/viewers/browser/static/architecture.js": "Vanilla JS — column rendering, flow highlight, picker mode, URL state, copy buttons, tour"
       "scripts/ci/check_architecture_sync.py": "CI gate: registries / entry-points / CLI must match the YAML"
     related_adrs:
       - ADR-026  # YAML is canonical, JSON is derived
