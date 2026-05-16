@@ -30,7 +30,14 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install 'mkdocs>=1.6,<2' 'mkdocs-material>=9.7,<10' pyyaml mike
+        # ``argus`` itself is installed alongside the MkDocs deps so the
+        # docsite builder can introspect ``SCANNER_REGISTRY`` /
+        # ``LINTER_REGISTRY`` / the ``argus.reporters`` entry-point
+        # group / the argparse subcommand list when it renders the
+        # interactive architecture page. Without the SDK on PATH the
+        # page silently skips, the ``Architecture`` nav entry points
+        # at a missing file, and ``mkdocs build --strict`` fails.
+        run: pip install 'mkdocs>=1.6,<2' 'mkdocs-material>=9.7,<10' pyyaml mike -e .
 
       - name: Resolve docs ref
         # Per-trigger blob ref so the docsite's cross-repo links point

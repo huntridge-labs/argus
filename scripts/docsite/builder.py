@@ -447,7 +447,6 @@ def build(repo_root: Path, output_dir: Path, *, ref: str | None = None) -> None:
         nav.append({"Examples": examples_nav})
 
     nav.append({"Changelog": "changelog.md"})
-    nav.append({"Architecture": "architecture.md"})
 
     # ── Architecture page ────────────────────────────────────────────────
     #
@@ -458,6 +457,12 @@ def build(repo_root: Path, output_dir: Path, *, ref: str | None = None) -> None:
     # architecture.js) go to ``docs/assets/`` alongside the docsite's
     # custom theme; the page references them via relative ``<link>``
     # / ``<script>`` tags so they only load on this page.
+    #
+    # The nav entry is appended *only after* the page renders
+    # successfully — otherwise ``mkdocs build --strict`` aborts on a
+    # nav entry pointing at a missing file (the SDK introspection
+    # this page depends on can fail in environments without the
+    # ``argus`` package installed).
     try:
         from .architecture import (
             build_view_model_from_repo,
@@ -465,6 +470,7 @@ def build(repo_root: Path, output_dir: Path, *, ref: str | None = None) -> None:
         )
         view_model = build_view_model_from_repo(repo_root)
         render_inline_markdown(view_model, docs_out)
+        nav.append({"Architecture": "architecture.md"})
         print(
             f"   ✅ Architecture page generated "
             f"({len(view_model.get('nodes', []))} nodes, "
