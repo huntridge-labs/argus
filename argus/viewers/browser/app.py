@@ -365,7 +365,9 @@ def create_app(root: str | None = None) -> FastAPI:
     )
     app.state.root = Path(root).resolve() if root else Path.cwd()
 
+    import time as _time
     templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+    templates.env.globals["static_v"] = int(_time.time())
     app.state.templates = templates
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
