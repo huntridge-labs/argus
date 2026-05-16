@@ -158,8 +158,6 @@ or pass `?scan=/abs/path` on `/`.
 - [`argus scan`](cli-reference.md#argus-scan) — produces the
   `argus-results.json` this UI reads.
 - [`argus scan --interface=terminal`](view-terminal.md) — launches the TUI after a scan.
-  A web-equivalent `argus scan --serve` convenience flag is tracked on the
-  roadmap.
 - [`argus view terminal`](view-terminal.md) — keyboard-driven TUI for the same data.
-- [SDK roadmap](developer/SDK-ROADMAP.md) — tracked follow-ups (live reload,
-  scan-over-scan diff, JSON API endpoints).
+- [SDK roadmap](developer/SDK-ROADMAP.md) — the migration record and any
+  surviving follow-ups.

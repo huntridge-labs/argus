@@ -2,11 +2,8 @@
 
 How argus handles user secrets, container image provenance, and the
 threat model it defends against. Companion to
-[`docs/config-reference.md`](config-reference.md) (where credentials
-go in config) and the *Secret Handling & Credential Surface
-Hardening* section of
-[`docs/developer/SDK-ROADMAP.md`](developer/SDK-ROADMAP.md) (where the
-audit trail lives).
+[`docs/config-reference.md`](config-reference.md) — where credentials
+go in config.
 
 ---
 

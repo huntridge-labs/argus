@@ -344,6 +344,6 @@ your OS's file-type associations. Change those in Finder (macOS, "Get Info" →
 - [`argus report`](cli-reference.md#argus-report) — regenerate terminal /
   markdown / JSON / SARIF output from an existing results directory without
   re-running scanners
-- [SDK roadmap](developer/SDK-ROADMAP.md) — tracked follow-ups (multi-select,
-  scan-over-scan diff, `argus summary` standalone command, `argus view browser` web
-  view sharing the same `findings_view` module)
+- [SDK roadmap](developer/SDK-ROADMAP.md) — tracked TUI follow-ups
+  (column resize, shift-click range select, inline suppression-comment
+  workflow)

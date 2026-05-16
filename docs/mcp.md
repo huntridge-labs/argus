@@ -243,7 +243,7 @@ The Argus MCP server is distributed as part of the [`argus-security` PyPI packag
 | [Smithery](https://smithery.ai/) | _pending_ | [Submit at smithery.ai](https://smithery.ai/) (auto-detects npm packages; manual submission for PyPI servers) |
 | [Glama](https://glama.ai/mcp/servers) | _pending_ | Auto-discovers servers from public GitHub repos with the `mcp-server` topic + `MCP` mention in README |
 
-_Update this table when each submission lands. The `_pending_` rows are tracked in [`docs/developer/SDK-ROADMAP.md`](developer/SDK-ROADMAP.md#mcp-registry-submissions)._
+_Update this table when each submission lands. The `_pending_` rows are tracked in [`docs/developer/SDK-ROADMAP.md`](developer/SDK-ROADMAP.md#external-distribution)._
 
 ### How to submit Argus to a new registry
 
