@@ -46,10 +46,18 @@ jobs:
           WORKFLOW_EXAMPLES=$(find examples/workflows -name "*.yml" -type f 2>/dev/null | jq -R -s -c 'split("\n")[:-1]')
           echo "workflow-examples=$WORKFLOW_EXAMPLES" >> "$GITHUB_OUTPUT"
 
+          # Fail if fewer than 3 workflow examples found (prevents silent empty-matrix passes)
+          EXAMPLE_COUNT=$(echo "$WORKFLOW_EXAMPLES" | jq 'length')
+          echo "Found $EXAMPLE_COUNT workflow examples"
+          if [ "$EXAMPLE_COUNT" -lt 3 ]; then
+            echo "::error::Expected at least 3 workflow examples but found $EXAMPLE_COUNT. This may indicate missing or deleted example files."
+            exit 1
+          fi
+
           {
             echo "## Discovered Examples"
             echo ""
-            echo "**Workflow Examples:**"
+            echo "**Workflow Examples:** ($EXAMPLE_COUNT found)"
           } >> "$GITHUB_STEP_SUMMARY"
           echo "$WORKFLOW_EXAMPLES" | jq -r '.[]' | while read -r file; do
             [ -n "$file" ] && echo "- \`$file\`" >> "$GITHUB_STEP_SUMMARY"
@@ -202,6 +210,55 @@ jobs:
           done
 
   # ============================================================================
+  # Audit example workflows against current action.yml input contracts
+  # Runs once across the whole tree (cross-action correlation, not
+  # per-example). Catches the bug class where a contract trim leaves
+  # documented examples passing inputs the action no longer accepts —
+  # composite actions only emit a runtime warning for those, so the
+  # drift never surfaces in the syntax-only validate-examples matrix.
+  # See scripts/ci/check_example_inputs.py for the audit logic.
+  # ============================================================================
+  audit-action-inputs:
+    name: Audit Example Action Inputs
+    runs-on: ubuntu-latest
+    needs: discover-examples
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install PyYAML
+        run: pip install PyYAML
+
+      - name: Audit example with-keys against action.yml inputs
+        run: |
+          # --gh-annotations emits ::error file=...:: lines that render
+          # inline in the PR Files-changed view, pinpointing the
+          # offending example.
+          python -m scripts.ci.check_example_inputs --gh-annotations
+
+      - name: Summarize
+        if: always()
+        run: |
+          {
+            echo "## Example Action-Input Audit"
+            echo ""
+            echo "Checks every \`uses: huntridge-labs/argus/.github/actions/<name>@<ref>\` step in"
+            echo "\`examples/**\` against its action's current \`action.yml::inputs\` list."
+            echo ""
+            echo "Source of truth: \`.github/actions/<name>/action.yml\`."
+            echo "Audit script: \`scripts/ci/check_example_inputs.py\`."
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ============================================================================
   # Final Summary
   # ============================================================================
   examples-summary:
@@ -210,31 +267,42 @@ jobs:
     needs:
       - validate-examples
       - validate-configs
+      - audit-action-inputs
     if: always()
 
     steps:
       - name: Generate Summary
+        env:
+          NEEDS_VALIDATE_EXAMPLES_RESULT: ${{ needs.validate-examples.result }}
+          NEEDS_VALIDATE_CONFIGS_RESULT: ${{ needs.validate-configs.result }}
+          NEEDS_AUDIT_ACTION_INPUTS_RESULT: ${{ needs.audit-action-inputs.result }}
         run: |
+          examples_status="❌ Failed"
+          [ "$NEEDS_VALIDATE_EXAMPLES_RESULT" = "success" ] && examples_status="✅ Passed"
+          configs_status="❌ Failed"
+          [ "$NEEDS_VALIDATE_CONFIGS_RESULT" = "success" ] && configs_status="✅ Passed"
+          audit_status="❌ Failed"
+          [ "$NEEDS_AUDIT_ACTION_INPUTS_RESULT" = "success" ] && audit_status="✅ Passed"
+
           {
             echo "# Example Validation Results"
             echo ""
             echo "| Validation Type | Status |"
             echo "|-----------------|--------|"
-            echo "| Workflow Examples | ${{ needs.validate-examples.result == 'success' && '✅ Passed' || '❌ Failed' }} |"
-            echo "| Config Examples | ${{ needs.validate-configs.result == 'success' && '✅ Passed' || '❌ Failed' }} |"
+            echo "| Workflow Examples | $examples_status |"
+            echo "| Config Examples | $configs_status |"
+            echo "| Action-Input Audit | $audit_status |"
             echo ""
             echo "> **Note**: Functional testing of actions is handled by \`test-actions.yml\`"
             echo "> This workflow focuses on validating example **documentation** is correct."
             echo ""
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if [[ "${NEEDS_VALIDATE_EXAMPLES_RESULT}" == "success" && \
-                "${NEEDS_VALIDATE_CONFIGS_RESULT}" == "success" ]]; then
+          if [ "$NEEDS_VALIDATE_EXAMPLES_RESULT" = "success" ] && \
+             [ "$NEEDS_VALIDATE_CONFIGS_RESULT" = "success" ] && \
+             [ "$NEEDS_AUDIT_ACTION_INPUTS_RESULT" = "success" ]; then
             echo "✅ **All examples validated successfully!**" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "❌ **Some validations failed - review above for details**" >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
-        env:
-          NEEDS_VALIDATE_EXAMPLES_RESULT: ${{ needs.validate-examples.result }}
-          NEEDS_VALIDATE_CONFIGS_RESULT: ${{ needs.validate-configs.result }}

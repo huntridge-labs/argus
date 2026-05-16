@@ -1,5 +1,23 @@
 name: ZAP DAST from Config (Composite Actions)
 
+# Reusable example: parse a ``zap-config.yml`` into a scan matrix and
+# run scanner-zap once per entry. ``parse-zap-config`` produces a
+# matrix with target/scan metadata; we forward the inputs scanner-zap
+# accepts on its current contract:
+#
+#   scan_name, scan_mode, scan_type, target_url, app_image_ref,
+#   app_ports, app_env, startup_timeout, fail_on_severity,
+#   post_pr_comment, enable_code_security, job_id, python_version
+#
+# Earlier revisions of this example also forwarded api_spec,
+# healthcheck_url, app_build_context, app_dockerfile, app_image_tag,
+# compose_file, compose_build, registry_username, registry_password,
+# max_duration_minutes, rules_file_name, cmd_options, allow_failure
+# — those inputs no longer exist on scanner-zap. If your DAST flow
+# depended on them, build / pull / health-check / log-in to the
+# image in a previous step, then point scanner-zap at the running
+# target via target_url or app_image_ref + app_ports.
+
 on:
   push:
     branches: [main]
@@ -68,25 +86,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           scan_name: ${{ matrix.name }}
-          scan_mode: ${{ matrix.mode }}
           scan_type: ${{ matrix.scan_type }}
           target_url: ${{ matrix.target_url }}
-          api_spec: ${{ matrix.api_spec }}
-          healthcheck_url: ${{ matrix.healthcheck_url }}
           app_image_ref: ${{ matrix.image }}
           app_ports: ${{ matrix.ports }}
-          app_build_context: ${{ matrix.build_context }}
-          app_dockerfile: ${{ matrix.build_dockerfile }}
-          app_image_tag: ${{ matrix.build_tag }}
-          compose_file: ${{ matrix.compose_file }}
-          compose_build: ${{ matrix.compose_build }}
-          registry_username: ${{ matrix.registry_username }}
-          registry_password: ${{ secrets[matrix.registry_auth_secret] || '' }}
-          max_duration_minutes: ${{ matrix.max_duration_minutes }}
-          rules_file_name: ${{ matrix.rules_file }}
-          cmd_options: ${{ matrix.cmd_options }}
           fail_on_severity: ${{ matrix.fail_on_severity }}
-          allow_failure: ${{ matrix.allow_failure }}
           post_pr_comment: ${{ matrix.post_pr_comment }}
 
   summary:

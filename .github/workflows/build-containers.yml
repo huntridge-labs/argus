@@ -1,0 +1,556 @@
+name: Build, Scan & Test Containers
+
+# Single workflow for container lifecycle on PRs:
+#   1. Build custom images from the branch (once)
+#   2. Scan images with Trivy + Grype
+#   3. Test argus CLI using the built images
+#   4. Post PR comment with aggregated results
+#
+# Images are built ONCE and shared via docker save/load artifacts.
+# No triple-build. No masked failures.
+
+on:
+  pull_request:
+    paths:
+      - 'docker/**'
+      - 'argus/**'
+      - 'argus.yml'
+      - '.github/workflows/build-containers.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docker/**'
+      - 'argus/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+  packages: read
+
+concurrency:
+  group: containers-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Step 0: Build matrix from argus.yml ──────────────────────────────
+  # Single source of truth for the image list — argus.yml ``containers:``
+  # block. Removes the duplication where build/, scan/ and test-cli/
+  # each had a separate hardcoded matrix that could drift out of sync
+  # with the dogfood scan target list.
+  matrix:
+    name: Resolve image matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.build.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Build matrix from argus.yml
+        id: build
+        # yq is preinstalled on ubuntu-latest. Reads only the local
+        # checked-out argus.yml (no untrusted input) so the run-step
+        # is safe to compose inline.
+        run: |
+          set -euo pipefail
+          # Schema option A: build entries declare ``dockerfile:`` +
+          # ``name:`` (no ``image:`` — that key is for remote pulls
+          # only). The matrix derives the short image name from
+          # ``name:`` and lets the build step prefix it with the
+          # ghcr.io registry path + commit SHA tag for publishing.
+          matrix=$(yq -o=json '.containers.images | map({
+            "image": .name,
+            "dockerfile": .dockerfile,
+            "context": (.context // ".")
+          })' argus.yml)
+          count=$(echo "$matrix" | yq 'length')
+          if [ "$count" -eq 0 ]; then
+            echo "::error::argus.yml containers.images is empty — no images to build/scan/test."
+            exit 1
+          fi
+          echo "Resolved $count image(s) from argus.yml"
+          echo "$matrix" | yq -P
+          echo "matrix=$(echo "$matrix" | jq -c .)" >> "$GITHUB_OUTPUT"
+
+  # ── Step 1: Build all custom images ──────────────────────────────────
+  build:
+    name: Build Images
+    needs: matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: true
+      matrix:
+        include: ${{ fromJson(needs.matrix.outputs.matrix) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Build image
+        run: |
+          docker build \
+            --tag "${IMAGE_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}" \
+            --file "${DOCKERFILE}" \
+            --label "org.opencontainers.image.revision=${COMMIT_SHA}" \
+            .
+        env:
+          IMAGE_REGISTRY: ghcr.io/huntridge-labs/argus
+          IMAGE_NAME: ${{ matrix.image }}
+          IMAGE_TAG: ${{ github.sha }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          COMMIT_SHA: ${{ github.sha }}
+
+      - name: Save image to artifact
+        run: |
+          docker save "${IMAGE_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}" \
+            | gzip > "/tmp/${IMAGE_NAME}.tar.gz"
+        env:
+          IMAGE_REGISTRY: ghcr.io/huntridge-labs/argus
+          IMAGE_NAME: ${{ matrix.image }}
+          IMAGE_TAG: ${{ github.sha }}
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: image-${{ matrix.image }}
+          path: /tmp/${{ matrix.image }}.tar.gz
+          retention-days: 1
+
+  # ── Step 2: Scan each image with Trivy + Grype ──────────────────────
+  scan:
+    name: Scan ${{ matrix.image }}
+    needs: [matrix, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.matrix.outputs.matrix) }}
+
+    steps:
+      - name: Download image artifact
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4
+        with:
+          name: image-${{ matrix.image }}
+          path: /tmp
+
+      - name: Load image
+        run: |
+          gunzip -c "/tmp/${IMAGE_NAME}.tar.gz" | docker load
+        env:
+          IMAGE_NAME: ${{ matrix.image }}
+
+      - name: Checkout (for argus SDK)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.13'
+
+      - name: Install Argus SDK
+        run: |
+          pip install --quiet pyyaml
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      # Scan with ALL severities — perception is protection
+      - name: Scan with Trivy (SARIF)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          image-ref: "ghcr.io/huntridge-labs/argus/${{ matrix.image }}:${{ github.sha }}"
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
+        with:
+          sarif_file: trivy-results.sarif
+          category: "container-${{ matrix.image }}"
+        continue-on-error: true
+
+      - name: Scan with Grype
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7
+        with:
+          image: "ghcr.io/huntridge-labs/argus/${{ matrix.image }}:${{ github.sha }}"
+          fail-build: false
+          severity-cutoff: critical
+
+      - name: Scan with Trivy (JSON)
+        if: always()
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          image-ref: "ghcr.io/huntridge-labs/argus/${{ matrix.image }}:${{ github.sha }}"
+          format: 'json'
+          output: 'trivy-results.json'
+
+      # Use argus container scanner parser + container markdown reporter
+      - name: Generate report with Argus
+        if: always()
+        run: |
+          mkdir -p scanner-summaries
+          python3 << 'PYEOF'
+          import sys, os
+          sys.path.insert(0, os.environ.get("PYTHONPATH", "."))
+
+          from pathlib import Path
+          from argus.scanners.container import ContainerScanner
+          from argus.container.scanner import ContainerScanResult, ContainerScanSummary
+          from argus.reporters.container_markdown import ContainerMarkdownReporter
+
+          image_name = os.environ["IMAGE_NAME"]
+          image_tag = os.environ.get("IMAGE_TAG", "latest")
+          image_ref = f"ghcr.io/huntridge-labs/argus/{image_name}:{image_tag}"
+
+          trivy_json = Path("trivy-results.json")
+          scanner = ContainerScanner()
+          trivy_findings = scanner.parse_trivy_results(trivy_json) if trivy_json.exists() else []
+
+          result = ContainerScanResult(
+              name=image_name,
+              image_ref=image_ref,
+              trivy_findings=trivy_findings,
+              combined_findings=trivy_findings,
+          )
+
+          # Write just this container's detail section (not the full report)
+          reporter = ContainerMarkdownReporter()
+          reporter.report_single(result, "scanner-summaries")
+
+          # Also write a JSON summary for the combine step
+          import json
+          json.dump({
+              "name": image_name,
+              "image_ref": image_ref,
+              "critical": result.critical_count,
+              "high": result.high_count,
+              "medium": result.medium_count,
+              "low": result.low_count,
+              "total": result.total_count,
+              "unique": result.unique_count,
+              "build_success": result.build_success,
+          }, open(f"scanner-summaries/{image_name}.json", "w"))
+          PYEOF
+        env:
+          IMAGE_NAME: ${{ matrix.image }}
+          IMAGE_TAG: ${{ github.sha }}
+
+      - name: Upload scan artifacts
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: scanner-summary-container-${{ matrix.image }}
+          path: scanner-summaries/
+          retention-days: 7
+
+  # ── Step 3: Test argus CLI using built images ───────────────────────
+  test-cli:
+    name: Test Argus CLI
+    needs: [matrix, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.13'
+
+      - name: Build and install Argus wheel
+        run: |
+          pip install --quiet build pyyaml
+          python -m build --wheel
+          pip install dist/*.whl
+          echo "Installed: $(argus --version)"
+
+      # Load all custom images built in step 1
+      - name: Download all image artifacts
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4
+        with:
+          pattern: image-*
+          merge-multiple: true
+          path: /tmp/images
+
+      - name: Load and retag images
+        # Image names come from the matrix output (resolved from
+        # argus.yml) — no hardcoded list to drift from the dogfood scan
+        # configuration. ``IMAGE_NAMES`` is a JSON array; jq extracts
+        # the short names. Reads only env vars and JSON we constructed
+        # ourselves; no untrusted input.
+        run: |
+          set -euo pipefail
+          for tarball in /tmp/images/*.tar.gz; do
+            gunzip -c "$tarball" | docker load
+          done
+          # Retag from SHA to version tag that containers.py expects
+          for image in $(echo "$IMAGE_NAMES_JSON" | jq -r '.[].image'); do
+            SHA_TAG="ghcr.io/huntridge-labs/argus/${image}:${GITHUB_SHA}"
+            VERSION_TAG="ghcr.io/huntridge-labs/argus/${image}:0.7.0"
+            if docker image inspect "$SHA_TAG" > /dev/null 2>&1; then
+              docker tag "$SHA_TAG" "$VERSION_TAG"
+            fi
+          done
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          IMAGE_NAMES_JSON: ${{ needs.matrix.outputs.matrix }}
+
+      - name: Package safety check
+        run: python -m scripts.ci.check_package
+
+      - name: Verify wheel installation
+        # ARGUS_NO_UPDATE_CHECK=1 disables the background PyPI poll
+        # daemon thread that races C-extension imports on hosted
+        # Python 3.13.13 (the suspected root cause of the SIGSEGV
+        # flake — see scripts/ci/argus_smoke.sh header). CI doesn't
+        # need an update-available notice anyway. The retry helper
+        # below stays in place as belt-and-suspenders until the
+        # flake's been absent for a few weeks.
+        env:
+          ARGUS_NO_UPDATE_CHECK: "1"
+        run: |
+          which argus
+          argus --version
+          OUTPUT=$(scripts/ci/argus_smoke.sh)
+          echo "$OUTPUT"
+          for scanner in bandit clamav trivy-iac gitleaks osv checkov opengrep supply-chain zap container; do
+            echo "$OUTPUT" | grep -q "$scanner" || { echo "FAIL: $scanner not listed"; exit 1; }
+          done
+
+      - name: Run argus scan
+        run: |
+          set +e
+          argus scan \
+            --config argus.yml \
+            --format terminal \
+            --format markdown \
+            --format sarif \
+            --format json \
+            --output-dir ./cli-test-results \
+            --output-vars ./cli-test-results/counts.env \
+            --verbose
+          EXIT_CODE=$?
+          set -e
+          if [ "$EXIT_CODE" -eq 2 ]; then
+            echo "::error::Argus scan failed with error (exit code 2)"
+            exit 2
+          fi
+          echo "Scan completed with exit code $EXIT_CODE"
+
+      - name: Resolve latest run directory
+        id: run-dir
+        run: |
+          # Timestamped run directories — resolve the 'latest' symlink
+          RUN_DIR="cli-test-results/latest"
+          if [ -L "$RUN_DIR" ]; then
+            RESOLVED="cli-test-results/$(readlink "$RUN_DIR")"
+            echo "Run directory: $RESOLVED"
+            echo "dir=$RESOLVED" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::No 'latest' symlink in cli-test-results/"
+            ls -la cli-test-results/ || true
+            exit 1
+          fi
+
+      - name: Verify outputs
+        env:
+          RUN_DIR: ${{ steps.run-dir.outputs.dir }}
+        run: |
+          for f in "$RUN_DIR/argus-results.json" "$RUN_DIR/argus-results.sarif"; do
+            test -f "$f" || { echo "FAIL: $f not produced"; exit 1; }
+          done
+
+      - name: Validate SARIF
+        env:
+          RUN_DIR: ${{ steps.run-dir.outputs.dir }}
+        run: |
+          python3 -c "
+          import json, os
+          data = json.load(open(os.path.join(os.environ['RUN_DIR'], 'argus-results.sarif')))
+          assert data.get('version') == '2.1.0', f'Bad SARIF version: {data.get(\"version\")}'
+          assert 'runs' in data, 'Missing runs'
+          print(f'SARIF valid: {len(data[\"runs\"])} run(s)')
+          "
+
+      - name: Validate JSON results
+        env:
+          RUN_DIR: ${{ steps.run-dir.outputs.dir }}
+        run: |
+          python3 -c "
+          import json, os
+          data = json.load(open(os.path.join(os.environ['RUN_DIR'], 'argus-results.json')))
+          results = data.get('results', [])
+          assert len(results) > 0, 'No scanner results'
+          scanners = [r['scanner'] for r in results]
+          total = sum(len(r.get('findings', [])) for r in results)
+          print(f'Scanners: {scanners}')
+          print(f'Total findings: {total}')
+          "
+
+      - name: Validate audit trail
+        env:
+          RUN_DIR: ${{ steps.run-dir.outputs.dir }}
+        run: |
+          echo "Checking audit artifacts..."
+          for f in "$RUN_DIR/argus.log" "$RUN_DIR/argus-audit.json" "$RUN_DIR/argus-summary.md"; do
+            test -f "$f" || { echo "FAIL: $f not produced"; exit 1; }
+            echo "  OK: $f ($(wc -c < "$f") bytes)"
+          done
+
+          # Validate audit manifest structure
+          python3 -c "
+          import json, os, hashlib
+          run_dir = os.environ['RUN_DIR']
+          m = json.load(open(os.path.join(run_dir, 'argus-audit.json')))
+          assert m.get('scan_id'), 'Missing scan_id'
+          assert m.get('started_at'), 'Missing started_at'
+          assert m.get('completed_at'), 'Missing completed_at'
+          assert m.get('duration_ms', 0) > 0, 'Invalid duration'
+          assert m.get('platform', {}).get('name'), 'Missing platform'
+          assert m.get('config_hash'), 'Missing config hash'
+          assert len(m.get('artifacts', [])) > 0, 'No artifacts inventoried'
+          print(f'Audit manifest valid: scan_id={m[\"scan_id\"][:8]}...')
+          print(f'  Platform: {m[\"platform\"][\"name\"]}')
+          print(f'  Duration: {m[\"duration_ms\"]}ms')
+          print(f'  Scanners: {m.get(\"scanners_executed\", [])}')
+          print(f'  Artifacts: {len(m[\"artifacts\"])} files')
+
+          # Verify SHA-256 hashes for static artifacts
+          for a in m['artifacts']:
+              full = os.path.join(run_dir, a['path'])
+              actual = hashlib.sha256(open(full, 'rb').read()).hexdigest()
+              assert actual == a['sha256'], f'Hash mismatch for {a[\"path\"]}: expected {a[\"sha256\"][:16]}... got {actual[:16]}...'
+          print(f'  Artifact hashes: {len(m[\"artifacts\"])} verified')
+          "
+
+          # Validate structured log is JSONL
+          python3 -c "
+          import json, os
+          with open(os.path.join(os.environ['RUN_DIR'], 'argus.log')) as f:
+              lines = [line for line in f if line.strip()]
+          for i, line in enumerate(lines):
+              entry = json.loads(line)
+              assert 'timestamp' in entry, f'Line {i}: missing timestamp'
+              assert 'level' in entry, f'Line {i}: missing level'
+              assert 'message' in entry, f'Line {i}: missing message'
+          print(f'Structured log valid: {len(lines)} entries')
+          "
+
+      - name: Validate output-vars
+        run: |
+          test -f cli-test-results/counts.env || { echo "FAIL: counts.env not produced"; exit 1; }
+          echo "=== counts.env ==="
+          cat cli-test-results/counts.env
+          # Verify expected keys
+          for key in critical_count high_count medium_count low_count total_count passed; do
+            grep -q "^${key}=" cli-test-results/counts.env || { echo "FAIL: missing ${key}"; exit 1; }
+          done
+          echo "Output vars valid"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: argus-cli-test-results
+          path: cli-test-results/
+          retention-days: 7
+
+  # ── Step 4: Post PR comment using argus markdown + comment-pr action ─
+  comment-pr:
+    name: Container Scan Summary
+    if: always() && github.event_name == 'pull_request'
+    needs: [scan, test-cli]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (for comment-pr action)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      # Download the argus-generated markdown from each scan matrix job
+      - name: Download scanner summaries
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4
+        with:
+          pattern: scanner-summary-container-*
+          merge-multiple: true
+          path: scanner-summaries
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.13'
+
+      - name: Install Argus SDK
+        run: |
+          pip install --quiet pyyaml
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      # Build combined report with summary table + per-container sections
+      - name: Combine scanner summaries
+        run: |
+          python3 << 'PYEOF'
+          import sys, os, glob, json
+          sys.path.insert(0, os.environ.get("PYTHONPATH", "."))
+
+          from pathlib import Path
+          from argus.container.scanner import ContainerScanResult, ContainerScanSummary
+          from argus.reporters.container_markdown import ContainerMarkdownReporter
+
+          # Load per-image JSON summaries for accurate severity counts
+          results = []
+          for json_file in sorted(Path("scanner-summaries").glob("*.json")):
+              data = json.load(open(json_file))
+              # Create a minimal result with counts (findings list empty —
+              # the per-image markdown sections have the detail)
+              r = ContainerScanResult(
+                  name=data["name"],
+                  image_ref=data.get("image_ref", data["name"]),
+                  build_success=data.get("build_success", True),
+              )
+              # Inject counts via the combined_findings proxy
+              # (ContainerScanResult computes counts from combined_findings)
+              from argus.core.models import Finding, Severity
+              for sev, count in [
+                  (Severity.CRITICAL, data.get("critical", 0)),
+                  (Severity.HIGH, data.get("high", 0)),
+                  (Severity.MEDIUM, data.get("medium", 0)),
+                  (Severity.LOW, data.get("low", 0)),
+              ]:
+                  for _ in range(count):
+                      r.combined_findings.append(
+                          Finding(id="count", severity=sev, title="")
+                      )
+              results.append(r)
+
+          summary = ContainerScanSummary(results=results)
+          section_files = sorted(Path("scanner-summaries").glob("*.md"))
+
+          # Build combined report: summary table + breakdown + per-container sections
+          content = ContainerMarkdownReporter.build_combined_report(
+              section_files=section_files,
+              summary=summary,
+          )
+
+          # CLI test results are functional validation, not security findings.
+          # They scan test fixtures with intentional vulnerabilities.
+          # Only container image vulns go in the PR comment.
+
+          Path("scanner-summaries/combined-container-scan.md").write_text(content)
+          print(f"Combined report: {len(section_files)} container sections")
+          PYEOF
+
+      # Post using the existing comment-pr composite action
+      - name: Comment PR with scan results
+        uses: ./.github/actions/comment-pr
+        with:
+          summary_file: scanner-summaries/combined-container-scan.md
+          comment_marker: argus-container-scan
+          title: '🔒 Argus Container Security Scan'
+          fallback_message: 'No container scan results available'

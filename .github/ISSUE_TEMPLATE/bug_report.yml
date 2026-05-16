@@ -12,20 +12,19 @@ body:
       required: true
   - type: dropdown
     attributes:
-      label: Workflow Type
-      description: Which workflow are you using?
+      label: Interface
+      description: How are you using Argus?
       options:
-        - Reusable Security Hardening Workflow
-        - Linting Workflow
-        - Individual Scanner Workflow (specify below)
+        - Argus SDK (python -m argus scan)
+        - Composite Action (GitHub Actions)
         - Other
     validations:
       required: true
   - type: input
     attributes:
-      label: Specific Workflow/Scanner
-      description: If using an individual scanner or other workflow, specify which one (e.g., scanner-codeql.yml, trivy-container).
-      placeholder: e.g., scanner-gitleaks.yml
+      label: Specific Scanner/Action
+      description: Which scanner or action are you using? (e.g., bandit, scanner-gitleaks, container).
+      placeholder: e.g., bandit
   - type: input
     attributes:
       label: Scanners Enabled

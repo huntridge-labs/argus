@@ -1,7 +1,7 @@
 # Trivy IaC Scanner - Reusable Workflow
 #
-# THIN WRAPPER: This workflow delegates to the scanner-trivy-iac composite action.
-# All scanning logic is in: .github/actions/scanner-trivy-iac/action.yml
+# Runs the Trivy IaC scanner via the argus Python CLI.
+# Equivalent to: python -m argus scan trivy-iac
 #
 # For GHES users: Use the composite action directly instead of this workflow.
 # See: examples/github-enterprise/infrastructure-scanning.yml
@@ -52,10 +52,48 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Run Trivy IaC Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@0.7.2
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
-          iac_path: ${{ inputs.iac_path }}
-          enable_code_security: ${{ inputs.enable_code_security }}
-          post_pr_comment: ${{ inputs.post_pr_comment }}
-          fail_on_severity: ${{ inputs.fail_on_severity }}
+          python-version: '3.13'
+
+      - name: Install Argus
+        run: |
+          pip install --quiet pyyaml
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Run scan
+        run: |
+          python -m argus scan trivy-iac \
+            --path "$SCAN_PATH" \
+            --severity-threshold "$SEVERITY_THRESHOLD" \
+            --format terminal --format sarif --format json \
+            --output-dir ./argus-results \
+            --verbose
+        env:
+          SCAN_PATH: ${{ inputs.iac_path || 'infrastructure' }}
+          SEVERITY_THRESHOLD: ${{ inputs.fail_on_severity || 'none' }}
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: trivy-iac-reports
+          path: ./argus-results/
+          retention-days: 30
+
+      - name: Upload SARIF
+        if: inputs.enable_code_security && always() && github.actor != 'nektos/act'
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
+        with:
+          sarif_file: ./argus-results/argus-results.sarif
+        continue-on-error: true
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request' && inputs.post_pr_comment
+        uses: huntridge-labs/argus/.github/actions/comment-pr@0.7.0
+        with:
+          summary_file: ./argus-results/argus-results.md
+          comment_marker: trivy-iac-scanner-comment-marker
+          title: 'Trivy IaC Security Results'
+          fallback_message: 'No Trivy IaC results available'

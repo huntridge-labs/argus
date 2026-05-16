@@ -10,6 +10,10 @@
 #   - .github/actions/linter-terraform/action.yml
 #   - .github/actions/linting-summary/action.yml
 #
+# NOTE: Linters are not yet part of the argus scanner registry.
+# They will be migrated to the argus CLI in a future release.
+# Until then, this workflow continues to use composite actions directly.
+#
 # For GHES users: Use the composite actions directly instead of this workflow.
 # See: examples/github-enterprise/
 

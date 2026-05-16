@@ -1,0 +1,91 @@
+# Argus Security Scan — Azure DevOps Pipeline
+#
+# Runs argus scan on PRs and CI builds. Posts scan results
+# as a PR comment and publishes SARIF to the pipeline.
+#
+# Prerequisites:
+#   - argus.yml in the repository root (run: argus init)
+#   - Python 3.11+ available on the agent
+#   - Docker available on the agent
+#
+# Add this as azure-pipelines.yml or include as a template.
+
+trigger:
+  branches:
+    include:
+      - main
+
+pr:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+  - checkout: self
+    fetchDepth: 0  # Full history for gitleaks
+
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.12'
+
+  - script: pip install pyyaml  # Will become: pip install argus-security
+    displayName: Install dependencies
+
+  - script: |
+      python -m argus scan \
+        --format sarif --format json --format markdown \
+        --output-dir ./argus-results \
+        --output-vars ./argus-results/counts.env \
+        --no-timestamp \
+        || true
+
+      # Export scan counts as pipeline variables
+      if [ -f argus-results/counts.env ]; then
+        while IFS='=' read -r key value; do
+          echo "##vso[task.setvariable variable=$key]$value"
+        done < argus-results/counts.env
+      fi
+    displayName: Run Argus scan
+
+  - task: PublishBuildArtifacts@1
+    condition: always()
+    inputs:
+      pathtoPublish: argus-results
+      artifactName: argus-results
+
+  # Post PR comment using Azure DevOps REST API
+  - script: |
+      if [ -z "$(System.PullRequest.PullRequestId)" ]; then
+        echo "Not a PR build, skipping comment"
+        exit 0
+      fi
+
+      if [ ! -f "argus-results/argus-summary.md" ]; then
+        echo "No summary file, skipping comment"
+        exit 0
+      fi
+
+      SUMMARY=$(cat argus-results/argus-summary.md)
+      COMMENT="## 🔒 Argus Security Scan Results\n\n${SUMMARY}"
+
+      curl --silent --fail \
+        -X POST \
+        -H "Authorization: Bearer $(System.AccessToken)" \
+        -H "Content-Type: application/json" \
+        -d "$(jq -n --arg content "$COMMENT" '{comments: [{parentCommentId: 0, content: $content, commentType: 1}], status: 1}')" \
+        "$(System.CollectionUri)$(System.TeamProject)/_apis/git/repositories/$(Build.Repository.ID)/pullRequests/$(System.PullRequest.PullRequestId)/threads?api-version=7.1" \
+        || echo "Failed to post PR comment"
+    displayName: Post PR comment
+    condition: and(always(), ne(variables['System.PullRequest.PullRequestId'], ''))
+
+  # Fail pipeline if findings exceed threshold
+  - script: |
+      if [ "$(passed)" = "false" ]; then
+        echo "##vso[task.logissue type=error]Security findings exceed severity threshold"
+        exit 1
+      fi
+    displayName: Check scan results
+    condition: always()

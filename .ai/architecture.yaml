@@ -5,48 +5,72 @@
 version: "1.0"
 
 architecture:
-  description: "Composite actions are the core architecture. Reusable workflows are thin wrappers for backwards compatibility."
+  description: "The argus Python SDK is the primary interface. Composite actions provide GitHub Actions integration."
   primary:
+    location: "argus/"
+    pattern: "Python SDK + CLI"
+    version: "0.7.2"
+    status: production
+    advantage: "Platform-independent, works locally and in any CI; canonical argus-results.json shared across source-scan, container-scan, and MCP flows"
+    cli: "argus scan --config argus.yml  (or: python -m argus scan --config argus.yml)"
+
+  actions:
     location: ".github/actions/"
     pattern: "Composite actions"
-    version: "0.6.8"
     status: production
-    advantage: "GHES compatible, self-contained"
-
-  backwards_compat:
-    location: ".github/workflows/"
-    pattern: "Reusable workflows"
-    status: maintained
-    limitation: "Requires github.com (cross-repo calls)"
-    note: "Thin wrappers around composite actions"
+    advantage: "GHES compatible, self-contained GitHub Actions integration"
 
 components:
-  - name: main-orchestrator
-    location: ".github/workflows/reusable-security-hardening.yml"
-    purpose: "Single entry point that dispatches to individual scanners"
-    type: entrypoint
-    accepts: "scanners parameter (comma-separated list or 'all')"
-    returns: "Aggregated SARIF, PR comments, job summaries"
-    calls: [scanner-workflows]
+  - name: argus-sdk
+    location: "argus/"
+    purpose: "Primary interface for running Argus scanners locally or in CI"
+    type: sdk
+    cli: "python -m argus scan --config argus.yml"
+    structure:
+      "cli.py": "argparse CLI with scan, cache, and report subcommands"
+      "init.py": "argus init project bootstrap and banner rendering from img/argus_logo.txt"
+      "containers.py": "Container image manifest, version enforcement, and DB cache volume mounts (CACHE_MOUNTS)"
+      "core/models.py": "Severity enum, Finding/ScanResult/ScanSummary dataclasses"
+      "core/scanner.py": "Scanner Protocol definition"
+      "core/config.py": "ArgusConfig loading from argus.yml"
+      "core/engine.py": "ArgusEngine orchestrating scanners and aggregating results (delegates to core/prewarm.py for background image pre-warm + lazy pulls in parallel mode). Container path honors three optional Scanner hooks: container_args/build_args (CLI argv), container_env(config)->dict (resolved values land in a subprocess.run env=... dict and docker_cmd carries only ``-e NAME`` flags — values never appear on the docker run command line, closing the ps/docker-inspect leak; None values are filtered so unset env-var-name refs don't materialize at all), and container_mounts(config)->[(host,container)] (extra read-only bind mounts; non-existent host paths are skipped with a WARNING rather than aborting the scan)."
+      "core/prewarm.py": "ImagePrewarmer — best-effort background container image pulls. Dedup'd by image ref, capped concurrency (execution.prewarm_workers, default 4), opt-out via execution.prewarm_images: false. Skipped when pull_policy=never. Pre-warm failure falls back to inline pull in _run_in_container."
+      "core/exclusions.py": "Path exclusion set (builtins + .gitignore + config + CLI), ``**``-glob matcher"
+      "core/schema.py": "argus.yml schema validator. Validates structure, types, allowed values, credential-field shapes, and ZAP's nested ``auth`` sub-block; emits ConfigError objects (ERROR / WARNING) that ``argus validate`` reports. Catches typos, malformed PORT/PROTO entries, and vendor-shaped literal credentials at config-load time. Stdlib-only."
+      "core/version.py": "argus version resolution + display helpers. Single source-of-truth read from ``__version__`` (which is itself loaded from ``version.yaml`` at install time via the pyproject.toml dynamic version mechanism)."
+      "core/scanner_template.py": "Shared subprocess-scan template + ScanPaths dataclass. Standardized ``build_args(ScanPaths, config)`` shape (PR #117 unification) — scanners declare argv via this template and the engine drives both local and container execution from the same shape. Reused by 9 scanner modules."
+      "core/linter_template.py": "FileDiscoveryScanner template + shared docker-fallback helpers (ADR-020). Linters that follow the discover-files → batch-subprocess shape subclass it instead of rolling their own walk. Used by lint-dockerfile and partially by lint-javascript / lint-terraform; the remaining three linters (yaml, json, python) keep custom flows that don't fit the template's shape but can borrow ``build_docker_command`` / ``run_utf8`` helpers."
+      "core/redact.py": "Pattern-based secret redaction at Finding construction (ADR-022). REDACTED_PLACEHOLDER constant + redact_secret + redact_high_risk_patterns. Runs in Finding.__post_init__ as a defense-in-depth backstop for scanners that get added without the per-scanner audit; conservative vendor-prefix-only pattern set (gh*, AKIA, AIza, glpat-, sk_live_, npm_, xox*-, JWT, PEM) — no high-entropy heuristics."
+      "core/tool_config.py": "Auto-discovery of per-scanner canonical config files (.bandit, .checkov.yaml, trivy.yaml, osv-scanner.toml, semgrep.yml)"
+      "core/sbom.py": "SBOM format detection (CycloneDX JSON/XML, SPDX JSON/tag-value, Syft JSON) for ``argus scan --sbom``"
+      "core/secrets.py": "Credential resolution for any scanner config field. resolve_secret(config, field, *, stdin_override=None) accepts three forms in precedence order: stdin_override (highest, populated by CLI --*-password-stdin flags via a module-level slot registry — set_stdin_override / get_stdin_override / clear_stdin_overrides), <field>_env (env-var name reference; reads os.environ at scan time), or <field> literal (back-compat, warned at config-load if vendor-shaped via looks_like_literal_secret). The stdin path never reaches the per-scanner config dict so it can't leak into argus-audit.json / argus.log. validate_env_var_name enforces POSIX shell identifier rules. Stdlib-only. Used by scanners.container and scanners.zap; future scanners with credential needs use the same helper. See ADR-024."
+      "core/image_verify.py": "Supply-chain verification for container images at pull time. verify_image(ref) classifies the ref into: argus-owned (ghcr.io/huntridge-labs/argus/* — cosign keyless verify against the publish workflow's identity + GitHub Actions OIDC issuer; failure is fatal), third-party with @sha256: digest pin (Docker enforces content-hash match at pull, no cosign call needed), or third-party tag-only (logged once per scan via report_tag_pinned_summary). Engine calls this after _pull_image succeeds; fatal results raise RuntimeError before the scanner runs. Config knob: execution.verify_image_signatures (default True; opt-out for air-gapped). Stdlib + cosign binary on PATH; no Python sigstore dep. See docs/security.md."
+      "core/findings_view.py": "Shared UI-free logic for findings display — ViewState, SEVERITY_ORDER, finding_detail_rows, compute_summary, diff_scans (scan-over-scan bucketing keyed off (scanner, id, location)). Consumed by argus view terminal (TUI ``D`` keybind, DiffScreen) and argus view browser (web UI ``/diff`` route)."
+      "viewers/": "`argus view` interfaces (optional extras)"
+      "viewers/__init__.py": "ViewerUnavailable shared exception"
+      "viewers/terminal/": "`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes DiffPickerScreen + DiffScreen for scan-over-scan diff (``D`` keybind), reusing argus.core.findings_view.diff_scans."
+      "viewers/browser/": "`argus view --interface=browser` — FastAPI + Jinja2 web UI, 127.0.0.1 only ([browser] extra). Routes include ``/diff?a=<path>&b=<path>`` powered by argus.core.findings_view.diff_scans, sharing the bucketing logic with the TUI's ``D`` keybind."
+      "scanners/": "Scanner modules implementing Scanner protocol (SCANNER_REGISTRY includes linters via auto-merge). The container scanner orchestrates five sub-scanners on every run: trivy (CVE scan), grype (CVE scan, deduplicated against trivy), syft (SBOM), exposure (declared-port surface from docker inspect Config.ExposedPorts), and services (declared-service surface from systemd unit files + SysV init scripts in the image filesystem). The exposure sub-scanner emits one Finding per declared port; INFO severity for ordinary application ports and MEDIUM for ports on the built-in RISKY_PORTS list (SSH 22/tcp, MySQL 3306/tcp, Redis 6379/tcp, PostgreSQL 5432/tcp, MongoDB 27017/tcp, etc.). The services sub-scanner emits one Finding per declared service; INFO severity for ordinary services and MEDIUM for the built-in RISKY_SERVICES watchlist (sshd, postgresql, redis-server, mongod, elasticsearch, etc.). File extraction uses docker create + docker cp tar streams so distroless / scratch images are supported. Config knobs scanners.container.{expose_warn_ports, expose_ignore_ports, services_warn, services_ignore} override or suppress."
+      "linters/": "Linter modules implementing Scanner protocol (LINTER_REGISTRY auto-merges into SCANNER_REGISTRY)"
+      "reporters/": "Output reporters (terminal, markdown, container_markdown, sarif, json, github, gitlab, junit). Discovered via the ``argus.reporters`` Python entry-point group (built-ins declared in pyproject.toml; third-party packages register additional formats without forking — see docs/contributing-reporters.md and ADR-023)."
+      "preflight/": "CI preflight: provider detection, living issue reporting (GitHub/GitLab), network deps, scanner tool-readiness checks (tool_check.py)"
+      "audit/": "Structured audit trail for every scan run. logger.py emits JSONL log records (one per line) into ``argus-results/.../argus.log``; manifest.py writes the per-run AuditManifest summary into ``argus-audit.json``. secrets.py provides mask_secrets (regex masking for token=, password=, Bearer, URL-creds, GitHub PATs, AWS access keys, sk-keys) and the mask_secrets_in_obj recursive walker. Both write paths run mask_secrets_in_obj at serialization time as defense-in-depth — if a future contributor accidentally captures a docker_cmd / env dict / credential-shaped argv into a manifest field or log entry, the redaction pass catches it before the file lands. Both logger formatters mask the rendered ``record.getMessage()`` rather than ``record.msg`` to avoid corrupting %s format strings whose placeholders match secret-shaped patterns."
 
-  - name: scanner-workflows
-    location: ".github/workflows/scanner-*.yml"
-    purpose: "Individual scanner wrappers with consistent interface"
-    type: workflow
-    pattern: "Run scanner → Parse output → Generate summary → Upload SARIF"
-    instances:
-      - scanner-codeql.yml
-      - scanner-bandit.yml
-      - scanner-gitleaks.yml
-      - scanner-opengrep.yml
-      - scanner-trivy.yml
-      - scanner-grype.yml
-      - scanner-syft.yml
-      - scanner-checkov.yml
-      - scanner-clamav.yml
-      - scanner-zap.yml
-      - scanner-osv.yml
-      - scanner-dependency-review.yml
+  - name: argus-linters
+    location: "argus/linters/"
+    purpose: "Linter modules implementing Scanner protocol for code style and syntax checks"
+    type: sdk-subpackage
+    registry: "LINTER_REGISTRY (auto-merges into SCANNER_REGISTRY at import time)"
+    naming_convention: "lint-<tool> prefix (e.g., lint-yaml, lint-python)"
+    severity: "Severity.INFO for all findings"
+    structure:
+      "__init__.py": "LINTER_REGISTRY + get_linter() + auto-merge into SCANNER_REGISTRY"
+      "yamllint.py": "YAML linting via yamllint"
+      "jsonlint.py": "JSON linting"
+      "python_lint.py": "Python linting"
+      "eslint.py": "JavaScript / TypeScript linting via ESLint"
+      "hadolint.py": "Dockerfile linting via hadolint"
+      "terraform.py": "Terraform linting"
 
   - name: composite-actions
     location: ".github/actions/scanner-*/"
@@ -81,6 +105,37 @@ components:
     instances:
       - security-summary
       - linting-summary
+    security-summary_inputs:
+      # scan_statuses is the primary defense against silent-failure greens.
+      # Callers pass `needs.<job>.result` for every scanner so the aggregator
+      # can render a per-scanner pass/fail table and exit non-zero when any
+      # scanner failed — even if that scanner uploaded no summary artifact.
+      scan_statuses: |
+        Optional JSON object mapping scanner name -> job result
+        (success|failure|cancelled|skipped). When provided, a status table
+        is rendered at the top of the report and the composite exits non-zero
+        on any failure unless `fail_on_scanner_failure` is set to "false".
+      fail_on_scanner_failure: |
+        Default "true". When combined with `scan_statuses`, drives the
+        composite's own exit code so consumer workflows fail on any scanner
+        that did not succeed.
+    security-summary_script: ".github/actions/security-summary/scripts/generate_summary.py"
+    security-summary_tests: "tests/integration/test_security_summary.py"
+    linting-summary_inputs:
+      # linting-summary mirrors the security-summary contract — the same
+      # silent-failure class (no artifact = "no findings") existed for
+      # linters and is closed by the same scan_statuses table.
+      scan_statuses: |
+        Optional JSON object mapping linter name -> job result
+        (success|failure|cancelled|skipped). When provided, a status table
+        is rendered at the top of the report and the composite exits non-zero
+        on any failure unless `fail_on_scanner_failure` is set to "false".
+      fail_on_scanner_failure: |
+        Default "true". When combined with `scan_statuses`, drives the
+        composite's own exit code so consumer workflows fail on any linter
+        that did not succeed.
+    linting-summary_script: ".github/actions/linting-summary/scripts/generate_summary.py"
+    linting-summary_tests: "tests/integration/test_linting_summary.py"
 
   - name: agent-skills
     location: ".agents/skills/"
@@ -91,6 +146,43 @@ components:
       references/REFERENCE.md: "Scanner matrix, platform routing guidance, local act recipes, trigger caveats, and workflow recipes"
     instances:
       - argus-scanner-selection
+
+  - name: argus-mcp
+    location: "argus/mcp.py"
+    purpose: "MCP server for AI assistant integration"
+    type: mcp-server
+    tools: [argus_scan, argus_list_scanners, argus_validate, argus_detect, argus_init, argus_classify, argus_explain_finding, argus_scan_summary]
+    resources: ["argus://config", "argus://results/latest", "argus://config/schema", "argus://architecture"]
+    prompts: [security_review, fix_findings, setup_scanning]
+    transport: stdio
+    install: "pip install argus-security[mcp]"
+    configuration:
+      mcpServers:
+        argus:
+          command: argus
+          args: ["mcp"]
+
+  - name: architecture-map
+    location: "scripts/docsite/architecture.py"
+    purpose: "Interactive SDK architecture diagram — columns × flows × per-node side panel."
+    type: documentation-page
+    note: |
+      Derives its JSON view model from this file (.ai/architecture.yaml) at
+      build time. The transformer is a pure function from canonical YAML
+      plus runtime SDK introspection (SCANNER_REGISTRY, LINTER_REGISTRY,
+      argus.reporters entry-point group, argparse subcommands). No
+      hand-edited JSON mirror is committed; see ADR-026.
+    consumers:
+      - "Docsite build (scripts/docsite/builder.py → docs/architecture.md inside MkDocs Material)"
+      - "argus mcp → argus://architecture resource"
+    structure:
+      "scripts/docsite/architecture.py": "Canonical view-model transformer + inline-markdown renderer (writes docs/architecture.md + copies CSS/JS to docs/assets/)"
+      "argus/architecture_map.py": "Runtime shim that re-exports the transformer for installed-package consumers (MCP)"
+      "argus/viewers/browser/static/architecture.css": "Column / flow / panel styling — sourced by the docsite build, copied into docs/assets/"
+      "argus/viewers/browser/static/architecture.js": "Vanilla JS — column rendering, flow highlight, picker mode, URL state, copy buttons, tour"
+      "scripts/ci/check_architecture_sync.py": "CI gate: registries / entry-points / CLI must match the YAML"
+    related_adrs:
+      - ADR-026  # YAML is canonical, JSON is derived
 
   - name: scn-detector
     location: ".github/actions/scn-detector/"
@@ -199,6 +291,26 @@ scanners:
       output: "JSON, Markdown, GitHub Issues"
       categories: [routine, adaptive, transformative, impact]
 
+  linting:
+    - name: lint-yaml
+      purpose: "YAML syntax and style linting via yamllint"
+      output: "Finding (Severity.INFO)"
+    - name: lint-json
+      purpose: "JSON syntax linting"
+      output: "Finding (Severity.INFO)"
+    - name: lint-python
+      purpose: "Python code style and syntax linting"
+      output: "Finding (Severity.INFO)"
+    - name: lint-javascript
+      purpose: "JavaScript / TypeScript linting via ESLint (with container fallback)"
+      output: "Finding (Severity.INFO)"
+    - name: lint-dockerfile
+      purpose: "Dockerfile linting via hadolint"
+      output: "Finding (Severity.INFO)"
+    - name: lint-terraform
+      purpose: "Terraform configuration linting"
+      output: "Finding (Severity.INFO)"
+
 dependencies:
   external:
     trivy:
@@ -248,46 +360,69 @@ dependencies:
 
 data_flow:
   diagram: |
-    User workflow
-      → reusable-security-hardening.yml (dispatcher)
-        → scanner-{name}.yml (parallel matrix)
-          → Run scanner binary
-          → Parse output (→ JSON)
-          → Generate summary (→ Markdown)
-          → Upload SARIF (→ GitHub Security tab)
-          → [Optional] Post individual PR comment (if post_pr_comment: true)
-        → Aggregate results in security-summary
-      → Single comprehensive PR comment (in reusable workflows)
+    SDK source-scan pipeline (argus scan):
+      argus scan [--config argus.yml | scanner ...]
+        → ArgusEngine loads config + computes exclusions
+        → For each enabled scanner (parallel by default):
+          → is_available()? → run locally; else fall back to docker run (ADR-014)
+          → Parse tool output → list[Finding]
+          → Aggregate into ScanResult(scanner=<name>, findings=..., metadata=...)
+          → If reporting.keep_raw: copy raw scanner files to <output_dir>/raw/<scanner>/
+        → Build ScanSummary
+        → Reporters consume ScanSummary:
+            JsonReporter writes canonical argus-results.json (always)
+            terminal/markdown/sarif emit alongside per reporting.formats
+
+    SDK container-scan pipeline (argus scan container):
+      argus scan container [--image REF | --discover PATH]
+        → ContainerEngine resolves image targets (CLI flags > containers: config)
+        → For each target: scan_image(trivy + grype + syft + exposure + services)
+          → If reporting.keep_raw: copy trivy/grype/syft raw outputs and write
+            exposure-findings.json / services-findings.json to <output_dir>/raw/<image>/
+            (the exposure / services helpers have no upstream JSON output, so the
+            lifecycle path synthesizes one when they produce findings)
+        → Map ContainerScanResult → ScanResult(scanner="container/<name>", findings=combined)
+        → Same JsonReporter / SARIF reporter pipeline as source scans —
+          argus view consumes the canonical argus-results.json without
+          container-specific code (PR #116, ADR-018).
+
+    Composite action pipeline (GitHub Actions — thin SDK wrappers per ADR-013):
+      User workflow step
+        → scanner-{name} composite action
+          → pip install argus-security
+          → argus scan {scanner}  (SDK handles scanning + reporting)
+          → Parse JSON output for severity counts → GITHUB_OUTPUT
+          → Upload artifacts, SARIF, summary
+          → [Optional] Post individual PR comment
+
+    MCP pipeline (argus mcp):
+      AI assistant connects via stdio
+        → MCP tools dispatch to the same SDK entry points (argus_scan, argus_validate, etc.)
+        → Returns structured JSON; resources expose argus://config and argus://results/latest
+
+  canonical_artifact:
+    file: "argus-results.json"
+    written_by: "argus.reporters.json_report.JsonReporter"
+    contract: |
+      Always emitted by both source-scan and container-scan flows.
+      Single ScanSummary.to_dict() shape consumed by argus view (terminal + browser),
+      argus report, the MCP server (argus://results/latest), and external integrations.
+      Container scanners surface as ScanResult rows with scanner names of the form
+      `container/<image-name>` — viewers render them like any other scanner without
+      special-casing.
 
   pr_commenting_strategy:
-    description: "Flexible PR commenting architecture supporting both standalone and aggregated usage"
+    description: "PR commenting via composite actions in GitHub Actions workflows"
 
     standalone_scanner:
-      when: "Individual scanner action/workflow used directly"
+      when: "Individual scanner action used in a workflow"
       behavior: "Each scanner can post its own PR comment"
       control: "Set post_pr_comment: true in action inputs"
       use_case: "Single scanner workflows, focused scanning"
       example: |
-        - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.2
+        - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.0
           with:
             post_pr_comment: true  # Posts individual Bandit PR comment
-
-    reusable_workflow:
-      when: "Using reusable-security-hardening.yml with multiple scanners"
-      behavior: "All individual scanners have post_pr_comment: false, only security-summary posts"
-      control: "post_pr_comment: false set in reusable-security-hardening.yml for all scanner jobs"
-      use_case: "Multiple scanners, unified reporting"
-      benefit: "Single comprehensive PR comment instead of spam from each scanner"
-      mechanism: |
-        1. All scanner actions generate markdown summaries
-        2. security-summary job downloads all summaries
-        3. Combines into security-hardening-report.md
-        4. Posts single PR comment with all results
-      example: |
-        uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.2
-        with:
-          scanners: all
-          post_pr_comment: true  # Only security-summary posts, not individual scanners
 
     implementation:
       comment_action: ".github/actions/comment-pr/action.yml"
@@ -296,36 +431,30 @@ data_flow:
       default: "post_pr_comment defaults to 'false' in all scanner actions"
 
   stages:
-    - name: dispatch
-      from: user-workflow
-      to: main-orchestrator
-      data: "scanners list, configuration"
+    - name: configure
+      from: user
+      to: argus-sdk-or-action
+      data: "argus.yml config or action inputs"
 
-    - name: parallel-scan
-      from: main-orchestrator
-      to: scanner-workflows
-      data: "individual scanner config"
-      parallel: true
+    - name: scan
+      from: argus-engine
+      to: scanner-modules
+      data: "scanner config, scan path"
 
     - name: parse
       from: scanner-binary
       to: parse-script
       data: "raw scanner output"
 
-    - name: summarize
-      from: parse-script
-      to: summary-script
-      data: "structured JSON"
+    - name: report
+      from: scan-results
+      to: reporter
+      data: "structured findings"
 
     - name: upload
-      from: scanner-workflow
+      from: composite-action
       to: github-security-tab
-      data: "SARIF file"
-
-    - name: aggregate
-      from: all-scanners
-      to: security-summary
-      data: "all findings"
+      data: "SARIF file (GitHub Actions only)"
 
 docsite:
   name: docsite
@@ -354,9 +483,108 @@ docsite:
     build: "cd scripts && python -m docsite --output-dir /tmp/argus-docs"
     preview: "cd /tmp/argus-docs && mkdocs serve"
 
+  argus_sdk:
+    name: argus-sdk
+    location: "argus/"
+    purpose: "Standalone Python SDK for running Argus scanners outside GitHub Actions"
+    type: sdk
+    status: phase-1-complete
+    adr: ADR-013
+    description: "Cross-platform Python package with CLI, scanner modules, and reporters"
+    structure:
+      "__init__.py": "Package root (version)"
+      "__main__.py": "CLI entry point (python -m argus)"
+      "cli.py": "argparse CLI with scan and report subcommands"
+      "core/models.py": "Severity enum, Finding/ScanResult/ScanSummary dataclasses"
+      "core/scanner.py": "Scanner Protocol definition"
+      "core/config.py": "ArgusConfig loading from argus.yml"
+      "core/engine.py": "ArgusEngine orchestrating scanners and aggregating results (delegates to core/prewarm.py for background image pre-warm + lazy pulls in parallel mode). Container path honors three optional Scanner hooks: container_args/build_args (CLI argv), container_env(config)->dict (resolved values land in a subprocess.run env=... dict and docker_cmd carries only ``-e NAME`` flags — values never appear on the docker run command line, closing the ps/docker-inspect leak; None values are filtered so unset env-var-name refs don't materialize at all), and container_mounts(config)->[(host,container)] (extra read-only bind mounts; non-existent host paths are skipped with a WARNING rather than aborting the scan)."
+      "core/prewarm.py": "ImagePrewarmer — best-effort background container image pulls. Dedup'd by image ref, capped concurrency (execution.prewarm_workers, default 4), opt-out via execution.prewarm_images: false. Skipped when pull_policy=never. Pre-warm failure falls back to inline pull in _run_in_container."
+      "core/exclusions.py": "Path exclusion set (builtins + .gitignore + config + CLI), ``**``-glob matcher"
+      "core/schema.py": "argus.yml schema validator. Validates structure, types, allowed values, credential-field shapes, and ZAP's nested ``auth`` sub-block; emits ConfigError objects (ERROR / WARNING) that ``argus validate`` reports. Catches typos, malformed PORT/PROTO entries, and vendor-shaped literal credentials at config-load time. Stdlib-only."
+      "core/version.py": "argus version resolution + display helpers. Single source-of-truth read from ``__version__`` (which is itself loaded from ``version.yaml`` at install time via the pyproject.toml dynamic version mechanism)."
+      "core/scanner_template.py": "Shared subprocess-scan template + ScanPaths dataclass. Standardized ``build_args(ScanPaths, config)`` shape (PR #117 unification) — scanners declare argv via this template and the engine drives both local and container execution from the same shape. Reused by 9 scanner modules."
+      "core/linter_template.py": "FileDiscoveryScanner template + shared docker-fallback helpers (ADR-020). Linters that follow the discover-files → batch-subprocess shape subclass it instead of rolling their own walk. Used by lint-dockerfile and partially by lint-javascript / lint-terraform; the remaining three linters (yaml, json, python) keep custom flows that don't fit the template's shape but can borrow ``build_docker_command`` / ``run_utf8`` helpers."
+      "core/redact.py": "Pattern-based secret redaction at Finding construction (ADR-022). REDACTED_PLACEHOLDER constant + redact_secret + redact_high_risk_patterns. Runs in Finding.__post_init__ as a defense-in-depth backstop for scanners that get added without the per-scanner audit; conservative vendor-prefix-only pattern set (gh*, AKIA, AIza, glpat-, sk_live_, npm_, xox*-, JWT, PEM) — no high-entropy heuristics."
+      "core/tool_config.py": "Auto-discovery of per-scanner canonical config files (.bandit, .checkov.yaml, trivy.yaml, osv-scanner.toml, semgrep.yml)"
+      "core/sbom.py": "SBOM format detection (CycloneDX JSON/XML, SPDX JSON/tag-value, Syft JSON) for ``argus scan --sbom``"
+      "core/secrets.py": "Credential resolution for any scanner config field. resolve_secret(config, field, *, stdin_override=None) accepts three forms in precedence order: stdin_override (highest, populated by CLI --*-password-stdin flags via a module-level slot registry — set_stdin_override / get_stdin_override / clear_stdin_overrides), <field>_env (env-var name reference; reads os.environ at scan time), or <field> literal (back-compat, warned at config-load if vendor-shaped via looks_like_literal_secret). The stdin path never reaches the per-scanner config dict so it can't leak into argus-audit.json / argus.log. validate_env_var_name enforces POSIX shell identifier rules. Stdlib-only. Used by scanners.container and scanners.zap; future scanners with credential needs use the same helper. See ADR-024."
+      "core/image_verify.py": "Supply-chain verification for container images at pull time. verify_image(ref) classifies the ref into: argus-owned (ghcr.io/huntridge-labs/argus/* — cosign keyless verify against the publish workflow's identity + GitHub Actions OIDC issuer; failure is fatal), third-party with @sha256: digest pin (Docker enforces content-hash match at pull, no cosign call needed), or third-party tag-only (logged once per scan via report_tag_pinned_summary). Engine calls this after _pull_image succeeds; fatal results raise RuntimeError before the scanner runs. Config knob: execution.verify_image_signatures (default True; opt-out for air-gapped). Stdlib + cosign binary on PATH; no Python sigstore dep. See docs/security.md."
+      "core/findings_view.py": "Shared UI-free logic for findings display — ViewState, SEVERITY_ORDER, finding_detail_rows, compute_summary, diff_scans (scan-over-scan bucketing keyed off (scanner, id, location)). Consumed by argus view terminal (TUI ``D`` keybind, DiffScreen) and argus view browser (web UI ``/diff`` route)."
+      "viewers/": "`argus view` interfaces (optional extras)"
+      "viewers/__init__.py": "ViewerUnavailable shared exception"
+      "viewers/terminal/": "`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes DiffPickerScreen + DiffScreen for scan-over-scan diff (``D`` keybind), reusing argus.core.findings_view.diff_scans."
+      "viewers/browser/": "`argus view --interface=browser` — FastAPI + Jinja2 web UI, 127.0.0.1 only ([browser] extra). Routes include ``/diff?a=<path>&b=<path>`` powered by argus.core.findings_view.diff_scans, sharing the bucketing logic with the TUI's ``D`` keybind."
+      "scanners/": "Scanner modules implementing Scanner protocol (SCANNER_REGISTRY includes linters via auto-merge). The container scanner orchestrates five sub-scanners on every run: trivy (CVE scan), grype (CVE scan, deduplicated against trivy), syft (SBOM), exposure (declared-port surface from docker inspect Config.ExposedPorts), and services (declared-service surface from systemd unit files + SysV init scripts in the image filesystem). The exposure sub-scanner emits one Finding per declared port; INFO severity for ordinary application ports and MEDIUM for ports on the built-in RISKY_PORTS list (SSH 22/tcp, MySQL 3306/tcp, Redis 6379/tcp, PostgreSQL 5432/tcp, MongoDB 27017/tcp, etc.). The services sub-scanner emits one Finding per declared service; INFO severity for ordinary services and MEDIUM for the built-in RISKY_SERVICES watchlist (sshd, postgresql, redis-server, mongod, elasticsearch, etc.). File extraction uses docker create + docker cp tar streams so distroless / scratch images are supported. Config knobs scanners.container.{expose_warn_ports, expose_ignore_ports, services_warn, services_ignore} override or suppress."
+      "linters/": "Linter modules implementing Scanner protocol (LINTER_REGISTRY auto-merges into SCANNER_REGISTRY)"
+      "reporters/": "Output reporters (terminal, markdown, container_markdown, sarif, json, github, gitlab, junit). Discovered via the ``argus.reporters`` Python entry-point group (built-ins declared in pyproject.toml; third-party packages register additional formats without forking — see docs/contributing-reporters.md and ADR-023)."
+      "tests/": "Co-located pytest tests (180 tests, 83%+ coverage)"
+    scanners:
+      - bandit
+      - clamav
+      - trivy-iac
+      - gitleaks
+      - osv
+      - checkov
+      - opengrep
+      - supply-chain
+      - zap
+      - container
+    linters:
+      # Implementation patterns:
+      #   * lint-dockerfile (HadolintLinter) — subclass of
+      #     argus.core.linter_template.FileDiscoveryScanner
+      #     (workspace walk → batched subprocess → local-or-container
+      #     dispatch → parse). See ADR-020.
+      #   * lint-javascript (EslintLinter), lint-terraform — custom
+      #     scan() flows that consume the shared
+      #     argus.core.linter_template.build_docker_command helper.
+      #   * lint-yaml, lint-python — "tool walks workspace itself"
+      #     shape; tool takes the path and discovers files internally.
+      #   * lint-json — Python json.loads fallback when the jsonlint
+      #     binary is absent.
+      - lint-yaml
+      - lint-json
+      - lint-python
+      - lint-javascript
+      - lint-dockerfile
+      - lint-terraform
+    reporters:
+      - terminal
+      - markdown
+      - sarif
+      - json
+      - github
+      - gitlab
+      - junit
+    dependencies:
+      core: "pyyaml, click, jsonschema, rich (terminal output), packaging"
+      optional_extras:
+        terminal: "textual (TUI viewer)"
+        browser: "fastapi, uvicorn, jinja2 (web viewer, 127.0.0.1 only)"
+        mcp: "mcp Python SDK (stdio transport)"
+    config_file: "argus.yml"
+    cli_commands:
+      - "argus scan [scanner] --path --config --severity-threshold --format [--interface=terminal|browser]"
+      - "argus scan container [--config argus.yml | --image REF | --discover [PATH]] [--scanners trivy,grype,exposure,services] [--no-keep-raw]"
+      - "argus init [--force] — generate tailored argus.yml from auto-detection"
+      - "argus validate — JSON Schema validation of the auto-detected argus.yml"
+      - "argus report <format> --results-dir --output-dir — re-emit canonical results"
+      - "argus view [terminal|browser] [PATH] [--port N] [--no-open]"
+      - "argus mcp — start MCP server over stdio"
+      - "argus completion {bash,zsh,fish} — shell completion (dynamic from registry)"
+      - "argus cache info|clean — manage scanner DB cache volumes"
+      - "argus --version — top-level flag (no `argus version` subcommand exists)"
+
 directory_structure:
-  ".github/actions/": "Composite actions (primary)"
-  ".github/workflows/": "Reusable workflows (backwards compat)"
+  "argus/": "Standalone Python SDK (primary interface, ADR-013)"
+  "argus/core/": "Core models, protocols, config, and engine"
+  "argus/scanners/": "Scanner modules (one per scanner, SCANNER_REGISTRY includes linters)"
+  "argus/linters/": "Linter modules (one per linter, LINTER_REGISTRY auto-merges into SCANNER_REGISTRY)"
+  "argus/reporters/": "Output reporters (terminal, markdown, sarif, json, github, gitlab, junit)"
+  "argus/tests/": "SDK test suite"
+  ".github/actions/": "Composite actions (GitHub Actions interface)"
+  ".github/workflows/": "CI/CD and test workflows"
   ".github/actions/*/schemas/": "JSON schemas co-located with each action"
   ".github/actions/*/.docsite.yml": "Per-action docsite category declaration"
   "scripts/docsite/": "Auto-generated documentation site package"
@@ -366,6 +594,8 @@ directory_structure:
   "tests/": "Test infrastructure"
   "tests/fixtures/": "Shared test data"
   "docs/": "Detailed documentation"
+  "docs/config-reference.md": "Full argus.yml configuration specification"
+  "argus-config.schema.json": "JSON Schema for argus.yml validation and IDE support"
   "hardening-dagger/": "Python reporting utility (separate module)"
 
 constraints:

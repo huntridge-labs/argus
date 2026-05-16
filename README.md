@@ -17,7 +17,7 @@
 
 <br>
 
-Unified security scanning for GitHub Actions — SAST, containers, IaC, secrets, and DAST in a single workflow.
+Unified security scanning — SAST, containers, IaC, secrets, and DAST from a single CLI or GitHub Actions workflow.
 
 </div>
 
@@ -36,7 +36,42 @@ Unified security scanning for GitHub Actions — SAST, containers, IaC, secrets,
 
 ## Quick Start
 
-Create `.github/workflows/security.yml`:
+### Argus SDK (Recommended)
+
+The argus Python SDK is the primary interface for running security scans. It works locally, in CI, and on any platform with Python 3.11+.
+
+```bash
+pip install argus-security
+
+# Initialize config and scan
+argus init
+argus scan
+```
+
+Or scan immediately without a config file:
+
+```bash
+argus scan bandit gitleaks osv --severity-threshold high
+```
+
+### Interactive triage
+
+After a scan, `argus view terminal` opens a terminal UI for navigating findings —
+filter by severity, product, or scanner; search by CVE; drill into details;
+export to CSV / JSON / Markdown / SARIF; see an executive dashboard. Ships
+behind an optional extra:
+
+```bash
+pip install 'argus-security[terminal]'
+argus view terminal                         # load ./argus-results/argus-results.json
+argus scan --interface=terminal             # scan, then drop straight into the terminal viewer
+```
+
+Full keyboard reference and workflow in [`docs/view-terminal.md`](docs/view-terminal.md).
+
+### GitHub Actions (Composite Actions)
+
+For GitHub Actions users, composite actions remain available for direct integration:
 
 ```yaml
 name: Security Scan
@@ -53,38 +88,18 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.7.2
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.7.0
         with:
           enable_code_security: true
           fail_on_severity: high
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.2
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.0
         with:
           enable_code_security: true
           fail_on_severity: high
 ```
-
-<details>
-<summary><strong>Legacy: Reusable Workflow (github.com only)</strong></summary>
-
-```yaml
-name: Security Scan
-on: [pull_request, push]
-
-jobs:
-  security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.2
-    with:
-      scanners: all
-      enable_code_security: true
-      post_pr_comment: true
-      fail_on_severity: high
-    secrets: inherit
-```
-
-</details>
 
 ## Supported Scanners
 
@@ -97,6 +112,7 @@ jobs:
 | **Container** | Trivy Container | Comprehensive vulnerability scanner |
 | | Grype | Fast, accurate CVE detection |
 | | Syft | Software Bill of Materials (SBOM) |
+| | Exposed-port surface | Reports declared Dockerfile `EXPOSE` ports as findings (MEDIUM for risky-defaults watchlist: SSH, MySQL, Redis, etc.) |
 | **Infrastructure** | Trivy IaC | Infrastructure as Code scanner |
 | | Checkov | Policy as Code for cloud configs |
 | **Malware** | ClamAV | Open-source antivirus engine |
@@ -106,22 +122,28 @@ For detailed scanner configuration, see [Scanner Reference](docs/scanners.md).
 
 ## Features
 
-- **[Unified interface](docs/scanners.md)** - One workflow for all scanners
-- **[Flexible scanner selection](docs/scanners.md)** - Use `all`, scanner groups, or specific scanners
+- **[Argus SDK](argus/)** - Run scanners locally or in CI with `argus scan`
+- **[Unified interface](docs/scanners.md)** - One CLI or workflow for all scanners
+- **[Flexible scanner selection](docs/scanners.md)** - Use scanner groups or specific scanners
+- **[Interactive triage TUI](docs/view-terminal.md)** - `argus view terminal` — keyboard-driven findings explorer with executive dashboard
+- **[SBOM input](docs/cli-reference.md)** - `argus scan --sbom path/to/sbom.json` accepts CycloneDX / SPDX / Syft SBOMs (file or directory of SBOMs)
 - **[GitHub Security tab integration](.github/actions/scanner-codeql/README.md)** - Upload SARIF results to Code Scanning
 - **PR comments** - Inline feedback on pull requests
 - **[Severity-based failure control](docs/failure-control.md)** - Set thresholds for workflow failures
 - **[Container configuration](docs/container-scanning.md)** - Scan multiple containers from a single config file
 - **Matrix execution** - Parallel scanning for multiple targets
-- **Private registry support** - Authenticate to container registries
-- **Environment variable expansion** - Dynamic configuration values
+- **[Credential handling](docs/security.md)** - Secrets stay out of `argus.yml`: name an env var via `<field>_env`, pipe via `--registry-password-stdin`, or both. Validator warns on literal vendor-shaped values; resolved values never reach logs / audit trail.
+- **[Supply-chain verification](docs/security.md#container-image-provenance)** - Cosign-verify on every argus-owned image pull (Sigstore keyless), implicit `@sha256:` digest verification on every third-party image. Failure aborts the scanner.
+- **[Shell tab-completion](docs/cli-reference.md)** - `argus completion zsh >> ~/.zshrc` (or `bash`) — Tab-completes subcommands, scanner / linter names, common flags. Auto-refreshes from the live scanner registry.
 - **[Optional AI summary](.github/actions/ai-summary/README.md)** - Generate executive security summaries from scan results using your own AI provider and API key (Copilot, Claude, or Gemini)
+- **[Interactive findings TUI](docs/view-terminal.md)** - `argus view terminal` — keyboard-driven triage browser (`pip install 'argus-security[terminal]'`)
+- **[Local web UI](docs/view-browser.md)** - `argus view browser` — localhost dashboard for non-engineer stakeholders (`pip install 'argus-security[browser]'`)
 
 ## GitHub Enterprise Server (GHES)
 
-GHES users can use our composite actions directly from github.com - no mirroring required.
+GHES users can use the argus SDK or composite actions directly from github.com - no mirroring required.
 
-**Architecture**: This project uses an actions-first architecture where all scanner logic lives in composite actions. The reusable workflows are thin wrappers for backwards compatibility on github.com.
+**Architecture**: Scanner logic lives in the argus Python SDK and in composite actions. The SDK is the primary interface; composite actions provide GitHub Actions integration.
 
 <details>
 <summary><strong>GHES Quick Start</strong></summary>
@@ -143,7 +165,7 @@ jobs:
       - uses: actions/checkout@v6
 
       # Use composite actions directly from github.com
-      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.7.2
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.7.0
         with:
           enable_code_security: true
           fail_on_severity: high
@@ -151,7 +173,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.2
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.0
         with:
           enable_code_security: true
           fail_on_severity: high
@@ -171,9 +193,13 @@ See [examples/github-enterprise/](examples/github-enterprise/) for complete GHES
 
 ### User Guides
 
+- [Configuration Reference](docs/config-reference.md) - Full `argus.yml` specification
 - [Scanner Reference](docs/scanners.md) - Complete configuration for all scanners
 - [Container Scanning](docs/container-scanning.md) - Config-driven matrix container scanning
 - [Failure Control](docs/failure-control.md) - Severity-based workflow failure configuration
+- [Security Policy](docs/security.md) - Threat model, credential handling, supply-chain verification, vulnerability reporting
+- [Migration 0.6.x → 1.x](docs/migration/0.6.x-to-1.x.md) - Side-by-side guide for upgrading consumer workflows
+- [Docker Troubleshooting](docs/troubleshooting/docker.md) - Runtime detection, bind-mount permissions, image pulls, proxies, and execution-failure signals
 
 ### Developer Docs
 
@@ -185,18 +211,76 @@ See [examples/github-enterprise/](examples/github-enterprise/) for complete GHES
 ## Usage Examples
 
 <details>
-<summary><strong>All Scanners with GitHub Security</strong></summary>
+<summary><strong>SDK: Full Scan with Config File</strong></summary>
 
 ```yaml
-name: Complete Security Scan
+# argus.yml
+scanners:
+  - gitleaks
+  - bandit
+  - opengrep
+  - osv
+  - trivy-iac
+  - checkov
+
+scan_path: "."
+severity_threshold: high
+```
+
+```bash
+argus scan --config argus.yml
+```
+
+</details>
+
+<details>
+<summary><strong>SDK: SAST Scanners Only</strong></summary>
+
+```bash
+argus scan bandit opengrep gitleaks --severity-threshold medium
+```
+
+</details>
+
+<details>
+<summary><strong>SDK: Container Scanning</strong></summary>
+
+```bash
+argus scan container --severity-threshold critical
+```
+
+</details>
+
+<details>
+<summary><strong>SDK: Infrastructure as Code</strong></summary>
+
+```yaml
+# argus.yml
+scanners:
+  - trivy-iac
+  - checkov
+
+scan_path: "terraform/"
+severity_threshold: high
+```
+
+```bash
+argus scan --config argus.yml
+```
+
+</details>
+
+<details>
+<summary><strong>GitHub Actions: Composite Actions</strong></summary>
+
+```yaml
+name: Security Scan
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-  schedule:
-    - cron: '0 2 * * 1'  # Weekly Monday at 2 AM
 
 permissions:
   contents: read
@@ -204,180 +288,68 @@ permissions:
   pull-requests: write
 
 jobs:
-  security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.2
-    with:
-      scanners: all
-      enable_code_security: true
-      post_pr_comment: true
-      fail_on_severity: high
-    secrets: inherit
-```
-
-</details>
-
-<details>
-<summary><strong>SAST Scanners Only</strong></summary>
-
-```yaml
-name: SAST Security Scan
-
-on: [pull_request]
-
-jobs:
   sast:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.2
-    with:
-      scanners: codeql,bandit,opengrep,gitleaks
-      codeql_languages: 'python,javascript'
-      enable_code_security: true
-      fail_on_severity: medium
-    secrets:
-      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.7.0
+        with:
+          enable_code_security: true
+          fail_on_severity: high
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.0
+        with:
+          enable_code_security: true
+          fail_on_severity: high
 ```
 
 </details>
 
 <details>
-<summary><strong>Container Scanning</strong></summary>
-
-```yaml
-name: Container Security
-
-on:
-  push:
-    tags: ['v*']
-
-jobs:
-  scan-image:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.2
-    with:
-      scanners: trivy-container,grype,sbom
-      image_ref: 'ghcr.io/myorg/myapp:${{ github.ref_name }}'
-      enable_code_security: true
-      fail_on_severity: critical
-```
-
-</details>
-
-<details>
-<summary><strong>Config-Driven Multiple Containers</strong></summary>
-
-```yaml
-name: Multi-Container Scan
-
-on:
-  push:
-    paths: ['container-config.yml']
-
-jobs:
-  scan:
-    uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@0.7.2
-    with:
-      config_file: container-config.yml
-      enable_code_security: true
-      fail_on_severity: high
-    secrets: inherit
-```
-
-**container-config.yml:**
-
-```yaml
-containers:
-  - name: frontend
-    registry:
-      host: ghcr.io
-      username: ${GITHUB_TRIGGERING_ACTOR}
-      auth_secret: GITHUB_TOKEN
-    image:
-      repository: myorg
-      name: frontend
-      tag: latest
-    scanners:
-      - trivy-container
-      - grype
-
-  - name: backend
-    image: myorg/backend:latest
-    scanners:
-      - trivy-container
-      - sbom
-```
+<summary><strong>GitHub Actions: Config-Driven Container Scanning</strong></summary>
 
 See [Container Scanning Guide](docs/container-scanning.md) for complete documentation.
 
 </details>
 
-<details>
-<summary><strong>Infrastructure as Code</strong></summary>
-
-```yaml
-name: Infrastructure Security
-
-on:
-  pull_request:
-    paths:
-      - 'terraform/**'
-      - 'infrastructure/**'
-
-jobs:
-  iac:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.2
-    with:
-      scanners: trivy-iac,checkov
-      iac_path: 'terraform/'
-      enable_code_security: true
-      fail_on_severity: high
-```
-
-</details>
-
-<details>
-<summary><strong>Branch-Specific Thresholds</strong></summary>
-
-```yaml
-name: Security with Branch Rules
-
-on:
-  pull_request:
-    branches: ['**']
-
-jobs:
-  security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.2
-    with:
-      scanners: all
-      enable_code_security: true
-      post_pr_comment: true
-      fail_on_severity: ${{ github.base_ref == 'main' && 'high' || 'critical' }}
-    secrets: inherit
-```
-
-</details>
-
 ## Configuration
 
-### Scanner Selection
+### SDK Configuration (argus.yml)
 
-- **All scanners:** `scanners: all`
-- **By category:** `scanners: sast`, `scanners: container`, `scanners: infrastructure`
-- **Specific scanners:** `scanners: codeql,trivy-container,gitleaks`
-- **Multiple categories:** `scanners: sast,container`
+```yaml
+scanners:
+  - gitleaks
+  - bandit
+  - osv
+  - trivy-iac
 
-### Common Inputs
+scan_path: "."
+severity_threshold: high
+```
 
-| Input | Description | Default |
-|-------|-------------|---------|
-| `scanners` | Scanners to run (comma-separated or category) | Required |
-| `enable_code_security` | Upload SARIF to GitHub Security tab | `false` |
-| `post_pr_comment` | Post findings as PR comments | `true` |
-| `fail_on_severity` | Fail workflow on severity threshold | `none` |
+### CLI Scanner Selection
+
+```bash
+# Specific scanners
+argus scan gitleaks bandit osv
+
+# With severity threshold
+argus scan --severity-threshold high
+
+# With config file
+argus scan --config argus.yml
+```
 
 **Severity levels:** `none`, `low`, `medium`, `high`, `critical`
 
 See [Failure Control Guide](docs/failure-control.md) for detailed threshold configuration.
 
-### Permissions Required
+### GitHub Actions Permissions
+
+When using composite actions in GitHub Actions workflows:
 
 ```yaml
 permissions:
@@ -389,13 +361,43 @@ permissions:
 
 ### Secrets
 
-Most secrets are optional and inherited via `secrets: inherit`. Scanner-specific secrets:
+Scanner-specific secrets (for GitHub Actions composite action usage):
 
 | Secret | Required For | Description |
 |--------|-------------|-------------|
 | `GITLEAKS_LICENSE` | Gitleaks (organizations) | License from [gitleaks.io](https://gitleaks.io) |
 | `GITHUB_TOKEN` | PR comments, Security tab | Automatically provided |
 | Registry secrets | Private containers | Token for authentication |
+
+## MCP Server (AI Integration)
+
+Argus includes an MCP server for AI-assistant integration. Tools like Claude Desktop, Claude Code, Cursor, Continue, and Cline can run scans, validate configs, classify IaC changes, and explain findings — without leaving the chat.
+
+**Zero-install** (recommended for AI-tool-only users — no global Python install needed):
+
+```bash
+uvx --from 'argus-security[mcp]' argus mcp
+```
+
+**Or install via pip** (recommended if you also use the Argus CLI):
+
+```bash
+pip install 'argus-security[mcp]'
+```
+
+Add to your AI tool's MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "argus": {"command": "argus", "args": ["mcp"]}
+  }
+}
+```
+
+Available tools: `argus_scan`, `argus_detect`, `argus_validate`, `argus_list_scanners`, `argus_init`, `argus_classify`, `argus_explain_finding`, `argus_scan_summary`. Resources: `argus://config`, `argus://results/latest`, `argus://config/schema`. Prompts: `security_review`, `fix_findings`, `setup_scanning`.
+
+See [`docs/mcp.md`](docs/mcp.md) for per-client config (Claude Desktop, Claude Code, Cursor, Continue, Cline), the full tool reference, and the list of MCP server registries where Argus is listed for discovery.
 
 ## Contributing
 

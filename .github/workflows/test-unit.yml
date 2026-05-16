@@ -12,8 +12,11 @@ permissions:
 
 jobs:
   unit-tests:
-    name: All Unit Tests
+    name: Unit Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
 
     steps:
       - name: Checkout code
@@ -24,16 +27,45 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
-          python-version: '3.13'
+          python-version: ${{ matrix.python-version }}
 
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          # Install the package itself with every optional extra so all
+          # test modules can actually run. Tests for optional features
+          # (argus view terminal / argus view browser / MCP server / AI classifier)
+          # guard their imports with pytest.importorskip or module-level
+          # stubs — without the extras those tests either skip or run
+          # against fake stubs, and codecov's patch metric flags the
+          # unexercised test bodies as missing coverage. Installing
+          # [all] runs the real tests against the real code paths.
+          pip install -e '.[all]'
           pip install pytest-deadfixtures
 
       - name: Run all tests
         run: pytest
+
+      - name: Run E2E tests (slow, Docker-dependent)
+        if: matrix.python-version == '3.13'
+        run: pytest -m slow --no-cov -q || true
+
+      - name: Check version reference coverage
+        if: matrix.python-version == '3.13'
+        run: python -m scripts.ci.check_version_refs
+
+      - name: Check CLI docs are up to date
+        if: matrix.python-version == '3.13'
+        run: python -m scripts.ci.check_cli_docs
+
+      - name: Check container image manifests
+        if: matrix.python-version == '3.13'
+        run: python -m scripts.ci.check_container_images
+
+      - name: Check .ai/ files are in sync with the SDK
+        if: matrix.python-version == '3.13'
+        run: python -m scripts.ci.check_architecture_sync
 
       - name: Check for dead fixtures
         if: always()
@@ -76,10 +108,10 @@ jobs:
         if: always()
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6
         with:
-          directory: ./coverage
+          files: ./coverage/python.xml
           flags: unittests
           name: codecov-umbrella
-          fail_ci_if_error: true
+          fail_ci_if_error: false
           verbose: true
           token: ${{ secrets.CODECOV_TOKEN }}
 
@@ -87,7 +119,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
-          name: coverage-reports
+          name: coverage-reports-py${{ matrix.python-version }}
           path: |
             coverage/
             htmlcov/

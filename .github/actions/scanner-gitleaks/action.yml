@@ -1,21 +1,10 @@
 name: 'Gitleaks Secrets Scanner'
-description: |
-  Run Gitleaks secrets detection and generate reports.
+description: 'Run Gitleaks secrets detection via Argus SDK and generate reports'
+author: 'Argus'
 
-  **Required Environment Variables:**
-  - GITHUB_TOKEN: GitHub token for API access (set automatically in workflows)
-  - GITLEAKS_LICENSE: (Optional) License key for GitLeaks scans within a GitHub Organization. Obtain from https://gitleaks.io
-
-  **Usage Example:**
-  ```yaml
-  - uses: ./.github/actions/scanner-gitleaks
-    env:
-      GITHUB_TOKEN: (secrets.GITHUB_TOKEN)
-      GITLEAKS_LICENSE: (secrets.GITLEAKS_LICENSE)
-    with:
-      fail_on_severity: 'high'
-      gitleaks_enable_comments: true
-  ```
+branding:
+  icon: 'shield'
+  color: 'red'
 
 inputs:
   post_pr_comment:
@@ -27,70 +16,98 @@ inputs:
     required: false
     default: 'false'
   fail_on_severity:
-    description: 'Fail the job if secrets are found. Gitleaks does not support severity-based filtering - any value other than "none" will fail if secrets are detected.'
+    description: 'Severity threshold — fail if findings meet or exceed this level (critical, high, medium, low, none).'
     required: false
     default: 'none'
-  gitleaks_enable_comments:
-    description: 'Enable GitLeaks inline PR comments (requires GITLEAKS_LICENSE)'
-    required: false
-    default: 'true'
-  gitleaks_notify_user_list:
-    description: 'Comma-separated list of GitHub usernames to notify on secret detection (e.g., "@user1,@user2")'
-    required: false
-    default: ''
-  gitleaks_enable_summary:
-    description: 'Enable GitLeaks job summary'
-    required: false
-    default: 'true'
-  gitleaks_enable_upload_artifact:
-    description: 'Enable uploading SARIF artifact when secrets are detected'
-    required: false
-    default: 'true'
   gitleaks_config:
     description: 'Path to a gitleaks configuration file (e.g., "path/to/gitleaks.toml")'
     required: false
     default: ''
+  scan_path:
+    description: 'Path to scan (default: current directory)'
+    required: false
+    default: '.'
+  python_version:
+    description: 'Python version to use'
+    required: false
+    default: '3.12'
 
 outputs:
   secrets_count:
     description: 'Number of secrets detected'
-    value: ${{ steps.analyze-findings.outputs.secrets_count }}
+    value: ${{ steps.scan.outputs.secrets_count }}
+  high_count:
+    description: 'Number of high severity findings'
+    value: ${{ steps.scan.outputs.high_count }}
+  total_count:
+    description: 'Total number of findings'
+    value: ${{ steps.scan.outputs.total_count }}
 
 runs:
   using: 'composite'
   steps:
-    - name: Checkout repository
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+    # IMPORTANT: Caller must checkout the repository before calling this action.
+    # Gitleaks requires fetch-depth: 0 for full git history scanning.
+    # Example:
+    #   - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+    #     with:
+    #       persist-credentials: false
+    #       fetch-depth: 0
+    #   - uses: ./.github/actions/scanner-gitleaks
+
+    - name: Set up Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
       with:
-        persist-credentials: false
-        fetch-depth: 0
+        python-version: ${{ inputs.python_version }}
 
-    - name: Run Gitleaks Secrets Detection
-      id: gitleaks-scan
-      uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
-      env:
-        GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
-        GITLEAKS_LICENSE: ${{ env.GITLEAKS_LICENSE }}
-        GITLEAKS_ENABLE_COMMENTS: ${{ inputs.gitleaks_enable_comments }}
-        GITLEAKS_NOTIFY_USER_LIST: ${{ inputs.gitleaks_notify_user_list }}
-        GITLEAKS_ENABLE_SUMMARY: ${{ inputs.gitleaks_enable_summary }}
-        GITLEAKS_ENABLE_UPLOAD_ARTIFACT: ${{ inputs.gitleaks_enable_upload_artifact }}
-        GITLEAKS_CONFIG: ${{ inputs.gitleaks_config }}
-      continue-on-error: true
-
-    - name: Organize Gitleaks results
+    - name: Install Argus SDK
       shell: bash
+      # Install the SDK from the checked-out composite source. This matches
+      # the consumer-scoped intent of composite actions (``uses: .../<wrapper>@tag``
+      # implicitly pins the SDK version to the same tag) and sidesteps the
+      # PyPI-release lag that would break ``pip install argus-security>=X``
+      # for consumers until after the release ships. Works identically for
+      # internal test-actions runs (where the argus repo is the consumer
+      # checkout) and for external consumers (where the composite's own
+      # checkout under ``$GITHUB_ACTION_PATH`` is the SDK source). See
+      # scanner-container/action.yml for the original rationale.
+      run: pip install "${{ github.action_path }}/../../.."
+
+    - name: Run Gitleaks via Argus SDK
+      id: scan
+      shell: bash
+      env:
+        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
+        SCAN_PATH: ${{ inputs.scan_path }}
       run: |
-        echo "📦 Organizing Gitleaks results into directory..."
-        mkdir -p gitleaks-reports
-        if [ -f results.json ]; then
-          mv results.json gitleaks-reports/
+        mkdir -p gitleaks-reports scanner-summaries
+
+        # SDK auto-discovers argus.yml if present; works without one too
+        SCAN_EXIT=0
+        python -m argus scan gitleaks \
+          --path "${SCAN_PATH}" \
+          --severity-threshold "${FAIL_ON_SEVERITY:-none}" \
+          --format sarif --format json --format markdown \
+          --output-dir ./gitleaks-reports \
+          --output-vars ./gitleaks-reports/counts.env \
+          --no-timestamp \
+          || SCAN_EXIT=$?
+
+        # Forward counts to GitHub Actions outputs
+        [ -f gitleaks-reports/counts.env ] && cat gitleaks-reports/counts.env >> "$GITHUB_OUTPUT"
+
+        # Remap total_count to secrets_count for backward compatibility
+        if [ -f gitleaks-reports/counts.env ]; then
+          echo "secrets_count=$(grep total_count gitleaks-reports/counts.env | cut -d= -f2)" >> "$GITHUB_OUTPUT"
         fi
-        if [ -f results.sarif ]; then
-          mv results.sarif gitleaks-reports/
+
+        # Copy markdown summary for PR comment artifact
+        if [ -f "gitleaks-reports/argus-summary.md" ]; then
+          cp gitleaks-reports/argus-summary.md scanner-summaries/gitleaks.md
+          cat gitleaks-reports/argus-summary.md >> "$GITHUB_STEP_SUMMARY"
         fi
-        echo "Generated Gitleaks files:"
-        ls -la gitleaks-reports/ || echo "No files generated"
+
+        exit $SCAN_EXIT
 
     - name: Upload Gitleaks artifacts
       uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
@@ -100,57 +117,14 @@ runs:
         retention-days: 30
       if: always()
 
-    - name: Upload SARIF to GitHub Code Scanning
+    - name: Upload Gitleaks SARIF
       uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
-      if: inputs.enable_code_security == 'true' && always() && github.actor != 'nektos/act' && hashFiles('gitleaks-reports/results.sarif') != ''
       with:
-        sarif_file: gitleaks-reports/results.sarif
-        category: secrets-gitleaks
+        sarif_file: gitleaks-reports/argus-results.sarif
+      if: inputs.enable_code_security == 'true' && always() && github.actor != 'nektos/act' && hashFiles('gitleaks-reports/argus-results.sarif') != ''
       continue-on-error: true
 
-    - name: Generate GitLeaks summary section
-      if: always()
-      shell: bash
-      run: |
-        mkdir -p scanner-summaries
-
-        echo "<details>" > scanner-summaries/gitleaks.md
-        echo "<summary>🔍 GitLeaks</summary>" >> scanner-summaries/gitleaks.md
-        echo "" >> scanner-summaries/gitleaks.md
-
-        if [ -d "gitleaks-reports" ] && [ "$(ls -A gitleaks-reports)" ]; then
-          echo "**Status:** ✅ Completed" >> scanner-summaries/gitleaks.md
-          echo "" >> scanner-summaries/gitleaks.md
-
-          # Count secrets from SARIF files
-          SECRET_COUNT=0
-
-          for sarif_file in $(find ./gitleaks-reports -name "*.sarif" -type f 2>/dev/null); do
-            if [ -f "$sarif_file" ] && [ -s "$sarif_file" ] && command -v jq >/dev/null 2>&1; then
-              secrets=$(jq -r '.runs[]?.results[]? | .ruleId' "$sarif_file" 2>/dev/null | wc -l | tr -d ' ')
-              SECRET_COUNT=$((SECRET_COUNT + secrets))
-            fi
-          done
-
-          echo "**Secrets Found:** $SECRET_COUNT" >> scanner-summaries/gitleaks.md
-          echo "" >> scanner-summaries/gitleaks.md
-
-          if [ $SECRET_COUNT -gt 0 ]; then
-            echo "⚠️ **WARNING:** Potential secrets detected in your repository!" >> scanner-summaries/gitleaks.md
-            echo "" >> scanner-summaries/gitleaks.md
-          fi
-
-          echo "**📁 Artifacts:** [GitLeaks Reports](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts)" >> scanner-summaries/gitleaks.md
-        else
-          echo "**Status:** ⏭️ Skipped" >> scanner-summaries/gitleaks.md
-        fi
-
-        echo "" >> scanner-summaries/gitleaks.md
-        echo "</details>" >> scanner-summaries/gitleaks.md
-        echo "" >> scanner-summaries/gitleaks.md
-      continue-on-error: true
-
-    - name: Upload GitLeaks summary section
+    - name: Upload Gitleaks summary section
       if: always()
       uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
       with:
@@ -167,40 +141,3 @@ runs:
         comment_marker: gitleaks-scanner-comment-marker
         title: '🔑 Gitleaks Secrets Detection Results'
         fallback_message: 'No Gitleaks results available'
-
-    - name: Analyze Gitleaks findings
-      id: analyze-findings
-      shell: bash
-      if: always()
-      env:
-        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
-      run: |
-        echo "📊 Analyzing Gitleaks scan results..."
-
-        SECRET_COUNT=0
-
-        # Count secrets from results files
-        if [ -f "gitleaks-reports/results.json" ]; then
-          SECRET_COUNT=$(jq 'length' gitleaks-reports/results.json 2>/dev/null || echo "0")
-        elif [ -f "gitleaks-reports/results.sarif" ]; then
-          SECRET_COUNT=$(jq '[.runs[]?.results[]?] | length' gitleaks-reports/results.sarif 2>/dev/null || echo "0")
-        fi
-
-        echo "Secrets detected: $SECRET_COUNT"
-        echo "secrets_count=$SECRET_COUNT" >> $GITHUB_OUTPUT
-
-        if [ "$SECRET_COUNT" -gt 0 ]; then
-          echo "⚠️ WARNING: $SECRET_COUNT potential secret(s) detected!"
-          echo "::warning title=Secrets Detected::Gitleaks found $SECRET_COUNT potential secret(s) in the repository"
-
-          # Fail based on fail_on_severity input
-          if [ "$FAIL_ON_SEVERITY" != "none" ] && [ -n "$FAIL_ON_SEVERITY" ]; then
-            exit 1
-          fi
-        else
-          echo "✅ No secrets detected"
-        fi
-
-branding:
-  icon: 'shield'
-  color: 'red'

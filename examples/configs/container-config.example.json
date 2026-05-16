@@ -1,8 +1,41 @@
 {
   "$schema": "https://raw.githubusercontent.com/huntridge-labs/argus/0.7.2/.github/actions/parse-container-config/schemas/container-config.schema.json",
+  "_recommendation": "Pin every image to an immutable digest (@sha256:...). Tag-only references like 'busybox:latest' or 'alpine:3' are mutable \u2014 same name, different bytes over time, drifting CVE attribution. Pin form (1) below is the most ergonomic: simple-string + digest pin in one line, Dependabot-updatable.",
   "_comment": "For Dependabot automated updates, use simple string format for 'image' field. Dependabot cannot parse structured object format. See examples/dependabot.example.yml",
   "containers": [
     {
+      "_note": "PREFERRED: simple string with digest pin. Reproducible AND Dependabot-updatable in one line.",
+      "name": "alpine-pinned-string",
+      "image": "alpine:3.23.2@sha256:865b95f46d98cf867a156fe4a135ad3fe50d2056aa3f25ed31662dff6da4eb62",
+      "scanners": [
+        "trivy",
+        "grype",
+        "syft"
+      ],
+      "allow_failure": true,
+      "fail_on_severity": "medium"
+    },
+    {
+      "_note": "ALSO PREFERRED: structured form when you need registry/auth separation. Same digest-pinned posture; Dependabot can't auto-update \u2014 Renovate or manual.",
+      "name": "alpine-pinned-structured",
+      "registry": {
+        "host": "docker.io"
+      },
+      "image": {
+        "repository": "library",
+        "name": "alpine",
+        "tag": "3.23.2",
+        "digest": "sha256:865b95f46d98cf867a156fe4a135ad3fe50d2056aa3f25ed31662dff6da4eb62"
+      },
+      "scanners": [
+        "trivy",
+        "grype"
+      ],
+      "allow_failure": true,
+      "fail_on_severity": "high"
+    },
+    {
+      "_note": "ACCEPTABLE FALLBACK: tag-only. Mutable \u2014 CVE attribution drifts whenever the registry republishes the tag. Use only for ad-hoc scans or until you can wire up digest discovery.",
       "name": "busybox-latest",
       "image": "busybox:latest",
       "scanners": [
@@ -14,24 +47,7 @@
       "fail_on_severity": "medium"
     },
     {
-      "name": "alpine-pinned",
-      "registry": {
-        "host": "docker.io"
-      },
-      "image": {
-        "repository": "library",
-        "name": "alpine",
-        "tag": "3.263.2",
-        "digest": "sha256:865b95f46d98cf867a156fe4a135ad3fe50d2056aa3f25ed31662dff6da4eb62"
-      },
-      "scanners": [
-        "trivy",
-        "grype"
-      ],
-      "allow_failure": true,
-      "fail_on_severity": "high"
-    },
-    {
+      "_note": "Private registry example \u2014 auth secrets resolved by the calling workflow, not stored here.",
       "name": "ghcr-runner",
       "registry": {
         "host": "ghcr.io",

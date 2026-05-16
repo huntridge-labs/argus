@@ -1,9 +1,9 @@
 # CodeQL SAST Scanner - Reusable Workflow
 #
-# THIN WRAPPER: This workflow delegates to the scanner-codeql composite action.
-# All scanning logic is in: .github/actions/scanner-codeql/action.yml
+# NOTE: CodeQL uses github/codeql-action which argus cannot replace.
+# This workflow keeps the composite action call until argus supports CodeQL natively.
 #
-# Note: This workflow retains the language auto-detection and matrix generation
+# This workflow retains the language auto-detection and matrix generation
 # since the composite action handles one language at a time.
 #
 # For GHES users: Use the composite action directly with a matrix strategy.

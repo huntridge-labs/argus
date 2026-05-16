@@ -20,30 +20,39 @@ def build_mkdocs_config(version: str, nav: list) -> str:
             "name": "material",
             "logo": "assets/HL.png",
             "favicon": "assets/argus_favicon.png",
+            # Custom Argus palette — overrides live in
+            # ``assets/custom.css``. Material's ``slate`` scheme gives
+            # us the dark-mode CSS variable wiring; ``primary: custom``
+            # / ``accent: custom`` defer all colours to our override.
             "palette": [
-                {
-                    "media": "(prefers-color-scheme: light)",
-                    "scheme": "default",
-                    "primary": "black",
-                    "accent": "deep orange",
-                    "toggle": {
-                        "icon": "material/weather-night",
-                        "name": "Switch to dark mode",
-                    },
-                },
                 {
                     "media": "(prefers-color-scheme: dark)",
                     "scheme": "slate",
-                    "primary": "black",
-                    "accent": "deep orange",
+                    "primary": "custom",
+                    "accent": "custom",
                     "toggle": {
                         "icon": "material/weather-sunny",
                         "name": "Switch to light mode",
                     },
                 },
+                {
+                    "media": "(prefers-color-scheme: light)",
+                    "scheme": "default",
+                    "primary": "custom",
+                    "accent": "custom",
+                    "toggle": {
+                        "icon": "material/weather-night",
+                        "name": "Switch to dark mode",
+                    },
+                },
             ],
             "features": [
-                "navigation.instant",
+                # navigation.instant is intentionally disabled: it
+                # swaps article content via fetch instead of a full
+                # page load, but ``<script>`` tags inside the swapped
+                # content don't re-execute. The architecture page
+                # bootstraps via inline scripts, so without a full
+                # load it shows a blank page until the user reloads.
                 "navigation.tabs",
                 "navigation.tabs.sticky",
                 "navigation.sections",

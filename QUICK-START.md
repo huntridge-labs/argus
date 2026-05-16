@@ -1,138 +1,152 @@
-# Quick start
+# Quick Start
 
-Kick off the reusable workflow with these minimal snippets.
+Get running with Argus in minutes. The argus SDK is the primary interface; composite actions remain available for GitHub Actions users.
 
-## Fast SAST (dev branches)
+## Argus SDK (Recommended)
+
+### Install
+
+```bash
+pip install argus-security
+```
+
+### Enable shell tab-completion (recommended)
+
+Generate and persist a completion script for your shell. Pressing
+`<Tab>` will then auto-complete subcommands (`scan`, `list`, `view`,
+`cache`, …), scanner and linter names (`bandit`, `gitleaks`,
+`lint-yaml`, …), and common flags (`--config`, `--scanners`,
+`--severity`, …).
+
+```bash
+# zsh
+argus completion zsh  >> ~/.zshrc  && source ~/.zshrc
+
+# bash
+argus completion bash >> ~/.bashrc && source ~/.bashrc
+```
+
+For one-off use in the current session only:
+
+```bash
+eval "$(argus completion zsh)"   # or bash
+```
+
+Completions are generated from the live scanner registry, so newly
+added scanners appear after re-running the command.
+
+### Fast SAST scan
+
+```bash
+argus scan gitleaks opengrep bandit
+```
+
+### Full scan with config file
+
+Create `argus.yml`:
 
 ```yaml
-name: security-dev
-on: [push]
+scanners:
+  - gitleaks
+  - opengrep
+  - bandit
+  - osv
+  - trivy-iac
+  - checkov
+
+scan_path: "."
+severity_threshold: high
+```
+
+```bash
+argus scan --config argus.yml
+```
+
+### Enforcing security gates
+
+Fail when vulnerabilities exceed a severity threshold:
+
+```bash
+argus scan --config argus.yml --severity-threshold high
+```
+
+**Severity levels:** `low` -> `medium` -> `high` -> `critical`
+
+### Targeted scan
+
+```bash
+argus scan gitleaks container trivy-iac checkov --severity-threshold high
+```
+
+### Output formats
+
+```bash
+# Terminal output (default)
+argus scan --config argus.yml
+
+# Markdown report
+argus scan --config argus.yml --format markdown
+
+# SARIF output
+argus scan --config argus.yml --format sarif
+
+# JSON output
+argus scan --config argus.yml --format json
+```
+
+## GitHub Actions (Composite Actions)
+
+For GitHub Actions users, use composite actions directly:
+
+### SAST scanning
+
+```yaml
+name: security
+on: [pull_request, push]
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
 
 jobs:
   sast:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.2
-    with:
-      scanners: codeql
-    permissions:
-      contents: read
-      security-events: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.7.0
+        with:
+          enable_code_security: true
+          fail_on_severity: high
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.0
+        with:
+          enable_code_security: true
+          fail_on_severity: high
 ```
-
-## Full coverage on PRs
-
-```yaml
-name: security-pr
-on: [pull_request]
-
-jobs:
-  hardening:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.2
-    with:
-      scanners: all
-      post_pr_comment: true
-    permissions:
-      contents: read
-      security-events: write
-      pull-requests: write
-```
-
-## Enforcing security gates
-
-Fail the workflow when vulnerabilities exceed a severity threshold:
-
-```yaml
-name: security-enforced
-on: [pull_request]
-
-jobs:
-  hardening:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.2
-    with:
-      scanners: all
-      allow_failure: false        # Enable failure mode
-      severity_threshold: high    # Fail on high or critical findings
-      post_pr_comment: true
-    permissions:
-      contents: read
-      security-events: write
-      pull-requests: write
-```
-
-**Severity levels:** `low` → `medium` → `high` → `critical`
-
-## Targeted mix
-
-```yaml
-name: security-mix
-on: [push]
-
-jobs:
-  security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.2
-    with:
-      scanners: container,infrastructure,gitleaks
-      aws_region: us-west-2
-    secrets:
-      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Required for org repos
-```
-
-## Nightly deep scan
-
-```yaml
-name: security-nightly
-on:
-  schedule:
-    - cron: '0 4 * * *'
-
-jobs:
-  nightly:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.2
-    with:
-      scanners: all
-      post_pr_comment: false
-```
-
-## Individual scanner workflows
-
-Use standalone scanners for more granular control:
 
 ### Infrastructure scanning
 
 ```yaml
-name: iac-security
-on: [pull_request]
-
 jobs:
-  trivy-iac:
-    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-iac.yml@0.7.2
-    with:
-      iac_path: 'infrastructure'
-      enable_code_security: true
-      fail_on_severity: high  # Fail on high or critical
+  iac:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
 
-  checkov:
-    uses: huntridge-labs/argus/.github/workflows/scanner-checkov.yml@0.7.2
-    with:
-      iac_path: 'infrastructure'
-      fail_on_severity: medium  # Stricter threshold
-```
+      - uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@0.7.0
+        with:
+          iac_path: 'infrastructure'
+          enable_code_security: true
+          fail_on_severity: high
 
-### Container scanning
-
-```yaml
-name: container-security
-on:
-  push:
-    branches: [main]
-
-jobs:
-  scan-image:
-    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-container.yml@0.7.2
-    with:
-      image_ref: 'myapp:${{ github.sha }}'
-      enable_code_security: true
-      fail_on_severity: critical  # Only fail on critical vulnerabilities
+      - uses: huntridge-labs/argus/.github/actions/scanner-checkov@0.7.0
+        with:
+          iac_path: 'infrastructure'
+          fail_on_severity: medium
 ```
 
 More examples in the `examples/` directory. See `README.md` for the complete scanner reference.

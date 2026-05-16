@@ -1,7 +1,7 @@
 name: ZAP DAST from Config
 
 # Reusable workflow for running ZAP DAST scans defined in a config file.
-# Uses composite actions - no script checkouts needed.
+# Uses the argus Python CLI for scanning, with composite actions for config parsing and summary.
 #
 # Usage Example:
 #   permissions:
@@ -13,7 +13,7 @@ name: ZAP DAST from Config
 #     packages: read
 #   jobs:
 #     zap-scan:
-#       uses: huntridge-labs/argus/.github/workflows/scanner-zap-from-config.yml@0.7.2
+#       uses: huntridge-labs/argus/.github/workflows/scanner-zap-from-config.yml@feat/argus-portability
 #       with:
 #         config_file: '.zap/config.yml'
 #       secrets: inherit  # Required for dynamic secret resolution
@@ -72,7 +72,7 @@ permissions:
 
 env:
   # Use current branch/PR when testing in argus repo, otherwise use release tag
-  HRL_REF: ${{ github.repository == 'huntridge-labs/argus' && (github.head_ref || github.ref_name) || '0.7.2' }}
+  HRL_REF: ${{ github.repository == 'huntridge-labs/argus' && (github.head_ref || github.ref_name) || '0.7.0' }}
 
 jobs:
   parse-config:
@@ -91,7 +91,7 @@ jobs:
 
       - name: Parse ZAP config
         id: parse
-        uses: huntridge-labs/argus/.github/actions/parse-zap-config@0.7.2
+        uses: huntridge-labs/argus/.github/actions/parse-zap-config@0.7.0
         with:
           config_file: ${{ inputs.config_file }}
 
@@ -114,35 +114,58 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Run ZAP scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-zap@0.7.2
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.13'
+
+      - name: Install Argus
+        run: |
+          pip install --quiet pyyaml
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Run scan
+        run: |
+          # Build argus scan zap command based on matrix config
+          ARGUS_CMD="python -m argus scan zap"
+
+          if [ -n "$TARGET_URL" ]; then
+            ARGUS_CMD="$ARGUS_CMD --target $TARGET_URL"
+          elif [ -n "$APP_IMAGE_REF" ]; then
+            ARGUS_CMD="$ARGUS_CMD --image $APP_IMAGE_REF"
+          fi
+
+          ARGUS_CMD="$ARGUS_CMD --scan-type $SCAN_TYPE"
+          ARGUS_CMD="$ARGUS_CMD --severity-threshold $SEVERITY_THRESHOLD"
+          ARGUS_CMD="$ARGUS_CMD --format terminal --format sarif --format json"
+          ARGUS_CMD="$ARGUS_CMD --output-dir ./argus-results"
+          ARGUS_CMD="$ARGUS_CMD --verbose"
+
+          eval "$ARGUS_CMD"
         env:
+          TARGET_URL: ${{ matrix.target_url }}
+          APP_IMAGE_REF: ${{ matrix.image }}
+          SCAN_TYPE: ${{ matrix.scan_type || 'baseline' }}
+          SEVERITY_THRESHOLD: ${{ matrix.fail_on_severity || 'none' }}
+          APP_PORTS: ${{ matrix.ports }}
+          MAX_DURATION_MINUTES: ${{ matrix.max_duration_minutes }}
+          SCAN_MODE: ${{ matrix.mode }}
+          API_SPEC: ${{ matrix.api_spec }}
+          HEALTHCHECK_URL: ${{ matrix.healthcheck_url }}
+          REGISTRY_USERNAME: ${{ matrix.registry_username }}
+          REGISTRY_PASSWORD: ${{ secrets[matrix.registry_auth_secret] }}
           GITHUB_TOKEN: ${{ github.token }}
           ZAP_AUTH_HEADER: ${{ matrix.auth_header_name }}
           ZAP_AUTH_HEADER_VALUE: ${{ matrix.auth_header_secret != '' && secrets[matrix.auth_header_secret] || matrix.auth_header_value }}
           ZAP_AUTH_HEADER_SITE: ${{ matrix.auth_header_site }}
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
-          scan_name: ${{ matrix.name }}
-          scan_type: ${{ matrix.scan_type }}
-          scan_mode: ${{ matrix.mode }}
-          target_url: ${{ matrix.target_url }}
-          api_spec: ${{ matrix.api_spec }}
-          healthcheck_url: ${{ matrix.healthcheck_url }}
-          app_image_ref: ${{ matrix.image }}
-          app_build_context: ${{ matrix.build_context }}
-          app_dockerfile: ${{ matrix.build_dockerfile }}
-          app_image_tag: ${{ matrix.build_tag }}
-          app_ports: ${{ matrix.ports }}
-          compose_file: ${{ matrix.compose_file }}
-          compose_build: ${{ matrix.compose_build }}
-          registry_username: ${{ matrix.registry_username }}
-          registry_password: ${{ secrets[matrix.registry_auth_secret] }}
-          max_duration_minutes: ${{ matrix.max_duration_minutes }}
-          rules_file_name: ${{ matrix.rules_file }}
-          cmd_options: ${{ matrix.cmd_options }}
-          fail_on_severity: ${{ matrix.fail_on_severity }}
-          allow_failure: ${{ matrix.allow_failure }}
-          post_pr_comment: false
+          name: zap-reports-${{ matrix.name }}
+          path: ./argus-results/
+          retention-days: 30
 
   zap-summary:
     name: ZAP Summary
@@ -151,6 +174,6 @@ jobs:
     if: always()
     steps:
       - name: Generate ZAP summary
-        uses: huntridge-labs/argus/.github/actions/scanner-zap-summary@0.7.2
+        uses: huntridge-labs/argus/.github/actions/scanner-zap-summary@0.7.0
         with:
           post_pr_comment: ${{ needs.parse-config.outputs.post_pr_comment }}

@@ -1,10 +1,10 @@
 name: 'JSON Linter'
 description: |
-  Run JSON validation and syntax checking.
+  Run JSON validation and syntax checking via Argus SDK.
 
-  This action validates JSON files for syntax errors using jsonlint.
-  Results are uploaded as artifacts and can be aggregated by the
-  linting-summary action.
+  This action validates JSON files for syntax errors using jsonlint (with
+  Python fallback). Results are uploaded as artifacts and can be aggregated
+  by the linting-summary action.
 
   **Usage Example:**
   ```yaml
@@ -23,151 +23,107 @@ inputs:
     description: 'Paths to search for JSON files (space-separated). Defaults to entire repository.'
     required: false
     default: '.'
-  node_version:
-    description: 'Node.js version to use'
+  python_version:
+    description: 'Python version to use'
     required: false
-    default: '20'
+    default: '3.12'
+  post_pr_comment:
+    description: 'Whether to post PR comments'
+    required: false
+    default: 'false'
 
 outputs:
   issues_count:
     description: 'Number of validation issues found'
-    value: ${{ steps.json-lint.outputs.issues }}
+    value: ${{ steps.scan.outputs.issue_count }}
 
 runs:
   using: 'composite'
   steps:
-    - name: Set up Node.js
-      uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+    # IMPORTANT: Caller must checkout the repository before calling this action
+    # Example:
+    #   - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+    #   - uses: ./.github/actions/linter-json
+
+    - name: Set up Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
       with:
-        node-version: ${{ inputs.node_version }}
+        python-version: ${{ inputs.python_version }}
 
-    - name: Install jsonlint
+    - name: Install Argus SDK
       shell: bash
-      run: npm install -g jsonlint
+      # Install the SDK from the checked-out composite source. This matches
+      # the consumer-scoped intent of composite actions (``uses: .../<wrapper>@tag``
+      # implicitly pins the SDK version to the same tag) and sidesteps the
+      # PyPI-release lag that would break ``pip install argus-security>=X``
+      # for consumers until after the release ships. Works identically for
+      # internal test-actions runs (where the argus repo is the consumer
+      # checkout) and for external consumers (where the composite's own
+      # checkout under ``$GITHUB_ACTION_PATH`` is the SDK source). See
+      # scanner-container/action.yml for the original rationale.
+      run: pip install "${{ github.action_path }}/../../.."
 
-    - name: Run JSON validation
-      id: json-lint
+    - name: Run JSON Linter via Argus SDK
+      id: scan
       shell: bash
-      continue-on-error: true
       env:
-        PATHS: ${{ inputs.paths }}
+        SCAN_PATH: ${{ inputs.paths }}
         FAIL_ON_ISSUES: ${{ inputs.fail_on_issues }}
       run: |
-        echo "::group::JSON Validation"
-        echo "Searching for JSON files in: $PATHS"
+        mkdir -p json-lint-reports scanner-summaries
 
-        ISSUES_FILE="/tmp/json_issues.txt"
-        ISSUE_COUNT=0
-
-        # Find all JSON files, excluding common directories
-        JSON_FILES=$(find $PATHS -name "*.json" \
-          -not -path "*/node_modules/*" \
-          -not -path "*/.git/*" \
-          -not -path "*/vendor/*" \
-          -type f 2>/dev/null || true)
-
-        if [ -z "$JSON_FILES" ]; then
-          echo "No JSON files found to validate"
-          echo "issues=0" >> $GITHUB_OUTPUT
-          echo "::endgroup::"
-          exit 0
+        # Map fail_on_issues boolean to severity threshold
+        SEVERITY="none"
+        if [ "$FAIL_ON_ISSUES" = "true" ]; then
+          SEVERITY="info"
         fi
 
-        echo "Found JSON files to check:"
-        echo "$JSON_FILES" | head -20
-        FILE_COUNT=$(echo "$JSON_FILES" | wc -l)
-        if [ "$FILE_COUNT" -gt 20 ]; then
-          echo "... and $((FILE_COUNT - 20)) more files"
+        SCAN_EXIT=0
+        python -m argus scan lint-json \
+          --path "${SCAN_PATH}" \
+          --severity-threshold "${SEVERITY}" \
+          --format sarif --format json --format markdown \
+          --output-dir ./json-lint-reports \
+          --output-vars ./json-lint-reports/counts.env \
+          --no-timestamp \
+          || SCAN_EXIT=$?
+
+        # Forward counts to GitHub Actions outputs
+        [ -f json-lint-reports/counts.env ] && cat json-lint-reports/counts.env >> "$GITHUB_OUTPUT"
+
+        # Copy markdown summary for PR comment and step summary
+        if [ -f "json-lint-reports/argus-summary.md" ]; then
+          cp json-lint-reports/argus-summary.md scanner-summaries/json-lint.md
+          cat json-lint-reports/argus-summary.md >> "$GITHUB_STEP_SUMMARY"
         fi
 
-        # Validate each JSON file
-        for file in $JSON_FILES; do
-          if ! jsonlint -q "$file" 2>/dev/null; then
-            echo "JSON syntax error in: $file" | tee -a "$ISSUES_FILE"
-            jsonlint "$file" 2>&1 | sed "s/^/  /" | tee -a "$ISSUES_FILE" || true
-            ISSUE_COUNT=$((ISSUE_COUNT + 1))
-          fi
-        done
+        exit $SCAN_EXIT
 
-        echo "issues=$ISSUE_COUNT" >> $GITHUB_OUTPUT
-
-        if [ "$ISSUE_COUNT" -gt 0 ]; then
-          echo "Found $ISSUE_COUNT JSON validation issues"
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            echo "::warning title=JSON Validation Issues::Found $ISSUE_COUNT JSON syntax/formatting issues. See job logs for details."
-          fi
-        else
-          echo "No JSON validation issues found"
-        fi
-
-        echo "::endgroup::"
-
-        # Fail if requested and issues found
-        if [ "$FAIL_ON_ISSUES" = "true" ] && [ "$ISSUE_COUNT" -gt 0 ]; then
-          echo "::error::JSON validation failed with $ISSUE_COUNT issues"
-          exit 1
-        fi
-
-    - name: Generate linter summary
+    - name: Upload JSON lint artifacts
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+      with:
+        name: json-lint-reports
+        path: json-lint-reports/
+        retention-days: 30
       if: always()
-      shell: bash
-      env:
-        ISSUES_OUTPUT: ${{ steps.json-lint.outputs.issues }}
-      run: |
-        mkdir -p linter-summaries
-        ISSUES="$ISSUES_OUTPUT"
 
-        echo "<details>" > linter-summaries/json.md
-        echo "<summary>JSON Validation</summary>" >> linter-summaries/json.md
-        echo "" >> linter-summaries/json.md
-
-        if [ "$ISSUES" -eq 0 ]; then
-          echo "**Status:** Passed" >> linter-summaries/json.md
-          echo "" >> linter-summaries/json.md
-          echo "No JSON validation issues found." >> linter-summaries/json.md
-        else
-          echo "**Status:** Issues Found" >> linter-summaries/json.md
-          echo "" >> linter-summaries/json.md
-          echo "**Issues Found:** $ISSUES" >> linter-summaries/json.md
-          echo "" >> linter-summaries/json.md
-
-          if [ -f "/tmp/json_issues.txt" ]; then
-            echo "<details>" >> linter-summaries/json.md
-            echo "<summary>View Issues</summary>" >> linter-summaries/json.md
-            echo "" >> linter-summaries/json.md
-            echo '```' >> linter-summaries/json.md
-            head -50 /tmp/json_issues.txt >> linter-summaries/json.md
-            if [ $(wc -l < /tmp/json_issues.txt) -gt 50 ]; then
-              echo "... (truncated, see artifacts for full list)" >> linter-summaries/json.md
-            fi
-            echo '```' >> linter-summaries/json.md
-            echo "" >> linter-summaries/json.md
-            echo "</details>" >> linter-summaries/json.md
-          fi
-        fi
-
-        echo "" >> linter-summaries/json.md
-        echo "</details>" >> linter-summaries/json.md
-        echo "" >> linter-summaries/json.md
-
-    - name: Upload linter summary
+    - name: Upload JSON lint summary section
       if: always()
       uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
       with:
         name: linter-summary-json
-        path: linter-summaries/json.md
+        path: scanner-summaries/json-lint.md
         retention-days: 7
       continue-on-error: true
 
-    - name: Upload raw lint results
-      if: always()
-      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+    - name: Comment PR with JSON lint results
+      if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
+      uses: huntridge-labs/argus/.github/actions/comment-pr@0.7.0
       with:
-        name: json-lint-results
-        path: /tmp/json_issues.txt
-        retention-days: 7
-        if-no-files-found: ignore
-      continue-on-error: true
+        summary_file: scanner-summaries/json-lint.md
+        comment_marker: json-linter-comment-marker
+        title: '📋 JSON Linting Results'
+        fallback_message: 'No JSON linting results available'
 
 branding:
   icon: 'file-text'

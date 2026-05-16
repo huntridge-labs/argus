@@ -1,11 +1,11 @@
 # Container Security Scanning - Reusable Workflow
 #
-# THIN WRAPPER: This workflow orchestrates container discovery, building, and scanning.
-# Scanning is delegated to: .github/actions/scanner-container/action.yml
+# Orchestrates container discovery, building, and scanning via the argus CLI.
+# Scanner implementation: argus/scanners/container.py, argus/container/
 #
 # Supports two modes:
-# - discover: Find and build local Dockerfiles, then scan
-# - remote: Scan pre-existing images from a registry
+# - discover: Find and build local Dockerfiles, then scan (argus scan container --discover)
+# - remote: Scan pre-existing images from a registry (argus scan container --image)
 #
 # For GHES users: Use the composite action directly instead of this workflow.
 # See: examples/github-enterprise/container-scanning.yml
@@ -109,23 +109,22 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Checkout argus for sanitization script
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
-          repository: huntridge-labs/argus
-          ref: 0.7.2
-          path: .argus-tools
-          persist-credentials: false
+          python-version: '3.13'
 
-      - name: Install sanitization dependencies
-        run: pip install python-slugify
+      - name: Install argus dependencies
+        run: |
+          pip install --quiet pyyaml
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
       - name: Discover Dockerfiles in repository
         id: discover
         run: |
           echo "Discovering Dockerfiles in repository..."
 
-          DOCKERFILES=$(find . -name "Dockerfile*" -not -path "./.git/*" -not -path "./.argus-tools/*" -type f)
+          DOCKERFILES=$(find . -name "Dockerfile*" -not -path "./.git/*" -type f)
 
           if [ -z "$DOCKERFILES" ]; then
             echo "No Dockerfiles found in repository"
@@ -137,12 +136,8 @@ jobs:
           echo "Found Dockerfiles:"
           echo "$DOCKERFILES"
 
-          SANITIZE_SCRIPT=".argus-tools/.github/actions/parse-container-config/scripts/sanitize_name.py"
-
-          # First pass: collect raw names, dockerfiles, and contexts
-          raw_names=()
-          dockerfiles_arr=()
-          contexts_arr=()
+          containers="["
+          first=true
 
           for dockerfile in $DOCKERFILES; do
             dir=$(dirname "$dockerfile")
@@ -158,26 +153,13 @@ jobs:
               name="${name}-secure"
             fi
 
-            raw_names+=("$name")
-            dockerfiles_arr+=("$dockerfile")
-            contexts_arr+=("$dir")
-          done
-
-          # Sanitize all names at once (handles collisions)
-          sanitized=$(python3 "$SANITIZE_SCRIPT" --list "${raw_names[@]}")
-          read -ra sanitized_names <<< "$sanitized"
-
-          # Build JSON output
-          containers="["
-          first=true
-
-          for i in "${!dockerfiles_arr[@]}"; do
             if [ "$first" = true ]; then
               first=false
             else
               containers="$containers,"
             fi
-            containers="$containers{\"dockerfile\":\"${dockerfiles_arr[$i]}\",\"name\":\"${sanitized_names[$i]}\",\"context\":\"${contexts_arr[$i]}\"}"
+
+            containers="$containers{\"dockerfile\":\"$dockerfile\",\"name\":\"$name\",\"context\":\"$dir\"}"
           done
 
           containers="$containers]"
@@ -207,15 +189,28 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.13'
+
+      - name: Install argus dependencies
+        run: |
+          pip install --quiet pyyaml
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4
 
       - name: Build container image
         id: build
         continue-on-error: true
+        env:
+          CONTAINER_NAME: ${{ matrix.container.name }}
+          CONTAINER_DOCKERFILE: ${{ matrix.container.dockerfile }}
+          CONTAINER_CONTEXT: ${{ matrix.container.context }}
         run: |
-          # Container name is already sanitized; just lowercase for Docker image naming
-          IMAGE_NAME="hardening-test-$(echo '${{ matrix.container.name }}' | tr '[:upper:]' '[:lower:]')"
+          IMAGE_NAME="hardening-test-$(echo "$CONTAINER_NAME" | tr '/' '-' | tr '[:upper:]' '[:lower:]')"
           IMAGE_TAG="scan-$(echo "$GITHUB_SHA" | cut -c1-8)"
           FULL_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
 
@@ -229,8 +224,8 @@ jobs:
 
           if docker build \
             --tag "$FULL_IMAGE" \
-            --file "${{ matrix.container.dockerfile }}" \
-            "${{ matrix.container.context }}"; then
+            --file "$CONTAINER_DOCKERFILE" \
+            "$CONTAINER_CONTEXT"; then
             echo "Successfully built image: $FULL_IMAGE"
             echo "build_success=true" >> "$GITHUB_OUTPUT"
           else
@@ -238,17 +233,20 @@ jobs:
             echo "build_success=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Run security scanners
+      - name: Run security scanners via argus CLI
         if: steps.build.outputs.build_success == 'true'
-        uses: huntridge-labs/argus/.github/actions/scanner-container@0.7.2
-        with:
-          image_ref: ${{ steps.build.outputs.full_image }}
-          container_name: ${{ matrix.container.name }}
-          scanners: ${{ inputs.scanners || 'trivy,grype,syft' }}
-          fail_on_severity: ${{ inputs.fail_on_severity }}
-          enable_code_security: ${{ inputs.enable_code_security }}
-          scan_mode: 'discover'
-          allow_failure: ${{ inputs.allow_failure }}
+        env:
+          ARGUS_IMAGE_REF: ${{ steps.build.outputs.full_image }}
+          ARGUS_SCANNERS: ${{ inputs.scanners || 'trivy,grype,syft' }}
+          ARGUS_FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
+          ARGUS_ENABLE_CODE_SECURITY: ${{ inputs.enable_code_security }}
+          ARGUS_ALLOW_FAILURE: ${{ inputs.allow_failure }}
+        run: |
+          python -m argus scan container \
+            --image "$ARGUS_IMAGE_REF" \
+            --scanners "$ARGUS_SCANNERS" \
+            --severity-threshold "$ARGUS_FAIL_ON_SEVERITY" \
+            --format markdown --format sarif
 
   scan-remote-image:
     name: Scan Remote Image
@@ -262,6 +260,16 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.13'
+
+      - name: Install argus dependencies
+        run: |
+          pip install --quiet pyyaml
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
       - name: Authenticate to container registry
         if: inputs.registry_username != ''
@@ -282,18 +290,19 @@ jobs:
           IMAGE_REF: ${{ inputs.image_ref }}
           REGISTRY_USERNAME: ${{ inputs.registry_username }}
 
-      - name: Run security scanners
-        uses: huntridge-labs/argus/.github/actions/scanner-container@0.7.2
-        with:
-          image_ref: ${{ inputs.image_ref }}
-          container_name: ${{ inputs.container_name || 'remote-image' }}
-          scanners: ${{ inputs.scanners || 'trivy,grype,syft' }}
-          fail_on_severity: ${{ inputs.fail_on_severity }}
-          enable_code_security: ${{ inputs.enable_code_security }}
-          registry_username: ${{ inputs.registry_username }}
-          registry_password: ${{ secrets.registry_password }}
-          scan_mode: 'remote'
-          allow_failure: ${{ inputs.allow_failure }}
+      - name: Run security scanners via argus CLI
+        env:
+          ARGUS_IMAGE_REF: ${{ inputs.image_ref }}
+          ARGUS_SCANNERS: ${{ inputs.scanners || 'trivy,grype,syft' }}
+          ARGUS_FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
+          ARGUS_ENABLE_CODE_SECURITY: ${{ inputs.enable_code_security }}
+          ARGUS_ALLOW_FAILURE: ${{ inputs.allow_failure }}
+        run: |
+          python -m argus scan container \
+            --image "$ARGUS_IMAGE_REF" \
+            --scanners "$ARGUS_SCANNERS" \
+            --severity-threshold "$ARGUS_FAIL_ON_SEVERITY" \
+            --format markdown --format sarif
 
   container-scan-summary:
     name: Container Scan Summary
@@ -315,7 +324,7 @@ jobs:
           pattern: ${{ inputs.scan_mode == 'remote' && inputs.container_name != '' && format('container-scan-results-{0}*', inputs.container_name) || 'container-scan-results-*' }}
 
       - name: Generate container summary
-        uses: huntridge-labs/argus/.github/actions/scanner-container-summary@0.7.2
+        uses: huntridge-labs/argus/.github/actions/scanner-container-summary@0.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

@@ -1,7 +1,7 @@
 # OpenGrep SAST Scanner - Reusable Workflow
 #
-# THIN WRAPPER: This workflow delegates to the scanner-opengrep composite action.
-# All scanning logic is in: .github/actions/scanner-opengrep/action.yml
+# Runs the OpenGrep scanner via the argus Python CLI.
+# Equivalent to: python -m argus scan opengrep
 #
 # For GHES users: Use the composite action directly instead of this workflow.
 # See: examples/github-enterprise/sast-only.yml
@@ -57,11 +57,49 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Run OpenGrep Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-opengrep@0.7.2
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
-          config: ${{ inputs.opengrep_config }}
-          paths: ${{ inputs.opengrep_paths }}
-          post_pr_comment: ${{ inputs.post_pr_comment }}
-          enable_code_security: ${{ inputs.enable_code_security }}
-          fail_on_severity: ${{ inputs.fail_on_severity }}
+          python-version: '3.13'
+
+      - name: Install Argus
+        run: |
+          pip install --quiet pyyaml
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Run scan
+        run: |
+          python -m argus scan opengrep \
+            --path "$SCAN_PATH" \
+            --severity-threshold "$SEVERITY_THRESHOLD" \
+            --format terminal --format sarif --format json \
+            --output-dir ./argus-results \
+            --verbose
+        env:
+          SCAN_PATH: ${{ inputs.opengrep_paths || '.' }}
+          SEVERITY_THRESHOLD: ${{ inputs.fail_on_severity || 'none' }}
+          OPENGREP_CONFIG: ${{ inputs.opengrep_config || 'auto' }}
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: opengrep-reports
+          path: ./argus-results/
+          retention-days: 30
+
+      - name: Upload SARIF
+        if: inputs.enable_code_security && always() && github.actor != 'nektos/act'
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
+        with:
+          sarif_file: ./argus-results/argus-results.sarif
+        continue-on-error: true
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request' && inputs.post_pr_comment
+        uses: huntridge-labs/argus/.github/actions/comment-pr@0.7.0
+        with:
+          summary_file: ./argus-results/argus-results.md
+          comment_marker: opengrep-comment-marker
+          title: 'OpenGrep SAST Results'
+          fallback_message: 'No OpenGrep results available'

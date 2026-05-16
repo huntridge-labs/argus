@@ -8,22 +8,25 @@ schema: "https://aicac.dev/schema/v1"
 project:
   name: argus
   type: security-pipeline
-  purpose: "Automated security scanning orchestration for GitHub Actions"
-  primary_language: yaml  # GitHub Actions workflows
-  secondary_languages: [python]
-  version: "0.6.8"
+  purpose: "Automated security scanning via Python SDK and GitHub Actions"
+  primary_language: python  # SDK and scanner scripts
+  secondary_languages: [yaml]
+  version: "0.7.2"
   license: "AGPL-3.0"
   repository: "huntridge-labs/argus"
 
   one_liner: >
-    Composite GitHub Actions that orchestrate 14+ security scanners with
-    unified interface, SARIF upload, and PR comments.
+    Python SDK and CLI that orchestrate 18+ security scanners and linters
+    with a unified config, canonical argus-results.json output, MCP server
+    integration, and optional composite GitHub Actions wrappers for GHA
+    consumers.
 
   solves:
-    - Running multiple security scanners from single workflow call
-    - Unified severity thresholds across different scanner outputs
-    - GitHub Enterprise Server compatibility for security scanning
-    - PR feedback with inline code annotations
+    - Running multiple security scanners from a single CLI command, config file, or CI workflow
+    - Unified severity thresholds and canonical JSON output across heterogeneous scanner formats
+    - Platform-independent scanning (local laptop, GitHub Actions, GitLab CI, GHES, air-gapped)
+    - AI-assistant integration via the bundled MCP server (argus mcp)
+    - PR feedback with inline code annotations (via composite-action wrappers)
 
   does_not_solve:
     - Remediation of found vulnerabilities (reporting only)
@@ -31,8 +34,29 @@ project:
     - Security policy enforcement (provides data, not gates)
 
 entrypoints:
+  sdk: "argus/"
+  sdk_install: "pip install argus-security"
+  sdk_cli: "argus scan --config argus.yml"
+  sdk_cli_alt: "python -m argus scan --config argus.yml"
+  cli_subcommands:
+    scan: "argus scan [scanner ...] — primary entry; supports source, container, lint flows"
+    init: "argus init — generate a tailored argus.yml from project auto-detection"
+    classify: "argus classify — classify findings by category"
+    collect: "argus collect — collect scanner outputs"
+    validate: "argus validate — typecheck argus.yml against the JSON Schema"
+    view: "argus view [terminal|browser] — interactive triage of argus-results.json"
+    report: "argus report <format> — re-emit results in another format without re-scanning"
+    completion: "argus completion {bash,zsh,fish} — shell completion (dynamic from registry)"
+    mcp: "argus mcp — start the MCP server over stdio for AI-assistant integration"
+    cache: "argus cache info|clean — manage per-scanner DB cache volumes"
+  cli_flags:
+    version: "argus --version (top-level flag, NOT a subcommand)"
+  mcp_server: "argus mcp"
+  mcp_install: "pip install argus-security[mcp]"
+  viewer_extras:
+    terminal: "pip install 'argus-security[terminal]' (Textual TUI)"
+    browser: "pip install 'argus-security[browser]' (FastAPI + Jinja2, 127.0.0.1 only)"
   actions: ".github/actions/"
-  reusable_workflow: ".github/workflows/reusable-security-hardening.yml"
   examples: "examples/workflows/"
   documentation: "docs/"
   agent_skills: ".agents/skills/"
@@ -41,12 +65,12 @@ entrypoints:
   docsite_url: "https://huntridge-labs.github.io/argus/"
 
 common_tasks:
-  run_all_scanners: "Call the reusable workflow to run the default scanner suite."
-  run_subset: "Enable a subset of scanners via workflow inputs or config."
-  recommend_scanners: "Use the argus-scanner-selection skill to map a target repository or local change set to the right Argus scanners, choose the correct github.com versus GHES integration path, and produce pre-push execution plus CI alignment guidance."
-  view_reports: "Review SARIF uploads, PR comments, and summary reports."
+  run_all_scanners: "Run the full scanner suite via python -m argus scan --config argus.yml."
+  run_subset: "Run specific scanners via python -m argus scan <scanner1> <scanner2>."
+  recommend_scanners: "Use the argus-scanner-selection skill to map a target repository or local change set to the right Argus scanners."
+  view_reports: "Review terminal, markdown, SARIF, or JSON output from the SDK."
   update_versions: "Bump scanner or action versions and validate outputs."
-  troubleshoot_failures: "Inspect workflow logs and scanner outputs to resolve errors."
+  troubleshoot_failures: "Inspect CLI output or workflow logs to resolve errors."
 
 primary_users:
   - DevSecOps engineers setting up CI/CD pipelines
@@ -77,3 +101,8 @@ glossary:
   Composite Action: "GitHub Action that runs steps directly (vs calling another workflow)"
   Reusable Workflow: "GitHub workflow that can be called from other workflows"
   Matrix: "GitHub Actions feature to run job with different parameter combinations"
+  Scanner Protocol: "Python protocol in argus/core/scanner.py — name, scan(path, config), is_available(), install_command(); the contract every scanner module implements"
+  SCANNER_REGISTRY: "argus/scanners/__init__.py registry mapping scanner-name → class. Auto-merges LINTER_REGISTRY at import time. Single source of truth consumed by CLI, MCP, viewers, reporters, and shell completions"
+  Reporter: "Output plugin in argus/reporters/ that converts ScanSummary → terminal/markdown/SARIF/JSON; argus-results.json is always written by JsonReporter as the canonical artifact"
+  ScanSummary: "Top-level result dataclass (argus/core/models.py) — list of ScanResult, each with scanner name, findings, and metadata; consumed by viewers, reporters, and the MCP layer"
+  MCP: "Model Context Protocol — stdio-transported tool/resource interface for AI assistants; argus mcp implements it (see ADR-015)"

@@ -57,7 +57,7 @@
       "test_name": "exec_used"
     },
     {
-      "code": "password = 'hardcoded_password'",
+      "code": "password = 's3cr3t-pw-XYZ123'",
       "col_offset": 4,
       "filename": "tests/fixtures/test-apps/python-app/config.py",
       "issue_confidence": "MEDIUM",
@@ -66,7 +66,7 @@
         "link": "https://cwe.mitre.org/data/definitions/259.html"
       },
       "issue_severity": "MEDIUM",
-      "issue_text": "Possible hardcoded password: 'hardcoded_password'",
+      "issue_text": "Possible hardcoded password: 's3cr3t-pw-XYZ123'",
       "line_number": 8,
       "line_range": [
         8

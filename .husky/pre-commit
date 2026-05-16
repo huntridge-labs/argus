@@ -11,7 +11,9 @@ fi
 # Tests run in pre-push hook instead
 if command -v pre-commit >/dev/null 2>&1; then
   echo "Running formatting and linting checks..."
-  pre-commit run --all-files --show-diff-on-failure
+  if ! pre-commit run --all-files --show-diff-on-failure; then
+    exit 1
+  fi
 else
   echo "⚠️  pre-commit not found, skipping hooks"
   echo "💡 To run hooks locally, use the devcontainer or run: bash .devcontainer/setup.sh"

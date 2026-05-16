@@ -27,6 +27,19 @@ def main() -> None:
         action="store_true",
         help="Validate docsite.yml and .docsite.yml files, then exit",
     )
+    parser.add_argument(
+        "--ref",
+        default=None,
+        help=(
+            "Git ref to embed in cross-repo blob URLs "
+            "(e.g. ``v0.7.2`` for release builds, a PR head SHA for "
+            "PR previews, ``main`` for push:main builds). Defaults to "
+            "the ``ARGUS_DOCS_REF`` env var, then ``main``. The CI "
+            "workflow passes the appropriate value per trigger so the "
+            "versioned docs at /argus/<version>/ link to matching "
+            "blob URLs at /blob/<version>/."
+        ),
+    )
     args = parser.parse_args()
 
     repo_root = Path(args.repo_root).resolve()
@@ -40,7 +53,7 @@ def main() -> None:
         valid = validate(repo_root)
         sys.exit(0 if valid else 1)
 
-    build(repo_root, output_dir)
+    build(repo_root, output_dir, ref=args.ref)
 
 
 if __name__ == "__main__":

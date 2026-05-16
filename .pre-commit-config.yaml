@@ -18,7 +18,7 @@ repos:
       - id: check-json
         exclude: ^(tests/invalid\.json)$
       - id: detect-private-key
-        exclude: ^(tests/secrets_test\.py)$
+        exclude: ^(tests/secrets_test\.py|argus/tests/core/test_redact\.py)$
       - id: mixed-line-ending
         args: ["--fix=lf"]
         exclude: \.md$
@@ -26,7 +26,11 @@ repos:
       #   args: [--branch, main]
       - id: pretty-format-json
         args: [--autofix, --no-sort-keys]
-        exclude: ^(docs|tests/invalid\.json)$
+        # docs/images/**/*.json are scan-result fixtures captured
+        # verbatim from `argus scan`; re-emitting them through
+        # json.dump(ensure_ascii=True) escapes em-dashes / non-ASCII
+        # and makes them diverge from real argus output.
+        exclude: ^(docs/images/.*\.json|tests/invalid\.json)$
   # renovate: datasource=github-tags depName=pre-commit/pygrep-hooks versioning=semver
   - repo: https://github.com/pre-commit/pygrep-hooks
     rev: v1.10.0  # Use the ref you want to point at
@@ -51,8 +55,12 @@ repos:
       - id: codespell
         args: [
           --skip=docs/public/*.*,
+          --skip=docs/images/**/*.svg,
+          --skip=docs/images/**/*.json,
           --skip=package-lock.json,
           --skip=**/package-lock.json,
+          --skip=pnpm-lock.yaml,
+          --skip=**/pnpm-lock.yaml,
           --ignore-words-list=assertIn,
           -w
         ]
@@ -83,3 +91,11 @@ repos:
     hooks:
       - id: actionlint
         args: [--config-file=.github/actionlint.yaml]
+  - repo: local
+    hooks:
+      - id: check-cli-docs
+        name: Check CLI docs are up to date
+        entry: python -m scripts.ci.check_cli_docs
+        language: python
+        pass_filenames: false
+        files: ^(argus/cli\.py|docs/cli-reference\.md)$

@@ -1,0 +1,185 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argus/main/argus-config.schema.json
+# Argus Security Scanner Configuration
+# Copy to argus.yml and customize for your project
+version: "1.0"
+
+scanners:
+  bandit:
+    enabled: true
+    path: "."
+    # config_file: "pyproject.toml"  # Optional Bandit config
+
+  trivy-iac:
+    enabled: true
+    path: "infrastructure"
+    severity_threshold: medium
+
+  clamav:
+    enabled: true
+    path: "."
+
+  gitleaks:
+    enabled: true
+
+  osv:
+    enabled: true
+
+  checkov:
+    enabled: true
+    path: "infrastructure"
+
+  opengrep:
+    enabled: true
+    path: "src"
+
+  supply-chain:
+    enabled: true
+
+  # container:
+  #   enabled: false
+  #   image_ref: "myapp:latest"
+  #   # Default set: trivy + grype CVEs, syft SBOM, exposure declared-ports.
+  #   scanners: "trivy,grype,syft,exposure"
+  #   # Attack-surface knobs for the exposure sub-scanner:
+  #   #   expose_warn_ports:  override the built-in WARN list
+  #   #                       (defaults: 22 SSH, 3306 MySQL, 6379 Redis,
+  #   #                       5432 PostgreSQL, 27017 MongoDB, etc.)
+  #   #   expose_ignore_ports: suppress findings entirely
+  #   # expose_warn_ports: ["22/tcp", "3306/tcp"]
+  #   # expose_ignore_ports: ["443/tcp", "8080/tcp"]
+  #   # Private-registry auth: name an env var, never paste a literal.
+  #   # The runner / shell exports the value; argus reads it at scan time.
+  #   registry_username_env: REGISTRY_USER
+  #   registry_password_env: REGISTRY_TOKEN
+
+  # zap:
+  #   enabled: false
+  #   target_url: "http://localhost:3000"
+  #   #
+  #   # Optional tuning (decided in ADR-024; container backend only):
+  #   #
+  #   # scan_type: baseline           # baseline | full | api
+  #   # api_spec: "http://localhost:3000/openapi.json"   # auto-switches to api scan
+  #   # rules_file: ".zap/rules.tsv"  # ZAP ignore rules; mounted into container
+  #   # max_duration_minutes: 30      # hard cap on scan time
+  #   # cmd_options:                  # appended verbatim after built-in flags
+  #   #   - "-z"
+  #   #   - "-config view.locale=en_GB"
+  #   #
+  #   # Authenticated scan via ZAP context file (user-authored):
+  #   # auth:
+  #   #   context_file: ".zap/context.xml"
+  #   #   username_env: ZAP_APP_USER       # env-var *name*
+  #   #   password_env: ZAP_APP_PASSWORD
+
+reporting:
+  # ``argus-results.json`` is the canonical scan artifact and is
+  # always written regardless of this list — the viewers, the audit
+  # manifest, and the ``argus report`` subcommand all consume it.
+  # This list selects which *additional* human-readable reports to
+  # emit alongside the JSON. Available: terminal, markdown, sarif.
+  formats:
+    - terminal
+    - sarif
+  severity_threshold: high
+  output_dir: "./argus-results"
+
+  # Persist each scanner's raw output (results.json, *.sarif,
+  # stdout.txt) under ``<output_dir>/raw/<scanner>/`` alongside the
+  # canonical argus-results.json. Default true — useful for
+  # forensics, audit trails, and manual triage. Set false (or pass
+  # --no-keep-raw on the CLI) to skip; saves a few MB per scan in
+  # tight CI environments. Applies to both source scans (``argus
+  # scan``) and container scans (``argus scan container``).
+  keep_raw: true
+
+# Container lifecycle targets (consumed by ``argus scan container``).
+# Defining anything under this top-level ``containers:`` key activates
+# config-driven container scans — no need to pass --image / --discover
+# on the CLI. CLI flags, when supplied, override the matching keys
+# below: explicit > implicit.
+#
+# Each ``images:`` entry uses ONE of two shapes — never both:
+#
+#   image:        Remote-pull entry. argus pulls and scans this exact
+#                 reference. Pin to an immutable ``@sha256:...`` digest
+#                 when possible — :tag references are mutable, so CVE
+#                 attribution drifts as upstream republishes. Renovate
+#                 and Dependabot can update digest pins automatically.
+#
+#   dockerfile:   Build-then-scan entry. argus runs ``docker build``
+#                 against the Dockerfile, tags the result as
+#                 ``<name>:argus-scan``, then scans that image. Argus
+#                 doesn't push the build to a registry — the resulting
+#                 image only exists locally for the duration of the
+#                 scan (cleanup: true by default).
+#
+# ``image:`` and ``dockerfile:`` are mutually exclusive — argus does
+# not push images, so the docker-compose pattern of "build, then tag
+# as ``image:`` for publishing" doesn't apply here.
+#
+# containers:
+#   images:
+#     # PREFERRED remote pull: tag + digest (human-readable + immutable)
+#     - image: ghcr.io/myorg/app:1.4.0@sha256:f1e2d3c4b5a6f7e8d9c0b1a2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2
+#
+#     # ALSO PREFERRED remote pull: digest-only (immutable, no tag noise)
+#     - image: ghcr.io/myorg/worker@sha256:0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b
+#
+#     # ACCEPTABLE FALLBACK remote pull: tag-only. Mutable; use only
+#     # for ad-hoc scans or environments where digest discovery isn't
+#     # yet wired up. Migrate to a pinned form before relying on the
+#     # scan output for an audit trail.
+#     # - image: myorg/legacy:1.0.0
+#
+#     # Build-then-scan: ``dockerfile:`` + optional ``context:`` and
+#     # ``name:``. ``name:`` becomes the build tag (``<name>:argus-scan``)
+#     # and the row identifier in argus-results.json; if omitted, argus
+#     # derives a name from the Dockerfile path the same way
+#     # ``argus scan container --discover`` does.
+#     - dockerfile: docker/Dockerfile
+#       context: .
+#       name: inhouse-app
+#
+#     # Per-target override of the engine-level ``cleanup:`` default.
+#     # Useful when one base image should stay cached across runs while
+#     # the rest of the dev images get torn down. ``true`` removes the
+#     # built image after the scan; ``false`` leaves it; omit to defer
+#     # to the engine default (``cleanup: true`` unless the engine is
+#     # configured otherwise).
+#     - dockerfile: docker/Dockerfile.base
+#       name: my-base
+#       cleanup: false
+#
+#   # OR auto-discovery. Walks ``search_paths`` for Dockerfile,
+#   # Dockerfile.<name>, <name>.Dockerfile, then builds + scans each
+#   # image locally. Builds inherit your local docker daemon, so
+#   # reproducibility is bounded by your build cache.
+#   discover: true
+#   search_paths:
+#     - .
+#     - docker/
+#
+#   # Override which sub-scanners run; default is trivy + grype.
+#   scanners: [trivy, grype, syft]
+#
+# Note: raw scanner-output preservation is configured via the
+# unified ``reporting.keep_raw`` knob above — the same flag covers
+# trivy/grype/syft container outputs and source-scan scanner
+# outputs. No separate container-only setting is needed.
+
+# Execution backend configuration
+execution:
+  # auto (default): containers for immutable, reproducible scans
+  # local: use locally installed tools (faster, user accepts version risk)
+  # docker: containers only, fail if unavailable
+  backend: auto
+
+  # Override container registry for private/air-gapped environments
+  # registry: "registry.internal.corp/argus"
+
+  # Container pull policy
+  # always: pull latest on every run
+  # if-not-present: pull only if image not cached locally
+  # never: fail if image not cached (for air-gapped)
+  pull_policy: if-not-present

@@ -1,6 +1,11 @@
 # Dependabot configuration for automated dependency updates
 # Groups updates by semantic version level (major, minor, patch) to reduce PR noise
 # See: https://docs.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
+#
+# SUPPLY CHAIN POLICY: Weekly schedule provides natural delay. Dependabot lacks
+# minimumReleaseAge (Renovate has this for tool versions). Manual review required
+# before merging — check release age and community reports for new versions.
+# Ref: Trivy supply chain attack GHSA-69fq-xp46-6x23, March 2026.
 
 version: 2
 updates:
@@ -48,6 +53,63 @@ updates:
       - "automated"
 
     # Allow Dependabot to rebase PRs
+    rebase-strategy: "auto"
+    cooldown:
+      default-days: 7
+
+  # Python (pip) dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+
+    groups:
+      pip-all:
+        patterns:
+          - "*"
+
+    commit-message:
+      prefix: "chore(deps)"
+
+    labels:
+      - "dependencies"
+      - "python"
+      - "automated"
+
+    open-pull-requests-limit: 10
+    rebase-strategy: "auto"
+    cooldown:
+      default-days: 7
+
+  # Docker images (Argus custom Dockerfiles + devcontainer + test fixtures)
+  - package-ecosystem: "docker"
+    directories:
+      - "/docker"
+      - "/.devcontainer"
+      - "/tests/fixtures/test-apps/node-app"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+
+    groups:
+      docker-all:
+        patterns:
+          - "*"
+
+    commit-message:
+      prefix: "chore(deps)"
+
+    labels:
+      - "dependencies"
+      - "docker"
+      - "automated"
+
+    open-pull-requests-limit: 10
     rebase-strategy: "auto"
     cooldown:
       default-days: 7

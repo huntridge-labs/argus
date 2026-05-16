@@ -87,11 +87,9 @@ jobs:
           container_name: ${{ matrix.name }}
           scanners: ${{ matrix.scanner }}
           fail_on_severity: ${{ matrix.fail_on_severity }}
-          allow_failure: ${{ matrix.allow_failure }}
           enable_code_security: ${{ matrix.enable_code_security }}
           registry_username: ${{ matrix.registry_username }}
           registry_password: ${{ secrets[matrix.registry_auth_secret] }}
-          skip_summary: 'true'  # Summary generated in combine job
 
   # ============================================
   # Combine results and generate summary

@@ -1,0 +1,31 @@
+FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d AS builder
+
+ARG OPENGREP_VERSION=1.20.0
+ARG TARGETARCH
+
+RUN apk add --no-cache curl && \
+    if [ "$TARGETARCH" = "arm64" ]; then \
+      ARCH="aarch64"; \
+    else \
+      ARCH="x86"; \
+    fi && \
+    curl -sSfL "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_${ARCH}" \
+      -o /usr/local/bin/opengrep && \
+    chmod +x /usr/local/bin/opengrep
+
+FROM python:3.13-slim@sha256:dc1546eefcbe8caaa1f004f16ab76b204b5e1dbd58ff81b899f21cd40541232f
+
+LABEL org.opencontainers.image.source="https://github.com/huntridge-labs/argus"
+LABEL org.opencontainers.image.description="Argus OpenGrep SAST Scanner"
+LABEL org.opencontainers.image.licenses="AGPL-3.0"
+
+# Patch OS-level vulnerabilities before anything else
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /usr/local/bin/opengrep /usr/local/bin/opengrep
+
+RUN useradd -m -u 1000 argus
+
+USER argus
+WORKDIR /workspace
+ENTRYPOINT ["opengrep"]

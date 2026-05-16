@@ -8,28 +8,35 @@ Complete configuration reference for all available security scanners.
 
 ## Architecture
 
-This project uses an **actions-first architecture**:
+The argus Python SDK (`argus scan`) is the primary interface for running scanners. Composite actions remain available for GitHub Actions users.
 
-- **Composite Actions** (`.github/actions/scanner-*/`) - Single source of truth for all scanner logic
-- **Reusable Workflows** (`.github/workflows/scanner-*.yml`) - Thin wrappers for backwards compatibility
+- **Argus SDK** (`argus/`) - Primary interface, works locally and in any CI
+- **Composite Actions** (`.github/actions/scanner-*/`) - GitHub Actions integration
 - **Example Workflows** (`examples/github-enterprise/`) - Templates for GHES users
 
-**For github.com users**: Use the reusable workflows via `workflow_call` (recommended for simplicity).
+**SDK usage (recommended)**:
 
-**For GHES users**: Use composite actions directly - they work from public github.com repos without mirroring.
+```bash
+pip install argus-security
+argus scan gitleaks bandit --severity-threshold high
+```
 
-<details>
-<summary><strong>GHES Usage Example</strong></summary>
+**Post-scan triage**: Once you have `argus-results.json`, run
+[`argus view terminal`](view-terminal.md) for an interactive terminal UI — filter by
+severity, product, or scanner; export to CSV/JSON/Markdown/SARIF; open an
+executive dashboard. Install via `pip install 'argus-security[terminal]'`,
+or combine with scanning in one shot: `argus scan --interface=terminal`.
+
+**Composite action usage (GitHub Actions)**:
 
 ```yaml
-# Direct composite action usage (GHES compatible)
 jobs:
   security:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.7.2
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@0.7.0
         with:
           enable_code_security: true
           fail_on_severity: high
@@ -37,9 +44,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-See [examples/github-enterprise/](../examples/github-enterprise/) for complete templates.
-
-</details>
+See [examples/github-enterprise/](../examples/github-enterprise/) for GHES templates.
 
 ---
 
@@ -330,6 +335,139 @@ secrets:
 
 </details>
 
+### Exposed-port surface
+
+Reports the network endpoints a container image declares via Dockerfile
+`EXPOSE` — separate from whether those endpoints have known CVEs. "Image
+exposes 6379/tcp" is a different question from "image has a vulnerable
+Redis package" and most security reviewers want both. Runs as a
+sub-scanner inside the container scanner (no new module); the data is
+free since the container scanner already runs `docker inspect` on every
+pull.
+
+**Output shape:** one `Finding` per declared port:
+
+```
+INFO   EXPOSE-8080-tcp    Port 8080/tcp declared exposed
+MEDIUM EXPOSE-22-tcp      Port 22/tcp (SSH) declared exposed
+MEDIUM EXPOSE-3306-tcp    Port 3306/tcp (MySQL) declared exposed
+```
+
+Findings flow through every reporter (terminal, markdown, sarif, json,
+github, gitlab, junit), `--severity-threshold` filtering, audit trail,
+and the view-terminal / view-browser UIs without per-reporter custom
+code.
+
+**Built-in risky-defaults watchlist** (MEDIUM severity by default — each
+entry's rationale is cited in `argus/scanners/container.py::RISKY_PORTS`):
+
+| Port | Service | Port | Service |
+|------|---------|------|---------|
+| 21/tcp | FTP | 3306/tcp | MySQL |
+| 22/tcp | SSH | 3389/tcp | RDP |
+| 23/tcp | Telnet | 5432/tcp | PostgreSQL |
+| 25/tcp | SMTP | 6379/tcp | Redis |
+| 110/tcp | POP3 | 9200/tcp | Elasticsearch |
+| 143/tcp | IMAP | 11211/tcp | Memcached |
+| 161/udp | SNMP | 27017/tcp | MongoDB |
+| 389/tcp | LDAP | | |
+| 445/tcp | SMB | | |
+
+**Configuring via argus.yml:**
+
+```yaml
+scanners:
+  container:
+    image_ref: "myapp:latest"
+    # Default sub-scanner set; remove "exposure" to opt out
+    scanners: "trivy,grype,syft,exposure,services"
+    # Override the built-in WARN list (replaces the defaults).
+    # Pass [] to demote every declared port to INFO.
+    expose_warn_ports:
+      - 22/tcp
+      - 3306/tcp
+      - 8080/tcp           # promote app port to WARN
+    # Suppress findings entirely for ports the team has accepted.
+    expose_ignore_ports:
+      - 443/tcp
+      - 9090/tcp
+```
+
+Both lists accept `"PORT/PROTO"` strings; bare `"PORT"` defaults to tcp.
+Schema validator errors on malformed entries at config-load time. See
+[`docs/config-reference.md`](config-reference.md) for the full schema.
+
+**Out of scope:** *runtime* port enumeration (start the container, probe
+with `nmap`/`ss`). Static `EXPOSE` data is the bulk of the value at a
+fraction of the operational cost.
+
+### Service enumeration
+
+Walks the container image's filesystem at scan time, parses systemd
+unit files (`/etc/systemd/system`, `/lib/systemd/system`,
+`/usr/lib/systemd/system`) and SysV init scripts (`/etc/init.d/`),
+and emits one `Finding` per declared service. Runs as a sub-scanner
+inside the container scanner — same Docker requirement, no new
+heavy dependencies. Works on distroless / scratch images because
+file extraction goes through `docker create` + `docker cp` (tar
+stream) rather than `docker run`. Per-file reads are bounded at 1
+MB to prevent hostile-image memory blow-up.
+
+**Output shape:** one `Finding` per service:
+
+```
+INFO   SVC-nginx       Service "nginx" declared (systemd unit)
+MEDIUM SVC-sshd        Service "sshd" declared (systemd unit)
+MEDIUM SVC-postgresql  Service "postgresql" declared (systemd unit)
+```
+
+Findings flow through every reporter (terminal, markdown, sarif,
+json, github, gitlab, junit), `--severity-threshold` filtering,
+audit trail, and the view-terminal / view-browser UIs without
+per-reporter custom code.
+
+**Built-in risky-defaults watchlist** (MEDIUM severity by default —
+each entry cites a "why" in
+`argus/scanners/container.py::RISKY_SERVICES`):
+
+| Service | Service | Service |
+|---------|---------|---------|
+| sshd | postgresql | redis-server |
+| telnetd | mysqld | redis |
+| vsftpd | mariadb | mongod |
+| memcached | elasticsearch | snmpd |
+| rpcbind | nfs-server | |
+
+**Configuring via argus.yml:**
+
+```yaml
+scanners:
+  container:
+    image_ref: "myapp:latest"
+    # Default sub-scanner set; remove "services" to opt out
+    scanners: "trivy,grype,syft,exposure,services"
+    # Override the built-in WARN list (replaces the defaults).
+    # Pass [] to demote every declared service to INFO.
+    services_warn:
+      - sshd
+      - postgresql
+      - nginx               # promote app service to WARN
+    # Suppress findings entirely for services the team has accepted.
+    services_ignore:
+      - cron
+      - rsyslog
+```
+
+Matching is case-insensitive. `.timer`, `.socket`, `.target`, and
+`.mount` units are skipped (only `.service` units and init.d
+scripts are reported). Schema validator errors on malformed entries
+at config-load time. See
+[`docs/config-reference.md`](config-reference.md) for the full schema.
+
+**Out of scope:** *runtime* service probing (start the container,
+observe what binds). Static unit-file declarations are the bulk of
+the value at a fraction of the operational cost.
+
 ## Infrastructure Scanners
 
 ### Trivy IaC
@@ -466,16 +604,73 @@ scans:
     api_spec: https://api.example.com/openapi.json
 ```
 
-**2. Call the workflow**:
+**2. Run the scan**:
+
+```bash
+# Via SDK
+python -m argus scan zap --config argus.yml
+```
+
+Or via composite action in GitHub Actions:
 
 ```yaml
 jobs:
-  security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.2
-    with:
-      scanners: zap
-      zap_config_file: .github/zap-config.yml
+  zap-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: huntridge-labs/argus/.github/actions/scanner-zap@0.7.0
+        with:
+          zap_config_file: .github/zap-config.yml
 ```
+
+---
+
+#### Configuring ZAP via `argus.yml` (recommended for SDK users)
+
+ADR-024 decided that ZAP-specific tuning lives in the standard `argus.yml`
+under `scanners.zap.*`, working identically across SDK-direct, composite-
+action, and any-CI use. The composite action surface stays minimal
+(target identification + common cross-scanner inputs); everything else
+configures from one place.
+
+```yaml
+scanners:
+  zap:
+    enabled: true
+    target_url: "https://app.example.com"
+
+    # Tuning (container backend; all optional)
+    scan_type: baseline                 # baseline | full | api (api is implicit
+                                         # when api_spec is set)
+    api_spec: "https://app.example.com/openapi.json"
+    rules_file: ".zap/rules.tsv"         # mounted at /zap/wrk/rules.tsv
+    max_duration_minutes: 30
+    cmd_options:
+      - "-z"
+      - "-config view.locale=en_GB"
+
+    # Registry auth for app_image_ref pulls (private images).
+    # Name the env var; argus reads os.environ at scan time.
+    # Setting registry_password directly is back-compat-supported
+    # but warned at config-load if the value looks like a vendor secret.
+    registry_username_env: REGISTRY_USER
+    registry_password_env: REGISTRY_TOKEN
+
+    # Web-app authentication — ZAP context-file passthrough.
+    # User authors the context file (DOM selectors, logged-in regex,
+    # session management); argus mounts it and exports ZAP_AUTH_USERNAME
+    # / ZAP_AUTH_PASSWORD into the container for the {%username%} /
+    # {%password%} placeholders to substitute.
+    auth:
+      context_file: ".zap/context.xml"
+      username_env: ZAP_APP_USER
+      password_env: ZAP_APP_PASSWORD
+```
+
+See [`docs/config-reference.md`](config-reference.md#credential-fields) for
+the full credential-field contract and the list of every `scanners.zap.*`
+key.
 
 ---
 
@@ -494,7 +689,7 @@ jobs:
 | `zap_target_urls` | Comma-separated URLs to scan (ignored if `zap_config_file` set) | `''` | Conditional |
 | `zap_scan_type` | `baseline`, `full`, or `api` (ignored if `zap_config_file` set) | `baseline` | No |
 | `zap_api_spec` | OpenAPI/Swagger spec URL or path (ignored if `zap_config_file` set) | `''` | Conditional |
-| `allow_failure` | Allow workflow to continue on failures | `true` | No |
+| `allow_failure` | Allow workflow to continue on failures | `false` | No |
 | `severity_threshold` | Minimum severity to fail (`none`, `low`, `medium`, `high`, `critical`) | `high` | No |
 
 > **Note**: When `zap_config_file` is provided, it takes precedence and other `zap_*` inputs are ignored.
@@ -700,14 +895,9 @@ scans:
     fail_on_severity: high
 ```
 
-```yaml
-# .github/workflows/security.yml
-jobs:
-  zap-scan:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.2
-    with:
-      scanners: zap
-      zap_config_file: .github/zap-config.yml
+```bash
+# Via SDK
+python -m argus scan zap --config argus.yml
 ```
 
 ##### Example 2: Container Scan with Build
@@ -788,68 +978,64 @@ This creates two parallel scan pipelines in your GitHub Actions workflow - one f
 
 #### Legacy Input-Based Configuration
 
-For simple single-scan scenarios, you can still use workflow inputs directly (no config file):
+For simple single-scan scenarios via composite actions, you can pass inputs directly (no config file):
 
 **URL-only scan:**
 
 ```yaml
 jobs:
-  security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.2
-    with:
-      scanners: zap
-      zap_scan_mode: url
-      zap_target_urls: https://example.com
-      allow_failure: false
-      severity_threshold: medium
+  zap-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: huntridge-labs/argus/.github/actions/scanner-zap@0.7.0
+        with:
+          zap_scan_mode: url
+          zap_target_urls: https://example.com
+          fail_on_severity: medium
 ```
 
-**Container scan:**
-
-```yaml
-jobs:
-  security:
-    uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@0.7.2
-    with:
-      scanners: zap
-      zap_scan_mode: docker-run
-      zap_app_image_ref: ghcr.io/myorg/app:latest
-      zap_app_ports: "8080:8080"
-      allow_failure: false
-```
-
-> **Note**: Input-based configuration is limited to single scans. Use config files for multiple scans, matrix execution, or advanced features.
+> **Note**: Input-based configuration is limited to single scans. Use config files for multiple scans or advanced features.
 
 </details>
 
 
 ## Common Configuration Patterns
 
-### Enable GitHub Security Tab
+### Enable GitHub Security Tab (Actions)
 
-Upload SARIF results for all scanners:
+Upload SARIF results when using composite actions:
 
 ```yaml
 with:
-  scanners: all
   enable_code_security: true
 ```
 
-### Disable PR Comments
+### Disable PR Comments (Actions)
 
-Useful for scheduled scans:
+Useful for scheduled scans using composite actions:
 
 ```yaml
 with:
-  scanners: all
   post_pr_comment: false
 ```
 
 ### Scanner Selection Patterns
 
-- Full coverage: `scanners: all`
-- SAST only: `scanners: codeql,opengrep,bandit,gitleaks`
-- DAST only: `scanners: zap`
-- Infrastructure only: `scanners: trivy-iac,checkov`
-- Container only: `scanners: trivy-container,grype,sbom`
-- Focused mix: `scanners: container,infrastructure,gitleaks`
+**SDK:**
+
+```bash
+# SAST only
+python -m argus scan codeql opengrep bandit gitleaks
+
+# Infrastructure only
+python -m argus scan trivy-iac checkov
+
+# Container only
+python -m argus scan container
+
+# Focused mix
+python -m argus scan gitleaks trivy-iac checkov
+```
+
+**Composite actions:** Use individual `scanner-*` actions in your workflow steps.

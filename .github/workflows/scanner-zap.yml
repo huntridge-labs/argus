@@ -1,7 +1,7 @@
 # ZAP DAST Scanner - Reusable Workflow
 #
-# THIN WRAPPER: This workflow delegates to the scanner-zap composite action.
-# All scanning logic is in: .github/actions/scanner-zap/action.yml
+# Runs the ZAP DAST scanner via the argus Python CLI.
+# Equivalent to: python -m argus scan zap --target <url>
 #
 # For GHES users: Use the composite action directly instead of this workflow.
 # See: examples/github-enterprise/dast-scanning.yml
@@ -191,29 +191,61 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Run ZAP Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-zap@0.7.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
-          scan_name: ${{ inputs.scan_name }}
-          scan_mode: ${{ inputs.scan_mode }}
-          scan_type: ${{ inputs.scan_type }}
-          target_url: ${{ inputs.target_url }}
-          api_spec: ${{ inputs.api_spec }}
-          healthcheck_url: ${{ inputs.healthcheck_url }}
-          app_image_ref: ${{ inputs.app_image_ref }}
-          app_build_context: ${{ inputs.app_build_context }}
-          app_dockerfile: ${{ inputs.app_dockerfile }}
-          app_image_tag: ${{ inputs.app_image_tag }}
-          app_ports: ${{ inputs.app_ports }}
-          compose_file: ${{ inputs.compose_file }}
-          compose_build: ${{ inputs.compose_build }}
-          registry_username: ${{ inputs.registry_username }}
-          registry_password: ${{ secrets.registry_password }}
-          max_duration_minutes: ${{ inputs.max_duration_minutes }}
-          rules_file_name: ${{ inputs.rules_file_name }}
-          cmd_options: ${{ inputs.cmd_options }}
-          fail_on_severity: ${{ inputs.fail_on_severity }}
-          post_pr_comment: ${{ inputs.post_pr_comment }}
-          allow_issue_writing: ${{ inputs.allow_issue_writing }}
+          python-version: '3.13'
+
+      - name: Install Argus
+        run: |
+          pip install --quiet pyyaml
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Run scan
+        run: |
+          # Build argus scan zap command based on scan mode
+          ARGUS_CMD="python -m argus scan zap"
+
+          if [ -n "$TARGET_URL" ]; then
+            ARGUS_CMD="$ARGUS_CMD --target $TARGET_URL"
+          elif [ -n "$APP_IMAGE_REF" ]; then
+            ARGUS_CMD="$ARGUS_CMD --image $APP_IMAGE_REF"
+          fi
+
+          ARGUS_CMD="$ARGUS_CMD --scan-type $SCAN_TYPE"
+          ARGUS_CMD="$ARGUS_CMD --severity-threshold $SEVERITY_THRESHOLD"
+          ARGUS_CMD="$ARGUS_CMD --format terminal --format sarif --format json"
+          ARGUS_CMD="$ARGUS_CMD --output-dir ./argus-results"
+          ARGUS_CMD="$ARGUS_CMD --verbose"
+
+          eval "$ARGUS_CMD"
+        env:
+          TARGET_URL: ${{ inputs.target_url }}
+          APP_IMAGE_REF: ${{ inputs.app_image_ref }}
+          SCAN_TYPE: ${{ inputs.scan_type || 'baseline' }}
+          SEVERITY_THRESHOLD: ${{ inputs.fail_on_severity || 'none' }}
+          APP_PORTS: ${{ inputs.app_ports || '8080:8080' }}
+          MAX_DURATION_MINUTES: ${{ inputs.max_duration_minutes || '10' }}
+          SCAN_MODE: ${{ inputs.scan_mode || 'url' }}
+          API_SPEC: ${{ inputs.api_spec }}
+          HEALTHCHECK_URL: ${{ inputs.healthcheck_url }}
+          REGISTRY_USERNAME: ${{ inputs.registry_username }}
+          REGISTRY_PASSWORD: ${{ secrets.registry_password }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: zap-reports-${{ inputs.scan_name || 'zap-scan' }}
+          path: ./argus-results/
+          retention-days: 30
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request' && inputs.post_pr_comment
+        uses: huntridge-labs/argus/.github/actions/comment-pr@0.7.0
+        with:
+          summary_file: ./argus-results/argus-results.md
+          comment_marker: zap-dast-comment-${{ inputs.scan_name || 'zap-scan' }}
+          title: 'ZAP DAST Scan Results'
+          fallback_message: 'No ZAP results available'

@@ -27,6 +27,9 @@
     "before:init": [
       "npm test"
     ],
+    "after:bump": [
+      "python3 scripts/release_it/inject_image_digests.py ${version}"
+    ],
     "before:release": [
       "echo 'before:release hook executed'",
       "node scripts/release-it-process-changelog.js",
@@ -134,7 +137,8 @@
         },
         {
           "files": [
-            ".github/actions/**/schemas/*.json"
+            ".github/actions/**/schemas/*.json",
+            "argus/**/schemas/*.json"
           ],
           "search": {
             "pattern": "(\"\\$id\": \"https://raw\\.githubusercontent\\.com/huntridge-labs/argus)/[^/]+(/.github/)"
@@ -143,7 +147,8 @@
         },
         {
           "files": [
-            ".github/workflows/container-scan.yml"
+            ".github/workflows/container-scan.yml",
+            ".github/workflows/reusable-security-hardening.yml"
           ],
           "search": {
             "pattern": "(repository: huntridge-labs/argus\\n\\s+ref: )[^\\s]+",
@@ -161,6 +166,36 @@
             "flags": "g"
           },
           "replace": "${1}/{{version}}${2}"
+        },
+        {
+          "files": [
+            "package.json"
+          ],
+          "search": {
+            "pattern": "(\"version\":\\s*\")[^\"]+\"",
+            "flags": ""
+          },
+          "replace": "${1}{{version}}\""
+        },
+        {
+          "files": [
+            "argus/containers.py"
+          ],
+          "search": {
+            "pattern": "(ghcr\\.io/huntridge-labs/argus/[^:]+:)[^\"@]+",
+            "flags": "g"
+          },
+          "replace": "${1}{{version}}"
+        },
+        {
+          "files": [
+            "argus/__init__.py"
+          ],
+          "search": {
+            "pattern": "(__version__\\s*=\\s*\")[^\"]+\"",
+            "flags": ""
+          },
+          "replace": "${1}{{version}}\""
         }
       ]
     }

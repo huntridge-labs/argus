@@ -85,3 +85,23 @@ local-act-artifacts/
 
 # Generated docs site
 site-build/
+argus-results/
+
+# Local scan results / argus browse exports — triage artifacts, never checked in.
+# Broad *.csv is safe (no CSVs are currently tracked); the argus-findings-*
+# patterns cover the JSON / Markdown / SARIF exports without ignoring the many
+# other JSON/MD/SARIF files the repo legitimately tracks.
+*.csv
+argus-findings-*.json
+argus-findings-*.md
+argus-findings-*.sarif
+
+# AI / automation tool scratch — per-machine state, not project content.
+# .omc/             — oh-my-claudecode plugin state
+# .playwright-mcp/  — Playwright MCP page snapshots and console logs
+.omc/
+.playwright-mcp/
+
+# One-off UI smoke screenshots from local Playwright walk-throughs.
+# Tagged with the smoke- prefix so manual scan-result PNGs aren't caught.
+smoke-*.png

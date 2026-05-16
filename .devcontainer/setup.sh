@@ -22,6 +22,7 @@ source .dev.venv/bin/activate
 echo "Installing Python dependencies..."
 pip install --upgrade pip
 pip install -r requirements.txt
+pip install -e .
 pip install pre-commit
 
 # Setup pre-commit hooks (using absolute path)
@@ -33,8 +34,9 @@ pre-commit install --hook-type pre-push
 echo "Development environment ready!"
 echo ""
 echo "Quick start:"
+echo "  argus --version           # Verify CLI entrypoint"
 echo "  pytest                    # Run all tests"
-echo "  pytest                    # Run tests with coverage"
+echo "  pytest --cov              # Run tests with coverage"
 echo "  pre-commit run --all-files # Run all hooks"
 echo ""
 echo "Note: Python venv (.dev.venv) is auto-activated in new terminals"

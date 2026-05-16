@@ -1,0 +1,298 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/huntridge-labs/argus/0.7.0/argus-config.schema.json",
+  "title": "Argus Security Scanner Configuration",
+  "description": "Configuration schema for argus.yml \u2014 the Argus security scanning pipeline. Docs: https://huntridge-labs.github.io/argus/",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string",
+      "enum": [
+        "1.0"
+      ],
+      "description": "Configuration schema version. Currently only '1.0' is supported."
+    },
+    "scanners": {
+      "type": "object",
+      "description": "Scanner configurations. Each key is a scanner name (e.g. bandit, gitleaks, osv) mapped to its settings.",
+      "additionalProperties": {
+        "$ref": "#/definitions/scannerConfig"
+      }
+    },
+    "reporting": {
+      "$ref": "#/definitions/reportingConfig"
+    },
+    "execution": {
+      "$ref": "#/definitions/executionConfig"
+    },
+    "containers": {
+      "$ref": "#/definitions/containersConfig"
+    },
+    "dast": {
+      "$ref": "#/definitions/dastConfig"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "severityLevel": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low",
+        "none"
+      ],
+      "description": "Severity threshold level. Findings at or above this level trigger a failure."
+    },
+    "scannerConfig": {
+      "type": "object",
+      "description": "Configuration for an individual scanner.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether this scanner is active. Disabled scanners are skipped during 'argus scan'.",
+          "default": true
+        },
+        "path": {
+          "type": "string",
+          "description": "Path to scan, relative to the repository root.",
+          "default": "."
+        },
+        "severity_threshold": {
+          "$ref": "#/definitions/severityLevel",
+          "description": "Per-scanner severity threshold. Overrides the reporting-level threshold for this scanner."
+        },
+        "config_file": {
+          "type": "string",
+          "description": "Path to a scanner-specific configuration file (e.g. pyproject.toml for Bandit, .checkov.yaml for Checkov)."
+        },
+        "exclude": {
+          "type": "string",
+          "description": "Comma-separated list of paths or patterns to exclude from this scanner's analysis."
+        },
+        "image_ref": {
+          "type": "string",
+          "description": "Container image reference for container scanning (e.g. 'myapp:latest')."
+        },
+        "target_url": {
+          "type": "string",
+          "description": "URL of the target application for DAST scanning (e.g. 'http://localhost:3000')."
+        },
+        "scanners": {
+          "type": "string",
+          "description": "Comma-separated list of sub-scanners for container scanning (e.g. 'trivy,grype,syft')."
+        },
+        "scan_type": {
+          "type": "string",
+          "description": "Scan type for DAST scanners (e.g. 'baseline', 'full')."
+        },
+        "framework": {
+          "type": "string",
+          "description": "Framework filter for Checkov (e.g. 'terraform', 'kubernetes')."
+        },
+        "check": {
+          "type": "string",
+          "description": "Specific check ID(s) to run (scanner-dependent)."
+        },
+        "skip_check": {
+          "type": "string",
+          "description": "Specific check ID(s) to skip (scanner-dependent)."
+        },
+        "config": {
+          "type": "string",
+          "description": "Inline scanner configuration string (scanner-dependent)."
+        },
+        "registry_username": {
+          "type": "string",
+          "description": "Username for private container registry authentication."
+        },
+        "registry_password": {
+          "type": "string",
+          "description": "Password or token for private container registry authentication. Prefer environment variables over hardcoding."
+        }
+      },
+      "additionalProperties": true
+    },
+    "reportingConfig": {
+      "type": "object",
+      "description": "Controls how scan results are formatted and where they are written.",
+      "properties": {
+        "formats": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "terminal",
+              "markdown",
+              "sarif",
+              "json"
+            ]
+          },
+          "description": "Output formats to generate. 'terminal' prints to stdout; others write files to output_dir.",
+          "default": [
+            "terminal"
+          ]
+        },
+        "severity_threshold": {
+          "$ref": "#/definitions/severityLevel",
+          "description": "Global severity threshold. Findings at or above this level cause a non-zero exit code."
+        },
+        "output_dir": {
+          "type": "string",
+          "description": "Directory for scan result files (SARIF, JSON, Markdown reports).",
+          "default": "./argus-results"
+        }
+      },
+      "additionalProperties": false
+    },
+    "executionConfig": {
+      "type": "object",
+      "description": "Controls how scanner tools are executed \u2014 locally, in containers, or auto-detected.",
+      "properties": {
+        "backend": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "local",
+            "docker"
+          ],
+          "description": "Execution backend. 'auto' prefers containers for reproducibility with local fallback. 'local' uses installed tools. 'docker' requires containers and fails if unavailable.",
+          "default": "auto"
+        },
+        "registry": {
+          "type": "string",
+          "description": "Override the default container registry for private or air-gapped environments (e.g. 'registry.internal.corp/argus')."
+        },
+        "pull_policy": {
+          "type": "string",
+          "enum": [
+            "always",
+            "if-not-present",
+            "never"
+          ],
+          "description": "Container image pull policy. 'always' pulls on every run. 'if-not-present' uses cached images. 'never' requires pre-pulled images (for air-gapped environments).",
+          "default": "if-not-present"
+        }
+      },
+      "additionalProperties": false
+    },
+    "containersConfig": {
+      "type": "object",
+      "description": "Configuration for container image scanning via 'argus scan container'.",
+      "properties": {
+        "discover": {
+          "type": "boolean",
+          "description": "Automatically discover Dockerfiles and build images for scanning.",
+          "default": false
+        },
+        "search_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Directories to search for Dockerfiles when discover is enabled."
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "image": {
+                "type": "string",
+                "description": "Image reference (e.g. 'nginx:latest', 'myapp:v1')."
+              },
+              "name": {
+                "type": "string",
+                "description": "Human-readable name for this image in reports."
+              },
+              "dockerfile": {
+                "type": "string",
+                "description": "Path to the Dockerfile used to build this image."
+              }
+            },
+            "required": [
+              "image"
+            ]
+          },
+          "description": "Explicit list of container images to scan."
+        },
+        "scanners": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "trivy",
+              "grype",
+              "syft"
+            ]
+          },
+          "description": "Sub-scanners to use for container analysis.",
+          "default": [
+            "trivy",
+            "grype"
+          ]
+        },
+        "output_dir": {
+          "type": "string",
+          "description": "Output directory for container scan results.",
+          "default": "./argus-results"
+        }
+      },
+      "additionalProperties": false
+    },
+    "dastConfig": {
+      "type": "object",
+      "description": "Configuration for dynamic application security testing (DAST) via 'argus scan zap'.",
+      "properties": {
+        "targets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "URL of an already-running web application to scan."
+              },
+              "image": {
+                "type": "string",
+                "description": "Container image to start and scan (Argus handles lifecycle)."
+              },
+              "name": {
+                "type": "string",
+                "description": "Human-readable name for this target in reports."
+              },
+              "port": {
+                "type": "integer",
+                "description": "Override the exposed port when using image-based targets."
+              },
+              "env": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Environment variables to pass to the target container."
+              }
+            }
+          },
+          "description": "List of web application targets for DAST scanning."
+        },
+        "scan_type": {
+          "type": "string",
+          "enum": [
+            "baseline",
+            "full"
+          ],
+          "description": "ZAP scan type. 'baseline' is faster and suitable for CI. 'full' performs deeper analysis.",
+          "default": "baseline"
+        },
+        "startup_timeout": {
+          "type": "integer",
+          "description": "Seconds to wait for a target container to become healthy before scanning.",
+          "default": 60
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

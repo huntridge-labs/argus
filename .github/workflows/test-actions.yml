@@ -43,6 +43,7 @@ permissions:
   security-events: write
   actions: read
   pull-requests: write
+  packages: read
 
 # Cancel in-progress runs when a new commit is pushed
 concurrency:
@@ -201,6 +202,111 @@ jobs:
           STEPS_COVERAGE_OUTPUTS_MISSING: ${{ steps.coverage.outputs.missing }}
 
   # ============================================================================
+  # Install-From-Source Pattern Guard
+  # Locks in ADR-019: every SDK-using composite wrapper must install the
+  # SDK from its own checkout via
+  #   pip install "github.action_path-dir/../../.."
+  # not from PyPI. Drift back to ``pip install pyyaml`` (the legacy
+  # ``bin/argus`` shim pattern) or to ``pip install argus-security==X``
+  # silently breaks the version-pin guarantee — a consumer pinned at
+  # action ref @0.7.5 would still pull whatever's on PyPI. This grep-
+  # based guard catches that drift before review.
+  #
+  # End-to-end smoke verifies the install line actually resolves and
+  # the resulting CLI works in a clean Python venv.
+  # ============================================================================
+  validate-install-from-source:
+    name: Validate install-from-source pattern
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.13'
+
+      - name: Lint wrapper install lines
+        # Patterns live in env so GitHub Actions' expression parser
+        # never sees ``${{ ... }}`` inside the run script. Forbidden
+        # patterns are anchored to ``run:`` lines so legitimate
+        # rationale comments (which mention the *bad* patterns as
+        # counter-examples) don't trip false positives.
+        env:
+          FORBIDDEN_PYYAML_REGEX: "^[[:space:]]*run:[[:space:]]+pip install pyyaml"
+          FORBIDDEN_PYPI_REGEX: "^[[:space:]]*run:[[:space:]]+pip install ['\"]?argus-security"
+          REQUIRED_SUBSTRING: "github.action_path }}/../../.."
+        run: |
+          set -euo pipefail
+          # Wrappers that don't call ``argus scan`` (codeql, dependency-
+          # review, syft, *-summary aggregators, scn-detector) are
+          # exempt — they wrap GitHub-native or non-SDK tooling and
+          # don't need the SDK in their step env.
+          exempt=(
+            scanner-codeql
+            scanner-dependency-review
+            scanner-syft
+            scanner-container-summary
+            scanner-zap-summary
+            scn-detector
+            comment-pr
+            get-job-id
+            ai-summary
+            security-summary
+            linting-summary
+            parse-container-config
+          )
+          fail=0
+          for d in .github/actions/scanner-* .github/actions/linter-*; do
+            [ -d "$d" ] || continue
+            name=$(basename "$d")
+            for ex in "${exempt[@]}"; do
+              if [ "$name" = "$ex" ]; then continue 2; fi
+            done
+            yaml="$d/action.yml"
+            if grep -qE "$FORBIDDEN_PYYAML_REGEX" "$yaml"; then
+              echo "::error file=$yaml::Wrapper $name still uses 'pip install pyyaml' — switch to install-from-source (see ADR-019 / CONTRIBUTING.md)"
+              fail=1
+              continue
+            fi
+            if grep -qE "$FORBIDDEN_PYPI_REGEX" "$yaml"; then
+              echo "::error file=$yaml::Wrapper $name installs argus-security from PyPI — switch to install-from-source (see ADR-019 / CONTRIBUTING.md)"
+              fail=1
+              continue
+            fi
+            if ! grep -qF "$REQUIRED_SUBSTRING" "$yaml"; then
+              echo "::error file=$yaml::Wrapper $name is missing the install-from-source line (see ADR-019 / CONTRIBUTING.md)"
+              fail=1
+              continue
+            fi
+            echo "✓ $name"
+          done
+          exit $fail
+
+      - name: End-to-end smoke — pip install <repo-root> works
+        # ARGUS_NO_UPDATE_CHECK=1 disables the background PyPI poll
+        # daemon thread that races C-extension imports on hosted
+        # Python 3.13.13 (the suspected root cause of the SIGSEGV
+        # flake — see scripts/ci/argus_smoke.sh header). The retry
+        # helper stays as belt-and-suspenders.
+        env:
+          ARGUS_NO_UPDATE_CHECK: "1"
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/install-smoke
+          /tmp/install-smoke/bin/pip install --quiet "$PWD"
+          version=$(/tmp/install-smoke/bin/argus --version)
+          echo "Installed: $version"
+
+          # PATH override puts the venv first so the helper's bare
+          # ``argus`` resolves there.
+          PATH="/tmp/install-smoke/bin:$PATH" \
+            scripts/ci/argus_smoke.sh > /dev/null
+
+  # ============================================================================
   # SAST Scanners (Static Application Security Testing)
   # Tests: scanner-bandit, scanner-opengrep
   # ============================================================================
@@ -212,7 +318,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'sast') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 15
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -247,7 +352,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'sast') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 15
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -282,7 +386,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'sast') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 20
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -319,7 +422,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'secrets') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 10
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -338,8 +440,7 @@ jobs:
           post_pr_comment: 'false'
           enable_code_security: ${{ env.ENABLE_CODE_SECURITY }}
           fail_on_severity: 'none'
-          gitleaks_enable_comments: 'false'  # Disable in tests
-          gitleaks_config: '.gitleaks.toml'  # Exclude test fixtures with mock secrets
+          gitleaks_config: '.gitleaks.toml'
 
       - name: Verify scan completed
         shell: bash
@@ -367,7 +468,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'infrastructure') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 15
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -401,7 +501,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'infrastructure') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 15
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -440,7 +539,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'infrastructure') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 15
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -508,7 +606,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'container') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 15
-    continue-on-error: true
 
     strategy:
       fail-fast: false
@@ -565,7 +662,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'container') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 15
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -611,7 +707,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'linters') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 10
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -639,7 +734,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'linters') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 10
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -667,7 +761,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'linters') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 10
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -695,7 +788,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'linters') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 10
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -723,7 +815,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'linters') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 10
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -751,7 +842,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'linters') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 10
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -778,12 +868,11 @@ jobs:
   test-zap:
     name: DAST / zap
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.test_group == 'all') ||
-      github.event_name != 'workflow_dispatch'
+    if: >-
+      github.event_name == 'pull_request' ||
+      github.event_name == 'push' ||
+      inputs.test_group == 'all'
     timeout-minutes: 25
-    continue-on-error: true
 
     services:
       podinfo:
@@ -820,10 +909,8 @@ jobs:
         with:
           target_url: 'http://localhost:9898'
           scan_type: 'baseline'
-          post_pr_comment: 'false'      # Disables both custom and ZAP native PR comments
-          allow_issue_writing: 'false' # Disable ZAP native issue creation for tests
+          post_pr_comment: 'false'
           fail_on_severity: 'none'
-          rules_file_name: '.zap/rules.tsv'
 
       - name: Verify scan completed
         shell: bash
@@ -843,12 +930,11 @@ jobs:
   test-clamav:
     name: Malware / clamav
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.test_group == 'all') ||
-      github.event_name != 'workflow_dispatch'
+    if: >-
+      github.event_name == 'pull_request' ||
+      github.event_name == 'push' ||
+      inputs.test_group == 'all'
     timeout-minutes: 20
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -893,7 +979,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'supply-chain') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 10
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -945,7 +1030,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'dependencies') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 15
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -993,7 +1077,6 @@ jobs:
       (inputs.test_group == 'all' || inputs.test_group == 'dependencies') ||
       github.event_name != 'workflow_dispatch'
     timeout-minutes: 10
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -1038,7 +1121,6 @@ jobs:
     name: Summary / linting-summary
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -1069,7 +1151,6 @@ jobs:
     name: Parser / container-config
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -1095,7 +1176,6 @@ jobs:
     name: Parser / zap-config
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
@@ -1318,3 +1398,48 @@ jobs:
             echo "**Trigger:** $EVENT_NAME"
             echo "**Branch:** $REF_NAME"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # ============================================================================
+  # Test Results Gate
+  # Single required status check for branch protection
+  # Fails if ANY test job failed
+  # ============================================================================
+  test-results:
+    name: Test Results
+    if: always()
+    needs:
+      - validate-e2e-coverage
+      - test-bandit
+      - test-opengrep
+      - test-codeql
+      - test-secrets
+      - test-trivy-iac
+      - test-checkov
+      - test-scn-detector
+      - test-container
+      - test-syft
+      - test-linter-dockerfile
+      - test-linter-python
+      - test-linter-yaml
+      - test-linter-javascript
+      - test-linter-json
+      - test-linter-terraform
+      - test-zap
+      - test-clamav
+      - test-supply-chain
+      - test-osv
+      - test-dependency-review
+      - test-linting-summary
+      - test-parse-container-config
+      - test-parse-zap-config
+      - validate-examples
+      - test-summary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check test results
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
+            echo "::error::One or more test jobs failed"
+            exit 1
+          fi
+          echo "All test jobs passed"

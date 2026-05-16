@@ -18,6 +18,19 @@ coverage:
     - "examples/**/*"
     - "docs/**/*"
     - "*.md"
+    # Textual TUI view layer + FastAPI web view layer — widget
+    # wiring, key bindings, screen transitions, route dispatch.
+    # Meaningfully testable only via Textual's snapshot framework
+    # against a live runtime (TUI) or full ASGI client + browser
+    # automation (web), both of which double the CI time and
+    # duplicate what a human exercise trivially spots. The
+    # underlying business logic lives in argus/core/findings_view.py
+    # and argus/viewers/terminal/{loader,export}.py /
+    # argus/viewers/browser/log_view.py and IS unit-tested
+    # (98-100% covered) — that's the boundary worth guarding, not
+    # the widget tree.
+    - "argus/viewers/terminal/app.py"
+    - "argus/viewers/browser/app.py"
 
 comment:
   layout: "reach,diff,flags,tree"

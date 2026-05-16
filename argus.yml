@@ -1,0 +1,97 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argus/main/argus-config.schema.json
+# Argus dogfood configuration — we scan our own production code.
+# Test fixtures (tests/fixtures/) are excluded — those contain
+# intentionally vulnerable code for scanner validation, not our
+# actual security posture.
+version: "1.0"
+
+scanners:
+  bandit:
+    enabled: true
+    path: "."
+    config_file: "pyproject.toml"
+    exclude: ".venv,.git,node_modules,.claude,__pycache__,tests/fixtures"
+
+  gitleaks:
+    enabled: true
+
+  opengrep:
+    enabled: true
+    path: "."
+    exclude: "tests/fixtures"
+
+  clamav:
+    enabled: true
+    path: "."
+
+  osv:
+    enabled: true
+    exclude: "tests/fixtures"
+
+  supply-chain:
+    enabled: true
+
+  # Lint our own Dockerfiles via hadolint as part of the default scan.
+  # Catches bad practices (mutable image tags, missing USER directives,
+  # apt without --no-install-recommends, etc.) on every run.
+  lint-dockerfile:
+    enabled: true
+
+  # Not applicable to this repo as part of the default source scan:
+  # - trivy-iac / checkov target Terraform / CloudFormation / K8s — none here
+  # - container / zap operate on built images / running endpoints, not
+  #   source paths. Container targets are configured in the
+  #   ``containers:`` block below and run via ``argus scan container``;
+  #   ZAP is on-demand: ``argus scan zap --target http://...``
+  trivy-iac:
+    enabled: false
+  checkov:
+    enabled: false
+  container:
+    enabled: false
+  zap:
+    enabled: false
+
+# Container lifecycle targets — drives ``argus scan container`` without
+# needing CLI flags. Each entry is a Dockerfile-built image that the
+# scanner builds locally (so the scan reflects exactly the bytes that
+# ship from this branch) and then hands to trivy + grype + syft. The
+# build-containers workflow can read this same list rather than
+# hard-coding a parallel matrix — single source of truth.
+containers:
+  images:
+    # Build-then-scan entries: dockerfile: + name: pin the build tag.
+    # Under schema option A, image: is for *remote pulls only* — these
+    # are local builds, so we declare the dockerfile and let argus
+    # tag the resulting image as ``<name>:argus-scan``. The
+    # build-containers workflow re-tags from ``<name>:argus-scan`` to
+    # ``ghcr.io/huntridge-labs/argus/<name>:<sha>`` for publishing.
+    - dockerfile: docker/Dockerfile.bandit
+      context: .
+      name: scanner-bandit
+    - dockerfile: docker/Dockerfile.opengrep
+      context: .
+      name: scanner-opengrep
+    - dockerfile: docker/Dockerfile.supply-chain
+      context: .
+      name: scanner-supply-chain
+    - dockerfile: docker/Dockerfile.cli
+      context: .
+      name: cli
+  scanners: [trivy, grype, syft]
+
+reporting:
+  formats:
+    - terminal
+    - markdown
+    - sarif
+    - json
+  severity_threshold: high
+  output_dir: "./argus-results"
+
+execution:
+  # auto (default): containers for immutable, reproducible scans
+  # local: use locally installed tools (faster, user accepts version risk)
+  # docker: containers only, fail if unavailable
+  backend: auto
+  pull_policy: if-not-present

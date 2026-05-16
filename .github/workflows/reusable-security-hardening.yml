@@ -69,9 +69,13 @@ on:
         default: '.'
         type: string
       allow_failure:
-        description: 'Whether to allow the workflow to continue when vulnerabilities are found above the severity threshold. When false, scanners will fail the job if vulnerabilities at or above severity_threshold are detected.'
+        description: |
+          Whether to allow the workflow to continue when any scanner fails or reports findings
+          above the severity threshold. Default is `false` — any scanner that crashes, is
+          cancelled, or reports blocking findings fails the overall workflow. Set to `true`
+          for informational-only runs that must always complete green.
         required: false
-        default: true
+        default: false
         type: boolean
       severity_threshold:
         description: 'Minimum severity level that will cause job failure when allow_failure is false. Options: low, medium, high, critical'
@@ -321,11 +325,6 @@ jobs:
           case "$token" in
             '' ) ;;
             all|full)
-              # Enable all scanners EXCEPT standalone IaC/container scanners
-              # since they duplicate what the aggregate scanners already run:
-              # - container auto-discovers Dockerfiles and scans them
-              # - infrastructure runs trivy-iac + checkov together
-              # - zap is opt-in since it requires an application target
               local -a exclude=(trivy-iac checkov sbom trivy-container grype zap dependency-review)
               for key in "${!RUN[@]}"; do
                 if [[ " ${exclude[*]} " != *" ${key} "* ]]; then
@@ -336,66 +335,28 @@ jobs:
             sast|sast-only)
               for key in codeql opengrep bandit gitleaks; do add_scanner "$key"; done
               ;;
-            secrets|secrets-only)
-              add_scanner gitleaks
-              ;;
-            codeql|code-ql)
-              add_scanner codeql
-              ;;
-            semgrep|opengrep|open-grep)
-              add_scanner opengrep
-              ;;
-            bandit)
-              add_scanner bandit
-              ;;
-            gitleaks|git-leaks)
-              add_scanner gitleaks
-              ;;
-            container|containers|container-scan|docker)
-              add_scanner container
-              ;;
-            infrastructure|infra|iac|terraform)
-              add_scanner infrastructure
-              ;;
-            sbom)
-              add_scanner sbom
-              ;;
-            trivy-iac|trivyiac)
-              add_scanner trivy-iac
-              ;;
-            checkov)
-              add_scanner checkov
-              ;;
-            trivy-container|trivycontainer)
-              add_scanner trivy-container
-              ;;
-            grype)
-              add_scanner grype
-              ;;
-            lint|linting|code-quality)
-              add_scanner lint
-              ;;
-            clamav|malware|antivirus)
-              add_scanner clamav
-              ;;
-            zap|dast)
-              add_scanner zap
-              ;;
-            osv|osv-scanner)
-              add_scanner osv
-              ;;
-            dependency-review|dep-review)
-              add_scanner dependency-review
-              ;;
-            supply-chain|supply_chain|supplychain|actions-security)
-              add_scanner supply-chain
-              ;;
+            secrets|secrets-only) add_scanner gitleaks ;;
+            codeql|code-ql) add_scanner codeql ;;
+            semgrep|opengrep|open-grep) add_scanner opengrep ;;
+            bandit) add_scanner bandit ;;
+            gitleaks|git-leaks) add_scanner gitleaks ;;
+            container|containers|container-scan|docker) add_scanner container ;;
+            infrastructure|infra|iac|terraform) add_scanner infrastructure ;;
+            sbom) add_scanner sbom ;;
+            trivy-iac|trivyiac) add_scanner trivy-iac ;;
+            checkov) add_scanner checkov ;;
+            trivy-container|trivycontainer) add_scanner trivy-container ;;
+            grype) add_scanner grype ;;
+            lint|linting|code-quality) add_scanner lint ;;
+            clamav|malware|antivirus) add_scanner clamav ;;
+            zap|dast) add_scanner zap ;;
+            osv|osv-scanner) add_scanner osv ;;
+            dependency-review|dep-review) add_scanner dependency-review ;;
+            supply-chain|supply_chain|supplychain|actions-security) add_scanner supply-chain ;;
             dependencies|deps|dependency)
               for key in osv dependency-review; do add_scanner "$key"; done
               ;;
-            none|off)
-              reset_selection
-              ;;
+            none|off) reset_selection ;;
             *)
               echo "::notice title=Unknown scanner token::Value '$token' is not recognized and will be ignored."
               ;;
@@ -407,21 +368,11 @@ jobs:
 
         if [[ -z "$SCANNERS_RAW" || "$SCANNERS_RAW" == "default" ]]; then
           case "$SCAN_TYPE_RAW" in
-            codeql-only)
-              SCANNERS_RAW='codeql'
-              ;;
-            sast-only)
-              SCANNERS_RAW='sast'
-              ;;
-            container-only)
-              SCANNERS_RAW='container'
-              ;;
-            infrastructure-only)
-              SCANNERS_RAW='infrastructure'
-              ;;
-            full|'')
-              SCANNERS_RAW='all'
-              ;;
+            codeql-only) SCANNERS_RAW='codeql' ;;
+            sast-only) SCANNERS_RAW='sast' ;;
+            container-only) SCANNERS_RAW='container' ;;
+            infrastructure-only) SCANNERS_RAW='infrastructure' ;;
+            full|'') SCANNERS_RAW='all' ;;
             *)
               echo "::notice title=Unknown legacy scan type::Scan type '$SCAN_TYPE_RAW' not recognized. Falling back to 'all'."
               SCANNERS_RAW='all'
@@ -443,7 +394,6 @@ jobs:
           if [[ "${RUN[$key]}" == "true" ]]; then
             RUN_ANY=true
           fi
-          # Convert hyphens to underscores for output variable names (e.g., trivy-iac -> trivy_iac)
           output_key="${key//-/_}"
           echo "run_${output_key}=${RUN[$key]}" >> "$GITHUB_OUTPUT"
         done
@@ -452,12 +402,10 @@ jobs:
           echo "::warning title=No scanners selected::No scanners were selected. The workflow will execute the summary only."
         fi
 
-        # Check GitHub Code Security integration
         ENABLE_CODE_SECURITY="${{ inputs.enable_code_security }}"
         if [[ "${RUN[codeql]}" == "true" && "$ENABLE_CODE_SECURITY" != "true" ]]; then
           echo "::warning title=CodeQL Disabled::GitHub Code Security is not enabled for this repository. CodeQL scanning will be skipped."
           RUN[codeql]=false
-          # Remove codeql from SELECTED array
           SELECTED=("${SELECTED[@]/codeql}")
         fi
 
@@ -482,14 +430,14 @@ jobs:
         echo "selected_scanners_json=$SELECTED_JSON" >> "$GITHUB_OUTPUT"
 
         echo ""
-        echo "� Resolved scanners: ${SELECTED_STR:-none}"
-        echo "📌 Legacy scan_type input: ${SCAN_TYPE_RAW:-'<not provided>'}"
+        echo "Resolved scanners: ${SELECTED_STR:-none}"
+        echo "Legacy scan_type input: ${SCAN_TYPE_RAW:-'<not provided>'}"
 
   code-quality-linting:
     name: Code Quality & Linting
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_lint == 'true'
-    uses: huntridge-labs/argus/.github/workflows/linting.yml@0.7.2
+    uses: huntridge-labs/argus/.github/workflows/linting.yml@feat/argus-portability
     with:
       post_pr_comment: false
     permissions:
@@ -503,7 +451,7 @@ jobs:
     name: CodeQL Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_codeql == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-codeql.yml@0.7.2
+    uses: huntridge-labs/argus/.github/workflows/scanner-codeql.yml@feat/argus-portability
     with:
       codeql_languages: ${{ inputs.codeql_languages }}
       config_file: ${{ inputs.codeql_config_file }}
@@ -521,7 +469,7 @@ jobs:
     name: OpenGrep Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_opengrep == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-opengrep.yml@0.7.2
+    uses: huntridge-labs/argus/.github/workflows/scanner-opengrep.yml@feat/argus-portability
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -537,7 +485,7 @@ jobs:
     name: Bandit Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_bandit == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-bandit.yml@0.7.2
+    uses: huntridge-labs/argus/.github/workflows/scanner-bandit.yml@feat/argus-portability
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -554,7 +502,7 @@ jobs:
     name: Gitleaks Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_gitleaks == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-gitleaks.yml@0.7.2
+    uses: huntridge-labs/argus/.github/workflows/scanner-gitleaks.yml@feat/argus-portability
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -576,7 +524,7 @@ jobs:
     name: ClamAV Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_clamav == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-clamav.yml@0.7.2
+    uses: huntridge-labs/argus/.github/workflows/scanner-clamav.yml@feat/argus-portability
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -593,9 +541,8 @@ jobs:
     name: Container Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_container == 'true'
-    uses: huntridge-labs/argus/.github/workflows/container-scan.yml@0.7.2
+    uses: huntridge-labs/argus/.github/workflows/container-scan.yml@feat/argus-portability
     with:
-      # Disable individual container PR comments - security-summary job provides comprehensive reporting
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
       fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
@@ -611,7 +558,7 @@ jobs:
     name: Infrastructure Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_infrastructure == 'true'
-    uses: huntridge-labs/argus/.github/workflows/infrastructure-scan.yml@0.7.2
+    uses: huntridge-labs/argus/.github/workflows/infrastructure-scan.yml@feat/argus-portability
     with:
       iac_path: ${{ inputs.iac_path }}
       post_pr_comment: false
@@ -628,7 +575,7 @@ jobs:
     name: SBOM Generator
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_sbom == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-syft.yml@0.7.2
+    uses: huntridge-labs/argus/.github/workflows/scanner-syft.yml@feat/argus-portability
     with:
       enable_code_security: ${{ inputs.enable_code_security }}
     permissions:
@@ -643,7 +590,7 @@ jobs:
     name: Trivy IaC Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_trivy_iac == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-iac.yml@0.7.2
+    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-iac.yml@feat/argus-portability
     with:
       iac_path: ${{ inputs.iac_path }}
       post_pr_comment: false
@@ -660,7 +607,7 @@ jobs:
     name: Checkov Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_checkov == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-checkov.yml@0.7.2
+    uses: huntridge-labs/argus/.github/workflows/scanner-checkov.yml@feat/argus-portability
     with:
       iac_path: ${{ inputs.iac_path }}
       post_pr_comment: false
@@ -677,7 +624,7 @@ jobs:
     name: Trivy Container Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_trivy_container == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-container.yml@0.7.2
+    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-container.yml@feat/argus-portability
     with:
       image_ref: 'nginx:latest'
       post_pr_comment: false
@@ -695,7 +642,7 @@ jobs:
     name: Grype Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_grype == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-grype.yml@0.7.2
+    uses: huntridge-labs/argus/.github/workflows/scanner-grype.yml@feat/argus-portability
     with:
       image_ref: 'nginx:latest'
       post_pr_comment: false
@@ -713,7 +660,7 @@ jobs:
     name: ZAP (DAST) Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_zap == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-zap.yml@0.7.2
+    uses: huntridge-labs/argus/.github/workflows/scanner-zap.yml@feat/argus-portability
     with:
       scan_mode: ${{ inputs.zap_scan_mode }}
       scan_type: ${{ inputs.zap_scan_type }}
@@ -737,7 +684,7 @@ jobs:
     name: OSV Dependency Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_osv == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-osv.yml@0.7.2
+    uses: huntridge-labs/argus/.github/workflows/scanner-osv.yml@feat/argus-portability
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -756,7 +703,7 @@ jobs:
     name: Dependency Review Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_dependency_review == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-dependency-review.yml@0.7.2
+    uses: huntridge-labs/argus/.github/workflows/scanner-dependency-review.yml@feat/argus-portability
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -776,7 +723,7 @@ jobs:
     name: Supply Chain Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_supply_chain == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-supply-chain.yml@0.7.2
+    uses: huntridge-labs/argus/.github/workflows/scanner-supply-chain.yml@feat/argus-portability
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -791,6 +738,15 @@ jobs:
       pull-requests: write
     secrets: inherit
 
+  # ============================================
+  # Security Summary
+  # ---
+  # Delegates to the reusable `security-summary` composite action. Passes the
+  # per-scanner `needs.*.result` so the aggregator can render a pass/fail/skipped
+  # table at the top of the report. With `allow_failure: false` (the default),
+  # any failed scanner causes this job to exit non-zero, blocking the overall
+  # workflow — no more silent "0 findings" greens when a scanner crashed.
+  # ============================================
   security-summary:
     name: Security Hardening Summary
     runs-on: ubuntu-latest
@@ -814,348 +770,46 @@ jobs:
       - scanner-dependency-review
       - scanner-supply-chain
     if: always()
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: read
 
     steps:
-    - name: Download CodeQL artifacts
-      if: needs.scan-coordinator.outputs.run_codeql == 'true'
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-      with:
-        pattern: codeql-*
-      continue-on-error: true
+      - name: Checkout argus for composite action
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          repository: huntridge-labs/argus
+          ref: feat/argus-portability
+          path: .argus-actions
 
-    - name: Download OpenGrep artifacts
-      if: needs.scan-coordinator.outputs.run_opengrep == 'true'
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-      with:
-        pattern: opengrep-*
-      continue-on-error: true
-
-    - name: Download Bandit artifacts
-      if: needs.scan-coordinator.outputs.run_bandit == 'true'
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-      with:
-        pattern: bandit-*
-      continue-on-error: true
-
-    - name: Download GitLeaks artifacts
-      if: needs.scan-coordinator.outputs.run_gitleaks == 'true'
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-      with:
-        pattern: gitleaks-*
-      continue-on-error: true
-
-    - name: Download ClamAV artifacts
-      if: needs.scan-coordinator.outputs.run_clamav == 'true'
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-      with:
-        pattern: clamav-*
-      continue-on-error: true
-
-    - name: Download Container artifacts
-      if: needs.scan-coordinator.outputs.run_container == 'true'
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-      with:
-        pattern: container-*
-      continue-on-error: true
-
-    - name: Download Infrastructure artifacts
-      if: needs.scan-coordinator.outputs.run_infrastructure == 'true'
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-      with:
-        pattern: infrastructure-*
-      continue-on-error: true
-
-    - name: Download Trivy IaC artifacts
-      if: needs.scan-coordinator.outputs.run_trivy_iac == 'true'
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-      with:
-        pattern: trivy-iac-*
-      continue-on-error: true
-
-    - name: Download Checkov artifacts
-      if: needs.scan-coordinator.outputs.run_checkov == 'true'
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-      with:
-        pattern: checkov-*
-      continue-on-error: true
-
-    - name: Download Trivy Container artifacts
-      if: needs.scan-coordinator.outputs.run_trivy_container == 'true'
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-      with:
-        pattern: trivy-container-*
-      continue-on-error: true
-
-    - name: Download Grype artifacts
-      if: needs.scan-coordinator.outputs.run_grype == 'true'
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-      with:
-        pattern: grype-*
-      continue-on-error: true
-
-    - name: Download ZAP artifacts
-      if: needs.scan-coordinator.outputs.run_zap == 'true'
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-      with:
-        pattern: zap-reports-*
-      continue-on-error: true
-
-    - name: Download OSV artifacts
-      if: needs.scan-coordinator.outputs.run_osv == 'true'
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-      with:
-        pattern: osv-*
-      continue-on-error: true
-
-    - name: Download Dependency Review artifacts
-      if: needs.scan-coordinator.outputs.run_dependency_review == 'true'
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-      with:
-        pattern: dependency-review-*
-      continue-on-error: true
-
-    - name: Download Supply Chain artifacts
-      if: needs.scan-coordinator.outputs.run_supply_chain == 'true'
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-      with:
-        pattern: supply-chain-*
-      continue-on-error: true
-
-    - name: Download Linting artifacts
-      if: needs.scan-coordinator.outputs.run_lint == 'true'
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-      with:
-        pattern: '*lint*'
-      continue-on-error: true
-
-    - name: Download SBOM artifacts
-      if: needs.scan-coordinator.outputs.run_sbom == 'true'
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-      with:
-        pattern: sbom-*
-      continue-on-error: true
-
-    - name: Download all scanner summaries
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-      with:
-        pattern: scanner-summary-*
-        merge-multiple: true
-      continue-on-error: true
-
-    - name: Copy scanner summaries to expected locations
-      shell: bash
-      run: |
-        echo "📁 Copying scanner summaries to root level..."
-
-        # Check all possible locations where summaries might be
-        # Includes scanner-summary-* (most scanners) and container-scan-summary (container scanner)
-        for dir in scanner-summaries scanner-summary-* container-scan-summary; do
-          if [ -d "$dir" ]; then
-            echo "  Found directory: $dir"
-            # Handle nested scanner-summaries directory
-            if [ -d "$dir/scanner-summaries" ]; then
-              for md_file in "$dir/scanner-summaries"/*.md; do
-                if [ -f "$md_file" ]; then
-                  filename=$(basename "$md_file")
-                  cp "$md_file" "./$filename"
-                  echo "    ✅ Copied $md_file -> ./$filename"
-                fi
-              done
-            fi
-            # Handle direct md files
-            for md_file in "$dir"/*.md; do
-              if [ -f "$md_file" ]; then
-                filename=$(basename "$md_file")
-                cp "$md_file" "./$filename"
-                echo "    ✅ Copied $md_file -> ./$filename"
-              fi
-            done
-          fi
-        done
-
-        echo ""
-        echo "📄 Scanner summaries at root level:"
-        ls -la ./*.md 2>/dev/null || echo "  (none found)"
-      continue-on-error: true
-
-    - name: Combine scanner summaries into security report
-      env:
-        REPOSITORY: ${{ github.repository }}
-        REF_NAME: ${{ github.ref_name }}
-      run: |
-        {
-          echo "**Repository:** $REPOSITORY"
-          echo "**Branch:** $REF_NAME"
-          echo "**Generated:** $(date)"
-          echo ""
-        } >> security-hardening-report.md
-
-        echo "📦 Checking for scanner summaries..."
-        ls -la . 2>/dev/null || true
-        echo ""
-        echo "📄 Looking for scanner summary files..."
-        find . -name "*.md" -type f 2>/dev/null || true
-        echo ""
-
-        # Combine all scanner summaries in a specific order
-        for scanner in codeql opengrep bandit gitleaks clamav container infrastructure zap sbom trivy-iac checkov trivy-container grype osv dependency-review supply-chain; do
-          if [ -f "${scanner}.md" ]; then
-            echo "✅ Adding ${scanner} summary..."
-            cat "${scanner}.md" >> security-hardening-report.md
-          else
-            # Handle language-suffixed variants (e.g. codeql-javascript-typescript.md)
-            found_variant=false
-            for variant in "${scanner}"-*.md; do
-              if [ -f "$variant" ]; then
-                echo "✅ Adding ${variant} summary..."
-                cat "$variant" >> security-hardening-report.md
-                found_variant=true
-              fi
-            done
-            if [ "$found_variant" = "false" ]; then
-              echo "⏭️  No ${scanner}.md summary found"
-            fi
-          fi
-        done
-      continue-on-error: true
-
-    - name: Generate overall summary
-      run: |
-        {
-          echo "## 📊 Overall Security Score"
-          echo ""
-        } >> security-hardening-report.md
-
-        # Calculate total issues across all scanners
-        TOTAL_ISSUES=0
-        if command -v jq >/dev/null 2>&1; then
-          # Count SARIF issues
-          while IFS= read -r sarif_file; do
-            if [ -f "$sarif_file" ] && [ -s "$sarif_file" ]; then
-              issues=$(jq -r '.runs[]?.results[]? | .ruleId' "$sarif_file" 2>/dev/null | wc -l | tr -d ' ')
-              TOTAL_ISSUES=$((TOTAL_ISSUES + issues))
-            fi
-          done < <(find . -name "*.sarif" -type f 2>/dev/null)
-
-          # Count OpenGrep JSON issues
-          while IFS= read -r json_file; do
-            if [ -f "$json_file" ] && [ -s "$json_file" ]; then
-              issues=$(jq -r '.results[]? | .check_id' "$json_file" 2>/dev/null | wc -l | tr -d ' ')
-              TOTAL_ISSUES=$((TOTAL_ISSUES + issues))
-            fi
-          done < <(find ./opengrep-reports -name "*.json" -type f 2>/dev/null)
-        fi
-
-        echo "**Total Issues Found:** $TOTAL_ISSUES" >> security-hardening-report.md
-        echo "" >> security-hardening-report.md
-
-        if [ "$TOTAL_ISSUES" -eq 0 ]; then
-          echo "✅ **Excellent!** No security issues detected." >> security-hardening-report.md
-        elif [ "$TOTAL_ISSUES" -lt 5 ]; then
-          echo "🟡 **Good** - Few issues found, review recommended." >> security-hardening-report.md
-        else
-          echo "🔴 **Attention Required** - Multiple security issues found." >> security-hardening-report.md
-        fi
-
-        {
-          echo ""
-          echo "## 📋 Next Steps"
-          echo "1. Review the detailed scanner results in the collapsible sections above"
-          echo "2. Download and review security reports from workflow artifacts"
-          echo "3. Address any critical or high-severity findings"
-          echo "4. Consider enabling automated dependency updates"
-        } >> security-hardening-report.md
-
-    - name: Get job ID
-      id: job_id
-      uses: huntridge-labs/argus/.github/actions/get-job-id@0.7.2
-      with:
-        job-name-string: 'Security Hardening Summary'
-        fallback-suffix: 'security-hardening-report'
-
-    - name: Upload comprehensive security report
-      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
-      with:
-        name: security-hardening-report-${{ steps.job_id.outputs.job-id }}
-        path: security-hardening-report.md
-        retention-days: 30
-
-    - name: Comment PR with security summary
-      if: github.event_name == 'pull_request' && (inputs.post_pr_comment == true || inputs.post_pr_comment == null)
-      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
-      continue-on-error: true
-      with:
-        script: |
-          const fs = require('fs');
-
-          console.log('Repository:', context.repo.owner + '/' + context.repo.repo);
-          console.log('Event name:', context.eventName);
-          console.log('PR number:', context.issue?.number);
-
-          try {
-            const report = fs.readFileSync('security-hardening-report.md', 'utf8');
-            console.log('security-hardening-report.md read successfully, length:', report.length);
-            // GitHub PR comment limit is 262,144 bytes (65,536 4-byte unicode chars)
-            const MAX_COMMENT_LENGTH = 262000;
-            const summary = report.length > MAX_COMMENT_LENGTH ?
-              report.substring(0, MAX_COMMENT_LENGTH) + '\n\n... (report truncated, download full report from artifacts)' :
-              report;
-
-            const commentBody = `## 🛡️ Security Hardening Pipeline Results\n\n<!-- security-hardening-comment-marker -->\n\n${summary}`;
-
-            // Check for existing security hardening comments to update instead of creating new ones
-            const comments = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number
-            });
-
-            console.log('🔍 Found', comments.data.length, 'existing comments');
-
-            const existingComment = comments.data.find(comment => {
-              const hasMarker = comment.body.includes('security-hardening-comment-marker');
-              const isGitHubActions = comment.user.login === 'github-actions[bot]' || comment.user.type === 'Bot';
-              console.log('Comment from', comment.user.login, 'type:', comment.user.type, 'has marker:', hasMarker);
-              return hasMarker && isGitHubActions;
-            });
-
-            if (existingComment) {
-              // Update existing comment with latest information
-              console.log('🔄 Updating existing security hardening comment');
-              const timestamp = new Date().toLocaleString();
-              const commitSha = context.sha.substring(0, 8);
-              const updatedBody = commentBody + `\n\n---\n*Last updated: ${timestamp} | Commit: ${commitSha} | [View Run](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})*`;
-
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existingComment.id,
-                body: updatedBody
-              });
-            } else {
-              // Create new comment
-              console.log('📝 Creating new security hardening comment');
-              await github.rest.issues.createComment({
-                issue_number: context.issue.number,
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                body: commentBody
-              });
+      - name: Aggregate scanner results
+        uses: ./.argus-actions/.github/actions/security-summary
+        with:
+          title: '🛡️ Security Hardening Pipeline Results'
+          post_pr_comment: ${{ inputs.post_pr_comment }}
+          fail_on_scanner_failure: ${{ inputs.allow_failure == false }}
+          # Preserve the legacy comment marker from the pre-refactor inline
+          # summary step so consumer PRs keep updating the same comment
+          # rather than accruing an orphaned one after upgrade.
+          comment_marker: 'security-hardening-comment-marker'
+          scan_statuses: |
+            {
+              "lint":              "${{ needs.code-quality-linting.result }}",
+              "codeql":            "${{ needs.scanner-codeql.result }}",
+              "opengrep":          "${{ needs.scanner-opengrep.result }}",
+              "bandit":            "${{ needs.scanner-bandit.result }}",
+              "gitleaks":          "${{ needs.scanner-gitleaks.result }}",
+              "clamav":            "${{ needs.scanner-clamav.result }}",
+              "container":         "${{ needs.scanner-container.result }}",
+              "infrastructure":    "${{ needs.scanner-infrastructure.result }}",
+              "sbom":              "${{ needs.scanner-sbom.result }}",
+              "trivy-iac":         "${{ needs.scanner-trivy-iac.result }}",
+              "checkov":           "${{ needs.scanner-checkov.result }}",
+              "trivy-container":   "${{ needs.scanner-trivy-container.result }}",
+              "grype":             "${{ needs.scanner-grype.result }}",
+              "zap":               "${{ needs.scanner-zap.result }}",
+              "osv":               "${{ needs.scanner-osv.result }}",
+              "dependency-review": "${{ needs.scanner-dependency-review.result }}",
+              "supply-chain":      "${{ needs.scanner-supply-chain.result }}"
             }
-
-            console.log('✅ Successfully posted/updated security hardening summary comment');
-          } catch (error) {
-            console.log('❌ Failed to post security summary comment:', error.message);
-            console.log('Error status:', error.status);
-
-            if (error.status === 403) {
-              console.log('🔒 Permission denied - this can happen when:');
-              console.log('   • Running on a fork (security restriction)');
-              console.log('   • Missing pull-requests: write permission');
-              console.log('   • Repository settings restrict PR comments');
-            } else if (error.status === 404) {
-              console.log('🔍 Resource not found - check if PR exists');
-            }
-
-            console.log('📋 Security hardening report is still available in workflow artifacts');
-          }

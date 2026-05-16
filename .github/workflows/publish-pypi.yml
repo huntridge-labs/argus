@@ -1,0 +1,119 @@
+# Validate PyPI package build on PRs
+#
+# Builds the wheel, runs safety checks, and tests installation across
+# Python versions. Optionally publishes to TestPyPI for validation.
+#
+# Production PyPI publishing happens in release.yml (protected environment).
+
+name: Package Validation
+
+on:
+  pull_request:
+    paths:
+      - 'argus/**'
+      - 'pyproject.toml'
+      - 'requirements.txt'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build:
+    name: Build Package
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.12'
+
+      - name: Install build tools
+        run: pip install build
+
+      - name: Set dev version for TestPyPI
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          # github.run_number is a per-workflow monotonic counter, so PEP-440
+          # numeric ordering of dev releases matches upload order. Do not mix
+          # in the PR number — concatenating PR+run produces non-monotonic
+          # versions across PRs (e.g. pr94.run28 sorts above pr88.run30).
+          BASE_VERSION=$(python -c "from argus import __version__; print(__version__)")
+          DEV_VERSION="${BASE_VERSION}.dev${RUN_NUMBER}"
+          echo "Dev version: ${DEV_VERSION}"
+
+          sed -i "s/__version__ = \"${BASE_VERSION}\"/__version__ = \"${DEV_VERSION}\"/" argus/__init__.py
+          echo "dev_version=${DEV_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Build wheel and sdist
+        run: python -m build
+
+      - name: Inspect package contents
+        run: |
+          echo "=== Wheel contents ==="
+          unzip -l dist/*.whl | head -50
+          echo ""
+          echo "=== File count ==="
+          unzip -l dist/*.whl | tail -1
+
+      - name: Safety check
+        run: |
+          pip install pyyaml
+          python -m scripts.ci.check_package
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: dist
+          path: dist/
+
+  test-install:
+    name: Test Install (Python ${{ matrix.python-version }})
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
+
+    steps:
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Download built package
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Install from wheel
+        run: pip install dist/*.whl
+
+      - name: Smoke test
+        run: |
+          argus --version
+          argus scan --list
+          argus scan --help
+          argus classify --help
+          argus completion zsh > /dev/null
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: [build, test-install]
+    runs-on: ubuntu-latest
+    environment: testpypi
+
+    steps:
+      - name: Download built package
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
+        with:
+          repository-url: https://test.pypi.org/legacy/

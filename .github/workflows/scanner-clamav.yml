@@ -1,7 +1,7 @@
 # ClamAV Malware Scanner - Reusable Workflow
 #
-# THIN WRAPPER: This workflow delegates to the scanner-clamav composite action.
-# All scanning logic is in: .github/actions/scanner-clamav/action.yml
+# Runs the ClamAV scanner via the argus Python CLI.
+# Equivalent to: python -m argus scan clamav
 #
 # For GHES users: Use the composite action directly instead of this workflow.
 # See: examples/github-enterprise/all-scanners.yml
@@ -52,10 +52,48 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Run ClamAV Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-clamav@0.7.2
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
-          post_pr_comment: ${{ inputs.post_pr_comment }}
-          enable_code_security: ${{ inputs.enable_code_security }}
-          scan_path: ${{ inputs.scan_path }}
-          fail_on_severity: ${{ inputs.fail_on_severity }}
+          python-version: '3.13'
+
+      - name: Install Argus
+        run: |
+          pip install --quiet pyyaml
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Run scan
+        run: |
+          python -m argus scan clamav \
+            --path "$SCAN_PATH" \
+            --severity-threshold "$SEVERITY_THRESHOLD" \
+            --format terminal --format sarif --format json \
+            --output-dir ./argus-results \
+            --verbose
+        env:
+          SCAN_PATH: ${{ inputs.scan_path || '.' }}
+          SEVERITY_THRESHOLD: ${{ inputs.fail_on_severity || 'none' }}
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: clamav-reports
+          path: ./argus-results/
+          retention-days: 30
+
+      - name: Upload SARIF
+        if: inputs.enable_code_security && always() && github.actor != 'nektos/act'
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
+        with:
+          sarif_file: ./argus-results/argus-results.sarif
+        continue-on-error: true
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request' && inputs.post_pr_comment
+        uses: huntridge-labs/argus/.github/actions/comment-pr@0.7.0
+        with:
+          summary_file: ./argus-results/argus-results.md
+          comment_marker: clamav-scanner-comment-marker
+          title: 'ClamAV Malware Scan Results'
+          fallback_message: 'No ClamAV results available'

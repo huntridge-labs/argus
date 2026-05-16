@@ -1,7 +1,8 @@
 # Dependency Review Scanner - Reusable Workflow
 #
-# THIN WRAPPER: This workflow delegates to the scanner-dependency-review composite action.
-# All scanning logic is in: .github/actions/scanner-dependency-review/action.yml
+# NOTE: Dependency Review uses GitHub-native actions (actions/dependency-review-action)
+# which argus cannot replace. This workflow keeps the composite action call until
+# argus supports dependency review natively.
 #
 # NOTE: This scanner only works on pull_request events. On other event types
 # it will skip gracefully with a warning annotation and zero-count summary.

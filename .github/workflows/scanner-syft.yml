@@ -1,7 +1,7 @@
 # Syft SBOM Generator - Reusable Workflow
 #
-# THIN WRAPPER: This workflow delegates to the scanner-syft composite action.
-# All SBOM generation logic is in: .github/actions/scanner-syft/action.yml
+# NOTE: Syft SBOM generation is not yet supported by the argus CLI.
+# This workflow keeps the composite action call until argus supports SBOM natively.
 #
 # For GHES users: Use the composite action directly instead of this workflow.
 # See: examples/github-enterprise/container-scanning.yml

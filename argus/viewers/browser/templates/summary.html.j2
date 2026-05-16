@@ -1,0 +1,216 @@
+{% extends "base.html.j2" %}
+{% block title %}Argus — Executive Summary{% endblock %}
+
+{#- Build a /findings URL with one filter pinned + the current scan
+    carried through. Used to wire the dashboard summary cards and
+    rows into deep-links that drill into the matching findings. -#}
+{%- macro findings_link(param, value) -%}
+  /findings?{{ param }}={{ value | urlencode }}
+  {%- if scan_param %}&scan={{ scan_param | urlencode }}{% endif -%}
+{%- endmacro -%}
+
+{% block content %}
+
+{#- Empty state: no scan is in scope yet. The picker (SD) will
+    replace this with something navigable; for now, tell the user
+    what's up so the page isn't just blank. -#}
+{% if summary is none %}
+  <section class="placeholder">
+    <h2>No scan loaded</h2>
+    <p>Point <code>argus serve</code> at a results directory or a specific
+       <code>argus-results.json</code>, or pass <code>?scan=/path/...</code>
+       to this URL.</p>
+    {% if error %}
+      <p><strong>Error:</strong> {{ error }}</p>
+    {% endif %}
+  </section>
+
+{% else %}
+
+  <h2>Executive Summary</h2>
+
+  {#- At-a-glance severity cards. Each card is an anchor that drills
+      into ``/findings`` pre-filtered to that severity floor — the
+      summary is the entry point into the detail view. "Total" links
+      to the unfiltered list. Card color encoded via class so
+      severity-neutral CSS rules ("card") set layout and the
+      severity-specific modifier sets the border accent. -#}
+  <div class="cards">
+    <a class="card" href="/findings{% if scan_param %}?scan={{ scan_param | urlencode }}{% endif %}">
+      <div class="label">Total findings</div>
+      <div class="value">{{ summary.total }}</div>
+    </a>
+    {% for sev, icon in [
+        ("critical", "🚨"),
+        ("high",     "⚠️"),
+        ("medium",   "🟡"),
+        ("low",      "🔵"),
+        ("info",     "ℹ️")
+      ]
+    %}
+      {% set count = summary.by_severity.get(sev, 0) %}
+      {% if count %}
+        <a class="card {{ sev }}" href="{{ findings_link('min_severity', sev) | trim }}">
+          <div class="label">{{ icon }} {{ sev.capitalize() }}</div>
+          <div class="value">{{ count }}</div>
+        </a>
+      {% endif %}
+    {% endfor %}
+  </div>
+
+  {#- Quality warnings — SPDX-2.1 detected, low-purl-coverage,
+      grype unknown-subject. Loud banner so empty scans aren't
+      mistaken for clean ones. -#}
+  {% if summary.quality_warnings %}
+    <div class="warnings">
+      <h3>Scan quality warnings</h3>
+      <ul>
+        {% for w in summary.quality_warnings %}
+          <li>{{ w }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  {#- Scan metadata panel — when this scan ran, how long it took, and
+      which scanner versions contributed. Collapsed by default so it
+      doesn't crowd the executive summary above but available one
+      click away for "what commit was this against / how long did it
+      take?" questions that come up in audit reviews. -#}
+  {% if metadata %}
+    <details class="scan-metadata">
+      <summary>
+        <span class="scan-metadata-title">Scan metadata</span>
+        <span class="scan-metadata-summary-chips">
+          {%- if metadata.scanner_count %}
+            <span>{{ metadata.scanner_count }} scanner{{ metadata.scanner_count != 1 and 's' or '' }}</span>
+          {%- endif %}
+          {%- if metadata.total_duration_ms is not none %}
+            · <span>{{ (metadata.total_duration_ms / 1000) | round(1) }}s total</span>
+          {%- endif %}
+        </span>
+      </summary>
+      <div class="scan-metadata-body">
+        <dl class="scan-metadata-file">
+          {%- if metadata.scan_file %}
+            <dt>File</dt><dd><code>{{ metadata.scan_file }}</code></dd>
+          {%- endif %}
+          {%- if metadata.scan_mtime %}
+            <dt>Modified</dt>
+            <dd><time datetime="{{ metadata.scan_mtime }}" class="scan-mtime"
+                      data-epoch="{{ metadata.scan_mtime }}">{{ metadata.scan_mtime | int }}</time></dd>
+          {%- endif %}
+          {%- if metadata.total_duration_ms is not none %}
+            <dt>Duration</dt><dd>{{ metadata.total_duration_ms }} ms total</dd>
+          {%- endif %}
+        </dl>
+        {% if metadata.scanners %}
+          <table class="scan-metadata-scanners">
+            <caption class="sr-only">Per-scanner execution details.</caption>
+            <thead>
+              <tr>
+                <th>Scanner</th>
+                <th>Version</th>
+                <th>Execution</th>
+                <th>Duration</th>
+                <th>Findings</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for s in metadata.scanners %}
+                <tr>
+                  <td><strong>{{ s.scanner }}</strong></td>
+                  <td>{{ s.tool_version or '—' }}</td>
+                  <td>
+                    {%- if s.execution == "container" %}
+                      container
+                      {%- if s.digest %}
+                        <br><code class="scan-metadata-digest">{{ s.digest }}</code>
+                      {%- endif %}
+                    {%- elif s.execution %}
+                      {{ s.execution }}
+                    {%- else %}
+                      —
+                    {%- endif %}
+                  </td>
+                  <td>
+                    {%- if s.duration_ms is not none %}
+                      {{ s.duration_ms }} ms
+                    {%- else %}
+                      —
+                    {%- endif %}
+                  </td>
+                  <td>{{ s.total_count }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% endif %}
+      </div>
+    </details>
+    {#- Tiny script to turn the epoch mtime into a human-readable
+        local time. Doesn't run on SSR (mtime renders as a raw int
+        first) so pages stay readable under strict CSP / no-JS. -#}
+    <script src="/static/scan-mtime.js" defer></script>
+  {% endif %}
+
+  {#- Per-product: total + crit + high counts + top-3 findings. Each
+      row anchors to /findings pre-filtered to the product so users
+      drill straight into the backlog for that product. When there
+      is only one bucket and it's the "(no product)" fallback, we
+      skip this section entirely — it's just noise duplicating the
+      total card above. -#}
+  {% if summary.per_product and not (summary.per_product | length == 1 and summary.per_product[0].product == "(no product)") %}
+    <section>
+      <h2>Per product</h2>
+      {% for p in summary.per_product %}
+        <a class="product-row" href="{{ findings_link('product', p.product) | trim }}">
+          <div>
+            <div class="name">{{ p.product }}</div>
+            <ul class="top">
+              {% for f in p.top %}
+                <li>
+                  <span class="sev sev-{{ f.severity }}">{{ f.severity }}</span>
+                  <strong>{{ f.id }}</strong>
+                  {% if f.metadata and f.metadata.package %}
+                    <code>{{ f.metadata.package }}@{{ f.metadata.installed_version or '?' }}</code>
+                  {% endif %}
+                  — {{ f.title }}
+                </li>
+              {% endfor %}
+              {% if not p.top %}
+                <li><em>No findings</em></li>
+              {% endif %}
+            </ul>
+          </div>
+          <div class="counts">
+            total {{ p.total }}
+            · <span class="sev sev-critical {% if not p.by_severity.critical %}sev-zero{% endif %}"
+                    title="Critical">{{ p.by_severity.critical or 0 }}</span>
+            · <span class="sev sev-high {% if not p.by_severity.high %}sev-zero{% endif %}"
+                    title="High">{{ p.by_severity.high or 0 }}</span>
+          </div>
+        </a>
+      {% endfor %}
+    </section>
+  {% endif %}
+
+  {#- Per-scanner contribution — useful for spotting when one
+      scanner is providing 90% of findings (suggests a config issue
+      or that the others produced nothing because of input format).
+      Each row drills into the findings pre-filtered to that scanner. -#}
+  {% if summary.per_scanner %}
+    <section>
+      <h2>Per scanner</h2>
+      {% for s in summary.per_scanner %}
+        <a class="scanner-row" href="{{ findings_link('scanner', s.scanner) | trim }}">
+          <span class="name">{{ s.scanner }}</span>
+          <span class="counts">{{ s.total }} finding{{ s.total != 1 and 's' or '' }}</span>
+        </a>
+      {% endfor %}
+    </section>
+  {% endif %}
+
+{% endif %}
+
+{% endblock %}

@@ -1,6 +1,6 @@
 name: 'Terraform Linter'
 description: |
-  Run Terraform formatting and validation checks.
+  Run Terraform formatting and validation checks via Argus SDK.
 
   This action validates Terraform files using terraform fmt, terraform validate,
   and optionally TFLint. Results are uploaded as artifacts and can be aggregated
@@ -25,267 +25,114 @@ inputs:
     required: false
     default: '.'
   terraform_version:
-    description: 'Terraform version to use'
+    description: 'Terraform version to use. Configure in argus.yml for SDK-based runs.'
     required: false
     default: 'latest'
   run_tflint:
-    description: 'Run TFLint in addition to terraform fmt/validate'
+    description: 'Run TFLint in addition to terraform fmt/validate. Configure in argus.yml for SDK-based runs.'
     required: false
     default: 'true'
+  python_version:
+    description: 'Python version to use'
+    required: false
+    default: '3.12'
+  post_pr_comment:
+    description: 'Whether to post PR comments'
+    required: false
+    default: 'false'
 
 outputs:
   issues_count:
     description: 'Total number of linting issues found'
-    value: ${{ steps.terraform-lint.outputs.issues }}
-  fmt_issues:
-    description: 'Number of formatting issues'
-    value: ${{ steps.terraform-lint.outputs.fmt_issues }}
-  validate_issues:
-    description: 'Number of validation issues'
-    value: ${{ steps.terraform-lint.outputs.validate_issues }}
-  tflint_issues:
-    description: 'Number of TFLint issues'
-    value: ${{ steps.terraform-lint.outputs.tflint_issues }}
+    value: ${{ steps.scan.outputs.issue_count }}
 
 runs:
   using: 'composite'
   steps:
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4
+    # IMPORTANT: Caller must checkout the repository before calling this action
+    # Example:
+    #   - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+    #   - uses: ./.github/actions/linter-terraform
+
+    - name: Set up Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
       with:
-        terraform_version: ${{ inputs.terraform_version }}
+        python-version: ${{ inputs.python_version }}
 
-    - name: Install TFLint
-      if: inputs.run_tflint == 'true'
+    - name: Install Argus SDK
       shell: bash
-      run: |
-        set -euo pipefail
-        # Pinned version with checksum — updated by .github/workflows/update-pinned-tools.yml
-        TFLINT_VERSION="0.61.0"
-        TFLINT_CHECKSUM="ca4e4e8cb7cc3436f2b6979e9c4fd4e2623a66fcca1ad1fe12f8669967636ae2"
-        TFLINT_ZIP="tflint_linux_amd64.zip"
-        curl -sSfL "https://github.com/terraform-linters/tflint/releases/download/v${TFLINT_VERSION}/${TFLINT_ZIP}" -o "${TFLINT_ZIP}"
-        echo "${TFLINT_CHECKSUM}  ${TFLINT_ZIP}" | sha256sum -c --quiet
-        unzip -o "${TFLINT_ZIP}" tflint
-        sudo mv tflint /usr/local/bin/tflint
-        rm -f "${TFLINT_ZIP}"
-        tflint --version
+      # Install the SDK from the checked-out composite source. This matches
+      # the consumer-scoped intent of composite actions (``uses: .../<wrapper>@tag``
+      # implicitly pins the SDK version to the same tag) and sidesteps the
+      # PyPI-release lag that would break ``pip install argus-security>=X``
+      # for consumers until after the release ships. Works identically for
+      # internal test-actions runs (where the argus repo is the consumer
+      # checkout) and for external consumers (where the composite's own
+      # checkout under ``$GITHUB_ACTION_PATH`` is the SDK source). See
+      # scanner-container/action.yml for the original rationale.
+      run: pip install "${{ github.action_path }}/../../.."
 
-    - name: Run Terraform linting
-      id: terraform-lint
+    - name: Run Terraform Linter via Argus SDK
+      id: scan
       shell: bash
-      continue-on-error: true
       env:
-        PATHS: ${{ inputs.paths }}
-        RUN_TFLINT: ${{ inputs.run_tflint }}
+        SCAN_PATH: ${{ inputs.paths }}
         FAIL_ON_ISSUES: ${{ inputs.fail_on_issues }}
       run: |
-        echo "::group::Terraform Linting"
-        echo "Searching for Terraform files in: $PATHS"
+        mkdir -p terraform-lint-reports scanner-summaries
 
-        ISSUES_FILE="/tmp/terraform_issues.txt"
-        TOTAL_ISSUES=0
-        FMT_ISSUES=0
-        VALIDATE_ISSUES=0
-        TFLINT_ISSUES=0
-
-        # Find Terraform files
-        TF_FILES=$(find $PATHS -name "*.tf" \
-          -not -path "*/.git/*" \
-          -not -path "*/.terraform/*" \
-          -type f 2>/dev/null || true)
-
-        if [ -z "$TF_FILES" ]; then
-          echo "No Terraform files found to lint"
-          echo "issues=0" >> $GITHUB_OUTPUT
-          echo "fmt_issues=0" >> $GITHUB_OUTPUT
-          echo "validate_issues=0" >> $GITHUB_OUTPUT
-          echo "tflint_issues=0" >> $GITHUB_OUTPUT
-          echo "::endgroup::"
-          exit 0
+        # Map fail_on_issues boolean to severity threshold
+        SEVERITY="none"
+        if [ "$FAIL_ON_ISSUES" = "true" ]; then
+          SEVERITY="info"
         fi
 
-        echo "Found Terraform files to check:"
-        echo "$TF_FILES" | head -20
-        FILE_COUNT=$(echo "$TF_FILES" | wc -l)
-        if [ "$FILE_COUNT" -gt 20 ]; then
-          echo "... and $((FILE_COUNT - 20)) more files"
+        SCAN_EXIT=0
+        python -m argus scan lint-terraform \
+          --path "${SCAN_PATH}" \
+          --severity-threshold "${SEVERITY}" \
+          --format sarif --format json --format markdown \
+          --output-dir ./terraform-lint-reports \
+          --output-vars ./terraform-lint-reports/counts.env \
+          --no-timestamp \
+          || SCAN_EXIT=$?
+
+        # Forward counts to GitHub Actions outputs
+        [ -f terraform-lint-reports/counts.env ] && cat terraform-lint-reports/counts.env >> "$GITHUB_OUTPUT"
+
+        # Copy markdown summary for PR comment and step summary
+        if [ -f "terraform-lint-reports/argus-summary.md" ]; then
+          cp terraform-lint-reports/argus-summary.md scanner-summaries/terraform-lint.md
+          cat terraform-lint-reports/argus-summary.md >> "$GITHUB_STEP_SUMMARY"
         fi
 
-        # Find unique directories containing .tf files
-        TF_DIRS=$(echo "$TF_FILES" | xargs -n1 dirname | sort -u)
+        exit $SCAN_EXIT
 
-        # Run terraform fmt check
-        echo ""
-        echo "=== Running terraform fmt check ===" | tee -a "$ISSUES_FILE"
-        for dir in $TF_DIRS; do
-          if ! terraform -chdir="$dir" fmt -check -recursive > /tmp/tf_fmt_single.out 2>&1; then
-            FMT_COUNT=$(wc -l < /tmp/tf_fmt_single.out 2>/dev/null || echo "0")
-            if [ "$FMT_COUNT" -gt 0 ]; then
-              echo "Formatting issues in $dir:" | tee -a "$ISSUES_FILE"
-              cat /tmp/tf_fmt_single.out | tee -a "$ISSUES_FILE"
-              FMT_ISSUES=$((FMT_ISSUES + FMT_COUNT))
-            fi
-          fi
-        done
-
-        if [ "$FMT_ISSUES" -eq 0 ]; then
-          echo "No terraform formatting issues found" | tee -a "$ISSUES_FILE"
-        fi
-
-        # Run terraform validate on directories
-        echo ""
-        echo "=== Running terraform validate ===" | tee -a "$ISSUES_FILE"
-        for dir in $TF_DIRS; do
-          echo "Validating: $dir"
-          cd "$dir" || continue
-
-          # Initialize without backend
-          if terraform init -backend=false > /tmp/tf_init.out 2>&1; then
-            if ! terraform validate > /tmp/tf_validate.out 2>&1; then
-              VAL_COUNT=$(grep -c "Error:" /tmp/tf_validate.out 2>/dev/null || echo "1")
-              echo "Validation issues in $dir:" | tee -a "$ISSUES_FILE"
-              cat /tmp/tf_validate.out | tee -a "$ISSUES_FILE"
-              VALIDATE_ISSUES=$((VALIDATE_ISSUES + VAL_COUNT))
-            fi
-          else
-            echo "Could not initialize $dir for validation (skipped)" | tee -a "$ISSUES_FILE"
-          fi
-
-          cd - > /dev/null || exit
-        done
-
-        if [ "$VALIDATE_ISSUES" -eq 0 ]; then
-          echo "No terraform validation issues found" | tee -a "$ISSUES_FILE"
-        fi
-
-        # Run TFLint if enabled
-        if [ "$RUN_TFLINT" = "true" ]; then
-          echo ""
-          echo "=== Running TFLint ===" | tee -a "$ISSUES_FILE"
-          for dir in $TF_DIRS; do
-            echo "TFLint checking: $dir"
-            cd "$dir" || continue
-
-            # Initialize tflint
-            tflint --init > /dev/null 2>&1 || true
-
-            if ! tflint --format compact > /tmp/tflint_single.out 2>&1; then
-              TFLINT_COUNT=$(wc -l < /tmp/tflint_single.out 2>/dev/null || echo "0")
-              if [ "$TFLINT_COUNT" -gt 0 ]; then
-                echo "TFLint issues in $dir:" | tee -a "$ISSUES_FILE"
-                cat /tmp/tflint_single.out | tee -a "$ISSUES_FILE"
-                TFLINT_ISSUES=$((TFLINT_ISSUES + TFLINT_COUNT))
-              fi
-            fi
-
-            cd - > /dev/null || exit
-          done
-
-          if [ "$TFLINT_ISSUES" -eq 0 ]; then
-            echo "No TFLint issues found" | tee -a "$ISSUES_FILE"
-          fi
-        fi
-
-        TOTAL_ISSUES=$((FMT_ISSUES + VALIDATE_ISSUES + TFLINT_ISSUES))
-
-        echo "issues=$TOTAL_ISSUES" >> $GITHUB_OUTPUT
-        echo "fmt_issues=$FMT_ISSUES" >> $GITHUB_OUTPUT
-        echo "validate_issues=$VALIDATE_ISSUES" >> $GITHUB_OUTPUT
-        echo "tflint_issues=$TFLINT_ISSUES" >> $GITHUB_OUTPUT
-
-        if [ "$TOTAL_ISSUES" -gt 0 ]; then
-          echo ""
-          echo "Total Terraform issues found: $TOTAL_ISSUES"
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            echo "::warning title=Terraform Linting Issues::Found $TOTAL_ISSUES Terraform formatting/validation issues. See job logs for details."
-          fi
-        else
-          echo "No Terraform linting issues found"
-        fi
-
-        echo "::endgroup::"
-
-        # Fail if requested and issues found
-        if [ "$FAIL_ON_ISSUES" = "true" ] && [ "$TOTAL_ISSUES" -gt 0 ]; then
-          echo "::error::Terraform linting failed with $TOTAL_ISSUES issues"
-          exit 1
-        fi
-
-    - name: Generate linter summary
+    - name: Upload Terraform lint artifacts
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+      with:
+        name: terraform-lint-reports
+        path: terraform-lint-reports/
+        retention-days: 30
       if: always()
-      shell: bash
-      env:
-        ISSUES_OUTPUT: ${{ steps.terraform-lint.outputs.issues }}
-        FMT_OUTPUT: ${{ steps.terraform-lint.outputs.fmt_issues }}
-        VALIDATE_OUTPUT: ${{ steps.terraform-lint.outputs.validate_issues }}
-        TFLINT_OUTPUT: ${{ steps.terraform-lint.outputs.tflint_issues }}
-        RUN_TFLINT: ${{ inputs.run_tflint }}
-      run: |
-        mkdir -p linter-summaries
-        ISSUES="$ISSUES_OUTPUT"
-        FMT="$FMT_OUTPUT"
-        VALIDATE="$VALIDATE_OUTPUT"
-        TFLINT="$TFLINT_OUTPUT"
 
-        echo "<details>" > linter-summaries/terraform.md
-        echo "<summary>Terraform Linting</summary>" >> linter-summaries/terraform.md
-        echo "" >> linter-summaries/terraform.md
-
-        if [ "$ISSUES" -eq 0 ]; then
-          echo "**Status:** Passed" >> linter-summaries/terraform.md
-          echo "" >> linter-summaries/terraform.md
-          echo "No Terraform linting issues found." >> linter-summaries/terraform.md
-        else
-          echo "**Status:** Issues Found" >> linter-summaries/terraform.md
-          echo "" >> linter-summaries/terraform.md
-          echo "| Check | Issues |" >> linter-summaries/terraform.md
-          echo "|-------|--------|" >> linter-summaries/terraform.md
-          echo "| Formatting (fmt) | $FMT |" >> linter-summaries/terraform.md
-          echo "| Validation | $VALIDATE |" >> linter-summaries/terraform.md
-          if [ "$RUN_TFLINT" = "true" ]; then
-            echo "| TFLint | $TFLINT |" >> linter-summaries/terraform.md
-          fi
-          echo "| **Total** | **$ISSUES** |" >> linter-summaries/terraform.md
-          echo "" >> linter-summaries/terraform.md
-
-          if [ -f "/tmp/terraform_issues.txt" ]; then
-            echo "<details>" >> linter-summaries/terraform.md
-            echo "<summary>View Issues</summary>" >> linter-summaries/terraform.md
-            echo "" >> linter-summaries/terraform.md
-            echo '```' >> linter-summaries/terraform.md
-            head -50 /tmp/terraform_issues.txt >> linter-summaries/terraform.md
-            if [ $(wc -l < /tmp/terraform_issues.txt) -gt 50 ]; then
-              echo "... (truncated, see artifacts for full list)" >> linter-summaries/terraform.md
-            fi
-            echo '```' >> linter-summaries/terraform.md
-            echo "" >> linter-summaries/terraform.md
-            echo "</details>" >> linter-summaries/terraform.md
-          fi
-        fi
-
-        echo "" >> linter-summaries/terraform.md
-        echo "</details>" >> linter-summaries/terraform.md
-        echo "" >> linter-summaries/terraform.md
-
-    - name: Upload linter summary
+    - name: Upload Terraform lint summary section
       if: always()
       uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
       with:
         name: linter-summary-terraform
-        path: linter-summaries/terraform.md
+        path: scanner-summaries/terraform-lint.md
         retention-days: 7
       continue-on-error: true
 
-    - name: Upload raw lint results
-      if: always()
-      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+    - name: Comment PR with Terraform lint results
+      if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
+      uses: huntridge-labs/argus/.github/actions/comment-pr@0.7.0
       with:
-        name: terraform-lint-results
-        path: /tmp/terraform_issues.txt
-        retention-days: 7
-        if-no-files-found: ignore
-      continue-on-error: true
+        summary_file: scanner-summaries/terraform-lint.md
+        comment_marker: terraform-linter-comment-marker
+        title: '🏗️ Terraform Linting Results'
+        fallback_message: 'No Terraform linting results available'
 
 branding:
   icon: 'layers'

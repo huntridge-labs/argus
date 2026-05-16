@@ -1,3 +1,32 @@
+# Build-once-promote-everywhere release pipeline.
+#
+# A single ``release`` job owns the whole lifecycle so failure semantics
+# are unambiguous (a container build failure stops everything before any
+# state is published) and orchestration stays in one place. The
+# ``dry-run`` job runs in parallel for previews.
+#
+# Step order inside ``release``:
+#
+#   1. Tests
+#   2. Build 4 multi-arch images, push to GHCR under ``build-<sha>-<run>``
+#      → capture ``sha256:`` digests in $GITHUB_ENV
+#   3. release-it bumps versions / regenerates changelog / commits / tags
+#      → ``after:bump`` hook pins ``<version>@sha256:<digest>`` into
+#         ``argus/containers.py`` using the digests from step 2
+#   4. (if release cut) Re-tag images :``<version>`` + :latest (manifest-only)
+#   5. (if release cut) cosign-sign images by digest
+#   6. (if release cut) Build wheel from now-bumped state, smoke test,
+#      publish to PyPI via OIDC
+#   7. (if release cut) Write summary
+#
+# Order rationale: containers + signatures must exist before the wheel
+# lands on PyPI so a user running ``pip install`` never gets a wheel
+# pointing at unsigned or non-existent images.
+#
+# Orphan ``build-<sha>`` tags from runs that didn't cut a release age out
+# via ``.github/workflows/ghcr-prune.yml`` (14-day grace, keeps semver +
+# ``latest`` forever).
+
 name: Release
 
 on:
@@ -7,7 +36,7 @@ on:
   workflow_dispatch:
     inputs:
       releaseType:
-        description: 'Type of release (patch, minor, major, prerelease)'
+        description: 'Type of release (auto, patch, minor, major, prerelease)'
         required: false
         default: 'auto'
         type: choice
@@ -17,77 +46,24 @@ on:
           - minor
           - major
           - prerelease
+      preReleaseId:
+        description: 'Pre-release id (e.g. rc, beta). Combines with releaseType — e.g. major + rc → 1.0.0-rc.0.'
+        required: false
+        default: ''
+        type: string
       dryRun:
         description: 'Dry run (preview only, no actual release)'
         required: false
         default: true
         type: boolean
 
+permissions:
+  contents: read
+
 jobs:
-  release:
-    name: Release
-    runs-on: ubuntu-latest
-    environment:
-      name: prod
-      url: https://github.com/${{ github.repository }}/releases/latest
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
-    if: (github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(release):')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.dryRun != 'true')
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-          token: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Setup Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Python dependencies
-        run: pip install -r requirements.txt
-
-      - name: Run tests
-        run: npm test
-
-      - name: Configure Git
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
-
-      - name: Release (Auto)
-        if: github.event_name == 'push' || github.event.inputs.releaseType == 'auto'
-        run: npm run release:ci
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
-          HUSKY: 0
-
-      - name: Release (Specific Type)
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.releaseType != 'auto'
-        run: npm run release:ci -- "$RELEASE_TYPE"
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
-          HUSKY: 0
-          RELEASE_TYPE: ${{ github.event.inputs.releaseType }}
-
+  # ── Dry-run preview ─────────────────────────────────────────────────
+  # Runs in parallel with the real pipeline so every push to main shows
+  # what release-it would produce. No side effects — pure preview.
   dry-run:
     name: Release Preview (Dry Run)
     runs-on: ubuntu-latest
@@ -103,11 +79,14 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
       - name: Setup Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
           node-version: '22'
-          cache: 'npm'
+          cache: 'pnpm'
 
       - name: Setup Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
@@ -116,45 +95,288 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
       - name: Run tests
-        run: npm test
+        run: pnpm test
 
       - name: Release Preview
         run: |
-          # Run release-it dry run to see what would be released
           echo "Running release-it dry run..."
           echo "Note: A post-processed changelog with categorization will be shown after the dry run output."
           echo ""
-          npm run release:dry 2>&1 | tee release_dry_output.txt
+          pnpm run release:dry 2>&1 | tee release_dry_output.txt
 
-          # Extract and process the changelog section to show categorized version
           if grep -q "Changelog:" release_dry_output.txt; then
             echo ""
             echo "============================================"
-            echo "📋 PROCESSED CHANGELOG (with categorization)"
+            echo "PROCESSED CHANGELOG (with categorization)"
             echo "============================================"
             echo "The actual CHANGELOG.md will be modified using scripts/release-it-process-changelog.js as shown below:"
             echo ""
-
-            # Extract raw changelog
             sed -n '/^Changelog:/,/^Updating version/p' release_dry_output.txt | sed '1d;$d' | sed 's/^//' > changelog_preview.md
-
-            # Create temp file for processing
             echo "# Temp Changelog" > temp_preview.md
             echo "" >> temp_preview.md
             cat changelog_preview.md >> temp_preview.md
-
-            # Process with our script
             node scripts/release-it-process-changelog.js temp_preview.md
-
-            # Show processed changelog
             tail -n +3 temp_preview.md
             echo "============================================"
           fi
         env:
           HUSKY: 0
+
+  # ── Release (build → bump → sign → publish, all in one job) ─────────
+  # Containers are built as a step inside this job — if the build fails,
+  # release-it never runs and nothing gets published. The build pushes
+  # to a throwaway ``:build-<sha>-<run>`` tag; promotion to ``:<VERSION>``
+  # and ``:latest`` happens after release-it determines the version.
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment:
+      name: prod
+      url: https://github.com/${{ github.repository }}/releases/latest
+    permissions:
+      contents: write       # release-it commits, tags, pushes
+      issues: write         # release-it creates GitHub release
+      pull-requests: write
+      packages: write       # buildx push + imagetools create on GHCR
+      id-token: write       # cosign keyless signing + PyPI OIDC trusted publish
+    if: (github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(release):')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.dryRun != 'true')
+
+    env:
+      IMAGE_REGISTRY: ghcr.io/huntridge-labs/argus
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Configure Git
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build and push containers (build-id tag)
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          BUILD_TAG="build-${COMMIT_SHA:0:12}-${RUN_ID}"
+          echo "BUILD_TAG=${BUILD_TAG}" >> "$GITHUB_ENV"
+          echo "Build tag: ${BUILD_TAG}"
+
+          # Image short-name : Dockerfile : env-key. The env-key is the
+          # uppercase suffix used by both:
+          #   - the release-it after:bump hook (ARGUS_DIGEST_<KEY>)
+          #   - the cosign signing step (<KEY>_DIGEST)
+          IMAGES=(
+            "scanner-bandit:docker/Dockerfile.bandit:SCANNER_BANDIT"
+            "scanner-opengrep:docker/Dockerfile.opengrep:SCANNER_OPENGREP"
+            "scanner-supply-chain:docker/Dockerfile.supply-chain:SCANNER_SUPPLY_CHAIN"
+            "cli:docker/Dockerfile.cli:CLI"
+          )
+          for entry in "${IMAGES[@]}"; do
+            IFS=':' read -r IMAGE DOCKERFILE KEY <<< "$entry"
+            FULL_REF="${IMAGE_REGISTRY}/${IMAGE}:${BUILD_TAG}"
+            META_FILE="/tmp/${KEY}.metadata.json"
+
+            echo "::group::Building ${IMAGE}"
+            docker buildx build \
+              --push \
+              --platform linux/amd64,linux/arm64 \
+              --tag "${FULL_REF}" \
+              --metadata-file "${META_FILE}" \
+              --label "org.opencontainers.image.revision=${COMMIT_SHA}" \
+              --label "org.opencontainers.image.source=https://github.com/${REPO}" \
+              --file "${DOCKERFILE}" \
+              .
+
+            DIGEST=$(jq -r '."containerimage.digest"' "${META_FILE}")
+            if [ -z "${DIGEST}" ] || [ "${DIGEST}" = "null" ]; then
+              echo "::error::No digest produced for ${IMAGE}"
+              exit 1
+            fi
+            # ARGUS_DIGEST_<KEY> is consumed by the release-it after:bump
+            # hook (scripts/release_it/inject_image_digests.py). <KEY>_DIGEST
+            # is used by the cosign step below.
+            echo "ARGUS_DIGEST_${KEY}=${DIGEST}" >> "$GITHUB_ENV"
+            echo "${KEY}_DIGEST=${DIGEST}" >> "$GITHUB_ENV"
+            echo "Built ${FULL_REF} (${DIGEST})"
+            echo "::endgroup::"
+          done
+
+      - name: Capture version before release
+        run: |
+          VERSION_BEFORE=$(node -p "require('./package.json').version")
+          echo "VERSION_BEFORE=${VERSION_BEFORE}" >> "$GITHUB_ENV"
+          echo "Pre-release version: ${VERSION_BEFORE}"
+
+      - name: Release (Auto)
+        if: github.event_name == 'push' || github.event.inputs.releaseType == 'auto'
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          HUSKY: 0
+          PRE_RELEASE_ID: ${{ github.event.inputs.preReleaseId || '' }}
+        run: |
+          if [ -n "$PRE_RELEASE_ID" ]; then
+            pnpm run release:ci -- --preRelease="$PRE_RELEASE_ID"
+          else
+            pnpm run release:ci
+          fi
+
+      - name: Release (Specific Type)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.releaseType != 'auto'
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          HUSKY: 0
+          RELEASE_TYPE: ${{ github.event.inputs.releaseType }}
+          PRE_RELEASE_ID: ${{ github.event.inputs.preReleaseId || '' }}
+        run: |
+          if [ -n "$PRE_RELEASE_ID" ]; then
+            pnpm run release:ci -- "$RELEASE_TYPE" --preRelease="$PRE_RELEASE_ID"
+          else
+            pnpm run release:ci -- "$RELEASE_TYPE"
+          fi
+
+      - name: Capture released version
+        run: |
+          VERSION_AFTER=$(node -p "require('./package.json').version")
+          if [ "$VERSION_AFTER" = "$VERSION_BEFORE" ]; then
+            echo "::notice::No release cut — version unchanged (${VERSION_AFTER}). Skipping promote/publish."
+            echo "RELEASED=" >> "$GITHUB_ENV"
+          else
+            echo "RELEASED=true" >> "$GITHUB_ENV"
+            echo "VERSION=${VERSION_AFTER}" >> "$GITHUB_ENV"
+            echo "Released ${VERSION_AFTER}"
+          fi
+
+      - name: Promote containers (re-tag :VERSION + :latest)
+        if: env.RELEASED == 'true'
+        run: |
+          set -euo pipefail
+          for IMAGE in scanner-bandit scanner-opengrep scanner-supply-chain cli; do
+            SRC="${IMAGE_REGISTRY}/${IMAGE}:${BUILD_TAG}"
+            docker buildx imagetools create \
+              --tag "${IMAGE_REGISTRY}/${IMAGE}:${VERSION}" \
+              --tag "${IMAGE_REGISTRY}/${IMAGE}:latest" \
+              "${SRC}"
+            echo "Promoted ${SRC} → :${VERSION}, :latest"
+          done
+
+      - name: Install cosign
+        if: env.RELEASED == 'true'
+        uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb # v3
+
+      - name: Sign images by digest
+        # Signing by digest (not tag) means the signature stays valid even
+        # if the :VERSION or :latest tag is later moved. Fails the
+        # workflow on any failure (no continue-on-error) — an unsigned
+        # release would silently break image verification in the SDK.
+        if: env.RELEASED == 'true'
+        run: |
+          set -euo pipefail
+          cosign sign --yes "${IMAGE_REGISTRY}/scanner-bandit@${SCANNER_BANDIT_DIGEST}"
+          cosign sign --yes "${IMAGE_REGISTRY}/scanner-opengrep@${SCANNER_OPENGREP_DIGEST}"
+          cosign sign --yes "${IMAGE_REGISTRY}/scanner-supply-chain@${SCANNER_SUPPLY_CHAIN_DIGEST}"
+          cosign sign --yes "${IMAGE_REGISTRY}/cli@${CLI_DIGEST}"
+          echo "All images signed by digest"
+
+      - name: Build wheel
+        # release-it has already bumped argus/__init__.py and rewritten
+        # argus/containers.py with the new digests via the after:bump
+        # hook. The wheel built here references signed, promoted images.
+        if: env.RELEASED == 'true'
+        run: |
+          pip install build pyyaml
+          python -m build
+
+      - name: Safety check
+        if: env.RELEASED == 'true'
+        run: python -m scripts.ci.check_package
+
+      - name: Smoke test
+        # ARGUS_NO_UPDATE_CHECK=1 disables the background PyPI poll
+        # daemon thread that races C-extension imports on hosted
+        # Python 3.13.13 (the suspected root cause of the SIGSEGV
+        # flake — see scripts/ci/argus_smoke.sh header). The retry
+        # helper stays as belt-and-suspenders.
+        if: env.RELEASED == 'true'
+        env:
+          ARGUS_NO_UPDATE_CHECK: "1"
+        run: |
+          pip install dist/*.whl
+          argus --version
+          scripts/ci/argus_smoke.sh
+
+      - name: Publish to PyPI
+        if: env.RELEASED == 'true'
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
+
+      - name: Summary
+        if: env.RELEASED == 'true'
+        run: |
+          {
+            echo "## Release ${VERSION}"
+            echo ""
+            echo "### PyPI"
+            echo "\`\`\`"
+            echo "pip install argus-security==${VERSION}"
+            echo "\`\`\`"
+            echo ""
+            echo "### Container Images"
+            echo "| Image | Tags |"
+            echo "|-------|------|"
+            for IMAGE in scanner-bandit scanner-opengrep scanner-supply-chain cli; do
+              echo "| ${IMAGE_REGISTRY}/${IMAGE} | ${VERSION}, latest |"
+            done
+            echo ""
+            echo "### Build artifacts"
+            echo "- Intermediate build tag: \`${BUILD_TAG}\` (will be pruned in 14 days)"
+          } >> "$GITHUB_STEP_SUMMARY"

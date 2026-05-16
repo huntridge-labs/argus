@@ -2,6 +2,8 @@
 
 Run GitHub CodeQL SAST analysis for a single language and generate reports.
 
+> **Composite-only by design.** CodeQL has no `argus.scanners.codeql` SDK module and won't get one. The CodeQL CLI's licence terms restrict use to open-source repos and GHAS-entitled private repos, the bundle is ~500MB to redistribute, and SARIF upload to the GitHub Security tab is the primary value of running it — none of which an off-platform SDK consumer can take advantage of. See [`.ai/decisions.yaml` ADR-021](../../../.ai/decisions.yaml) for the SDK-vs-composite-action boundary rule.
+
 ## Overview
 
 This composite action analyzes code for security vulnerabilities using CodeQL. Run it once per language (use a matrix for multiple languages). Results integrate with the security summary aggregator.

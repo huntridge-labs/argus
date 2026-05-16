@@ -1,7 +1,7 @@
 # Trivy Container Scanner - Reusable Workflow
 #
-# THIN WRAPPER: This workflow delegates to the scanner-container composite action.
-# All scanning logic is in: .github/actions/scanner-container/action.yml
+# Runs the Trivy container scanner via the argus Python CLI.
+# Equivalent to: python -m argus scan container --image <ref> --scanners trivy
 #
 # For GHES users: Use the composite action directly instead of this workflow.
 # See: examples/github-enterprise/container-scanning.yml
@@ -86,14 +86,51 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Run Trivy Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-container@0.7.2
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
-          image_ref: ${{ inputs.image_ref }}
-          container_name: ${{ inputs.scan_name || 'trivy-scan' }}
-          scanners: 'trivy'
-          post_pr_comment: ${{ inputs.post_pr_comment }}
-          fail_on_severity: ${{ inputs.fail_on_severity }}
-          enable_code_security: ${{ inputs.enable_code_security }}
-          registry_username: ${{ inputs.registry_username }}
-          registry_password: ${{ secrets.registry_password }}
+          python-version: '3.13'
+
+      - name: Install Argus
+        run: |
+          pip install --quiet pyyaml
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Run scan
+        run: |
+          python -m argus scan container \
+            --image "$IMAGE_REF" \
+            --scanners trivy \
+            --severity-threshold "$SEVERITY_THRESHOLD" \
+            --format terminal --format sarif --format json \
+            --output-dir ./argus-results \
+            --verbose
+        env:
+          IMAGE_REF: ${{ inputs.image_ref }}
+          SEVERITY_THRESHOLD: ${{ inputs.fail_on_severity || 'none' }}
+          REGISTRY_USERNAME: ${{ inputs.registry_username }}
+          REGISTRY_PASSWORD: ${{ secrets.registry_password }}
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: trivy-container-reports-${{ inputs.scan_name || 'trivy-scan' }}
+          path: ./argus-results/
+          retention-days: 30
+
+      - name: Upload SARIF
+        if: inputs.enable_code_security && always() && github.actor != 'nektos/act'
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
+        with:
+          sarif_file: ./argus-results/argus-results.sarif
+        continue-on-error: true
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request' && inputs.post_pr_comment
+        uses: huntridge-labs/argus/.github/actions/comment-pr@0.7.0
+        with:
+          summary_file: ./argus-results/argus-results.md
+          comment_marker: container-${{ inputs.scan_name || 'trivy-scan' }}-comment-marker
+          title: 'Trivy Container Scan Results'
+          fallback_message: 'No Trivy container results available'

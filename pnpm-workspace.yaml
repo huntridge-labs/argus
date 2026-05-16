@@ -1,0 +1,9 @@
+# pnpm 10+ denies package build scripts by default — a supply-chain
+# hardening measure that stops postinstall scripts from running unless
+# explicitly approved. Each transitive dep that wants to run a build
+# script lands here for an accept / deny decision.
+#
+# core-js-pure historically prints donation banners on postinstall and
+# doesn't need to build anything for argus's purposes. Deny.
+allowBuilds:
+  core-js-pure: false

@@ -1,7 +1,148 @@
-[tool.bandit]
-# Bandit security scanning configuration
-# Exclude internal tooling directories that are not customer-facing products
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
 
+[project]
+name = "argus-security"
+dynamic = ["version"]
+description = "Unified security scanning — SAST, containers, IaC, secrets, dependencies, and DAST from a single CLI."
+readme = "README_PYPI.md"
+license = {file = "LICENSE.md"}
+requires-python = ">=3.11"
+keywords = ["security", "scanning", "sast", "dast", "iac", "secrets", "containers", "compliance", "devsecops"]
+authors = [
+    {name = "Huntridge Labs"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+    "Typing :: Typed",
+]
+dependencies = [
+    # Floors bumped past known-CVE versions (CVE-2017-18342 was pre-6.0;
+    # 6.0.0 / 6.0.1 had stability fixes worth requiring at the floor).
+    "PyYAML>=6.0.2",
+    # Linting is a core scan capability, not optional. Tools that are
+    # themselves Python packages get bundled directly so
+    # ``argus scan lint-*`` works after a clean
+    # ``pip install argus-security`` with no extra setup. Native-binary
+    # linters (hadolint, terraform, tflint) come in via the container
+    # backend instead.
+    "yamllint>=1.35",   # lint-yaml
+    "flake8>=7.0",      # lint-python
+]
+
+[project.optional-dependencies]
+# AI classification for SCN detector (argus classify --enable-ai).
+# httpx[socks] is pulled in explicitly — anthropic + openai both
+# instantiate an httpx.Client during SDK construction, and httpx
+# only picks up a SOCKS proxy transport when the socksio package
+# is present. Developer environments with an ``ALL_PROXY``/``HTTPS_PROXY``
+# that uses ``socks5://`` would otherwise ImportError every test
+# that builds a provider object, even tests that never make an
+# actual HTTP call.
+# Floors bumped past known-CVE versions across the network-facing
+# stack. anthropic + openai keep major versions (1.x SDK floor for
+# openai; anthropic stays in 0.x). httpx[socks] bumped to close the
+# CVE-2024-* line. requests bumped past CVE-2024-35195.
+ai = [
+    "anthropic>=0.45",
+    "openai>=1.50",
+    "requests>=2.32.3",
+    "httpx[socks]>=0.27",
+]
+# Shell tab completion
+completion = ["argcomplete>=3.5"]
+# MCP server for AI assistant integration
+mcp = ["mcp>=1.10"]
+# Terminal interface for `argus view --interface=terminal`.
+# Floor bumped to 8.0 — the mouse-first interactivity work (clickable
+# Footer hints, click-to-sort headers, hover tooltips, right-click
+# context menus, link-out on CVE / file:line cells) was developed
+# against the 8.x API surface and exercises Footer.action_invoke,
+# DataTable.HeaderSelected, and Widget.tooltip support that landed
+# across the 1.x → 8.x line. See docs/view-terminal.md for the
+# mouse-interaction matrix.
+terminal = ["textual>=8.0"]
+# Browser interface for `argus view --interface=browser` (localhost web UI).
+# jinja2>=3.1.6 closes CVE-2024-56326. python-multipart>=0.0.20 closes
+# CVE-2024-53981. fastapi + uvicorn floors raised past the early-3.x
+# CVE line.
+browser = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "jinja2>=3.1.6",
+    "python-multipart>=0.0.20",
+]
+# All optional features
+all = ["argus-security[ai,completion,mcp,terminal,browser]"]
+
+[project.scripts]
+argus = "argus.cli:main"
+
+# Reporter plugin discovery. Built-in reporters are registered through the
+# same Python entry-point group third-party plugins use — see
+# ``docs/contributing-reporters.md`` for the contributor guide and ADR-023
+# for the design rationale. Any package on the user's PYTHONPATH that
+# declares ``[project.entry-points."argus.reporters"]`` is auto-discovered
+# at runtime and exposed via ``argus scan --format <name>``. Built-in
+# names always win on collision; the loader logs and skips broken plugins
+# rather than crashing the CLI.
+[project.entry-points."argus.reporters"]
+terminal = "argus.reporters.terminal:TerminalReporter"
+markdown = "argus.reporters.markdown:MarkdownReporter"
+container_markdown = "argus.reporters.container_markdown:ContainerMarkdownReporter"
+sarif = "argus.reporters.sarif:SarifReporter"
+json = "argus.reporters.json_report:JsonReporter"
+github = "argus.reporters.github:GitHubReporter"
+gitlab = "argus.reporters.gitlab:GitLabReporter"
+junit = "argus.reporters.junit:JUnitReporter"
+
+[project.urls]
+Homepage = "https://argus.huntridgelabs.com"
+Documentation = "https://huntridge-labs.github.io/argus"
+Repository = "https://github.com/huntridge-labs/argus"
+Issues = "https://github.com/huntridge-labs/argus/issues"
+Changelog = "https://github.com/huntridge-labs/argus/blob/main/CHANGELOG.md"
+
+# ── Package contents (whitelist — only these files ship) ──────────
+
+[tool.setuptools.dynamic]
+version = {attr = "argus.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["argus", "argus.*"]
+# Explicitly exclude tests, fixtures, and non-SDK code
+exclude = [
+    "argus.tests",
+    "argus.tests.*",
+    "tests",
+    "tests.*",
+]
+
+[tool.setuptools.package-data]
+# Include schema files and logo
+argus = ["../argus-config.schema.json", "../img/argus_logo.txt"]
+# Web UI templates and static assets live next to the Python package but
+# aren't .py files; setuptools won't pick them up automatically. Listing
+# them here ships them inside the built wheel.
+"argus.viewers.browser" = ["templates/*.j2", "static/*"]
+
+# ── Tool configuration ────────────────────────────────────────────
+
+[tool.bandit]
 exclude_dirs = [
     ".husky",
     ".github",
@@ -9,12 +150,6 @@ exclude_dirs = [
     "docs",
     "__pycache__",
     "venv",
-    "node_modules"
+    "node_modules",
 ]
-
-# Skip certain checks in test environments
 skips = ["B101", "B601"]
-
-# Set confidence level for reporting
-assert_used = "low"
-hardcoded_tmp_directory = "medium"

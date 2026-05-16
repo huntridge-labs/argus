@@ -526,3 +526,1697 @@ decisions:
       thresholds, ADR-008 flexible PR commenting). scanner-dependency-review
       emits a warning annotation and zero-count summary on non-PR events for
       graceful degradation.
+
+  - id: ADR-013
+    title: "Python SDK + CLI + thin CI adapters for cross-platform portability"
+    date: "2026-04-11"
+    status: accepted
+    accepted_date: "2026-04-15"
+    note: "Phases 1-2 shipped as the argus SDK; Phase 3 thin-composite migration is the active integration target. See docs/developer/SDK-ROADMAP.md."
+
+    context: |
+      Argus is tightly coupled to GitHub Actions. All 31 composite actions use
+      GitHub-specific features: $GITHUB_OUTPUT, $GITHUB_STEP_SUMMARY,
+      actions/upload-artifact, actions/github-script (PR comments),
+      github/codeql-action/upload-sarif, and github.* context variables.
+      This limits Argus to GitHub Actions only. Users want to run the same
+      security scanning pipeline in GitLab CI, Jenkins, Azure DevOps, and
+      locally on developer machines.
+
+      Analysis reveals that ~90% of scanner logic (tool installation, execution,
+      result parsing, severity counting) is already portable. Only the reporting
+      phase (Phase 4: artifacts, PR comments, step summaries, SARIF upload) is
+      GitHub-coupled. The existing Python parsers have zero GitHub dependencies.
+
+    decision: |
+      Adopt a layered architecture with four components:
+      1. Argus Core SDK (argus/core/) — Scanner protocol, result models, engine,
+         config loading. Pure Python, zero CI dependencies.
+      2. Scanner Modules (argus/scanners/) — One Python file per scanner
+         implementing the Scanner protocol. Reuses existing parse_*.py logic.
+      3. Reporters (argus/reporters/) — Output plugins per platform: terminal,
+         markdown, SARIF, JSON, GitHub, GitLab, JUnit.
+      4. CI Adapters — Thin wrappers: GitHub composite actions call
+         `argus scan` + `argus report github`; GitLab CI templates call
+         `argus scan` + `argus report gitlab`; CLI for local/Jenkins.
+
+      Migration is incremental over 4 phases:
+        Phase 1: Core SDK + CLI + 2-3 proof-of-concept scanners (no existing changes)
+        Phase 2: Port remaining scanners, build GitHub reporter
+        Phase 3: Simplify composite actions to thin wrappers (backward compatible)
+        Phase 4: Add GitLab/Jenkins reporters, publish to PyPI
+
+    alternatives_considered:
+      - name: "Dagger.io portable pipelines"
+        rejected_because: "Heavy external dependency; ADR-001 rejected external CI tools"
+
+      - name: "Docker-per-scanner containerization"
+        rejected_because: "Docker not available in air-gapped GHES; massive images; slow"
+
+      - name: "Monolithic CLI bundling everything"
+        rejected_because: "Violates scalability requirement; tribal knowledge to modify"
+
+      - name: "Rewrite in Go/Rust"
+        rejected_because: "Abandons Python investment (ADR-009); less accessible to contributors"
+
+    consequences:
+      positive:
+        - "Runs anywhere Python runs (GitHub, GitLab, Jenkins, local, Azure DevOps)"
+        - "Adding a scanner = one Python file implementing Scanner protocol"
+        - "Removing a scanner = delete file or set enabled: false in config"
+        - "Existing GitHub Actions users unaffected until Phase 3"
+        - "Phase 3 composite actions shrink from ~300 lines to ~15 lines"
+        - "Consistent with ADR-009 (Python standardization)"
+        - "argus.yml provides single configuration file for all environments"
+      negative:
+        - "Significant initial investment to build core SDK and CLI"
+        - "Two systems coexist during migration (legacy actions + SDK)"
+        - "Package distribution adds complexity (pip install, PyPI)"
+        - "Some scanners are inherently GitHub-only (dependency-review)"
+
+    implementation: |
+      See docs/developer/portability-research.md for full architecture details,
+      package structure, migration phases, and risk mitigations.
+
+  - id: ADR-014
+    title: "Docker execution backend for portable scanner execution"
+    date: "2026-04-11"
+    status: accepted
+
+    context: |
+      The argus SDK (ADR-013) decouples scanning logic from GitHub Actions,
+      but users still need 10+ scanner tools installed to run all scanners.
+      Installing trivy, grype, gitleaks, clamav, checkov, etc. on a developer
+      laptop is impractical. The SDK needs a way to run scanners without
+      requiring local tool installation.
+
+    decision: |
+      Add a Docker execution backend to ArgusEngine:
+      1. Each scanner declares its official container image (author-published)
+      2. Engine checks is_available() first (local tool), falls back to
+         docker run with volume mounts if tool not installed
+      3. Parsing always runs on host (SDK parses JSON/SARIF output from container)
+      4. Prefer official tool author images (aquasec/trivy, anchore/grype, etc.)
+      5. Only build custom images when no official image exists (bandit, opengrep,
+         supply-chain combined)
+      6. Publish all-in-one image for CI convenience
+      7. Container image versions managed via Dependabot docker ecosystem
+
+    alternatives_considered:
+      - name: "Single fat Docker image only"
+        rejected_because: "2GB+ image, slow to pull, hard to update individual tools"
+
+      - name: "Build custom images for every scanner"
+        rejected_because: "Unnecessary maintenance when official images exist"
+
+      - name: "Nix flakes for reproducible environments"
+        rejected_because: "Nix adoption barrier too high for most users"
+
+      - name: "Install tools on demand (auto pip/curl)"
+        rejected_because: "Modifies host machine, permission issues, not reproducible"
+
+    consequences:
+      positive:
+        - "Users run argus scan with zero tool installation (just Docker)"
+        - "Official images get security updates from tool authors"
+        - "Local tools preferred when available (fastest path)"
+        - "Air-gapped support via private registry + pull_policy: never"
+        - "Dependabot maintains container image versions automatically"
+      negative:
+        - "Requires Docker/Podman for container backend"
+        - "Container execution adds startup overhead vs local tools"
+        - "3 custom Dockerfiles to maintain (bandit, opengrep, supply-chain)"
+
+    implementation: |
+      argus/core/engine.py: _run_in_container() method with docker run
+      argus/core/config.py: ExecutionConfig (backend, registry, pull_policy)
+      argus/scanners/*.py: container_image property on each scanner
+      argus/containers.py: Central image manifest for version tracking
+      docker/: Dockerfiles for custom images (bandit, opengrep, supply-chain, cli)
+      .github/dependabot.yml: docker ecosystem for Dockerfile base images
+
+  - id: ADR-015
+    title: "Agentic substrate: CLI + MCP server + skill as complementary layers"
+    date: "2026-04-12"
+    status: accepted
+    accepted_date: "2026-04-20"
+    note: "argus mcp ships in 0.7.x; the slim skill at .agents/skills/argus-scanner-selection/ is published. PR #102 added the unified security_review MCP tool and cache-freshness signals."
+
+    context: |
+      AI coding assistants (Claude Code, Cursor, Windsurf, VS Code Copilot) are
+      increasingly used to drive developer workflows. Argus has a CLI and a
+      curated skill file at .agents/skills/argus-scanner-selection/. The industry
+      is converging on a three-layer pattern for AI-ready products:
+
+      1. CLI — universal fallback for humans, CI, and environments without AI
+      2. MCP server — structured execution layer with typed tools and JSON responses
+      3. Skill — lightweight routing layer that tells the agent when and how to
+         use the product, without eagerly loading tool schemas into context
+
+      Our initial analysis (April 2026) framed MCP as a replacement for skills,
+      based on valid concerns: skill files copied into projects go stale, there
+      was no universal format, and the skill duplicated logic from the engine.
+
+      External feedback and industry observation corrected this framing. The three
+      layers serve different purposes and have different context costs:
+      - MCP tool definitions are eagerly loaded into every conversation, consuming
+        token budget even when the user isn't doing security scanning.
+      - A skill acts as a deferred-loading gatekeeper: it tells the agent "reach
+        for the Argus MCP when security scanning is relevant" without loading the
+        full tool schema upfront.
+      - The staleness concern dissolves when the skill is a strategy/routing layer
+        rather than an implementation reference. A skill that says "use Argus for
+        security scanning, prefer MCP tools when available" rarely changes because
+        it describes purpose, not API surface.
+
+      Companies across the developer tooling space are shipping all three layers.
+      Skill registries like skills.sh are emerging as distribution channels.
+
+    decision: |
+      Ship all three layers as the Argus "agentic substrate":
+
+      1. CLI (existing): `argus scan`, `argus validate`, `argus init` — already done.
+      2. MCP server (new): `argus mcp` exposes typed tools (argus_scan, argus_detect,
+         argus_validate, argus_list_scanners, argus_init) returning structured JSON,
+         plus resources (argus://config, argus://results/latest).
+      3. Skill (refactor): slim the existing 300-line skill to a routing/strategy
+         layer. Move scanner selection logic and CLI syntax details into MCP tool
+         descriptions. Publish to skills.sh for discovery.
+
+      The skill tells the agent when to invoke Argus and what it's good for.
+      The MCP server handles structured execution. The CLI is the universal fallback.
+
+    alternatives_considered:
+      - name: "MCP only, deprecate skill"
+        rejected_because: |
+          MCP tool definitions eagerly load into context, consuming tokens in every
+          conversation. Without a skill as a routing layer, the agent has no
+          lightweight signal for when to reach for Argus. The skill provides
+          deferred loading — tool schemas enter context only when needed.
+
+      - name: "Skill only, no MCP"
+        rejected_because: |
+          The AI shells out to the CLI and parses unstructured terminal output,
+          losing structured information. The skill must duplicate implementation
+          details (CLI flags, output formats, scanner selection rules) that go
+          stale independently of the engine.
+
+      - name: "CLI only, no AI integration"
+        rejected_because: |
+          Leaves AI assistants to discover Argus capabilities through help text
+          and trial-and-error. No structured data exchange. Misses the growing
+          segment of developers who work primarily through AI assistants.
+
+      - name: "Generate tool-specific files for each AI tool"
+        rejected_because: |
+          As OSS, Argus should not favor one tool vendor over another.
+          Maintaining N tool-specific formats is unsustainable. MCP and skills
+          are tool-agnostic standards.
+
+    consequences:
+      positive:
+        - "Complete agentic coverage — routing (skill), execution (MCP), fallback (CLI)"
+        - "Deferred loading — MCP tools only enter context when the skill triggers them"
+        - "Structured data — AI receives typed JSON via MCP, not parsed terminal output"
+        - "Auto-updating — MCP tools ship with pip install --upgrade"
+        - "Stable skill — routing layer rarely changes, minimal staleness risk"
+        - "Tool-agnostic — MCP and skills work across Claude Code, Cursor, Windsurf, VS Code"
+        - "Discoverable — skills.sh for routing layer, MCP auto-discovery for tools"
+      negative:
+        - "Three integration surfaces to maintain (though skill is minimal, CLI exists)"
+        - "Adds MCP Python SDK as optional dependency"
+        - "Skill distribution still maturing (skills.sh is early)"
+        - "Scanner dependency story unchanged — tools still need local bins or Docker"
+
+    implementation: |
+      Phase 5 in SDK-ROADMAP.md covers both MCP and skill refactor:
+
+      MCP server:
+        argus/mcp.py — MCP server module (stdio transport)
+        argus mcp — CLI subcommand to start the server
+        Optional dependency: pip install argus-security[mcp]
+
+      Skill refactor:
+        Slim .agents/skills/argus-scanner-selection/SKILL.md to routing/strategy
+        Move implementation details into MCP tool descriptions
+        Publish to skills.sh
+
+      Depends on Phase 3 (portability) for maximum scanner coverage without Docker.
+
+  - id: ADR-016
+    title: "Wrappers must surface scanner failures, not silently report 0 findings"
+    date: "2026-04-19"
+    status: accepted
+
+    context: |
+      Pre-0.7.2 the `reusable-security-hardening` workflow's summary job and
+      the `security-summary` composite both derived an "Overall Security Score"
+      by counting SARIF findings across downloaded artifacts. This rollup
+      could not distinguish between:
+        (a) Scanner ran cleanly and found zero issues.
+        (b) Scanner failed to execute, crashed, or produced no artifact.
+
+      The medsecops-golden-path demo surfaced both cases in rapid succession
+      during the initial SDK integration — see the post-mortem conversation
+      in the golden-path repo. Each bug ended the same way: the aggregator
+      reported "✅ Excellent! No security issues detected" while a scanner
+      job had actually crashed or been skipped by configuration. A pipeline
+      that cannot distinguish success from failure cannot be trusted to gate
+      merges, which contradicts CLAUDE.md's core principle 4: "Trust is
+      everything."
+
+      Secondary issues the refactor addresses:
+      - 17 per-pattern `actions/download-artifact` steps in the reusable
+        workflow, one per scanner artifact naming convention, with
+        `continue-on-error: true` — any one silently fails without signal.
+      - `allow_failure: true` as the default: the reusable workflow ships
+        in "informational-only" mode, so a passing CI gate says nothing
+        about actual scan outcomes.
+      - `<details>` wrapping: container-scan summaries ship pre-wrapped in
+        a disclosure; the rollup wrapped them again, forcing reviewers to
+        click twice to see findings.
+      - Composites installed only `pip install pyyaml`, assuming argus-security
+        was on PYTHONPATH via side effects. A consumer pulling the composite
+        via `uses: huntridge-labs/argus/.github/actions/scanner-*@X` had no
+        reliable way to get the SDK installed.
+
+    decision: |
+      The security-summary composite is now the single aggregation surface.
+      Its contract:
+        1. Accepts an optional `scan_statuses` JSON input mapping scanner
+           name -> job result (success|failure|cancelled|skipped).
+        2. Renders a per-scanner pass/fail/skipped table at the top of the
+           report when `scan_statuses` is provided.
+        3. Exits non-zero by default when any scanner in `scan_statuses`
+           did not succeed, regardless of whether that scanner produced
+           a summary artifact. This is the defense against silent failure.
+        4. Normalizes summaries pre-wrapped in a single outer `<details>`
+           block by replacing the wrapper with a heading, eliminating the
+           two-click UX.
+
+      The reusable-security-hardening workflow:
+        1. Replaces its inline summary job with a single delegation to the
+           security-summary composite, passing `needs.*.result` for every
+           scanner as `scan_statuses`.
+        2. Drops all 17 per-pattern raw-artifact downloads; the composite's
+           single `scanner-summary-*` download is authoritative.
+        3. Flips the default `allow_failure` from `true` to `false`. Users
+           who want informational runs opt in explicitly.
+
+      Composite-action changes:
+        1. `scanner-container` and `scanner-zap` pin an explicit
+           `pip install 'argus-security>=0.7.2'` — the floor version that
+           contains the SDK fixes for socket mount, ZAP pre-pull, and
+           loud RuntimeError on scanner infra failures.
+        2. `scanner-container` uploads with `if-no-files-found: warn`
+           instead of `ignore`.
+
+    alternatives_considered:
+      - name: "Continue counting SARIF findings, just add a warning when downloads fail"
+        rejected_because: |
+          Doesn't solve the core issue: a crashed scanner with a valid-but-empty
+          SARIF looks identical to a clean scan. The verdict has to come from
+          job results, not finding counts.
+
+      - name: "Have each scanner composite emit its own block of PR comment"
+        rejected_because: |
+          PR comment spam — exactly the anti-pattern ADR-008 (post_pr_comment
+          pattern) was written to avoid. A single consolidated comment is
+          the established convention.
+
+      - name: "Keep `allow_failure: true` as default, add `strict: true` opt-in"
+        rejected_because: |
+          Asymmetric defaults bias consumers toward silent success. Given the
+          silent-failure bugs this refactor fixes, the safe default must be
+          the loud one; informational mode is the opt-in.
+
+    consequences:
+      positive:
+        - "Scanner crashes and configuration errors are visible in a single glance"
+        - "Pre-refactor false-green runs cannot silently pass post-refactor"
+        - "Reusable workflow is ~30% smaller (1162 -> 811 lines) and easier to audit"
+        - "Composites explicitly install argus-security, ending reliance on PYTHONPATH side effects"
+        - "New integration tests (24 cases) cover the silent-failure paths that previously shipped untested"
+      negative:
+        - "BREAKING: consumers of reusable-security-hardening who relied on the default informational-only behavior must pass `allow_failure: true` explicitly"
+        - "BREAKING: consumers of security-summary who want the composite to exit 0 regardless of scanner status must pass `fail_on_scanner_failure: 'false'`"
+        - "Composite action download requires one extra HTTP request per consumer run (checkout of argus repo for the aggregator step); amortized across parallel scanner jobs it is negligible"
+
+    implementation: |
+      Composite action:
+        .github/actions/security-summary/action.yml
+        .github/actions/security-summary/scripts/generate_summary.py
+      Reusable workflow:
+        .github/workflows/reusable-security-hardening.yml
+      Pinned composites:
+        .github/actions/scanner-container/action.yml
+        .github/actions/scanner-zap/action.yml
+      Tests:
+        tests/integration/test_security_summary.py  (24 test cases)
+
+    usage_examples:
+      silent_failure_guard: |
+        # In a reusable pipeline, every scanner's needs.*.result becomes a
+        # row in the aggregator's status table. A crashed scanner with no
+        # summary shows up as ❌ and the job exits non-zero.
+        security-summary:
+          needs: [scanner-codeql, scanner-opengrep, scanner-container, scanner-zap]
+          if: always()
+          steps:
+            - uses: huntridge-labs/argus/.github/actions/security-summary@0.7.2
+              with:
+                scan_statuses: |
+                  {
+                    "codeql":    "${{ needs.scanner-codeql.result }}",
+                    "opengrep":  "${{ needs.scanner-opengrep.result }}",
+                    "container": "${{ needs.scanner-container.result }}",
+                    "zap":       "${{ needs.scanner-zap.result }}"
+                  }
+
+      informational_mode: |
+        # Opt-out of blocking on scanner failures (e.g., for a canary report):
+        security-summary:
+          steps:
+            - uses: huntridge-labs/argus/.github/actions/security-summary@0.7.2
+              with:
+                fail_on_scanner_failure: 'false'
+                scan_statuses: '{"...": "..."}'
+
+  - id: ADR-017
+    title: "argus view browser — localhost-only SDK-bundled web UI, separate from argus-portal"
+    status: accepted
+    date: 2026-04-24
+    context: |
+      Owners, managers, and executives want at-a-glance insight into their
+      product's security posture without digging through CI logs, PR
+      comments, or learning a terminal UI. argus-portal (separate repo)
+      sketches a FedRAMP-oriented enterprise dashboard, but productionizing
+      it requires significant work: SARIF ingest endpoints, GitHub OAuth +
+      RBAC, MFA, audit trails, Postgres operational burden, Kubernetes
+      deployment. That is months of scope for the "I just want to look at
+      one argus-results.json" need.
+    decision: |
+      Ship argus view browser as a lightweight read-only web UI bundled with the
+      argus SDK as the ``[serve]`` optional extra. Bound to 127.0.0.1
+      only, single-user, single-scan scope. Deliberately NOT a replacement
+      for argus-portal — the portal stays on its own track aimed at
+      enterprise multi-team compliance orgs.
+
+      Technical stakes:
+        - FastAPI + Jinja2 + vanilla JS (no React or Next.js toolchain,
+          no bundler, no CDN dependencies).
+        - Reuses argus.core.findings_view (ViewState, compute_summary,
+          etc.) — same filter, sort, and summary logic as the TUI. One
+          source of truth for "high severity" and "this CVE matches."
+        - Four routes: ``/`` executive dashboard, ``/findings``
+          filterable table, ``/picker`` one-level file browser,
+          ``/healthz`` liveness.
+        - CSP + clickjacking headers on every response; Jinja2 autoescape;
+          no cookies, no sessions, no mutations, so no CSRF handling.
+        - Picker is explicitly one-level-at-a-time — no recursive walks.
+
+      Non-goals (tracked as future roadmap items):
+        - Live reload on results-file changes.
+        - Scan-over-scan diff.
+        - JSON API endpoints (external tools can read argus-results.json
+          directly today).
+        - ``--bind`` or ``--basic-auth`` — multi-user network exposure is
+          argus-portal's territory.
+    rationale: |
+      Reuses all the groundwork already shipped for argus view terminal — the
+      findings_view module was explicitly built to serve both front-ends.
+      Going localhost-only dodges the biggest sources of complexity
+      (auth, sessions, CSRF, multi-user state) while still delivering the
+      actual user need: non-engineer stakeholders can open a browser and
+      see their findings. If argus-portal matures separately, it can
+      consume the same findings_view module to keep per-finding display
+      consistent across CLI, local web, and enterprise web — no rewrite
+      needed.
+    consequences:
+      positive:
+        - "Executive-level stakeholders get a first-class surface without the argus-portal operational burden"
+        - "TUI and web view cannot drift — filter and summary logic is centralized in argus.core.findings_view"
+        - "Localhost-only default removes an entire class of auth, session, and transport-security footguns"
+        - "No CDN dependencies means argus view browser works offline, on airgapped networks, and in restricted corporate environments"
+      negative:
+        - "Users who want a team-visible deployment must set up their own reverse proxy or run argus-portal — documented as an explicit scope choice, not a bug"
+        - "Secret redaction is not serve-specific; if a finding description contains credentials from a stack trace, they appear in the CLI, TUI, JSON export, and the web UI. Will be tackled globally when the need arises"
+    related:
+      - ADR-013  # Python SDK as primary interface
+      - ADR-016  # silent-failure gating (serve inherits the same resilience posture)
+
+  - id: ADR-018
+    title: "Canonical argus-results.json + container/<name> ScanResult naming + raw output preservation"
+    status: accepted
+    date: 2026-05-05
+    context: |
+      Source-scan and container-scan flows had drifted apart. Source scans
+      always wrote a canonical argus-results.json (the JsonReporter
+      contract that argus view, argus report, and the MCP server depend
+      on). Container scans wrote a domain-shaped container-scan.json with
+      per-image counts, container_count, and scanner_errors — a different
+      shape that the viewers had no rendering path for. Reported as a
+      bug: "argus view doesn't display container vulns."
+
+      Two related gaps:
+        1. The argus-results/ directory did not preserve per-scanner raw
+           output files (trivy-results.json, grype-results.json,
+           syft-sbom.json for containers; results.json / *.sarif /
+           stdout.txt for source scans). They lived in a tempdir that was
+           wiped at scan end. Users who wanted forensics, audit trails,
+           or manual triage had nowhere to look.
+        2. Without a normalized scanner-name convention, container
+           findings rendered with a generic "container" or per-tool name,
+           breaking the viewers' per-scanner filtering and per-image
+           grouping.
+
+      All three rooted in the same architectural drift: the container
+      flow had grown its own output contract independent of the SDK's
+      core ScanSummary model.
+    decision: |
+      Three coupled changes, shipped in PR #116:
+
+      1. Canonical artifact contract is universal.
+         The container flow now builds a canonical ScanSummary alongside
+         the existing ContainerScanSummary, and the JsonReporter writes
+         argus-results.json unconditionally for both source and container
+         scans. The domain-shaped container-scan.json is preserved for
+         backward compat with downstream tooling, but argus-results.json
+         is the single source of truth that viewers/MCP/external tools
+         consume. (PR #111 originally established this for source scans;
+         PR #116 extended it to containers.)
+
+      2. Container findings surface as ScanResult rows with scanner names
+         of the form `container/<image-name>`. The viewers (terminal +
+         browser) and reporters render them through their normal
+         per-scanner code path — no container-specific rendering.
+
+      3. Raw scanner output is preserved alongside the canonical artifact
+         under <output_dir>/raw/<scanner_or_image>/, configurable via the
+         unified reporting.keep_raw key (default true) or --no-keep-raw.
+         The container flow uses scan_image(raw_output_dir=...) and the
+         source flow uses ArgusEngine.run(raw_output_dir=...). 0-byte
+         files are explicitly skipped (they're failure-signal stubs and
+         persisting them would mislead readers).
+    alternatives_considered:
+      - name: "Add container-specific rendering to argus view"
+        rejected_because: |
+          Doubles the rendering surface and forces viewers to know the
+          difference between source and container findings. Re-aligning
+          on the canonical model is cheaper and keeps the viewers
+          oblivious to scan-flow origin.
+
+      - name: "Drop container-scan.json entirely"
+        rejected_because: |
+          Existing downstream consumers (security-summary aggregator,
+          some user dashboards) parse the per-image stats. Keeping it
+          alongside the canonical artifact preserves their integrations
+          while letting new consumers depend only on argus-results.json.
+
+      - name: "Persist raw output in scanner tempdirs and require manual copy"
+        rejected_because: |
+          Tempdirs are wiped at scan end, so this just shifts the burden
+          onto users to know about and intercept transient files. The
+          opt-in --no-keep-raw flag is the correct posture for tight CI
+          environments while keeping the default helpful.
+    consequences:
+      positive:
+        - "argus view, argus report, and the MCP server work uniformly across source and container scans without scan-flow-specific code"
+        - "Per-scanner filtering and triage works for container findings via the container/<image> naming convention"
+        - "Forensics and manual triage have a stable surface area: <output_dir>/raw/<name>/ regardless of scan flow"
+        - "reporting.keep_raw is a single config knob covering both flows; --no-keep-raw is a single CLI flag"
+      negative:
+        - "Two artifact files for container scans (argus-results.json + container-scan.json) until consumers migrate; documented as transitional"
+        - "Disk usage grows by a few MB per scan when raw output is preserved (default on); --no-keep-raw is the documented opt-out for tight CI"
+    implementation: |
+      Source-scan flow:
+        argus/core/engine.py: ArgusEngine.run(raw_output_dir) and _run_in_container() copy result_files to <raw>/<scanner>/
+      Container-scan flow:
+        argus/container/scanner.py: scan_image(raw_output_dir) copies trivy/grype/syft outputs
+        argus/container/engine.py: threads _raw_output_root from config dict to scan_image
+      CLI:
+        argus/cli.py: --no-keep-raw is a top-level scan flag; both _cmd_source_scan and _cmd_container_scan honor it
+      Config:
+        argus/core/config.py: ReportingConfig.keep_raw (bool, default True) replaces the container-scoped containers.keep_raw
+      Canonical container ScanSummary:
+        argus/cli.py::_cmd_container_scan builds ScanResult(scanner=f"container/{name}", findings=combined, metadata={image_ref, build_success, scanner_errors, scan_error}); JSON + SARIF reporters consume it.
+      Tests:
+        argus/tests/test_engine.py::TestRunInContainer (source raw-output persistence)
+        argus/tests/test_container_scanner_runners.py::TestScanImageRawOutputPersistence + TestContainerCanonicalScanSummary
+    related:
+      - ADR-013  # Python SDK as primary interface
+      - ADR-014  # Docker execution backend (the source of the tempdir lifecycle)
+      - ADR-016  # Silent-failure gating (this preserves the same loud-on-failure posture in the artifact)
+    pr_references:
+      - "#111 (canonical argus-results.json contract for source scans)"
+      - "#116 (canonical contract for container scans + raw output preservation)"
+
+  - id: ADR-019
+    title: "Composite wrappers install Argus SDK from their own checkout, not from PyPI"
+    status: accepted
+    date: 2026-05-06
+    context: |
+      Composite action wrappers under .github/actions/scanner-* and
+      .github/actions/linter-* call ``argus scan`` internally and need
+      the SDK installed in their Python env. Two ways to do that:
+
+      1. ``pip install argus-security==<X>`` — pulls from PyPI, version
+         pinned by the action.
+      2. ``pip install "${{ github.action_path }}/../../.."`` — installs
+         from the composite's own checkout (the runner clones the
+         entire repo at the action's ref into ``_actions/<owner>/<repo>/<ref>/``
+         when ``uses: org/repo/path@ref`` resolves; ``github.action_path``
+         points inside that clone, and ``../../..`` walks back to the
+         repo root, which contains ``pyproject.toml`` and the
+         ``argus/`` package).
+
+      The choice has knock-on effects across release coordination,
+      version pinning, and air-gapped GHES deployments.
+    decision: |
+      Every SDK-using wrapper installs the Argus SDK from its own
+      composite checkout via:
+
+          pip install "${{ github.action_path }}/../../.."
+
+      The legacy ``pip install pyyaml`` pattern (which relied on a
+      ``bin/argus`` shim that added the repo root to ``sys.path``)
+      is removed; the shim itself is deleted in PR #126.
+
+      Wrappers that don't use the SDK (e.g. scanner-dependency-review,
+      scanner-codeql, scanner-syft, *-summary aggregators) are exempt —
+      they wrap GitHub-native or non-SDK tooling and don't need the
+      SDK in their step env.
+
+      A CI guard (``validate-install-from-source`` in
+      .github/workflows/test-actions.yml) rejects any drift back to
+      ``pip install pyyaml`` or ``pip install argus-security`` so the
+      pattern is non-regressable.
+    alternatives_considered:
+      - name: "Install from PyPI: pip install argus-security==<X>"
+        rejected_because: |
+          Couples action releases to PyPI publish: every release
+          tag has to wait for the PyPI workflow before the action's
+          install line can be bumped. Air-gapped GHES instances
+          would need a private PyPI mirror with argus-security and
+          all its deps in addition to mirroring the argus repo —
+          two distribution channels for the same artifact.
+          Consumers pinning ``@main`` would get whatever's latest
+          on PyPI (often stale) rather than the matching commit.
+
+      - name: "Bundle the SDK into a single-file PyInstaller binary in the repo"
+        rejected_because: |
+          Architecture-specific binaries break GHES heterogeneity
+          (Linux x86_64 vs ARM64 vs self-hosted Windows runners).
+          Updating dependencies requires a new binary rebuild.
+          ``pip install <path>`` reuses the runner's existing
+          Python and pip — already installed by the wrapper's
+          ``setup-python`` step.
+
+      - name: "Make the action a Docker action with the SDK preinstalled in the image"
+        rejected_because: |
+          Docker actions don't run on Windows or macOS hosted
+          runners, and on GHES the registry-pull adds latency and
+          another dependency on registry access. Composite
+          actions stay portable across all runner OSes.
+    consequences:
+      - "Action ref @<ref> implicitly pins the SDK to the same ref. No second pin to maintain."
+      - "Action releases never block on PyPI publish. Tag the repo, the action consumes it."
+      - "Air-gapped GHES setups mirror only the repo. No private PyPI mirror needed (transitive deps still need a Python package source, but that's a runner-level decision the admin already makes)."
+      - "Each runner job clones the argus repo once per action ref it uses (deduped if multiple actions share a ref). Cheap — same as any other composite action."
+      - "Removes the ``bin/argus`` shim entirely. Pip's ``[project.scripts]`` entry (``argus = \"argus.cli:main\"``) is the canonical CLI launcher for every consumer (composite wrappers, ``pip install argus-security``, ``uvx argus``, dev installs)."
+    related:
+      - ADR-001  # Composite actions as primary architecture (defends GHES portability)
+      - ADR-013  # Python SDK as primary interface
+    pr_references:
+      - "#91 (initial pattern in scanner-container and scanner-zap)"
+      - "#126 (migration of remaining 14 SDK-using wrappers + bin/argus removal)"
+
+  - id: ADR-020
+    title: "FileDiscoveryScanner template + shared linter helpers"
+    status: accepted
+    date: 2026-05-07
+    context: |
+      Linters (lint-yaml, lint-json, lint-python, lint-javascript,
+      lint-dockerfile, lint-terraform) duplicated three concerns
+      across their adapters:
+
+      * File discovery — each linter that walks files in Python
+        (HadolintLinter._find_dockerfiles, JsonlintLinter inline
+        rglob) re-implemented the walk.
+      * Container fallback — HadolintLinter._build_docker_command,
+        EslintLinter._build_docker_command, and
+        TerraformLinter._docker_command each built nearly identical
+        ``docker run -v <ws>:/workspace[:ro] <image> <args>`` shapes,
+        differing only in mount mode and workdir.
+      * UTF-8 subprocess — most linters needed
+        ``encoding='utf-8', errors='replace'`` to avoid the cp1252
+        UnicodeDecodeError on Windows runners. Each one carried it
+        inline.
+
+      The original SDK-ROADMAP.md "FileDiscoveryScanner Template"
+      section called for a unified subclass-based abstraction.
+      Reading the actual linters showed two execution shapes:
+      "tool-walks-itself" (yamllint, python_lint, eslint) and
+      "discover-then-batch" (hadolint, jsonlint). A single forced
+      hierarchy didn't fit both.
+    decision: |
+      Ship a hybrid: helper functions for the deduplication that's
+      always useful, and a base class for the cases that genuinely
+      share a flow.
+
+      argus/core/linter_template.py exports:
+
+      * ``discover_files(target, patterns, exclusions=None)`` — walk
+        helper used by FileDiscoveryScanner internally and available
+        to any custom flow (e.g. jsonlint).
+      * ``build_docker_command(image, workspace, container_args,
+        mount_rw=False, ws_mount='/workspace', workdir=None)`` — the
+        single source of truth for the docker-run command shape.
+        EslintLinter and TerraformLinter migrate to it.
+      * ``run_utf8(cmd, *, cwd=None, timeout=None)`` — explicit
+        UTF-8 subprocess wrapper. Replaces inline encoding+errors
+        keyword args.
+      * ``FileDiscoveryScanner`` — base class for the discover-then-
+        batch flow. Subclasses declare ``name``, ``file_glob``,
+        ``binary``, optionally ``container_image``, and override
+        ``_build_local_args`` / ``_build_container_args`` /
+        ``_parse_results``. The base does discovery, dispatch
+        (local-or-container), error handling (execution_failed for
+        bad exit + empty stdout, parse_failed for parser exceptions
+        — same metadata shape the engine's container path emits),
+        and the engine-compatible ScanResult shape.
+
+      Migrations in this PR:
+      * HadolintLinter — full migration to FileDiscoveryScanner
+        (~30 lines saved). Custom _find_dockerfiles and
+        _build_docker_command gone.
+      * EslintLinter — switches its custom docker-fallback builder
+        to build_docker_command (~10 lines saved); keeps its
+        config-detection flow.
+      * TerraformLinter — same. Multi-step fmt/validate/tflint flow
+        stays bespoke (it doesn't fit FileDiscoveryScanner's
+        single-batched-call shape).
+      * yamllint, python_lint, jsonlint — keep their existing flow.
+        yamllint and python_lint use the "tool walks the workspace
+        itself" shape that doesn't benefit from discovery in Python.
+        jsonlint has a Python-stdlib fallback that the
+        FileDiscoveryScanner abstraction doesn't model. The new
+        helpers are available to them if a future change makes the
+        migration valuable.
+    alternatives_considered:
+      - name: "Single FileDiscoveryScanner base, force-fit every linter"
+        rejected_because: |
+          The "tool-walks-itself" linters (yamllint, python_lint,
+          eslint) never discover files in Python — the binary takes
+          a directory. Forcing them through a discovery layer would
+          add overhead without value, and break their config-aware
+          flows (eslint's no-eslint-config detection,
+          yamllint's Windows AppLocker fallback). Multi-step linters
+          like terraform fundamentally don't match a single-batch
+          shape.
+
+      - name: "Helpers only — skip the base class"
+        rejected_because: |
+          HadolintLinter and a future jsonlint migration genuinely
+          share a 5-step flow (discover → dispatch → run → check
+          for execution failure → parse). Open-coding it in each
+          subclass duplicates the metadata-shape contract that the
+          engine, reporters, and --fail-on-scanner-error all key
+          off of. The base class makes that contract enforceable.
+
+      - name: "Co-locate the helpers in scanner_template.py"
+        rejected_because: |
+          scanner_template.py targets security scanners that write
+          findings to an output file (run_subprocess_scan reads
+          back results.json from a tempdir). Linters typically
+          write findings to stdout and don't need a tempdir. The
+          two surfaces diverged enough that a separate module is
+          clearer.
+    consequences:
+      - "New linter contributors have a clear pattern: subclass FileDiscoveryScanner for discover-then-batch, or use the helpers in a custom scan() flow."
+      - "Adding container fallback to a new linter is one helper call (build_docker_command) instead of ~25 lines of duplicated ``docker run`` boilerplate."
+      - "UTF-8 + errors='replace' is the implicit default via run_utf8 — no more per-linter forgetting to add encoding='utf-8'."
+      - "Migrations are independent and additive: yamllint / python_lint / jsonlint can adopt the helpers later if a future change makes it useful, without coupling release cycles to this refactor."
+      - "The FileDiscoveryScanner base imposes its execution_failed / parse_failed metadata shape — keeps reporters' surface uniform across linters and security scanners."
+    related:
+      - ADR-013  # Python SDK as primary interface
+      - ADR-016  # Silent-failure gating (the metadata shape this preserves)
+      - ADR-018  # Canonical scanner output contract (parallel design choice)
+    pr_references:
+      - "#117 (build_args contract for security scanners — the parallel pattern this complements)"
+      - "#120 (HadolintLinter pre-batching — the optimization this PR's base captures generically)"
+
+  - id: ADR-021
+    title: "SDK-vs-composite-action boundary: when a scanner stays composite-only"
+    status: accepted
+    date: 2026-05-08
+    context: |
+      Argus's primary contribution shape is the SDK module (an
+      argus.scanners.<name> class implementing the Scanner protocol).
+      Composite actions exist as wrappers that delegate to the SDK
+      so GitHub Actions consumers get a paved path. The default
+      assumption — captured in CONTRIBUTING.md and the SDK-first
+      framing throughout — is that every new scanner gets an SDK
+      module first, and the composite wrapper is a thin convenience
+      layer.
+
+      Two existing scanners deliberately break that pattern:
+      scanner-codeql and scanner-dependency-review have composite
+      actions but no argus.scanners.codeql / argus.scanners.dependency_review
+      modules, and the SDK-ROADMAP.md previously listed both as open
+      items waiting to get SDK ports.
+
+      Auditing those two more carefully showed neither scanner can
+      ever justify the SDK port:
+
+      * **CodeQL.** The CodeQL CLI is licence-restricted (free use
+        only for OSS or GHAS-entitled private repos), the bundle
+        is ~500MB to redistribute across architectures, and the
+        primary value of running it (SARIF upload to the GitHub
+        Security tab) only exists on github.com / GHES. An SDK
+        consumer scanning proprietary code without GHAS is on
+        questionable licence ground, and the maintenance cost of
+        tracking the bundle's release cadence is substantial.
+
+      * **Dependency-review.** The action is a thin client over
+        GitHub's GET /repos/{owner}/{repo}/dependency-graph/compare/
+        {basehead} endpoint. The intelligence is server-side; the
+        compare data only exists for repos with the Dependency
+        Graph enabled (free for public repos, GHAS for private);
+        and the comparison is meaningless outside a pull_request
+        event context. Wrapping it in the SDK would be a
+        GitHub-API client masquerading as a Scanner protocol.
+
+      Both motivated a deliberate "wontfix on SDK, ship as
+      composite-only" decision. We need that recorded so a future
+      contributor doesn't reopen #206 or a sibling issue without
+      seeing the rationale.
+    decision: |
+      A scanner stays composite-action-only (no SDK module) when
+      EITHER condition holds:
+
+      1. **GitHub-API-bound primary signal.** The scanner's main
+         output comes from a GitHub API endpoint (not from running
+         a binary against local files). It needs GITHUB_TOKEN, a
+         specific event payload, or server-side data that doesn't
+         exist off-platform. Examples: dependency-graph diff,
+         secret-scanning-alerts API, code-scanning-alerts API.
+
+      2. **Licence-restricted CLI distribution.** The scanner's CLI
+         can't be redistributed to all consumers under terms argus
+         is willing to accept on their behalf. Either the licence
+         restricts use cases (CodeQL: OSS or GHAS only), or the
+         distribution itself is encumbered (sealed bundle requiring
+         GitHub auth to download).
+
+      Either condition makes the SDK port a net negative —
+      bigger maintenance surface for a feature only some consumers
+      can legally use, with no off-platform value.
+
+      Both existing instances stay composite-only:
+
+      * .github/actions/scanner-codeql/ — keeps its current shape;
+        consumers wanting CodeQL via argus go through the action.
+      * .github/actions/scanner-dependency-review/ — same.
+
+      Neither will gain argus.scanners.codeql.py or
+      argus.scanners.dependency_review.py modules. The two
+      composite actions' README.md files carry the rationale
+      inline so a contributor browsing the action sees it before
+      filing an SDK-port issue.
+
+      CLAUDE.md's "Adding a New Scanner" section was updated with
+      a one-paragraph carve-out pointing at this ADR, so the
+      default ("SDK-first") guidance has the carve-out attached
+      to it instead of having to be discovered separately.
+    alternatives_considered:
+      - name: "Port both scanners to the SDK anyway, with disclaimers"
+        rejected_because: |
+          For CodeQL, the licence restrictions don't go away just
+          because we add a docstring. Consumers running it under
+          argus's uniform interface against proprietary code without
+          GHAS are still on the wrong side of GitHub's terms; we'd
+          be making it easier for them to get into trouble. For
+          dependency-review, the SDK port would be a single API
+          endpoint wrapper that requires GITHUB_TOKEN + base_ref +
+          head_ref to do anything — which is the composite-action
+          shape, just dressed up differently. No off-platform value
+          gained, real maintenance cost added.
+
+      - name: "Drop the composite actions too — let consumers use the upstream actions directly"
+        rejected_because: |
+          The composite wrappers add real value: uniform input
+          surface (fail_on_severity, post_pr_comment, etc.),
+          security-summary integration, the standard SARIF upload
+          + PR-comment + artifact-upload flow. Consumers using
+          actions/dependency-review-action or
+          github/codeql-action directly miss all of that. The
+          wrappers stay; the SDK ports don't happen.
+
+      - name: "Add an 'SDK-eligible' marker on every action.yml"
+        rejected_because: |
+          Over-engineering. Two scanners are composite-only today,
+          and the rule for adding more is a single sentence. A
+          paragraph in CLAUDE.md + this ADR + a callout in each
+          composite action's README is enough scaffolding. If we
+          ever have 5+ composite-only scanners we can revisit.
+    consequences:
+      - "Roadmap item ``#206 (codeql.py + dependency_review.py)`` closed: composite-only by design, never an SDK port."
+      - "Future contributors filing 'add SDK module for <X>' issues hit the boundary rule in CLAUDE.md and the per-action README before opening the issue. Reduces the chance of a partially-implemented SDK port that later gets ripped out."
+      - "Two existing composite actions are explicitly paved cowpaths, not omissions waiting to be filled in."
+      - "The rule is testable from the contributor's side: 'Does my scanner need GITHUB_TOKEN + a specific event for its primary output?' OR 'Is the CLI licence-restricted?' If yes to either, ship as composite-only."
+    related:
+      - ADR-001  # Composite actions as primary architecture (the dual-track shape this disambiguates)
+      - ADR-013  # Python SDK as primary interface (the default this carves out from)
+    pr_references:
+      - "(roadmap closure for #206 — see SDK-ROADMAP.md line 207)"
+
+  - id: ADR-022
+    title: "Pattern-based secret redaction as Finding-construction backstop"
+    status: accepted
+    date: 2026-05-08
+    context: |
+      Argus's secret-leakage commitment (documented in
+      docs/mcp.md → Secrets handling) is that no raw secret value
+      ever leaves a scanner's parser. Every consumer downstream —
+      terminal reporter, JSON / Markdown / SARIF exports, MCP tool
+      responses, the AI assistant's context window — sees only
+      ``<redacted>`` placeholders. The primary mechanism is the
+      per-scanner first-pass: each scanner that detects credential-
+      shaped content (gitleaks, bandit B105/B106/B107) audits its
+      own output and replaces secret-bearing fields before
+      constructing the Finding.
+
+      The risk is that a future scanner gets added without that
+      audit. The CONTRIBUTING.md "Adding a New Scanner" checklist
+      step 4 says to do it, the docstrings on existing parsers
+      document it, but a contributor working from a non-canonical
+      example or skipping the checklist could quietly leak secrets.
+
+      Roadmap-wise, the "Pattern-based second-pass scanner" was an
+      open Secret Redaction Hardening item with three deferral
+      reasons:
+        1. Per-scanner approach is sufficient when followed.
+        2. Pattern-based duplicates gitleaks's domain.
+        3. False-positive risk on legitimate non-secret strings.
+
+      Surface analysis showed reasons 2 and 3 only apply to a
+      *generic high-entropy* approach. A *known-vendor-prefix-only*
+      approach has a near-zero false-positive rate (vendor formats
+      are documented and stable) and doesn't try to compete with
+      gitleaks's broader pattern surface. That refined scope made
+      the safety net cheap enough to ship by default rather than
+      gated behind a flag.
+    decision: |
+      Implement a pattern-based second pass that runs in
+      ``Finding.__post_init__``, with the explicit scope:
+
+      * Patterns are limited to known-vendor-prefix tokens with
+        documented format specs. Each pattern's regex cites the
+        issuer's documentation in a source comment.
+      * Generic high-entropy heuristics are excluded. Adding one
+        requires a separate ADR with concrete false-positive data.
+      * Always-on; no opt-in flag, no env-var override. Findings
+        without a matching pattern incur zero cost (the regex
+        pass is O(text length × pattern count) and pattern count
+        is small).
+      * Applies to ``title``, ``description``, and every string
+        value in ``metadata`` (recursively through nested dicts /
+        lists / tuples). Other Finding fields (``id``, ``severity``,
+        ``location``, ``cwe``, ``cve``, ``scanner``) are
+        structural and don't carry free-form text.
+      * The placeholder is the same ``REDACTED_PLACEHOLDER``
+        constant the per-scanner first pass uses — exporters /
+        log scrapers can grep for the same token regardless of
+        which pass redacted.
+
+      Initial pattern set:
+        github_token   gh[opusr]_<36+>
+        aws_access_key (AKIA|ASIA|AIDA|AGPA|...|ACCA)<16>
+        slack_token    xox[abprs]-<10+>
+        gitlab_pat     glpat-<20+>
+        npm_token      npm_<36>
+        google_api_key AIza<35>
+        stripe_live    (sk|rk)_live_<24+>     (test keys NOT matched)
+        jwt            eyJ.<8+>.eyJ.<8+>.<8+>
+        pem_private    -----BEGIN [A-Z ]+PRIVATE KEY-----
+
+      Lives in ``argus/core/redact.py``. Adding a new pattern
+      requires (a) the issuer's documented format spec cited in
+      a source comment and (b) a positive + a negative test in
+      ``argus/tests/core/test_redact.py::TestHighRiskPatterns``.
+
+      Per-scanner first-pass remains the primary defense. The
+      backstop is for scanners that get added without the audit
+      and for vendor formats whose values reach Finding text via
+      paths the scanner author didn't enumerate (e.g., a
+      ``raw_match`` field copied into metadata for forensics).
+    alternatives_considered:
+      - name: "Generic high-entropy heuristic in addition to vendor-prefix"
+        rejected_because: |
+          False-positive rate is real. Finding bodies routinely
+          contain rule IDs, file paths, package versions, hex
+          digests, base64-encoded fingerprints, and
+          configuration snippets — many of which are 32-64 char
+          high-entropy strings with no actual secret value.
+          Tuning a Shannon-entropy threshold to suppress those
+          while catching real raw-bearing tokens is a different
+          quality of work than the prefix-based safety net, and
+          gitleaks already does it well in its primary domain.
+          We can revisit if a real leak shows the prefix-based
+          set isn't enough.
+
+      - name: "Off by default, gated by --strict-redaction or MCP-only"
+        rejected_because: |
+          The whole point of a backstop is that contributors who
+          DIDN'T audit their parser still get the safety net. An
+          opt-in defaults that group to "off" leaves the people
+          most likely to need it without it. The cost is a
+          handful of regex matches per Finding — trivial vs. the
+          cost-of-leak.
+
+      - name: "Run the pass at reporter / MCP boundary instead of Finding construction"
+        rejected_because: |
+          Multiple reporter paths and the MCP server consume
+          findings via different code paths. Putting the pass at
+          ``Finding.__post_init__`` means redaction happens once
+          at the source-of-truth boundary; downstream paths
+          can't accidentally observe pre-redacted state. Also
+          simpler to test (one assertion at the model level
+          rather than per-reporter).
+
+      - name: "Lift the per-scanner audit responsibility entirely to the backstop"
+        rejected_because: |
+          Per-scanner audits catch values that don't have
+          recognizable prefixes — raw passwords, custom auth
+          schemes, bandit's B105 ``"mypass"`` literal, gitleaks's
+          ``Match`` field with arbitrary content. The backstop
+          has nothing to grep for in those cases. Both layers
+          do necessary work.
+    consequences:
+      - "New scanner contributors get backstop redaction for free; the per-scanner audit checklist is now defence-in-depth, not the only defence."
+      - "Adding a new vendor pattern requires a documented format spec citation. Keeps the false-positive risk pinned at near-zero by raising the bar for new entries."
+      - "Findings without a matching pattern are unchanged at the byte level — no behavior drift in 99%+ of findings."
+      - "The placeholder is shared with the first pass, so consumers can't tell which pass redacted a particular value (and shouldn't need to)."
+      - "Frozen-dataclass ``Finding`` had no ``__post_init__`` before; now it does. Subclasses (none today) would need to call ``super().__post_init__()`` if they ever override."
+    related:
+      - ADR-016  # Silent-failure gating (the "make failures loud" discipline this extends to secret leakage)
+      - ADR-013  # Python SDK as primary interface (the model layer this hooks into)
+    pr_references:
+      - "(closes Secret Redaction Hardening 'open' item — see SDK-ROADMAP.md → Secret Redaction Hardening)"
+
+  - id: ADR-023
+    title: "Reporter plugin registration via Python entry-points"
+    status: accepted
+    date: 2026-05-08
+    context: |
+      Through 0.7.x, ``argus/reporters/__init__.py`` held a hardcoded
+      ``REPORTER_REGISTRY`` dict literal — every supported output
+      format had to live under ``argus/reporters/`` and be added to
+      that dict. A third party who wanted to ship
+      ``argus-reporter-slack`` or ``argus-reporter-pagerduty`` had to
+      fork and patch the registry, then keep the fork in sync with
+      every Argus release. That's a high enough barrier that nobody
+      did it.
+
+      The seven built-in reporters (``terminal``, ``markdown``,
+      ``container_markdown``, ``sarif``, ``json``, ``github``,
+      ``gitlab``, ``junit``) cover the formats Argus itself uses, but
+      the long tail (Slack, PagerDuty, Opsgenie, custom ticket
+      systems, internal dashboards) is precisely the work users want
+      to extend with — and precisely the work that doesn't belong
+      upstream. We needed a plugin extension point, and we needed it
+      cheap enough that built-ins didn't get a special-cased
+      "internal" path.
+    decision: |
+      Use Python's standard ``importlib.metadata`` entry-point
+      mechanism, with the group name ``argus.reporters``.
+
+      Built-ins are registered via the same mechanism third-party
+      plugins use — ``pyproject.toml`` declares an entry-point per
+      built-in. There is no parallel "internal" registry: one source
+      of truth, one code path, one set of failure semantics.
+
+      The loader (``argus/reporters/__init__.py``):
+
+      * Walks ``importlib.metadata.entry_points().select(group="argus.reporters")``
+        once per process and caches the result. Tests force a rebuild
+        via ``_reset_registry_cache_for_tests()``.
+      * Validates each entry-point by ``ep.load()`` then
+        ``cls()`` then ``isinstance(instance, Reporter)``. Any
+        failure logs a WARNING and skips that plugin — argus continues
+        with whatever else loaded successfully.
+      * Resolves name collisions:
+          - **Built-in vs plugin: built-in wins.** The plugin claim is
+            logged as shadowed and discarded.
+          - **Plugin vs plugin: first-wins.** ``importlib.metadata``
+            iteration order is deterministic across runs of the same
+            install set, so this is a stable resolution. The losing
+            plugin is logged.
+
+      ``REPORTER_REGISTRY`` is preserved as a thin read-only proxy
+      backed by the cached registry, so legacy
+      ``from argus.reporters import REPORTER_REGISTRY`` keeps working.
+
+      ``argus scan --format <name>`` (and the parallel ``argus report``
+      argument) is populated from ``available_reporters()`` at
+      parser-construction time, so newly-installed plugins light up
+      after a fresh ``pip install`` without an Argus release.
+    alternatives_considered:
+      - name: "Config-file scan (~/.argus/reporters.d/*.py)"
+        rejected_because: |
+          Reinvents the wheel — Python entry-points exist for exactly
+          this use case, integrate with pip / wheels / dependency
+          resolution, and don't require us to define a config schema,
+          a directory layout, a discovery order, or rules for what
+          counts as "installed." Plugin authors get versioning and
+          dependency declarations for free with pyproject.toml; a
+          config-file approach would have us re-implement all of that.
+
+      - name: "Environment-variable-driven loading (ARGUS_REPORTERS=mod1,mod2)"
+        rejected_because: |
+          Forces every consumer (CI scripts, MCP server, the
+          ``argus`` CLI) to set the variable, doesn't survive shells
+          that don't propagate the env, and gives no signal at install
+          time whether a plugin is registered. Entry-points are
+          discoverable via ``pip show`` / ``importlib.metadata`` and
+          require no runtime configuration.
+
+      - name: "Last-wins on plugin collision"
+        rejected_because: |
+          Implicit override semantics are a known footgun. If a user
+          has two plugins both registering ``slack`` and one wins
+          because it sorts later in site-packages, the user can't
+          predict which one's behavior they get without reading the
+          loader source. First-wins matches Python import precedence
+          (the first ``import`` of a name wins) and surfaces the
+          conflict via a WARNING — the user can then uninstall
+          whichever one they don't want.
+
+      - name: "Explicit override via config (reporting.reporter_overrides)"
+        rejected_because: |
+          Adds ceremony for a problem that's vanishingly rare in
+          practice (two plugins fighting over the same name) and
+          forces every user-facing config to grow a new section.
+          The first-wins + warning combination is loud enough that
+          a user encountering the conflict immediately knows what to
+          do (uninstall one) without learning a new config knob.
+
+      - name: "Hard-fail (raise) on plugin import error"
+        rejected_because: |
+          A single broken third-party reporter would break ``argus
+          list`` and ``argus scan`` for users who installed it
+          alongside other plugins. The principle here matches ADR-016
+          (silent-failure gating) inverted: argus's own defaults
+          must not become unusable because a plugin author shipped a
+          broken release. Logging at WARNING preserves the diagnostic
+          signal without taking the rest of the toolchain down.
+    consequences:
+      - "Third parties can ship ``pip install argus-reporter-<name>`` packages that auto-register at install time — no fork, no PR, no Argus release coupling."
+      - "Built-ins go through the same code path as plugins, so the loader is exercised on every CLI invocation. A regression in entry-point discovery would surface as failing reporter tests, not as a silent loss of `argus scan --format slack`."
+      - "Adding a new built-in reporter now means writing the module *and* declaring its entry-point in pyproject.toml. The latter is a one-liner, but contributors can't forget it — there's no longer a hardcoded dict to add to."
+      - "``REPORTER_REGISTRY`` remains importable for backwards compat, but it's a read-only proxy now; in-process mutation no longer works. No known consumer mutates it."
+      - "``argus scan --format`` choices are computed at parser-construction time, not import time. Plugin install → restart shell → new format works. No compile-time coupling."
+      - "A buggy plugin can't break the rest of the registry — but it *can* show up in WARNING logs, which is the diagnostic surface we want."
+    related:
+      - ADR-013  # Python SDK as primary interface
+      - ADR-016  # Silent-failure gating (this is its inverse: third-party failures stay loud-but-non-fatal)
+      - ADR-020  # FileDiscoveryScanner shared template for linters (parallel "extract a registration mechanism" play)
+    pr_references:
+      - "(closes Phase 4 — Distribution + Multi-Platform → Reporter plugin registration system; see docs/developer/SDK-ROADMAP.md)"
+
+  - id: ADR-024
+    title: "DAST scanner tuning moves to argus.yml; composite action stays minimal"
+    status: accepted
+    date: 2026-05-11
+    context: |
+      The SDK refactor between 0.6.8 and the 1.0.0 line shrank the
+      ``scanner-zap`` composite-action input surface from ~19
+      inputs to 5. The simpler contract makes the common case
+      easier and cleaner, but it dropped 14 patterns that 0.6.8
+      consumers depended on — API-spec scans, ZAP ignore-rules
+      customization, additional ZAP CLI flags, max-duration caps,
+      registry-auth for private app images, healthcheck polling,
+      build-image-as-part-of-scan flows, and a few others. The
+      regression was surfaced during the medsecops-argus-workflows
+      GHES migration audit, where every removed input had to be
+      stripped from real consumer workflows. Tracked in
+      ``docs/developer/SDK-ROADMAP.md`` under "DAST + Container
+      Scanner Parity (Post-1.0 Regressions)".
+
+      Two paths to restoration were viable:
+
+      1. Re-add the 14 inputs to ``action.yml``, returning to a
+         ~19-input pre-refactor action surface. Easy to implement,
+         keeps the action-only mental model — but creates a
+         contract bloat that biases users toward "configure
+         everything through GitHub Actions inputs" and forces
+         SDK-direct users on GitLab / Jenkins / local dev to lose
+         access to the same tuning knobs.
+
+      2. Move scanner-specific tuning into ``scanners.zap.*`` in
+         ``argus.yml`` and keep the composite-action surface
+         minimal — matching the config-passthrough pattern already
+         in use for ``container``, ``osv``, ``checkov``, and
+         ``supply-chain``. Single source of truth (the config
+         file) works for both SDK-direct and composite-action
+         users identically.
+
+      Credentials added a third complication. Registry auth (for
+      pulling a private SUT image) and web-app authentication (for
+      logging into the running target app) are different problems:
+
+      - Registry auth — ``docker pull`` credentials, used before
+        ZAP starts.
+      - Web-app auth — ZAP's own auth machinery: login URL, form
+        selectors (XPath/CSS), logged-in detection regex, session
+        management. The DOM specification is per-app and not
+        something argus can abstract cleanly without becoming a
+        leaky wrapper around ZAP's context-file format.
+
+      Neither belongs as YAML literals — ``argus.yml`` is
+      typically VCS-tracked.
+    decision: |
+      Adopt path (2): scanner-specific tuning moves to
+      ``scanners.zap.*`` in ``argus.yml``. The composite-action
+      surface stays minimal — target identification (``target_url``
+      or ``app_image_ref`` + ``app_ports``) plus the common
+      cross-scanner inputs (``fail_on_severity``,
+      ``post_pr_comment``, ``enable_code_security``).
+
+      **Disposition of each removed input:**
+
+      *Restore via config passthrough* (``scanners.zap.<key>``):
+        api_spec              — explicit URL/path for OpenAPI scans
+        rules_file            — renamed from rules_file_name; .tsv ignore-rules path
+        cmd_options           — list[str] appended to ZAP CLI verbatim
+        max_duration_minutes  — int hard cap on scan duration
+        scan_type             — already exists: baseline | full; api implicit when api_spec is set
+        healthcheck_url       — argus polls 2xx before invoking ZAP (default timeout 60s)
+
+      *Restore via env-var-referenced config* (registry auth for
+      private ``app_image_ref``):
+        scanners.zap.registry_username: "${REGISTRY_USER}"
+        scanners.zap.registry_password: "${REGISTRY_TOKEN}"
+      Reuses the existing ``container`` scanner interpolation
+      pattern. Validator warns on literal values that don't match
+      ``${...}`` at config-load time. CLI override
+      ``--registry-password-stdin`` reads the password from stdin
+      (mirrors ``docker login --password-stdin``) for ad-hoc local
+      runs where setting an env var is friction.
+
+      *Web-app authentication (V1)* — ZAP context-file passthrough:
+        scanners.zap.auth.context_file = ".zap/context.xml"
+        scanners.zap.auth.username_env = "ZAP_APP_USER"
+        scanners.zap.auth.password_env = "ZAP_APP_PASSWORD"
+      Argus mounts the context file into the container at a known
+      path and exports the named env vars; ZAP's standard
+      ``{%username%}`` / ``{%password%}`` placeholders in the
+      context file pick them up. The user owns the DOM
+      specification (login URL, form selectors via XPath/CSS,
+      logged-in regex, session management). Argus stays out of
+      that surface.
+
+      *Web-app authentication (V2, deferred)* — an argus-native
+      ``scanners.zap.auth.form`` block we'd translate into a ZAP
+      context. Defer until we have real consumer apps to validate
+      against. Abstracting the DOM is inherently leaky per-app.
+
+      *NOT restoring — intentional simplification* (these belong
+      in the consumer's pipeline, not in argus's surface):
+        app_build_context, app_dockerfile, app_image_tag — image
+          builds belong in a prior workflow step; argus accepts
+          ``app_image_ref`` (pre-built image as sidecar) or a
+          started ``target_url``.
+        compose_file, compose_build — multi-service orchestration
+          belongs in the consumer's pipeline.
+        allow_issue_writing — conflicts with the silent-failure-
+          loud principle (ADR-016); scan findings already ride
+          PR-comments, summary aggregation, and SARIF upload.
+
+      **Composite action surface after the change**
+      (``.github/actions/scanner-zap/action.yml``):
+        target_url, app_image_ref, app_ports, fail_on_severity,
+        post_pr_comment, enable_code_security.
+      Everything else lives in ``argus.yml``.
+
+      The same ``argus.yml`` shape works for SDK-direct users on
+      any CI platform (GitLab, Jenkins, Azure DevOps, local dev) —
+      parity with composite-action users, no per-platform input
+      drift.
+    alternatives_considered:
+      - name: "Re-add all 14 inputs to action.yml (path 1)"
+        rejected_because: |
+          Bloats the composite-action surface back to pre-refactor
+          levels, creates two sources of truth (action inputs vs.
+          argus.yml), and forces SDK-direct users on GitLab /
+          Jenkins / local-dev to lose access to the same tuning
+          knobs. The simpler-contract win of the original refactor
+          goes away. Also biases users toward "configure
+          everything through GitHub Actions" — argus's design
+          principle is that the SDK is the primary interface
+          (ADR-013) and composite actions are thin wrappers
+          (ADR-019).
+
+      - name: "Split: some removed inputs to action.yml, others to config"
+        rejected_because: |
+          Picking which subset goes which way is bikeshedding
+          without a principle. The principle "scanner-specific
+          tuning lives in argus.yml, common cross-scanner inputs
+          live in the composite" is clean and matches existing
+          patterns (container, osv, checkov, supply-chain).
+
+      - name: "Native argus auth block for web-app authentication (V1)"
+        rejected_because: |
+          DOM specification (form selectors, logged-in detection
+          regex, session management) is per-app and not something
+          argus can abstract cleanly. We'd either invent a narrow
+          DSL that misses real apps (custom JS auth flows, SAML
+          redirects, MFA screens, refresh-token rotation) or
+          expose so many knobs that we're re-implementing ZAP's
+          context-file format with worse tooling. Context-file
+          passthrough lets users author auth in ZAP's native
+          language with ZAP's existing tooling (the ZAP GUI can
+          record auth flows and emit context files). A V2 native
+          block remains on the table if real demand surfaces.
+
+      - name: "Plaintext credentials in argus.yml"
+        rejected_because: |
+          ``argus.yml`` is typically VCS-tracked. Plaintext
+          credentials there would be a baseline security violation
+          and would force every team to add it to .gitignore (or
+          accept the leak). Env-var interpolation
+          (``${REGISTRY_PASSWORD}``) plus the
+          ``--registry-password-stdin`` CLI flag covers both CI
+          (env var set by the runner) and ad-hoc local scans
+          (stdin pipe). Validator-side rejection of literals turns
+          the rule into a config-load-time error, not a runtime
+          regret.
+
+      - name: "Restore allow_issue_writing"
+        rejected_because: |
+          GitHub Issues from scan findings creates noise that
+          competes with the existing surfaces (PR comments,
+          summary aggregation, SARIF in the Security tab) and
+          conflicts with the silent-failure-loud principle
+          (ADR-016). The signal users need ("did this scan fail or
+          pass") rides those existing channels. Adding issue
+          writing reopens a question (which findings warrant an
+          issue, who owns the issue, how does it get closed) that
+          we're better off staying out of.
+
+      - name: "Restore the build-image-as-part-of-scan flows"
+        rejected_because: |
+          ``app_build_context`` + ``app_dockerfile`` +
+          ``app_image_tag`` (and ``compose_file`` +
+          ``compose_build``) embed image-build orchestration into
+          the scanner's responsibility. That's a CI-pipeline
+          concern with well-established patterns in every CI
+          platform (``docker build``, ``docker compose up``,
+          ``buildx``). Consumers retain full control by running
+          those steps before invoking argus and passing the
+          resulting ``app_image_ref`` or ``target_url``. Argus
+          stays focused on scanning, not on image lifecycle.
+    consequences:
+      - "SDK-direct users on GitLab, Jenkins, Azure DevOps, or local dev get parity with composite-action users — same scanner tuning, same config file, same behavior."
+      - "Composite-action surface stays small: scanner-zap action.yml keeps target identification and common cross-scanner inputs, nothing else. Easier for new users to read."
+      - "Migrating from 0.6.8 inputs to 1.x config is a one-time YAML rewrite — move scanner-specific tuning from `with:` blocks into `argus.yml`. A side-by-side migration guide ships with the implementation PR."
+      - "Web-app authentication remains a ZAP-native concern in V1. Users with HTTP basic-auth or static-header setups can already configure those via ``cmd_options`` + env vars; users with form-based auth use a ZAP context file (the path the ZAP team itself recommends)."
+      - "Adding scanner-zap configuration knobs in the future means editing ``scanners.zap.*`` in the config schema, not adding action.yml inputs. The composite-action surface stays stable across releases."
+      - "Validator-enforced env-var interpolation for credentials prevents accidental literal-password commits at config-load time. Users who try to commit ``registry_password: hunter2`` get a warning before the scan starts, not after the secret hits VCS."
+      - "Three credential surfaces are now distinct and documented: registry creds (env-var-referenced YAML), web-app creds (ZAP context-file + env-var-named-references), and CLI-stdin (ad-hoc override). Each has a clear use case and none overlap."
+    related:
+      - ADR-001  # Composite actions as primary architecture (this preserves the composite surface for what it's good at)
+      - ADR-013  # Python SDK as primary interface (the config-file path this leans into)
+      - ADR-016  # Silent-failure gating (rationale for not restoring allow_issue_writing)
+      - ADR-019  # Install-from-source pattern (the composite-action thinness this preserves)
+    pr_references:
+      - "(addresses DAST + Container Scanner Parity → scanner-zap target setup parity; see docs/developer/SDK-ROADMAP.md)"
+
+  - id: ADR-025
+    title: "OS-image inspection: in-container scope only; offline VM-image scanning is out of scope"
+    status: accepted
+    date: 2026-05-13
+    context: |
+      Two adjacent but materially different problem shapes get
+      conflated in user requests for "OS image scanning":
+
+      1) **OS as a container artifact.** A team ships their OS as
+         a container image — sometimes a stock base image
+         (``ubuntu:24.04``, ``alpine:3.19``, ``redhat/ubi9``),
+         sometimes a multi-service / systemd-in-container bundle
+         that runs as a workload. The container artifact itself
+         is what the scanner has access to: an OCI manifest, a
+         layered filesystem, plus the ``docker inspect`` view of
+         declared config.
+
+      2) **Offline VM images.** AWS AMIs, Azure VHDs, GCP disk
+         images, on-prem VMware OVA/VMDK, ISO files, raw disk
+         dumps, rootfs tarballs. The artifact is a bootable disk;
+         "scanning" requires mounting the filesystem (libguestfs
+         /``virt-customize`` / ``virt-inspect``), booting the
+         image in a sandbox VM, or hitting a cloud-provider API
+         (AWS Inspector v2, Azure Defender for Cloud, GCP Security
+         Command Center).
+
+      These two map to very different operational models:
+
+      - argus's container path: 5–60s scan latency, no extra host
+        deps beyond Docker / Podman / nerdctl, works the same on
+        Linux / macOS / WSL.
+      - Offline VM inspection via libguestfs: minutes-to-tens-of-
+        minutes per image, hundreds of MB of host install
+        (libguestfs ships its own guest kernel), Linux-only host,
+        requires root or libvirt group membership.
+
+      The user-research insight that prompted this ADR: when teams
+      say "we want argus to scan our OS," they almost always mean
+      flavor (1) — they've already containerized the OS image
+      because that's what their deploy pipeline produces and that's
+      what they can hand the scanner. The libguestfs / AMI /
+      VMDK case is a different audience (golden-AMI Packer
+      pipelines, FedRAMP infrastructure teams) with a different
+      operational shape.
+    decision: |
+      Split the OS-image problem into two roadmap entries with
+      explicit, opposite scope decisions:
+
+      **(A) In scope: extend the container scanner with a
+      ``services`` sub-scanner.** Walks systemd unit files
+      (``/etc/systemd/system/*.service``,
+      ``/lib/systemd/system/*.service``), SysV init scripts
+      (``/etc/init.d/*``), and common service configs
+      (``sshd_config``, ``postgresql.conf``, ``pg_hba.conf``,
+      ``nginx.conf``, etc.) **inside the container image's
+      filesystem**. Emits one ``Finding`` per service the image
+      would launch on boot, with severity INFO by default and
+      MEDIUM for services on a risky-default watchlist (sshd,
+      postgresql with ``trust`` auth, redis without password,
+      etc.). Same operational shape as the existing ``exposure``
+      sub-scanner (one ``docker run`` + filesystem walk + parse);
+      no new host dependencies; sits alongside trivy / grype /
+      syft / exposure in the existing
+      ``argus/scanners/container.py`` sub-scanner loop. Scoping
+      details, watchlist sources, and config knobs land as their
+      own actionable roadmap entry; this ADR commits to the
+      direction.
+
+      **(B) Out of scope: offline VM-image inspection.** Argus
+      will not ship libguestfs-based scanning, KVM/QEMU
+      boot-and-inspect, or per-cloud-provider AMI integrations.
+      Users with these needs are pointed at purpose-built tools:
+
+        - **OpenSCAP + ``oscap-vm`` / ``oscap-docker``** — offline
+          mount + scan, STIG/CIS profiles, mature SCAP/OVAL
+          tooling.
+        - **AWS Inspector v2** — first-class AMI scanning,
+          server-side, no install.
+        - **Azure Defender for Cloud / GCP Security Command
+          Center** — cloud-native equivalents.
+        - **CIS-CAT** — CIS benchmark scanner (commercial tier
+          for production use).
+        - **Lynis** — lighter offline audit, runs against a
+          mounted root filesystem.
+
+      The documentation pointer lives in ``docs/security.md``
+      (or a new ``docs/scanners.md`` "what argus doesn't cover"
+      section) so users land on a clear redirect instead of
+      filing issues asking why argus doesn't scan their AMI.
+
+      Why this split: argus's identity stays "source-code +
+      container artifacts," but expands naturally to cover the
+      OS-as-container case that most modern deploy pipelines
+      actually produce. The offline VM case is genuinely a
+      different product shape (operational profile, host
+      requirements, audience) — declaring it out of scope is
+      more honest than half-implementing it.
+    alternatives_considered:
+      - name: "Wrap OpenSCAP via libguestfs as an argus-native OS-image scanner"
+        rejected_because: |
+          Adds a hundreds-of-MB libguestfs install to argus's
+          host requirements, restricts argus to Linux-only on
+          the host (currently Linux / macOS / WSL), and pushes
+          scan latency from seconds into tens of minutes. The
+          operational profile fundamentally doesn't match
+          argus's PR-CI / dev-loop posture. OpenSCAP is also
+          already well-documented and widely used for this exact
+          purpose; argus wrapping it would not differentiate.
+
+      - name: "Add per-cloud-provider integrations (AWS Inspector v2, Azure Defender, GCP SCC)"
+        rejected_because: |
+          Each integration is its own API surface, auth model,
+          and rate-limit story. Argus's strength is "same
+          config, same output, anywhere"; bolting on per-cloud
+          integrations would split that promise. The cloud-native
+          scanners are also positioned closer to the asset they
+          inspect (running server-side) than argus could ever be.
+
+      - name: "Defer the OS-image research item indefinitely"
+        rejected_because: |
+          Leaves a "decision pending" rotting in the roadmap and
+          gives users no documentation pointer when they ask why
+          argus doesn't scan their AMI. The out-of-scope answer
+          + documentation pointer accomplishes the same
+          "don't build it" outcome with a useful redirect; ADRs
+          aren't terminal — if real demand surfaces from the
+          golden-AMI cohort later, we can revisit with concrete
+          data.
+
+      - name: "Argus-native ``services`` sub-scanner that ALSO handles offline VM images"
+        rejected_because: |
+          Tempting because it would be a "single answer" — but
+          the two cases share almost no code. Container
+          filesystems are layered, accessible via standard tools
+          we already use. VM disk images need libguestfs to mount
+          or KVM to boot; nothing about that code reuses with the
+          container path. Combining them creates a heavier
+          dependency footprint for users who only need (A).
+    consequences:
+      - "Container scanner gets a natural follow-up extension (the ``services`` sub-scanner) that addresses the common OS-as-container case without operational profile changes. Same Docker requirement, same scan latency, same cross-platform host story."
+      - "Users with offline AMI / VMDK / ISO needs get a clear, documented redirect to the right tool for their case. No more issues asking ``why doesn't argus scan my Packer-built AMI?``"
+      - "Argus's identity stays focused. We don't accidentally drift into infrastructure-scanning territory where cloud-native and purpose-built tools are far better positioned."
+      - "Future revisitability is preserved: if a cohort of golden-AMI / Packer-pipeline customers emerges with concrete use cases that genuinely don't fit OpenSCAP / AWS Inspector, we can revisit (B). ADRs aren't terminal."
+      - "The roadmap research item resolves cleanly into one actionable scope (``services`` sub-scanner) and one explicit non-goal (offline VM-image scanning), instead of a vague open question."
+    related:
+      - ADR-013  # Python SDK as primary interface (the operational profile this preserves)
+      - ADR-024  # DAST scanner tuning moves to argus.yml (same posture: scanner-specific in config, action surface minimal)
+    pr_references:
+      - "(splits the OS image port enumeration research item in docs/developer/SDK-ROADMAP.md → Attack Surface Visibility)"
+
+  - id: ADR-026
+    title: "Architecture map derived from .ai/architecture.yaml; no parallel JSON source"
+    date: "2026-05-15"
+    status: accepted
+
+    context: |
+      The SDK ships an interactive architecture-map page (column
+      layout × flow-rail × per-node side panel) that needs to be
+      consumed by two surfaces: the docsite build (writes
+      ``docs/architecture.md`` inlined inside MkDocs Material) and
+      the MCP server (``argus://architecture`` resource). Each
+      surface needs the same diagram data in JSON shape. The naive
+      answer is a hand-edited ``architecture.json`` next to
+      ``.ai/architecture.yaml`` that all consumers read. That
+      answer is wrong.
+
+      (Historical note: an earlier revision of this work shipped
+      the page through a third surface — a ``/architecture`` route
+      on the FastAPI viewer. That route was retired and the page
+      consolidated into the docs site so the scan-results viewer
+      stays narrowly scoped to scan results. The decision below is
+      unchanged by that consolidation: it covers the shape of the
+      derived view model, not the count of consumers.)
+
+      AICaC already declares a schema (``aicac.dev/schema/v1``) for
+      ``.ai/architecture.yaml`` covering the components, scanners,
+      data_flow, and dependency surfaces the diagram renders.
+      Inventing a parallel argus-local JSON contract for the same
+      facts doubles the drift surface: every YAML edit needs a JSON
+      mirror edit, and a single missed mirror produces a silent
+      discrepancy.
+
+    decision: |
+      ``.ai/architecture.yaml`` is the only source of truth. The
+      JSON the MCP server returns and the JSON the HTML page
+      hydrates from are **derived view models** computed at build
+      time — pure functions of the YAML plus runtime SDK
+      introspection (``argus.scanners.SCANNER_REGISTRY``,
+      ``argus.linters.LINTER_REGISTRY``, the ``argus.reporters``
+      entry-point group, the argparse subcommand list). No file
+      shaped like ``architecture.json`` is checked into the repo.
+
+      The transformer is ``scripts/docsite/architecture.py::
+      build_view_model(...)``. It exports one pure function. All
+      three consumers call it; none fork the projection logic.
+
+    alternatives_considered:
+      - name: "Hand-edited architecture.json next to architecture.yaml"
+        rejected_because: |
+          Doubles the drift surface. Every YAML edit needs a
+          mirroring JSON edit; a missed mirror produces a silent
+          divergence between what the YAML says and what the
+          diagram shows. AICaC already has its own schema —
+          inventing a second one is non-orthogonal.
+
+      - name: "Fork the projection per consumer (docsite-specific, MCP-specific)"
+        rejected_because: |
+          Near-identical transformers diverge over time. The MCP
+          resource and the docsite-build HTML hydration can't drift
+          in their JSON shape — the MCP contract test is
+          "byte-identical to what the docsite inlined."
+
+      - name: "Ship a python-generated YAML mirror"
+        rejected_because: |
+          Same drift surface as a JSON mirror, with a worse story
+          for IDE / schema validation. AICaC YAML stays canonical.
+
+    consequences:
+      positive:
+        - "Adding a scanner under .ai/architecture.yaml + argus/scanners/ makes it appear on both surfaces (docsite page + MCP resource) with no further edits."
+        - "The CI source-of-truth check (scripts/ci/check_architecture_sync.py) enforces the registry → YAML half of the contract by introspecting the running SDK."
+        - "AI agents picking up Argus work read the same JSON the docsite renders, so their mental model can't drift from what humans see."
+        - "Reviewers can reject any PR that adds an ``architecture.json``-shaped file."
+      negative:
+        - "Adding a fundamentally new entity to the diagram (a brand-new column, a new node-kind) means a transformer code edit, not just a YAML edit. The transformer is the only place node-shape evolves."
+        - "Docsite build computes the view model once at build time (~70 nodes, ~70 edges, <50ms locally); the MCP resource lazy-builds on first read and caches in the running server process."
+
+    implementation: |
+      - Transformer: scripts/docsite/architecture.py (canonical
+        location); argus/architecture_map.py shim re-exports for
+        runtime consumers in the installed package (MCP).
+      - Two consumers:
+          docsite build → scripts/docsite/builder.py calls
+              render_inline_markdown(view_model, docs_out)
+              (writes docs/architecture.md inlined inside MkDocs
+              Material; copies architecture.{css,js} to docs/assets/)
+          MCP server → argus/mcp.py @mcp.resource("argus://architecture")
+      - CI gate: scripts/ci/check_architecture_sync.py runs in
+        .github/workflows/test-unit.yml on every push / PR.
+      - Tests: scripts/docsite/tests/test_architecture.py covers
+        determinism, registry coverage, flow node-ID resolution,
+        ADR cross-reference, scanner-snippet roundtrip.
+
+    related:
+      - ADR-018  # canonical argus-results.json — same "single derived shape, many consumers" pattern
+      - ADR-023  # reporter entry-points — same "registry as source of truth" pattern
+    pr_references:
+      - "(introduces scripts/docsite/architecture.py, argus/architecture_map.py, the argus://architecture MCP resource, and the CI check; the docs-site integration of the page lives in scripts/docsite/architecture.py::render_inline_markdown)"
+
+  - id: ADR-027
+    title: "Build-once-promote-everywhere release pipeline in a single release.yml job"
+    date: "2026-05-16"
+    status: accepted
+
+    context: |
+      Pre-1.0.0 the release pipeline was split across two workflows:
+      ``release.yml`` ran release-it (bump + tag + push), then a
+      tag-triggered ``publish-release.yml`` built container images and
+      published the wheel to PyPI. Three problems with that shape:
+
+      1. The wheel referenced container tags that didn't exist yet —
+         a brief window where ``pip install argus-security==X.Y.Z``
+         succeeded but ``docker pull ghcr.io/.../scanner-bandit:X.Y.Z``
+         returned 404.
+      2. ``argus/containers.py`` could not SHA-pin Argus-owned images
+         because the regex-bumper stripped any ``@sha256:`` tail when
+         the version segment changed. The cosign-verify path covered
+         it for runtime, but the image content was not bound to a
+         specific digest in the wheel — Renovate-style content
+         addressing was off for the things WE ship.
+      3. Two workflows chained via ``workflow_run`` / ``on: push tags``
+         meant cross-workflow state was implicit (the tag); failure
+         recovery required understanding both pipelines and a tag
+         glob mismatch (``v*`` vs the bare-semver tags release-it
+         produces) silently broke the chain.
+
+    decision: |
+      Collapse the entire lifecycle into a single ``release`` job in
+      ``.github/workflows/release.yml``:
+
+        tests → build 4 multi-arch images → push :build-<sha>-<run>
+            → capture sha256: digests in $GITHUB_ENV
+            → release-it bump + after:bump hook pins <version>@sha256:<digest>
+            → release-it commit + tag + push
+            → buildx imagetools re-tag :<VERSION> + :latest
+            → cosign sign by digest
+            → build wheel, smoke test, publish to PyPI (OIDC)
+
+      A parallel ``dry-run`` job continues to render release-it
+      previews on every push to main and on ``workflow_dispatch
+      dryRun=true``.
+
+      Two supporting pieces:
+
+      - ``scripts/release_it/inject_image_digests.py`` — release-it
+        ``after:bump`` hook that reads ``ARGUS_DIGEST_<NAME>`` env vars
+        set by the build step and rewrites each Argus-owned line in
+        ``argus/containers.py`` with ``<version>@sha256:<digest>``.
+        The regex-bumper rule for ``containers.py`` was tightened
+        from ``[^"]+`` to ``[^"@]+`` so it bumps only the version
+        segment and leaves the ``@sha256:`` tail to the hook.
+
+      - ``.github/workflows/ghcr-prune.yml`` (+ ``scripts/ci/prune_ghcr_tags.py``) —
+        nightly cleanup keeps anything matching semver
+        (``\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?``) and ``latest`` forever;
+        anything else (build-id tags, future PR previews) ages out
+        after 14 days. The release pipeline can push throwaway
+        ``:build-<sha>`` tags freely without registry-bloat anxiety.
+
+    alternatives:
+      - name: "Keep two workflows, fix tag-prefix glob (v* vs bare semver) and add SHA injection"
+        rejected_because: |
+          Fixes the chain-break symptom but keeps the implicit
+          state (tag-as-baton). Workflow_run-style chaining means
+          failure mid-publish leaves the system in an in-between
+          state that's awkward to recover from: tag exists, wheel
+          doesn't, images half-published. Cross-workflow
+          observability is poor.
+
+      - name: "Three jobs in release.yml (build-containers → release → publish/promote)"
+        rejected_because: |
+          Closer to the right shape but pays for cross-job state
+          passing (job outputs for digests, fresh checkouts in
+          each job, an extra environment-gate per protected job).
+          Most of that orchestration overhead vanishes when the
+          steps live in one job. Drives the design intent — the
+          release IS one logical operation — into the workflow
+          file.
+
+      - name: "Build containers in a separate continuous-integration workflow on every push, release.yml just promotes by digest"
+        rejected_because: |
+          Decouples image age from release timing in a way that
+          quietly drifts the "what shipped" story: the version
+          tag points at a digest that was built minutes-to-days
+          earlier, with no enforcement that the build came from
+          the same commit release-it just tagged. Easier to wire,
+          harder to audit. Single-job ordering makes the
+          source-commit-to-published-digest chain explicit.
+
+    consequences:
+      positive:
+        - "PyPI wheel never references unsigned or non-existent images — order of operations puts every image at its final tag and signed before the wheel publishes."
+        - "argus/containers.py is digest-pinned end-to-end. Renovate/Docker enforce content-address match for third-party images; the after:bump hook does the same for Argus-owned images."
+        - "Failure semantics: build fails → nothing public. release-it skips (no commits warrant a release) → no PyPI publish, no tag promotion; the :build-<sha> tags become orphans cleaned by prune."
+        - "Cosign signing has no continue-on-error escape hatch — sign failure fails the release loudly."
+        - "Tag-prefix mismatch class of bug is gone — no second workflow needs to glob the tag release-it produced."
+
+      negative:
+        - "Adding a new Argus-owned image touches three places in release.yml (build matrix, sign step) plus the prune package list and the regex-bumper rule. The after:bump hook adapts automatically via the ARGUS_DIGEST_<NAME> convention — no code change there. Trade-off accepted as the cost of explicit step ordering."
+        - "Single job means the ``prod`` environment gate covers the whole pipeline, not just the tag-push step. Approving the gate approves the whole chain through PyPI publish — there's no second confirmation between sign and publish. Mitigation: the dry-run job runs in parallel as a preview on every push."
+        - "Every push to main with non-chore-release commits runs the multi-arch container build (~10 min) even when no commits warrant a release. The orphan :build-<sha> tags get pruned, but the CI minutes are spent. Acceptable for the typical Argus push cadence; revisit if push volume explodes."
+
+    implementation: |
+      - .github/workflows/release.yml — single ``release`` job + parallel ``dry-run`` job
+      - .github/workflows/ghcr-prune.yml — nightly cron, manual workflow_dispatch with dryRun toggle
+      - .release-it.json — after:bump hook registration + tightened containers.py regex-bumper rule
+      - scripts/release_it/inject_image_digests.py — the hook
+      - scripts/ci/prune_ghcr_tags.py — semver-aware GHCR cleanup
+      - argus/core/image_verify.py — ARGUS_CERT_IDENTITY_REGEXP now matches release.yml (previously publish-release.yml)
+      - docs/developer/release-management.md — updated overview + pipeline flow + security integration sections
+      - docs/developer/container-lifecycle.md — updated Release Process + Adding a New Custom Image sections
+
+    related:
+      - ADR-014  # Prefer official tool images — third-party images stay SHA-pinned via Renovate
+      - ADR-019  # Install-from-source pattern — composite-action consumers track @VERSION refs already managed by release-it
+    pr_references:
+      - "(introduces the build-once-promote pipeline; replaces .github/workflows/publish-release.yml; adds the after:bump digest-injection hook and the nightly ghcr-prune workflow)"

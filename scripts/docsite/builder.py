@@ -22,33 +22,248 @@ from .parsers import parse_workflow_meta
 
 # ─── Custom CSS ──────────────────────────────────────────────────────────────
 
-CUSTOM_CSS = (
-    ".md-header__topic {\n"
-    "  height: 48px;\n"
-    "  display: flex;\n"
-    "  align-items: center;\n"
-    "}\n"
-    ".md-header__topic:first-child .md-ellipsis {\n"
-    "  display: flex;\n"
-    "  flex-direction: column;\n"
-    "  line-height: 1.2;\n"
-    "}\n"
-    ".md-header__topic:first-child .md-ellipsis::after {\n"
-    '  content: "Perception is Protection";\n'
-    "  font-size: 0.55em;\n"
-    "  opacity: 0.6;\n"
-    "  font-weight: 400;\n"
-    "  letter-spacing: 0.05em;\n"
-    "}\n"
-)
+CUSTOM_CSS = """\
+/* Argus theme for the MkDocs Material docs site.
+ *
+ * Mirrors the palette / type stack used by argus.huntridgelabs.com
+ * and the SDK's local viewers (argus view browser, the architecture
+ * map) so the whole product line feels like one surface. Brand tokens
+ * (``--argus-*``) match those in ``argus/viewers/browser/static/argus.css``;
+ * Material's own variables (``--md-*``) point at them so all built-in
+ * chrome — header, nav, links, code blocks, admonitions, footer —
+ * picks up the theme without bespoke selectors per component.
+ */
+
+/* ─── Argus brand tokens ─────────────────────────────────────────────── */
+
+:root {
+  --argus-deep-bg:       #0b0f0d;
+  --argus-dark-surface:  #111916;
+  --argus-subtle-panel:  #16211c;
+  --argus-primary-green: #84b852;
+  --argus-accent-lime:   #dbe64c;
+  --argus-light-text:    #eaf2ea;
+  --argus-muted-text:    #9fb09f;
+  --argus-border:        #1f2a22;
+  --argus-on-accent:     #0b0f0d;
+}
+
+/* Light-theme overrides — kick in when Material's default scheme is
+ * active (``[data-md-color-scheme="default"]``). Same hex pairs the
+ * SDK's argus.css uses so the brand reads the same whichever scheme
+ * the user is in. */
+[data-md-color-scheme="default"] {
+  --argus-deep-bg:       #f5f7f0;
+  --argus-dark-surface:  #ffffff;
+  --argus-subtle-panel:  #eef1e8;
+  --argus-primary-green: #4a7a2e;
+  --argus-accent-lime:   #c4d421;
+  --argus-light-text:    #1a2118;
+  --argus-muted-text:    #5d6b58;
+  --argus-border:        #c8d1ba;
+  --argus-on-accent:     #0b0f0d;
+
+  /* Text accent — used for links and inline ``code`` in body copy.
+   * The light-theme lime (``#c4d421``) is too pale for body text;
+   * the darker forest green (``--argus-primary-green``) reads cleanly
+   * against the cream background while keeping the brand feel. Lime
+   * stays in play for solid-colour CTAs (buttons, badges) where
+   * white-on-lime has good contrast. */
+  --argus-text-accent:   var(--argus-primary-green);
+}
+
+/* In dark mode, the bright lime IS the text accent — there's no
+ * contrast issue against the deep background. Default the variable
+ * to the lime so the rules below stay scheme-agnostic. */
+[data-md-color-scheme="slate"] {
+  --argus-text-accent:   var(--argus-accent-lime);
+}
+
+/* Short aliases — the SDK's ``argus.css`` defines these as shortcuts
+ * over the brand tokens (``--surface``, ``--fg``, ``--accent``, …)
+ * and the architecture page's CSS uses them by name (e.g.
+ * ``background: var(--surface)``). The docs site no longer loads
+ * ``argus.css``, so without these aliases the architecture chrome
+ * renders without a background — the floating panel reads as
+ * see-through. Provide the aliases here so the architecture CSS
+ * resolves to the right tokens in both schemes. */
+[data-md-color-scheme="slate"],
+[data-md-color-scheme="default"] {
+  --bg:          var(--argus-deep-bg);
+  --surface:     var(--argus-dark-surface);
+  --surface-alt: var(--argus-subtle-panel);
+  --border:      var(--argus-border);
+  --fg:          var(--argus-light-text);
+  --fg-muted:    var(--argus-muted-text);
+  --accent:      var(--argus-accent-lime);
+  --accent-dim:  var(--argus-primary-green);
+}
+
+/* ─── Map Argus tokens onto Material's variables ─────────────────────── */
+
+[data-md-color-scheme="slate"],
+[data-md-color-scheme="default"] {
+  /* Page chrome */
+  --md-default-bg-color:           var(--argus-deep-bg);
+  --md-default-fg-color:           var(--argus-light-text);
+  --md-default-fg-color--light:    var(--argus-muted-text);
+  --md-default-fg-color--lighter:  rgba(159, 176, 159, 0.5);
+  --md-default-fg-color--lightest: rgba(159, 176, 159, 0.2);
+
+  /* Header / footer / primary surfaces */
+  --md-primary-fg-color:           var(--argus-dark-surface);
+  --md-primary-fg-color--light:    var(--argus-subtle-panel);
+  --md-primary-fg-color--dark:     var(--argus-deep-bg);
+  --md-primary-bg-color:           var(--argus-light-text);
+  --md-primary-bg-color--light:    var(--argus-muted-text);
+
+  /* Accents — links, focus rings, the search-icon highlight. Lime
+   * for solid-colour UI surfaces (focus rings stay punchy); link /
+   * inline text uses ``--argus-text-accent`` for readable contrast
+   * in both schemes. */
+  --md-accent-fg-color:            var(--argus-accent-lime);
+  --md-accent-fg-color--transparent: rgba(219, 230, 76, 0.12);
+  --md-accent-bg-color:            var(--argus-on-accent);
+
+  /* Content typography */
+  --md-typeset-color:              var(--argus-light-text);
+  --md-typeset-a-color:            var(--argus-text-accent);
+
+  /* Code blocks */
+  --md-code-bg-color:              var(--argus-subtle-panel);
+  --md-code-fg-color:              var(--argus-light-text);
+  --md-code-hl-color:              rgba(219, 230, 76, 0.18);
+
+  /* Tables */
+  --md-table-row-border-color:     var(--argus-border);
+
+  /* Admonitions inherit accent, so this is enough */
+  --md-admonition-bg-color:        var(--argus-subtle-panel);
+  --md-admonition-fg-color:        var(--argus-light-text);
+}
+
+/* ─── Header tweaks ──────────────────────────────────────────────────── */
+
+.md-header {
+  background: var(--argus-dark-surface);
+  border-bottom: 1px solid var(--argus-border);
+  box-shadow: none;
+}
+
+.md-header__topic {
+  height: 48px;
+  display: flex;
+  align-items: center;
+}
+
+.md-header__topic:first-child .md-ellipsis {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.md-header__topic:first-child .md-ellipsis::after {
+  content: "Perception is Protection";
+  font-size: 0.55em;
+  opacity: 0.6;
+  font-weight: 400;
+  letter-spacing: 0.05em;
+}
+
+.md-tabs {
+  background: var(--argus-deep-bg);
+  border-bottom: 1px solid var(--argus-border);
+}
+
+.md-tabs__link {
+  opacity: 0.8;
+}
+
+.md-tabs__link--active,
+.md-tabs__link:hover {
+  opacity: 1;
+  color: var(--argus-text-accent);
+}
+
+/* ─── Body / typography ──────────────────────────────────────────────── */
+
+body, .md-typeset {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont,
+               "Segoe UI", "SF Pro Text", sans-serif;
+}
+
+.md-typeset h1, .md-typeset h2, .md-typeset h3,
+.md-typeset h4, .md-typeset h5, .md-typeset h6 {
+  font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont,
+               "Segoe UI", "Inter", sans-serif;
+  color: var(--argus-light-text);
+}
+
+.md-typeset a {
+  color: var(--argus-text-accent);
+}
+
+.md-typeset a:hover {
+  text-decoration: underline;
+  filter: brightness(1.15);
+}
+
+.md-typeset code {
+  background: var(--argus-subtle-panel);
+  color: var(--argus-text-accent);
+  border-radius: 4px;
+  padding: 0.1em 0.4em;
+}
+
+/* ─── Sidebar ────────────────────────────────────────────────────────── */
+
+.md-nav__item .md-nav__link--active,
+.md-nav__link[for]:focus {
+  color: var(--argus-text-accent);
+}
+
+.md-nav__title {
+  background: transparent;
+  color: var(--argus-muted-text);
+}
+
+/* ─── Search ─────────────────────────────────────────────────────────── */
+
+.md-search__form {
+  background: var(--argus-subtle-panel);
+}
+
+.md-search__form:hover,
+[data-md-toggle="search"]:checked ~ .md-header .md-search__form {
+  background: var(--argus-dark-surface);
+}
+
+/* ─── Footer ─────────────────────────────────────────────────────────── */
+
+.md-footer {
+  background: var(--argus-dark-surface);
+  border-top: 1px solid var(--argus-border);
+}
+
+.md-footer-meta {
+  background: var(--argus-deep-bg);
+}
+"""
 
 
 # ─── Build ───────────────────────────────────────────────────────────────────
 
-def build(repo_root: Path, output_dir: Path) -> None:
-    """Generate the full MkDocs documentation site."""
+def build(repo_root: Path, output_dir: Path, *, ref: str | None = None) -> None:
+    """Generate the full MkDocs documentation site.
+
+    ``ref`` controls the git ref embedded in cross-repo blob URLs (see
+    ``config.load_site_config``). Pass the release tag for versioned
+    builds; ``main`` (or ``None``) for unversioned / dev builds. The
+    docsite CLI's ``--ref`` flag and ``ARGUS_DOCS_REF`` env var are
+    routed through here.
+    """
     # Load site config from docsite.yml before anything else
-    load_site_config(repo_root)
+    load_site_config(repo_root, ref=ref)
 
     version = get_version(repo_root)
     actions_dir = repo_root / ".github" / "actions"
@@ -136,16 +351,56 @@ def build(repo_root: Path, output_dir: Path) -> None:
     # ── Examples ─────────────────────────────────────────────────────────
     examples_dir = repo_root / "examples"
     examples_out = docs_out / "examples"
+    ci_platform_nav_entries: list[dict] = []
     if examples_dir.exists():
         examples_readme = read(examples_dir / "README.md")
         if examples_readme:
             examples_readme = rewrite_repo_links(examples_readme, "examples/README.md")
         write(examples_out / "index.md", examples_readme or "# Examples\n")
         for yml_file in sorted(examples_dir.rglob("*.yml")):
+            # ci-platforms files get a richer dedicated page (built below)
+            # and are excluded from the generic dump to avoid two copies.
+            if "ci-platforms" in yml_file.parts:
+                continue
             rel = yml_file.relative_to(examples_dir)
             content = read(yml_file)
             page = f"# `{yml_file.name}`\n\n```yaml\n{content}\n```\n"
             write(examples_out / str(rel).replace(".yml", ".md"), page)
+
+        # ── CI platform integrations (Examples > CI > <platform>) ────
+        # argus is platform-agnostic; these are the major non-GitHub CI
+        # surfaces we ship templates for. Each becomes a peer entry to
+        # GitHub Actions in the Examples > CI nav tree.
+        ci_platforms_dir = examples_dir / "ci-platforms"
+        ci_platforms = [
+            # (filename, display name, syntax-highlight hint)
+            ("gitlab-ci.yml",   "GitLab CI",    "yaml"),
+            ("Jenkinsfile",     "Jenkins",      "groovy"),
+            ("azure-devops.yml", "Azure DevOps", "yaml"),
+        ]
+        for filename, display, lang in ci_platforms:
+            src = ci_platforms_dir / filename
+            if not src.exists():
+                continue
+            file_content = read(src)
+            slug = filename.lower().replace(".", "-")
+            page = (
+                f"# {display}\n\n"
+                f"argus is platform-agnostic. Drop this template into a "
+                f"**{display}** project to run the same `argus scan` you "
+                f"run locally — same scanners, same canonical "
+                f"`argus-results.json`, integrated with the platform's "
+                f"native PR-comment / artifact surface.\n\n"
+                f"Canonical source: "
+                f"[`examples/ci-platforms/{filename}`]"
+                f"(https://github.com/huntridge-labs/argus/blob/main/"
+                f"examples/ci-platforms/{filename})\n\n"
+                f"```{lang}\n{file_content}\n```\n"
+            )
+            write(examples_out / "ci" / f"{slug}.md", page)
+            ci_platform_nav_entries.append(
+                {display: f"examples/ci/{slug}.md"},
+            )
 
     # ── Navigation tree ──────────────────────────────────────────────────
     actions_nav = _build_actions_nav(actions_dir, all_action_dirs)
@@ -157,17 +412,74 @@ def build(repo_root: Path, output_dir: Path) -> None:
         for k, v in sorted(extra_pages.items())
     ]
 
+    # Argus is a platform-agnostic Python SDK / CLI; CI integration is
+    # one of many ways to invoke it, and GitHub Actions is one CI among
+    # many. The nav reflects that hierarchy:
+    #   Examples
+    #     ├── Overview
+    #     └── CI
+    #         ├── GitHub Actions    (Actions + Workflows pages)
+    #         ├── GitLab CI
+    #         ├── Jenkins
+    #         └── Azure DevOps
+    # The argus actions + workflows pages are still generated from
+    # .github/actions/ and .github/workflows/ — only their nav placement
+    # changes. URLs stay at /actions/<name>/ and /workflows/<name>/.
     nav = [
         {"Home": "index.md"},
         {"Quick Start": "quick-start.md"},
-        {"Actions": actions_nav},
-        {"Workflows": workflows_nav},
-        {"Changelog": "changelog.md"},
     ]
     if guides_nav:
-        nav.insert(4, {"Guides": guides_nav})
+        nav.append({"Guides": guides_nav})
+
     if (examples_out / "index.md").exists():
-        nav.insert(-1, {"Examples": "examples/index.md"})
+        github_actions_nav = [
+            {"Actions": actions_nav},
+            {"Workflows": workflows_nav},
+        ]
+        ci_nav: list = [{"GitHub Actions": github_actions_nav}]
+        ci_nav.extend(ci_platform_nav_entries)
+
+        examples_nav = [
+            {"Overview": "examples/index.md"},
+            {"CI": ci_nav},
+        ]
+        nav.append({"Examples": examples_nav})
+
+    nav.append({"Changelog": "changelog.md"})
+
+    # ── Architecture page ────────────────────────────────────────────────
+    #
+    # The interactive diagram is rendered inline inside MkDocs Material
+    # at ``docs/architecture.md`` — the ``.arch-page`` markup sits in
+    # the Material content area with the site header, footer and
+    # palette wrapping it. Static assets (architecture.css /
+    # architecture.js) go to ``docs/assets/`` alongside the docsite's
+    # custom theme; the page references them via relative ``<link>``
+    # / ``<script>`` tags so they only load on this page.
+    #
+    # The nav entry is appended *only after* the page renders
+    # successfully — otherwise ``mkdocs build --strict`` aborts on a
+    # nav entry pointing at a missing file (the SDK introspection
+    # this page depends on can fail in environments without the
+    # ``argus`` package installed).
+    try:
+        from .architecture import (
+            build_view_model_from_repo,
+            render_inline_markdown,
+        )
+        view_model = build_view_model_from_repo(repo_root)
+        render_inline_markdown(view_model, docs_out)
+        nav.append({"Architecture": "architecture.md"})
+        print(
+            f"   ✅ Architecture page generated "
+            f"({len(view_model.get('nodes', []))} nodes, "
+            f"{len(view_model.get('flows', []))} flows)"
+        )
+    except Exception as exc:
+        # Don't fail the whole docsite build on a missing SDK import.
+        # The page is a nice-to-have; the rest of the docs ship without it.
+        print(f"   ⚠️  Architecture page skipped: {exc}")
 
     write(output_dir / "mkdocs.yml", build_mkdocs_config(version, nav))
     print("   ✅ mkdocs.yml written")
@@ -205,27 +517,15 @@ def _build_actions_nav(actions_dir: Path, all_action_dirs: list[Path]) -> list:
 
 def _build_workflows_nav(workflows_dir: Path) -> list:
     """Build the Workflows section of the nav tree."""
-    main_wf = workflows_dir / "reusable-security-hardening.yml"
-    scanner_wfs_nav = [
-        {parse_workflow_meta(p)["name"]: f"workflows/{p.stem}.md"}
-        for p in sorted(workflows_dir.glob("scanner-*.yml"))
-    ]
-    other_wfs_nav = [
-        {parse_workflow_meta(p)["name"]: f"workflows/{p.stem}.md"}
-        for p in sorted(workflows_dir.glob("*.yml"))
-        if p != main_wf
-        and not p.stem.startswith("scanner-")
-        and not p.stem.startswith("test-")
+    public_workflows = [
+        p for p in sorted(workflows_dir.glob("*.yml"))
+        if not p.stem.startswith("test-")
         and p.stem not in config.EXCLUDED_WORKFLOWS
     ]
 
-    nav: list = [
-        {"Overview": "workflows/index.md"},
-        {"Reusable Security Hardening": "workflows/reusable-security-hardening.md"},
-    ]
-    if scanner_wfs_nav:
-        nav.append({"Individual Scanners": scanner_wfs_nav})
-    if other_wfs_nav:
-        nav.append({"Utility Workflows": other_wfs_nav})
+    nav: list = [{"Overview": "workflows/index.md"}]
+    for wf in public_workflows:
+        meta = parse_workflow_meta(wf)
+        nav.append({meta.get("name", wf.stem): f"workflows/{wf.stem}.md"})
 
     return nav
