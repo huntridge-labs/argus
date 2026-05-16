@@ -22,7 +22,8 @@
     <div class="arch-toolbar">
       <h2 class="arch-toolbar__title">Argus SDK — architecture &amp; flows</h2>
       <button type="button" id="arch-configure-toggle"
-              class="arch-toolbar__btn" aria-pressed="false">
+              class="arch-toolbar__btn" aria-pressed="false"
+              data-tooltip="Toggle multi-select mode: pick scanners across the columns and Argus generates a working argus.yml, CLI invocation, GitHub Actions workflow, or MCP client config from the selection.">
         Configure
       </button>
     </div>
@@ -72,7 +73,8 @@
       <div class="arch-zoom-controls" aria-label="Zoom controls">
         <button type="button" id="arch-zoom-fit"
                 class="arch-zoom-btn arch-zoom-fit"
-                aria-label="Reset view" title="Reset view">
+                aria-label="Reset view" title="Reset view"
+                data-tooltip="Fit the entire diagram in the viewport.">
           <svg width="14" height="14" viewBox="0 0 16 16"
                fill="none" stroke="currentColor" stroke-width="1.6"
                stroke-linecap="round" stroke-linejoin="round"
@@ -81,13 +83,30 @@
           </svg>
         </button>
         <button type="button" id="arch-zoom-out" class="arch-zoom-btn"
-                aria-label="Zoom out" title="Zoom out">−</button>
+                aria-label="Zoom out" title="Zoom out"
+                data-tooltip="Zoom out (or scroll wheel down on the diagram).">−</button>
         <button type="button" id="arch-zoom-reset"
                 class="arch-zoom-btn arch-zoom-reset"
-                aria-label="Current zoom — click to reset" title="Reset zoom">100%</button>
+                aria-label="Current zoom — click to reset" title="Reset zoom"
+                data-tooltip="Current zoom level. Click to reset to fit-to-view.">100%</button>
         <button type="button" id="arch-zoom-in" class="arch-zoom-btn"
-                aria-label="Zoom in" title="Zoom in">+</button>
+                aria-label="Zoom in" title="Zoom in"
+                data-tooltip="Zoom in (or scroll wheel up on the diagram).">+</button>
       </div>
+
+      <button type="button" id="arch-help-toggle"
+              class="arch-help-toggle"
+              aria-label="Replay the help tour" title="Help"
+              data-tooltip="Replay the guided tour.">
+        <svg width="14" height="14" viewBox="0 0 16 16"
+             fill="none" stroke="currentColor" stroke-width="1.6"
+             stroke-linecap="round" stroke-linejoin="round"
+             aria-hidden="true" focusable="false">
+          <circle cx="8" cy="8" r="6.25" />
+          <path d="M6 6a2 2 0 1 1 2.6 1.9c-.5.2-.6.5-.6 1V10" />
+          <circle cx="8" cy="11.75" r="0.4" fill="currentColor" stroke="none" />
+        </svg>
+      </button>
     </div>
 
     <section id="arch-picker" class="arch-picker" hidden
@@ -129,7 +148,8 @@
     </section>
 
     <aside class="arch-tools" aria-label="External tools">
-      <h3 class="arch-tools__title">External tools (scanner-side rail)</h3>
+      <h3 class="arch-tools__title"
+          data-tooltip="Third-party command-line tools that the SDK scanners invoke under the hood. They're listed here as a reminder of what gets shelled out per scan — Argus doesn't bundle them, you need them on PATH (or in a container) for the relevant scanner to run.">External tools (scanner-side rail)</h3>
       <ul id="arch-tools-list" class="arch-tools__list"></ul>
     </aside>
   </main>
@@ -165,7 +185,8 @@
       Pick a flow to highlight the path through the columns.
     </p>
     <ul id="arch-flows-list" class="arch-flows__list"></ul>
-    <button type="button" id="arch-flow-clear" class="arch-flows__clear">
+    <button type="button" id="arch-flow-clear" class="arch-flows__clear"
+            data-tooltip="Remove the active flow highlight and return every column to its idle (un-dimmed) state.">
       Clear flow
     </button>
   </aside>
@@ -180,6 +201,54 @@
       </p>
     </section>
   </aside>
+
+  {# Guided tour overlay. Auto-shows on first visit (dismissal lives
+     in localStorage). The bubble is positioned by JS at run-time to
+     point at each step's target element. Backdrop dims the rest of
+     the page but does not cut a hole — the spotlight effect comes
+     from lifting the target's z-index so it sits above the dim. -#}
+  <div id="arch-tour" class="arch-tour" hidden role="dialog"
+       aria-label="Architecture viewer tour" aria-modal="true">
+    {# Four dim rectangles arrange themselves around the focused
+       element to leave it visually un-dimmed. Cleaner than relying
+       on z-index lifting (which fails when the target lives inside
+       a lower stacking context). -#}
+    <div class="arch-tour__dim arch-tour__dim--top"></div>
+    <div class="arch-tour__dim arch-tour__dim--right"></div>
+    <div class="arch-tour__dim arch-tour__dim--bottom"></div>
+    <div class="arch-tour__dim arch-tour__dim--left"></div>
+    <div id="arch-tour-bubble" class="arch-tour__bubble"
+         data-placement="bottom">
+      <button type="button" id="arch-tour-close"
+              class="arch-tour__close"
+              aria-label="Exit tour" title="Exit tour">
+        <svg width="12" height="12" viewBox="0 0 16 16"
+             fill="none" stroke="currentColor" stroke-width="1.8"
+             stroke-linecap="round" aria-hidden="true" focusable="false">
+          <path d="M3 3L13 13M13 3L3 13" />
+        </svg>
+      </button>
+      <p class="arch-tour__step-count">
+        <span id="arch-tour-step-current">1</span>
+        of
+        <span id="arch-tour-step-total">1</span>
+      </p>
+      <h3 class="arch-tour__title" id="arch-tour-title"></h3>
+      <div class="arch-tour__body" id="arch-tour-body"></div>
+      <div class="arch-tour__controls">
+        <label class="arch-tour__dontshow">
+          <input type="checkbox" id="arch-tour-dontshow" />
+          Don't show again
+        </label>
+        <div class="arch-tour__nav">
+          <button type="button" id="arch-tour-prev"
+                  class="arch-tour__btn">Back</button>
+          <button type="button" id="arch-tour-next"
+                  class="arch-tour__btn arch-tour__btn--primary">Next</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <aside id="arch-panel" class="arch-panel" aria-label="Node details">
     <button type="button" id="arch-panel-close" class="arch-panel__close"

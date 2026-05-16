@@ -838,6 +838,450 @@
   window.addEventListener('resize', updateSidebarBottom);
   updateSidebarBottom();
 
+  // ─── Reusable drag-to-move helper ────────────────────────────────
+  // Lets the user click and drag a positioned element to a custom
+  // location within its containing block. Uses a 4 px threshold so
+  // a quick click still triggers the element's normal click handler;
+  // once the cursor passes the threshold the trailing ``click`` is
+  // swallowed so we don't accidentally activate the button after a
+  // pure drag. The element keeps its CSS-defined anchor (e.g. top /
+  // right) until the first drag; after that ``left`` and ``top``
+  // inline styles take over.
+  function makeDraggable(el) {
+    if (!el) return;
+    const THRESHOLD = 4;
+    let s = null;
+    el.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      const r = el.getBoundingClientRect();
+      const parent = el.offsetParent || document.documentElement;
+      const pRect = parent.getBoundingClientRect();
+      s = {
+        sx: e.clientX, sy: e.clientY,
+        // Convert current viewport position into parent-relative coords.
+        px: r.left - pRect.left,
+        py: r.top - pRect.top,
+        w: r.width, h: r.height,
+        pw: pRect.width, ph: pRect.height,
+        moved: false,
+      };
+      // Keep the diagram's pan handler from seeing this — it lives on
+      // the viewport (an ancestor) and would otherwise also start
+      // dragging the columns when the user grabs the button.
+      e.stopPropagation();
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!s) return;
+      const dx = e.clientX - s.sx;
+      const dy = e.clientY - s.sy;
+      if (!s.moved &&
+          (Math.abs(dx) > THRESHOLD || Math.abs(dy) > THRESHOLD)) {
+        s.moved = true;
+        // Switch from CSS anchor (top/right etc.) to explicit left/top.
+        el.style.right = 'auto';
+        el.style.bottom = 'auto';
+      }
+      if (s.moved) {
+        let nx = s.px + dx;
+        let ny = s.py + dy;
+        // Keep the element inside its parent's content area.
+        nx = Math.max(0, Math.min(nx, s.pw - s.w));
+        ny = Math.max(0, Math.min(ny, s.ph - s.h));
+        el.style.left = `${nx}px`;
+        el.style.top = `${ny}px`;
+      }
+    });
+    window.addEventListener('mouseup', () => {
+      if (!s) return;
+      const wasMoved = s.moved;
+      s = null;
+      if (wasMoved) {
+        const swallow = (ev) => {
+          ev.stopPropagation();
+          ev.preventDefault();
+          window.removeEventListener('click', swallow, true);
+        };
+        window.addEventListener('click', swallow, true);
+        setTimeout(() => window.removeEventListener('click', swallow, true), 50);
+      }
+    });
+  }
+  makeDraggable(document.getElementById('arch-info-toggle'));
+  makeDraggable(document.getElementById('arch-help-toggle'));
+
+  // ─── Tooltips ────────────────────────────────────────────────────
+  // Single floating tooltip element appended to ``<body>`` so it
+  // lives outside the main content's stacking context and can render
+  // above the page header and any other chrome. Triggered by any
+  // ``[data-tooltip]`` element on hover or focus.
+  const tooltipEl = document.createElement('div');
+  tooltipEl.className = 'arch-tooltip';
+  tooltipEl.setAttribute('role', 'tooltip');
+  document.body.appendChild(tooltipEl);
+  let tooltipShowTimer = null;
+  const TOOLTIP_DELAY = 350;
+
+  function positionTooltip(target) {
+    const tr = target.getBoundingClientRect();
+    const winW = window.innerWidth;
+    const winH = window.innerHeight;
+    const margin = 8;
+    // Force a layout pass so we can read the tooltip's dimensions.
+    const br = tooltipEl.getBoundingClientRect();
+    // Prefer below the target; flip to above if it would overflow.
+    let top = tr.bottom + margin;
+    if (top + br.height > winH - margin) {
+      top = Math.max(margin, tr.top - br.height - margin);
+    }
+    let left = tr.left + tr.width / 2 - br.width / 2;
+    left = Math.max(margin, Math.min(left, winW - br.width - margin));
+    tooltipEl.style.left = `${left}px`;
+    tooltipEl.style.top = `${top}px`;
+  }
+
+  function showTooltip(target) {
+    const text = target.getAttribute('data-tooltip');
+    if (!text) return;
+    tooltipEl.textContent = text;
+    tooltipEl.dataset.visible = 'true';
+    positionTooltip(target);
+  }
+
+  function hideTooltip() {
+    if (tooltipShowTimer) {
+      clearTimeout(tooltipShowTimer);
+      tooltipShowTimer = null;
+    }
+    delete tooltipEl.dataset.visible;
+  }
+
+  function bindTooltipTrigger(el) {
+    el.addEventListener('mouseenter', () => {
+      if (tooltipShowTimer) clearTimeout(tooltipShowTimer);
+      tooltipShowTimer = window.setTimeout(() => showTooltip(el), TOOLTIP_DELAY);
+    });
+    el.addEventListener('mouseleave', hideTooltip);
+    el.addEventListener('focus', () => showTooltip(el));
+    el.addEventListener('blur', hideTooltip);
+  }
+  for (const el of document.querySelectorAll('[data-tooltip]')) {
+    bindTooltipTrigger(el);
+  }
+
+  // ─── Guided tour ─────────────────────────────────────────────────
+  // Auto-shows on first visit; dismissal lives in localStorage. The
+  // bubble is positioned at run-time to point at each step's target
+  // element. Steps that target a sidebar drawer also open it first
+  // on narrow viewports so the user can actually see what's being
+  // described.
+  const TOUR_DISMISS_KEY = 'argus:arch-tour:dismissed';
+  const tourEl = document.getElementById('arch-tour');
+  const tourBubbleEl = document.getElementById('arch-tour-bubble');
+  const tourCloseEl = document.getElementById('arch-tour-close');
+  const tourPrevEl = document.getElementById('arch-tour-prev');
+  const tourNextEl = document.getElementById('arch-tour-next');
+  const tourTitleEl = document.getElementById('arch-tour-title');
+  const tourBodyEl = document.getElementById('arch-tour-body');
+  const tourStepCurrentEl = document.getElementById('arch-tour-step-current');
+  const tourStepTotalEl = document.getElementById('arch-tour-step-total');
+  const tourDontShowEl = document.getElementById('arch-tour-dontshow');
+  const helpToggleEl = document.getElementById('arch-help-toggle');
+
+  // Body strings are arrays of segments. Plain strings render as text
+  // nodes; objects like ``{ code: 'argus.yml' }`` render as
+  // ``<code>argus.yml</code>``. Sticking to a structured form avoids
+  // ``innerHTML`` and keeps the tour content safely DOM-built.
+  const TOUR_STEPS = [
+    {
+      title: 'Welcome to the architecture viewer',
+      body: [
+        'A quick three-minute tour of how to read this diagram and use ',
+        'it as both reference and configuration tool. You can close this ',
+        'at any time with the ✕ in the corner.',
+      ],
+      placement: 'center',
+    },
+    {
+      target: '#arch-columns-viewport',
+      title: 'The diagram',
+      body: [
+        'Every component that powers ', { code: 'argus scan' }, ', laid out ',
+        'in seven columns from actors on the left to consumers on the right. ',
+        'Drag anywhere to pan; scroll wheel or the + / − controls to zoom.',
+      ],
+      placement: 'top',
+    },
+    {
+      target: '.arch-zoom-controls',
+      title: 'Zoom controls',
+      body: [
+        'The bracket icon fits the whole diagram in the viewport — a good ',
+        'starting point. Wheel-zoom targets the cursor, button-zoom targets ',
+        'the viewport centre.',
+      ],
+      placement: 'top',
+    },
+    {
+      target: '.arch-page__sidebar--flows',
+      narrowTarget: '#arch-toggle-flows',
+      openDrawer: 'flows',
+      title: 'Flows',
+      body: [
+        'Pick a flow to highlight the path it takes through the columns — ',
+        'every box on the route turns green and dims everything else.',
+      ],
+      placement: 'right',
+    },
+    {
+      target: '.arch-page__sidebar--steps',
+      narrowTarget: '#arch-toggle-steps',
+      openDrawer: 'steps',
+      title: 'Steps',
+      body: [
+        'When a flow is active, its step-by-step walkthrough appears here. ',
+        'Each step is numbered to match the badge on the corresponding ',
+        'diagram node.',
+      ],
+      placement: 'left',
+    },
+    {
+      target: '.arch-node[data-id="surface:cli"]',
+      title: 'Clickable nodes',
+      body: [
+        'Click any box for source paths, related ADRs, and a copy-pasteable ',
+        'config snippet. The detail panel that opens is draggable from its ',
+        'header and resizable from its bottom-right corner.',
+      ],
+      placement: 'right',
+    },
+    {
+      target: '#arch-configure-toggle',
+      title: 'Configure mode',
+      body: [
+        'Toggle this to multi-select scanners across the columns. Argus ',
+        'generates a working ', { code: 'argus.yml' }, ', CLI invocation, ',
+        'GitHub Actions workflow, or MCP client config from your selection.',
+      ],
+      placement: 'bottom',
+    },
+    {
+      target: '#arch-info-toggle',
+      title: 'Info popover',
+      body: ['Click for a short description of the diagram anytime.'],
+      placement: 'right',
+    },
+    {
+      target: '#arch-help-toggle',
+      title: 'Replay this tour',
+      body: [
+        'And click here to bring this tour back any time. ',
+        'Happy hardening! 🛡️',
+      ],
+      placement: 'left',
+    },
+  ];
+
+  let tourIndex = 0;
+  let tourPrevTarget = null;
+
+  function tourTotal() { return TOUR_STEPS.length; }
+  function tourCurrentStep() { return TOUR_STEPS[tourIndex]; }
+
+  function isNarrowViewport() {
+    return window.matchMedia('(max-width: 1099.99px)').matches;
+  }
+
+  function clearTourTarget() {
+    if (tourPrevTarget) {
+      delete tourPrevTarget.dataset.tourTarget;
+      tourPrevTarget = null;
+    }
+  }
+
+  function renderTourBody(segments) {
+    tourBodyEl.textContent = '';
+    for (const seg of segments) {
+      if (typeof seg === 'string') {
+        tourBodyEl.appendChild(document.createTextNode(seg));
+      } else if (seg && typeof seg.code === 'string') {
+        const codeEl = document.createElement('code');
+        codeEl.textContent = seg.code;
+        tourBodyEl.appendChild(codeEl);
+      }
+    }
+  }
+
+  // Position the four dim rectangles so the target sits in their
+  // gap (un-dimmed). When there's no target, collapse them to cover
+  // the whole viewport.
+  function updateTourDim(targetEl) {
+    const top = document.querySelector('.arch-tour__dim--top');
+    const right = document.querySelector('.arch-tour__dim--right');
+    const bottom = document.querySelector('.arch-tour__dim--bottom');
+    const left = document.querySelector('.arch-tour__dim--left');
+    if (!top || !right || !bottom || !left) return;
+
+    if (!targetEl) {
+      top.style.cssText = 'top:0;left:0;right:0;bottom:0;';
+      right.style.display = 'none';
+      bottom.style.display = 'none';
+      left.style.display = 'none';
+      return;
+    }
+    right.style.display = '';
+    bottom.style.display = '';
+    left.style.display = '';
+
+    const winW = window.innerWidth;
+    const winH = window.innerHeight;
+    const r = targetEl.getBoundingClientRect();
+    const padding = 6;
+    const x1 = Math.max(0, r.left - padding);
+    const y1 = Math.max(0, r.top - padding);
+    const x2 = Math.min(winW, r.right + padding);
+    const y2 = Math.min(winH, r.bottom + padding);
+
+    top.style.cssText = `top:0;left:0;right:0;height:${y1}px;`;
+    bottom.style.cssText = `top:${y2}px;left:0;right:0;bottom:0;`;
+    left.style.cssText = `top:${y1}px;left:0;width:${x1}px;height:${y2 - y1}px;`;
+    right.style.cssText = `top:${y1}px;left:${x2}px;right:0;height:${y2 - y1}px;`;
+  }
+
+  function placeTourBubble(targetEl, placement) {
+    const bubble = tourBubbleEl;
+    bubble.dataset.placement = placement;
+    const br = bubble.getBoundingClientRect();
+    const winW = window.innerWidth;
+    const winH = window.innerHeight;
+    const margin = 12;
+
+    if (!targetEl || placement === 'center') {
+      bubble.style.left = `${(winW - br.width) / 2}px`;
+      bubble.style.top = `${(winH - br.height) / 2}px`;
+      return;
+    }
+
+    const tr = targetEl.getBoundingClientRect();
+    let left = 0, top = 0;
+    if (placement === 'top') {
+      left = tr.left + tr.width / 2 - br.width / 2;
+      top = tr.top - br.height - margin;
+    } else if (placement === 'bottom') {
+      left = tr.left + tr.width / 2 - br.width / 2;
+      top = tr.bottom + margin;
+    } else if (placement === 'left') {
+      left = tr.left - br.width - margin;
+      top = tr.top + tr.height / 2 - br.height / 2;
+    } else if (placement === 'right') {
+      left = tr.right + margin;
+      top = tr.top + tr.height / 2 - br.height / 2;
+    }
+    left = Math.max(margin, Math.min(left, winW - br.width - margin));
+    top = Math.max(margin, Math.min(top, winH - br.height - margin));
+    bubble.style.left = `${left}px`;
+    bubble.style.top = `${top}px`;
+  }
+
+  function renderTourStep() {
+    clearTourTarget();
+    const step = tourCurrentStep();
+    if (!step) { hideTour(); return; }
+    tourTitleEl.textContent = step.title;
+    renderTourBody(step.body);
+    tourStepCurrentEl.textContent = String(tourIndex + 1);
+    tourStepTotalEl.textContent = String(tourTotal());
+    tourPrevEl.disabled = tourIndex === 0;
+    tourNextEl.textContent =
+      tourIndex === tourTotal() - 1 ? 'Done' : 'Next';
+
+    if (step.openDrawer && isNarrowViewport()) {
+      setDrawer(step.openDrawer, true);
+    } else if (!step.openDrawer && pageEl.dataset.drawerOpen) {
+      closeDrawers();
+    }
+
+    let selector = step.target;
+    if (isNarrowViewport() && step.narrowTarget) {
+      selector = step.narrowTarget;
+    }
+    const target = selector ? document.querySelector(selector) : null;
+    if (target) {
+      target.dataset.tourTarget = 'true';
+      tourPrevTarget = target;
+      requestAnimationFrame(() => {
+        updateTourDim(target);
+        placeTourBubble(target, step.placement);
+      });
+    } else {
+      updateTourDim(null);
+      placeTourBubble(null, 'center');
+    }
+  }
+
+  function showTour() {
+    tourIndex = 0;
+    tourEl.hidden = false;
+    if (tourDontShowEl) tourDontShowEl.checked = false;
+    renderTourStep();
+  }
+
+  function hideTour() {
+    clearTourTarget();
+    if (pageEl.dataset.drawerOpen) closeDrawers();
+    tourEl.hidden = true;
+    if (tourDontShowEl && tourDontShowEl.checked) {
+      try { localStorage.setItem(TOUR_DISMISS_KEY, '1'); }
+      catch (_e) { /* localStorage unavailable; silent. */ }
+    }
+  }
+
+  function nextTourStep() {
+    if (tourIndex < tourTotal() - 1) {
+      tourIndex += 1;
+      renderTourStep();
+    } else {
+      hideTour();
+    }
+  }
+
+  function prevTourStep() {
+    if (tourIndex > 0) {
+      tourIndex -= 1;
+      renderTourStep();
+    }
+  }
+
+  if (tourEl) {
+    // Move the tour out of ``main`` (which lives in a ``z-index: 1``
+    // stacking context) so its own ``z-index: 1000`` actually beats
+    // the page header's ``z-index: 100``. Without this the header
+    // and nav links bleed through the bubble.
+    if (tourEl.parentElement !== document.body) {
+      document.body.appendChild(tourEl);
+    }
+    tourCloseEl?.addEventListener('click', hideTour);
+    tourPrevEl?.addEventListener('click', prevTourStep);
+    tourNextEl?.addEventListener('click', nextTourStep);
+    helpToggleEl?.addEventListener('click', showTour);
+    window.addEventListener('resize', () => {
+      if (tourEl.hidden) return;
+      const step = tourCurrentStep();
+      const sel = isNarrowViewport() && step.narrowTarget
+        ? step.narrowTarget : step.target;
+      const target = sel ? document.querySelector(sel) : null;
+      updateTourDim(target);
+      placeTourBubble(target, step.placement);
+    });
+
+    let dismissed = false;
+    try { dismissed = localStorage.getItem(TOUR_DISMISS_KEY) === '1'; }
+    catch (_e) { /* assume not dismissed if storage unavailable. */ }
+    if (!dismissed) {
+      window.setTimeout(showTour, 500);
+    }
+  }
+
   // ─── Info popover ────────────────────────────────────────────────
   const infoToggleEl = document.getElementById('arch-info-toggle');
   const infoPopoverEl = document.getElementById('arch-info-popover');
@@ -905,7 +1349,8 @@
   }
   document.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape') {
-      if (infoPopoverEl && !infoPopoverEl.hidden) {
+      if (tourEl && !tourEl.hidden) { hideTour(); }
+      else if (infoPopoverEl && !infoPopoverEl.hidden) {
         infoPopoverEl.hidden = true;
         infoToggleEl?.setAttribute('aria-expanded', 'false');
       }
