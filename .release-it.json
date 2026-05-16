@@ -27,6 +27,9 @@
     "before:init": [
       "npm test"
     ],
+    "after:bump": [
+      "python3 scripts/release_it/inject_image_digests.py ${version}"
+    ],
     "before:release": [
       "echo 'before:release hook executed'",
       "node scripts/release-it-process-changelog.js",
@@ -179,7 +182,7 @@
             "argus/containers.py"
           ],
           "search": {
-            "pattern": "(ghcr\\.io/huntridge-labs/argus/[^:]+:)[^\"]+",
+            "pattern": "(ghcr\\.io/huntridge-labs/argus/[^:]+:)[^\"@]+",
             "flags": "g"
           },
           "replace": "${1}{{version}}"

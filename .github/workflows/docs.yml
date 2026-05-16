@@ -46,10 +46,14 @@ jobs:
         # step closes — see docs/developer/SDK-ROADMAP.md → Docsite
         # Maintenance → "Version-aware GITHUB_BLOB rewrite").
         #
-        #   release           → version tag from version.yaml (e.g. v0.7.2)
+        #   release           → version tag from version.yaml (e.g. 0.7.2)
         #   pull_request      → PR head SHA (immutable, exists during the run)
         #   push:main         → "main"
         #   workflow_dispatch → "main"
+        #
+        # Release tags are bare semver (no `v` prefix) — release-it's
+        # ``tagName: "${version}"`` setting in .release-it.json produces
+        # ``1.0.0`` not ``v1.0.0``. Keep this REF in sync.
         #
         # The PR head SHA comes from ``github.event.pull_request.head.sha``,
         # which is sourced from a controlled set (hex SHA only) but still
@@ -61,7 +65,7 @@ jobs:
           case "$EVENT_NAME" in
             release)
               VERSION=$(head -1 version.yaml | awk '{print $1}')
-              REF="v${VERSION}"
+              REF="${VERSION}"
               ;;
             pull_request)
               REF="${PR_HEAD_SHA}"

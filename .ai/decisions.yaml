@@ -2101,3 +2101,122 @@ decisions:
       - ADR-023  # reporter entry-points — same "registry as source of truth" pattern
     pr_references:
       - "(introduces scripts/docsite/architecture.py, argus/architecture_map.py, the argus://architecture MCP resource, and the CI check; the docs-site integration of the page lives in scripts/docsite/architecture.py::render_inline_markdown)"
+
+  - id: ADR-027
+    title: "Build-once-promote-everywhere release pipeline in a single release.yml job"
+    date: "2026-05-16"
+    status: accepted
+
+    context: |
+      Pre-1.0.0 the release pipeline was split across two workflows:
+      ``release.yml`` ran release-it (bump + tag + push), then a
+      tag-triggered ``publish-release.yml`` built container images and
+      published the wheel to PyPI. Three problems with that shape:
+
+      1. The wheel referenced container tags that didn't exist yet —
+         a brief window where ``pip install argus-security==X.Y.Z``
+         succeeded but ``docker pull ghcr.io/.../scanner-bandit:X.Y.Z``
+         returned 404.
+      2. ``argus/containers.py`` could not SHA-pin Argus-owned images
+         because the regex-bumper stripped any ``@sha256:`` tail when
+         the version segment changed. The cosign-verify path covered
+         it for runtime, but the image content was not bound to a
+         specific digest in the wheel — Renovate-style content
+         addressing was off for the things WE ship.
+      3. Two workflows chained via ``workflow_run`` / ``on: push tags``
+         meant cross-workflow state was implicit (the tag); failure
+         recovery required understanding both pipelines and a tag
+         glob mismatch (``v*`` vs the bare-semver tags release-it
+         produces) silently broke the chain.
+
+    decision: |
+      Collapse the entire lifecycle into a single ``release`` job in
+      ``.github/workflows/release.yml``:
+
+        tests → build 4 multi-arch images → push :build-<sha>-<run>
+            → capture sha256: digests in $GITHUB_ENV
+            → release-it bump + after:bump hook pins <version>@sha256:<digest>
+            → release-it commit + tag + push
+            → buildx imagetools re-tag :<VERSION> + :latest
+            → cosign sign by digest
+            → build wheel, smoke test, publish to PyPI (OIDC)
+
+      A parallel ``dry-run`` job continues to render release-it
+      previews on every push to main and on ``workflow_dispatch
+      dryRun=true``.
+
+      Two supporting pieces:
+
+      - ``scripts/release_it/inject_image_digests.py`` — release-it
+        ``after:bump`` hook that reads ``ARGUS_DIGEST_<NAME>`` env vars
+        set by the build step and rewrites each Argus-owned line in
+        ``argus/containers.py`` with ``<version>@sha256:<digest>``.
+        The regex-bumper rule for ``containers.py`` was tightened
+        from ``[^"]+`` to ``[^"@]+`` so it bumps only the version
+        segment and leaves the ``@sha256:`` tail to the hook.
+
+      - ``.github/workflows/ghcr-prune.yml`` (+ ``scripts/ci/prune_ghcr_tags.py``) —
+        nightly cleanup keeps anything matching semver
+        (``\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?``) and ``latest`` forever;
+        anything else (build-id tags, future PR previews) ages out
+        after 14 days. The release pipeline can push throwaway
+        ``:build-<sha>`` tags freely without registry-bloat anxiety.
+
+    alternatives:
+      - name: "Keep two workflows, fix tag-prefix glob (v* vs bare semver) and add SHA injection"
+        rejected_because: |
+          Fixes the chain-break symptom but keeps the implicit
+          state (tag-as-baton). Workflow_run-style chaining means
+          failure mid-publish leaves the system in an in-between
+          state that's awkward to recover from: tag exists, wheel
+          doesn't, images half-published. Cross-workflow
+          observability is poor.
+
+      - name: "Three jobs in release.yml (build-containers → release → publish/promote)"
+        rejected_because: |
+          Closer to the right shape but pays for cross-job state
+          passing (job outputs for digests, fresh checkouts in
+          each job, an extra environment-gate per protected job).
+          Most of that orchestration overhead vanishes when the
+          steps live in one job. Drives the design intent — the
+          release IS one logical operation — into the workflow
+          file.
+
+      - name: "Build containers in a separate continuous-integration workflow on every push, release.yml just promotes by digest"
+        rejected_because: |
+          Decouples image age from release timing in a way that
+          quietly drifts the "what shipped" story: the version
+          tag points at a digest that was built minutes-to-days
+          earlier, with no enforcement that the build came from
+          the same commit release-it just tagged. Easier to wire,
+          harder to audit. Single-job ordering makes the
+          source-commit-to-published-digest chain explicit.
+
+    consequences:
+      positive:
+        - "PyPI wheel never references unsigned or non-existent images — order of operations puts every image at its final tag and signed before the wheel publishes."
+        - "argus/containers.py is digest-pinned end-to-end. Renovate/Docker enforce content-address match for third-party images; the after:bump hook does the same for Argus-owned images."
+        - "Failure semantics: build fails → nothing public. release-it skips (no commits warrant a release) → no PyPI publish, no tag promotion; the :build-<sha> tags become orphans cleaned by prune."
+        - "Cosign signing has no continue-on-error escape hatch — sign failure fails the release loudly."
+        - "Tag-prefix mismatch class of bug is gone — no second workflow needs to glob the tag release-it produced."
+
+      negative:
+        - "Adding a new Argus-owned image touches three places in release.yml (build matrix, sign step) plus the prune package list and the regex-bumper rule. The after:bump hook adapts automatically via the ARGUS_DIGEST_<NAME> convention — no code change there. Trade-off accepted as the cost of explicit step ordering."
+        - "Single job means the ``prod`` environment gate covers the whole pipeline, not just the tag-push step. Approving the gate approves the whole chain through PyPI publish — there's no second confirmation between sign and publish. Mitigation: the dry-run job runs in parallel as a preview on every push."
+        - "Every push to main with non-chore-release commits runs the multi-arch container build (~10 min) even when no commits warrant a release. The orphan :build-<sha> tags get pruned, but the CI minutes are spent. Acceptable for the typical Argus push cadence; revisit if push volume explodes."
+
+    implementation: |
+      - .github/workflows/release.yml — single ``release`` job + parallel ``dry-run`` job
+      - .github/workflows/ghcr-prune.yml — nightly cron, manual workflow_dispatch with dryRun toggle
+      - .release-it.json — after:bump hook registration + tightened containers.py regex-bumper rule
+      - scripts/release_it/inject_image_digests.py — the hook
+      - scripts/ci/prune_ghcr_tags.py — semver-aware GHCR cleanup
+      - argus/core/image_verify.py — ARGUS_CERT_IDENTITY_REGEXP now matches release.yml (previously publish-release.yml)
+      - docs/developer/release-management.md — updated overview + pipeline flow + security integration sections
+      - docs/developer/container-lifecycle.md — updated Release Process + Adding a New Custom Image sections
+
+    related:
+      - ADR-014  # Prefer official tool images — third-party images stay SHA-pinned via Renovate
+      - ADR-019  # Install-from-source pattern — composite-action consumers track @VERSION refs already managed by release-it
+    pr_references:
+      - "(introduces the build-once-promote pipeline; replaces .github/workflows/publish-release.yml; adds the after:bump digest-injection hook and the nightly ghcr-prune workflow)"

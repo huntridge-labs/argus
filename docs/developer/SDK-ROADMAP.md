@@ -52,9 +52,10 @@ once the work landed.
   collapse.
 
 ### Distribution & multi-platform
-- PyPI publishing (`publish-pypi.yml` + `publish-release.yml`) with trusted publishing (OIDC),
-  TestPyPI dev versions, dynamic versioning, tool-version enforcement.
-- GHCR container image publishing on tag, cosign-signed, multi-arch (amd64 + arm64).
+- PyPI publishing via `release.yml` with trusted publishing (OIDC),
+  TestPyPI dev versions on PRs (`publish-pypi.yml`), dynamic versioning, tool-version enforcement.
+- GHCR container image publishing on release, cosign-signed by digest, multi-arch (amd64 + arm64),
+  build-once-promote-everywhere pipeline so images and the wheel ship from the same commit.
 - `argus init` with language / framework / linter detection; `--exclude` + parallel detection.
 - CI preflight: `argus validate --strict --check-tools --report-issue`, living issue on
   GitHub/GitLab that auto-detects provider and auto-closes when healthy.

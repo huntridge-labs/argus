@@ -48,7 +48,7 @@ logger = logging.getLogger("argus")
 ARGUS_OWNED_PREFIX = "ghcr.io/huntridge-labs/argus/"
 ARGUS_CERT_IDENTITY_REGEXP = (
     r"^https://github\.com/huntridge-labs/argus/"
-    r"\.github/workflows/publish-release\.yml@"
+    r"\.github/workflows/release\.yml@"
 )
 ARGUS_OIDC_ISSUER = "https://token.actions.githubusercontent.com"
 

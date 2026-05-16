@@ -361,23 +361,29 @@ contributor_workflows:
       - "Tab completion via `argus completion zsh` is always current"
 
   create_release:
-    description: "Release a new version"
+    description: "Release a new version (build-once-promote-everywhere; see ADR-027)"
     command: "npm run release"
     options:
-      patch: "npm run release:patch"
-      minor: "npm run release:minor"
-      major: "npm run release:major"
+      patch: "npm run release -- patch"
+      minor: "npm run release -- minor"
+      major: "npm run release -- major"
+      prerelease_rc: "npm run release -- major --preRelease=rc  # for 1.0.0-rc.0"
+    ci_workflow: ".github/workflows/release.yml"
     prerequisites:
       - "All tests passing"
       - "On main branch"
       - "Clean working directory"
     what_happens:
-      - "Bumps version in version.yaml"
-      - "Updates version in all docs and examples"
-      - "Generates CHANGELOG entry"
-      - "Creates git tag"
-      - "Pushes to remote"
-      - "Creates GitHub release"
+      - "Tests run inside the single `release` job"
+      - "4 multi-arch containers built and pushed to GHCR under :build-<sha>-<run>"
+      - "sha256: digests captured as ARGUS_DIGEST_* env vars"
+      - "release-it bumps version.yaml, package.json, argus/__init__.py, argus/containers.py"
+      - "after:bump hook (scripts/release_it/inject_image_digests.py) pins <version>@sha256:<digest>"
+      - "release-it generates CHANGELOG, commits chore(release): X.Y.Z, tags, pushes"
+      - "Container images re-tagged to :<VERSION> + :latest via docker buildx imagetools (no rebuild)"
+      - "Images cosign-signed by digest (Sigstore keyless, OIDC)"
+      - "Wheel built from the bumped tree and published to PyPI via OIDC trusted publishing"
+      - "Build-id (:build-<sha>) tags age out nightly via .github/workflows/ghcr-prune.yml"
 
   run_single_action_test:
     description: "Test a specific action locally"
