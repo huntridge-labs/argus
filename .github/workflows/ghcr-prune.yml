@@ -1,0 +1,70 @@
+# Nightly cleanup of non-semver GHCR tags.
+#
+# Keeps semver tags (1.0.0, 1.0.0-rc.1, etc.) and `latest` forever;
+# deletes everything else (e.g. `build-<sha>`, `pr-<n>`) older than
+# KEEP_DAYS. The release pipeline pushes intermediate `build-<sha>`
+# tags before promotion — this workflow stops them from accumulating.
+#
+# Trigger manually with `dryRun: true` to preview the deletion list
+# before letting it run unattended.
+
+name: GHCR Cleanup
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+    inputs:
+      dryRun:
+        description: 'Dry run (list what would be deleted, no deletions)'
+        required: false
+        default: true
+        type: boolean
+      keepDays:
+        description: 'Keep non-semver tags newer than this many days'
+        required: false
+        default: '14'
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  prune:
+    name: Prune non-semver tags
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.12'
+
+      - name: Prune
+        env:
+          # GHCR_PRUNE_TOKEN is an optional PAT with `delete:packages`
+          # scope. The default GITHUB_TOKEN works for packages owned by
+          # the same org as the workflow, but a PAT may be required for
+          # multi-org setups or stricter org policies. Set the secret
+          # only when needed.
+          GH_TOKEN: ${{ secrets.GHCR_PRUNE_TOKEN || secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dryRun || 'false' }}
+          KEEP_DAYS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.keepDays || '14' }}
+        run: |
+          set -euo pipefail
+          ARGS=()
+          if [ "$DRY_RUN" = "true" ]; then
+            ARGS+=(--dry-run)
+          fi
+          python3 scripts/ci/prune_ghcr_tags.py \
+            --org huntridge-labs \
+            --keep-days "$KEEP_DAYS" \
+            "${ARGS[@]}" \
+            argus/scanner-bandit \
+            argus/scanner-opengrep \
+            argus/scanner-supply-chain \
+            argus/cli
