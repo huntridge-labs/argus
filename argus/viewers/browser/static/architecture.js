@@ -181,15 +181,21 @@
     if (!toolsListEl) return;
     toolsListEl.textContent = '';
     for (const tool of data.external_tools || []) {
-      toolsListEl.appendChild(
-        el('li', null, [
-          el('span', {
-            class: 'arch-tool' + (tool.critical ? ' arch-tool--critical' : ''),
-            title: tool.purpose,
-            text: tool.name,
-          }),
-        ])
-      );
+      // ``openPanel`` reads ``label`` and ``kind`` from the node, so
+      // patch them onto the raw tool record once at render time. The
+      // tool object is shared with ``nodesById``, so this also makes
+      // the panel work if the tool is opened by some other path.
+      tool.label ||= tool.name;
+      tool.kind ||= 'tool';
+      const btn = el('button', {
+        type: 'button',
+        class: 'arch-tool' + (tool.critical ? ' arch-tool--critical' : ''),
+        'data-id': tool.id,
+        'aria-label': `${tool.name} — open details`,
+        text: tool.name,
+      });
+      btn.addEventListener('click', () => onNodeClick(tool));
+      toolsListEl.appendChild(el('li', null, [btn]));
     }
   }
 
@@ -305,6 +311,27 @@
       bodyEl.appendChild(el('p', {
         class: 'arch-panel__purpose', text: node.purpose,
       }));
+    }
+    if (node.used_by && node.used_by.length) {
+      bodyEl.appendChild(el('h4', {
+        class: 'arch-panel__section-title', text: 'Used by',
+      }));
+      const wrap = el('div', { class: 'arch-panel__used-by' });
+      for (const ref of node.used_by) {
+        const target = nodesById.get(ref);
+        const btn = el('button', {
+          type: 'button',
+          class: 'arch-panel__used-by-link',
+          text: target?.label || ref,
+        });
+        if (target) {
+          btn.addEventListener('click', () => onNodeClick(target));
+        } else {
+          btn.disabled = true;
+        }
+        wrap.appendChild(btn);
+      }
+      bodyEl.appendChild(wrap);
     }
     if (node.file_paths && node.file_paths.length) {
       bodyEl.appendChild(el('h4', {

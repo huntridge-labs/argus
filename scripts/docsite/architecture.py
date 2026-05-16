@@ -1455,7 +1455,7 @@ _ARCH_INLINE_BODY = """    <div class="arch-page" data-mode="view">
 
         <aside class="arch-tools" aria-label="External tools">
           <h3 class="arch-tools__title"
-              data-tooltip="Third-party command-line tools that the SDK scanners invoke under the hood. They're listed here as a reminder of what gets shelled out per scan &mdash; Argus doesn't bundle them, you need them on PATH (or in a container) for the relevant scanner to run.">External tools (scanner-side rail)</h3>
+              data-tooltip="Third-party command-line tools that the SDK scanners shell out to. Argus doesn't bundle them &mdash; you need them on PATH or supply a container image. Click any tool to see which scanners invoke it and where the fallback lives.">External tools</h3>
           <ul id="arch-tools-list" class="arch-tools__list"></ul>
         </aside>
       </main>

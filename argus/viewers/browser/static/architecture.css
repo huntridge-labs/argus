@@ -1044,6 +1044,35 @@
   color: var(--fg-muted);
 }
 
+.arch-panel__used-by {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+}
+
+.arch-panel__used-by-link {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.6rem;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--fg);
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+
+.arch-panel__used-by-link:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.arch-panel__used-by-link:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 .arch-panel__adrs {
   display: flex;
   flex-wrap: wrap;
@@ -1147,16 +1176,29 @@
   border-top: 1px dashed var(--border);
 }
 
-.arch-tools__title {
+/* Bumped specificity so the margin survives both Material's own
+   ``.md-typeset h3`` rule AND the typeset reset in the docsite
+   wrapper (``.md-typeset .arch-page h3 { margin: 0 }``). The
+   ``.md-typeset`` prefix here is harmless in the standalone viewer
+   context — the selector still matches whenever the host page
+   carries that class. */
+.md-typeset .arch-page .arch-tools__title,
+.arch-page .arch-tools__title {
   font-size: 0.7rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--fg-muted);
-  margin: 0 0 0.5rem;
+  margin: 0 0 0.9rem;
 }
 
-.arch-tools__list {
+/* Specificity bump so this wins against MkDocs Material's
+   ``.md-typeset ul:not([hidden]) { display: flow-root }`` rule
+   (specificity (0,2,1)) — without the ``.arch-page`` prefix and
+   the matching ``:not([hidden])`` attribute filter, the external-
+   tools row stacks vertically inside the docs site instead of
+   wrapping as inline pills. */
+.arch-page .arch-tools__list:not([hidden]) {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
@@ -1167,17 +1209,32 @@
 
 .arch-tool {
   font-size: 0.78rem;
-  padding: 0.25rem 0.55rem;
+  padding: 0.3rem 0.65rem;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: 4px;
   color: var(--fg-muted);
-  cursor: help;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.12s ease, border-color 0.12s ease,
+              background 0.12s ease;
+}
+
+.arch-tool:hover,
+.arch-tool:focus-visible {
+  color: var(--fg);
+  border-color: var(--accent);
+  background: var(--surface-alt);
 }
 
 .arch-tool--critical {
   border-color: var(--accent-dim);
   color: var(--fg);
+}
+
+.arch-tool--critical:hover,
+.arch-tool--critical:focus-visible {
+  border-color: var(--accent);
 }
 
 /* ─── Configure mode (picker) ─────────────────────────────────────── */
