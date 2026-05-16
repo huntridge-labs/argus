@@ -239,6 +239,11 @@ def build(repo_root: Path, output_dir: Path, *, ref: str | None = None) -> None:
         nav.append({"Examples": examples_nav})
 
     nav.append({"Changelog": "changelog.md"})
+    # The architecture page is a fully standalone HTML rendered below.
+    # Adding it to the nav makes it reachable from the docsite header /
+    # sidebar like any other page; mkdocs accepts an HTML file path
+    # here as long as ``use_directory_urls`` is on (the default).
+    nav.append({"Architecture": "architecture/index.html"})
 
     # ── Architecture page (self-contained interactive diagram) ───────────
     #

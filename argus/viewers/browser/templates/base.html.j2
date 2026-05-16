@@ -35,8 +35,6 @@
          {% if _active_nav == "/findings" %}aria-current="page"{% endif %}>Findings</a>
       <a href="/log{% if scan_param %}?scan={{ scan_param | urlencode }}{% endif %}"
          {% if _active_nav == "/log" %}aria-current="page"{% endif %}>Log</a>
-      <a href="/architecture"
-         {% if _active_nav == "/architecture" %}aria-current="page"{% endif %}>Architecture</a>
 
       {#- Recent runs dropdown — only rendered when there are at
           least two scan-ready dirs under the launch root. Single-scan

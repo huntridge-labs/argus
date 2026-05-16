@@ -1345,7 +1345,7 @@ _STANDALONE_HTML_TEMPLATE = """<!doctype html>
       <h1>Project Argus</h1>
     </a>
     <nav>
-      <a href="https://argus.huntridgelabs.com">Docs</a>
+      <a href="../">Docs</a>
       <a href="./" aria-current="page">Architecture</a>
     </nav>
   </header>
@@ -1354,24 +1354,89 @@ _STANDALONE_HTML_TEMPLATE = """<!doctype html>
     <div class="arch-page" data-mode="view">
       <main class="arch-page__main">
         <div class="arch-toolbar">
-          <h2 class="arch-toolbar__title">Argus SDK — architecture &amp; flows</h2>
+          <h2 class="arch-toolbar__title">Argus SDK &mdash; architecture &amp; flows</h2>
           <button type="button" id="arch-configure-toggle"
-                  class="arch-toolbar__btn" aria-pressed="false">
+                  class="arch-toolbar__btn" aria-pressed="false"
+                  data-tooltip="Toggle multi-select mode: pick scanners across the columns and Argus generates a working argus.yml, CLI invocation, GitHub Actions workflow, or MCP client config from the selection.">
             Configure
           </button>
         </div>
-        <p class="arch-page__intro">
-          Every component that powers <code>argus scan</code>. Pick a
-          flow on the right to highlight the path; click any box for
-          source paths, related ADRs, and a copy-pasteable config
-          snippet. Toggle <strong>Configure</strong> to multi-select
-          scanners and generate a working configuration.
-        </p>
 
-        <div class="arch-legend">__LEGEND__</div>
+        <div id="arch-drawer-backdrop" class="arch-drawer-backdrop"
+             aria-hidden="true"></div>
 
-        <section id="arch-columns" class="arch-columns"
-                 aria-label="Architecture columns"></section>
+        <div class="arch-columns-viewport" id="arch-columns-viewport">
+          <button type="button" id="arch-info-toggle"
+                  class="arch-info-toggle"
+                  aria-expanded="false" aria-controls="arch-info-popover"
+                  aria-label="About this diagram" title="About this diagram">
+            <svg width="14" height="14" viewBox="0 0 16 16"
+                 fill="none" stroke="currentColor" stroke-width="1.6"
+                 stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true" focusable="false">
+              <circle cx="8" cy="8" r="6.25" />
+              <path d="M8 7v4" />
+              <circle cx="8" cy="4.75" r="0.4" fill="currentColor" stroke="none" />
+            </svg>
+          </button>
+
+          <div id="arch-info-popover" class="arch-info-popover" hidden
+               role="dialog" aria-label="About this diagram">
+            Every component that powers <code>argus scan</code> &mdash; the CLI
+            surfaces, the SDK core, every scanner / linter / reporter, the
+            artifacts they produce, and the consumers that read them.
+            Pick a flow from the <strong>Flows</strong> panel on the left
+            to highlight a path through the columns and see the
+            step-by-step walkthrough on the right. Click any node for
+            source paths, related ADRs, and a copy-pasteable config
+            snippet. Drag to pan, scroll or use the zoom controls to
+            navigate. Toggle <strong>Configure</strong> to multi-select
+            scanners and generate a working <code>argus.yml</code>, CLI
+            invocation, GitHub Actions workflow, or MCP client config
+            from the selection.
+          </div>
+
+          <section id="arch-columns" class="arch-columns"
+                   aria-label="Architecture columns"></section>
+
+          <div class="arch-zoom-controls" aria-label="Zoom controls">
+            <button type="button" id="arch-zoom-fit"
+                    class="arch-zoom-btn arch-zoom-fit"
+                    aria-label="Reset view" title="Reset view"
+                    data-tooltip="Fit the entire diagram in the viewport.">
+              <svg width="14" height="14" viewBox="0 0 16 16"
+                   fill="none" stroke="currentColor" stroke-width="1.6"
+                   stroke-linecap="round" stroke-linejoin="round"
+                   aria-hidden="true" focusable="false">
+                <path d="M2 5V2h3M14 5V2h-3M2 11v3h3M14 11v3h-3" />
+              </svg>
+            </button>
+            <button type="button" id="arch-zoom-out" class="arch-zoom-btn"
+                    aria-label="Zoom out" title="Zoom out"
+                    data-tooltip="Zoom out (or scroll wheel down on the diagram).">&minus;</button>
+            <button type="button" id="arch-zoom-reset"
+                    class="arch-zoom-btn arch-zoom-reset"
+                    aria-label="Current zoom &mdash; click to reset" title="Reset zoom"
+                    data-tooltip="Current zoom level. Click to reset to fit-to-view.">100%</button>
+            <button type="button" id="arch-zoom-in" class="arch-zoom-btn"
+                    aria-label="Zoom in" title="Zoom in"
+                    data-tooltip="Zoom in (or scroll wheel up on the diagram).">+</button>
+          </div>
+
+          <button type="button" id="arch-help-toggle"
+                  class="arch-help-toggle"
+                  aria-label="Replay the help tour" title="Help"
+                  data-tooltip="Replay the guided tour.">
+            <svg width="14" height="14" viewBox="0 0 16 16"
+                 fill="none" stroke="currentColor" stroke-width="1.6"
+                 stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true" focusable="false">
+              <circle cx="8" cy="8" r="6.25" />
+              <path d="M6 6a2 2 0 1 1 2.6 1.9c-.5.2-.6.5-.6 1V10" />
+              <circle cx="8" cy="11.75" r="0.4" fill="currentColor" stroke="none" />
+            </svg>
+          </button>
+        </div>
 
         <section id="arch-picker" class="arch-picker" hidden
                  aria-label="Configure mode output">
@@ -1412,34 +1477,115 @@ _STANDALONE_HTML_TEMPLATE = """<!doctype html>
         </section>
 
         <aside class="arch-tools" aria-label="External tools">
-          <h3 class="arch-tools__title">External tools (scanner-side rail)</h3>
+          <h3 class="arch-tools__title"
+              data-tooltip="Third-party command-line tools that the SDK scanners invoke under the hood. They're listed here as a reminder of what gets shelled out per scan &mdash; Argus doesn't bundle them, you need them on PATH (or in a container) for the relevant scanner to run.">External tools (scanner-side rail)</h3>
           <ul id="arch-tools-list" class="arch-tools__list"></ul>
         </aside>
       </main>
 
-      <aside class="arch-page__sidebar" aria-label="Flows">
+      <button type="button" id="arch-toggle-flows"
+              class="arch-drawer-handle arch-drawer-handle--flows"
+              aria-pressed="false" aria-label="Toggle flows panel"
+              title="Flows">
+        <svg width="14" height="14" viewBox="0 0 16 16"
+             fill="none" stroke="currentColor" stroke-width="1.8"
+             stroke-linecap="round" stroke-linejoin="round"
+             aria-hidden="true" focusable="false">
+          <path d="M5 3l5 5-5 5" />
+        </svg>
+      </button>
+
+      <button type="button" id="arch-toggle-steps"
+              class="arch-drawer-handle arch-drawer-handle--steps"
+              aria-pressed="false" aria-label="Toggle steps panel"
+              title="Steps">
+        <svg width="14" height="14" viewBox="0 0 16 16"
+             fill="none" stroke="currentColor" stroke-width="1.8"
+             stroke-linecap="round" stroke-linejoin="round"
+             aria-hidden="true" focusable="false">
+          <path d="M11 3l-5 5 5 5" />
+        </svg>
+      </button>
+
+      <aside class="arch-page__sidebar arch-page__sidebar--flows"
+             aria-label="Flows">
         <h3 class="arch-flows__title">Flows</h3>
         <p class="arch-flow__summary">
           Pick a flow to highlight the path through the columns.
         </p>
         <ul id="arch-flows-list" class="arch-flows__list"></ul>
-        <button type="button" id="arch-flow-clear" class="arch-flows__clear">
+        <button type="button" id="arch-flow-clear" class="arch-flows__clear"
+                data-tooltip="Remove the active flow highlight and return every column to its idle (un-dimmed) state.">
           Clear flow
         </button>
+      </aside>
 
-        <section id="arch-steps" class="arch-steps" hidden>
+      <aside class="arch-page__sidebar arch-page__sidebar--steps"
+             aria-label="Flow steps">
+        <section id="arch-steps" class="arch-steps">
           <h3 class="arch-steps__title">Steps</h3>
           <ol id="arch-steps-list" class="arch-steps__list"></ol>
+          <p class="arch-steps__empty">
+            Pick a flow on the left to see the step-by-step path.
+          </p>
         </section>
       </aside>
 
+      <div id="arch-tour" class="arch-tour" hidden role="dialog"
+           aria-label="Architecture viewer tour" aria-modal="true">
+        <div class="arch-tour__dim arch-tour__dim--top"></div>
+        <div class="arch-tour__dim arch-tour__dim--right"></div>
+        <div class="arch-tour__dim arch-tour__dim--bottom"></div>
+        <div class="arch-tour__dim arch-tour__dim--left"></div>
+        <div id="arch-tour-bubble" class="arch-tour__bubble"
+             data-placement="bottom">
+          <button type="button" id="arch-tour-close"
+                  class="arch-tour__close"
+                  aria-label="Exit tour" title="Exit tour">
+            <svg width="12" height="12" viewBox="0 0 16 16"
+                 fill="none" stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" aria-hidden="true" focusable="false">
+              <path d="M3 3L13 13M13 3L3 13" />
+            </svg>
+          </button>
+          <p class="arch-tour__step-count">
+            <span id="arch-tour-step-current">1</span>
+            of
+            <span id="arch-tour-step-total">1</span>
+          </p>
+          <h3 class="arch-tour__title" id="arch-tour-title"></h3>
+          <div class="arch-tour__body" id="arch-tour-body"></div>
+          <div class="arch-tour__controls">
+            <label class="arch-tour__dontshow">
+              <input type="checkbox" id="arch-tour-dontshow" />
+              Don't show again
+            </label>
+            <div class="arch-tour__nav">
+              <button type="button" id="arch-tour-prev"
+                      class="arch-tour__btn">Back</button>
+              <button type="button" id="arch-tour-next"
+                      class="arch-tour__btn arch-tour__btn--primary">Next</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <aside id="arch-panel" class="arch-panel" aria-label="Node details">
-        <button type="button" id="arch-panel-close" class="arch-panel__close">
-          Close
+        <button type="button" id="arch-panel-close" class="arch-panel__close"
+                aria-label="Close" title="Close">
+          <svg width="12" height="12" viewBox="0 0 16 16"
+               fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" aria-hidden="true" focusable="false">
+            <path d="M3 3L13 13M13 3L3 13" />
+          </svg>
         </button>
-        <h3 class="arch-panel__label"></h3>
-        <p class="arch-panel__kind"></p>
-        <div class="arch-panel__body"></div>
+        <header class="arch-panel__header" id="arch-panel-header">
+          <h3 class="arch-panel__label"></h3>
+          <p class="arch-panel__kind"></p>
+        </header>
+        <div class="arch-panel__body-wrap">
+          <div class="arch-panel__body"></div>
+        </div>
       </aside>
     </div>
   </main>
@@ -1503,21 +1649,13 @@ def render_standalone_html(
         if src.exists():
             shutil.copy2(src, output_dir / name)
 
-    # Build the legend chips inline so the standalone page doesn't
-    # depend on JS to render them.
-    legend_html = _render_legend(view_model.get("columns", []))
-
-    html = (
-        _STANDALONE_HTML_TEMPLATE
-        .replace("__LEGEND__", legend_html)
-        # JSON-encode the view model and embed as the page's
-        # ``arch-data`` script block. ``</script>`` substrings in any
-        # field would otherwise break out of the script context —
-        # escape them via a unicode-escape on the angle bracket.
-        .replace(
-            "__VIEW_MODEL__",
-            json.dumps(view_model).replace("</", "<\\/"),
-        )
+    # JSON-encode the view model and embed as the page's
+    # ``arch-data`` script block. ``</script>`` substrings in any
+    # field would otherwise break out of the script context — escape
+    # them via a unicode-escape on the angle bracket.
+    html = _STANDALONE_HTML_TEMPLATE.replace(
+        "__VIEW_MODEL__",
+        json.dumps(view_model).replace("</", "<\\/"),
     )
     out = output_dir / "index.html"
     out.write_text(html, encoding="utf-8")
