@@ -159,6 +159,26 @@ captured here so they don't get re-discovered as forgotten work.
 - **medsecops-golden-path silent-failure regression.** Verify the demo pipeline no longer
   reproduces the silent-failure scenarios that motivated PR #91 once the SDK lands on `main`.
 
+### Build & dependency hygiene
+
+Today the published wheel uses `>=` floor pins with CVE-conscious bottoms — the right
+choice for a library, since `==` pins force resolver conflicts on consumers and offer
+little protection that Dependabot's 7-day cooldown doesn't already give us. These two
+items would add a *separate* deterministic build/test baseline for our own CI without
+changing what end users see.
+
+- **`requirements-frozen.txt` for CI.** Generate from a known-good install
+  (`pip-compile` or `pip freeze --exclude-editable`), commit alongside the loose
+  `requirements.txt`, use only in CI's lint / test jobs. Gives us a reproducible test
+  matrix so a transitive dep silently breaking on a fresh `pip install` is caught here
+  rather than by a user. Doesn't ship to PyPI; doesn't constrain consumers.
+- **Adopt `uv` + `uv.lock` for the dev/CI workflow.** Hash-verified, deterministic dev
+  environments with sub-second resolves. The published wheel still uses `>=` floors;
+  `uv.lock` is internal-only, like a `Cargo.lock` for a library crate. Replaces the
+  manual `requirements-frozen.txt` above with a more capable tool. Closes the
+  "compromised fresh release slips into our build" attack class for our own CI by
+  pinning hashes of every transitive dep. Out-of-scope until post-1.0.
+
 ### External distribution
 
 - **Publish skill to [skills.sh](https://skills.sh/)** for discovery; the
