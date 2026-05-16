@@ -61,7 +61,7 @@ repos:
           --skip=**/package-lock.json,
           --skip=pnpm-lock.yaml,
           --skip=**/pnpm-lock.yaml,
-          --ignore-words-list=assertIn,
+          "--ignore-words-list=assertIn,froms",
           -w
         ]
   # renovate: datasource=github-tags depName=adrienverge/yamllint versioning=semver

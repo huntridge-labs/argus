@@ -172,7 +172,7 @@
             "argus/containers.py"
           ],
           "search": {
-            "pattern": "(ghcr\\.io/huntridge-labs/argus/[^:]+:)[^\"@]+",
+            "pattern": "(ghcr\\.io/huntridge-labs/argus/[\\w-]+:)[^\"@\\s]+",
             "flags": "g"
           },
           "replace": "${1}{{version}}"
