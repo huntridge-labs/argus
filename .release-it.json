@@ -169,16 +169,6 @@
         },
         {
           "files": [
-            "package.json"
-          ],
-          "search": {
-            "pattern": "(\"version\":\\s*\")[^\"]+\"",
-            "flags": ""
-          },
-          "replace": "${1}{{version}}\""
-        },
-        {
-          "files": [
             "argus/containers.py"
           ],
           "search": {
