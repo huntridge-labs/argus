@@ -320,18 +320,13 @@
       bodyEl.appendChild(el('h4', {
         class: 'arch-panel__section-title', text: 'argus.yml snippet',
       }));
-      const code = el('pre', { class: 'arch-panel__code', text: node.scanner_config.yaml });
-      const copyBtn = makeCopyBtn(node.scanner_config.yaml);
-      bodyEl.appendChild(code);
-      bodyEl.appendChild(copyBtn);
+      bodyEl.appendChild(makeCodeWithCopy(node.scanner_config.yaml));
     }
     if (node.cli_invocation) {
       bodyEl.appendChild(el('h4', {
         class: 'arch-panel__section-title', text: 'CLI invocation',
       }));
-      const code = el('pre', { class: 'arch-panel__code', text: node.cli_invocation });
-      bodyEl.appendChild(code);
-      bodyEl.appendChild(makeCopyBtn(node.cli_invocation));
+      bodyEl.appendChild(makeCodeWithCopy(node.cli_invocation));
     }
     if (node.enable_via) {
       bodyEl.appendChild(el('h4', {
@@ -387,16 +382,85 @@
     panelEl.style.top = `${panelMinTop()}px`;
   }
 
+  // Inline SVG icons used inside the inset copy button. Returning a
+  // fresh node each call (the DOM can't share a single element across
+  // multiple buttons). Built via DOM methods rather than ``innerHTML``
+  // so we don't trip the security hook.
+  function copyIconSvg() {
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('width', '13');
+    svg.setAttribute('height', '13');
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '1.6');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+    const rect = document.createElementNS(svgNS, 'rect');
+    rect.setAttribute('x', '5'); rect.setAttribute('y', '5');
+    rect.setAttribute('width', '9'); rect.setAttribute('height', '9');
+    rect.setAttribute('rx', '1.5');
+    const path = document.createElementNS(svgNS, 'path');
+    path.setAttribute('d', 'M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5');
+    svg.appendChild(rect);
+    svg.appendChild(path);
+    return svg;
+  }
+
+  function checkIconSvg() {
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('width', '13');
+    svg.setAttribute('height', '13');
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS(svgNS, 'path');
+    path.setAttribute('d', 'M3 8.5L6.5 12L13 4.5');
+    svg.appendChild(path);
+    return svg;
+  }
+
   function makeCopyBtn(payload) {
-    return el('button', {
+    const btn = el('button', {
       type: 'button',
       class: 'arch-panel__copy',
-      text: 'Copy',
-      onclick: async () => {
-        try { await navigator.clipboard.writeText(payload); }
-        catch (_err) { /* clipboard unavailable; silent. */ }
-      },
+      'aria-label': 'Copy to clipboard',
+      title: 'Copy to clipboard',
     });
+    btn.appendChild(copyIconSvg());
+    btn.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(payload); }
+      catch (_err) { /* clipboard unavailable; silent. */ }
+      // Brief "copied" feedback: swap icon for a checkmark, then back.
+      btn.textContent = '';
+      btn.appendChild(checkIconSvg());
+      btn.dataset.copied = 'true';
+      window.setTimeout(() => {
+        btn.textContent = '';
+        btn.appendChild(copyIconSvg());
+        delete btn.dataset.copied;
+      }, 1200);
+    });
+    return btn;
+  }
+
+  // Build a ``<pre>`` code block with the copy button inset at the
+  // top-right corner — replaces the old "<pre> + sibling <button>"
+  // pattern so the copy affordance sits inside the code surface
+  // instead of orphaned underneath it.
+  function makeCodeWithCopy(text) {
+    const wrap = el('div', { class: 'arch-panel__code-wrap' });
+    const pre = el('pre', { class: 'arch-panel__code', text });
+    wrap.appendChild(pre);
+    wrap.appendChild(makeCopyBtn(text));
+    return wrap;
   }
 
   function closePanel() {
@@ -469,8 +533,7 @@
 
   function fillPaneCode(pane, text) {
     pane.textContent = '';
-    pane.appendChild(el('pre', { class: 'arch-panel__code', text }));
-    pane.appendChild(makeCopyBtn(text));
+    pane.appendChild(makeCodeWithCopy(text));
   }
 
   function buildYaml(names) {

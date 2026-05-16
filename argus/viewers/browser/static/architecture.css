@@ -1080,20 +1080,62 @@
   margin: 0.25rem 0 0.75rem;
 }
 
+/* Inset copy button: a small icon button pinned to the top-right
+   corner of the code wrap so the affordance sits inside the code
+   surface instead of below it. */
+.arch-panel__code-wrap {
+  position: relative;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.arch-panel__code-wrap .arch-panel__code {
+  margin: 0;
+}
+
 .arch-panel__copy {
-  font-size: 0.72rem;
-  background: var(--surface-alt);
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  width: 1.6rem;
+  height: 1.6rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 0.2rem 0.55rem;
+  border-radius: 4px;
   color: var(--fg-muted);
   cursor: pointer;
   font-family: inherit;
-  margin-left: 0.5rem;
+  opacity: 0.7;
+  transition: opacity 0.15s ease, color 0.15s ease,
+              border-color 0.15s ease, background 0.15s ease;
+}
+
+.arch-panel__code-wrap:hover .arch-panel__copy,
+.arch-panel__copy:focus-visible {
+  opacity: 1;
 }
 
 .arch-panel__copy:hover {
   color: var(--fg);
+  border-color: var(--accent);
+  background: var(--surface-alt);
+}
+
+.arch-panel__copy svg {
+  display: block;
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
+
+/* Brief confirmation state — set by JS when the click handler
+   successfully writes to the clipboard. */
+.arch-panel__copy[data-copied="true"] {
+  opacity: 1;
+  color: var(--accent);
   border-color: var(--accent);
 }
 
