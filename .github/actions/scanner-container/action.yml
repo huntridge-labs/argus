@@ -212,7 +212,7 @@ runs:
 
     - name: Comment PR with container scan results
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@0.7.0
+      uses: huntridge-labs/argus/.github/actions/comment-pr@1.0.0
       with:
         summary_file: scanner-summaries/container-${{ inputs.container_name }}.md
         comment_marker: container-${{ inputs.container_name }}-comment-marker

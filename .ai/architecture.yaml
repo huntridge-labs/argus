@@ -420,7 +420,7 @@ data_flow:
       control: "Set post_pr_comment: true in action inputs"
       use_case: "Single scanner workflows, focused scanning"
       example: |
-        - uses: huntridge-labs/argus/.github/actions/scanner-bandit@0.7.0
+        - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.0.0
           with:
             post_pr_comment: true  # Posts individual Bandit PR comment
 

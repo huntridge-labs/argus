@@ -437,7 +437,7 @@ jobs:
     name: Code Quality & Linting
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_lint == 'true'
-    uses: huntridge-labs/argus/.github/workflows/linting.yml@feat/argus-portability
+    uses: huntridge-labs/argus/.github/workflows/linting.yml@1.0.0
     with:
       post_pr_comment: false
     permissions:
@@ -451,7 +451,7 @@ jobs:
     name: CodeQL Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_codeql == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-codeql.yml@feat/argus-portability
+    uses: huntridge-labs/argus/.github/workflows/scanner-codeql.yml@1.0.0
     with:
       codeql_languages: ${{ inputs.codeql_languages }}
       config_file: ${{ inputs.codeql_config_file }}
@@ -469,7 +469,7 @@ jobs:
     name: OpenGrep Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_opengrep == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-opengrep.yml@feat/argus-portability
+    uses: huntridge-labs/argus/.github/workflows/scanner-opengrep.yml@1.0.0
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -485,7 +485,7 @@ jobs:
     name: Bandit Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_bandit == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-bandit.yml@feat/argus-portability
+    uses: huntridge-labs/argus/.github/workflows/scanner-bandit.yml@1.0.0
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -502,7 +502,7 @@ jobs:
     name: Gitleaks Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_gitleaks == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-gitleaks.yml@feat/argus-portability
+    uses: huntridge-labs/argus/.github/workflows/scanner-gitleaks.yml@1.0.0
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -524,7 +524,7 @@ jobs:
     name: ClamAV Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_clamav == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-clamav.yml@feat/argus-portability
+    uses: huntridge-labs/argus/.github/workflows/scanner-clamav.yml@1.0.0
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -541,7 +541,7 @@ jobs:
     name: Container Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_container == 'true'
-    uses: huntridge-labs/argus/.github/workflows/container-scan.yml@feat/argus-portability
+    uses: huntridge-labs/argus/.github/workflows/container-scan.yml@1.0.0
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -558,7 +558,7 @@ jobs:
     name: Infrastructure Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_infrastructure == 'true'
-    uses: huntridge-labs/argus/.github/workflows/infrastructure-scan.yml@feat/argus-portability
+    uses: huntridge-labs/argus/.github/workflows/infrastructure-scan.yml@1.0.0
     with:
       iac_path: ${{ inputs.iac_path }}
       post_pr_comment: false
@@ -575,7 +575,7 @@ jobs:
     name: SBOM Generator
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_sbom == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-syft.yml@feat/argus-portability
+    uses: huntridge-labs/argus/.github/workflows/scanner-syft.yml@1.0.0
     with:
       enable_code_security: ${{ inputs.enable_code_security }}
     permissions:
@@ -590,7 +590,7 @@ jobs:
     name: Trivy IaC Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_trivy_iac == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-iac.yml@feat/argus-portability
+    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-iac.yml@1.0.0
     with:
       iac_path: ${{ inputs.iac_path }}
       post_pr_comment: false
@@ -607,7 +607,7 @@ jobs:
     name: Checkov Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_checkov == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-checkov.yml@feat/argus-portability
+    uses: huntridge-labs/argus/.github/workflows/scanner-checkov.yml@1.0.0
     with:
       iac_path: ${{ inputs.iac_path }}
       post_pr_comment: false
@@ -624,7 +624,7 @@ jobs:
     name: Trivy Container Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_trivy_container == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-container.yml@feat/argus-portability
+    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-container.yml@1.0.0
     with:
       image_ref: 'nginx:latest'
       post_pr_comment: false
@@ -642,7 +642,7 @@ jobs:
     name: Grype Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_grype == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-grype.yml@feat/argus-portability
+    uses: huntridge-labs/argus/.github/workflows/scanner-grype.yml@1.0.0
     with:
       image_ref: 'nginx:latest'
       post_pr_comment: false
@@ -660,7 +660,7 @@ jobs:
     name: ZAP (DAST) Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_zap == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-zap.yml@feat/argus-portability
+    uses: huntridge-labs/argus/.github/workflows/scanner-zap.yml@1.0.0
     with:
       scan_mode: ${{ inputs.zap_scan_mode }}
       scan_type: ${{ inputs.zap_scan_type }}
@@ -684,7 +684,7 @@ jobs:
     name: OSV Dependency Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_osv == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-osv.yml@feat/argus-portability
+    uses: huntridge-labs/argus/.github/workflows/scanner-osv.yml@1.0.0
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -703,7 +703,7 @@ jobs:
     name: Dependency Review Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_dependency_review == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-dependency-review.yml@feat/argus-portability
+    uses: huntridge-labs/argus/.github/workflows/scanner-dependency-review.yml@1.0.0
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -723,7 +723,7 @@ jobs:
     name: Supply Chain Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_supply_chain == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-supply-chain.yml@feat/argus-portability
+    uses: huntridge-labs/argus/.github/workflows/scanner-supply-chain.yml@1.0.0
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -780,7 +780,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           repository: huntridge-labs/argus
-          ref: feat/argus-portability
+          ref: 1.0.0
           path: .argus-actions
 
       - name: Aggregate scanner results
