@@ -12,7 +12,7 @@
 {% block title %}Architecture & flows — Argus{% endblock %}
 
 {% block extra_head %}
-  <link rel="stylesheet" href="{{ static_prefix }}architecture.css" />
+  <link rel="stylesheet" href="{{ static_prefix }}architecture.css?v={{ static_v }}" />
 {% endblock %}
 
 {% block content %}
@@ -27,24 +27,68 @@
       </button>
     </div>
 
-    <p class="arch-page__intro">
-      Every component that powers <code>argus scan</code>, the CLI
-      surfaces, the SDK core, every scanner / linter / reporter, the
-      artifacts they produce, and the consumers that read them.
-      Pick a flow on the right to highlight the path through the
-      columns; click any box for source paths, related ADRs, and a
-      copy-pasteable config snippet. Toggle <strong>Configure</strong>
-      to multi-select scanners and generate a working
-      <code>argus.yml</code>, CLI invocation, GitHub Actions workflow,
-      or MCP client config from the selection.
-    </p>
+    {# Backdrop is only visible on narrow viewports when a drawer is
+       open; clicking it dismisses the drawer. -#}
+    <div id="arch-drawer-backdrop" class="arch-drawer-backdrop"
+         aria-hidden="true"></div>
 
-    <section id="arch-columns" class="arch-columns"
-             aria-label="Architecture columns">
-      {# Columns are populated by JS at boot from #arch-data.
-         An empty placeholder lives here so the layout doesn't
-         shift between initial render and hydration. -#}
-    </section>
+    <div class="arch-columns-viewport" id="arch-columns-viewport">
+      <button type="button" id="arch-info-toggle"
+              class="arch-info-toggle"
+              aria-expanded="false" aria-controls="arch-info-popover"
+              aria-label="About this diagram" title="About this diagram">
+        <svg width="14" height="14" viewBox="0 0 16 16"
+             fill="none" stroke="currentColor" stroke-width="1.6"
+             stroke-linecap="round" stroke-linejoin="round"
+             aria-hidden="true" focusable="false">
+          <circle cx="8" cy="8" r="6.25" />
+          <path d="M8 7v4" />
+          <circle cx="8" cy="4.75" r="0.4" fill="currentColor" stroke="none" />
+        </svg>
+      </button>
+
+      <div id="arch-info-popover" class="arch-info-popover" hidden
+           role="dialog" aria-label="About this diagram">
+        Every component that powers <code>argus scan</code> — the CLI
+        surfaces, the SDK core, every scanner / linter / reporter, the
+        artifacts they produce, and the consumers that read them.
+        Pick a flow from the <strong>Flows</strong> panel on the left
+        to highlight a path through the columns and see the
+        step-by-step walkthrough on the right. Click any node for
+        source paths, related ADRs, and a copy-pasteable config
+        snippet. Drag to pan, scroll or use the zoom controls to
+        navigate. Toggle <strong>Configure</strong> to multi-select
+        scanners and generate a working <code>argus.yml</code>, CLI
+        invocation, GitHub Actions workflow, or MCP client config
+        from the selection.
+      </div>
+
+      <section id="arch-columns" class="arch-columns"
+               aria-label="Architecture columns">
+        {# Columns are populated by JS at boot from #arch-data.
+           An empty placeholder lives here so the layout doesn't
+           shift between initial render and hydration. -#}
+      </section>
+      <div class="arch-zoom-controls" aria-label="Zoom controls">
+        <button type="button" id="arch-zoom-fit"
+                class="arch-zoom-btn arch-zoom-fit"
+                aria-label="Reset view" title="Reset view">
+          <svg width="14" height="14" viewBox="0 0 16 16"
+               fill="none" stroke="currentColor" stroke-width="1.6"
+               stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true" focusable="false">
+            <path d="M2 5V2h3M14 5V2h-3M2 11v3h3M14 11v3h-3" />
+          </svg>
+        </button>
+        <button type="button" id="arch-zoom-out" class="arch-zoom-btn"
+                aria-label="Zoom out" title="Zoom out">−</button>
+        <button type="button" id="arch-zoom-reset"
+                class="arch-zoom-btn arch-zoom-reset"
+                aria-label="Current zoom — click to reset" title="Reset zoom">100%</button>
+        <button type="button" id="arch-zoom-in" class="arch-zoom-btn"
+                aria-label="Zoom in" title="Zoom in">+</button>
+      </div>
+    </div>
 
     <section id="arch-picker" class="arch-picker" hidden
              aria-label="Configure mode output">
@@ -90,7 +134,32 @@
     </aside>
   </main>
 
-  <aside class="arch-page__sidebar" aria-label="Flows">
+  <button type="button" id="arch-toggle-flows"
+          class="arch-drawer-handle arch-drawer-handle--flows"
+          aria-pressed="false" aria-label="Toggle flows panel"
+          title="Flows">
+    <svg width="14" height="14" viewBox="0 0 16 16"
+         fill="none" stroke="currentColor" stroke-width="1.8"
+         stroke-linecap="round" stroke-linejoin="round"
+         aria-hidden="true" focusable="false">
+      <path d="M5 3l5 5-5 5" />
+    </svg>
+  </button>
+
+  <button type="button" id="arch-toggle-steps"
+          class="arch-drawer-handle arch-drawer-handle--steps"
+          aria-pressed="false" aria-label="Toggle steps panel"
+          title="Steps">
+    <svg width="14" height="14" viewBox="0 0 16 16"
+         fill="none" stroke="currentColor" stroke-width="1.8"
+         stroke-linecap="round" stroke-linejoin="round"
+         aria-hidden="true" focusable="false">
+      <path d="M11 3l-5 5 5 5" />
+    </svg>
+  </button>
+
+  <aside class="arch-page__sidebar arch-page__sidebar--flows"
+         aria-label="Flows">
     <h3 class="arch-flows__title">Flows</h3>
     <p class="arch-flow__summary">
       Pick a flow to highlight the path through the columns.
@@ -99,20 +168,35 @@
     <button type="button" id="arch-flow-clear" class="arch-flows__clear">
       Clear flow
     </button>
+  </aside>
 
-    <section id="arch-steps" class="arch-steps" hidden>
+  <aside class="arch-page__sidebar arch-page__sidebar--steps"
+         aria-label="Flow steps">
+    <section id="arch-steps" class="arch-steps">
       <h3 class="arch-steps__title">Steps</h3>
       <ol id="arch-steps-list" class="arch-steps__list"></ol>
+      <p class="arch-steps__empty">
+        Pick a flow on the left to see the step-by-step path.
+      </p>
     </section>
   </aside>
 
   <aside id="arch-panel" class="arch-panel" aria-label="Node details">
-    <button type="button" id="arch-panel-close" class="arch-panel__close">
-      Close
+    <button type="button" id="arch-panel-close" class="arch-panel__close"
+            aria-label="Close" title="Close">
+      <svg width="12" height="12" viewBox="0 0 16 16"
+           fill="none" stroke="currentColor" stroke-width="1.8"
+           stroke-linecap="round" aria-hidden="true" focusable="false">
+        <path d="M3 3L13 13M13 3L3 13" />
+      </svg>
     </button>
-    <h3 class="arch-panel__label"></h3>
-    <p class="arch-panel__kind"></p>
-    <div class="arch-panel__body"></div>
+    <header class="arch-panel__header" id="arch-panel-header">
+      <h3 class="arch-panel__label"></h3>
+      <p class="arch-panel__kind"></p>
+    </header>
+    <div class="arch-panel__body-wrap">
+      <div class="arch-panel__body"></div>
+    </div>
   </aside>
 
 </div>
@@ -122,5 +206,5 @@
    self-contained — no fetch() call, no extra round-trip, works
    under file://. -#}
 <script id="arch-data" type="application/json">{{ view_model_json|safe }}</script>
-<script src="{{ static_prefix }}architecture.js" defer></script>
+<script src="{{ static_prefix }}architecture.js?v={{ static_v }}" defer></script>
 {% endblock %}

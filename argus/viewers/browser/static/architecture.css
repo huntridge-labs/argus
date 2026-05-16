@@ -12,32 +12,177 @@
 
 /* ─── Page chrome ───────────────────────────────────────────────────── */
 
+/* Drop the global ``main { max-width: 72rem; padding: 1rem 1.5rem }``
+   for the outer <main> when it hosts the architecture page so the
+   diagram can use the full viewport width while staying aligned with
+   the fixed sidebars. ``:has()`` keeps the override scoped to this
+   route — every other page keeps the normal max-width centering. */
+body > main:has(> .arch-page) {
+  max-width: none;
+  padding: 0;
+  margin: 0;
+}
+
 .arch-page {
-  display: grid;
-  grid-template-columns: 1fr 22rem;
-  gap: 1.5rem;
-  align-items: start;
+  position: relative;
+  width: 100%;
 }
 
 .arch-page__main {
-  min-width: 0;
+  width: 100%;
+  /* Override the global ``main { max-width: 72rem; padding: 1rem 1.5rem; }``
+     rule that also matches this inner <main>. Without this the
+     diagram is double-constrained and ends up far too narrow. */
+  max-width: none;
+  margin: 0;
+  /* Reserve room for both fixed sidebars (flows left, steps right)
+     with a 1rem breathing gap on each side. Sidebars are 18rem wide
+     and sit 1rem from each viewport edge, so a 20rem padding leaves
+     a clean 1rem gap between sidebar and the diagram viewport. */
+  padding: 0 20rem;
+  box-sizing: border-box;
 }
 
 .arch-page__sidebar {
-  position: sticky;
-  top: 4rem;
-  max-height: calc(100vh - 5rem);
+  position: fixed;
+  top: 5rem;
+  bottom: 1rem;
+  width: 18rem;
   overflow-y: auto;
-  padding-right: 0.25rem;
+  z-index: 20;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
 }
 
-@media (max-width: 64rem) {
-  .arch-page {
-    grid-template-columns: 1fr;
+.arch-page__sidebar--flows {
+  left: 1rem;
+  transition: transform 0.25s ease;
+}
+
+.arch-page__sidebar--steps {
+  right: 1rem;
+  transition: transform 0.25s ease;
+}
+
+/* Backdrop shown only when a drawer is open on narrow viewports. */
+.arch-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 15;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.arch-page[data-drawer-open] .arch-drawer-backdrop {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Edge-handle pills that toggle the slide-out drawers on narrow
+   viewports. Pinned to the viewport edge when the drawer is closed
+   and slid inward (to the drawer's inner edge) when it's open. The
+   chevron flips on state. Hidden on wide screens where both sidebars
+   are always visible. */
+.arch-drawer-handle {
+  position: fixed;
+  top: 50%;
+  z-index: 25;
+  width: 1.5rem;
+  height: 3.25rem;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  transform: translateY(-50%);
+  transition: left 0.25s ease, right 0.25s ease,
+              background 0.12s ease, color 0.12s ease;
+}
+
+.arch-drawer-handle:hover {
+  background: var(--surface-alt);
+  color: var(--fg);
+  border-color: var(--accent-dim);
+}
+
+.arch-drawer-handle--flows {
+  left: 0;
+  border-left: 0;
+  border-radius: 0 6px 6px 0;
+}
+
+.arch-drawer-handle--steps {
+  right: 0;
+  border-right: 0;
+  border-radius: 6px 0 0 6px;
+}
+
+.arch-drawer-handle svg {
+  display: block;
+  transition: transform 0.2s ease;
+}
+
+/* Flip chevrons when their drawer is open. */
+.arch-page[data-drawer-open="flows"] .arch-drawer-handle--flows svg,
+.arch-page[data-drawer-open="steps"] .arch-drawer-handle--steps svg {
+  transform: rotate(180deg);
+}
+
+/* ─── Responsive: slide-out drawers below 1100px ──────────────────── */
+
+@media (max-width: 1099.99px) {
+  .arch-page__main {
+    /* Drop the sidebar padding so the diagram uses the full width. */
+    padding: 0 1rem;
   }
-  .arch-page__sidebar {
-    position: static;
-    max-height: none;
+
+  .arch-drawer-handle {
+    display: flex;
+  }
+
+  /* In narrow mode, anchor each drawer at the same top:5rem /
+     max-height: calc(100vh - 6rem) as the wide layout so it fills
+     all available space between the header and the viewport bottom
+     before showing a scrollbar. The edge-handle pill follows the
+     drawer's vertical centre below. */
+  .arch-page__sidebar--flows {
+    transform: translateX(calc(-100% - 2rem));
+  }
+
+  .arch-page__sidebar--steps {
+    transform: translateX(calc(100% + 2rem));
+  }
+
+  .arch-page__sidebar[data-open="true"] {
+    transform: translateX(0);
+  }
+
+  /* The drawer occupies the space from ``top: 5rem`` down to
+     ``bottom: 1rem`` (max-height ``100vh - 6rem``), so its vertical
+     midpoint is ``50vh + 2rem``. Sit the pill handle there so it
+     visually aligns with the drawer body. */
+  .arch-drawer-handle {
+    top: calc(50% + 2rem);
+  }
+
+  /* When a drawer is open, slide its handle to sit at the drawer's
+     inner edge so it stays attached to (and visually part of) the
+     drawer instead of getting hidden behind it. */
+  .arch-page[data-drawer-open="flows"] .arch-drawer-handle--flows {
+    left: 19rem;
+  }
+
+  .arch-page[data-drawer-open="steps"] .arch-drawer-handle--steps {
+    right: 19rem;
   }
 }
 
@@ -78,23 +223,149 @@
 
 /* ─── Column grid ─────────────────────────────────────────────────── */
 
+/* ─── Zoom / pan viewport ─────────────────────────────────────────── */
+
+.arch-columns-viewport {
+  overflow: hidden;
+  cursor: grab;
+  width: 100%;
+  height: calc(100vh - 14rem);
+  min-height: 24rem;
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  user-select: none;
+}
+
+.arch-columns-viewport:active {
+  cursor: grabbing;
+}
+
+/* Info button — small floating affordance at the top-left of the
+   diagram viewport that toggles a description popover. Replaces the
+   always-visible intro paragraph so the diagram itself gets the most
+   real estate. */
+.arch-info-toggle {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--fg-muted);
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  z-index: 4;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.arch-info-toggle:hover,
+.arch-info-toggle[aria-expanded="true"] {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.arch-info-toggle svg { display: block; }
+
+.arch-info-popover {
+  position: absolute;
+  top: 3rem;
+  left: 0.75rem;
+  width: min(28rem, calc(100% - 1.5rem));
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 0.85rem 1rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--fg);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  z-index: 4;
+}
+
+.arch-info-popover[hidden] { display: none; }
+
+.arch-info-popover code {
+  background: var(--surface-alt);
+  padding: 0.05em 0.35em;
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.85em;
+}
+
+/* Overlay zoom controls — floating bottom-right inside the viewport,
+   GitHub-workflow-style pill cluster with subtle backdrop. */
+.arch-zoom-controls {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  display: flex;
+  gap: 0.15rem;
+  align-items: stretch;
+  padding: 0.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 4;
+}
+
+.arch-zoom-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding: 0 0.45rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.arch-zoom-btn:hover {
+  background: var(--surface-alt);
+  border-color: var(--border);
+}
+
+.arch-zoom-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.arch-zoom-reset {
+  font-variant-numeric: tabular-nums;
+  min-width: 3rem;
+  font-size: 0.78rem;
+  color: var(--fg-muted);
+}
+
+.arch-zoom-fit svg {
+  display: block;
+}
+
 .arch-columns {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  /* Fixed-width columns — the diagram keeps a consistent shape and
+     text never wraps awkwardly when the viewport narrows. If the
+     diagram is wider than the viewport, the user pans or zooms out
+     via the controls (or wheel + drag) to navigate. */
+  grid-template-columns: repeat(7, 12rem);
+  width: max-content;
   gap: 0.75rem;
   align-items: start;
-}
-
-@media (max-width: 96rem) {
-  .arch-columns {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 56rem) {
-  .arch-columns {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+  transform-origin: 0 0;
+  will-change: transform;
+  padding: 0.75rem;
 }
 
 .arch-column {
@@ -128,8 +399,27 @@
   font-family: inherit;
   color: var(--fg);
   cursor: pointer;
+  position: relative;
+  z-index: 1;
   transition: background 0.12s ease, border-color 0.12s ease,
-              opacity 0.18s ease, transform 0.12s ease;
+              opacity 0.18s ease, min-width 0.25s ease, box-shadow 0.2s ease;
+}
+
+/* On-path nodes during a flow expand vertically only — no horizontal
+   overflow so multiple highlighted nodes never overlap each other. */
+.arch-page[data-flow-active] .arch-node[data-on-path="true"] {
+  z-index: 2;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* The currently-selected node (its detail panel is open) gets accent
+   emphasis but stays inside its column — the floating panel carries
+   the full content, so no horizontal growth is needed. */
+.arch-node[data-open="true"] {
+  z-index: 3;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(219, 230, 76, 0.25),
+              0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
 .arch-node:hover {
@@ -151,12 +441,24 @@
   display: block;
   font-weight: 500;
   line-height: 1.2;
+  overflow-wrap: break-word;
 }
 
 .arch-node__sub {
   display: block;
   font-size: 0.72rem;
   color: var(--fg-muted);
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  margin-top: 0;
+  transition: max-height 0.25s ease, opacity 0.2s ease, margin-top 0.2s ease;
+}
+
+.arch-node[data-open="true"] .arch-node__sub,
+.arch-page[data-flow-active] .arch-node[data-on-path="true"] .arch-node__sub {
+  max-height: 5rem;
+  opacity: 1;
   margin-top: 0.2rem;
 }
 
@@ -293,12 +595,6 @@
 
 /* ─── Steps panel (below flows when a flow is active) ─────────────── */
 
-.arch-steps {
-  border-top: 1px solid var(--border);
-  padding-top: 0.75rem;
-  margin-top: 0.5rem;
-}
-
 .arch-steps__title {
   font-size: 0.7rem;
   font-weight: 600;
@@ -307,6 +603,19 @@
   color: var(--fg-muted);
   margin: 0 0 0.5rem;
 }
+
+/* Empty-state placeholder shown until a flow is selected. */
+.arch-steps__empty {
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--fg-muted);
+  margin: 0;
+}
+
+/* Hide the empty placeholder once a flow activates; hide the list
+   until then so the empty state shows by default. */
+.arch-page[data-flow-active] .arch-steps__empty { display: none; }
+.arch-page:not([data-flow-active]) .arch-steps__list { display: none; }
 
 .arch-steps__list {
   list-style: none;
@@ -351,54 +660,99 @@
 
 .arch-panel {
   position: fixed;
-  top: 0;
-  right: 0;
-  width: min(28rem, 90vw);
-  height: 100vh;
+  top: 5rem;
+  /* `left` is set by JS on open so the panel can be dragged freely.
+     The default anchor is the right side of the viewport. */
+  width: 26rem;
+  min-width: 18rem;
+  max-width: calc(100vw - 2rem);
+  height: auto;
+  min-height: 10rem;
+  max-height: calc(100vh - 6rem);
   background: var(--surface);
-  border-left: 1px solid var(--accent);
-  box-shadow: -2px 0 12px rgba(0, 0, 0, 0.25);
-  padding: 1.25rem 1.5rem;
-  overflow-y: auto;
-  z-index: 100;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  padding: 0;
+  z-index: 30;
   display: none;
+  resize: both;
+  overflow: hidden;
 }
 
 .arch-panel[data-open="true"] {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Reset the global ``header { display: flex; ... }`` styling so the
+   title and kind stack vertically inside the panel header. */
+.arch-panel__header {
   display: block;
+  padding: 0.75rem 2.5rem 0.6rem 1.25rem;
+  margin: 0;
+  max-width: none;
+  cursor: move;
+  user-select: none;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+
+.arch-panel__body-wrap {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 0.75rem 1.25rem 1.25rem 1.25rem;
 }
 
 .arch-panel__close {
   position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 0.2rem 0.55rem;
+  top: 0.4rem;
+  right: 0.4rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
   color: var(--fg-muted);
   cursor: pointer;
   font-family: inherit;
+  z-index: 2;
 }
 
 .arch-panel__close:hover {
   color: var(--fg);
-  border-color: var(--accent);
+  background: var(--surface-alt);
+  border-color: var(--border);
+}
+
+.arch-panel__close svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
 }
 
 .arch-panel__label {
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   font-weight: 600;
-  margin: 0 0 0.5rem;
+  margin: 0;
   color: var(--fg);
+  text-transform: none;
+  letter-spacing: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .arch-panel__kind {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--fg-muted);
-  margin-bottom: 0.75rem;
+  margin: 0.15rem 0 0;
 }
 
 .arch-panel__purpose {

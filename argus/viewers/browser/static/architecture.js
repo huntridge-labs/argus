@@ -44,6 +44,11 @@
   const toolsListEl = document.getElementById('arch-tools-list');
   const configureToggleEl = document.getElementById('arch-configure-toggle');
   const pickerEl = document.getElementById('arch-picker');
+  const flowsSidebarEl = document.querySelector('.arch-page__sidebar--flows');
+  const stepsSidebarEl = document.querySelector('.arch-page__sidebar--steps');
+  const toggleFlowsEl = document.getElementById('arch-toggle-flows');
+  const toggleStepsEl = document.getElementById('arch-toggle-steps');
+  const drawerBackdropEl = document.getElementById('arch-drawer-backdrop');
 
   if (!pageEl || !columnsEl || !flowsEl) { return; }
 
@@ -125,8 +130,13 @@
       class: 'arch-node__step-index',
       'aria-hidden': 'true',
     });
+    const labelParts = (node.label || '').split('_').flatMap((part, i, arr) =>
+      i < arr.length - 1
+        ? [document.createTextNode(part + '_'), document.createElement('wbr')]
+        : [document.createTextNode(part)]
+    );
     const labelEl = el('span', { class: 'arch-node__label' }, [
-      stepIndex, document.createTextNode(node.label),
+      stepIndex, ...labelParts,
       badge ? document.createTextNode(' ') : null,
       badge,
     ]);
@@ -219,10 +229,8 @@
       );
     }
     if (flow) {
-      stepsContainerEl.hidden = false;
       renderSteps(flow);
     } else {
-      stepsContainerEl.hidden = true;
       stepsListEl.textContent = '';
     }
   }
@@ -281,6 +289,11 @@
   }
 
   function openPanel(node) {
+    for (const btn of columnsEl.querySelectorAll('.arch-node[data-open]')) {
+      delete btn.dataset.open;
+    }
+    const openBtn = columnsEl.querySelector(`.arch-node[data-id="${cssEscape(node.id)}"]`);
+    if (openBtn) { openBtn.dataset.open = 'true'; }
     state.openNodeId = node.id;
     const titleEl = panelEl.querySelector('.arch-panel__label');
     const kindEl = panelEl.querySelector('.arch-panel__kind');
@@ -349,6 +362,27 @@
       bodyEl.appendChild(wrap);
     }
     panelEl.dataset.open = 'true';
+    positionPanelDefault();
+  }
+
+  // Minimum top position for the panel — the bottom of the page
+  // header (plus a small gap) so the panel can never slide under the
+  // header chrome. Read live in case the header height changes
+  // (responsive wrap, etc.).
+  function panelMinTop() {
+    const header = document.querySelector('body > header');
+    const headerBottom = header ? header.getBoundingClientRect().bottom : 0;
+    return Math.max(8, headerBottom + 4);
+  }
+
+  // Place the panel near the top-right on first open; once the user
+  // drags or resizes it, leave their position alone on subsequent opens.
+  function positionPanelDefault() {
+    if (panelEl.dataset.userPlaced === 'true') return;
+    const rect = panelEl.getBoundingClientRect();
+    const left = Math.max(8, window.innerWidth - rect.width - 16);
+    panelEl.style.left = `${left}px`;
+    panelEl.style.top = `${panelMinTop()}px`;
   }
 
   function makeCopyBtn(payload) {
@@ -366,6 +400,9 @@
   function closePanel() {
     delete panelEl.dataset.open;
     state.openNodeId = null;
+    for (const btn of columnsEl.querySelectorAll('.arch-node[data-open]')) {
+      delete btn.dataset.open;
+    }
   }
 
   // ─── Configure (picker) mode ─────────────────────────────────────
@@ -598,14 +635,282 @@
   }
   renderPicker();
 
+  // ─── Zoom / pan ─────────────────────────────────────────────────────
+  const viewportEl = document.getElementById('arch-columns-viewport');
+  if (viewportEl) {
+    const zs = { scale: 1, x: 0, y: 0 };
+    const SCALE_MIN = 0.25, SCALE_MAX = 2;
+    const zoomInEl    = document.getElementById('arch-zoom-in');
+    const zoomOutEl   = document.getElementById('arch-zoom-out');
+    const zoomResetEl = document.getElementById('arch-zoom-reset');
+    const zoomFitEl   = document.getElementById('arch-zoom-fit');
+
+    // Pick the best scaling primitive for the current browser.
+    // ``zoom`` re-rasterizes text at the new size (sharp output) and
+    // works correctly in Chrome and Firefox 126+. Safari supports
+    // ``zoom`` syntactically but does not scale grid column widths
+    // in lockstep with font sizes, so text wraps incorrectly. Fall
+    // back to ``transform: scale`` there — slightly blurry but
+    // layout stays stable.
+    const isSafari = /^((?!chrome|android|crios|fxios).)*safari/i
+      .test(navigator.userAgent);
+    const useCssZoom = !isSafari;
+
+    let baseWidth = 0, baseHeight = 0;
+    function measureBaseSize() {
+      const savedZoom = columnsEl.style.zoom;
+      const savedTransform = columnsEl.style.transform;
+      columnsEl.style.zoom = '1';
+      columnsEl.style.transform = '';
+      baseWidth = columnsEl.scrollWidth;
+      baseHeight = columnsEl.scrollHeight;
+      columnsEl.style.zoom = savedZoom;
+      columnsEl.style.transform = savedTransform;
+    }
+
+    function applyZoom() {
+      if (useCssZoom) {
+        columnsEl.style.zoom = zs.scale;
+        // ``transform: translate`` on a zoomed element is interpreted
+        // in the zoomed coordinate space (a 50px translate at zoom 2
+        // visually moves 100px). Divide by zoom to convert viewport
+        // CSS pixels to the translate value the browser expects.
+        const tx = zs.x / zs.scale;
+        const ty = zs.y / zs.scale;
+        columnsEl.style.transform = `translate(${tx}px, ${ty}px)`;
+      } else {
+        columnsEl.style.zoom = '';
+        columnsEl.style.transform =
+          `translate(${zs.x}px, ${zs.y}px) scale(${zs.scale})`;
+      }
+      if (zoomResetEl) {
+        zoomResetEl.textContent = `${Math.round(zs.scale * 100)}%`;
+      }
+    }
+
+    function zoomAround(cx, cy, factor) {
+      const next = Math.min(SCALE_MAX, Math.max(SCALE_MIN, zs.scale * factor));
+      const r = next / zs.scale;
+      zs.x = cx - r * (cx - zs.x);
+      zs.y = cy - r * (cy - zs.y);
+      zs.scale = next;
+      applyZoom();
+    }
+
+    viewportEl.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = viewportEl.getBoundingClientRect();
+      zoomAround(e.clientX - rect.left, e.clientY - rect.top,
+                 e.deltaY < 0 ? 1.1 : 1 / 1.1);
+    }, { passive: false });
+
+    // Pan: pointer-down anywhere inside the viewport (including over
+    // node buttons) primes a drag. Only after the cursor moves past a
+    // small threshold (4px) does panning actually begin, so a quick
+    // click on a node still opens its detail panel. When the drag
+    // does engage, the trailing ``click`` event is swallowed so a
+    // pan that happens to release over a button doesn't accidentally
+    // open it. Clicks on the floating zoom controls are left alone.
+    const DRAG_THRESHOLD = 4;
+    let drag = null;
+    viewportEl.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      if (e.target.closest('.arch-zoom-controls')) return;
+      drag = {
+        sx: e.clientX, sy: e.clientY,
+        px: zs.x, py: zs.y,
+        moved: false,
+      };
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!drag) return;
+      const dx = e.clientX - drag.sx;
+      const dy = e.clientY - drag.sy;
+      if (!drag.moved &&
+          (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) {
+        drag.moved = true;
+        viewportEl.style.cursor = 'grabbing';
+      }
+      if (drag.moved) {
+        zs.x = drag.px + dx;
+        zs.y = drag.py + dy;
+        applyZoom();
+        e.preventDefault();
+      }
+    });
+    window.addEventListener('mouseup', () => {
+      if (!drag) return;
+      const wasMoved = drag.moved;
+      drag = null;
+      viewportEl.style.cursor = '';
+      if (wasMoved) {
+        const swallow = (ev) => {
+          ev.stopPropagation();
+          ev.preventDefault();
+          window.removeEventListener('click', swallow, true);
+        };
+        window.addEventListener('click', swallow, true);
+        // Safety net: clean up the listener if no click fires (drag
+        // released over empty space, outside any clickable element).
+        setTimeout(() => window.removeEventListener('click', swallow, true), 50);
+      }
+    });
+
+    // Reset = fit-to-view: scale so the entire diagram is visible
+    // inside the viewport, then centre it. Capped at 1 so a small
+    // diagram in a large viewport doesn't zoom in past 100 %. The
+    // user can wheel-zoom or click + from here to dig deeper.
+    function resetView() {
+      if (!baseWidth || !baseHeight) measureBaseSize();
+      const dw = baseWidth;
+      const dh = baseHeight;
+      const vw = viewportEl.clientWidth;
+      const vh = viewportEl.clientHeight;
+      if (!dw || !dh || !vw || !vh) {
+        zs.scale = 1;
+        zs.x = 0;
+        zs.y = 0;
+      } else {
+        const fit = Math.min(1, vw / dw, vh / dh);
+        zs.scale = fit;
+        zs.x = Math.max(0, (vw - dw * fit) / 2);
+        zs.y = Math.max(0, (vh - dh * fit) / 2);
+      }
+      applyZoom();
+    }
+
+    if (zoomInEl)    { zoomInEl.addEventListener('click',    () => zoomAround(viewportEl.clientWidth / 2, viewportEl.clientHeight / 2, 1.2)); }
+    if (zoomOutEl)   { zoomOutEl.addEventListener('click',   () => zoomAround(viewportEl.clientWidth / 2, viewportEl.clientHeight / 2, 1 / 1.2)); }
+    if (zoomResetEl) { zoomResetEl.addEventListener('click', resetView); }
+    if (zoomFitEl)   { zoomFitEl.addEventListener('click',   resetView); }
+
+    // Auto-fit on initial render so the whole diagram is visible on
+    // any viewport size. ``requestAnimationFrame`` lets the columns
+    // render (so ``scrollWidth``/``scrollHeight`` reflect real sizes)
+    // before we measure.
+    requestAnimationFrame(resetView);
+  }
+
+  // ─── Panel drag ─────────────────────────────────────────────────────
+  const panelHeaderEl = document.getElementById('arch-panel-header');
+  if (panelHeaderEl && panelEl) {
+    let pd = null;
+    panelHeaderEl.addEventListener('mousedown', (e) => {
+      if (e.button !== 0 || e.target.closest('button')) return;
+      const r = panelEl.getBoundingClientRect();
+      pd = { sx: e.clientX, sy: e.clientY, px: r.left, py: r.top, w: r.width, h: r.height };
+      panelEl.dataset.userPlaced = 'true';
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!pd) return;
+      const margin = 8;
+      const minTop = panelMinTop();
+      const maxLeft = window.innerWidth - pd.w - margin;
+      const maxTop = window.innerHeight - 40;
+      let nx = pd.px + (e.clientX - pd.sx);
+      let ny = pd.py + (e.clientY - pd.sy);
+      nx = Math.max(margin, Math.min(nx, maxLeft));
+      ny = Math.max(minTop, Math.min(ny, maxTop));
+      panelEl.style.left = `${nx}px`;
+      panelEl.style.top = `${ny}px`;
+    });
+    window.addEventListener('mouseup', () => { pd = null; });
+  }
+
+  // ─── Sidebar / footer clearance ──────────────────────────────────
+  // The sidebars are ``position: fixed`` so they ignore page scroll.
+  // When the user scrolls far enough to reveal the global footer,
+  // the sidebars' bottom edges would overlap it. Watch the footer's
+  // top edge and lift the sidebars by however much is intruding.
+  const footerEl = document.querySelector('body > footer');
+  const sidebars = document.querySelectorAll('.arch-page__sidebar');
+  function updateSidebarBottom() {
+    if (!footerEl || sidebars.length === 0) return;
+    const fr = footerEl.getBoundingClientRect();
+    const overlap = Math.max(0, window.innerHeight - fr.top);
+    const bottomPx = 16 + overlap; // 1rem base + the intruding pixels
+    for (const s of sidebars) {
+      s.style.bottom = `${bottomPx}px`;
+    }
+  }
+  window.addEventListener('scroll', updateSidebarBottom, { passive: true });
+  window.addEventListener('resize', updateSidebarBottom);
+  updateSidebarBottom();
+
+  // ─── Info popover ────────────────────────────────────────────────
+  const infoToggleEl = document.getElementById('arch-info-toggle');
+  const infoPopoverEl = document.getElementById('arch-info-popover');
+  if (infoToggleEl && infoPopoverEl) {
+    const setInfo = (open) => {
+      infoPopoverEl.hidden = !open;
+      infoToggleEl.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    infoToggleEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setInfo(infoPopoverEl.hidden);
+    });
+    // Dismiss when clicking outside the popover or its toggle.
+    document.addEventListener('click', (e) => {
+      if (infoPopoverEl.hidden) return;
+      if (e.target === infoToggleEl || infoToggleEl.contains(e.target)) return;
+      if (infoPopoverEl.contains(e.target)) return;
+      setInfo(false);
+    });
+  }
+
   if (flowClearEl) { flowClearEl.addEventListener('click', clearFlow); }
   if (panelCloseEl) { panelCloseEl.addEventListener('click', closePanel); }
   if (configureToggleEl) {
     configureToggleEl.addEventListener('click', () => toggleConfigure());
   }
+
+  // ─── Responsive drawer toggles ───────────────────────────────────
+  function setDrawer(which, open) {
+    const sidebar = which === 'flows' ? flowsSidebarEl : stepsSidebarEl;
+    const btn = which === 'flows' ? toggleFlowsEl : toggleStepsEl;
+    const other = which === 'flows' ? stepsSidebarEl : flowsSidebarEl;
+    const otherBtn = which === 'flows' ? toggleStepsEl : toggleFlowsEl;
+    if (!sidebar) return;
+    if (open) {
+      delete other?.dataset.open;
+      if (otherBtn) otherBtn.setAttribute('aria-pressed', 'false');
+      sidebar.dataset.open = 'true';
+      if (btn) btn.setAttribute('aria-pressed', 'true');
+      pageEl.dataset.drawerOpen = which;
+    } else {
+      delete sidebar.dataset.open;
+      if (btn) btn.setAttribute('aria-pressed', 'false');
+      delete pageEl.dataset.drawerOpen;
+    }
+  }
+  function closeDrawers() {
+    setDrawer('flows', false);
+    setDrawer('steps', false);
+  }
+  if (toggleFlowsEl) {
+    toggleFlowsEl.addEventListener('click', () => {
+      const isOpen = flowsSidebarEl?.dataset.open === 'true';
+      setDrawer('flows', !isOpen);
+    });
+  }
+  if (toggleStepsEl) {
+    toggleStepsEl.addEventListener('click', () => {
+      const isOpen = stepsSidebarEl?.dataset.open === 'true';
+      setDrawer('steps', !isOpen);
+    });
+  }
+  if (drawerBackdropEl) {
+    drawerBackdropEl.addEventListener('click', closeDrawers);
+  }
   document.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape') {
-      if (panelEl.dataset.open === 'true') { closePanel(); }
+      if (infoPopoverEl && !infoPopoverEl.hidden) {
+        infoPopoverEl.hidden = true;
+        infoToggleEl?.setAttribute('aria-expanded', 'false');
+      }
+      else if (pageEl.dataset.drawerOpen) { closeDrawers(); }
+      else if (panelEl.dataset.open === 'true') { closePanel(); }
       else if (state.activeFlow) { clearFlow(); }
     }
   });
