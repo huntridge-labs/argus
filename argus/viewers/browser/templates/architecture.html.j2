@@ -39,15 +39,6 @@
       or MCP client config from the selection.
     </p>
 
-    <div class="arch-legend">
-      {% for col in view_model.columns %}
-        <span class="arch-legend__item">
-          <span class="arch-legend__swatch arch-legend__swatch--{{ col.swatch }}"></span>
-          {{ col.label }}
-        </span>
-      {% endfor %}
-    </div>
-
     <section id="arch-columns" class="arch-columns"
              aria-label="Architecture columns">
       {# Columns are populated by JS at boot from #arch-data.
