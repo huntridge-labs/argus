@@ -56,5 +56,9 @@ class TestBuildMkdocsConfig:
     def test_includes_navigation_features(self):
         result = build_mkdocs_config("1.0.0", [])
         assert "navigation.tabs" in result
-        assert "navigation.instant" in result
         assert "navigation.top" in result
+        # ``navigation.instant`` is intentionally absent — it swaps
+        # article content via fetch but doesn't re-run inline scripts,
+        # so the architecture page (which bootstraps from an inline
+        # ``<script>``) renders blank on first nav until a reload.
+        assert "navigation.instant" not in result

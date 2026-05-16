@@ -14,7 +14,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{% block title %}Argus{% endblock %}</title>
   <link rel="icon" type="image/png" href="/static/favicon.png" />
-  <link rel="stylesheet" href="/static/argus.css" />
+  <link rel="stylesheet" href="/static/argus.css?v={{ static_v }}" />
+  {% block extra_head %}{% endblock %}
 </head>
 <body>
   <header>

@@ -938,6 +938,61 @@ async def read_config_schema() -> str:
         return json.dumps({"error": str(exc)})
 
 
+@mcp.resource("argus://architecture")
+async def read_architecture() -> str:
+    """Return the SDK architecture map as JSON.
+
+    Byte-identical to what the docsite build inlines into
+    ``architecture/index.html`` and what the FastAPI viewer's
+    ``/architecture`` route hydrates from. The transformer is a pure
+    function from ``.ai/architecture.yaml`` + ``.ai/decisions.yaml``
+    + ``argus-config.schema.json`` + ``version.yaml`` + the running
+    SDK's registries — same inputs ⇒ byte-identical output.
+
+    AI assistants picking up Argus work read this resource to learn
+    the SDK's component layout, scanner / linter / reporter
+    inventory, data flows, and the ADRs that justify the structure,
+    without having to walk the YAML files themselves.
+    """
+    import json
+    from pathlib import Path
+
+    try:
+        from argus.architecture_map import build_view_model_from_repo
+
+        # Find the repo containing .ai/architecture.yaml. Try cwd
+        # first (most contributor scenarios), then walk up from this
+        # file (covers editable installs).
+        repo_root = _find_architecture_repo_root()
+        view_model = build_view_model_from_repo(repo_root)
+        return json.dumps(view_model, indent=2)
+    except ImportError as exc:
+        return json.dumps({
+            "error": str(exc),
+            "hint": (
+                "Install argus in editable mode "
+                "(``pip install -e .`` from the argus repo root) "
+                "to make the architecture map available."
+            ),
+        })
+    except Exception as exc:
+        return json.dumps({"error": str(exc)})
+
+
+def _find_architecture_repo_root() -> Path:
+    """Locate the project repo that owns ``.ai/architecture.yaml``."""
+    from pathlib import Path as _Path
+    for start in (_Path.cwd(),):
+        for parent in (start, *start.parents):
+            if (parent / ".ai" / "architecture.yaml").exists():
+                return parent
+    here = _Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / ".ai" / "architecture.yaml").exists():
+            return parent
+    return _Path.cwd()
+
+
 # ---------------------------------------------------------------------------
 # Prompts
 # ---------------------------------------------------------------------------
