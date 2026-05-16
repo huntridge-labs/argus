@@ -1,0 +1,5191 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="OSS-first GitHub Actions security hardening — Huntridge Labs">
+      
+      
+      
+        <link rel="canonical" href="https://huntridge-labs.github.io/argus/1.0.1/contributing/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/argus_favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Contributing to Argus - Argus Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/custom.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#contributing-to-argus" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Argus Docs" class="md-header__button md-logo" aria-label="Argus Docs" data-md-component="logo">
+      
+  <img src="../assets/HL.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Argus Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Contributing to Argus
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/huntridge-labs/argus" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    huntridge-labs/argus
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../quick-start/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Quick Start
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guides/cli-reference/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../examples/" class="md-tabs__link">
+          
+  
+  
+  Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Argus Docs" class="md-nav__button md-logo" aria-label="Argus Docs" data-md-component="logo">
+      
+  <img src="../assets/HL.png" alt="logo">
+
+    </a>
+    Argus Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/huntridge-labs/argus" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    huntridge-labs/argus
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/cli-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cli Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/config-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Config Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/container-scanning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Container Scanning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/contributing-reporters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing Reporters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/failure-control/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Failure Control
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mcp
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/migration/0.6.x-to-1.x/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    0.6.X To 1.X
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/scanners/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scanners
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/troubleshooting/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/view-browser/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    View Browser
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/view-terminal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    View Terminal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2" id="__nav_4_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CI
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    CI
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1" id="__nav_4_2_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GitHub Actions
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_4_2_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    GitHub Actions
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1" id="__nav_4_2_1_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Actions
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_4_2_1_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Actions
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_2" id="__nav_4_2_1_1_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    🤖 AI & Reporting
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    🤖 AI & Reporting
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/ai-summary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Security Summary
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_3" id="__nav_4_2_1_1_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ✅ Code Quality & Linting
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    ✅ Code Quality & Linting
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/linter-dockerfile/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dockerfile Linter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/linter-javascript/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JavaScript Linter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/linter-json/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JSON Linter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/linter-python/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python Linter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/linter-terraform/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terraform Linter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/linter-yaml/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    YAML Linter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/linting-summary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linting Summary
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_4" id="__nav_4_2_1_1_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    📦 Container Security
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    📦 Container Security
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/parse-container-config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parse Container Config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-container/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Container Security Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-container-summary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Container Scanner Summary
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-syft/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Syft SBOM Generator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_5" id="__nav_4_2_1_1_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    🕷️ DAST
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    🕷️ DAST
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/parse-zap-config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parse ZAP Config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-zap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZAP DAST Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-zap-summary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZAP Summary Generator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_6" id="__nav_4_2_1_1_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    🔍 SAST
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    🔍 SAST
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-bandit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bandit Python Security Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-codeql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CodeQL Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-opengrep/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenGrep Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-supply-chain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supply Chain Security Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_7" id="__nav_4_2_1_1_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    🏗️ Infrastructure Security
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    🏗️ Infrastructure Security
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-checkov/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Checkov Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-trivy-iac/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trivy IaC Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_8" id="__nav_4_2_1_1_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    🛡️ Malware Detection
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    🛡️ Malware Detection
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-clamav/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ClamAV Malware Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_9" id="__nav_4_2_1_1_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    🔗 Dependency Scanning
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    🔗 Dependency Scanning
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-dependency-review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dependency Review Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-osv/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OSV Dependency Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_10" id="__nav_4_2_1_1_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    🔑 Secrets Detection
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    🔑 Secrets Detection
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-gitleaks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Gitleaks Secrets Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_11" id="__nav_4_2_1_1_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    📋 Compliance & Change Control
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    📋 Compliance & Change Control
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scn-detector/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SCN Detector
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_12" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_12" id="__nav_4_2_1_1_12_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Utility & Reporting
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    ⚙️ Utility & Reporting
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/security-summary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Summary
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_2" id="__nav_4_2_1_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflows
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_4_2_1_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Workflows
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/build-containers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build, Scan & Test Containers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/container-scan-from-config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Container Scan from Config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/container-scan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Container Security Scanning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/dependency-scan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dependency Security Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/ghcr-prune/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GHCR Cleanup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/infrastructure-scan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Infrastructure Security Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/linting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Quality and Linting Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/publish-pypi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Package Validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/reusable-security-hardening/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reusable Security Hardening Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-bandit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bandit Python Security Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-checkov/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Checkov Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-clamav/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ClamAV Malware Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-codeql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CodeQL Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-dependency-review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dependency Review Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-gitleaks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Gitleaks Secrets Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-grype/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Grype Container Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-opengrep/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenGrep Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-osv/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OSV Dependency Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-supply-chain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supply Chain Security Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-syft/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Generate SBOM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-trivy-container/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trivy Container Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-trivy-iac/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trivy IaC Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-zap-from-config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZAP DAST from Config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-zap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZAP DAST Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/security-reusable-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Hardening (Reusable Demo)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/security-scan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Scan (Argus)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/update-pinned-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Update pinned tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/ci/gitlab-ci-yml/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GitLab CI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/ci/jenkinsfile/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Jenkins
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/ci/azure-devops-yml/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure DevOps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table of Contents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#getting-started" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Getting Started
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Getting Started">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#project-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Project Structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#key-concepts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key Concepts
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adding-a-scanner-via-the-sdk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adding a Scanner via the SDK
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Adding a Scanner via the SDK">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-1-create-the-scanner-module" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1: Create the Scanner Module
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-2-register-in-the-scanner-registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2: Register in the Scanner Registry
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-3-add-container-image-if-applicable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3: Add Container Image (if applicable)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-4-add-test-fixtures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4: Add Test Fixtures
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-5-add-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 5: Add Tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-6-optional-create-composite-action-wrapper" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 6 (Optional): Create Composite Action Wrapper
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adding-a-linter-via-the-sdk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adding a Linter via the SDK
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Adding a Linter via the SDK">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-1-create-the-linter-module" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1: Create the Linter Module
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-2-register-in-the-linter-registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2: Register in the Linter Registry
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-3-add-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3: Add Tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-4-update-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4: Update Documentation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#validation-checklist-linters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation Checklist (Linters)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adding-a-composite-action-github-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adding a Composite Action (GitHub Actions)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Adding a Composite Action (GitHub Actions)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-1-create-action-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1: Create Action Structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-2-define-actionyml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2: Define action.yml
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-3-create-parser-script" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3: Create Parser Script
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-4-create-summary-generator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4: Create Summary Generator
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-5-create-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 5: Create Documentation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-6-register-with-the-documentation-site" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 6: Register with the Documentation Site
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-7-update-actions-catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 7: Update Actions Catalog
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-8-add-to-example-workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 8: Add to Example Workflows
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-your-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing Your Changes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Testing Your Changes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#testing-approach" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing Approach
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#manual-testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual Testing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#automated-testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automated Testing ✅
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#validation-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation Checklist
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#documentation-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documentation Requirements
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Documentation Requirements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#for-sdk-scanners" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        For SDK Scanners
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#for-composite-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        For Composite Actions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pull-request-process" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pull Request Process
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Pull Request Process">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#before-submitting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Before Submitting
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pr-template" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PR Template
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#best-practices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Best Practices
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Best Practices">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#naming-conventions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Naming Conventions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#script-guidelines" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Script Guidelines
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#security" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture-migration-complete" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture Migration Complete
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#getting-help" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Getting Help
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="contributing-to-argus">Contributing to Argus</h1>
+<p>Welcome! This guide covers how to contribute scanners to the security scanning toolkit.</p>
+<blockquote>
+<p><strong>Architecture Note</strong>: The <strong>argus Python SDK</strong> (<code>argus/</code> package) is the primary way to add and run scanners. Each scanner is a single Python module implementing the <code>Scanner</code> protocol. <strong>Composite actions</strong> (<code>.github/actions/</code>) remain available as a secondary path for GitHub Actions users who need direct workflow integration.</p>
+</blockquote>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#getting-started">Getting Started</a></li>
+<li><a href="#adding-a-scanner-via-the-sdk">Adding a Scanner via the SDK</a></li>
+<li><a href="#adding-a-linter-via-the-sdk">Adding a Linter via the SDK</a></li>
+<li><a href="#adding-a-composite-action-github-actions">Adding a Composite Action (GitHub Actions)</a></li>
+<li><a href="#testing-your-changes">Testing Your Changes</a></li>
+<li><a href="#documentation-requirements">Documentation Requirements</a></li>
+<li><a href="#pull-request-process">Pull Request Process</a></li>
+<li><a href="#best-practices">Best Practices</a></li>
+</ul>
+<hr />
+<h2 id="getting-started">Getting Started</h2>
+<h3 id="prerequisites">Prerequisites</h3>
+<ul>
+<li>Git</li>
+<li>GitHub account</li>
+<li>Python 3.11+</li>
+<li>Familiarity with the <code>Scanner</code> protocol (<code>argus/core/scanner.py</code>)</li>
+<li>Knowledge of the scanner tool you're integrating</li>
+<li>Basic understanding of GitHub Actions (for composite action contributions)</li>
+</ul>
+<h3 id="project-structure">Project Structure</h3>
+<div class="highlight"><pre><span></span><code>argus/                            # Python SDK (primary interface)
+├── core/                         # Models, engine, config, scanner protocol
+│   ├── scanner.py               # Scanner protocol definition
+│   ├── models.py                # Finding, ScanResult, Severity
+│   └── engine.py                # Scan orchestration engine
+├── scanners/                     # Scanner modules (one .py per scanner)
+│   ├── __init__.py              # Scanner registry (includes linters via auto-merge)
+│   ├── bandit.py                # Example: Bandit SAST scanner
+│   └── ...                      # One module per scanner
+├── linters/                      # Linter modules (one .py per linter)
+│   ├── __init__.py              # LINTER_REGISTRY (auto-merges into SCANNER_REGISTRY)
+│   ├── yamllint.py              # Example: YAML linter
+│   └── ...                      # One module per linter
+├── reporters/                    # Output: terminal, markdown, SARIF, JSON
+├── containers.py                 # Container image manifest
+└── tests/                        # SDK unit tests
+    ├── scanners/                # Per-scanner test files
+    └── ...
+
+.github/actions/                  # Composite actions (GitHub Actions integration)
+├── scanner-*/                    # Scanner composite actions
+│   ├── action.yml               # Action definition
+│   ├── .docsite.yml             # Docsite category declaration
+│   ├── README.md                # Action documentation
+│   ├── scripts/                 # Bundled Python scripts
+│   │   ├── parse-results.py     # Parse scanner output → JSON
+│   │   └── generate-summary.py  # Generate markdown summary
+│   └── tests/                   # Co-located pytest tests
+│       ├── test_parse_results.py
+│       ├── test_generate_summary.py
+│       └── conftest.py (optional)
+├── linter-*/                    # Linter composite actions
+├── parse-container-config/      # Config parser actions
+├── security-summary/            # Summary aggregators
+└── README.md                    # Actions catalog
+
+examples/
+├── workflows/
+│   ├── composite-actions-example.yml     # Complete security workflow
+│   └── actions-linting-example.yml       # Complete linting workflow
+└── README.md
+
+tests/
+├── fixtures/                    # Shared mock data and test apps
+│   └── scanner-outputs/         # Pre-captured scanner results
+└── unit/actions/                # Action schema validation
+</code></pre></div>
+<h3 id="key-concepts">Key Concepts</h3>
+<p><strong>Argus SDK</strong> (primary path):
+- Single Python module per scanner implementing the <code>Scanner</code> protocol
+- SDK handles tool execution, Docker fallback, result parsing, and reporting
+- Register once in <code>argus/scanners/__init__.py</code> and the scanner is available everywhere</p>
+<p><strong>Composite Actions</strong> (GitHub Actions integration):
+- Self-contained with bundled scripts
+- Works on GHES with github.com access
+- Easier to compose in workflow files
+- Optional wrapper around SDK scanners</p>
+<hr />
+<h2 id="adding-a-scanner-via-the-sdk">Adding a Scanner via the SDK</h2>
+<p>This is the primary way to add a new scanner. Each scanner is a single Python module that implements the <code>Scanner</code> protocol defined in <code>argus/core/scanner.py</code>.</p>
+<h3 id="step-1-create-the-scanner-module">Step 1: Create the Scanner Module</h3>
+<p>Create <code>argus/scanners/my_scanner.py</code>. The SDK provides two helpers — <code>parse_tool_version</code> (for <code>tool_version()</code>) and <code>run_subprocess_scan</code> (for <code>scan()</code>) — so a typical scanner is ~50 lines:</p>
+<div class="highlight"><pre><span></span><code><span class="sd">&quot;&quot;&quot;My Scanner - brief description of what it scans.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">argus.containers</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_image</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">argus.core.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">Finding</span><span class="p">,</span> <span class="n">ScanResult</span><span class="p">,</span> <span class="n">Severity</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">argus.core.scanner_template</span><span class="w"> </span><span class="kn">import</span> <span class="n">ScanPaths</span><span class="p">,</span> <span class="n">run_subprocess_scan</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">argus.core.version</span><span class="w"> </span><span class="kn">import</span> <span class="n">parse_tool_version</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">MyScanner</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Wraps MyTool to scan for security issues.&quot;&quot;&quot;</span>
+
+    <span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;my-scanner&quot;</span>
+    <span class="n">description</span> <span class="o">=</span> <span class="s2">&quot;What it scans, in one line&quot;</span>
+    <span class="n">category</span> <span class="o">=</span> <span class="s2">&quot;sast&quot;</span>  <span class="c1"># or &quot;secrets&quot;, &quot;iac&quot;, &quot;sca&quot;, &quot;container&quot;, &quot;linter&quot;, ...</span>
+    <span class="n">container_image</span> <span class="o">=</span> <span class="n">get_image</span><span class="p">(</span><span class="s2">&quot;my-scanner&quot;</span><span class="p">)</span>
+    <span class="c1"># Set this if your container image declares ``ENTRYPOINT [&quot;my-tool&quot;]``.</span>
+    <span class="c1"># The engine drops argv[0] when this attr is present, so build_args</span>
+    <span class="c1"># can return the same argv shape for both local and container paths.</span>
+    <span class="n">container_entrypoint</span> <span class="o">=</span> <span class="s2">&quot;my-tool&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">scan</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ScanResult</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;One-line wrapper — the template handles tempdir, subprocess, errors.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">run_subprocess_scan</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">config</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">build_args</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">paths</span><span class="p">:</span> <span class="n">ScanPaths</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Build the FULL argv (binary name as args[0]).</span>
+
+<span class="sd">        Single source of truth for both local and container execution.</span>
+<span class="sd">        Local path: ``paths.workspace`` is the host path the user gave;</span>
+<span class="sd">        container path: ``paths.workspace`` is ``/workspace`` and</span>
+<span class="sd">        ``paths.output`` is ``/output/results.json``. The engine handles</span>
+<span class="sd">        the path translation; this method just consumes whatever paths</span>
+<span class="sd">        it&#39;s handed.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">args</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="s2">&quot;my-tool&quot;</span><span class="p">,</span> <span class="s2">&quot;scan&quot;</span><span class="p">,</span>
+            <span class="n">paths</span><span class="o">.</span><span class="n">workspace</span><span class="p">,</span>
+            <span class="s2">&quot;--format&quot;</span><span class="p">,</span> <span class="s2">&quot;json&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;--output&quot;</span><span class="p">,</span> <span class="n">paths</span><span class="o">.</span><span class="n">output</span><span class="p">,</span>
+        <span class="p">]</span>
+        <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;exclude&quot;</span><span class="p">):</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="s2">&quot;--exclude&quot;</span><span class="p">,</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;exclude&quot;</span><span class="p">]])</span>
+        <span class="k">return</span> <span class="n">args</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_available</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">shutil</span><span class="o">.</span><span class="n">which</span><span class="p">(</span><span class="s2">&quot;my-tool&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">install_command</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;pip install my-tool&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">tool_version</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_available</span><span class="p">():</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="c1"># Tool output: &quot;my-tool X.Y.Z (build info)&quot;</span>
+        <span class="k">return</span> <span class="n">parse_tool_version</span><span class="p">([</span><span class="s2">&quot;my-tool&quot;</span><span class="p">,</span> <span class="s2">&quot;--version&quot;</span><span class="p">],</span> <span class="sa">r</span><span class="s2">&quot;^my-tool (\S+)&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">parse_results</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">raw_output_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Finding</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Parse tool output into normalized Finding objects.&quot;&quot;&quot;</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">raw_output_path</span><span class="o">.</span><span class="n">read_text</span><span class="p">())</span>
+        <span class="k">return</span> <span class="p">[</span>
+            <span class="n">Finding</span><span class="p">(</span>
+                <span class="nb">id</span><span class="o">=</span><span class="n">item</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;rule_id&quot;</span><span class="p">,</span> <span class="s2">&quot;UNKNOWN&quot;</span><span class="p">),</span>
+                <span class="n">severity</span><span class="o">=</span><span class="n">Severity</span><span class="o">.</span><span class="n">from_string</span><span class="p">(</span><span class="n">item</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;severity&quot;</span><span class="p">,</span> <span class="s2">&quot;UNKNOWN&quot;</span><span class="p">)),</span>
+                <span class="n">title</span><span class="o">=</span><span class="n">item</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;message&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">),</span>
+                <span class="n">description</span><span class="o">=</span><span class="n">item</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;message&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">),</span>
+                <span class="n">location</span><span class="o">=</span><span class="n">item</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;file&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">),</span>
+                <span class="n">scanner</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;results&quot;</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="p">]</span>
+</code></pre></div>
+<p><strong>Why this shape</strong>: <code>build_args(paths, config)</code> replaces the historical pair of <code>_build_command(path, output, config)</code> (local) + <code>container_args(config)</code> (container). The two used to drift — different <code>--output</code> vs <code>--output-file</code> flag names, different exit-code handling — and the engine had to know about both. With one method that takes a <code>ScanPaths</code> value object, local and container execution share the same definition; the engine builds the right <code>ScanPaths</code> for the context (host paths locally, <code>/workspace</code> + <code>/output/...</code> in containers) and the scanner stays oblivious.</p>
+<p><strong>When to skip the template</strong>: if your tool emits results to stdout instead of a file (<code>grype version -o json</code>, ClamAV's text output) or runs an orchestration of multiple binaries (<code>supply_chain</code> → zizmor + actionlint), write a custom <code>scan()</code>. The template doesn't fit every shape and shouldn't be forced — see <code>grype.py</code>, <code>clamav.py</code>, <code>supply_chain.py</code> for examples.</p>
+<p><strong>Scanner protocol requirements</strong> (from <code>argus/core/scanner.py</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Attribute/Method</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name: str</code></td>
+<td>Yes</td>
+<td>Unique scanner identifier (e.g., <code>"bandit"</code>)</td>
+</tr>
+<tr>
+<td><code>scan(path, config) -&gt; ScanResult</code></td>
+<td>Yes</td>
+<td>Run the scanner and return normalized results</td>
+</tr>
+<tr>
+<td><code>is_available() -&gt; bool</code></td>
+<td>Yes</td>
+<td>Check if the tool is installed locally</td>
+</tr>
+<tr>
+<td><code>install_command() -&gt; str \| None</code></td>
+<td>Yes</td>
+<td>Shell command to install the tool</td>
+</tr>
+<tr>
+<td><code>tool_version() -&gt; str \| None</code></td>
+<td>Recommended</td>
+<td>Installed tool version. Use <code>parse_tool_version()</code> from <code>argus.core.version</code> for the common case (regex match against <code>&lt;tool&gt; --version</code> output) — see <code>bandit.py</code>, <code>clamav.py</code>, <code>trivy.py</code>, <code>gitleaks.py</code> for examples. Only fall back to custom parsing for tools with structured output (JSON, etc.) — see <code>grype.py</code></td>
+</tr>
+<tr>
+<td><code>build_args(paths, config) -&gt; list[str]</code></td>
+<td>Yes (subprocess scanners)</td>
+<td>Build the full argv for the tool. Used by both local and container execution paths — single source of truth. <code>paths</code> is a <code>ScanPaths(workspace, output)</code> value object. Drop <code>argv[0]</code> automatically when the image has an <code>ENTRYPOINT</code> — declare <code>container_entrypoint = "&lt;bin&gt;"</code> on the class</td>
+</tr>
+<tr>
+<td><code>container_image: str</code></td>
+<td>Optional</td>
+<td>Docker image for container fallback</td>
+</tr>
+<tr>
+<td><code>container_entrypoint: str</code></td>
+<td>Optional</td>
+<td>Set when the container image has <code>ENTRYPOINT ["&lt;bin&gt;"]</code>; engine drops <code>argv[0]</code> from <code>build_args</code> output</td>
+</tr>
+<tr>
+<td><code>parse_results(path) -&gt; list[Finding]</code></td>
+<td>Yes</td>
+<td>Parse raw output file into findings. May return <code>(list[Finding], dict)</code> to attach scanner-level metadata (e.g. <code>passed_count</code> for linters)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Reference implementation</strong>: See <code>argus/scanners/bandit.py</code> for a complete, well-documented example.</p>
+<h3 id="step-2-register-in-the-scanner-registry">Step 2: Register in the Scanner Registry</h3>
+<p>Add your scanner to <code>argus/scanners/__init__.py</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">.my_scanner</span><span class="w"> </span><span class="kn">import</span> <span class="n">MyScanner</span>
+
+<span class="c1"># Add to __all__</span>
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="c1"># ... existing scanners</span>
+    <span class="s2">&quot;MyScanner&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+
+<span class="c1"># Add to SCANNER_REGISTRY</span>
+<span class="n">SCANNER_REGISTRY</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="c1"># ... existing entries</span>
+    <span class="s2">&quot;my-scanner&quot;</span><span class="p">:</span> <span class="n">MyScanner</span><span class="p">,</span>
+<span class="p">}</span>
+</code></pre></div>
+<h3 id="step-3-add-container-image-if-applicable">Step 3: Add Container Image (if applicable)</h3>
+<p>If your scanner uses a container image, add it to <code>argus/containers.py</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># In OFFICIAL_IMAGES (for upstream images) or CUSTOM_IMAGES (for argus-built images)</span>
+<span class="n">OFFICIAL_IMAGES</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="c1"># ... existing entries</span>
+    <span class="s2">&quot;my-scanner&quot;</span><span class="p">:</span> <span class="s2">&quot;author/my-tool:version&quot;</span><span class="p">,</span>
+<span class="p">}</span>
+</code></pre></div>
+<h3 id="step-4-add-test-fixtures">Step 4: Add Test Fixtures</h3>
+<p>Add pre-captured scanner output to <code>tests/fixtures/scanner-outputs/my-scanner/</code>:</p>
+<div class="highlight"><pre><span></span><code>mkdir<span class="w"> </span>-p<span class="w"> </span>tests/fixtures/scanner-outputs/my-scanner
+<span class="c1"># Add sample output files (clean scan, findings, error cases)</span>
+</code></pre></div>
+<h3 id="step-5-add-tests">Step 5: Add Tests</h3>
+<p>Create <code>argus/tests/scanners/test_my_scanner.py</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="sd">&quot;&quot;&quot;Tests for MyScanner.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">patch</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">argus.scanners.my_scanner</span><span class="w"> </span><span class="kn">import</span> <span class="n">MyScanner</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">TestMyScanner</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">setup_method</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scanner</span> <span class="o">=</span> <span class="n">MyScanner</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">test_name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">scanner</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;my-scanner&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">test_is_available_when_installed</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;shutil.which&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="s2">&quot;/usr/bin/my-tool&quot;</span><span class="p">):</span>
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">scanner</span><span class="o">.</span><span class="n">is_available</span><span class="p">()</span> <span class="ow">is</span> <span class="kc">True</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">test_is_available_when_missing</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;shutil.which&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">scanner</span><span class="o">.</span><span class="n">is_available</span><span class="p">()</span> <span class="ow">is</span> <span class="kc">False</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">test_parse_results</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tmp_path</span><span class="p">):</span>
+        <span class="n">output_file</span> <span class="o">=</span> <span class="n">tmp_path</span> <span class="o">/</span> <span class="s2">&quot;results.json&quot;</span>
+        <span class="n">output_file</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span>
+            <span class="s2">&quot;results&quot;</span><span class="p">:</span> <span class="p">[</span>
+                <span class="p">{</span><span class="s2">&quot;rule_id&quot;</span><span class="p">:</span> <span class="s2">&quot;R001&quot;</span><span class="p">,</span> <span class="s2">&quot;severity&quot;</span><span class="p">:</span> <span class="s2">&quot;HIGH&quot;</span><span class="p">,</span> <span class="s2">&quot;message&quot;</span><span class="p">:</span> <span class="s2">&quot;Issue found&quot;</span><span class="p">}</span>
+            <span class="p">]</span>
+        <span class="p">}))</span>
+        <span class="n">findings</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scanner</span><span class="o">.</span><span class="n">parse_results</span><span class="p">(</span><span class="n">output_file</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">findings</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
+        <span class="k">assert</span> <span class="n">findings</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">id</span> <span class="o">==</span> <span class="s2">&quot;R001&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">test_install_command</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">scanner</span><span class="o">.</span><span class="n">install_command</span><span class="p">()</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+</code></pre></div>
+<h3 id="step-6-optional-create-composite-action-wrapper">Step 6 (Optional): Create Composite Action Wrapper</h3>
+<p>If GitHub Actions users need a workflow-level integration, create a composite action wrapper. See <a href="#adding-a-composite-action-github-actions">Adding a Composite Action</a> below.</p>
+<hr />
+<h2 id="adding-a-linter-via-the-sdk">Adding a Linter via the SDK</h2>
+<p>Linters implement the same <code>Scanner</code> protocol as security scanners but live in the <code>argus/linters/</code> package. They produce findings with <code>Severity.INFO</code> and are registered in <code>LINTER_REGISTRY</code>, which auto-merges into <code>SCANNER_REGISTRY</code> at import time.</p>
+<h3 id="step-1-create-the-linter-module">Step 1: Create the Linter Module</h3>
+<p>Create <code>argus/linters/my_linter.py</code> implementing the <code>Scanner</code> protocol:</p>
+<div class="highlight"><pre><span></span><code><span class="sd">&quot;&quot;&quot;My Linter - brief description of what it lints.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">argus.core.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">Finding</span><span class="p">,</span> <span class="n">ScanResult</span><span class="p">,</span> <span class="n">Severity</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">MyLinter</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Wraps my-tool to lint files for style and syntax issues.&quot;&quot;&quot;</span>
+
+    <span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;lint-my-tool&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">scan</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ScanResult</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Run the linter against the given path and return results.&quot;&quot;&quot;</span>
+        <span class="n">config</span> <span class="o">=</span> <span class="n">config</span> <span class="ow">or</span> <span class="p">{}</span>
+        <span class="n">cmd</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_build_command</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">config</span><span class="p">)</span>
+
+        <span class="n">result</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="n">findings</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parse_output</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">stdout</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">ScanResult</span><span class="p">(</span>
+            <span class="n">scanner</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+            <span class="n">findings</span><span class="o">=</span><span class="n">findings</span><span class="p">,</span>
+            <span class="n">metadata</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;returncode&quot;</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">returncode</span><span class="p">},</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_available</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check if the linting tool is installed.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">shutil</span><span class="o">.</span><span class="n">which</span><span class="p">(</span><span class="s2">&quot;my-tool&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">install_command</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the shell command to install the tool, or None.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;pip install my-tool&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_build_command</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Build the CLI command.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[</span><span class="s2">&quot;my-tool&quot;</span><span class="p">,</span> <span class="s2">&quot;--format&quot;</span><span class="p">,</span> <span class="s2">&quot;parsable&quot;</span><span class="p">,</span> <span class="n">path</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_parse_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">output</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Finding</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Parse tool output into findings with Severity.INFO.&quot;&quot;&quot;</span>
+        <span class="n">findings</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">output</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">splitlines</span><span class="p">():</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
+                <span class="k">continue</span>
+            <span class="n">finding</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parse_line</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">finding</span><span class="p">:</span>
+                <span class="n">findings</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">finding</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">findings</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_parse_line</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">line</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Finding</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Parse a single output line into a Finding.&quot;&quot;&quot;</span>
+        <span class="c1"># Adapt parsing logic for your linter&#39;s output format</span>
+        <span class="k">return</span> <span class="n">Finding</span><span class="p">(</span>
+            <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;my-tool&quot;</span><span class="p">,</span>
+            <span class="n">severity</span><span class="o">=</span><span class="n">Severity</span><span class="o">.</span><span class="n">INFO</span><span class="p">,</span>
+            <span class="n">title</span><span class="o">=</span><span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">(),</span>
+            <span class="n">description</span><span class="o">=</span><span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">(),</span>
+            <span class="n">location</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="n">scanner</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+        <span class="p">)</span>
+</code></pre></div>
+<p><strong>Key differences from security scanners:</strong>
+- Linter names are prefixed with <code>lint-</code> (e.g., <code>lint-yaml</code>, <code>lint-python</code>)
+- Findings use <code>Severity.INFO</code> rather than security severity levels
+- No container image is needed (linters run locally)</p>
+<p><strong>Reference implementation</strong>: See <code>argus/linters/yamllint.py</code> for a complete, well-documented example.</p>
+<h3 id="step-2-register-in-the-linter-registry">Step 2: Register in the Linter Registry</h3>
+<p>Add your linter to <code>argus/linters/__init__.py</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">.my_linter</span><span class="w"> </span><span class="kn">import</span> <span class="n">MyLinter</span>
+
+<span class="c1"># Add to __all__</span>
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="c1"># ... existing linters</span>
+    <span class="s2">&quot;MyLinter&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+
+<span class="c1"># Add to LINTER_REGISTRY</span>
+<span class="n">LINTER_REGISTRY</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="c1"># ... existing entries</span>
+    <span class="s2">&quot;lint-my-tool&quot;</span><span class="p">:</span> <span class="n">MyLinter</span><span class="p">,</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>The <code>LINTER_REGISTRY</code> auto-merges into <code>SCANNER_REGISTRY</code> (see <code>argus/scanners/__init__.py</code>), so <code>argus scan lint-my-tool</code> works immediately after registration. Shell completions (<code>argus completion zsh</code>) update automatically since they are generated dynamically from the registry.</p>
+<h3 id="step-3-add-tests">Step 3: Add Tests</h3>
+<p>Create <code>argus/tests/linters/test_my_linter.py</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="sd">&quot;&quot;&quot;Tests for MyLinter.&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">patch</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">argus.linters.my_linter</span><span class="w"> </span><span class="kn">import</span> <span class="n">MyLinter</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">argus.core.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">Severity</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">TestMyLinter</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">setup_method</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">linter</span> <span class="o">=</span> <span class="n">MyLinter</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">test_name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">linter</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;lint-my-tool&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">test_is_available_when_installed</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;shutil.which&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="s2">&quot;/usr/bin/my-tool&quot;</span><span class="p">):</span>
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">linter</span><span class="o">.</span><span class="n">is_available</span><span class="p">()</span> <span class="ow">is</span> <span class="kc">True</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">test_is_available_when_missing</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;shutil.which&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">linter</span><span class="o">.</span><span class="n">is_available</span><span class="p">()</span> <span class="ow">is</span> <span class="kc">False</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">test_findings_use_info_severity</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">finding</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">linter</span><span class="o">.</span><span class="n">_parse_line</span><span class="p">(</span><span class="s2">&quot;some lint warning&quot;</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">finding</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+        <span class="k">assert</span> <span class="n">finding</span><span class="o">.</span><span class="n">severity</span> <span class="o">==</span> <span class="n">Severity</span><span class="o">.</span><span class="n">INFO</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">test_install_command</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">linter</span><span class="o">.</span><span class="n">install_command</span><span class="p">()</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+</code></pre></div>
+<h3 id="step-4-update-documentation">Step 4: Update Documentation</h3>
+<ol>
+<li>Update <code>.ai/architecture.yaml</code> (linters list)</li>
+<li>Update <code>CLAUDE.md</code> if the linter introduces a new category</li>
+</ol>
+<h3 id="validation-checklist-linters">Validation Checklist (Linters)</h3>
+<ul>
+<li>[ ] Linter implements all required protocol methods (<code>scan</code>, <code>is_available</code>, <code>install_command</code>)</li>
+<li>[ ] Linter registered in <code>argus/linters/__init__.py</code></li>
+<li>[ ] Linter name uses <code>lint-</code> prefix</li>
+<li>[ ] Findings use <code>Severity.INFO</code></li>
+<li>[ ] <code>argus scan lint-&lt;name&gt;</code> works after registration</li>
+<li>[ ] Unit tests in <code>argus/tests/linters/</code></li>
+<li>[ ] All tests pass: <code>pytest argus/tests/</code></li>
+</ul>
+<hr />
+<h2 id="adding-a-composite-action-github-actions">Adding a Composite Action (GitHub Actions)</h2>
+<h3 id="step-1-create-action-structure">Step 1: Create Action Structure</h3>
+<p>Create the directory structure for your scanner:</p>
+<div class="highlight"><pre><span></span><code>mkdir<span class="w"> </span>-p<span class="w"> </span>.github/actions/scanner-example/scripts
+touch<span class="w"> </span>.github/actions/scanner-example/action.yml
+touch<span class="w"> </span>.github/actions/scanner-example/.docsite.yml
+touch<span class="w"> </span>.github/actions/scanner-example/README.md
+touch<span class="w"> </span>.github/actions/scanner-example/scripts/parse-results.py
+touch<span class="w"> </span>.github/actions/scanner-example/scripts/generate-summary.py
+</code></pre></div>
+<h3 id="step-2-define-actionyml">Step 2: Define action.yml</h3>
+<p>See existing scanner actions for reference patterns (e.g., <code>scanner-bandit/action.yml</code>, <code>scanner-checkov/action.yml</code>).</p>
+<p><strong>Standard structure</strong>:
+<div class="highlight"><pre><span></span><code><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;Example</span><span class="nv"> </span><span class="s">Scanner&#39;</span>
+<span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">  </span><span class="no">Run Example security scanner and generate reports.</span>
+
+<span class="nt">inputs</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">scan_path</span><span class="p">:</span><span class="w">                  </span><span class="c1"># What to scan</span>
+<span class="w">  </span><span class="nt">fail_on_severity</span><span class="p">:</span><span class="w">          </span><span class="c1"># Threshold (none/low/medium/high/critical)</span>
+<span class="w">  </span><span class="nt">enable_code_security</span><span class="p">:</span><span class="w">      </span><span class="c1"># Upload SARIF boolean</span>
+<span class="w">  </span><span class="nt">post_pr_comment</span><span class="p">:</span><span class="w">          </span><span class="c1"># Post PR comment boolean</span>
+<span class="w">  </span><span class="nt">job_id</span><span class="p">:</span><span class="w">                   </span><span class="c1"># For artifact naming</span>
+
+<span class="nt">outputs</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">critical_count</span><span class="p">:</span><span class="w">           </span><span class="c1"># Number of findings by severity</span>
+<span class="w">  </span><span class="nt">high_count</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">medium_count</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">low_count</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">total_count</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">scan_status</span><span class="p">:</span><span class="w">             </span><span class="c1"># passed/failed/skipped</span>
+
+<span class="nt">runs</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">using</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;composite&#39;</span>
+<span class="w">  </span><span class="nt">steps</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Validate inputs</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Run scanner</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Parse results (using scripts/parse-results.sh)</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Upload SARIF (if enabled)</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Upload reports artifact</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Generate summary (using scripts/generate-summary.sh)</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Upload summary artifact</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Comment PR (if enabled)</span>
+</code></pre></div></p>
+<p><strong>Key patterns to follow</strong>:
+- Use <code>${{ github.action_path }}/scripts/</code> to reference bundled scripts
+- Set <code>if: always()</code> on result processing steps
+- Use <code>continue-on-error: true</code> for optional steps (SARIF, PR comments)
+- Follow naming conventions for artifacts: <code>{scanner}-reports-{job_id}</code></p>
+<p><strong>Install the Argus SDK from the composite checkout, not from PyPI.</strong>
+Every SDK-using wrapper installs the SDK with this exact step (see
+ADR-019 in <code>.ai/decisions.yaml</code> for the full rationale):</p>
+<div class="highlight"><pre><span></span><code><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Install Argus SDK</span>
+<span class="w">  </span><span class="nt">shell</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bash</span>
+<span class="w">  </span><span class="c1"># Install the SDK from the checked-out composite source. This matches</span>
+<span class="w">  </span><span class="c1"># the consumer-scoped intent of composite actions (``uses: .../&lt;wrapper&gt;@tag``</span>
+<span class="w">  </span><span class="c1"># implicitly pins the SDK version to the same tag) and sidesteps the</span>
+<span class="w">  </span><span class="c1"># PyPI-release lag that would break ``pip install argus-security&gt;=X``</span>
+<span class="w">  </span><span class="c1"># for consumers until after the release ships.</span>
+<span class="w">  </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pip install &quot;${{ github.action_path }}/../../..&quot;</span>
+</code></pre></div>
+<p>When <code>uses: org/argus/.github/actions/&lt;wrapper&gt;@&lt;ref&gt;</code> resolves on a
+runner, GitHub clones the entire repo at <code>&lt;ref&gt;</code> into
+<code>_actions/.../&lt;ref&gt;/</code>. <code>${{ github.action_path }}/../../..</code> is that
+clone root, which contains <code>pyproject.toml</code> and the <code>argus/</code> package —
+pip-installable directly. Don't replace this with <code>pip install
+argus-security==&lt;X&gt;</code>: action releases would block on the PyPI publish
+landing first, and air-gapped GHES setups would also need a private
+PyPI mirror in addition to the repo mirror.</p>
+<p>A CI guard (<code>validate-install-from-source</code> in <code>.github/workflows/test-actions.yml</code>)
+fails the build if any SDK-using wrapper drifts back to <code>pip install
+pyyaml</code> or any other shape.</p>
+<h3 id="step-3-create-parser-script">Step 3: Create Parser Script</h3>
+<p>Create <code>scripts/parse-results.py</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Example Scanner Results Parser</span>
+<span class="sd">Usage: parse-results.py counts &lt;report_file&gt;</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">parse_counts</span><span class="p">(</span><span class="n">report_file</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract severity counts from scanner report.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">report_file</span> <span class="o">==</span> <span class="s1">&#39;-&#39;</span><span class="p">:</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">stdin</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">report_file</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                <span class="n">data</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">FileNotFoundError</span><span class="p">,</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span><span class="p">):</span>
+            <span class="k">return</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span>
+
+    <span class="c1"># Adjust parsing logic for your scanner&#39;s output format</span>
+    <span class="n">critical</span> <span class="o">=</span> <span class="nb">len</span><span class="p">([</span><span class="n">r</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;results&#39;</span><span class="p">,</span> <span class="p">[])</span> <span class="k">if</span> <span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;severity&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="s1">&#39;CRITICAL&#39;</span><span class="p">])</span>
+    <span class="n">high</span> <span class="o">=</span> <span class="nb">len</span><span class="p">([</span><span class="n">r</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;results&#39;</span><span class="p">,</span> <span class="p">[])</span> <span class="k">if</span> <span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;severity&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="s1">&#39;HIGH&#39;</span><span class="p">])</span>
+    <span class="n">medium</span> <span class="o">=</span> <span class="nb">len</span><span class="p">([</span><span class="n">r</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;results&#39;</span><span class="p">,</span> <span class="p">[])</span> <span class="k">if</span> <span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;severity&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="s1">&#39;MEDIUM&#39;</span><span class="p">])</span>
+    <span class="n">low</span> <span class="o">=</span> <span class="nb">len</span><span class="p">([</span><span class="n">r</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;results&#39;</span><span class="p">,</span> <span class="p">[])</span> <span class="k">if</span> <span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;severity&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="s1">&#39;LOW&#39;</span><span class="p">])</span>
+
+    <span class="k">return</span> <span class="n">critical</span><span class="p">,</span> <span class="n">high</span><span class="p">,</span> <span class="n">medium</span><span class="p">,</span> <span class="n">low</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">command</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="k">else</span> <span class="kc">None</span>
+    <span class="n">report_file</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">2</span> <span class="k">else</span> <span class="kc">None</span>
+
+    <span class="k">if</span> <span class="n">command</span> <span class="o">==</span> <span class="s1">&#39;counts&#39;</span><span class="p">:</span>
+        <span class="n">c</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">l</span> <span class="o">=</span> <span class="n">parse_counts</span><span class="p">(</span><span class="n">report_file</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">c</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">h</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">l</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unknown command: </span><span class="si">{</span><span class="n">command</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">file</span><span class="o">=</span><span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="p">)</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parser requirements</strong>:
+- Must handle missing files gracefully (return 0 counts)
+- Must handle malformed JSON (catch exceptions)
+- Must map scanner's severity levels to standard: CRITICAL, HIGH, MEDIUM, LOW
+- Output format: space-separated counts for environment variable assignment
+- Support reading from stdin with <code>-</code> argument</p>
+<h3 id="step-4-create-summary-generator">Step 4: Create Summary Generator</h3>
+<p>Create <code>scripts/generate-summary.py</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Example Scanner Summary Generator</span>
+<span class="sd">Usage: generate-summary.py &lt;output_file&gt; &lt;is_pr_comment&gt;</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">generate_summary</span><span class="p">(</span><span class="n">output_file</span><span class="p">,</span> <span class="n">is_pr_comment</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate markdown summary from severity counts.&quot;&quot;&quot;</span>
+
+    <span class="c1"># Get counts from environment</span>
+    <span class="n">critical</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;CRITICAL&#39;</span><span class="p">,</span> <span class="s1">&#39;0&#39;</span><span class="p">)</span>
+    <span class="n">high</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;HIGH&#39;</span><span class="p">,</span> <span class="s1">&#39;0&#39;</span><span class="p">)</span>
+    <span class="n">medium</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;MEDIUM&#39;</span><span class="p">,</span> <span class="s1">&#39;0&#39;</span><span class="p">)</span>
+    <span class="n">low</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;LOW&#39;</span><span class="p">,</span> <span class="s1">&#39;0&#39;</span><span class="p">)</span>
+    <span class="n">total</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;TOTAL&#39;</span><span class="p">,</span> <span class="s1">&#39;0&#39;</span><span class="p">)</span>
+
+    <span class="n">lines</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">if</span> <span class="n">is_pr_comment</span><span class="p">:</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;&lt;details&gt;&#39;</span><span class="p">)</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;&lt;summary&gt;🔍 Example Scanner&lt;/summary&gt;&#39;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;## 🔍 Example Scanner Results&#39;</span><span class="p">)</span>
+
+    <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="p">)</span>
+    <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;| 🚨 Critical | ⚠️ High | 🟡 Medium | 🔵 Low | ❌ Total |&#39;</span><span class="p">)</span>
+    <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;|-------------|---------|-----------|--------|----------|&#39;</span><span class="p">)</span>
+    <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;| **</span><span class="si">{</span><span class="n">critical</span><span class="si">}</span><span class="s1">** | **</span><span class="si">{</span><span class="n">high</span><span class="si">}</span><span class="s1">** | **</span><span class="si">{</span><span class="n">medium</span><span class="si">}</span><span class="s1">** | **</span><span class="si">{</span><span class="n">low</span><span class="si">}</span><span class="s1">** | **</span><span class="si">{</span><span class="n">total</span><span class="si">}</span><span class="s1">** |&#39;</span><span class="p">)</span>
+    <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Add artifacts link</span>
+    <span class="n">github_url</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;GITHUB_SERVER_URL&#39;</span><span class="p">,</span> <span class="s1">&#39;https://github.com&#39;</span><span class="p">)</span>
+    <span class="n">repo</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;GITHUB_REPOSITORY&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span>
+    <span class="n">run_id</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;GITHUB_RUN_ID&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span>
+    <span class="n">artifacts_url</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">github_url</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">repo</span><span class="si">}</span><span class="s2">/actions/runs/</span><span class="si">{</span><span class="n">run_id</span><span class="si">}</span><span class="s2">#artifacts&quot;</span>
+    <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;**📁 Artifacts:** [View Reports](</span><span class="si">{</span><span class="n">artifacts_url</span><span class="si">}</span><span class="s1">)&#39;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">is_pr_comment</span><span class="p">:</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;&lt;/details&gt;&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Write to file</span>
+    <span class="n">Path</span><span class="p">(</span><span class="n">output_file</span><span class="p">)</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">output_file</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lines</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">output_file</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="k">else</span> <span class="s1">&#39;scanner-summaries/example.md&#39;</span>
+    <span class="n">is_pr_comment</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;true&#39;</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">2</span> <span class="k">else</span> <span class="kc">False</span>
+    <span class="n">generate_summary</span><span class="p">(</span><span class="n">output_file</span><span class="p">,</span> <span class="n">is_pr_comment</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Summary requirements</strong>:
+- Use consistent emoji and formatting
+- Support both PR comment and job summary modes
+- Include artifacts link
+- Keep it concise but informative
+- Create output directory if it doesn't exist</p>
+<h3 id="step-5-create-documentation">Step 5: Create Documentation</h3>
+<p>Create <code>README.md</code> for your action:</p>
+<div class="highlight"><pre><span></span><code><span class="gh"># Example Scanner Composite Action</span>
+
+Brief description of what this scanner detects.
+
+<span class="gu">## Usage</span>
+
+<span class="gu">### Basic Example</span>
+\`\`\`yaml
+<span class="k">-</span><span class="w"> </span>uses: huntridge-labs/argus/.github/actions/scanner-example@1.0.1
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  with:
+    scan_path: &#39;src&#39;
+    fail_on_severity: &#39;high&#39;
+\`\`\`
+
+<span class="gu">## Inputs</span>
+
+| Input | Description | Required | Default |
+|-------|-------------|----------|---------|
+| <span class="sb">`scan_path`</span> | Path to scan | No | <span class="sb">`.`</span> |
+| <span class="sb">`fail_on_severity`</span> | Fail threshold | No | <span class="sb">`none`</span> |
+| <span class="sb">`enable_code_security`</span> | Upload SARIF | No | <span class="sb">`false`</span> |
+| <span class="sb">`post_pr_comment`</span> | Post PR comment | No | <span class="sb">`true`</span> |
+
+<span class="gu">## Outputs</span>
+
+| Output | Description |
+|--------|-------------|
+| <span class="sb">`critical_count`</span> | Critical findings |
+| <span class="sb">`high_count`</span> | High findings |
+| <span class="sb">`total_count`</span> | Total findings |
+| <span class="sb">`scan_status`</span> | Status (passed/failed/skipped) |
+
+<span class="gu">## Requirements</span>
+
+<span class="k">-</span><span class="w"> </span>Scanner tool version requirements
+<span class="k">-</span><span class="w"> </span>Supported file types
+<span class="k">-</span><span class="w"> </span>Dependencies
+</code></pre></div>
+<h3 id="step-6-register-with-the-documentation-site">Step 6: Register with the Documentation Site</h3>
+<p>Create <code>.github/actions/scanner-example/.docsite.yml</code> to declare the action's category:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">category</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sast</span><span class="w">  </span><span class="c1"># Must match a category defined in docsite.yml</span>
+</code></pre></div>
+<p>Available categories are defined in <code>docsite.yml</code> at the repo root (e.g., <code>sast</code>, <code>secrets</code>, <code>container</code>, <code>dast</code>, <code>infrastructure</code>, <code>malware</code>, <code>dependencies</code>, <code>linting</code>, <code>compliance</code>, <code>ai</code>, <code>utility</code>).</p>
+<p>To validate your configuration:</p>
+<div class="highlight"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>scripts<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>docsite<span class="w"> </span>--validate
+</code></pre></div>
+<p>This ensures your <code>.docsite.yml</code> exists, references a valid category, and that the site will build correctly.</p>
+<p>To preview the documentation site locally:</p>
+<div class="highlight"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>scripts<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>docsite<span class="w"> </span>--output-dir<span class="w"> </span>/tmp/argus-docs
+<span class="nb">cd</span><span class="w"> </span>/tmp/argus-docs<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>mkdocs<span class="w"> </span>serve
+</code></pre></div>
+<h3 id="step-7-update-actions-catalog">Step 7: Update Actions Catalog</h3>
+<p>Add to <code>.github/actions/README.md</code>:</p>
+<div class="highlight"><pre><span></span><code>| [<span class="nt">scanner-example</span>](<span class="na">scanner-example/</span>) | Example scanner description | Languages | [<span class="nt">README</span>](<span class="na">scanner-example/README.md</span>) |
+</code></pre></div>
+<h3 id="step-8-add-to-example-workflows">Step 8: Add to Example Workflows</h3>
+<p>Add your scanner to <code>examples/workflows/composite-actions-example.yml</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="w">  </span><span class="nt">example-scanner</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Example Scanner</span>
+<span class="w">    </span><span class="nt">runs-on</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ubuntu-latest</span>
+<span class="w">    </span><span class="nt">steps</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/checkout@v6</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">huntridge-labs/argus/.github/actions/scanner-example@1.0.1</span>
+<span class="w">        </span><span class="nt">env</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">GITHUB_TOKEN</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ secrets.GITHUB_TOKEN }}</span>
+<span class="w">        </span><span class="nt">with</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">scan_path</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;src&#39;</span>
+<span class="w">          </span><span class="nt">post_pr_comment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">  </span><span class="c1"># Let security-summary handle comments</span>
+
+<span class="w">  </span><span class="nt">security-summary</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">needs</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">example-scanner</span><span class="w">  </span><span class="c1"># Add to needs array</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bandit</span>
+<span class="w">      </span><span class="c1"># ... other scanners</span>
+</code></pre></div>
+<hr />
+<h2 id="testing-your-changes">Testing Your Changes</h2>
+<h3 id="testing-approach">Testing Approach</h3>
+<p><strong>SDK tests</strong> live in the <code>argus/tests/</code> package:
+<div class="highlight"><pre><span></span><code>argus/tests/
+├── scanners/                   # Per-scanner unit tests
+│   ├── test_bandit.py
+│   ├── test_my_scanner.py
+│   └── ...
+├── reporters/                  # Reporter tests
+├── test_cli.py                 # CLI tests
+├── test_engine.py              # Engine tests
+├── test_models.py              # Model tests
+└── conftest.py
+</code></pre></div></p>
+<p><strong>Action tests</strong> are co-located with the composite actions they validate:
+<div class="highlight"><pre><span></span><code>.github/actions/scanner-myScanner/
+├── action.yml
+├── scripts/
+│   ├── parse-results.py
+│   └── generate-summary.py
+└── tests/                      # Action-level tests
+    ├── test_parse_results.py
+    ├── test_generate_summary.py
+    └── conftest.py (optional)
+</code></pre></div></p>
+<p><strong>Shared fixtures</strong> - mock data centralized for reuse:
+<div class="highlight"><pre><span></span><code>tests/fixtures/
+├── scanner-outputs/            # Pre-captured scanner results
+├── test-apps/                  # Minimal test apps
+└── configs/                    # Test configurations
+</code></pre></div></p>
+<p><strong>Run tests</strong>:
+<div class="highlight"><pre><span></span><code>pytest<span class="w">                                    </span><span class="c1"># All tests with coverage</span>
+pytest<span class="w"> </span>--no-cov<span class="w"> </span>-q<span class="w">                        </span><span class="c1"># Fast mode (no coverage)</span>
+pytest<span class="w"> </span>argus/tests/<span class="w">                       </span><span class="c1"># SDK tests only</span>
+pytest<span class="w"> </span>argus/tests/<span class="w"> </span>--no-cov<span class="w"> </span>-q<span class="w">           </span><span class="c1"># Fast SDK tests</span>
+pytest<span class="w"> </span>argus/tests/scanners/test_bandit.py<span class="w">  </span><span class="c1"># Single scanner</span>
+pytest<span class="w"> </span>.github/actions/scanner-x/tests/<span class="w">  </span><span class="c1"># Single action tests</span>
+</code></pre></div></p>
+<p><strong>Key principles</strong>:
+1. SDK scanners tested in <code>argus/tests/scanners/</code>
+2. Action scripts tested co-located with their action
+3. Fixtures shared across both SDK and action tests (avoid duplication)
+4. Use synthetic data, not real vulnerabilities
+5. Measure coverage with pytest-cov</p>
+<p>See <code>tests/CONTRIBUTING.md</code> for detailed pytest guide.</p>
+<h3 id="manual-testing">Manual Testing</h3>
+<p>Create a test workflow:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Test Example Scanner</span>
+
+<span class="nt">on</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">workflow_dispatch</span><span class="p">:</span>
+
+<span class="nt">jobs</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">test</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">runs-on</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ubuntu-latest</span>
+<span class="w">    </span><span class="nt">steps</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/checkout@v6</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./.github/actions/scanner-example</span>
+<span class="w">        </span><span class="nt">env</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">GITHUB_TOKEN</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ secrets.GITHUB_TOKEN }}</span>
+<span class="w">        </span><span class="nt">with</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">scan_path</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;tests/fixtures/test-apps/example-app&#39;</span>
+</code></pre></div>
+<h3 id="automated-testing">Automated Testing ✅</h3>
+<p>Test infrastructure is complete:</p>
+<ul>
+<li>✅ Unit tests for parser scripts (co-located in <code>.github/actions/*/tests/</code>)</li>
+<li>✅ Unit tests for summary generators (co-located)</li>
+<li>✅ Integration tests for full actions (<code>.github/workflows/test-actions*.yml</code>)</li>
+<li>✅ Coverage reporting via Codecov</li>
+<li>✅ 174+ tests running in CI/CD</li>
+</ul>
+<h3 id="validation-checklist">Validation Checklist</h3>
+<p><strong>SDK scanners:</strong>
+- [ ] Scanner implements all required protocol methods
+- [ ] Scanner registered in <code>argus/scanners/__init__.py</code>
+- [ ] Container image added to <code>argus/containers.py</code> (if applicable)
+- [ ] <code>parse_results</code> handles various input formats
+- [ ] <code>is_available</code> correctly detects tool presence
+- [ ] Unit tests in <code>argus/tests/scanners/</code>
+- [ ] Test fixtures in <code>tests/fixtures/scanner-outputs/</code>
+- [ ] All tests pass: <code>pytest argus/tests/</code></p>
+<p><strong>Composite actions:</strong>
+- [ ] Action runs without errors
+- [ ] All outputs are set correctly
+- [ ] Parser handles various input formats
+- [ ] Summary markdown is valid
+- [ ] <code>.docsite.yml</code> created with valid category
+- [ ] Docsite validation passes: <code>cd scripts &amp;&amp; python -m docsite --validate</code>
+- [ ] Unit tests added in <code>.github/actions/*/tests/</code>
+- [ ] Tests use shared fixtures from <code>tests/fixtures/</code>
+- [ ] All tests pass: <code>pytest</code>
+- [ ] SARIF upload works (if applicable)
+- [ ] Artifacts upload with correct names
+- [ ] PR comments work
+- [ ] Severity thresholds fail appropriately</p>
+<hr />
+<h2 id="documentation-requirements">Documentation Requirements</h2>
+<h3 id="for-sdk-scanners">For SDK Scanners</h3>
+<p>Every SDK scanner must include:</p>
+<ol>
+<li><strong>Module docstring</strong> in <code>argus/scanners/my_scanner.py</code> describing what the scanner detects</li>
+<li><strong>Container image entry</strong> in <code>argus/containers.py</code> (if the scanner supports container execution)</li>
+<li><strong>Registry entry</strong> in <code>argus/scanners/__init__.py</code></li>
+<li><strong>Test file</strong> in <code>argus/tests/scanners/test_my_scanner.py</code></li>
+<li><strong>Test fixtures</strong> in <code>tests/fixtures/scanner-outputs/my-scanner/</code></li>
+<li><strong>Changelog</strong> entry in <code>CHANGELOG.md</code></li>
+</ol>
+<h3 id="for-composite-actions">For Composite Actions</h3>
+<p>Every composite action must include:</p>
+<ol>
+<li><strong>Action README.md</strong></li>
+<li>Purpose and capabilities</li>
+<li>Usage examples</li>
+<li>Complete inputs/outputs tables</li>
+<li>
+<p>Requirements</p>
+</li>
+<li>
+<p><strong>Docsite Registration</strong></p>
+</li>
+<li><code>.docsite.yml</code> with valid category (see composite action Step 6 above)</li>
+<li>
+<p>Validate with <code>cd scripts &amp;&amp; python -m docsite --validate</code></p>
+</li>
+<li>
+<p><strong>Inline Documentation</strong></p>
+</li>
+<li>Comments in action.yml</li>
+<li>Comments in scripts</li>
+<li>
+<p>Helpful error messages</p>
+</li>
+<li>
+<p><strong>Catalog Entry</strong></p>
+</li>
+<li>
+<p>Add to <code>.github/actions/README.md</code></p>
+</li>
+<li>
+<p><strong>Usage Example</strong></p>
+</li>
+<li>
+<p>Add to <code>examples/composite-actions-example.yml</code></p>
+</li>
+<li>
+<p><strong>Changelog</strong></p>
+</li>
+<li>Update <code>CHANGELOG.md</code></li>
+</ol>
+<hr />
+<h2 id="pull-request-process">Pull Request Process</h2>
+<h3 id="before-submitting">Before Submitting</h3>
+<ul>
+<li>[ ] Manual testing complete</li>
+<li>[ ] Documentation complete</li>
+<li>[ ] SDK scanner tests added in <code>argus/tests/scanners/</code> (if SDK scanner)</li>
+<li>[ ] Action tests added in <code>.github/actions/*/tests/</code> (if composite action)</li>
+<li>[ ] All tests pass: <code>pytest</code></li>
+<li>[ ] Coverage meets 80% threshold</li>
+<li>[ ] Follows existing patterns (see <code>argus/scanners/bandit.py</code> for SDK reference)</li>
+<li>[ ] Automated tests pass in CI</li>
+</ul>
+<h3 id="pr-template">PR Template</h3>
+<div class="highlight"><pre><span></span><code><span class="gu">## Add Example Scanner Composite Action</span>
+
+<span class="gu">### Summary</span>
+Brief description of the scanner.
+
+<span class="gu">### Scanner Details</span>
+<span class="k">-</span><span class="w"> </span><span class="gs">**Tool**</span>: Example Scanner v1.0
+<span class="k">-</span><span class="w"> </span><span class="gs">**Languages**</span>: Python, JavaScript
+<span class="k">-</span><span class="w"> </span><span class="gs">**Output Formats**</span>: SARIF, JSON
+
+<span class="gu">### Changes</span>
+<span class="k">-</span><span class="w"> </span>✅ Created scanner-example action
+<span class="k">-</span><span class="w"> </span>✅ Added parser and summary scripts
+<span class="k">-</span><span class="w"> </span>✅ Updated actions catalog
+<span class="k">-</span><span class="w"> </span>✅ Added examples
+<span class="k">-</span><span class="w"> </span>✅ Documentation complete
+
+<span class="gu">### Testing</span>
+<span class="k">- [x]</span> Tested manually
+<span class="k">- [x]</span> Verified outputs
+<span class="k">- [x]</span> Confirmed artifacts
+<span class="k">- [ ]</span> TODO: Unit tests
+<span class="k">- [ ]</span> TODO: Integration tests
+
+<span class="gu">### Usage</span>
+\`\`\`yaml
+<span class="k">-</span><span class="w"> </span>uses: huntridge-labs/argus/.github/actions/scanner-example@1.0.1
+\`\`\`
+</code></pre></div>
+<hr />
+<h2 id="best-practices">Best Practices</h2>
+<h3 id="naming-conventions">Naming Conventions</h3>
+<ul>
+<li><strong>SDK scanner modules</strong>: <code>argus/scanners/{tool}.py</code> (snake_case, e.g., <code>trivy_iac.py</code>, <code>supply_chain.py</code>)</li>
+<li><strong>SDK scanner classes</strong>: <code>PascalCase</code> + <code>Scanner</code> suffix (e.g., <code>BanditScanner</code>, <code>TrivyIacScanner</code>)</li>
+<li><strong>Scanner registry names</strong>: kebab-case (e.g., <code>"trivy-iac"</code>, <code>"supply-chain"</code>)</li>
+<li><strong>SDK linter modules</strong>: <code>argus/linters/{tool}.py</code> (snake_case, e.g., <code>yamllint.py</code>, <code>python_lint.py</code>)</li>
+<li><strong>SDK linter classes</strong>: <code>PascalCase</code> + <code>Linter</code> suffix (e.g., <code>YamllintLinter</code>, <code>HadolintLinter</code>)</li>
+<li><strong>Linter registry names</strong>: <code>lint-</code> prefix + kebab-case (e.g., <code>"lint-yaml"</code>, <code>"lint-python"</code>)</li>
+<li><strong>Actions</strong>: <code>scanner-{tool}</code> or <code>linter-{tool}</code></li>
+<li><strong>Scripts</strong>: <code>parse_results.py</code>, <code>generate_summary.py</code></li>
+<li><strong>Artifacts</strong>: <code>{tool}-reports-{job_id}</code>, <code>scanner-summary-{tool}-{job_id}</code></li>
+</ul>
+<h3 id="script-guidelines">Script Guidelines</h3>
+<ol>
+<li>Validate inputs before processing</li>
+<li>Handle missing files gracefully</li>
+<li>Provide default values</li>
+<li>Use descriptive error messages</li>
+<li>Use <code>pathlib</code> for file operations</li>
+</ol>
+<h3 id="security">Security</h3>
+<ul>
+<li>Never hardcode secrets</li>
+<li>Validate all inputs</li>
+<li>Use <code>continue-on-error</code> for optional steps</li>
+<li>Pin action versions</li>
+<li>Minimize required permissions</li>
+</ul>
+<h3 id="performance">Performance</h3>
+<ul>
+<li>Set reasonable timeouts</li>
+<li>Cache dependencies</li>
+<li>Minimize scan scope</li>
+<li>Generate only necessary formats</li>
+</ul>
+<hr />
+<h2 id="architecture-migration-complete">Architecture Migration Complete</h2>
+<ul>
+<li>Argus Python SDK (<code>argus/</code>) is the primary scanner interface</li>
+<li>22 reusable workflow wrappers (<code>scanner-*.yml</code>) have been removed</li>
+<li>All scanner logic consolidated into SDK modules implementing the <code>Scanner</code> protocol</li>
+<li>SDK handles tool execution, Docker container fallback, result parsing, and reporting</li>
+<li>Composite actions remain for direct GitHub Actions integration</li>
+<li>All scripts and tests are Python with pytest</li>
+<li>Unified coverage with pytest-cov</li>
+</ul>
+<hr />
+<h2 id="getting-help">Getting Help</h2>
+<ul>
+<li>📋 See <code>argus/scanners/bandit.py</code> for the SDK reference implementation</li>
+<li>📋 Check existing composite actions for action-level patterns</li>
+<li>📖 Review <code>CLAUDE.md</code> for architecture</li>
+<li>📝 See <code>tests/TODO.md</code> for testing</li>
+<li>💬 Open a <a href="https://github.com/huntridge-labs/argus/discussions">Discussion</a></li>
+<li>🐛 Report via <a href="https://github.com/huntridge-labs/argus/issues">Issues</a></li>
+</ul>
+<hr />
+<p><strong>Thank you for contributing! 🎉</strong></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/huntridge-labs/argus" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.expand", "navigation.path", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
