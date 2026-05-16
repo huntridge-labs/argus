@@ -368,9 +368,11 @@
   // Minimum top position for the panel — the bottom of the page
   // header (plus a small gap) so the panel can never slide under the
   // header chrome. Read live in case the header height changes
-  // (responsive wrap, etc.).
+  // (responsive wrap, etc.). Supports both the viewer's plain
+  // ``<header>`` and MkDocs Material's ``.md-header`` so the same
+  // logic works in either host context.
   function panelMinTop() {
-    const header = document.querySelector('body > header');
+    const header = document.querySelector('.md-header, body > header');
     const headerBottom = header ? header.getBoundingClientRect().bottom : 0;
     return Math.max(8, headerBottom + 4);
   }
@@ -823,7 +825,9 @@
   // When the user scrolls far enough to reveal the global footer,
   // the sidebars' bottom edges would overlap it. Watch the footer's
   // top edge and lift the sidebars by however much is intruding.
-  const footerEl = document.querySelector('body > footer');
+  // Works against either the standalone viewer's ``<footer>`` or
+  // MkDocs Material's ``.md-footer``.
+  const footerEl = document.querySelector('.md-footer, body > footer');
   const sidebars = document.querySelectorAll('.arch-page__sidebar');
   function updateSidebarBottom() {
     if (!footerEl || sidebars.length === 0) return;

@@ -12,17 +12,6 @@
 
 /* ─── Page chrome ───────────────────────────────────────────────────── */
 
-/* Drop the global ``main { max-width: 72rem; padding: 1rem 1.5rem }``
-   for the outer <main> when it hosts the architecture page so the
-   diagram can use the full viewport width while staying aligned with
-   the fixed sidebars. ``:has()`` keeps the override scoped to this
-   route — every other page keeps the normal max-width centering. */
-body > main:has(> .arch-page) {
-  max-width: none;
-  padding: 0;
-  margin: 0;
-}
-
 .arch-page {
   position: relative;
   width: 100%;
