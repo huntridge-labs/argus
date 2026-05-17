@@ -40,6 +40,7 @@ jobs:
   # each had a separate hardcoded matrix that could drift out of sync
   # with the dogfood scan target list.
   matrix:
+    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):')
     name: Resolve image matrix
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -77,6 +78,7 @@ jobs:
 
   # ── Step 1: Build all custom images ──────────────────────────────────
   build:
+    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):')
     name: Build Images
     needs: matrix
     runs-on: ubuntu-latest
@@ -122,6 +124,7 @@ jobs:
 
   # ── Step 2: Scan each image with Trivy + Grype ──────────────────────
   scan:
+    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):')
     name: Scan ${{ matrix.image }}
     needs: [matrix, build]
     runs-on: ubuntu-latest
@@ -249,6 +252,7 @@ jobs:
 
   # ── Step 3: Test argus CLI using built images ───────────────────────
   test-cli:
+    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):')
     name: Test Argus CLI
     needs: [matrix, build]
     runs-on: ubuntu-latest
@@ -466,7 +470,7 @@ jobs:
   # ── Step 4: Post PR comment using argus markdown + comment-pr action ─
   comment-pr:
     name: Container Scan Summary
-    if: always() && github.event_name == 'pull_request'
+    if: (always() && github.event_name == 'pull_request') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     needs: [scan, test-cli]
     runs-on: ubuntu-latest
 

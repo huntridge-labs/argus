@@ -64,6 +64,7 @@ jobs:
   # Posts coverage report as PR comment and fails if coverage is incomplete
   # ============================================================================
   validate-e2e-coverage:
+    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):')
     name: Validate E2E Coverage
     runs-on: ubuntu-latest
     steps:
@@ -216,6 +217,7 @@ jobs:
   # the resulting CLI works in a clean Python venv.
   # ============================================================================
   validate-install-from-source:
+    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):')
     name: Validate install-from-source pattern
     runs-on: ubuntu-latest
     steps:
@@ -313,10 +315,7 @@ jobs:
   test-bandit:
     name: SAST / bandit
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.test_group == 'all' || inputs.test_group == 'sast') ||
-      github.event_name != 'workflow_dispatch'
+    if: (github.event_name == 'workflow_dispatch' && (inputs.test_group == 'all' || inputs.test_group == 'sast') || github.event_name != 'workflow_dispatch') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     timeout-minutes: 15
 
     steps:
@@ -347,10 +346,7 @@ jobs:
   test-opengrep:
     name: SAST / opengrep
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.test_group == 'all' || inputs.test_group == 'sast') ||
-      github.event_name != 'workflow_dispatch'
+    if: (github.event_name == 'workflow_dispatch' && (inputs.test_group == 'all' || inputs.test_group == 'sast') || github.event_name != 'workflow_dispatch') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     timeout-minutes: 15
 
     steps:
@@ -381,10 +377,7 @@ jobs:
   test-codeql:
     name: SAST / codeql
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.test_group == 'all' || inputs.test_group == 'sast') ||
-      github.event_name != 'workflow_dispatch'
+    if: (github.event_name == 'workflow_dispatch' && (inputs.test_group == 'all' || inputs.test_group == 'sast') || github.event_name != 'workflow_dispatch') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     timeout-minutes: 20
 
     steps:
@@ -417,10 +410,7 @@ jobs:
   test-secrets:
     name: Secrets / gitleaks
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.test_group == 'all' || inputs.test_group == 'secrets') ||
-      github.event_name != 'workflow_dispatch'
+    if: (github.event_name == 'workflow_dispatch' && (inputs.test_group == 'all' || inputs.test_group == 'secrets') || github.event_name != 'workflow_dispatch') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     timeout-minutes: 10
 
     steps:
@@ -463,10 +453,7 @@ jobs:
   test-trivy-iac:
     name: IaC / trivy-iac
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.test_group == 'all' || inputs.test_group == 'infrastructure') ||
-      github.event_name != 'workflow_dispatch'
+    if: (github.event_name == 'workflow_dispatch' && (inputs.test_group == 'all' || inputs.test_group == 'infrastructure') || github.event_name != 'workflow_dispatch') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     timeout-minutes: 15
 
     steps:
@@ -496,10 +483,7 @@ jobs:
   test-checkov:
     name: IaC / checkov
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.test_group == 'all' || inputs.test_group == 'infrastructure') ||
-      github.event_name != 'workflow_dispatch'
+    if: (github.event_name == 'workflow_dispatch' && (inputs.test_group == 'all' || inputs.test_group == 'infrastructure') || github.event_name != 'workflow_dispatch') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     timeout-minutes: 15
 
     steps:
@@ -534,10 +518,7 @@ jobs:
   test-scn-detector:
     name: Compliance / scn-detector
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.test_group == 'all' || inputs.test_group == 'infrastructure') ||
-      github.event_name != 'workflow_dispatch'
+    if: (github.event_name == 'workflow_dispatch' && (inputs.test_group == 'all' || inputs.test_group == 'infrastructure') || github.event_name != 'workflow_dispatch') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     timeout-minutes: 15
 
     steps:
@@ -601,10 +582,7 @@ jobs:
   test-container:
     name: Container / ${{ matrix.tool }}
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.test_group == 'all' || inputs.test_group == 'container') ||
-      github.event_name != 'workflow_dispatch'
+    if: (github.event_name == 'workflow_dispatch' && (inputs.test_group == 'all' || inputs.test_group == 'container') || github.event_name != 'workflow_dispatch') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     timeout-minutes: 15
 
     strategy:
@@ -657,10 +635,7 @@ jobs:
   test-syft:
     name: SBOM / syft
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.test_group == 'all' || inputs.test_group == 'container') ||
-      github.event_name != 'workflow_dispatch'
+    if: (github.event_name == 'workflow_dispatch' && (inputs.test_group == 'all' || inputs.test_group == 'container') || github.event_name != 'workflow_dispatch') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     timeout-minutes: 15
 
     steps:
@@ -702,10 +677,7 @@ jobs:
   test-linter-dockerfile:
     name: Linter / dockerfile
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.test_group == 'all' || inputs.test_group == 'linters') ||
-      github.event_name != 'workflow_dispatch'
+    if: (github.event_name == 'workflow_dispatch' && (inputs.test_group == 'all' || inputs.test_group == 'linters') || github.event_name != 'workflow_dispatch') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     timeout-minutes: 10
 
     steps:
@@ -729,10 +701,7 @@ jobs:
   test-linter-python:
     name: Linter / python
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.test_group == 'all' || inputs.test_group == 'linters') ||
-      github.event_name != 'workflow_dispatch'
+    if: (github.event_name == 'workflow_dispatch' && (inputs.test_group == 'all' || inputs.test_group == 'linters') || github.event_name != 'workflow_dispatch') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     timeout-minutes: 10
 
     steps:
@@ -756,10 +725,7 @@ jobs:
   test-linter-yaml:
     name: Linter / yaml
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.test_group == 'all' || inputs.test_group == 'linters') ||
-      github.event_name != 'workflow_dispatch'
+    if: (github.event_name == 'workflow_dispatch' && (inputs.test_group == 'all' || inputs.test_group == 'linters') || github.event_name != 'workflow_dispatch') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     timeout-minutes: 10
 
     steps:
@@ -783,10 +749,7 @@ jobs:
   test-linter-javascript:
     name: Linter / javascript
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.test_group == 'all' || inputs.test_group == 'linters') ||
-      github.event_name != 'workflow_dispatch'
+    if: (github.event_name == 'workflow_dispatch' && (inputs.test_group == 'all' || inputs.test_group == 'linters') || github.event_name != 'workflow_dispatch') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     timeout-minutes: 10
 
     steps:
@@ -810,10 +773,7 @@ jobs:
   test-linter-json:
     name: Linter / json
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.test_group == 'all' || inputs.test_group == 'linters') ||
-      github.event_name != 'workflow_dispatch'
+    if: (github.event_name == 'workflow_dispatch' && (inputs.test_group == 'all' || inputs.test_group == 'linters') || github.event_name != 'workflow_dispatch') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     timeout-minutes: 10
 
     steps:
@@ -837,10 +797,7 @@ jobs:
   test-linter-terraform:
     name: Linter / terraform
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.test_group == 'all' || inputs.test_group == 'linters') ||
-      github.event_name != 'workflow_dispatch'
+    if: (github.event_name == 'workflow_dispatch' && (inputs.test_group == 'all' || inputs.test_group == 'linters') || github.event_name != 'workflow_dispatch') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     timeout-minutes: 10
 
     steps:
@@ -868,10 +825,7 @@ jobs:
   test-zap:
     name: DAST / zap
     runs-on: ubuntu-latest
-    if: >-
-      github.event_name == 'pull_request' ||
-      github.event_name == 'push' ||
-      inputs.test_group == 'all'
+    if: (github.event_name == 'pull_request' || github.event_name == 'push' || inputs.test_group == 'all') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     timeout-minutes: 25
 
     services:
@@ -930,10 +884,7 @@ jobs:
   test-clamav:
     name: Malware / clamav
     runs-on: ubuntu-latest
-    if: >-
-      github.event_name == 'pull_request' ||
-      github.event_name == 'push' ||
-      inputs.test_group == 'all'
+    if: (github.event_name == 'pull_request' || github.event_name == 'push' || inputs.test_group == 'all') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     timeout-minutes: 20
 
     steps:
@@ -974,10 +925,7 @@ jobs:
   test-supply-chain:
     name: Supply Chain / supply-chain
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.test_group == 'all' || inputs.test_group == 'supply-chain') ||
-      github.event_name != 'workflow_dispatch'
+    if: (github.event_name == 'workflow_dispatch' && (inputs.test_group == 'all' || inputs.test_group == 'supply-chain') || github.event_name != 'workflow_dispatch') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     timeout-minutes: 10
 
     steps:
@@ -1025,10 +973,7 @@ jobs:
   test-osv:
     name: Dependencies / osv
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.test_group == 'all' || inputs.test_group == 'dependencies') ||
-      github.event_name != 'workflow_dispatch'
+    if: (github.event_name == 'workflow_dispatch' && (inputs.test_group == 'all' || inputs.test_group == 'dependencies') || github.event_name != 'workflow_dispatch') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     timeout-minutes: 15
 
     steps:
@@ -1072,10 +1017,7 @@ jobs:
   test-dependency-review:
     name: Dependencies / dependency-review
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.test_group == 'all' || inputs.test_group == 'dependencies') ||
-      github.event_name != 'workflow_dispatch'
+    if: (github.event_name == 'workflow_dispatch' && (inputs.test_group == 'all' || inputs.test_group == 'dependencies') || github.event_name != 'workflow_dispatch') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     timeout-minutes: 10
 
     steps:
@@ -1118,6 +1060,7 @@ jobs:
   # Note: Other summary generators need upstream artifacts, tested separately
   # ============================================================================
   test-linting-summary:
+    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):')
     name: Summary / linting-summary
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -1148,6 +1091,7 @@ jobs:
   # Tests: parse-container-config, parse-zap-config
   # ============================================================================
   test-parse-container-config:
+    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):')
     name: Parser / container-config
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1173,6 +1117,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   test-parse-zap-config:
+    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):')
     name: Parser / zap-config
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1202,6 +1147,7 @@ jobs:
   # Validates that example workflows have correct syntax and references
   # ============================================================================
   validate-examples:
+    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):')
     name: Validate Examples
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1328,7 +1274,7 @@ jobs:
       - test-parse-container-config
       - test-parse-zap-config
       - validate-examples
-    if: always()
+    if: (always()) && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
 
     steps:
       - name: Generate Summary
@@ -1406,7 +1352,7 @@ jobs:
   # ============================================================================
   test-results:
     name: Test Results
-    if: always()
+    if: (always()) && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     needs:
       - validate-e2e-coverage
       - test-bandit
