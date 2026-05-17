@@ -26,6 +26,16 @@ SBOM_FORMAT_EXTENSIONS: dict[str, str] = {
 }
 
 
+class ScannerPreconditionError(RuntimeError):
+    """Raised when a scanner can't run because its inputs are missing or
+    invalid — e.g. ``grype`` / ``trivy`` need an SBOM via ``--sbom``.
+
+    The engine treats this distinctly from a runtime/container failure:
+    no local fallback dance, no platform-mismatch retry, just surface the
+    precondition to the user. Issue #168-I.
+    """
+
+
 def _classify_pull_error(stderr: str) -> tuple[str, bool]:
     """Classify a docker/podman ``pull`` failure for human-readable
     logging and retry policy.
@@ -1347,6 +1357,17 @@ class ArgusEngine:
                 )
                 try:
                     return self._run_in_container(scanner, path, config)
+                except ScannerPreconditionError as exc:
+                    # The scanner's inputs are missing/invalid — no
+                    # amount of fallback will help. Surface clearly and
+                    # mark execution_failed so CI gating treats it as
+                    # "didn't run" rather than "passed with 0 findings"
+                    # (issue #168-I).
+                    logger.error(
+                        "Scanner '%s' precondition unmet: %s",
+                        scanner.name, exc,
+                    )
+                    return _failure_result(scanner.name, exc)
                 except RuntimeError as exc:
                     if backend == "docker":
                         raise

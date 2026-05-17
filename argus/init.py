@@ -254,6 +254,12 @@ def detect_project(root: Path) -> dict[str, list[str]]:
 def generate_config(signals: dict[str, list[str]]) -> str:
     """Generate argus.yml content based on detected signals."""
     lines = [
+        # The schema URL is longer than yamllint's default 80-char
+        # cap and can't be shortened (it's the pinned raw.github
+        # path). Suppress the rule on just this line so the
+        # generated argus.yml passes its own ``lint-yaml`` check
+        # (issue #168-I).
+        "# yamllint disable-line rule:line-length",
         f"# yaml-language-server: $schema={_SCHEMA_URL}",
         "# Argus Security Scanner Configuration",
         f"# Docs: {_DOCS_URL}",

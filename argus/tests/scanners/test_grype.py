@@ -83,10 +83,15 @@ class TestGrypeParseResults:
 
 
 class TestGrypeScanNoSbom:
-    def test_scan_without_sbom_returns_error(self):
-        result = GrypeScanner().scan(path=".", config={})
-        assert result.findings == []
-        assert "sbom_path" in result.metadata.get("error", "")
+    def test_scan_without_sbom_raises_precondition_error(self):
+        """Issue #168-I: missing --sbom is a precondition failure, not a
+        silently-passed scan. Raising lets the engine mark the scanner
+        ``execution_failed`` so CI gating treats it as "didn't run"
+        rather than "passed with 0 findings"."""
+        import pytest
+        from argus.core.engine import ScannerPreconditionError
+        with pytest.raises(ScannerPreconditionError, match="sbom_path"):
+            GrypeScanner().scan(path=".", config={})
 
 
 class TestGrypeUnknownSource:
