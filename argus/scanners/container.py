@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 
 from argus.containers import get_image
-from argus.core.models import Finding, ScanResult, Severity
+from argus.core.models import Finding, PhaseResult, ScanResult, Severity
 
 logger = logging.getLogger("argus")
 
@@ -252,13 +252,44 @@ class ContainerScanner:
 
         The ``path`` argument is ignored; the image reference must be
         provided via ``config["image_ref"]``.
+
+        When invoked via the source-scan dispatcher (``argus scan``
+        with ``scanners.container.enabled: true`` in argus.yml but no
+        ``containers.images`` or ``containers.discover`` configured),
+        no ``image_ref`` is supplied. The pre-fix path returned a
+        ScanResult with just ``metadata={"error": ...}``, which the
+        engine read as "ran with 0 findings" and reported PASS —
+        silent gap, issue #170. Now the scanner returns a partial-
+        failure ScanResult with a ``container-source-resolution``
+        phase recording the failure, so the engine folds the scanner
+        into the "did not run cleanly" bucket and
+        ``--fail-on-scanner-error`` exits non-zero.
+
+        The standalone ``argus scan container`` path doesn't go through
+        here — its CLI dispatcher constructs ScanResult directly and
+        already emits a usage message when no source is configured.
         """
         config = config or {}
         image_ref = config.get("image_ref")
         if not image_ref:
+            error = (
+                "container scanner enabled but no images or discover "
+                "paths configured. Add containers.images: or "
+                "containers.discover: to argus.yml, set --image / "
+                "--discover on the CLI, or remove container: from the "
+                "scanner list."
+            )
             return ScanResult(
                 scanner=self.name,
                 metadata={"error": "image_ref is required in config"},
+                phase_results=[
+                    PhaseResult(
+                        phase="container-source-resolution",
+                        status="failed",
+                        findings=[],
+                        error=error,
+                    )
+                ],
             )
 
         enabled = self._enabled_scanners(config)
