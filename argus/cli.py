@@ -2670,11 +2670,15 @@ def cmd_cache(args: argparse.Namespace) -> int:
         if empty_dirs:
             print(
                 f"\nNote: directories exist for {', '.join(empty_dirs)} but "
-                "are empty. The mount was wired up but the scanner did not "
-                "write to it — likely because the container process runs as "
-                "a non-root user without write access to the mounted path, "
-                "or because the scanner stores its cache elsewhere inside "
-                "the container. See issue #168-M for tracking."
+                "are empty. Three possibilities, in order of likelihood: "
+                "(1) the scanner didn't trigger a cache-populating operation "
+                "during the recent run — e.g. ``trivy-iac`` scans config files "
+                "without touching the vuln DB so /root/.cache/trivy stays empty; "
+                "(2) the scanner stores its cache at a path argus doesn't mount; "
+                "(3) the container process runs as a non-root user and can't write "
+                "to the host-owned mount. Run a vuln-DB-driven scan (``argus scan "
+                "grype --sbom <sbom>``) to verify the cache surfaces are wired. "
+                "Tracked in issue #168-M."
             )
     return EXIT_SUCCESS
 
