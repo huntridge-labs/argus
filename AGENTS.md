@@ -70,7 +70,7 @@ python -m argus scan --config argus.yml
 **GitHub Actions (composite actions):**
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.0.1
+- uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.1.0
   with:
     enable_code_security: true
     fail_on_severity: high
@@ -394,14 +394,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.0.1
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.1.0
         with:
           fail_on_severity: high
           enable_code_security: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.0.1
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.1.0
         with:
           fail_on_severity: high
           enable_code_security: true
@@ -428,7 +428,7 @@ python -m argus scan container --severity-threshold high
 ```yaml
 - name: Post PR Comment
   if: github.event_name == 'pull_request'
-  uses: huntridge-labs/argus/.github/actions/comment-pr@1.0.1
+  uses: huntridge-labs/argus/.github/actions/comment-pr@1.1.0
   with:
     comment_file: summary.md
 ```

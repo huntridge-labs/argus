@@ -50,10 +50,10 @@ OFFICIAL_IMAGES = {
 # Custom images built and published by Argus to ghcr.io/huntridge-labs/argus/
 # Versions managed by release-it regex bumper
 CUSTOM_IMAGES = {
-    "bandit": "ghcr.io/huntridge-labs/argus/scanner-bandit:1.0.1@sha256:a1f8a9059e573c46015deb9b95a2fe8dd0724ee6414b8f475659d1ba499cff50",
-    "semgrep": "ghcr.io/huntridge-labs/argus/scanner-opengrep:1.0.1@sha256:8192072467ff537885297cc11704a249c95aca664f1280cd1d3c99313eae2179",
-    "supply-chain": "ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.0.1@sha256:059940bba63e6808589777d20ef6ed9a7f721fec372769dcc881b440c499145a",
-    "cli": "ghcr.io/huntridge-labs/argus/cli:1.0.1@sha256:45d99e30dc16efbdc29ba974949a905bb8219da7649a32a1907b6b85d29534c1",
+    "bandit": "ghcr.io/huntridge-labs/argus/scanner-bandit:1.1.0@sha256:748dedba83ee0e3c1312be868e5dab62a6b1a0fd936092c543240bd4c6d96e8d",
+    "semgrep": "ghcr.io/huntridge-labs/argus/scanner-opengrep:1.1.0@sha256:8ff8695cbffdee9034a4e13d26d6043b31403464466de6419d0c089d0a7a74d0",
+    "supply-chain": "ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.1.0@sha256:0d332e27a5812400db31a075ed95c577b73b5c1240ab5ab446fcc0e1aad42113",
+    "cli": "ghcr.io/huntridge-labs/argus/cli:1.1.0@sha256:1f5be01ee7c0bed48a1bfb092499ca650d62785d0f449280bf9ae2a87757e7fb",
 }
 
 

@@ -243,7 +243,7 @@ jobs:
 
       - name: Comment PR with results
         if: github.event_name == 'pull_request' && inputs.post_pr_comment
-        uses: huntridge-labs/argus/.github/actions/comment-pr@1.0.1
+        uses: huntridge-labs/argus/.github/actions/comment-pr@1.1.0
         with:
           summary_file: ./argus-results/argus-results.md
           comment_marker: zap-dast-comment-${{ inputs.scan_name || 'zap-scan' }}

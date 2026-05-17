@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.1.0](https://github.com/huntridge-labs/argus/compare/1.0.1...1.1.0) (2026-05-17)
+
+### Features
+
+* **core:** PhaseResult + ScanResult.partial_failure for multi-phase scanners ([f0bc4b2](https://github.com/huntridge-labs/argus/commit/f0bc4b27b28ca2762e57d6b92e2d533898b93e0d)), closes [#169](https://github.com/huntridge-labs/argus/issues/169) [#170](https://github.com/huntridge-labs/argus/issues/170) [#169](https://github.com/huntridge-labs/argus/issues/169) [#170](https://github.com/huntridge-labs/argus/issues/170)
+
+### Bug Fixes
+
+* **cache:** distinguish "not cached" from "empty mount" in cache info ([#168](https://github.com/huntridge-labs/argus/issues/168)-M) ([d13e592](https://github.com/huntridge-labs/argus/commit/d13e592fb41f0ab1015e97d659dd7aea79f4ecb6)), closes [#168-M](https://github.com/huntridge-labs/argus/issues/168-M)
+* **clamav:** drop clamav from CACHE_MOUNTS, refine cache-info note ([#168](https://github.com/huntridge-labs/argus/issues/168)-N, [#168](https://github.com/huntridge-labs/argus/issues/168)-M) ([180c72c](https://github.com/huntridge-labs/argus/commit/180c72c57817e837b69184ab42262326584e9719)), closes [#168-N](https://github.com/huntridge-labs/argus/issues/168-N) [#168-M](https://github.com/huntridge-labs/argus/issues/168-M)
+* **clamav:** redirect freshclam db to /tmp so it can write ([#168](https://github.com/huntridge-labs/argus/issues/168)-N) ([05366bc](https://github.com/huntridge-labs/argus/commit/05366bcbe02627a7ebd8a3707315a7d600a090f7)), closes [#168-N](https://github.com/huntridge-labs/argus/issues/168-N) [#168-M](https://github.com/huntridge-labs/argus/issues/168-M)
+* **classify:** exit non-zero when git diff itself fails ([#168](https://github.com/huntridge-labs/argus/issues/168)-J) ([811daa2](https://github.com/huntridge-labs/argus/commit/811daa2962e1942260cdca87a1845ce2b0cda189)), closes [#168-J](https://github.com/huntridge-labs/argus/issues/168-J)
+* **cli:** correct surface inconsistencies and silence --quiet (issue [#168](https://github.com/huntridge-labs/argus/issues/168)-D) ([d7408b6](https://github.com/huntridge-labs/argus/commit/d7408b6c6163c06ab3553a48fa93b5c534d3d1d0)), closes [#168-D](https://github.com/huntridge-labs/argus/issues/168-D)
+* **collect:** skip per-run timestamp dirs and the latest symlink ([#168](https://github.com/huntridge-labs/argus/issues/168)-L) ([e2aa06b](https://github.com/huntridge-labs/argus/commit/e2aa06bfddc12b130e1fc366e7ed11d3078af708)), closes [#168-L](https://github.com/huntridge-labs/argus/issues/168-L)
+* **docsite:** TUI screenshots, nav titles + grouping, orphan pages, regen on bump ([#167](https://github.com/huntridge-labs/argus/issues/167)) ([ce1d580](https://github.com/huntridge-labs/argus/commit/ce1d580dd9609266ddcbb0f3affb3765eeb0fe9e))
+* **engine:** cache permanent pull failures so inline retry skips ([#168](https://github.com/huntridge-labs/argus/issues/168)-H followup) ([67e1025](https://github.com/huntridge-labs/argus/commit/67e10253dfddc3931bbf6644e2c45f7bcfd41889)), closes [#168-H](https://github.com/huntridge-labs/argus/issues/168-H)
+* **engine:** categorize container-pull failures, skip retry on permanent errors ([2d199ce](https://github.com/huntridge-labs/argus/commit/2d199ce9d7ccd93db95d6d55cb5eb3bfd6953c92))
+* **lint-terraform:** per-phase PhaseResult, fail loudly when a phase can't run ([#169](https://github.com/huntridge-labs/argus/issues/169)) ([c2ae9b3](https://github.com/huntridge-labs/argus/commit/c2ae9b3e761b3e6aad2b02235227d0d614b6e959))
+* **mcp:** advertise argus version on initialize ([#168](https://github.com/huntridge-labs/argus/issues/168)-O) ([40e6ddd](https://github.com/huntridge-labs/argus/commit/40e6dddfa1a6df396106d745860403df6f212a55)), closes [#168-O](https://github.com/huntridge-labs/argus/issues/168-O)
+* **release:** derive schema version from __version__, widen bumper rules for docs ([2719900](https://github.com/huntridge-labs/argus/commit/2719900571ace221ded78290544889712d0fd7e4)), closes [#168-A](https://github.com/huntridge-labs/argus/issues/168-A) [#167-3](https://github.com/huntridge-labs/argus/issues/167-3) [#168](https://github.com/huntridge-labs/argus/issues/168) [#167](https://github.com/huntridge-labs/argus/issues/167)
+* **reporters:** de-dup GitLab CC descriptions, JUnit type uses rule id ([#168](https://github.com/huntridge-labs/argus/issues/168)-G) ([b76cbd9](https://github.com/huntridge-labs/argus/commit/b76cbd9d384f155232ba14488791ad14aa9f1281)), closes [#168-G](https://github.com/huntridge-labs/argus/issues/168-G) [#168-G](https://github.com/huntridge-labs/argus/issues/168-G)
+* **reporters:** fall back to built-in modules without entry-points ([#172](https://github.com/huntridge-labs/argus/issues/172)) ([5c9cc6b](https://github.com/huntridge-labs/argus/commit/5c9cc6b01acdd9f72e0cf69787356a9c5614fa17))
+* **report:** follow argus-results/latest symlink when -r not specified ([#168](https://github.com/huntridge-labs/argus/issues/168)-K) ([d6486de](https://github.com/huntridge-labs/argus/commit/d6486ded82950c9d823aac95095dd984cad7c328)), closes [#168-K](https://github.com/huntridge-labs/argus/issues/168-K)
+* **reporting:** emit Info row in markdown + --output-vars, sync validator with registry ([51757d8](https://github.com/huntridge-labs/argus/commit/51757d8bccb8b408eadb91d5450d35f90cb59b2a)), closes [#168-E](https://github.com/huntridge-labs/argus/issues/168-E) [#168-F](https://github.com/huntridge-labs/argus/issues/168-F)
+* **scanners:** container surfaces partial-failure when no source configured ([#170](https://github.com/huntridge-labs/argus/issues/170)) ([9605356](https://github.com/huntridge-labs/argus/commit/96053566221c1c72569c0b51548c75b9b23ca0b1)), closes [#169](https://github.com/huntridge-labs/argus/issues/169)
+* **scanners:** precondition errors don't trigger fallback dance ([#168](https://github.com/huntridge-labs/argus/issues/168)-I) ([d834c9a](https://github.com/huntridge-labs/argus/commit/d834c9afba4437e97e2931c0211c52be0d756f9b)), closes [#168-I](https://github.com/huntridge-labs/argus/issues/168-I) [#168-I](https://github.com/huntridge-labs/argus/issues/168-I)
+* **security:** flip keep_raw default off, exclude argus-results from scans ([92edff5](https://github.com/huntridge-labs/argus/commit/92edff56c4d20640d175f99697e62304875a79f6)), closes [#168](https://github.com/huntridge-labs/argus/issues/168)
+* **view:** add --path flag as argparse-safe escape hatch ([#168](https://github.com/huntridge-labs/argus/issues/168)-D5) ([512f954](https://github.com/huntridge-labs/argus/commit/512f95419cff5817cb0cdac8026ffffdf7016f2c)), closes [#168-D5](https://github.com/huntridge-labs/argus/issues/168-D5)
+
+### Dependencies
+
+* **deps:** bump the npm-major group across 1 directory with 4 updates ([bb14329](https://github.com/huntridge-labs/argus/commit/bb14329722de666ecba92b622f2905de844834c0))
+* **deps:** bump the pip-all group with 2 updates ([312233b](https://github.com/huntridge-labs/argus/commit/312233bae9a0b17cea4b058299865452f6515115))
+
+
+### Tests
+
+* cover partial-failure paths in models, reporters, and lint-terraform ([f902e83](https://github.com/huntridge-labs/argus/commit/f902e83c9e05b953a782911a730c0d017277595b)), closes [#173](https://github.com/huntridge-labs/argus/issues/173)
+
+### Continuous Integration
+
+* gate push-main workflows against chore(release): commits ([84bcbd4](https://github.com/huntridge-labs/argus/commit/84bcbd4a74d0dd3f28e44827d67eaf2eccfbf022))
+
 ## [1.0.1](https://github.com/huntridge-labs/argus/compare/1.0.0...1.0.1) (2026-05-16)
 
 ### Bug Fixes

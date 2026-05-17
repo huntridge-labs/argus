@@ -252,7 +252,7 @@ error_patterns:
         - "Verify action path matches exactly"
       example: |
         # Correct
-        uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.0.1
+        uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.1.0
 
         # Wrong - missing .github prefix
         uses: huntridge-labs/argus/actions/scanner-bandit@0.7.0

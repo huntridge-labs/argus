@@ -324,7 +324,7 @@ jobs:
           pattern: ${{ inputs.scan_mode == 'remote' && inputs.container_name != '' && format('container-scan-results-{0}*', inputs.container_name) || 'container-scan-results-*' }}
 
       - name: Generate container summary
-        uses: huntridge-labs/argus/.github/actions/scanner-container-summary@1.0.1
+        uses: huntridge-labs/argus/.github/actions/scanner-container-summary@1.1.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
