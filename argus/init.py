@@ -350,7 +350,11 @@ def generate_config(signals: dict[str, list[str]]) -> str:
     if "container" in signals:
         evidence = signals["container"][0]
         lines.append(f"  # Detected: container files ({evidence})")
-        lines.append("  # Run with: argus scan container --discover")
+        # Pre-fix, this said "Run with: argus scan container --discover",
+        # which contradicted the "just run argus scan" workflow the rest
+        # of init nudges users toward. Set ``containers.discover`` below
+        # so plain ``argus scan`` picks up Dockerfiles in this project
+        # (issue #170).
         lines.append("  container:")
         lines.append("    enabled: true")
         lines.append("")
@@ -412,6 +416,24 @@ def generate_config(signals: dict[str, list[str]]) -> str:
     lines.append("  # lint-json:")
     lines.append("  #   enabled: true")
     lines.append("")
+
+    # ── Top-level container sources ────────────────────────
+    # When ``scanners.container.enabled: true``, the engine needs at
+    # least one source — either ``containers.images:`` (explicit refs)
+    # or ``containers.discover:`` (find Dockerfiles under a path).
+    # Without either, the container scanner reports a partial failure
+    # via PhaseResult instead of silently passing (issue #170). Emit a
+    # commented-out template so users can opt in by uncommenting.
+    if "container" in signals:
+        lines.append("# Container sources for `scanners.container.enabled: true`.")
+        lines.append("# Uncomment ONE (or both) — argus needs at least one to scan.")
+        lines.append("# containers:")
+        lines.append("#   discover: \".\"            # find Dockerfiles under this path")
+        lines.append("#   # OR")
+        lines.append("#   images:")
+        lines.append("#     - name: myapp")
+        lines.append("#       image: ghcr.io/your-org/myapp:latest")
+        lines.append("")
 
     # ── Tool config references ─────────────────────────────
     tool_configs = signals.get("tool-configs", [])

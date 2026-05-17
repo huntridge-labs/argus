@@ -75,6 +75,55 @@ class MarkdownReporter:
         lines.append(f"| **Total** | **{summary.total_count}** |")
         lines.append("")
 
+        # Did-not-run-cleanly block: pulls together full execution
+        # failures, parse failures, and partial-phase failures
+        # (multi-phase scanners where some phases ran and others
+        # didn't). Without this, the markdown surface looked like a
+        # clean run even when scanners had silently fallen over —
+        # which is the same class of bug surfaced for the terminal
+        # reporter and the JSON validator (issues #169, #170).
+        exec_failed = [
+            r for r in summary.results if r.metadata.get("execution_failed")
+        ]
+        parse_failed = [
+            r for r in summary.results if r.metadata.get("parse_failed")
+        ]
+        partial_failed = [
+            r for r in summary.results
+            if getattr(r, "partial_failure", False)
+        ]
+        if exec_failed or parse_failed or partial_failed:
+            lines.append("## Scanner Health\n")
+            total = len(exec_failed) + len(partial_failed)
+            if total:
+                lines.append(
+                    f"**{total} scanner(s) did not run cleanly:**\n"
+                )
+                for r in exec_failed:
+                    reason = r.metadata.get(
+                        "execution_failure_reason", "no reason recorded",
+                    )
+                    lines.append(f"- `{r.scanner}`: {reason}")
+                for r in partial_failed:
+                    for phase in r.failed_phases:
+                        error = phase.error or "no reason recorded"
+                        lines.append(
+                            f"- `{r.scanner}`: phase `{phase.phase}` "
+                            f"failed: {error}"
+                        )
+                lines.append("")
+            if parse_failed:
+                lines.append(
+                    f"**{len(parse_failed)} scanner(s) produced output "
+                    "that could not be parsed:**\n"
+                )
+                for r in parse_failed:
+                    reason = r.metadata.get(
+                        "parse_failure_reason", "no reason recorded",
+                    )
+                    lines.append(f"- `{r.scanner}`: {reason}")
+                lines.append("")
+
         # Combined deduplicated view — only makes sense when two or more
         # scanners produced findings against the same source (SBOM scans
         # with osv + grype + trivy are the canonical case). For single-

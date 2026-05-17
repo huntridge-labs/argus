@@ -2,7 +2,13 @@
 
 import pytest
 
-from argus.core.models import Finding, ScanResult, ScanSummary, Severity
+from argus.core.models import (
+    Finding,
+    PhaseResult,
+    ScanResult,
+    ScanSummary,
+    Severity,
+)
 from argus.reporters.markdown import MarkdownReporter
 
 
@@ -97,3 +103,110 @@ class TestMarkdownReporter:
         content = filepath.read_text()
         assert "gitleaks" in content
         assert "No findings" in content
+
+
+class TestMarkdownReporterScannerHealth:
+    """Covers the ``## Scanner Health`` section emitted when any
+    scanner failed to run cleanly, partially failed, or produced
+    unparsable output. Pre-issue-#168/#169/#170 the markdown reporter
+    had no failure surface at all, so a degraded run produced a
+    clean-looking markdown report — directly hiding the same class
+    of bug from PR commenters as the terminal reporter had hidden
+    from CLI users.
+    """
+
+    def test_scanner_health_section_omitted_when_clean(self, tmp_output_dir):
+        reporter = MarkdownReporter()
+        summary = ScanSummary(
+            results=[ScanResult(scanner="bandit", findings=[])],
+        )
+        content = reporter.report(summary, tmp_output_dir).read_text()
+        assert "Scanner Health" not in content
+
+    def test_scanner_health_lists_execution_failure(self, tmp_output_dir):
+        reporter = MarkdownReporter()
+        summary = ScanSummary(
+            results=[
+                ScanResult(
+                    scanner="bandit", findings=[],
+                    metadata={
+                        "execution_failed": True,
+                        "execution_failure_reason": "permission denied",
+                    },
+                ),
+            ],
+        )
+        content = reporter.report(summary, tmp_output_dir).read_text()
+        assert "## Scanner Health" in content
+        assert "1 scanner(s) did not run cleanly" in content
+        assert "bandit" in content
+        assert "permission denied" in content
+
+    def test_scanner_health_lists_partial_failure_per_phase(self, tmp_output_dir):
+        # Per issue #169: partial-phase failures need to appear in the
+        # markdown body with phase-level granularity, not just an
+        # opaque scanner-level note.
+        reporter = MarkdownReporter()
+        summary = ScanSummary(
+            results=[
+                ScanResult(
+                    scanner="lint-terraform",
+                    findings=[],
+                    phase_results=[
+                        PhaseResult(phase="terraform-fmt", status="ran"),
+                        PhaseResult(
+                            phase="terraform-validate",
+                            status="failed",
+                            error="image pull failed",
+                        ),
+                    ],
+                ),
+            ],
+        )
+        content = reporter.report(summary, tmp_output_dir).read_text()
+        assert "## Scanner Health" in content
+        assert "1 scanner(s) did not run cleanly" in content
+        assert "phase `terraform-validate` failed" in content
+        assert "image pull failed" in content
+
+    def test_scanner_health_lists_parse_failure(self, tmp_output_dir):
+        reporter = MarkdownReporter()
+        summary = ScanSummary(
+            results=[
+                ScanResult(
+                    scanner="opengrep", findings=[],
+                    metadata={
+                        "parse_failed": True,
+                        "parse_failure_reason": "invalid JSON at line 3",
+                    },
+                ),
+            ],
+        )
+        content = reporter.report(summary, tmp_output_dir).read_text()
+        assert "## Scanner Health" in content
+        assert "could not be parsed" in content
+        assert "opengrep" in content
+        assert "invalid JSON" in content
+
+    def test_scanner_health_with_only_parse_failures_skips_did_not_run_block(
+        self, tmp_output_dir,
+    ):
+        # When ``exec_failed`` and ``partial_failed`` are both empty
+        # but ``parse_failed`` has entries, the parse section renders
+        # without the "did not run cleanly" header above it.
+        reporter = MarkdownReporter()
+        summary = ScanSummary(
+            results=[
+                ScanResult(
+                    scanner="opengrep", findings=[],
+                    metadata={
+                        "parse_failed": True,
+                        "parse_failure_reason": "schema drift",
+                    },
+                ),
+            ],
+        )
+        content = reporter.report(summary, tmp_output_dir).read_text()
+        assert "## Scanner Health" in content
+        assert "did not run cleanly" not in content
+        assert "could not be parsed" in content

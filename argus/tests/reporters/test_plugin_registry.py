@@ -319,3 +319,38 @@ class TestRegistryProxy:
         assert len(reporters_pkg.REPORTER_REGISTRY) == len(
             reporters_pkg.available_reporters()
         )
+
+
+class TestBuiltinFallback:
+    """Issue #172: when entry-point discovery returns nothing (the
+    ``PYTHONPATH``-only shape that CI's ``security-scan.yml`` workflow
+    uses), the registry must still surface all built-in reporters via
+    direct module import. Without this fallback, the validator rejected
+    every format in argus.yml and ``argus scan`` exited with EXIT_ERROR=2
+    before any scanner ran."""
+
+    def test_registry_falls_back_to_builtins_without_entry_points(
+        self, monkeypatch
+    ):
+        # Force entry-point discovery to return [] — simulating the
+        # PYTHONPATH-only install shape.
+        monkeypatch.setattr(reporters_pkg, "_iter_entry_points", lambda: [])
+        reporters_pkg._reset_registry_cache_for_tests()
+        try:
+            names = set(reporters_pkg.available_reporters())
+        finally:
+            reporters_pkg._reset_registry_cache_for_tests()
+        # All eight built-ins recovered via _BUILTIN_FALLBACKS.
+        assert names == {
+            "terminal", "markdown", "container_markdown", "sarif",
+            "json", "github", "gitlab", "junit",
+        }
+
+    def test_builtin_fallbacks_match_builtin_names(self):
+        """Defense in depth: ``_BUILTIN_FALLBACKS`` and ``_BUILTIN_NAMES``
+        must stay in sync so the fallback covers exactly the names the
+        registry treats as built-ins."""
+        assert (
+            set(reporters_pkg._BUILTIN_FALLBACKS.keys())
+            == reporters_pkg._BUILTIN_NAMES
+        )

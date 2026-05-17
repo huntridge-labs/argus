@@ -2684,3 +2684,57 @@ class TestPermanentPullFailureCache:
             assert "ghcr.io/test/img:1" not in engine._permanent_pull_failures
         finally:
             patcher.stop()
+
+
+class TestContainerScannerSourceResolution:
+    """Issue #170 acceptance: when ``scanners.container.enabled: true``
+    is set in argus.yml but no ``containers.images`` or
+    ``containers.discover`` is configured, the container scanner must
+    not silently report 0 findings. It should record a partial-failure
+    via PhaseResult so the engine surfaces it in the "did not run
+    cleanly" bucket and ``--fail-on-scanner-error`` exits non-zero."""
+
+    def test_container_no_sources_does_not_silently_pass(self):
+        """Calling ContainerScanner.scan() without ``image_ref`` (the
+        shape the source-scan dispatcher hits when no top-level
+        ``containers:`` block is configured) returns a ScanResult with
+        ``partial_failure=True`` and an actionable error message
+        instead of returning silently with 0 findings."""
+        from argus.scanners.container import ContainerScanner
+        scanner = ContainerScanner()
+        result = scanner.scan(path=".", config={})
+
+        # Partial failure surfaces — engine bucketing relies on this.
+        assert result.partial_failure is True
+        # Exactly one phase records the source-resolution failure.
+        failed = result.failed_phases
+        assert len(failed) == 1
+        phase = failed[0]
+        assert phase.phase == "container-source-resolution"
+        assert phase.status == "failed"
+        # Error message points the user at the config knobs.
+        assert phase.error
+        assert "containers.images" in phase.error
+        assert "containers.discover" in phase.error
+
+    def test_container_with_image_ref_runs_normally(self):
+        """Sanity check: when ``image_ref`` IS provided, no partial-
+        failure shape kicks in — the scanner proceeds (and would
+        ultimately invoke the sub-scanners). We don't exercise the
+        full sub-scanner flow here; we just confirm scan() doesn't
+        short-circuit at the source-resolution check when a source is
+        configured."""
+        from unittest.mock import patch
+        from argus.scanners.container import ContainerScanner
+        scanner = ContainerScanner()
+        # Patch ``_enabled_scanners`` to return nothing so scan() short-
+        # circuits AFTER the source-resolution check without trying to
+        # actually invoke trivy/grype/syft.
+        with patch.object(
+            ContainerScanner, "_enabled_scanners", return_value=set()
+        ):
+            result = scanner.scan(
+                path=".", config={"image_ref": "myapp:latest"},
+            )
+        # Source resolution passed (no partial-failure entry recorded).
+        assert result.partial_failure is False

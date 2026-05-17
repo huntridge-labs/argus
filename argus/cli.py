@@ -1911,19 +1911,35 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
         r.scanner for r in summary.results
         if r.metadata.get("parse_failed")
     ]
+    # Multi-phase scanners (lint-terraform, container) that ran but had
+    # one or more phases fail. ``partial_failure`` is True iff at least
+    # one PhaseResult has status="failed" — issues #169 / #170. Gating
+    # this with --fail-on-scanner-error matches the
+    # execution_failed / parse_failed shape; the engine and terminal
+    # reporter likewise fold partial-failure scanners into the same
+    # "did not run cleanly" bucket.
+    scanner_partial_failures = [
+        r.scanner for r in summary.results
+        if getattr(r, "partial_failure", False)
+    ]
     if not summary.passed:
         exit_code = EXIT_FINDINGS
     elif sbom_batch_failures:
         exit_code = EXIT_ERROR
     elif (
         getattr(args, "fail_on_scanner_error", False)
-        and (scanner_execution_failures or scanner_parse_failures)
+        and (
+            scanner_execution_failures
+            or scanner_parse_failures
+            or scanner_partial_failures
+        )
     ):
-        # Both states represent "the scan didn't fully succeed":
+        # All three states represent "the scan didn't fully succeed":
         # execution_failed = couldn't run; parse_failed = ran but
-        # output unintelligible. From a CI gating perspective they're
-        # equivalent — the user asked for a hard fail when scanners
-        # don't deliver clean results.
+        # output unintelligible; partial_failure = ran some phases
+        # but at least one phase couldn't complete. From a CI gating
+        # perspective they're equivalent — the user asked for a hard
+        # fail when scanners don't deliver clean results.
         if scanner_execution_failures:
             log.error(
                 "Exiting non-zero: %d scanner(s) did not run cleanly "
@@ -1937,6 +1953,13 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
                 "output (%s) and --fail-on-scanner-error is set.",
                 len(scanner_parse_failures),
                 ", ".join(scanner_parse_failures),
+            )
+        if scanner_partial_failures:
+            log.error(
+                "Exiting non-zero: %d scanner(s) ran with phase "
+                "failures (%s) and --fail-on-scanner-error is set.",
+                len(scanner_partial_failures),
+                ", ".join(scanner_partial_failures),
             )
         exit_code = EXIT_ERROR
     else:

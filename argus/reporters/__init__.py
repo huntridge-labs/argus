@@ -56,6 +56,29 @@ _BUILTIN_NAMES: set[str] = {
     "junit",
 }
 
+# Direct ``module:attr`` paths for the built-in reporters. Used as a
+# fallback in ``_load_registry`` when entry-point discovery turns up
+# empty — which happens when argus is on ``sys.path`` via
+# ``PYTHONPATH`` but isn't ``pip install``-ed, so
+# ``importlib.metadata`` has no record of the ``argus.reporters``
+# entry-point group. The CI ``security-scan.yml`` workflow runs in
+# that shape; without this fallback the validator rejects every
+# format in argus.yml and the scan exits with EXIT_ERROR=2 before any
+# scanner runs (issue #172).
+#
+# Keep in sync with the ``[project.entry-points."argus.reporters"]``
+# block in pyproject.toml. The names must match ``_BUILTIN_NAMES``.
+_BUILTIN_FALLBACKS: dict[str, str] = {
+    "terminal": "argus.reporters.terminal:TerminalReporter",
+    "markdown": "argus.reporters.markdown:MarkdownReporter",
+    "container_markdown": "argus.reporters.container_markdown:ContainerMarkdownReporter",
+    "sarif": "argus.reporters.sarif:SarifReporter",
+    "json": "argus.reporters.json_report:JsonReporter",
+    "github": "argus.reporters.github:GitHubReporter",
+    "gitlab": "argus.reporters.gitlab:GitLabReporter",
+    "junit": "argus.reporters.junit:JUnitReporter",
+}
+
 
 @runtime_checkable
 class Reporter(Protocol):
@@ -208,6 +231,27 @@ def _load_registry() -> dict[str, type]:
         cls = _load_one(ep)
         if cls is not None:
             registry[ep.name] = cls
+
+    # Built-in fallback — see ``_BUILTIN_FALLBACKS`` docstring. Any
+    # built-in name not covered by entry-points loads directly from its
+    # canonical module so the registry works for bare PYTHONPATH
+    # installs (issue #172). Matches the SCANNER_REGISTRY / LINTER_REGISTRY
+    # shape, which has never relied on entry-points.
+    import importlib
+    for name, target in _BUILTIN_FALLBACKS.items():
+        if name in registry:
+            continue
+        module_path, _, attr = target.partition(":")
+        try:
+            module = importlib.import_module(module_path)
+            cls = getattr(module, attr)
+        except (ImportError, AttributeError) as exc:
+            logger.warning(
+                "Built-in reporter %r could not be loaded from %s: %s",
+                name, target, exc,
+            )
+            continue
+        registry[name] = cls
 
     return registry
 

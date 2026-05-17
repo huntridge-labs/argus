@@ -3,7 +3,7 @@
 import functools
 from dataclasses import dataclass, field, asdict
 from enum import Enum
-from typing import Optional
+from typing import Literal, Optional
 from pathlib import Path
 
 
@@ -108,6 +108,40 @@ class Finding:
 
 
 @dataclass
+class PhaseResult:
+    """One phase of a multi-phase scanner run.
+
+    Multi-phase scanners (``lint-terraform`` runs ``terraform fmt`` +
+    ``terraform validate`` + ``tflint``; ``container`` orchestrates Trivy,
+    Grype, and Syft) need to communicate per-phase outcomes so that
+    "one phase couldn't run" doesn't get merged with "all phases ran
+    and produced no findings" — which is exactly the silent-PASS class
+    of bug reported in #169 / #170.
+
+    Status semantics:
+      ``ran``     — phase executed cleanly (whether or not it produced findings)
+      ``skipped`` — phase intentionally not invoked (e.g. tool not installed,
+                    config gated it out)
+      ``failed`` — phase couldn't run; the engine treats this as "scanner did
+                   not run cleanly" and bumps the parent scanner into the
+                   degraded bucket. ``error`` carries the underlying message.
+    """
+
+    phase: str
+    status: Literal["ran", "skipped", "failed"]
+    findings: list[Finding] = field(default_factory=list)
+    error: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        return {
+            "phase": self.phase,
+            "status": self.status,
+            "findings": [f.to_dict() for f in self.findings],
+            "error": self.error,
+        }
+
+
+@dataclass
 class ScanResult:
     """Results from a single scanner run."""
 
@@ -116,6 +150,26 @@ class ScanResult:
     raw_report: Optional[Path] = None
     sarif_report: Optional[Path] = None
     metadata: dict = field(default_factory=dict)
+    # Per-phase results for multi-phase scanners. None / empty for
+    # single-phase scanners — they don't need to opt in. The engine
+    # uses ``partial_failure`` (below) to bucket scanners whose
+    # individual phases failed.
+    phase_results: Optional[list[PhaseResult]] = None
+
+    @property
+    def partial_failure(self) -> bool:
+        """True when at least one phase failed but the scanner returned
+        some result anyway. Engine folds these into the same
+        "did not run cleanly" bucket as ``execution_failed`` scanners
+        (issues #169, #170)."""
+        if not self.phase_results:
+            return False
+        return any(p.status == "failed" for p in self.phase_results)
+
+    @property
+    def failed_phases(self) -> list[PhaseResult]:
+        """List of phases with status=failed. Empty when not partial."""
+        return [p for p in (self.phase_results or []) if p.status == "failed"]
 
     @property
     def critical_count(self) -> int:
@@ -146,7 +200,7 @@ class ScanResult:
 
     def to_dict(self) -> dict:
         """Serialize to a plain dictionary."""
-        return {
+        out = {
             "scanner": self.scanner,
             "findings": [f.to_dict() for f in self.findings],
             "raw_report": str(self.raw_report) if self.raw_report else None,
@@ -159,6 +213,12 @@ class ScanResult:
             "info_count": self.info_count,
             "total_count": self.total_count,
         }
+        # Only emit ``phase_results`` for multi-phase scanners that
+        # opted in. Keeps the JSON stable for single-phase scanners.
+        if self.phase_results:
+            out["phase_results"] = [p.to_dict() for p in self.phase_results]
+            out["partial_failure"] = self.partial_failure
+        return out
 
     @classmethod
     def from_dict(cls, data: dict) -> "ScanResult":
@@ -177,10 +237,36 @@ class ScanResult:
             )
             for f in data.get("findings", [])
         ]
+        phase_results = None
+        raw_phases = data.get("phase_results")
+        if raw_phases:
+            phase_results = [
+                PhaseResult(
+                    phase=p.get("phase", ""),
+                    status=p.get("status", "failed"),
+                    findings=[
+                        Finding(
+                            id=f.get("id", ""),
+                            severity=Severity.from_string(f.get("severity", "unknown")),
+                            title=f.get("title", ""),
+                            description=f.get("description", ""),
+                            location=f.get("location"),
+                            cwe=f.get("cwe"),
+                            cve=f.get("cve"),
+                            scanner=f.get("scanner", ""),
+                            metadata=f.get("metadata", {}),
+                        )
+                        for f in p.get("findings", [])
+                    ],
+                    error=p.get("error"),
+                )
+                for p in raw_phases
+            ]
         return cls(
             scanner=data.get("scanner", ""),
             findings=findings,
             metadata=data.get("metadata", {}),
+            phase_results=phase_results,
         )
 
 
