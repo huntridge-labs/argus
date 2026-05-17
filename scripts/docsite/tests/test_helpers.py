@@ -151,41 +151,58 @@ class TestRewriteRepoLinks:
     # ── Docsite path rewriting ───────────────────────────────────────────
 
     def test_rewrites_docs_link_to_guides(self):
+        # Issue #167-6: emit ``.md`` rather than the bare-directory form
+        # so ``mkdocs build --strict`` validates the target. The rewriter
+        # computes a relative path from the source's docsite location;
+        # README.md isn't mapped → source root → target path emitted as-is.
         content = "[scanners](docs/scanners.md)"
         result = rewrite_repo_links(content, "README.md")
-        assert result == "[scanners](guides/scanners/)"
+        assert result == "[scanners](guides/scanners.md)"
 
     def test_rewrites_action_readme_to_actions(self):
         content = "[ai](.github/actions/ai-summary/README.md)"
         result = rewrite_repo_links(content, "README.md")
-        assert result == "[ai](actions/ai-summary/)"
+        assert result == "[ai](actions/ai-summary.md)"
 
     def test_rewrites_docs_link_preserves_anchor(self):
         content = "[ctrl](docs/failure-control.md#thresholds)"
         result = rewrite_repo_links(content, "README.md")
-        assert result == "[ctrl](guides/failure-control/#thresholds)"
+        assert result == "[ctrl](guides/failure-control.md#thresholds)"
 
     def test_rewrites_nested_action_cross_reference(self):
+        # Source ``actions/scanner-bandit.md`` → target
+        # ``actions/scanner-codeql.md`` resolves to a sibling path.
         content = "[other](../scanner-codeql/README.md)"
         result = rewrite_repo_links(
             content, ".github/actions/scanner-bandit/README.md",
         )
-        assert result == "[other](actions/scanner-codeql/)"
+        assert result == "[other](scanner-codeql.md)"
 
     def test_does_not_rewrite_non_readme_action_file(self):
         content = "[script](.github/actions/ai-summary/scripts/gen.py)"
         result = rewrite_repo_links(content, "README.md")
         assert "https://github.com/org/repo/blob/main/" in result
 
-    def test_does_not_rewrite_nested_docs_path(self):
+    def test_excluded_nested_docs_falls_through_to_github(self, monkeypatch):
+        # docs/<excluded>/ subdirs aren't shipped to the docsite, so the
+        # link should fall through to a GitHub blob URL rather than
+        # producing a dead docsite-relative reference (issue #167-4).
+        monkeypatch.setattr(config, "EXCLUDED_GUIDE_DIRS", {"developer"})
         content = "[dev](docs/developer/setup.md)"
         result = rewrite_repo_links(content, "README.md")
-        assert "https://github.com/org/repo/blob/main/" in result
+        assert "https://github.com/org/repo/blob/main/docs/developer/setup.md" in result
+
+    def test_nested_docs_path_in_allowed_subdir_maps(self):
+        # ``docs/migration/`` and ``docs/troubleshooting/`` are not in
+        # EXCLUDED_GUIDE_DIRS, so links land inside the docsite (issue #167-4).
+        content = "[mig](docs/migration/0.6.x-to-1.x.md)"
+        result = rewrite_repo_links(content, "README.md")
+        assert result == "[mig](guides/migration/0.6.x-to-1.x.md)"
 
     def test_mixed_docsite_and_github_links(self):
         content = "[guide](docs/scanners.md) and [lic](LICENSE.md)"
         result = rewrite_repo_links(content, "README.md")
-        assert "guides/scanners/" in result
+        assert "guides/scanners.md" in result
         assert "https://github.com/org/repo/blob/main/LICENSE.md" in result
 
 
@@ -193,19 +210,32 @@ class TestToDocsitePath:
     """Tests for _to_docsite_path()."""
 
     def test_docs_md_to_guides(self):
-        assert _to_docsite_path("docs/scanners.md") == "guides/scanners/"
+        # Issue #167-6: emit ``.md`` form for mkdocs --strict validation.
+        assert _to_docsite_path("docs/scanners.md") == "guides/scanners.md"
 
     def test_action_readme_to_actions(self):
         assert (
             _to_docsite_path(".github/actions/ai-summary/README.md")
-            == "actions/ai-summary/"
+            == "actions/ai-summary.md"
         )
 
     def test_returns_none_for_non_docsite_path(self):
         assert _to_docsite_path("CHANGELOG.md") is None
 
-    def test_returns_none_for_nested_docs(self):
+    def test_excluded_nested_docs_returns_none(self, monkeypatch):
+        # When a subdirectory is in EXCLUDED_GUIDE_DIRS, those pages
+        # don't ship to the docsite, so the mapping returns None and
+        # the rewriter sends the link to GitHub blob (issue #167-4).
+        monkeypatch.setattr(config, "EXCLUDED_GUIDE_DIRS", {"developer"})
         assert _to_docsite_path("docs/developer/setup.md") is None
+
+    def test_nested_docs_in_allowed_subdir_maps(self):
+        # Allowed subdirs (migration, troubleshooting) map through with
+        # the subdirectory preserved (issue #167-4).
+        assert (
+            _to_docsite_path("docs/migration/0.6.x-to-1.x.md")
+            == "guides/migration/0.6.x-to-1.x.md"
+        )
 
     def test_returns_none_for_non_readme_action_file(self):
         assert _to_docsite_path(".github/actions/ai-summary/action.yml") is None

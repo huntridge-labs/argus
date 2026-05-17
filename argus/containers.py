@@ -109,10 +109,27 @@ def get_expected_version(scanner_name: str) -> str | None:
 # Scanner → container cache path mappings.
 # Keys are resolved via _ALIASES (same as get_image), values are the
 # absolute path inside the container where the tool stores its DB/cache.
+#
+# Per-scanner notes:
+#   - trivy   (aquasec/trivy:0.70.0)         runs as root; ``/root/.cache/trivy`` is the
+#                                            default DB location. Mount works for ``trivy``
+#                                            (vuln scan); ``trivy-iac`` does not populate
+#                                            the DB so the dir stays empty for that path.
+#   - grype   (anchore/grype:v0.112.0)       runs as root; standard XDG cache dir.
+#   - semgrep (opengrep) — runs as root; cache at ``/root/.semgrep`` (rules + metadata).
+#   - checkov (bridgecrew/checkov:3.2.526)   runs as root; ``/root/.checkov`` mostly
+#                                            holds telemetry / version-check metadata —
+#                                            persistence here is low-value but harmless.
+#
+# Clamav is deliberately NOT listed here. The official ``clamav/clamav`` image runs as
+# the unprivileged ``clamav`` system user, which can't write to a host-owned bind mount
+# at ``/var/lib/clamav`` — freshclam then segfaults with "Can't create freshclam.dat"
+# (issue #168-N). The clamav scanner now writes its DB to ``/tmp/clamav-db`` per-run via
+# ``freshclam --datadir`` (see argus/scanners/clamav.py); there is nothing host-side to
+# cache, so listing clamav here only re-triggered the segfault by re-mounting the bad path.
 CACHE_MOUNTS: dict[str, str] = {
     "trivy": "/root/.cache/trivy",
     "grype": "/root/.cache/grype",
-    "clamav": "/var/lib/clamav",
     "semgrep": "/root/.semgrep",
     "checkov": "/root/.checkov",
 }

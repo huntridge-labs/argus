@@ -296,6 +296,12 @@ class ScanSummary:
     # viewer reading two files into memory) so the viewer can fall
     # back to its existing heuristic resolution.
     scan_context: Optional[ScanContext] = None
+    # True when the user passed --fail-on-scanner-error (or
+    # ``reporting.fail_on_scanner_error: true`` in argus.yml). Set by
+    # the CLI dispatcher before any reporter runs; lets reporters
+    # suppress "pass --fail-on-scanner-error to fail the scan when
+    # this happens" advice when the flag is already on (issue #168-D).
+    fail_on_scanner_error_set: bool = False
 
     @property
     def critical_count(self) -> int:

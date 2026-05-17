@@ -26,6 +26,7 @@ concurrency:
 
 jobs:
   test-lint-workflows:
+    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):')
     name: actionlint
     runs-on: ubuntu-latest
     timeout-minutes: 5

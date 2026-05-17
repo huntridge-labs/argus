@@ -283,6 +283,13 @@ def parse_github_actions_diff(file_path: str, diff_content: str) -> Dict:
 # IaC Change Analyzer (ported from analyze_iac_changes.py)
 # ---------------------------------------------------------------------------
 
+class GitDiffError(RuntimeError):
+    """Raised when the underlying ``git diff`` command itself failed
+    (unknown ref, broken repo, git not on PATH). Callers should treat
+    this as a fatal classification failure rather than "0 changes
+    detected" — issue #168-J."""
+
+
 class IaCChangeAnalyzer:
     """Analyzes git diffs for IaC changes."""
 
@@ -313,7 +320,15 @@ class IaCChangeAnalyzer:
         self.head_ref = head_ref
 
     def get_changed_files(self) -> List[str]:
-        """Get list of changed files between refs."""
+        """Get list of changed files between refs.
+
+        Raises ``GitDiffError`` on failure so callers can distinguish
+        "diff command failed" from "diff produced zero changed files".
+        Returning ``[]`` on error (the pre-1.0.2 behavior) made the
+        ``argus classify`` CLI exit 0 when the underlying git command
+        couldn't run (e.g. unknown ref ``main``), silently passing any
+        CI gate built around the classifier (issue #168-J).
+        """
         try:
             result = subprocess.run(
                 ['git', 'diff', '--name-only', self.base_ref, self.head_ref],
@@ -323,9 +338,10 @@ class IaCChangeAnalyzer:
             )
             return [f.strip() for f in result.stdout.splitlines() if f.strip()]
         except subprocess.CalledProcessError as e:
-            print(f"Error getting changed files: {e}", file=sys.stderr)
-            print(f"  stderr: {e.stderr}", file=sys.stderr)
-            return []
+            raise GitDiffError(
+                f"git diff {self.base_ref}..{self.head_ref} failed "
+                f"(exit {e.returncode}): {e.stderr.strip()}"
+            ) from e
 
     def get_file_diff(self, file_path: str) -> Optional[str]:
         """Get diff content for a specific file."""

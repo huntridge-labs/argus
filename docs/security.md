@@ -209,7 +209,7 @@ the Rekor transparency log.
 At pull time, argus runs:
 
 ```
-cosign verify ghcr.io/huntridge-labs/argus/scanner-bandit:0.7.0 \
+cosign verify ghcr.io/huntridge-labs/argus/scanner-bandit:1.0.1 \
   --certificate-identity-regexp '^https://github\.com/huntridge-labs/argus/\.github/workflows/release\.yml@' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
 ```

@@ -86,9 +86,18 @@ class GitLabReporter:
         # filterable without needing to inspect the scanner name.
         category = "Style" if finding.severity == Severity.INFO else "Security"
 
-        description = finding.title
-        if finding.description:
-            description = f"{finding.title}: {finding.description}"
+        # GitLab Code Climate expects a single ``description`` string.
+        # Concatenate title + description ONLY when they carry different
+        # information — many linter rules (yamllint, flake8) ship the
+        # same string for both, and the naive ``f"{title}: {description}"``
+        # produced doubled output like ``"line too long ...: line too long ..."``
+        # (issue #168-G).
+        title = finding.title or ""
+        desc = (finding.description or "").strip()
+        if desc and desc != title and desc not in title and title not in desc:
+            description = f"{title}: {desc}"
+        else:
+            description = desc or title
 
         return {
             "description": description,

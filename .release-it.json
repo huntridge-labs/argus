@@ -28,7 +28,8 @@
       "npm test"
     ],
     "after:bump": [
-      "python3 scripts/release_it/inject_image_digests.py ${version}"
+      "python3 scripts/release_it/inject_image_digests.py ${version}",
+      "python3 -m scripts.ci.check_cli_docs --fix"
     ],
     "before:release": [
       "echo 'before:release hook executed'",
@@ -166,6 +167,30 @@
             "flags": "g"
           },
           "replace": "${1}/{{version}}${2}"
+        },
+        {
+          "files": [
+            "docs/**/*.md",
+            "examples/configs/**/*.{yml,yaml,json}",
+            "*.md"
+          ],
+          "search": {
+            "pattern": "(raw\\.githubusercontent\\.com/huntridge-labs/argus)/[^/]+(/argus-config\\.schema\\.json)",
+            "flags": "g"
+          },
+          "replace": "${1}/{{version}}${2}"
+        },
+        {
+          "files": [
+            "docs/**/*.md",
+            "examples/**/*.{yml,yaml,md}",
+            "*.md"
+          ],
+          "search": {
+            "pattern": "(ghcr\\.io/huntridge-labs/argus/[\\w-]+:)\\d+\\.\\d+\\.\\d+(?:-[\\w.-]+)?",
+            "flags": "g"
+          },
+          "replace": "${1}{{version}}"
         },
         {
           "files": [

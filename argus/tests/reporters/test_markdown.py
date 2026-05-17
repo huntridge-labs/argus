@@ -47,8 +47,12 @@ class TestMarkdownReporter:
 
         content = filepath.read_text()
         assert "| Severity | Count |" in content
-        assert "Critical" in content
-        assert "High" in content
+        # All five severity rows must be present so the markdown report
+        # math reconciles with the canonical argus-results.json. The Info
+        # row was previously missing, which made the breakdown sum less
+        # than the printed Total — see issue #168-E.
+        for row in ("Critical", "High", "Medium", "Low", "Info"):
+            assert row in content, f"missing severity row: {row}"
 
     def test_report_contains_findings(self, tmp_output_dir):
         reporter = MarkdownReporter()

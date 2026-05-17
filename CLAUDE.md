@@ -496,10 +496,10 @@ argus scan --config argus.yml
 argus scan --scanners bandit,gitleaks --path ./src
 
 # List available scanners
-argus list
+argus scan --list
 
 # Check version
-argus version
+argus --version
 ```
 
 **Config file** (`argus.yml`):

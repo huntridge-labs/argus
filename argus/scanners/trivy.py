@@ -41,7 +41,8 @@ class TrivyScanner:
         config = config or {}
         sbom_path = config.get("sbom_path")
         if not sbom_path:
-            raise RuntimeError(
+            from argus.core.engine import ScannerPreconditionError
+            raise ScannerPreconditionError(
                 "trivy scanner requires sbom_path (run via `argus scan --sbom <path>`)"
             )
         mount = config.get("sbom_mount_path") or f"/workspace/{Path(sbom_path).name}"
@@ -57,9 +58,12 @@ class TrivyScanner:
         config = config or {}
         sbom_path = config.get("sbom_path")
         if not sbom_path:
-            return ScanResult(
-                scanner=self.name,
-                metadata={"error": "trivy requires sbom_path"},
+            # Issue #168-I — see grype.scan() for the rationale; raise
+            # so the engine treats this as a real "didn't run" failure
+            # rather than recording a silently-passed clean result.
+            from argus.core.engine import ScannerPreconditionError
+            raise ScannerPreconditionError(
+                "trivy scanner requires sbom_path (run via `argus scan --sbom <path>`)"
             )
 
         with tempfile.TemporaryDirectory() as tmp_dir:

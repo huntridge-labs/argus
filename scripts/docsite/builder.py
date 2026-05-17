@@ -20,6 +20,91 @@ from .pages import make_action_page, make_workflow_page
 from .parsers import parse_workflow_meta
 
 
+# Acronyms that ``.title()`` mangles ("Cli Reference", "Mcp"). The
+# title-casing pass uppercases anything in this set, otherwise
+# capitalizes (issue #167-4).
+_NAV_ACRONYMS = {
+    "ai", "ci", "cli", "dast", "iac", "json", "mcp", "pr", "sarif",
+    "sast", "sbom", "url", "yaml",
+}
+
+
+def _nav_title(stem: str) -> str:
+    """Convert a markdown filename stem into a nav label.
+
+    Examples:
+        cli-reference     → CLI Reference
+        mcp               → MCP
+        0.6.x-to-1.x      → 0.6.x → 1.x      (arrow for migration names)
+        config-reference  → Config Reference
+    """
+    parts = stem.replace("-", " ").split()
+    out: list[str] = []
+    for p in parts:
+        if p.lower() in _NAV_ACRONYMS:
+            out.append(p.upper())
+        elif any(ch.isdigit() for ch in p) and "." in p:
+            # Version-y tokens like 0.6.x, 1.x — preserve as-is.
+            out.append(p)
+        else:
+            out.append(p.capitalize())
+    title = " ".join(out)
+    # ``X to Y`` → ``X → Y`` for migration page names.
+    title = title.replace(" To ", " → ")
+    return title
+
+
+def _build_guides_nav(extra_pages: dict[str, str]) -> list[dict]:
+    """Build the Guides nav tree, grouping nested directories.
+
+    Top-level guides become flat entries. Files under a subdir (e.g.
+    ``migration/`` or ``troubleshooting/``) get a parent group so the
+    nav doesn't flatten ``migration/0.6.x-to-1.x.md`` into a single
+    lonely ``0.6.x → 1.x`` entry under Guides (issue #167-4).
+    """
+    flat: list[dict] = []
+    groups: dict[str, list[dict]] = {}
+    for rel, target in sorted(extra_pages.items()):
+        parts = Path(rel).parts
+        if len(parts) == 1:
+            flat.append({_nav_title(Path(rel).stem): target})
+        else:
+            subdir = parts[0]
+            groups.setdefault(subdir, []).append(
+                {_nav_title(Path(rel).stem): target}
+            )
+    nav = flat + [
+        {_nav_title(subdir): entries}
+        for subdir, entries in sorted(groups.items())
+    ]
+    return nav
+
+
+def _build_examples_extras_nav(
+    examples_out: Path,
+    skip_subdirs: tuple[str, ...] = ("ci",),
+) -> list[dict]:
+    """Walk the examples output and group orphan pages by their subdir.
+
+    The Examples nav was previously hand-wired to only include the
+    CI-platform pages; every page under examples/configs/,
+    examples/github-enterprise/, examples/workflows/ was reachable only
+    by URL (issue #167-5). This generates a sub-section per directory.
+    """
+    nav: list[dict] = []
+    for sub in sorted(p for p in examples_out.iterdir() if p.is_dir()):
+        if sub.name in skip_subdirs:
+            continue
+        entries: list[dict] = []
+        for md in sorted(sub.glob("*.md")):
+            entries.append({
+                _nav_title(md.stem): f"examples/{sub.name}/{md.name}"
+            })
+        if entries:
+            nav.append({_nav_title(sub.name): entries})
+    return nav
+
+
 # ─── Custom CSS ──────────────────────────────────────────────────────────────
 
 CUSTOM_CSS = """\
@@ -319,6 +404,18 @@ def build(repo_root: Path, output_dir: Path, *, ref: str | None = None) -> None:
             write(docs_out / "guides" / rel, content)
             extra_pages[str(rel)] = f"guides/{rel}"
 
+        # Copy docs/images/ to docs_out/images/ so guide pages can
+        # reference screenshots via the rewritten ``../images/<rest>``
+        # paths emitted by ``_to_docsite_path``. Without this, the TUI
+        # screenshots on view-terminal etc. fell through to GitHub
+        # blob URLs and rendered as broken <img>s (issue #167-1).
+        images_src = existing_docs_dir / "images"
+        if images_src.exists():
+            images_dst = docs_out / "images"
+            if images_dst.exists():
+                shutil.rmtree(images_dst)
+            shutil.copytree(images_src, images_dst)
+
     # ── Actions ──────────────────────────────────────────────────────────
     actions_out = docs_out / "actions"
     write(actions_out / "index.md", make_actions_index(actions_dir, version))
@@ -407,10 +504,7 @@ def build(repo_root: Path, output_dir: Path, *, ref: str | None = None) -> None:
 
     workflows_nav = _build_workflows_nav(workflows_dir)
 
-    guides_nav = [
-        {Path(k).stem.replace("-", " ").title(): v}
-        for k, v in sorted(extra_pages.items())
-    ]
+    guides_nav = _build_guides_nav(extra_pages)
 
     # Argus is a platform-agnostic Python SDK / CLI; CI integration is
     # one of many ways to invoke it, and GitHub Actions is one CI among
@@ -440,11 +534,30 @@ def build(repo_root: Path, output_dir: Path, *, ref: str | None = None) -> None:
         ci_nav: list = [{"GitHub Actions": github_actions_nav}]
         ci_nav.extend(ci_platform_nav_entries)
 
-        examples_nav = [
+        examples_nav: list[dict] = [
             {"Overview": "examples/index.md"},
             {"CI": ci_nav},
         ]
+        # Orphan example pages (configs/, github-enterprise/, workflows/)
+        # — previously reachable only by URL despite being generated
+        # into the site (issue #167-5).
+        examples_nav.extend(_build_examples_extras_nav(examples_out))
         nav.append({"Examples": examples_nav})
+
+    # Top-level policy files (Contributing, Code of Conduct, Security
+    # Policy) are written above as ``contributing.md`` /
+    # ``security.md`` / ``code_of_conduct.md`` but were never linked
+    # from the nav (issue #167-5).
+    about_nav: list[dict] = []
+    for filename, title in (
+        ("contributing.md", "Contributing"),
+        ("code_of_conduct.md", "Code of Conduct"),
+        ("security.md", "Security Policy"),
+    ):
+        if (docs_out / filename).exists():
+            about_nav.append({title: filename})
+    if about_nav:
+        nav.append({"About": about_nav})
 
     nav.append({"Changelog": "changelog.md"})
 

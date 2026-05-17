@@ -23,7 +23,36 @@ logger = logging.getLogger("argus")
 _SEVERITY_VALUES = {"critical", "high", "medium", "low", "none"}
 _BACKEND_VALUES = {"auto", "local", "docker"}
 _PULL_POLICY_VALUES = {"always", "if-not-present", "never"}
-_FORMAT_VALUES = {"terminal", "markdown", "sarif", "json"}
+
+
+def _get_format_values() -> set[str]:
+    """Resolve the valid ``reporting.formats`` values from the reporter
+    registry at call time. This stays in lock-step with whatever
+    reporters are registered (built-ins + ``argus.reporters``
+    entry-point plugins) so the validator can't reject a format the
+    CLI's ``--format`` flag would happily accept. Import is deferred
+    to avoid an import-time cycle (schema is a core module imported
+    early; reporters depend on optional packages for some entries)."""
+    try:
+        from argus.reporters import available_reporters
+        return set(available_reporters())
+    except Exception:  # pragma: no cover — defensive
+        return {"terminal", "markdown", "sarif", "json"}
+
+
+def _get_scanner_names() -> set[str]:
+    """Resolve the set of known scanner / linter names from
+    ``SCANNER_REGISTRY``. Used to reject unknown scanner names in
+    ``argus.yml`` up-front rather than silently accepting them with
+    only a downstream warning about unknown keys (issue #168-F).
+    Returns the empty set on import failure so validation degrades
+    rather than panics in environments where ``argus.scanners``
+    can't load."""
+    try:
+        from argus.scanners import SCANNER_REGISTRY
+        return set(SCANNER_REGISTRY.keys())
+    except Exception:  # pragma: no cover — defensive
+        return set()
 
 # Known top-level keys
 _TOP_LEVEL_KEYS = {
@@ -145,7 +174,19 @@ def validate_config(data: dict) -> list[ConfigError]:
         if not isinstance(scanners, dict):
             errors.append(ConfigError("scanners", "Must be a mapping of scanner names to config"))
         else:
+            known_scanners = _get_scanner_names()
             for name, scanner_data in scanners.items():
+                # Reject unknown scanner names up-front instead of silently
+                # accepting them with a downstream warning about unknown keys
+                # (issue #168-F). Skip when the registry can't be resolved
+                # so this never bricks validation in degraded environments.
+                if known_scanners and name not in known_scanners:
+                    errors.append(ConfigError(
+                        f"scanners.{name}",
+                        f"Unknown scanner '{name}'. "
+                        f"Available: {', '.join(sorted(known_scanners))}",
+                    ))
+                    continue
                 errors.extend(_validate_scanner(f"scanners.{name}", scanner_data))
 
     # Reporting
@@ -414,12 +455,13 @@ def _validate_reporting(path: str, data: Any) -> list[ConfigError]:
         if not isinstance(formats, list):
             errors.append(ConfigError(f"{path}.formats", "Must be a list"))
         else:
+            valid_formats = _get_format_values()
             for i, fmt in enumerate(formats):
-                if fmt not in _FORMAT_VALUES:
+                if fmt not in valid_formats:
                     errors.append(ConfigError(
                         f"{path}.formats[{i}]",
                         f"Invalid format '{fmt}'. "
-                        f"Must be one of: {', '.join(sorted(_FORMAT_VALUES))}",
+                        f"Must be one of: {', '.join(sorted(valid_formats))}",
                     ))
 
     # Severity threshold

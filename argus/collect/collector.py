@@ -68,7 +68,26 @@ def collect_results(
     # Discover scanner result directories
     scanner_dirs = _discover_scanner_dirs(input_path)
     if not scanner_dirs:
-        logger.warning("No scanner result directories found in %s", input_path)
+        # ``argus collect`` is for the CI-matrix layout where each
+        # scanner writes to its own ``argus-results-<scanner>/`` dir
+        # before they're merged. If the input looks like a local
+        # ``argus-results/`` (timestamped per-run subdirs + a
+        # ``latest`` symlink), say so explicitly instead of just
+        # "no result dirs found" — issue #168-L.
+        if any(
+            child.is_dir() and (child / "argus-results.json").exists()
+            for child in input_path.iterdir()
+        ) or (input_path / "latest").is_symlink():
+            logger.warning(
+                "%s looks like a local-layout argus-results/ directory "
+                "(per-run timestamped subdirs). `argus collect` expects "
+                "CI-matrix layout (argus-results-<scanner>/) — point "
+                "it at the artifact root from your CI matrix run, or "
+                "use `argus report` against an individual run dir.",
+                input_path,
+            )
+        else:
+            logger.warning("No scanner result directories found in %s", input_path)
         return output_path
 
     logger.info(
@@ -143,13 +162,37 @@ def _discover_scanner_dirs(input_path: Path) -> list[Path]:
     """Find directories containing argus results.
 
     Matches by convention:
-    1. Directories named argus-results-*
-    2. Any subdirectory containing argus.log or argus-audit.json
+    1. Directories named ``argus-results-{scanner}`` (the CI-matrix
+       artifact layout this command was designed for).
+    2. Any subdirectory containing ``argus.log`` or ``argus-audit.json``
+       (fallback for unconventional naming).
+
+    Skipped:
+    - The ``latest`` symlink — duplicates whatever it points at.
+    - Per-run timestamp dirs (``2026-05-17T01-46-56Z``) — these are
+      local ``argus scan`` output, not per-scanner CI artifacts.
+      Treating them as "scanners" mis-labels every run as if it were
+      a distinct scanner (issue #168-L).
     """
+    import re
+    # ISO-8601-ish timestamps as written by argus' run-dir creator:
+    # ``YYYY-MM-DDTHH-MM-SSZ`` (note the ``-`` separators in the time
+    # portion — Windows can't have ``:`` in filenames).
+    timestamp_re = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z$")
+
     dirs: list[Path] = []
 
     for child in input_path.iterdir():
         if not child.is_dir():
+            continue
+
+        # Skip the ``latest`` symlink — it points at a sibling we'll
+        # see directly. Including it double-counts the most recent run.
+        if child.is_symlink() and child.name == "latest":
+            continue
+
+        # Skip per-run timestamp dirs — local layout, not per-scanner.
+        if timestamp_re.match(child.name):
             continue
 
         # Convention: argus-results-{scanner_name}

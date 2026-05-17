@@ -74,14 +74,19 @@ class TestIaCChangeAnalyzer:
         assert 'service.yaml' in files
 
     @patch('argus.scn.diff.subprocess.run')
-    def test_get_changed_files_error(self, mock_run, analyzer):
-        """Test handling of git diff error."""
+    def test_get_changed_files_error_raises(self, mock_run, analyzer):
+        """Issue #168-J: a failing ``git diff`` command must raise
+        GitDiffError rather than silently returning ``[]``. Returning an
+        empty list let the ``argus classify`` CLI exit 0 on
+        repos missing the base ref, which trivially passed any CI gate
+        built around the classifier."""
+        import pytest
         from subprocess import CalledProcessError
+        from argus.scn.diff import GitDiffError
         mock_run.side_effect = CalledProcessError(1, 'git', stderr='fatal: bad ref')
 
-        files = analyzer.get_changed_files()
-
-        assert files == []
+        with pytest.raises(GitDiffError, match="fatal: bad ref"):
+            analyzer.get_changed_files()
 
     @patch('argus.scn.diff.subprocess.run')
     def test_get_file_diff_success(self, mock_run, analyzer):

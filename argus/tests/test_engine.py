@@ -2570,3 +2570,117 @@ class TestPrewarmIntegration:
         ])
         assert prewarm_calls == []
         assert engine._prewarmer is None
+
+
+class TestClassifyPullError:
+    """``_classify_pull_error`` decides which docker pull failures get the
+    ``--platform linux/amd64`` retry. Issue #168-H: previously every
+    failure (daemon down, 403, network blocked, manifest unknown)
+    surfaced as "auto-falling back to --platform linux/amd64" which
+    misled users about the actual cause and wasted compute on permanent
+    failures."""
+
+    def _classify(self, stderr):
+        from argus.core.engine import _classify_pull_error
+        return _classify_pull_error(stderr)
+
+    def test_docker_daemon_down_not_retryable(self):
+        cat, retry = self._classify(
+            "failed to connect to the docker API at unix:///var/run/docker.sock"
+        )
+        assert cat == "docker-daemon-not-running"
+        assert retry is False
+
+    def test_registry_403_not_retryable(self):
+        cat, retry = self._classify(
+            "failed to copy: httpReadSeeker: failed open: unexpected status from GET: 403 Forbidden"
+        )
+        assert cat == "registry-auth-403"
+        assert retry is False
+
+    def test_platform_mismatch_is_retryable(self):
+        cat, retry = self._classify(
+            "no matching manifest for linux/arm64/v8 in the manifest list entries"
+        )
+        assert cat == "platform-mismatch"
+        assert retry is True
+
+    def test_image_not_found_not_retryable(self):
+        cat, retry = self._classify("manifest unknown for tag :nope")
+        assert cat == "image-not-found"
+        assert retry is False
+
+    def test_network_failure_not_retryable(self):
+        cat, retry = self._classify(
+            "dial tcp: lookup ghcr.io: no such host"
+        )
+        assert cat == "network"
+        assert retry is False
+
+    def test_rate_limited_not_retryable(self):
+        cat, retry = self._classify("toomanyrequests: too many requests")
+        assert cat == "registry-rate-limited"
+        assert retry is False
+
+    def test_unclassified_falls_through_to_retry(self):
+        cat, retry = self._classify("some genuinely new error")
+        assert cat == "unclassified"
+        assert retry is True
+
+
+class TestPermanentPullFailureCache:
+    """Issue #168-H followup: the inline ``_pull_image`` path must NOT
+    re-attempt a pull that the pre-warm path already classified as a
+    permanent failure (403, image-not-found, daemon-down, network,
+    rate-limited). Pre-fix, prewarm + inline both fired and doubled the
+    noisy log volume on every permanent failure."""
+
+    def _engine_with_runtime(self, runtime: str = "docker"):
+        from unittest.mock import patch
+        from argus.core.config import ArgusConfig
+        from argus.core.engine import ArgusEngine
+        # ``_runtime`` is a property; patch the descriptor.
+        cfg = ArgusConfig.from_dict({})
+        patcher = patch.object(ArgusEngine, "_runtime", new_callable=lambda: runtime)
+        patcher.start()
+        return ArgusEngine(cfg), patcher
+
+    def test_permanent_403_skips_second_pull(self):
+        from unittest.mock import patch, MagicMock
+        engine, patcher = self._engine_with_runtime()
+        try:
+            fake = MagicMock(
+                returncode=1,
+                stderr="unexpected status from GET: 403 Forbidden",
+            )
+            with patch("argus.core.engine.subprocess.run", return_value=fake) as run:
+                # First call records the permanent failure.
+                assert engine._pull_image("ghcr.io/test/img:1") is False
+                first = run.call_count
+                # Second call short-circuits before subprocess.run.
+                assert engine._pull_image("ghcr.io/test/img:1") is False
+                assert run.call_count == first, (
+                    "permanent failure was retried; "
+                    f"expected {first} subprocess calls, got {run.call_count}"
+                )
+            assert (
+                engine._permanent_pull_failures["ghcr.io/test/img:1"]
+                == "registry-auth-403"
+            )
+        finally:
+            patcher.stop()
+
+    def test_unclassified_failures_still_retry(self):
+        """The cache ONLY suppresses repeat attempts for permanent
+        categories. Unclassified failures still go through the
+        --platform amd64 retry path as before."""
+        from unittest.mock import patch, MagicMock
+        engine, patcher = self._engine_with_runtime()
+        try:
+            fake_fail = MagicMock(returncode=1, stderr="weird new error")
+            with patch("argus.core.engine.subprocess.run", return_value=fake_fail):
+                engine._pull_image("ghcr.io/test/img:1")
+            # Unclassified failures are retryable → NOT cached.
+            assert "ghcr.io/test/img:1" not in engine._permanent_pull_failures
+        finally:
+            patcher.stop()

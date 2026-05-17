@@ -160,9 +160,28 @@ class TestCacheMounts:
     """Tests for DB cache volume mount logic."""
 
     def test_cache_mounts_has_db_scanners(self):
-        """Scanners with heavy DB downloads should have cache entries."""
-        for scanner in ("trivy", "grype", "clamav", "semgrep"):
+        """Scanners with heavy DB downloads should have cache entries.
+
+        ``clamav`` is deliberately excluded — see
+        ``test_clamav_excluded_from_cache_mounts`` below for rationale.
+        """
+        for scanner in ("trivy", "grype", "semgrep"):
             assert scanner in CACHE_MOUNTS, f"{scanner} missing from CACHE_MOUNTS"
+
+    def test_clamav_excluded_from_cache_mounts(self):
+        """clamav must NOT appear in CACHE_MOUNTS — regression for #168-N.
+
+        The official clamav/clamav image runs as the unprivileged
+        ``clamav`` system user, which can't write to a host-owned bind
+        mount at ``/var/lib/clamav``. With the mount in place,
+        ``freshclam`` segfaulted with "Can't create freshclam.dat" on
+        every container run. The scanner now writes its DB to
+        ``/tmp/clamav-db`` per-run via ``freshclam --datadir`` (see
+        ``argus/scanners/clamav.py``); there's nothing host-side to
+        cache, so listing ``clamav`` here only re-triggered the segfault
+        by re-mounting the bad path.
+        """
+        assert "clamav" not in CACHE_MOUNTS
 
     def test_cache_mounts_values_are_absolute_paths(self):
         for scanner, path in CACHE_MOUNTS.items():
@@ -201,8 +220,11 @@ class TestCacheMounts:
         assert get_cache_mount("nonexistent") is None
 
     def test_get_cache_mount_creates_host_dir(self, tmp_path, monkeypatch):
+        # ``trivy`` chosen as a representative entry; the prior version
+        # used ``clamav`` which is no longer in CACHE_MOUNTS (see
+        # ``test_clamav_excluded_from_cache_mounts``).
         monkeypatch.setenv("ARGUS_CACHE_DIR", str(tmp_path))
-        result = get_cache_mount("clamav")
+        result = get_cache_mount("trivy")
         assert result is not None
         host_dir, _ = result
         assert host_dir.is_dir()

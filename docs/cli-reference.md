@@ -1,6 +1,6 @@
-# Argus CLI Reference (v1.0.0)
+# Argus CLI Reference (v1.0.1)
 
-> Auto-generated from argparse definitions on 2026-05-16.
+> Auto-generated from argparse definitions on 2026-05-17.
 > Do not edit manually — run `python -m scripts.ci.gen_cli_docs` to regenerate.
 
 Argus Security Scanner — comprehensive security scanning for your codebase
@@ -77,7 +77,7 @@ argus scan [-h] [--path PATH] [--config CONFIG]
                   [--sbom PATH] [--interface {terminal,browser}] [--fail-fast]
                   [--fail-on-scanner-error] [--timeout SECONDS]
                   [--no-parallel] [--allow-local-versions] [--no-cache]
-                  [--no-keep-raw] [--registry-password-stdin]
+                  [--keep-raw | --no-keep-raw] [--registry-password-stdin]
                   [--zap-auth-password-stdin] [--discover [PATH]]
                   [--image REF] [--scanners SCANNERS] [--target URL]
                   [--port PORT] [--env KEY=VALUE]
@@ -106,7 +106,7 @@ argus scan [-h] [--path PATH] [--config CONFIG]
 | `--no-spinner` | Disable animated spinner output | `false` |
 | `--no-update-check` | Skip the once-per-day check for a newer argus release. The check runs in the background during the scan (zero latency cost) and prints a soft notice at the end of the command when an upgrade is available. Also disabled by setting the ARGUS_NO_UPDATE_CHECK environment variable, which is the right move for CI / air-gapped environments. Override the PyPI URL via ARGUS_UPDATE_CHECK_URL for TestPyPI or private mirrors. | `false` |
 | `--no-timestamp` | Write output directly to --output-dir without a timestamped subdirectory. Useful in CI where a predictable output path is needed. | `false` |
-| `--output-vars` | Write scan result counts as key=value pairs to FILE. Useful in CI: cat FILE >> $GITHUB_OUTPUT. Keys: critical_count, high_count, medium_count, low_count, total_count, passed. |  |
+| `--output-vars` | Write scan result counts as key=value pairs to FILE. Useful in CI: cat FILE >> $GITHUB_OUTPUT. Keys: critical_count, high_count, medium_count, low_count, info_count, total_count, passed. |  |
 | `--exclude`, `-e` | Comma-separated paths or patterns to exclude from scanning. Added on top of .gitignore, .dockerignore, and built-in defaults. | `` |
 | `--no-default-excludes` | Drop built-in exclusions (node_modules, .git, ...) and .gitignore / .dockerignore patterns. Only --exclude and argus.yml exclude: take effect. Use when you explicitly want to scan what the defaults would normally skip. | `false` |
 | `--dry-run` | Resolve config and print the planned scanner invocations without executing them. Useful for verifying which per-scanner config files, paths, and excludes Argus will use. | `false` |
@@ -118,7 +118,7 @@ argus scan [-h] [--path PATH] [--config CONFIG]
 | `--no-parallel` | Run scanners sequentially instead of concurrently. | `false` |
 | `--allow-local-versions` | Allow local tool versions that differ from argus-pinned versions. Use in airgapped environments where tool updates are constrained. | `false` |
 | `--no-cache` | Disable DB cache volume mounts. Forces scanners to re-download vulnerability databases on every container run. | `false` |
-| `--no-keep-raw` | Do not persist raw per-scanner output files alongside the canonical argus-results.json. Source scans normally drop each scanner's results.json / *.sarif / stdout.txt under <output_dir>/raw/<scanner>/; container scans drop trivy-results.json / grype-results.json / syft-sbom.json under <output_dir>/raw/<image>/. Pass --no-keep-raw to skip that step in tight CI environments. The same effect is available via 'reporting.keep_raw: false' in argus.yml. | `false` |
+| `--keep-raw`, `--no-keep-raw` | Persist each scanner's raw output files (results.json / *.sarif / stdout.txt) under <output_dir>/raw/<scanner>/ alongside the canonical argus-results.json. Container scans drop trivy-results.json / grype-results.json / syft-sbom.json under <output_dir>/raw/<image>/. Default OFF — scanners like gitleaks write the literal matched secret bytes into raw output, so persisting raw by default turned argus-results into a secret-leak vector. The canonical argus-results.json is always written and is pattern-redacted. Pass --keep-raw for forensic / triage workflows that need the unredacted per-scanner artifacts. The same effect is available via 'reporting.keep_raw: true' in argus.yml. Use --no-keep-raw to explicitly override a config-file opt-in. |  |
 | `--registry-password-stdin` | Read the private-registry password from stdin and use it for any scanner that needs registry auth (container, zap with app_image_ref). Overrides registry_password / registry_password_env in argus.yml. | `false` |
 | `--zap-auth-password-stdin` | Read the ZAP web-app authentication password from stdin. Overrides scanners.zap.auth.password / password_env in argus.yml. | `false` |
 
@@ -261,7 +261,7 @@ argus mcp [-h]
 Generate a shell completion script for argus.
 
 Once installed, pressing <Tab> will complete:
-  - subcommands (scan, list, view, cache, ...)
+  - subcommands (scan, view, report, classify, cache, ...)
   - scanner and linter names (bandit, gitleaks, lint-yaml, ...)
   - common flags (--config, --scanners, --severity, ...)
 
@@ -319,8 +319,8 @@ Install:
   pip install 'argus-security[browser]'       # browser interface
 
 ```
-argus view [-h] [--interface {terminal,browser}] [--port PORT]
-                  [--no-open] [--check]
+argus view [-h] [--path PATH] [--interface {terminal,browser}]
+                  [--port PORT] [--no-open] [--check]
                   [INTERFACE|PATH] [PATH]
 ```
 
@@ -333,6 +333,7 @@ argus view [-h] [--interface {terminal,browser}] [--port PORT]
 
 | Flag | Description | Default |
 |------|-------------|---------|
+| `--path`, `-p` | Results directory or argus-results.json path. Equivalent to the positional form ``argus view <iface> <path>`` but robust to argparse's ordering quirks — use this when a flag-with-value (e.g. ``--port``) sits between the interface keyword and the path (issue #168-D5). |  |
 | `--interface`, `-i` | Interface to open: terminal \| browser (alternative to positional) (terminal, browser) |  |
 | `--port` | TCP port for the browser interface (default: 8080) | `8080` |
 | `--no-open` | Don't auto-open the default web browser after startup (browser interface only). By default, the browser opens when stdout is a TTY; CI and other non-interactive contexts already skip auto-open without this flag. | `false` |

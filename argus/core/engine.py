@@ -26,6 +26,95 @@ SBOM_FORMAT_EXTENSIONS: dict[str, str] = {
 }
 
 
+class ScannerPreconditionError(RuntimeError):
+    """Raised when a scanner can't run because its inputs are missing or
+    invalid — e.g. ``grype`` / ``trivy`` need an SBOM via ``--sbom``.
+
+    The engine treats this distinctly from a runtime/container failure:
+    no local fallback dance, no platform-mismatch retry, just surface the
+    precondition to the user. Issue #168-I.
+    """
+
+
+def _classify_pull_error(stderr: str) -> tuple[str, bool]:
+    """Classify a docker/podman ``pull`` failure for human-readable
+    logging and retry policy.
+
+    Returns ``(category, retryable)`` where ``retryable`` is True only
+    when retrying with ``--platform linux/amd64`` has a realistic
+    chance of fixing the failure. Issue #168-H.
+    """
+    s = stderr.lower()
+
+    # Daemon-down: socket / connection-refused at the local runtime.
+    daemon_markers = (
+        "cannot connect to the docker daemon",
+        "is the docker daemon running",
+        "unix:///var/run/docker.sock",
+        "no such file or directory: docker.sock",
+        "docker api at unix:///",
+    )
+    if any(m in s for m in daemon_markers):
+        return "docker-daemon-not-running", False
+
+    # Auth — 403 / unauthorized / denied. Includes both registry-side
+    # authorization failures and credentials missing locally.
+    auth_markers = (
+        "403 forbidden",
+        "permission_denied",
+        "401 unauthorized",
+        "unauthorized:",
+        "denied: requested access to the resource is denied",
+        "no basic auth credentials",
+    )
+    if any(m in s for m in auth_markers):
+        return "registry-auth-403", False
+
+    # Rate-limit — docker hub etc.
+    if "toomanyrequests" in s or "rate limit" in s:
+        return "registry-rate-limited", False
+
+    # Manifest / image not found at the requested ref. Could be a typo
+    # or a missing tag. Not a platform issue; retrying with amd64 won't
+    # help.
+    not_found_markers = (
+        "manifest unknown",
+        "manifest for ",
+        "not found:",
+        "repository does not exist",
+    )
+    if any(m in s for m in not_found_markers) and "matching manifest" not in s:
+        return "image-not-found", False
+
+    # Platform mismatch — the upstream doesn't publish arm64. THIS is
+    # the case where the --platform linux/amd64 retry is appropriate.
+    platform_markers = (
+        "no matching manifest for linux/arm",
+        "no matching manifest for ",
+        "cannot find amd64 manifest",
+        "image platform",
+    )
+    if any(m in s for m in platform_markers):
+        return "platform-mismatch", True
+
+    # Network — connection refused / timeout reaching the registry.
+    network_markers = (
+        "i/o timeout",
+        "dial tcp",
+        "connection refused",
+        "network is unreachable",
+        "no route to host",
+        "name resolution failed",
+        "temporary failure in name resolution",
+    )
+    if any(m in s for m in network_markers):
+        return "network", False
+
+    # Unclassified — try the amd64 fallback as a last resort but
+    # surface that we don't know what went wrong.
+    return "unclassified", True
+
+
 def _failure_result(
     scanner_name: str,
     exc: BaseException,
@@ -68,6 +157,13 @@ class ArgusEngine:
         # can consult it from a worker thread without arg-threading every
         # internal call site.
         self._prewarmer = None
+        # Image → failure-category cache for permanent pull failures
+        # (403, image-not-found, daemon-down, network, rate-limited).
+        # When the pre-warm path records a permanent failure here, the
+        # inline ``_pull_image`` short-circuits on its next call so a
+        # single (scanner, run) sequence doesn't pull the same broken
+        # image twice. Issue #168-H followup.
+        self._permanent_pull_failures: dict[str, str] = {}
         # Supply-chain verification results, one per container pull this
         # run. Consumed by ``report_tag_pinned_summary`` at end of
         # ``run()`` to emit a single WARNING listing tag-pinned third-
@@ -647,6 +743,20 @@ class ArgusEngine:
         # GitHub Actions cache action could pre-populate the Docker cache.
         # Also evaluate if pull_policy=if-not-present is effective when runners are ephemeral.
         """
+        # Short-circuit when a previous pull (typically from pre-warm)
+        # already produced a permanent-class failure for this image.
+        # Without this, prewarm + inline both fire on a 403/daemon-down
+        # and double the noisy log volume per scanner run. Issue #168-H
+        # followup.
+        cached_category = self._permanent_pull_failures.get(image)
+        if cached_category is not None:
+            logger.debug(
+                "Skipping pull of %s — earlier attempt failed permanently "
+                "(%s); not retrying.",
+                image, cached_category,
+            )
+            return False
+
         policy = self.config.execution.pull_policy
         logger.debug("Pull policy: %s for image: %s", policy, image)
 
@@ -692,25 +802,40 @@ class ArgusEngine:
         elapsed = int((time.monotonic() - start) * 1000)
 
         if result.returncode != 0:
-            # Distinct from a hard "pull failed" — the retry below
-            # almost always succeeds for upstreams that publish amd64-
-            # only (clamav, etc.). Word it as a fallback so users
-            # reading the log don't misread the line as a scan failure.
-            logger.info(
-                "%s: native pull unsuccessful (%dms) — auto-falling "
-                "back to --platform linux/amd64 (common for upstreams "
-                "without arm64 builds). stderr: %s",
-                image,
-                elapsed,
-                result.stderr.strip()[:200],
-            )
-            start = time.monotonic()
-            result = subprocess.run(
-                [self._runtime, "pull", "--platform", "linux/amd64", image],
-                capture_output=True,
-                text=True,
-            )
-            elapsed = int((time.monotonic() - start) * 1000)
+            # Classify the failure so we only do the ``--platform
+            # linux/amd64`` retry when the underlying error actually
+            # looks like a platform mismatch. Issue #168-H: previously
+            # every failure (daemon down, GHCR 403, network blocked)
+            # surfaced as "auto-falling back to --platform linux/amd64
+            # (common for upstreams without arm64 builds)" which was
+            # misleading and produced wasted retry attempts on
+            # permanently-failing pulls.
+            stderr = result.stderr.strip()
+            category, retryable = _classify_pull_error(stderr)
+            if retryable:
+                logger.info(
+                    "%s: native pull failed (%dms, %s) — retrying with "
+                    "--platform linux/amd64 (common for upstreams "
+                    "without arm64 builds). stderr: %s",
+                    image, elapsed, category, stderr[:200],
+                )
+                start = time.monotonic()
+                result = subprocess.run(
+                    [self._runtime, "pull", "--platform", "linux/amd64", image],
+                    capture_output=True,
+                    text=True,
+                )
+                elapsed = int((time.monotonic() - start) * 1000)
+            else:
+                logger.error(
+                    "%s: pull failed (%dms, %s) — not retrying. "
+                    "stderr: %s",
+                    image, elapsed, category, stderr[:300],
+                )
+                # Record so the inline _pull_image won't repeat the
+                # same failure later in the run (issue #168-H followup).
+                self._permanent_pull_failures[image] = category
+                return False
 
         if result.returncode == 0:
             digest = self._get_image_digest(image)
@@ -1256,6 +1381,17 @@ class ArgusEngine:
                 )
                 try:
                     return self._run_in_container(scanner, path, config)
+                except ScannerPreconditionError as exc:
+                    # The scanner's inputs are missing/invalid — no
+                    # amount of fallback will help. Surface clearly and
+                    # mark execution_failed so CI gating treats it as
+                    # "didn't run" rather than "passed with 0 findings"
+                    # (issue #168-I).
+                    logger.error(
+                        "Scanner '%s' precondition unmet: %s",
+                        scanner.name, exc,
+                    )
+                    return _failure_result(scanner.name, exc)
                 except RuntimeError as exc:
                     if backend == "docker":
                         raise

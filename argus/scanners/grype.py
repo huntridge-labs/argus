@@ -43,7 +43,8 @@ class GrypeScanner:
         config = config or {}
         sbom_path = config.get("sbom_path")
         if not sbom_path:
-            raise RuntimeError(
+            from argus.core.engine import ScannerPreconditionError
+            raise ScannerPreconditionError(
                 "grype scanner requires sbom_path (run via `argus scan --sbom <path>`)"
             )
         mount = config.get("sbom_mount_path") or f"/workspace/{Path(sbom_path).name}"
@@ -58,9 +59,16 @@ class GrypeScanner:
         config = config or {}
         sbom_path = config.get("sbom_path")
         if not sbom_path:
-            return ScanResult(
-                scanner=self.name,
-                metadata={"error": "grype requires sbom_path"},
+            # Issue #168-I: raise ScannerPreconditionError instead of
+            # returning a silently-passed result with only an ``error``
+            # metadata key. The engine surfaces this distinctly and
+            # marks the scanner ``execution_failed`` so CI gating treats
+            # "couldn't run for lack of input" the same as "couldn't run
+            # because it crashed" — both block the scan rather than
+            # being recorded as a passed clean run.
+            from argus.core.engine import ScannerPreconditionError
+            raise ScannerPreconditionError(
+                "grype scanner requires sbom_path (run via `argus scan --sbom <path>`)"
             )
 
         with tempfile.TemporaryDirectory() as tmp_dir:

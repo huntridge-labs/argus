@@ -370,6 +370,16 @@ def _build_view_parser(subparsers: argparse._SubParsersAction) -> None:
     # on the first positional because it would reject path-shaped
     # values when the user passes --interface separately. Instead we
     # accept any string and sort it out in _resolve_view_args.
+    #
+    # Argparse can't bind the second positional when a flag-with-value
+    # sits between the two positionals on some Python versions (issue
+    # #168-D5 reproduced ``argus view browser --port 18081 ./results/``
+    # → "unrecognized arguments: ./results/"). When that happens, the
+    # ``--path / -p`` flag below is the explicit workaround. Two
+    # workable shapes:
+    #
+    #     argus view browser ./results/ --port 18081     # path before flags
+    #     argus view browser --port 18081 --path ./results/  # explicit --path
     view_parser.add_argument(
         "interface_or_path",
         nargs="?",
@@ -386,6 +396,17 @@ def _build_view_parser(subparsers: argparse._SubParsersAction) -> None:
         metavar="PATH",
         help="Results directory or argus-results.json path when the first "
              "positional is an interface keyword (default: ./argus-results/)",
+    )
+    view_parser.add_argument(
+        "--path", "-p",
+        dest="path_flag",
+        default=None,
+        metavar="PATH",
+        help="Results directory or argus-results.json path. Equivalent "
+             "to the positional form ``argus view <iface> <path>`` but "
+             "robust to argparse's ordering quirks — use this when a "
+             "flag-with-value (e.g. ``--port``) sits between the "
+             "interface keyword and the path (issue #168-D5).",
     )
     view_parser.add_argument(
         "--interface", "-i",
@@ -419,12 +440,15 @@ def _build_view_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def _resolve_view_args(args: argparse.Namespace) -> tuple[str, str | None] | None:
-    """Sort positionals + flag into (interface, path).
+    """Sort positionals + flags into (interface, path).
 
     The first positional can be either an interface keyword
     (``terminal``/``browser``) or a path. We only know which by looking
     at its value, so the disambiguation lives here rather than in the
     parser.
+
+    ``--path / -p`` provides an explicit-flag escape hatch when
+    argparse refuses to bind the second positional (issue #168-D5).
 
     Returns ``(interface, path)`` on success, or ``None`` if the
     arguments are inconsistent (the caller has already printed an
@@ -433,6 +457,7 @@ def _resolve_view_args(args: argparse.Namespace) -> tuple[str, str | None] | Non
     pos1 = getattr(args, "interface_or_path", None)
     pos2 = getattr(args, "path_arg", None)
     flag = getattr(args, "interface_flag", None)
+    path_flag = getattr(args, "path_flag", None)
 
     pos_interface: str | None = None
     pos_path: str | None = None
@@ -466,8 +491,20 @@ def _resolve_view_args(args: argparse.Namespace) -> tuple[str, str | None] | Non
         )
         return None
 
+    # ``--path`` overrides the positional path. Conflict between the
+    # two surfaces is an error — the user passed both forms and we
+    # can't know which they meant.
+    if path_flag is not None and pos_path is not None and path_flag != pos_path:
+        print(
+            f"Error: conflicting paths — positional '{pos_path}' vs "
+            f"--path '{path_flag}'. Pass only one.",
+            file=sys.stderr,
+        )
+        return None
+    resolved_path = path_flag if path_flag is not None else pos_path
+
     interface = flag or pos_interface or "terminal"
-    return interface, pos_path
+    return interface, resolved_path
 
 
 def cmd_view(args: argparse.Namespace) -> int:
@@ -713,7 +750,7 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         metavar="FILE",
         help="Write scan result counts as key=value pairs to FILE. "
              "Useful in CI: cat FILE >> $GITHUB_OUTPUT. "
-             "Keys: critical_count, high_count, medium_count, low_count, total_count, passed.",
+             "Keys: critical_count, high_count, medium_count, low_count, info_count, total_count, passed.",
     )
     scan_parser.add_argument(
         "--exclude", "-e",
@@ -798,17 +835,25 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
              "vulnerability databases on every container run.",
     )
     scan_parser.add_argument(
-        "--no-keep-raw",
-        action="store_true",
-        dest="no_keep_raw",
-        help="Do not persist raw per-scanner output files alongside the "
-             "canonical argus-results.json. Source scans normally drop "
-             "each scanner's results.json / *.sarif / stdout.txt under "
-             "<output_dir>/raw/<scanner>/; container scans drop "
-             "trivy-results.json / grype-results.json / syft-sbom.json "
-             "under <output_dir>/raw/<image>/. Pass --no-keep-raw to "
-             "skip that step in tight CI environments. The same effect "
-             "is available via 'reporting.keep_raw: false' in argus.yml.",
+        "--keep-raw",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        dest="keep_raw",
+        help="Persist each scanner's raw output files (results.json / "
+             "*.sarif / stdout.txt) under <output_dir>/raw/<scanner>/ "
+             "alongside the canonical argus-results.json. Container "
+             "scans drop trivy-results.json / grype-results.json / "
+             "syft-sbom.json under <output_dir>/raw/<image>/. Default "
+             "OFF — scanners like gitleaks write the literal matched "
+             "secret bytes into raw output, so persisting raw by "
+             "default turned argus-results into a secret-leak vector. "
+             "The canonical argus-results.json is always written and "
+             "is pattern-redacted. Pass --keep-raw for forensic / "
+             "triage workflows that need the unredacted per-scanner "
+             "artifacts. The same effect is available via "
+             "'reporting.keep_raw: true' in argus.yml. Use "
+             "--no-keep-raw to explicitly override a config-file "
+             "opt-in.",
     )
 
     # Credential stdin flags — read a password from stdin and use it
@@ -995,7 +1040,17 @@ def cmd_classify(args: argparse.Namespace) -> int:
         result = classifier.classify_all_changes(iac_analysis)
         classifications = result.get("classifications", [])
     except Exception as exc:
-        print(f"Error: classification failed: {exc}", file=sys.stderr)
+        # GitDiffError (git command failed — unknown ref, not a repo,
+        # etc.) must NOT be confused with "git diff produced 0 changed
+        # files". The pre-1.0.2 path silently returned ``EXIT_SUCCESS``
+        # whenever git diff blew up, which made every CI gate built
+        # around classify trivially pass on repos missing the base
+        # ref. Issue #168-J.
+        from argus.scn.diff import GitDiffError
+        if isinstance(exc, GitDiffError):
+            print(f"Error: classify could not run git diff: {exc}", file=sys.stderr)
+        else:
+            print(f"Error: classification failed: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
     # Count categories
@@ -1154,7 +1209,7 @@ def _build_completion_parser(subparsers: argparse._SubParsersAction) -> None:
         description=(
             "Generate a shell completion script for argus.\n\n"
             "Once installed, pressing <Tab> will complete:\n"
-            "  - subcommands (scan, list, view, cache, ...)\n"
+            "  - subcommands (scan, view, report, classify, cache, ...)\n"
             "  - scanner and linter names (bandit, gitleaks, lint-yaml, ...)\n"
             "  - common flags (--config, --scanners, --severity, ...)\n\n"
             "Install (persistent — remember to reload your shell):\n"
@@ -1581,7 +1636,12 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
     else:
         output_dir = _make_run_dir(config.reporting.output_dir)
     config.reporting.output_dir = output_dir
-    log = get_logger("argus", output_dir=output_dir, verbose=args.verbose)
+    log = get_logger(
+        "argus",
+        output_dir=output_dir,
+        verbose=args.verbose,
+        quiet=getattr(args, "quiet", False),
+    )
 
     # Kick off the update check in a daemon thread now so it runs in
     # parallel with the scan — by end-of-command it's already done.
@@ -1599,15 +1659,18 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
     log.info("Argus scan starting")
 
     # Decide whether to persist raw per-scanner outputs alongside the
-    # canonical argus-results.json. Default ON — users running
-    # ``argus scan`` reasonably expect each scanner's raw results
-    # (results.json / *.sarif / stdout.txt) to be available for
-    # forensics or manual triage. Opt out via ``--no-keep-raw``
-    # (CLI) or ``reporting.keep_raw: false`` (argus.yml). CLI flag
-    # wins on conflict, matching the dispatcher's
-    # explicit-over-implicit posture used throughout.
-    keep_raw_config = getattr(config.reporting, "keep_raw", True)
-    keep_raw = bool(keep_raw_config) and not getattr(args, "no_keep_raw", False)
+    # canonical argus-results.json. Default OFF — scanners like
+    # gitleaks emit the literal matched secret bytes into raw output;
+    # persisting those by default turned argus-results into a leak
+    # vector. The canonical argus-results.json is always written and
+    # is pattern-redacted. Forensic / triage users opt in via
+    # ``--keep-raw`` (CLI) or ``reporting.keep_raw: true``
+    # (argus.yml). CLI flag wins on conflict — ``--no-keep-raw``
+    # explicitly overrides a config-file opt-in. ``args.keep_raw`` is
+    # tri-state: True / False / None (not specified).
+    keep_raw_config = getattr(config.reporting, "keep_raw", False)
+    cli_keep_raw = getattr(args, "keep_raw", None)
+    keep_raw = cli_keep_raw if cli_keep_raw is not None else bool(keep_raw_config)
     raw_output_root = str(Path(output_dir) / "raw") if keep_raw else None
 
     # Build engine and register scanners
@@ -1783,6 +1846,12 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
     # ``formats: [terminal, sarif]`` no longer silently breaks
     # ``argus view`` (the diagnoser still helps for legacy result dirs
     # produced before this contract was in place).
+    # Surface the --fail-on-scanner-error state to reporters so the
+    # terminal report can suppress its "Pass --fail-on-scanner-error
+    # to fail the scan when this happens" advice when the flag is
+    # already on (issue #168-D).
+    summary.fail_on_scanner_error_set = bool(getattr(args, "fail_on_scanner_error", False))
+
     try:
         from argus.reporters import ensure_canonical_json, get_reporter
         for fmt in ensure_canonical_json(config.reporting.formats):
@@ -2164,20 +2233,21 @@ def _cmd_container_scan(
     update_check = start_background_check(args)
 
     # Decide whether to persist raw per-scanner outputs alongside the
-    # canonical argus-results.json. Default is ON — the user just ran
-    # a scan and would expect those artifacts to be available for
-    # manual triage. Opt out via ``--no-keep-raw`` (CLI) or
-    # ``containers.keep_raw: false`` (argus.yml). CLI flag wins on
-    # conflict, matching the rest of the dispatcher's
-    # explicit-over-implicit posture.
-    # ``reporting.keep_raw`` is the unified config home for raw-output
-    # preservation; the legacy ``containers.keep_raw`` is still read
-    # as a fallback so configs from earlier in this PR's lifecycle
-    # don't break. CLI ``--no-keep-raw`` wins over both.
+    # canonical argus-results.json. Default is OFF — scanners write
+    # literal matched content (image-layer scan hits) into raw output,
+    # so persisting raw by default leaks data the canonical
+    # argus-results.json pattern-redacts. Forensic / triage users opt
+    # in with ``--keep-raw`` (CLI) or ``reporting.keep_raw: true``
+    # (argus.yml). The legacy ``containers.keep_raw`` is still read
+    # as a fallback for argus.yml files from before the unified
+    # ``reporting.keep_raw`` shape. CLI ``--no-keep-raw`` explicitly
+    # overrides a config-file opt-in. ``args.keep_raw`` is tri-state:
+    # True / False / None (not specified).
     keep_raw_config = config.get(
-        "_reporting_keep_raw", config.get("keep_raw", True),
+        "_reporting_keep_raw", config.get("keep_raw", False),
     )
-    keep_raw = bool(keep_raw_config) and not getattr(args, "no_keep_raw", False)
+    cli_keep_raw = getattr(args, "keep_raw", None)
+    keep_raw = cli_keep_raw if cli_keep_raw is not None else bool(keep_raw_config)
     if keep_raw:
         config["_raw_output_root"] = str(Path(output_dir) / "raw")
 
@@ -2535,10 +2605,26 @@ def cmd_report(args: argparse.Namespace) -> int:
 
     try:
         import json
+        # ``argus scan`` writes to ``<results_dir>/<timestamp>/argus-
+        # results.json`` and updates a ``latest`` symlink. The previous
+        # default lookup looked at ``<results_dir>/argus-results.json``
+        # directly, which never existed for fresh scans (issue #168-K).
+        # Try the flat layout first (back-compat with CI matrix output
+        # and explicit ``-r`` pointing at a run dir) then fall back to
+        # following the ``latest`` symlink.
         json_file = results_dir / "argus-results.json"
         if not json_file.exists():
-            print(f"Error: {json_file} not found", file=sys.stderr)
-            return EXIT_ERROR
+            latest = results_dir / "latest" / "argus-results.json"
+            if latest.exists():
+                json_file = latest
+            else:
+                print(
+                    f"Error: no argus-results.json found at {results_dir!s} "
+                    f"or {results_dir / 'latest'!s}/. Did you run "
+                    f"`argus scan` first?",
+                    file=sys.stderr,
+                )
+                return EXIT_ERROR
 
         from argus.core.models import ScanSummary
         data = json.loads(json_file.read_text())
@@ -2595,16 +2681,42 @@ def cmd_cache(args: argparse.Namespace) -> int:
     print()
 
     total_size = 0
+    empty_existing = 0
     for scanner_key in sorted(CACHE_MOUNTS):
         scanner_dir = cache_root / scanner_key
-        if scanner_dir.exists():
-            size = sum(f.stat().st_size for f in scanner_dir.rglob("*") if f.is_file())
-            total_size += size
-            print(f"  {scanner_key:<15} {_format_size(size)}")
-        else:
+        if not scanner_dir.exists():
             print(f"  {scanner_key:<15} (not cached)")
+            continue
+        size = sum(f.stat().st_size for f in scanner_dir.rglob("*") if f.is_file())
+        total_size += size
+        if size == 0:
+            # The directory was created by ``get_cache_mount`` (so the
+            # mount could be wired up) but the scanner wrote nothing
+            # into it. Distinguishing this from "not cached" gives the
+            # user a hint that the mount happened but the scanner
+            # isn't using it — see issue #168-M.
+            print(f"  {scanner_key:<15} 0 B (mount empty)")
+        else:
+            print(f"  {scanner_key:<15} {_format_size(size)}")
 
     print(f"\n  {'Total':<15} {_format_size(total_size)}")
+    if total_size == 0 and empty_existing == 0:
+        # Inspect whether any of the dirs exist at all — if they do,
+        # the scanner ran with the mount but didn't write to it.
+        empty_dirs = [k for k in CACHE_MOUNTS if (cache_root / k).exists()]
+        if empty_dirs:
+            print(
+                f"\nNote: directories exist for {', '.join(empty_dirs)} but "
+                "are empty. Three possibilities, in order of likelihood: "
+                "(1) the scanner didn't trigger a cache-populating operation "
+                "during the recent run — e.g. ``trivy-iac`` scans config files "
+                "without touching the vuln DB so /root/.cache/trivy stays empty; "
+                "(2) the scanner stores its cache at a path argus doesn't mount; "
+                "(3) the container process runs as a non-root user and can't write "
+                "to the host-owned mount. Run a vuln-DB-driven scan (``argus scan "
+                "grype --sbom <sbom>``) to verify the cache surfaces are wired. "
+                "Tracked in issue #168-M."
+            )
     return EXIT_SUCCESS
 
 
@@ -2879,6 +2991,7 @@ def _write_output_vars(summary, filepath: str) -> None:
         f"high_count={summary.high_count}",
         f"medium_count={summary.medium_count}",
         f"low_count={summary.low_count}",
+        f"info_count={summary.info_count}",
         f"total_count={summary.total_count}",
         f"issue_count={summary.total_count}",
         f"findings_count={summary.total_count}",

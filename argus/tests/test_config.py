@@ -94,6 +94,19 @@ class TestArgusConfigFromDict:
         config = ArgusConfig.from_dict(data)
         assert config.reporting.formats == ["terminal"]
 
+    def test_keep_raw_defaults_off(self):
+        """keep_raw defaults to False because scanners like gitleaks write
+        literal matched secret bytes into raw output, so persisting raw by
+        default leaks data the canonical argus-results.json already
+        pattern-redacts. See issue #168-B."""
+        config = ArgusConfig.from_dict({})
+        assert config.reporting.keep_raw is False
+
+    def test_keep_raw_opt_in_via_config(self):
+        """Forensic / triage workflows opt in via reporting.keep_raw: true."""
+        config = ArgusConfig.from_dict({"reporting": {"keep_raw": True}})
+        assert config.reporting.keep_raw is True
+
 
 class TestArgusConfigLoad:
     """Test ArgusConfig.load from file."""

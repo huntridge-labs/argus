@@ -167,12 +167,26 @@ class JUnitReporter:
         return suite, tests, failures, errors
 
     def _append_failure(self, case: ET.Element, finding: Finding) -> None:
-        """Attach a <failure> element describing a single finding."""
+        """Attach a <failure> element describing a single finding.
+
+        The ``type`` attribute follows the JUnit convention of an
+        exception-class-shaped identifier — most consumers (Jenkins,
+        GitLab MR widget, Azure DevOps test results) treat it as a
+        grouping key and ignore values that look like prose
+        (``"high"``, ``"critical"``). Encode the rule identifier
+        there instead and surface severity as a separate property,
+        which test reporters group on by convention. See issue #168-G.
+        """
+        # ``type`` follows the exception-class convention — use the rule
+        # ID so consumers can group failures by check. The severity is
+        # tucked into the message prefix so dashboards that render
+        # ``message`` see it without parsing extra elements; the body
+        # below carries the full finding context.
         failure = ET.SubElement(
             case,
             "failure",
-            type=finding.severity.value,
-            message=f"[{finding.id}] {finding.title}",
+            type=finding.id or "finding",
+            message=f"[{finding.severity.value.upper()}] {finding.title}",
         )
         body_lines = [f"{finding.id}: {finding.title}"]
         if finding.location:

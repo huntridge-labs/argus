@@ -13,6 +13,8 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from argus import __version__ as _ARGUS_VERSION
+
 # A scan older than this is considered stale and should be re-run for
 # accurate posture answers. 24 hours is the default because most code
 # review questions ("is this repo secure?") only need same-day data;
@@ -65,6 +67,15 @@ SCANNER CATEGORIES:
 - linter: Code quality (lint-yaml, lint-json, lint-python, etc.)
 """,
 )
+
+# FastMCP's constructor doesn't expose ``version`` directly, so reach
+# through to the wrapped lowlevel ``mcp.server.lowlevel.Server`` and
+# set it. Without this, the MCP initialize response advertises the
+# FastMCP library version (e.g. "1.27.1") as the server version
+# instead of the argus version — MCP clients using the version to
+# disambiguate compatible argus releases would get the wrong answer
+# (issue #168-O).
+mcp._mcp_server.version = _ARGUS_VERSION
 
 
 # ---------------------------------------------------------------------------
