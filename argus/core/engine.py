@@ -26,6 +26,85 @@ SBOM_FORMAT_EXTENSIONS: dict[str, str] = {
 }
 
 
+def _classify_pull_error(stderr: str) -> tuple[str, bool]:
+    """Classify a docker/podman ``pull`` failure for human-readable
+    logging and retry policy.
+
+    Returns ``(category, retryable)`` where ``retryable`` is True only
+    when retrying with ``--platform linux/amd64`` has a realistic
+    chance of fixing the failure. Issue #168-H.
+    """
+    s = stderr.lower()
+
+    # Daemon-down: socket / connection-refused at the local runtime.
+    daemon_markers = (
+        "cannot connect to the docker daemon",
+        "is the docker daemon running",
+        "unix:///var/run/docker.sock",
+        "no such file or directory: docker.sock",
+        "docker api at unix:///",
+    )
+    if any(m in s for m in daemon_markers):
+        return "docker-daemon-not-running", False
+
+    # Auth — 403 / unauthorized / denied. Includes both registry-side
+    # authorization failures and credentials missing locally.
+    auth_markers = (
+        "403 forbidden",
+        "permission_denied",
+        "401 unauthorized",
+        "unauthorized:",
+        "denied: requested access to the resource is denied",
+        "no basic auth credentials",
+    )
+    if any(m in s for m in auth_markers):
+        return "registry-auth-403", False
+
+    # Rate-limit — docker hub etc.
+    if "toomanyrequests" in s or "rate limit" in s:
+        return "registry-rate-limited", False
+
+    # Manifest / image not found at the requested ref. Could be a typo
+    # or a missing tag. Not a platform issue; retrying with amd64 won't
+    # help.
+    not_found_markers = (
+        "manifest unknown",
+        "manifest for ",
+        "not found:",
+        "repository does not exist",
+    )
+    if any(m in s for m in not_found_markers) and "matching manifest" not in s:
+        return "image-not-found", False
+
+    # Platform mismatch — the upstream doesn't publish arm64. THIS is
+    # the case where the --platform linux/amd64 retry is appropriate.
+    platform_markers = (
+        "no matching manifest for linux/arm",
+        "no matching manifest for ",
+        "cannot find amd64 manifest",
+        "image platform",
+    )
+    if any(m in s for m in platform_markers):
+        return "platform-mismatch", True
+
+    # Network — connection refused / timeout reaching the registry.
+    network_markers = (
+        "i/o timeout",
+        "dial tcp",
+        "connection refused",
+        "network is unreachable",
+        "no route to host",
+        "name resolution failed",
+        "temporary failure in name resolution",
+    )
+    if any(m in s for m in network_markers):
+        return "network", False
+
+    # Unclassified — try the amd64 fallback as a last resort but
+    # surface that we don't know what went wrong.
+    return "unclassified", True
+
+
 def _failure_result(
     scanner_name: str,
     exc: BaseException,
@@ -692,25 +771,37 @@ class ArgusEngine:
         elapsed = int((time.monotonic() - start) * 1000)
 
         if result.returncode != 0:
-            # Distinct from a hard "pull failed" — the retry below
-            # almost always succeeds for upstreams that publish amd64-
-            # only (clamav, etc.). Word it as a fallback so users
-            # reading the log don't misread the line as a scan failure.
-            logger.info(
-                "%s: native pull unsuccessful (%dms) — auto-falling "
-                "back to --platform linux/amd64 (common for upstreams "
-                "without arm64 builds). stderr: %s",
-                image,
-                elapsed,
-                result.stderr.strip()[:200],
-            )
-            start = time.monotonic()
-            result = subprocess.run(
-                [self._runtime, "pull", "--platform", "linux/amd64", image],
-                capture_output=True,
-                text=True,
-            )
-            elapsed = int((time.monotonic() - start) * 1000)
+            # Classify the failure so we only do the ``--platform
+            # linux/amd64`` retry when the underlying error actually
+            # looks like a platform mismatch. Issue #168-H: previously
+            # every failure (daemon down, GHCR 403, network blocked)
+            # surfaced as "auto-falling back to --platform linux/amd64
+            # (common for upstreams without arm64 builds)" which was
+            # misleading and produced wasted retry attempts on
+            # permanently-failing pulls.
+            stderr = result.stderr.strip()
+            category, retryable = _classify_pull_error(stderr)
+            if retryable:
+                logger.info(
+                    "%s: native pull failed (%dms, %s) — retrying with "
+                    "--platform linux/amd64 (common for upstreams "
+                    "without arm64 builds). stderr: %s",
+                    image, elapsed, category, stderr[:200],
+                )
+                start = time.monotonic()
+                result = subprocess.run(
+                    [self._runtime, "pull", "--platform", "linux/amd64", image],
+                    capture_output=True,
+                    text=True,
+                )
+                elapsed = int((time.monotonic() - start) * 1000)
+            else:
+                logger.error(
+                    "%s: pull failed (%dms, %s) — not retrying. "
+                    "stderr: %s",
+                    image, elapsed, category, stderr[:300],
+                )
+                return False
 
         if result.returncode == 0:
             digest = self._get_image_digest(image)
