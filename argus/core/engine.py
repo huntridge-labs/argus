@@ -157,6 +157,13 @@ class ArgusEngine:
         # can consult it from a worker thread without arg-threading every
         # internal call site.
         self._prewarmer = None
+        # Image → failure-category cache for permanent pull failures
+        # (403, image-not-found, daemon-down, network, rate-limited).
+        # When the pre-warm path records a permanent failure here, the
+        # inline ``_pull_image`` short-circuits on its next call so a
+        # single (scanner, run) sequence doesn't pull the same broken
+        # image twice. Issue #168-H followup.
+        self._permanent_pull_failures: dict[str, str] = {}
         # Supply-chain verification results, one per container pull this
         # run. Consumed by ``report_tag_pinned_summary`` at end of
         # ``run()`` to emit a single WARNING listing tag-pinned third-
@@ -736,6 +743,20 @@ class ArgusEngine:
         # GitHub Actions cache action could pre-populate the Docker cache.
         # Also evaluate if pull_policy=if-not-present is effective when runners are ephemeral.
         """
+        # Short-circuit when a previous pull (typically from pre-warm)
+        # already produced a permanent-class failure for this image.
+        # Without this, prewarm + inline both fire on a 403/daemon-down
+        # and double the noisy log volume per scanner run. Issue #168-H
+        # followup.
+        cached_category = self._permanent_pull_failures.get(image)
+        if cached_category is not None:
+            logger.debug(
+                "Skipping pull of %s — earlier attempt failed permanently "
+                "(%s); not retrying.",
+                image, cached_category,
+            )
+            return False
+
         policy = self.config.execution.pull_policy
         logger.debug("Pull policy: %s for image: %s", policy, image)
 
@@ -811,6 +832,9 @@ class ArgusEngine:
                     "stderr: %s",
                     image, elapsed, category, stderr[:300],
                 )
+                # Record so the inline _pull_image won't repeat the
+                # same failure later in the run (issue #168-H followup).
+                self._permanent_pull_failures[image] = category
                 return False
 
         if result.returncode == 0:
