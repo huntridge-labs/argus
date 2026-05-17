@@ -798,17 +798,25 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
              "vulnerability databases on every container run.",
     )
     scan_parser.add_argument(
-        "--no-keep-raw",
-        action="store_true",
-        dest="no_keep_raw",
-        help="Do not persist raw per-scanner output files alongside the "
-             "canonical argus-results.json. Source scans normally drop "
-             "each scanner's results.json / *.sarif / stdout.txt under "
-             "<output_dir>/raw/<scanner>/; container scans drop "
-             "trivy-results.json / grype-results.json / syft-sbom.json "
-             "under <output_dir>/raw/<image>/. Pass --no-keep-raw to "
-             "skip that step in tight CI environments. The same effect "
-             "is available via 'reporting.keep_raw: false' in argus.yml.",
+        "--keep-raw",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        dest="keep_raw",
+        help="Persist each scanner's raw output files (results.json / "
+             "*.sarif / stdout.txt) under <output_dir>/raw/<scanner>/ "
+             "alongside the canonical argus-results.json. Container "
+             "scans drop trivy-results.json / grype-results.json / "
+             "syft-sbom.json under <output_dir>/raw/<image>/. Default "
+             "OFF — scanners like gitleaks write the literal matched "
+             "secret bytes into raw output, so persisting raw by "
+             "default turned argus-results into a secret-leak vector. "
+             "The canonical argus-results.json is always written and "
+             "is pattern-redacted. Pass --keep-raw for forensic / "
+             "triage workflows that need the unredacted per-scanner "
+             "artifacts. The same effect is available via "
+             "'reporting.keep_raw: true' in argus.yml. Use "
+             "--no-keep-raw to explicitly override a config-file "
+             "opt-in.",
     )
 
     # Credential stdin flags — read a password from stdin and use it
@@ -1599,15 +1607,18 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
     log.info("Argus scan starting")
 
     # Decide whether to persist raw per-scanner outputs alongside the
-    # canonical argus-results.json. Default ON — users running
-    # ``argus scan`` reasonably expect each scanner's raw results
-    # (results.json / *.sarif / stdout.txt) to be available for
-    # forensics or manual triage. Opt out via ``--no-keep-raw``
-    # (CLI) or ``reporting.keep_raw: false`` (argus.yml). CLI flag
-    # wins on conflict, matching the dispatcher's
-    # explicit-over-implicit posture used throughout.
-    keep_raw_config = getattr(config.reporting, "keep_raw", True)
-    keep_raw = bool(keep_raw_config) and not getattr(args, "no_keep_raw", False)
+    # canonical argus-results.json. Default OFF — scanners like
+    # gitleaks emit the literal matched secret bytes into raw output;
+    # persisting those by default turned argus-results into a leak
+    # vector. The canonical argus-results.json is always written and
+    # is pattern-redacted. Forensic / triage users opt in via
+    # ``--keep-raw`` (CLI) or ``reporting.keep_raw: true``
+    # (argus.yml). CLI flag wins on conflict — ``--no-keep-raw``
+    # explicitly overrides a config-file opt-in. ``args.keep_raw`` is
+    # tri-state: True / False / None (not specified).
+    keep_raw_config = getattr(config.reporting, "keep_raw", False)
+    cli_keep_raw = getattr(args, "keep_raw", None)
+    keep_raw = cli_keep_raw if cli_keep_raw is not None else bool(keep_raw_config)
     raw_output_root = str(Path(output_dir) / "raw") if keep_raw else None
 
     # Build engine and register scanners
@@ -2164,20 +2175,21 @@ def _cmd_container_scan(
     update_check = start_background_check(args)
 
     # Decide whether to persist raw per-scanner outputs alongside the
-    # canonical argus-results.json. Default is ON — the user just ran
-    # a scan and would expect those artifacts to be available for
-    # manual triage. Opt out via ``--no-keep-raw`` (CLI) or
-    # ``containers.keep_raw: false`` (argus.yml). CLI flag wins on
-    # conflict, matching the rest of the dispatcher's
-    # explicit-over-implicit posture.
-    # ``reporting.keep_raw`` is the unified config home for raw-output
-    # preservation; the legacy ``containers.keep_raw`` is still read
-    # as a fallback so configs from earlier in this PR's lifecycle
-    # don't break. CLI ``--no-keep-raw`` wins over both.
+    # canonical argus-results.json. Default is OFF — scanners write
+    # literal matched content (image-layer scan hits) into raw output,
+    # so persisting raw by default leaks data the canonical
+    # argus-results.json pattern-redacts. Forensic / triage users opt
+    # in with ``--keep-raw`` (CLI) or ``reporting.keep_raw: true``
+    # (argus.yml). The legacy ``containers.keep_raw`` is still read
+    # as a fallback for argus.yml files from before the unified
+    # ``reporting.keep_raw`` shape. CLI ``--no-keep-raw`` explicitly
+    # overrides a config-file opt-in. ``args.keep_raw`` is tri-state:
+    # True / False / None (not specified).
     keep_raw_config = config.get(
-        "_reporting_keep_raw", config.get("keep_raw", True),
+        "_reporting_keep_raw", config.get("keep_raw", False),
     )
-    keep_raw = bool(keep_raw_config) and not getattr(args, "no_keep_raw", False)
+    cli_keep_raw = getattr(args, "keep_raw", None)
+    keep_raw = cli_keep_raw if cli_keep_raw is not None else bool(keep_raw_config)
     if keep_raw:
         config["_raw_output_root"] = str(Path(output_dir) / "raw")
 

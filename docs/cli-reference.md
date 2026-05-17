@@ -1,6 +1,6 @@
-# Argus CLI Reference (v1.0.0)
+# Argus CLI Reference (v1.0.1)
 
-> Auto-generated from argparse definitions on 2026-05-16.
+> Auto-generated from argparse definitions on 2026-05-17.
 > Do not edit manually — run `python -m scripts.ci.gen_cli_docs` to regenerate.
 
 Argus Security Scanner — comprehensive security scanning for your codebase
@@ -77,7 +77,7 @@ argus scan [-h] [--path PATH] [--config CONFIG]
                   [--sbom PATH] [--interface {terminal,browser}] [--fail-fast]
                   [--fail-on-scanner-error] [--timeout SECONDS]
                   [--no-parallel] [--allow-local-versions] [--no-cache]
-                  [--no-keep-raw] [--registry-password-stdin]
+                  [--keep-raw | --no-keep-raw] [--registry-password-stdin]
                   [--zap-auth-password-stdin] [--discover [PATH]]
                   [--image REF] [--scanners SCANNERS] [--target URL]
                   [--port PORT] [--env KEY=VALUE]
@@ -118,7 +118,7 @@ argus scan [-h] [--path PATH] [--config CONFIG]
 | `--no-parallel` | Run scanners sequentially instead of concurrently. | `false` |
 | `--allow-local-versions` | Allow local tool versions that differ from argus-pinned versions. Use in airgapped environments where tool updates are constrained. | `false` |
 | `--no-cache` | Disable DB cache volume mounts. Forces scanners to re-download vulnerability databases on every container run. | `false` |
-| `--no-keep-raw` | Do not persist raw per-scanner output files alongside the canonical argus-results.json. Source scans normally drop each scanner's results.json / *.sarif / stdout.txt under <output_dir>/raw/<scanner>/; container scans drop trivy-results.json / grype-results.json / syft-sbom.json under <output_dir>/raw/<image>/. Pass --no-keep-raw to skip that step in tight CI environments. The same effect is available via 'reporting.keep_raw: false' in argus.yml. | `false` |
+| `--keep-raw`, `--no-keep-raw` | Persist each scanner's raw output files (results.json / *.sarif / stdout.txt) under <output_dir>/raw/<scanner>/ alongside the canonical argus-results.json. Container scans drop trivy-results.json / grype-results.json / syft-sbom.json under <output_dir>/raw/<image>/. Default OFF — scanners like gitleaks write the literal matched secret bytes into raw output, so persisting raw by default turned argus-results into a secret-leak vector. The canonical argus-results.json is always written and is pattern-redacted. Pass --keep-raw for forensic / triage workflows that need the unredacted per-scanner artifacts. The same effect is available via 'reporting.keep_raw: true' in argus.yml. Use --no-keep-raw to explicitly override a config-file opt-in. |  |
 | `--registry-password-stdin` | Read the private-registry password from stdin and use it for any scanner that needs registry auth (container, zap with app_image_ref). Overrides registry_password / registry_password_env in argus.yml. | `false` |
 | `--zap-auth-password-stdin` | Read the ZAP web-app authentication password from stdin. Overrides scanners.zap.auth.password / password_env in argus.yml. | `false` |
 

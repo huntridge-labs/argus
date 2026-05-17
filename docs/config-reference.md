@@ -325,6 +325,7 @@ Controls how scan results are formatted and where they are written.
 | `formats` | array of strings | `["terminal"]` | Output formats to generate. |
 | `severity_threshold` | [severity](#severity-levels) | `none` | Global severity threshold. Findings at or above this level cause a non-zero exit code. |
 | `output_dir` | string | `"./argus-results"` | Directory for report files (SARIF, JSON, Markdown). |
+| `keep_raw` | boolean | `false` | Persist each scanner's raw output (results.json / *.sarif / stdout.txt) under `<output_dir>/raw/<scanner>/`. Default OFF because scanners like `gitleaks` write literal matched secret bytes into raw output — the canonical `argus-results.json` is always written and is pattern-redacted. Forensic / triage workflows that need unredacted per-scanner artifacts opt in. CLI `--keep-raw` / `--no-keep-raw` overrides this setting. |
 
 ### Report Formats
 

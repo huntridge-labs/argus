@@ -22,6 +22,13 @@ class TestBuildExclusionSet:
         for builtin in ["node_modules", ".git", "__pycache__", ".venv"]:
             assert builtin in patterns
 
+    def test_argus_results_excluded_by_default(self):
+        """argus-results contains raw scanner output that repeated scans
+        would otherwise snowball-detect as findings (e.g. checkov flagging
+        the gitleaks raw JSON on every subsequent run). See issue #168-C."""
+        patterns = build_exclusion_set(scan_path="/nonexistent")
+        assert "argus-results" in patterns
+
     def test_adds_cli_excludes(self):
         patterns = build_exclusion_set(
             scan_path="/nonexistent",

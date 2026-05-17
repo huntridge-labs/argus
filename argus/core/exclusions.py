@@ -20,7 +20,15 @@ _IGNORE_FILES = [
     ".gitleaksignore",
 ]
 
-# Paths always excluded (build artifacts, dependencies, caches)
+# Paths always excluded (build artifacts, dependencies, caches).
+#
+# ``argus-results`` is included because repeated scans otherwise
+# snowball-detect their own prior raw output (e.g. checkov flagging
+# ``argus-results/<ts>/raw/gitleaks/results.json`` for Base64 high
+# entropy strings on every subsequent run). Even with raw-output
+# persistence flipped off by default, users who opt in with
+# ``--keep-raw`` should not see their own forensic artifacts surface
+# as findings.
 _BUILTIN_EXCLUDES = [
     "node_modules",
     ".git",
@@ -36,6 +44,7 @@ _BUILTIN_EXCLUDES = [
     "*.egg-info",
     "dist",
     "build",
+    "argus-results",
 ]
 
 

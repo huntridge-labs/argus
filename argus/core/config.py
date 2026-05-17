@@ -65,11 +65,15 @@ class ReportingConfig:
     # When True, the engine persists each scanner's raw output files
     # (results.json / *.sarif / stdout.txt) under
     # ``<output_dir>/raw/<scanner>/`` alongside the canonical
-    # ``argus-results.json``. Default ON since most users running
-    # ``argus scan`` would expect the artifacts to be available for
-    # forensics or manual triage; opt out via ``--no-keep-raw`` (CLI)
-    # or ``reporting.keep_raw: false`` for tight CI environments.
-    keep_raw: bool = True
+    # ``argus-results.json``. Default OFF because scanners like
+    # ``gitleaks`` write the literal matched secret bytes into their
+    # raw JSON; persisting those by default turned ``argus-results``
+    # into a secret-leak vector. The canonical ``argus-results.json``
+    # is always written and is pattern-redacted, so the common case
+    # (developer + CI) loses nothing. Forensic / triage users who
+    # need raw output opt in with ``--keep-raw`` (CLI) or
+    # ``reporting.keep_raw: true`` (argus.yml).
+    keep_raw: bool = False
 
 
 @dataclass
@@ -268,7 +272,7 @@ def _parse_reporting_config(raw: dict | None) -> ReportingConfig:
         formats=raw.get("formats", ["terminal"]),
         severity_threshold=_parse_severity(raw.get("severity_threshold")),
         output_dir=raw.get("output_dir", "./argus-results"),
-        keep_raw=bool(raw.get("keep_raw", True)),
+        keep_raw=bool(raw.get("keep_raw", False)),
     )
 
 
