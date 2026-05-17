@@ -2568,10 +2568,26 @@ def cmd_report(args: argparse.Namespace) -> int:
 
     try:
         import json
+        # ``argus scan`` writes to ``<results_dir>/<timestamp>/argus-
+        # results.json`` and updates a ``latest`` symlink. The previous
+        # default lookup looked at ``<results_dir>/argus-results.json``
+        # directly, which never existed for fresh scans (issue #168-K).
+        # Try the flat layout first (back-compat with CI matrix output
+        # and explicit ``-r`` pointing at a run dir) then fall back to
+        # following the ``latest`` symlink.
         json_file = results_dir / "argus-results.json"
         if not json_file.exists():
-            print(f"Error: {json_file} not found", file=sys.stderr)
-            return EXIT_ERROR
+            latest = results_dir / "latest" / "argus-results.json"
+            if latest.exists():
+                json_file = latest
+            else:
+                print(
+                    f"Error: no argus-results.json found at {results_dir!s} "
+                    f"or {results_dir / 'latest'!s}/. Did you run "
+                    f"`argus scan` first?",
+                    file=sys.stderr,
+                )
+                return EXIT_ERROR
 
         from argus.core.models import ScanSummary
         data = json.loads(json_file.read_text())
