@@ -1003,7 +1003,17 @@ def cmd_classify(args: argparse.Namespace) -> int:
         result = classifier.classify_all_changes(iac_analysis)
         classifications = result.get("classifications", [])
     except Exception as exc:
-        print(f"Error: classification failed: {exc}", file=sys.stderr)
+        # GitDiffError (git command failed — unknown ref, not a repo,
+        # etc.) must NOT be confused with "git diff produced 0 changed
+        # files". The pre-1.0.2 path silently returned ``EXIT_SUCCESS``
+        # whenever git diff blew up, which made every CI gate built
+        # around classify trivially pass on repos missing the base
+        # ref. Issue #168-J.
+        from argus.scn.diff import GitDiffError
+        if isinstance(exc, GitDiffError):
+            print(f"Error: classify could not run git diff: {exc}", file=sys.stderr)
+        else:
+            print(f"Error: classification failed: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
     # Count categories
