@@ -156,7 +156,9 @@ def _probe_health(host: str, port: int, timeout: int = 60) -> bool:
             with socket.create_connection((host, port), timeout=2):
                 # TCP connected — try HTTP to confirm the app is ready
                 try:
-                    resp = urllib.request.urlopen(
+                    # B310: scheme is the hardcoded literal "http://"; the
+                    # host/port pair is the user-supplied DAST target, not a URL.
+                    resp = urllib.request.urlopen(  # nosec B310
                         f"http://{host}:{port}/", timeout=3,
                     )
                     if resp.status < 500:

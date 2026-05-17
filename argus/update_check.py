@@ -136,7 +136,9 @@ def fetch_latest_version() -> Optional[str]:
             url,
             headers={"User-Agent": f"argus-security/{__version__}"},
         )
-        with urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+        # B310: url is the hardcoded PyPI endpoint, or an env-var override
+        # the user explicitly set. No file:// reachable.
+        with urlopen(req, timeout=HTTP_TIMEOUT) as resp:  # nosec B310
             data = json.loads(resp.read().decode("utf-8"))
         version = data.get("info", {}).get("version")
         return version if isinstance(version, str) else None

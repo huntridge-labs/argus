@@ -973,7 +973,7 @@ class ArgusEngine:
             # this guard exists for). Calling ``chmod 0o777`` there is
             # at best a no-op and at worst confusing in stack traces.
             if platform.system() != "Windows":
-                os.chmod(output_dir, 0o777)
+                os.chmod(output_dir, 0o777)  # nosec B103 — see comment above
 
             docker_cmd = [
                 self._runtime, "run", "--rm",
