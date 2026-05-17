@@ -1380,6 +1380,51 @@ class TestViewSubcommand:
         err = capsys.readouterr().err
         assert "argus-security[browser]" in err
 
+    @pytest.mark.parametrize("argv,expected", [
+        # Three orderings the gauntlet (issue #168-D5) called out as the
+        # ones users actually type. With ``--path``, all three resolve
+        # to the same (interface, path) regardless of argparse's
+        # positional-binding-after-flag-with-value quirks across Python
+        # versions.
+        (
+            ["view", "browser", "--no-open", "--port", "18081",
+             "--path", "argus-results/latest"],
+            ("browser", "argus-results/latest"),
+        ),
+        (
+            ["view", "browser", "argus-results/latest",
+             "--no-open", "--port", "18081"],
+            ("browser", "argus-results/latest"),
+        ),
+        (
+            ["view", "--no-open", "--port", "18082",
+             "-i", "browser", "argus-results/latest"],
+            ("browser", "argus-results/latest"),
+        ),
+        # Bare forms — interface alone, path alone, both.
+        (["view"], ("terminal", None)),
+        (["view", "browser"], ("browser", None)),
+        (["view", "./results/"], ("terminal", "./results/")),
+        (["view", "--interface=browser"], ("browser", None)),
+        # --path-only invocation with no positionals.
+        (
+            ["view", "--interface=browser", "--path", "/tmp/scan"],
+            ("browser", "/tmp/scan"),
+        ),
+    ])
+    def test_view_argument_orderings_resolve_uniformly(self, argv, expected):
+        """All sane permutations of ``argus view`` parse and resolve to the
+        same (interface, path). Regression for issue #168-D5: argparse
+        couldn't bind the second positional after a flag-with-value on
+        Python 3.12/3.13, so ``argus view browser --port 18081 <path>``
+        rejected the path as unrecognized. ``--path / -p`` is the
+        argparse-safe escape hatch; the positional form still works
+        when the path precedes flags-with-values."""
+        from argus.cli import _resolve_view_args
+        parser = build_parser()
+        args = parser.parse_args(argv)
+        assert _resolve_view_args(args) == expected
+
 
 class TestLaunchViewAfterScan:
     """Covers the ``--interface`` dispatch extracted from ``cmd_scan``.

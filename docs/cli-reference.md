@@ -319,8 +319,8 @@ Install:
   pip install 'argus-security[browser]'       # browser interface
 
 ```
-argus view [-h] [--interface {terminal,browser}] [--port PORT]
-                  [--no-open] [--check]
+argus view [-h] [--path PATH] [--interface {terminal,browser}]
+                  [--port PORT] [--no-open] [--check]
                   [INTERFACE|PATH] [PATH]
 ```
 
@@ -333,6 +333,7 @@ argus view [-h] [--interface {terminal,browser}] [--port PORT]
 
 | Flag | Description | Default |
 |------|-------------|---------|
+| `--path`, `-p` | Results directory or argus-results.json path. Equivalent to the positional form ``argus view <iface> <path>`` but robust to argparse's ordering quirks — use this when a flag-with-value (e.g. ``--port``) sits between the interface keyword and the path (issue #168-D5). |  |
 | `--interface`, `-i` | Interface to open: terminal \| browser (alternative to positional) (terminal, browser) |  |
 | `--port` | TCP port for the browser interface (default: 8080) | `8080` |
 | `--no-open` | Don't auto-open the default web browser after startup (browser interface only). By default, the browser opens when stdout is a TTY; CI and other non-interactive contexts already skip auto-open without this flag. | `false` |

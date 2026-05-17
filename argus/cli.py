@@ -370,6 +370,16 @@ def _build_view_parser(subparsers: argparse._SubParsersAction) -> None:
     # on the first positional because it would reject path-shaped
     # values when the user passes --interface separately. Instead we
     # accept any string and sort it out in _resolve_view_args.
+    #
+    # Argparse can't bind the second positional when a flag-with-value
+    # sits between the two positionals on some Python versions (issue
+    # #168-D5 reproduced ``argus view browser --port 18081 ./results/``
+    # → "unrecognized arguments: ./results/"). When that happens, the
+    # ``--path / -p`` flag below is the explicit workaround. Two
+    # workable shapes:
+    #
+    #     argus view browser ./results/ --port 18081     # path before flags
+    #     argus view browser --port 18081 --path ./results/  # explicit --path
     view_parser.add_argument(
         "interface_or_path",
         nargs="?",
@@ -386,6 +396,17 @@ def _build_view_parser(subparsers: argparse._SubParsersAction) -> None:
         metavar="PATH",
         help="Results directory or argus-results.json path when the first "
              "positional is an interface keyword (default: ./argus-results/)",
+    )
+    view_parser.add_argument(
+        "--path", "-p",
+        dest="path_flag",
+        default=None,
+        metavar="PATH",
+        help="Results directory or argus-results.json path. Equivalent "
+             "to the positional form ``argus view <iface> <path>`` but "
+             "robust to argparse's ordering quirks — use this when a "
+             "flag-with-value (e.g. ``--port``) sits between the "
+             "interface keyword and the path (issue #168-D5).",
     )
     view_parser.add_argument(
         "--interface", "-i",
@@ -419,12 +440,15 @@ def _build_view_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def _resolve_view_args(args: argparse.Namespace) -> tuple[str, str | None] | None:
-    """Sort positionals + flag into (interface, path).
+    """Sort positionals + flags into (interface, path).
 
     The first positional can be either an interface keyword
     (``terminal``/``browser``) or a path. We only know which by looking
     at its value, so the disambiguation lives here rather than in the
     parser.
+
+    ``--path / -p`` provides an explicit-flag escape hatch when
+    argparse refuses to bind the second positional (issue #168-D5).
 
     Returns ``(interface, path)`` on success, or ``None`` if the
     arguments are inconsistent (the caller has already printed an
@@ -433,6 +457,7 @@ def _resolve_view_args(args: argparse.Namespace) -> tuple[str, str | None] | Non
     pos1 = getattr(args, "interface_or_path", None)
     pos2 = getattr(args, "path_arg", None)
     flag = getattr(args, "interface_flag", None)
+    path_flag = getattr(args, "path_flag", None)
 
     pos_interface: str | None = None
     pos_path: str | None = None
@@ -466,8 +491,20 @@ def _resolve_view_args(args: argparse.Namespace) -> tuple[str, str | None] | Non
         )
         return None
 
+    # ``--path`` overrides the positional path. Conflict between the
+    # two surfaces is an error — the user passed both forms and we
+    # can't know which they meant.
+    if path_flag is not None and pos_path is not None and path_flag != pos_path:
+        print(
+            f"Error: conflicting paths — positional '{pos_path}' vs "
+            f"--path '{path_flag}'. Pass only one.",
+            file=sys.stderr,
+        )
+        return None
+    resolved_path = path_flag if path_flag is not None else pos_path
+
     interface = flag or pos_interface or "terminal"
-    return interface, pos_path
+    return interface, resolved_path
 
 
 def cmd_view(args: argparse.Namespace) -> int:
