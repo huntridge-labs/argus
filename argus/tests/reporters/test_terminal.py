@@ -118,6 +118,33 @@ class TestTerminalReporter:
         # separate signal from threshold compliance.
         assert "PASS" in output
 
+    def test_report_suppresses_cta_when_fail_on_scanner_error_set(self, capsys):
+        """When the user has already passed --fail-on-scanner-error, don't
+        advise them to ``Pass --fail-on-scanner-error to fail the scan when
+        this happens`` — they already did. The per-scanner reason rows and
+        the rest of the warning block still render. See issue #168-D."""
+        reporter = TerminalReporter()
+        summary = ScanSummary(
+            results=[
+                ScanResult(
+                    scanner="bandit", findings=[],
+                    metadata={
+                        "execution_failed": True,
+                        "execution_failure_reason": "no output files (exit=13)",
+                    },
+                ),
+            ],
+            severity_threshold=None,
+            fail_on_scanner_error_set=True,
+        )
+        reporter.report(summary)
+        output = capsys.readouterr().out
+
+        assert "did not run cleanly" in output
+        assert "no output files" in output
+        # The CTA prompt is suppressed when the flag is already on.
+        assert "Pass --fail-on-scanner-error" not in output
+
     def test_report_does_not_emit_generic_failure_guesses(self, capsys):
         """Regression: the old reporter printed canned text guessing at
         causes (uid mismatch / crashed / wrong entrypoint). That was

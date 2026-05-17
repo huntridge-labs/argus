@@ -129,10 +129,14 @@ class TerminalReporter:
                     "execution_failure_reason", "no reason recorded",
                 )
                 print(f"  - {r.scanner}: {reason}")
-            print(
-                "  Pass --fail-on-scanner-error to fail the scan when "
-                "this happens."
-            )
+            # Suppress the advice prompt when --fail-on-scanner-error is
+            # already on — the user has already made the choice and is
+            # about to see a non-zero exit (issue #168-D).
+            if not summary.fail_on_scanner_error_set:
+                print(
+                    "  Pass --fail-on-scanner-error to fail the scan when "
+                    "this happens."
+                )
 
         if parse_failed:
             print(

@@ -1162,7 +1162,7 @@ def _build_completion_parser(subparsers: argparse._SubParsersAction) -> None:
         description=(
             "Generate a shell completion script for argus.\n\n"
             "Once installed, pressing <Tab> will complete:\n"
-            "  - subcommands (scan, list, view, cache, ...)\n"
+            "  - subcommands (scan, view, report, classify, cache, ...)\n"
             "  - scanner and linter names (bandit, gitleaks, lint-yaml, ...)\n"
             "  - common flags (--config, --scanners, --severity, ...)\n\n"
             "Install (persistent — remember to reload your shell):\n"
@@ -1589,7 +1589,12 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
     else:
         output_dir = _make_run_dir(config.reporting.output_dir)
     config.reporting.output_dir = output_dir
-    log = get_logger("argus", output_dir=output_dir, verbose=args.verbose)
+    log = get_logger(
+        "argus",
+        output_dir=output_dir,
+        verbose=args.verbose,
+        quiet=getattr(args, "quiet", False),
+    )
 
     # Kick off the update check in a daemon thread now so it runs in
     # parallel with the scan — by end-of-command it's already done.
@@ -1794,6 +1799,12 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
     # ``formats: [terminal, sarif]`` no longer silently breaks
     # ``argus view`` (the diagnoser still helps for legacy result dirs
     # produced before this contract was in place).
+    # Surface the --fail-on-scanner-error state to reporters so the
+    # terminal report can suppress its "Pass --fail-on-scanner-error
+    # to fail the scan when this happens" advice when the flag is
+    # already on (issue #168-D).
+    summary.fail_on_scanner_error_set = bool(getattr(args, "fail_on_scanner_error", False))
+
     try:
         from argus.reporters import ensure_canonical_json, get_reporter
         for fmt in ensure_canonical_json(config.reporting.formats):

@@ -261,7 +261,7 @@ argus mcp [-h]
 Generate a shell completion script for argus.
 
 Once installed, pressing <Tab> will complete:
-  - subcommands (scan, list, view, cache, ...)
+  - subcommands (scan, view, report, classify, cache, ...)
   - scanner and linter names (bandit, gitleaks, lint-yaml, ...)
   - common flags (--config, --scanners, --severity, ...)
 

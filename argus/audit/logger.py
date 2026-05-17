@@ -123,24 +123,36 @@ def get_logger(
     name: str = "argus",
     output_dir: str | Path | None = None,
     verbose: bool = False,
+    quiet: bool = False,
 ) -> logging.Logger:
     """Get a configured argus logger with colored console + JSON file output.
 
+    Console level resolution (verbose wins over quiet on conflict):
+      - ``verbose=True``   → DEBUG
+      - ``quiet=True``     → WARNING (per-phase progress lines suppressed)
+      - neither            → INFO (default)
+
     If *output_dir* is provided, writes structured JSON logs to
-    ``{output_dir}/argus.log`` alongside scan results.
+    ``{output_dir}/argus.log`` alongside scan results — the file
+    handler always captures DEBUG regardless of console level, so
+    ``--quiet`` mutes the terminal without losing audit fidelity.
 
     The logger is created once per *name*; subsequent calls with the same
     name return the existing logger without adding duplicate handlers.
     """
+    console_level = (
+        logging.DEBUG if verbose
+        else (logging.WARNING if quiet else logging.INFO)
+    )
+
     logger = logging.getLogger(name)
     if logger.handlers:
-        # Existing loggers should still honor a later verbose request,
-        # especially when shared across command flows.
+        # Existing loggers should still honor a later verbose / quiet
+        # change, especially when shared across command flows.
         for handler in logger.handlers:
             if isinstance(handler, logging.StreamHandler):
-                desired_level = logging.DEBUG if verbose else logging.INFO
-                if handler.level != desired_level:
-                    handler.setLevel(desired_level)
+                if handler.level != console_level:
+                    handler.setLevel(console_level)
 
         # Add file logging if this call requests it and none exists yet.
         has_file_handler = any(
@@ -162,10 +174,11 @@ def get_logger(
 
     logger.setLevel(logging.DEBUG)
 
-    # Console handler -- colored, INFO level (DEBUG if verbose)
+    # Console handler — colored, level resolved above
+    # (DEBUG when verbose, WARNING when quiet, INFO otherwise).
     use_color = sys.stderr.isatty()
     console = logging.StreamHandler(sys.stderr)
-    console.setLevel(logging.DEBUG if verbose else logging.INFO)
+    console.setLevel(console_level)
     console.setFormatter(ColoredConsoleFormatter(use_color=use_color))
     logger.addHandler(console)
 
