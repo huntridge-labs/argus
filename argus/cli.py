@@ -2644,16 +2644,38 @@ def cmd_cache(args: argparse.Namespace) -> int:
     print()
 
     total_size = 0
+    empty_existing = 0
     for scanner_key in sorted(CACHE_MOUNTS):
         scanner_dir = cache_root / scanner_key
-        if scanner_dir.exists():
-            size = sum(f.stat().st_size for f in scanner_dir.rglob("*") if f.is_file())
-            total_size += size
-            print(f"  {scanner_key:<15} {_format_size(size)}")
-        else:
+        if not scanner_dir.exists():
             print(f"  {scanner_key:<15} (not cached)")
+            continue
+        size = sum(f.stat().st_size for f in scanner_dir.rglob("*") if f.is_file())
+        total_size += size
+        if size == 0:
+            # The directory was created by ``get_cache_mount`` (so the
+            # mount could be wired up) but the scanner wrote nothing
+            # into it. Distinguishing this from "not cached" gives the
+            # user a hint that the mount happened but the scanner
+            # isn't using it — see issue #168-M.
+            print(f"  {scanner_key:<15} 0 B (mount empty)")
+        else:
+            print(f"  {scanner_key:<15} {_format_size(size)}")
 
     print(f"\n  {'Total':<15} {_format_size(total_size)}")
+    if total_size == 0 and empty_existing == 0:
+        # Inspect whether any of the dirs exist at all — if they do,
+        # the scanner ran with the mount but didn't write to it.
+        empty_dirs = [k for k in CACHE_MOUNTS if (cache_root / k).exists()]
+        if empty_dirs:
+            print(
+                f"\nNote: directories exist for {', '.join(empty_dirs)} but "
+                "are empty. The mount was wired up but the scanner did not "
+                "write to it — likely because the container process runs as "
+                "a non-root user without write access to the mounted path, "
+                "or because the scanner stores its cache elsewhere inside "
+                "the container. See issue #168-M for tracking."
+            )
     return EXIT_SUCCESS
 
 
