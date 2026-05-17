@@ -27,8 +27,12 @@ def _load_banner() -> str:
 _BANNER = _load_banner()
 
 
-# Schema URL version is managed by release-it during releases
-_SCHEMA_VERSION = "0.7.0"
+# Schema URL version is derived from the installed argus version so
+# ``argus init`` always writes a schema pin that matches the wheel the
+# user is running. Previously this was a hardcoded string that release-it
+# never bumped — every 1.0.x install was writing ``0.7.0`` URLs into
+# user argus.yml files (see issue #168-A).
+from argus import __version__ as _SCHEMA_VERSION  # noqa: E402
 _SCHEMA_URL = (
     "https://raw.githubusercontent.com/huntridge-labs/argus/"
     f"{_SCHEMA_VERSION}/argus-config.schema.json"

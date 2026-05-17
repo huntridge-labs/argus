@@ -169,6 +169,30 @@
         },
         {
           "files": [
+            "docs/**/*.md",
+            "examples/configs/**/*.{yml,yaml,json}",
+            "*.md"
+          ],
+          "search": {
+            "pattern": "(raw\\.githubusercontent\\.com/huntridge-labs/argus)/[^/]+(/argus-config\\.schema\\.json)",
+            "flags": "g"
+          },
+          "replace": "${1}/{{version}}${2}"
+        },
+        {
+          "files": [
+            "docs/**/*.md",
+            "examples/**/*.{yml,yaml,md}",
+            "*.md"
+          ],
+          "search": {
+            "pattern": "(ghcr\\.io/huntridge-labs/argus/[\\w-]+:)\\d+\\.\\d+\\.\\d+(?:-[\\w.-]+)?",
+            "flags": "g"
+          },
+          "replace": "${1}{{version}}"
+        },
+        {
+          "files": [
             "argus/containers.py"
           ],
           "search": {
