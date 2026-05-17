@@ -34,9 +34,15 @@ jobs:
           python-version: '3.13'
 
       - name: Install Argus
-        run: |
-          pip install --quiet pyyaml
-          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+        # ``pip install --editable .`` (with the [all] extra) gives the
+        # reporter registry a discoverable ``argus.reporters``
+        # entry-point set, mirrors how end users install argus, and
+        # pulls in PyYAML / Pydantic / etc. as declared dependencies
+        # (no separate ``pip install pyyaml`` needed). The runtime
+        # built-in fallback in argus.reporters keeps a bare PYTHONPATH
+        # install working too (issue #172), but CI installs the
+        # ordinary way so the install path is exercised on every run.
+        run: pip install --quiet --editable '.[all]'
 
       - name: Run Argus scan
         id: scan
