@@ -2,7 +2,13 @@
 
 import pytest
 
-from argus.core.models import Severity, Finding, ScanResult, ScanSummary
+from argus.core.models import (
+    Finding,
+    PhaseResult,
+    ScanResult,
+    ScanSummary,
+    Severity,
+)
 
 
 class TestSeverityFromString:
@@ -295,3 +301,130 @@ class TestScanSummary:
         # ``if raw_threshold:`` guard skips the parse entirely.
         restored = ScanSummary.from_dict({"severity_threshold": "", "results": []})
         assert restored.severity_threshold is None
+
+
+class TestPhaseResultAndPartialFailure:
+    """PhaseResult serialization and ScanResult.partial_failure plumbing.
+
+    Locks in the multi-phase shape behind issues #169 / #170 — every
+    consumer downstream of the engine (terminal, markdown, SARIF,
+    JSON, viewer) keys off ``partial_failure`` and ``failed_phases``,
+    so the dataclass guarantees need explicit coverage rather than
+    relying on the terraform/container integration tests.
+    """
+
+    def test_phase_result_to_dict_roundtrip(self):
+        phase = PhaseResult(
+            phase="terraform-fmt",
+            status="failed",
+            findings=[
+                Finding(id="x", severity=Severity.INFO, title="t"),
+            ],
+            error="image pull failed",
+        )
+        d = phase.to_dict()
+        assert d["phase"] == "terraform-fmt"
+        assert d["status"] == "failed"
+        assert d["error"] == "image pull failed"
+        assert len(d["findings"]) == 1
+        assert d["findings"][0]["severity"] == "info"
+
+    def test_scan_result_partial_failure_false_without_phases(self):
+        # Single-phase scanners leave phase_results=None — they must
+        # never report partial_failure=True, otherwise every legacy
+        # scanner suddenly enters the "did not run cleanly" bucket.
+        result = ScanResult(scanner="bandit")
+        assert result.partial_failure is False
+        assert result.failed_phases == []
+
+    def test_scan_result_partial_failure_true_when_phase_failed(self):
+        result = ScanResult(
+            scanner="lint-terraform",
+            phase_results=[
+                PhaseResult(phase="terraform-fmt", status="ran"),
+                PhaseResult(
+                    phase="terraform-validate",
+                    status="failed",
+                    error="image pull failed",
+                ),
+                PhaseResult(phase="tflint", status="skipped"),
+            ],
+        )
+        assert result.partial_failure is True
+        failed = result.failed_phases
+        assert len(failed) == 1
+        assert failed[0].phase == "terraform-validate"
+
+    def test_scan_result_to_dict_includes_phase_results(self):
+        # phase_results + partial_failure only appear when there's
+        # something to report — keeps the JSON contract stable for
+        # single-phase scanners.
+        result = ScanResult(
+            scanner="lint-terraform",
+            phase_results=[
+                PhaseResult(phase="terraform-fmt", status="ran"),
+                PhaseResult(
+                    phase="terraform-validate",
+                    status="failed",
+                    error="image pull failed",
+                ),
+            ],
+        )
+        d = result.to_dict()
+        assert d["partial_failure"] is True
+        assert len(d["phase_results"]) == 2
+        assert d["phase_results"][1]["status"] == "failed"
+        assert d["phase_results"][1]["error"] == "image pull failed"
+
+    def test_scan_result_to_dict_omits_phase_results_when_none(self):
+        result = ScanResult(scanner="bandit")
+        d = result.to_dict()
+        assert "phase_results" not in d
+        assert "partial_failure" not in d
+
+    def test_scan_result_from_dict_rehydrates_phase_results(self):
+        # The from_dict branch lit by phase-aware scanners must
+        # rebuild full PhaseResult objects, not raw dicts — otherwise
+        # downstream consumers calling result.partial_failure or
+        # result.failed_phases blow up on AttributeError.
+        payload = {
+            "scanner": "lint-terraform",
+            "findings": [],
+            "phase_results": [
+                {
+                    "phase": "terraform-fmt",
+                    "status": "ran",
+                    "findings": [],
+                    "error": None,
+                },
+                {
+                    "phase": "terraform-validate",
+                    "status": "failed",
+                    "findings": [
+                        {
+                            "id": "tf-1",
+                            "severity": "info",
+                            "title": "diag",
+                            "description": "",
+                            "scanner": "lint-terraform",
+                        },
+                    ],
+                    "error": "boom",
+                },
+            ],
+        }
+        result = ScanResult.from_dict(payload)
+        assert result.partial_failure is True
+        assert len(result.phase_results) == 2
+        validate_phase = result.failed_phases[0]
+        assert validate_phase.phase == "terraform-validate"
+        assert validate_phase.error == "boom"
+        assert len(validate_phase.findings) == 1
+        assert validate_phase.findings[0].severity == Severity.INFO
+
+    def test_scan_result_from_dict_without_phase_results(self):
+        # Legacy payloads (no phase_results key) round-trip cleanly.
+        payload = {"scanner": "bandit", "findings": []}
+        result = ScanResult.from_dict(payload)
+        assert result.phase_results is None
+        assert result.partial_failure is False

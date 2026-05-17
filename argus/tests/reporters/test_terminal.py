@@ -2,7 +2,13 @@
 
 import pytest
 
-from argus.core.models import Finding, ScanResult, ScanSummary, Severity
+from argus.core.models import (
+    Finding,
+    PhaseResult,
+    ScanResult,
+    ScanSummary,
+    Severity,
+)
 from argus.reporters.terminal import TerminalReporter
 
 
@@ -331,3 +337,104 @@ class TestTerminalReporter:
         output = capsys.readouterr().out
         assert "gitleaks" in output
         assert "0 findings" in output
+
+
+class TestTerminalReporterPartialFailure:
+    """Per-phase partial-failure rendering — issues #169 / #170.
+
+    The terminal reporter has a separate code path for multi-phase
+    scanners that ran some phases but failed others (image pull,
+    unparsable phase output, etc.). That path needs explicit coverage
+    because the integration tests for lint-terraform mock out the
+    reporter, and end-to-end CI tests don't assert on terminal text.
+    """
+
+    def test_report_lists_partial_failed_phase_lines(self, capsys):
+        reporter = TerminalReporter()
+        summary = ScanSummary(
+            results=[
+                ScanResult(
+                    scanner="lint-terraform",
+                    findings=[],
+                    phase_results=[
+                        PhaseResult(phase="terraform-fmt", status="ran"),
+                        PhaseResult(
+                            phase="terraform-validate",
+                            status="failed",
+                            error="image pull failed",
+                        ),
+                    ],
+                ),
+            ],
+        )
+        reporter.report(summary)
+        output = capsys.readouterr().out
+
+        assert "1 scanner(s) did not run cleanly" in output
+        assert "lint-terraform" in output
+        assert "phase 'terraform-validate' failed" in output
+        assert "image pull failed" in output
+        # PASS status because no findings exceeded the threshold —
+        # partial failure is a separate signal and is reflected in
+        # the degraded label alongside the count.
+        assert "PASS (degraded" in output
+        assert "1 partial" in output
+
+    def test_report_partial_failed_phase_without_error_message(self, capsys):
+        # ``phase.error`` can legitimately be None (the phase recorded
+        # status=failed but the scanner didn't populate a reason).
+        # The reporter must still render a row without raising.
+        reporter = TerminalReporter()
+        summary = ScanSummary(
+            results=[
+                ScanResult(
+                    scanner="lint-terraform",
+                    findings=[],
+                    phase_results=[
+                        PhaseResult(
+                            phase="terraform-fmt", status="failed", error=None,
+                        ),
+                    ],
+                ),
+            ],
+        )
+        reporter.report(summary)
+        output = capsys.readouterr().out
+
+        assert "phase 'terraform-fmt' failed" in output
+        assert "no reason recorded" in output
+
+    def test_report_combines_partial_and_exec_failure_in_status_line(self, capsys):
+        # When both categories are present the degraded label includes
+        # both counts separated by a comma. Exercises the
+        # ``parts.append(...)`` branch for partial_failed inside the
+        # status-label assembly.
+        reporter = TerminalReporter()
+        summary = ScanSummary(
+            results=[
+                ScanResult(
+                    scanner="bandit", findings=[],
+                    metadata={
+                        "execution_failed": True,
+                        "execution_failure_reason": "permission denied",
+                    },
+                ),
+                ScanResult(
+                    scanner="lint-terraform",
+                    findings=[],
+                    phase_results=[
+                        PhaseResult(
+                            phase="terraform-validate",
+                            status="failed",
+                            error="image pull failed",
+                        ),
+                    ],
+                ),
+            ],
+        )
+        reporter.report(summary)
+        output = capsys.readouterr().out
+
+        assert "PASS (degraded" in output
+        assert "1 did not run" in output
+        assert "1 partial" in output
