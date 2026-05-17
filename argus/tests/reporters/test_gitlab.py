@@ -74,6 +74,22 @@ class TestGitLabReporterEntries:
         data = _read(GitLabReporter().report(summary, tmp_output_dir))
         assert data[0]["description"] == "just a title"
 
+    def test_duplicate_title_and_description_not_concatenated(self, tmp_output_dir):
+        """Many linter rules (yamllint, flake8) ship the same string for
+        both title and description. The naive ``f"{title}: {description}"``
+        produced doubled output like ``"line too long ...: line too long ..."``.
+        See issue #168-G."""
+        same = "line too long (117 > 80 characters) (line-length)"
+        finding = Finding(
+            id="line-length", severity=Severity.INFO,
+            title=same, description=same, location="argus.yml:1",
+        )
+        summary = ScanSummary(results=[ScanResult(scanner="lint-yaml", findings=[finding])])
+        data = _read(GitLabReporter().report(summary, tmp_output_dir))
+        # Title-and-description-identical case → no concatenation.
+        assert data[0]["description"] == same
+        assert data[0]["description"].count(same) == 1
+
     def test_finding_without_location_uses_empty_path_and_zero_line(self, tmp_output_dir):
         finding = Finding(id="X", severity=Severity.HIGH, title="t")
         summary = ScanSummary(results=[ScanResult(scanner="s", findings=[finding])])

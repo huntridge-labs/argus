@@ -99,8 +99,12 @@ class TestJUnitReporterFindings:
         assert case.get("name") == "app.py"
         failure = case.find("failure")
         assert failure is not None
-        assert failure.get("type") == "high"
-        assert "B102" in failure.get("message")
+        # ``type`` is the rule id (exception-class-shaped per JUnit
+        # convention); severity rides on the message prefix so
+        # dashboards that group on ``type`` get sensible buckets
+        # (issue #168-G).
+        assert failure.get("type") == "B102"
+        assert "[HIGH]" in failure.get("message")
         assert "dangerous call" in failure.text
 
     def test_findings_grouped_by_file(self, tmp_output_dir):
@@ -130,17 +134,22 @@ class TestJUnitReporterFindings:
         assert case.get("name") == "<unknown>"
         assert case.find("failure") is not None
 
-    def test_failure_type_uses_severity_value(self, tmp_output_dir):
+    def test_failure_type_is_rule_id_severity_in_message(self, tmp_output_dir):
+        """JUnit consumers (Jenkins, GitLab MR widget, Azure DevOps)
+        treat ``failure[type]`` as an exception-class grouping key and
+        ignore prose values like ``"high"``. Use the rule id there and
+        surface severity on the message prefix instead. Issue #168-G."""
         findings = [
             Finding(id="A", severity=Severity.CRITICAL, title="c", location="a.py:1"),
             Finding(id="B", severity=Severity.LOW, title="l", location="b.py:1"),
         ]
         summary = ScanSummary(results=[ScanResult(scanner="s", findings=findings)])
         root = _parse(JUnitReporter().report(summary, tmp_output_dir))
-        types = sorted(
-            f.get("type") for f in root.findall("testsuite/testcase/failure")
-        )
-        assert types == ["critical", "low"]
+        failures = root.findall("testsuite/testcase/failure")
+        types = sorted(f.get("type") for f in failures)
+        messages = sorted(f.get("message") for f in failures)
+        assert types == ["A", "B"]
+        assert messages == ["[CRITICAL] c", "[LOW] l"]
 
 
 class TestJUnitReporterCounts:
