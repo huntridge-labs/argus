@@ -68,6 +68,10 @@ class MarkdownReporter:
             f"| {_SEVERITY_EMOJI[Severity.LOW]} Low "
             f"| {summary.low_count} |"
         )
+        lines.append(
+            f"| {_SEVERITY_EMOJI[Severity.INFO]} Info "
+            f"| {summary.info_count} |"
+        )
         lines.append(f"| **Total** | **{summary.total_count}** |")
         lines.append("")
 

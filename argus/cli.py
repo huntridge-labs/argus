@@ -713,7 +713,7 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         metavar="FILE",
         help="Write scan result counts as key=value pairs to FILE. "
              "Useful in CI: cat FILE >> $GITHUB_OUTPUT. "
-             "Keys: critical_count, high_count, medium_count, low_count, total_count, passed.",
+             "Keys: critical_count, high_count, medium_count, low_count, info_count, total_count, passed.",
     )
     scan_parser.add_argument(
         "--exclude", "-e",
@@ -2891,6 +2891,7 @@ def _write_output_vars(summary, filepath: str) -> None:
         f"high_count={summary.high_count}",
         f"medium_count={summary.medium_count}",
         f"low_count={summary.low_count}",
+        f"info_count={summary.info_count}",
         f"total_count={summary.total_count}",
         f"issue_count={summary.total_count}",
         f"findings_count={summary.total_count}",

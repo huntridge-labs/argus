@@ -183,3 +183,36 @@ class TestContainerCredentialParity:
             "registry_password": "literal-pass",
         }}}
         assert _errors(cfg) == []
+
+
+# --------------------------------------------------------------------- #
+# Registry-driven validation — issue #168-F                              #
+# --------------------------------------------------------------------- #
+
+
+class TestUnknownScannerName:
+    """Unknown scanner names should be rejected at validate time rather
+    than silently accepted with only a downstream 'unknown keys' warning."""
+
+    def test_unknown_scanner_errors(self):
+        errs = _errors({"scanners": {"definitely-not-a-scanner": {"enabled": True}}})
+        assert _has_at(errs, "scanners.definitely-not-a-scanner", "Unknown scanner")
+
+    def test_known_scanner_passes(self):
+        # bandit is in the SCANNER_REGISTRY built-ins.
+        assert _errors({"scanners": {"bandit": {"enabled": True}}}) == []
+
+
+class TestReporterRegistrySync:
+    """``reporting.formats`` accepts everything registered under the
+    ``argus.reporters`` group, not just the four-format hardcoded set
+    the validator used pre-1.0.2."""
+
+    def test_github_gitlab_junit_accepted(self):
+        cfg = {"reporting": {"formats": ["github", "gitlab", "junit"]}}
+        assert _errors(cfg) == []
+
+    def test_unknown_format_still_errors(self):
+        cfg = {"reporting": {"formats": ["nonsense"]}}
+        errs = _errors(cfg)
+        assert _has_at(errs, "reporting.formats[0]", "Invalid format")
