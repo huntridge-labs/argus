@@ -28,15 +28,29 @@ class ClamavScanner:
     def container_args(self, config: dict | None = None) -> list[str]:
         """Return CLI args for running ClamAV in a container.
 
-        NOTE: The clamav/clamav:1.4 image ships with bundled virus
+        NOTE: The clamav/clamav:1.5 image ships with bundled virus
         definitions but does NOT auto-run freshclam when the entrypoint
         is overridden.  We prepend ``freshclam`` to ensure the DB is
         current before scanning (~60s on first run, cached thereafter).
         The engine passes these args after ``--entrypoint /bin/sh``.
+
+        freshclam writes its state file (``freshclam.dat``) and the
+        downloaded DBs to ``--datadir`` instead of the default
+        ``/var/lib/clamav``. The bind-mounted host directory for that
+        path is owned by the calling user, but the container's
+        ``clamav`` system user lacks write access — freshclam then
+        segfaults with ``Can't create freshclam.dat in /var/lib/clamav``
+        (issue #168-N). Redirecting to a tmpfs-style ``/tmp`` path
+        sidesteps the permissions problem; the DB is re-downloaded on
+        every run as the trade-off.
         """
         return [
             "-c",
-            "freshclam --quiet && clamscan --recursive /workspace",
+            (
+                "mkdir -p /tmp/clamav-db && "
+                "freshclam --datadir /tmp/clamav-db --quiet && "
+                "clamscan --database /tmp/clamav-db --recursive /workspace"
+            ),
         ]
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
