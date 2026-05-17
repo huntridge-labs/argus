@@ -1,7 +1,7 @@
 # Test dependencies
 # Floors bumped past known-CVE versions and stale-floor noise.
-pytest>=8.0
-pytest-cov>=5.0
+pytest>=9.0.3
+pytest-cov>=7.1.0
 pyyaml>=6.0.2
 
 # Container name sanitization
