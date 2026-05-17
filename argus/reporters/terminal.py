@@ -121,14 +121,32 @@ class TerminalReporter:
             r for r in summary.results
             if r.metadata.get("parse_failed")
         ]
+        # Multi-phase scanners that ran but had at least one phase fail
+        # (issues #169 / #170). The engine treats these as part of the
+        # same "did not run cleanly" category — the user UX is identical
+        # ("scanner X tried but couldn't complete its job") — but the
+        # per-row format carries phase-level granularity so the reader
+        # can see which phase failed without diving into the JSON.
+        partial_failed = [
+            r for r in summary.results
+            if getattr(r, "partial_failure", False)
+        ]
 
-        if exec_failed:
-            print(f"Warning: {len(exec_failed)} scanner(s) did not run cleanly:")
+        if exec_failed or partial_failed:
+            total = len(exec_failed) + len(partial_failed)
+            print(f"Warning: {total} scanner(s) did not run cleanly:")
             for r in exec_failed:
                 reason = r.metadata.get(
                     "execution_failure_reason", "no reason recorded",
                 )
                 print(f"  - {r.scanner}: {reason}")
+            for r in partial_failed:
+                for phase in r.failed_phases:
+                    error = phase.error or "no reason recorded"
+                    print(
+                        f"  - {r.scanner}: phase '{phase.phase}' failed: "
+                        f"{error}"
+                    )
             # Suppress the advice prompt when --fail-on-scanner-error is
             # already on — the user has already made the choice and is
             # about to see a non-zero exit (issue #168-D).
@@ -154,10 +172,12 @@ class TerminalReporter:
             )
 
         if summary.passed:
-            if exec_failed or parse_failed:
+            if exec_failed or parse_failed or partial_failed:
                 parts = []
                 if exec_failed:
                     parts.append(f"{len(exec_failed)} did not run")
+                if partial_failed:
+                    parts.append(f"{len(partial_failed)} partial")
                 if parse_failed:
                     parts.append(f"{len(parse_failed)} unparsable")
                 print(f"Status: PASS (degraded — {', '.join(parts)})")
