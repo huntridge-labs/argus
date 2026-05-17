@@ -5,15 +5,15 @@
   },
   "packageManager": "pnpm@11.1.2",
   "devDependencies": {
-    "@commitlint/cli": "^20.5.0",
-    "@commitlint/config-conventional": "^20.5.0",
+    "@commitlint/cli": "^21.0.0",
+    "@commitlint/config-conventional": "^21.0.0",
     "@j-ulrich/release-it-regex-bumper": "^5.4.0",
-    "@release-it/conventional-changelog": "^10.0.6",
+    "@release-it/conventional-changelog": "^11.0.0",
     "commitizen": "^4.3.1",
     "cz-conventional-changelog": "^3.3.0",
     "husky": "^9.1.7",
     "is-ci": "^4.1.0",
-    "release-it": "^19.2.4"
+    "release-it": "^20.0.1"
   },
   "dependencies": {
     "@digitalroute/cz-conventional-changelog-for-jira": "^8.0.1",
