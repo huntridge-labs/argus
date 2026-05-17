@@ -151,10 +151,20 @@ def cached_latest_version() -> Optional[str]:
 
     Returns ``None`` only when both the cache miss AND the network
     fetch fail.
+
+    Also invalidates the cache when the locally installed version is
+    already newer than the cached ``latest_version`` — the cache was
+    written by an earlier install and survived a ``pip install
+    --upgrade``. Without this, post-upgrade users see a bogus
+    "1.1.0 → 1.0.1" downgrade notice forever (issue #174-1.1.a).
     """
     cache = _read_cache()
     if cache and _cache_is_fresh(cache):
-        return cache.get("latest_version")
+        cached_latest = cache.get("latest_version")
+        # Cache is stale via upgrade when installed > cached_latest.
+        # Fall through to a fresh fetch in that case.
+        if cached_latest and not is_newer(cached_latest, __version__):
+            return cached_latest
 
     latest = fetch_latest_version()
     if latest:
@@ -163,18 +173,27 @@ def cached_latest_version() -> Optional[str]:
 
 
 def is_newer(current: str, latest: str) -> bool:
-    """``True`` when *latest* > *current*. Falls back to inequality on parse failure."""
+    """``True`` when *latest* > *current*.
+
+    Fails closed on parse failure or missing ``packaging``. A notice
+    that erroneously says "1.0.1 → 1.0.1" is annoying but harmless;
+    a notice that says "1.1.0 → 1.0.1" actively misleads — the prior
+    ``latest != current`` fallback triggered for downgrades too
+    (issue #174-1.1.c). When we can't compute a real ordering we
+    suppress the notice rather than risk a wrong-direction arrow.
+    """
     try:
         from packaging.version import parse, InvalidVersion
         try:
             return parse(latest) > parse(current)
         except InvalidVersion:
-            return latest != current
+            return False
     except ImportError:
-        # ``packaging`` is a transitive dep of pip+setuptools; this
-        # branch is mostly theoretical but keeps the helper robust on
-        # exotic minimal environments.
-        return latest != current
+        # ``packaging`` is declared as a hard dependency in
+        # pyproject.toml ([project].dependencies); this fallback only
+        # fires on exotic minimal environments where someone bypassed
+        # dependency resolution. Fail closed (issue #174-1.1.b).
+        return False
 
 
 def format_notice(current: str, latest: str) -> str:

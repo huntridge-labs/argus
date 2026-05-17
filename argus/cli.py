@@ -304,6 +304,34 @@ def _make_run_dir(base_dir: str) -> str:
     return str(run_dir)
 
 
+def _build_common_parent() -> argparse.ArgumentParser:
+    """Flags shared across every subcommand.
+
+    Currently just ``--no-update-check``. Per issue #174, users
+    invoked ``argus report --no-update-check`` and hit
+    ``unrecognized arguments: --no-update-check`` because the flag
+    was previously only on ``scan``. The update-check itself only
+    fires from scan paths today, but the flag should be accepted
+    everywhere so the suppression contract isn't subcommand-specific
+    (and so future subcommands that opt into the check don't need a
+    second round of UX cleanup).
+    """
+    parent = argparse.ArgumentParser(add_help=False)
+    parent.add_argument(
+        "--no-update-check",
+        action="store_true",
+        help="Skip the once-per-day check for a newer argus release. The "
+             "check runs in the background (zero latency cost) and prints "
+             "a soft notice at the end of the command when an upgrade is "
+             "available. Also disabled by setting the "
+             "ARGUS_NO_UPDATE_CHECK environment variable, which is the "
+             "right move for CI / air-gapped environments. Override the "
+             "PyPI URL via ARGUS_UPDATE_CHECK_URL for TestPyPI or "
+             "private mirrors.",
+    )
+    return parent
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the top-level argument parser with scan and report subcommands."""
     parser = argparse.ArgumentParser(
@@ -319,16 +347,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    _build_init_parser(subparsers)
-    _build_scan_parser(subparsers)
-    _build_classify_parser(subparsers)
-    _build_collect_parser(subparsers)
-    _build_report_parser(subparsers)
-    _build_validate_parser(subparsers)
-    _build_mcp_parser(subparsers)
-    _build_completion_parser(subparsers)
-    _build_cache_parser(subparsers)
-    _build_view_parser(subparsers)
+    common = _build_common_parent()
+    _build_init_parser(subparsers, common)
+    _build_scan_parser(subparsers, common)
+    _build_classify_parser(subparsers, common)
+    _build_collect_parser(subparsers, common)
+    _build_report_parser(subparsers, common)
+    _build_validate_parser(subparsers, common)
+    _build_mcp_parser(subparsers, common)
+    _build_completion_parser(subparsers, common)
+    _build_cache_parser(subparsers, common)
+    _build_view_parser(subparsers, common)
 
     return parser
 
@@ -336,7 +365,7 @@ def build_parser() -> argparse.ArgumentParser:
 VIEW_INTERFACES = ("terminal", "browser")
 
 
-def _build_view_parser(subparsers: argparse._SubParsersAction) -> None:
+def _build_view_parser(subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser) -> None:
     """Add the 'view' subcommand — open a viewer on existing scan results.
 
     Replaces the old ``browse`` and ``serve`` commands with a single entry
@@ -346,6 +375,7 @@ def _build_view_parser(subparsers: argparse._SubParsersAction) -> None:
     """
     view_parser = subparsers.add_parser(
         "view",
+        parents=[parent],
         help="Open a viewer (terminal UI or browser) on existing scan results",
         description=(
             "Open a human-readable view of argus-results.json:\n"
@@ -598,10 +628,11 @@ def _launch_view(
     return EXIT_ERROR
 
 
-def _build_init_parser(subparsers: argparse._SubParsersAction) -> None:
+def _build_init_parser(subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser) -> None:
     """Add the 'init' subcommand for project initialization."""
     init_parser = subparsers.add_parser(
         "init",
+        parents=[parent],
         help="Initialize argus.yml for the current project",
         description=(
             "Detect your project's languages, frameworks, and infrastructure,\n"
@@ -634,10 +665,11 @@ def cmd_init(args: argparse.Namespace) -> int:
     )
 
 
-def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
+def _build_scan_parser(subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser) -> None:
     """Add the 'scan' subcommand."""
     scan_parser = subparsers.add_parser(
         "scan",
+        parents=[parent],
         help="Run security scanners against a target path or container images",
         description=(
             "Run one or more security scanners and generate results.\n\n"
@@ -725,18 +757,6 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
         "--no-spinner",
         action="store_true",
         help="Disable animated spinner output",
-    )
-    scan_parser.add_argument(
-        "--no-update-check",
-        action="store_true",
-        help="Skip the once-per-day check for a newer argus release. The "
-             "check runs in the background during the scan (zero latency "
-             "cost) and prints a soft notice at the end of the command "
-             "when an upgrade is available. Also disabled by setting the "
-             "ARGUS_NO_UPDATE_CHECK environment variable, which is the "
-             "right move for CI / air-gapped environments. Override the "
-             "PyPI URL via ARGUS_UPDATE_CHECK_URL for TestPyPI or "
-             "private mirrors.",
     )
     scan_parser.add_argument(
         "--no-timestamp",
@@ -944,10 +964,11 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction) -> None:
     )
 
 
-def _build_classify_parser(subparsers: argparse._SubParsersAction) -> None:
+def _build_classify_parser(subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser) -> None:
     """Add the 'classify' subcommand for SCN change classification."""
     classify_parser = subparsers.add_parser(
         "classify",
+        parents=[parent],
         help="Classify IaC changes for compliance reporting (FedRAMP SCN)",
         description=(
             "Analyze infrastructure-as-code changes between two git refs\n"
@@ -1114,10 +1135,11 @@ def cmd_classify(args: argparse.Namespace) -> int:
     return EXIT_SUCCESS
 
 
-def _build_collect_parser(subparsers: argparse._SubParsersAction) -> None:
+def _build_collect_parser(subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser) -> None:
     """Add the 'collect' subcommand for aggregating multi-job results."""
     collect_parser = subparsers.add_parser(
         "collect",
+        parents=[parent],
         help="Collect and merge results from parallel CI scanner jobs",
         description=(
             "Aggregate per-scanner results into a unified audit package.\n\n"
@@ -1147,10 +1169,11 @@ def _build_collect_parser(subparsers: argparse._SubParsersAction) -> None:
     )
 
 
-def _build_validate_parser(subparsers: argparse._SubParsersAction) -> None:
+def _build_validate_parser(subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser) -> None:
     """Add the 'validate' subcommand for config validation."""
     validate_parser = subparsers.add_parser(
         "validate",
+        parents=[parent],
         help="Validate an argus.yml configuration file",
         description=(
             "Check an argus.yml config file for errors and warnings.\n"
@@ -1183,10 +1206,11 @@ def _build_validate_parser(subparsers: argparse._SubParsersAction) -> None:
     )
 
 
-def _build_mcp_parser(subparsers: argparse._SubParsersAction) -> None:
+def _build_mcp_parser(subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser) -> None:
     """Add the 'mcp' subcommand to start the MCP server."""
     subparsers.add_parser(
         "mcp",
+        parents=[parent],
         help="Start the MCP server for AI assistant integration",
         description=(
             "Start the Argus MCP (Model Context Protocol) server.\n\n"
@@ -1201,10 +1225,11 @@ def _build_mcp_parser(subparsers: argparse._SubParsersAction) -> None:
     )
 
 
-def _build_completion_parser(subparsers: argparse._SubParsersAction) -> None:
+def _build_completion_parser(subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser) -> None:
     """Add the 'completion' subcommand for shell completion scripts."""
     completion_parser = subparsers.add_parser(
         "completion",
+        parents=[parent],
         help="Generate shell completion script",
         description=(
             "Generate a shell completion script for argus.\n\n"
@@ -1229,14 +1254,15 @@ def _build_completion_parser(subparsers: argparse._SubParsersAction) -> None:
     )
 
 
-def _build_cache_parser(subparsers: argparse._SubParsersAction) -> None:
+def _build_cache_parser(subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser) -> None:
     """Add the 'cache' subcommand for managing scanner DB caches."""
     cache_parser = subparsers.add_parser(
         "cache",
+        parents=[parent],
         help="Manage scanner database caches",
         description=(
             "Manage cached vulnerability databases used by container-based scanners.\n\n"
-            "Argus caches scanner databases (Trivy, Grype, ClamAV, etc.) in the system\n"
+            "Argus caches scanner databases (Trivy, Grype, Checkov, etc.) in the system\n"
             "temp directory so container runs don't re-download hundreds of MB each time.\n"
             "The cache persists across runs within a session but is cleaned on reboot.\n\n"
             "Cache location: $TMPDIR/argus-cache (override with ARGUS_CACHE_DIR)\n"
@@ -1256,10 +1282,11 @@ def _build_cache_parser(subparsers: argparse._SubParsersAction) -> None:
     )
 
 
-def _build_report_parser(subparsers: argparse._SubParsersAction) -> None:
+def _build_report_parser(subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser) -> None:
     """Add the 'report' subcommand."""
     report_parser = subparsers.add_parser(
         "report",
+        parents=[parent],
         help="Generate reports from existing scan results",
         description="Generate formatted reports from previously captured scan results.",
     )
