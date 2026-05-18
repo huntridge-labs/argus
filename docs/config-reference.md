@@ -359,7 +359,8 @@ Controls how scanner tools are executed — locally, in containers, or auto-dete
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `backend` | string | `"auto"` | Execution backend: `auto`, `local`, or `docker`. |
-| `registry` | string | | Override the default container registry (e.g. `registry.internal.corp/argus`). |
+| `registry` | string | | Override the default container registry (e.g. `registry.internal.corp/argus`). Flat host-swap — every image gets rewritten to `<registry>/<original-path>`. For per-upstream mirrors (Harbor / Artifactory / ECR proxy caches), use `registry_map` instead. |
+| `registry_map` | map[string→string] | `{}` | Per-upstream registry mirrors, keyed by upstream host (`docker.io`, `ghcr.io`, `quay.io`, etc.). Wins over `registry` for any matching upstream; unmapped upstreams fall through to `registry` (if set) or the original reference. Recommended for proxy-cache setups where each project mirrors a single upstream. See [Container scanning → Per-upstream mirrors](troubleshooting/docker.md#image-pull-failures-registry-auth-rate-limits-air-gapped-ghes). |
 | `pull_policy` | string | `"if-not-present"` | Container image pull policy: `always`, `if-not-present`, or `never`. |
 | `prewarm_images` | boolean | `true` | Pull container images in the background during scan startup so scanners with cached images don't wait on the registry. Disable on metered connections. |
 | `prewarm_workers` | integer | `4` | Concurrency cap for the pre-warm thread pool. Lower for stricter registry rate-limits; higher only with first-class network. |

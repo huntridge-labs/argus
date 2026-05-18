@@ -226,6 +226,36 @@ preserves the original `<repo>/<image>:<tag>` shape, just swaps the registry
 host. See **GHES with private container registry** below for the full mirror
 playbook.
 
+**Fix — Harbor / Artifactory / ECR (per-upstream proxy caches).** The flat
+`execution.registry` setting assumes one mirror that proxies *every* upstream
+Argus uses. Proxy-cache projects on Harbor / Artifactory / ECR mirror a
+**single** upstream registry per project — so a `dockerhub-cache` project
+catches Argus's 9 Docker Hub images but can't serve the 7 GHCR ones (or
+vice versa). Use `execution.registry_map` to point each upstream at its
+corresponding mirror:
+
+```yaml
+execution:
+  registry_map:
+    docker.io: harbor.internal.corp/dockerhub-cache
+    ghcr.io:   harbor.internal.corp/ghcr-cache
+  pull_policy: if-not-present
+```
+
+Resolution rules:
+
+- The upstream host is the first slash-segment when it contains a `.` /
+  `:` (or equals `localhost`); otherwise the reference is treated as
+  bare-name `docker.io`.
+- The path under the mirror host preserves the upstream path verbatim
+  (e.g. `ghcr.io/google/osv-scanner:tag` → `<ghcr-mirror>/google/osv-scanner:tag`),
+  matching how Harbor proxy-caches lay out replicated content.
+- A partial map leaves unmapped upstreams alone — they fall through to
+  the legacy `execution.registry` setting (if set), then to the
+  original reference unchanged.
+- The `@sha256:` digest pin travels with the rewritten reference, so
+  content-addressable pull verification still gates the bytes.
+
 ---
 
 ## Network proxies inside the container

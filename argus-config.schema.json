@@ -162,7 +162,14 @@
         },
         "registry": {
           "type": "string",
-          "description": "Override the default container registry for private or air-gapped environments (e.g. 'registry.internal.corp/argus')."
+          "description": "Override the default container registry for private or air-gapped environments (e.g. 'registry.internal.corp/argus'). Flat host-swap \u2014 every image gets rewritten to '<registry>/<original-path>'. For setups where each proxy cache tracks a single upstream (Harbor / Artifactory / ECR), use 'registry_map' instead."
+        },
+        "registry_map": {
+          "type": "object",
+          "description": "Per-upstream registry mirrors. Keys are the upstream host (e.g. 'docker.io', 'ghcr.io', 'quay.io'); values are the mirror prefix to swap in. Wins over 'registry' on conflict. Unmapped upstreams fall through to 'registry' (if set) or the original reference. Recommended over 'registry' for Harbor / Artifactory / ECR proxy caches, which mirror a single upstream per project.",
+          "additionalProperties": {
+            "type": "string"
+          }
         },
         "pull_policy": {
           "type": "string",

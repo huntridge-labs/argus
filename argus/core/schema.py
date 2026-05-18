@@ -108,6 +108,7 @@ _REPORTING_KEYS = {"formats", "severity_threshold", "output_dir"}
 _EXECUTION_KEYS = {
     "backend",
     "registry",
+    "registry_map",
     "pull_policy",
     "prewarm_images",
     "prewarm_workers",
@@ -545,6 +546,30 @@ def _validate_execution(path: str, data: Any) -> list[ConfigError]:
             f"Must be a boolean (true/false), got "
             f"{type(data['verify_image_signatures']).__name__}",
         ))
+
+    # Per-upstream registry mirrors — must be a mapping of str → str.
+    # Keys are upstream hosts (``docker.io``, ``ghcr.io``, …); values
+    # are mirror prefixes. Issue #178.
+    if "registry_map" in data:
+        rm = data["registry_map"]
+        if not isinstance(rm, dict):
+            errors.append(ConfigError(
+                f"{path}.registry_map",
+                f"Must be a mapping (upstream host -> mirror), got "
+                f"{type(rm).__name__}",
+            ))
+        else:
+            for k, v in rm.items():
+                if not isinstance(k, str) or not k:
+                    errors.append(ConfigError(
+                        f"{path}.registry_map",
+                        f"Keys must be non-empty strings, got {k!r}",
+                    ))
+                if not isinstance(v, str) or not v:
+                    errors.append(ConfigError(
+                        f"{path}.registry_map.{k}",
+                        f"Mirror must be a non-empty string, got {v!r}",
+                    ))
 
     return errors
 

@@ -36,6 +36,31 @@ class ScannerPreconditionError(RuntimeError):
     """
 
 
+def _split_upstream(image: str) -> tuple[str, str]:
+    """Split a container image reference into ``(upstream_host, path)``.
+
+    Docker's reference grammar treats the first slash-segment as a host
+    only when it contains a ``.`` or ``:`` (or equals ``localhost``);
+    otherwise the reference is treated as a bare Docker Hub repository.
+    The same heuristic drives both the legacy ``execution.registry``
+    rewrite and the per-upstream ``execution.registry_map`` lookup, so
+    both code paths agree on what ""upstream"" means for a given
+    reference (issue #178).
+
+    Examples:
+      ``aquasec/trivy:0.70.0``         -> (``docker.io``, ``aquasec/trivy:0.70.0``)
+      ``docker.io/aquasec/trivy:tag``  -> (``docker.io``, ``aquasec/trivy:tag``)
+      ``ghcr.io/google/osv-scanner@sha256:…`` ->
+                                       (``ghcr.io``, ``google/osv-scanner@sha256:…``)
+      ``quay.io/foo/bar:tag``          -> (``quay.io``, ``foo/bar:tag``)
+      ``localhost:5000/dev/img``       -> (``localhost:5000``, ``dev/img``)
+    """
+    first, sep, rest = image.partition("/")
+    if sep and ("." in first or ":" in first or first == "localhost"):
+        return first, rest
+    return "docker.io", image
+
+
 def _classify_pull_error(stderr: str) -> tuple[str, bool]:
     """Classify a docker/podman ``pull`` failure for human-readable
     logging and retry policy.
@@ -852,10 +877,43 @@ class ArgusEngine:
         return result.returncode == 0
 
     def _resolve_image(self, scanner) -> str:
-        """Resolve the full container image reference, applying registry override."""
+        """Resolve the full container image reference, applying registry override.
+
+        Resolution order (issue #178):
+
+        1. ``execution.registry_map`` — per-upstream mirror table. The
+           image's normalised upstream host (``docker.io`` for bare-name
+           references, otherwise the leading host segment) is looked up
+           in the map; on hit, the host is swapped for the mirror and
+           the path under it is preserved verbatim. Matches how Harbor /
+           Artifactory / ECR proxy-cache projects actually mirror
+           single upstreams.
+        2. ``execution.registry`` — flat single-mirror rewrite. Kept for
+           backwards compatibility and for shops with a single registry
+           proxying every upstream.
+        3. Original image reference, unchanged.
+
+        Tag and ``@sha256:`` digest pin always travel with the path so
+        content-addressable verification still gates the pull.
+        """
         image = getattr(scanner, "container_image", "")
         if not image:
             return ""
+
+        registry_map = getattr(self.config.execution, "registry_map", {}) or {}
+        if registry_map:
+            upstream, path = _split_upstream(image)
+            mirror = registry_map.get(upstream)
+            if mirror:
+                rewritten = f"{mirror.rstrip('/')}/{path}"
+                logger.debug(
+                    "Registry map: %s → %s (via %s)", image, rewritten, upstream,
+                )
+                return rewritten
+            # No map entry for this upstream — fall through to the legacy
+            # flat-registry path. A partial map (only ``docker.io`` set)
+            # therefore leaves GHCR pulls alone instead of silently
+            # double-rewriting them.
 
         registry = self.config.execution.registry
         if registry:
