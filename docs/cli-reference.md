@@ -43,13 +43,14 @@ Examples:
   argus init --no-detect    # generate with defaults only
 
 ```
-argus init [-h] [--force] [--no-detect]
+argus init [-h] [--no-update-check] [--force] [--no-detect]
 ```
 
 **Options:**
 
 | Flag | Description | Default |
 |------|-------------|---------|
+| `--no-update-check` | Skip the once-per-day check for a newer argus release. The check runs in the background (zero latency cost) and prints a soft notice at the end of the command when an upgrade is available. Also disabled by setting the ARGUS_NO_UPDATE_CHECK environment variable, which is the right move for CI / air-gapped environments. Override the PyPI URL via ARGUS_UPDATE_CHECK_URL for TestPyPI or private mirrors. | `false` |
 | `--force` | Overwrite an existing argus.yml file | `false` |
 | `--no-detect` | Skip auto-detection and generate a config with defaults only | `false` |
 
@@ -67,14 +68,14 @@ For container image scanning:
   argus scan container --discover docker/
 
 ```
-argus scan [-h] [--path PATH] [--config CONFIG]
+argus scan [-h] [--no-update-check] [--path PATH] [--config CONFIG]
                   [--output-dir OUTPUT_DIR]
                   [--severity-threshold {critical,high,medium,low,none}]
                   [--format {terminal,markdown,sarif,json,github,gitlab,junit}]
                   [--list] [--verbose] [--debug] [--quiet] [--no-spinner]
-                  [--no-update-check] [--no-timestamp] [--output-vars FILE]
-                  [--exclude PATTERNS] [--no-default-excludes] [--dry-run]
-                  [--sbom PATH] [--interface {terminal,browser}] [--fail-fast]
+                  [--no-timestamp] [--output-vars FILE] [--exclude PATTERNS]
+                  [--no-default-excludes] [--dry-run] [--sbom PATH]
+                  [--interface {terminal,browser}] [--fail-fast]
                   [--fail-on-scanner-error] [--timeout SECONDS]
                   [--no-parallel] [--allow-local-versions] [--no-cache]
                   [--keep-raw | --no-keep-raw] [--registry-password-stdin]
@@ -94,6 +95,7 @@ argus scan [-h] [--path PATH] [--config CONFIG]
 
 | Flag | Description | Default |
 |------|-------------|---------|
+| `--no-update-check` | Skip the once-per-day check for a newer argus release. The check runs in the background (zero latency cost) and prints a soft notice at the end of the command when an upgrade is available. Also disabled by setting the ARGUS_NO_UPDATE_CHECK environment variable, which is the right move for CI / air-gapped environments. Override the PyPI URL via ARGUS_UPDATE_CHECK_URL for TestPyPI or private mirrors. | `false` |
 | `--path`, `-p` | Path to scan (default: current directory) | `.` |
 | `--config`, `-c` | Path to argus.yml config file |  |
 | `--output-dir`, `-o` | Output directory for results (default: ./argus-results) |  |
@@ -104,7 +106,6 @@ argus scan [-h] [--path PATH] [--config CONFIG]
 | `--debug` | Full firehose: subprocess output, vulnerability-DB updates, every engine log line. Use when troubleshooting; the default phase-aware progress is enough for normal scans. | `false` |
 | `--quiet`, `-q` | Suppress per-phase progress lines. The spinner still draws (use --no-spinner to suppress that too). Final summary still prints. Compose with --no-spinner for fully silent CI exit-code-only mode. | `false` |
 | `--no-spinner` | Disable animated spinner output | `false` |
-| `--no-update-check` | Skip the once-per-day check for a newer argus release. The check runs in the background during the scan (zero latency cost) and prints a soft notice at the end of the command when an upgrade is available. Also disabled by setting the ARGUS_NO_UPDATE_CHECK environment variable, which is the right move for CI / air-gapped environments. Override the PyPI URL via ARGUS_UPDATE_CHECK_URL for TestPyPI or private mirrors. | `false` |
 | `--no-timestamp` | Write output directly to --output-dir without a timestamped subdirectory. Useful in CI where a predictable output path is needed. | `false` |
 | `--output-vars` | Write scan result counts as key=value pairs to FILE. Useful in CI: cat FILE >> $GITHUB_OUTPUT. Keys: critical_count, high_count, medium_count, low_count, info_count, total_count, passed. |  |
 | `--exclude`, `-e` | Comma-separated paths or patterns to exclude from scanning. Added on top of .gitignore, .dockerignore, and built-in defaults. | `` |
@@ -152,8 +153,8 @@ Examples:
   argus classify --format json                # JSON output
 
 ```
-argus classify [-h] [--base BASE] [--head HEAD] [--config CONFIG]
-                      [--format {terminal,markdown,json}]
+argus classify [-h] [--no-update-check] [--base BASE] [--head HEAD]
+                      [--config CONFIG] [--format {terminal,markdown,json}]
                       [--output-dir OUTPUT_DIR] [--output-vars FILE]
                       [--enable-ai] [--verbose]
 ```
@@ -162,6 +163,7 @@ argus classify [-h] [--base BASE] [--head HEAD] [--config CONFIG]
 
 | Flag | Description | Default |
 |------|-------------|---------|
+| `--no-update-check` | Skip the once-per-day check for a newer argus release. The check runs in the background (zero latency cost) and prints a soft notice at the end of the command when an upgrade is available. Also disabled by setting the ARGUS_NO_UPDATE_CHECK environment variable, which is the right move for CI / air-gapped environments. Override the PyPI URL via ARGUS_UPDATE_CHECK_URL for TestPyPI or private mirrors. | `false` |
 | `--base` | Base git ref for comparison (default: main) | `main` |
 | `--head` | Head git ref for comparison (default: HEAD) | `HEAD` |
 | `--config`, `-c` | Path to SCN configuration/profile file |  |
@@ -185,7 +187,9 @@ Example:
   argus collect ./downloaded-artifacts/ -o ./argus-audit-package/
 
 ```
-argus collect [-h] [--output-dir OUTPUT_DIR] [--verbose] input_dir
+argus collect [-h] [--no-update-check] [--output-dir OUTPUT_DIR]
+                     [--verbose]
+                     input_dir
 ```
 
 **Arguments:**
@@ -196,6 +200,7 @@ argus collect [-h] [--output-dir OUTPUT_DIR] [--verbose] input_dir
 
 | Flag | Description | Default |
 |------|-------------|---------|
+| `--no-update-check` | Skip the once-per-day check for a newer argus release. The check runs in the background (zero latency cost) and prints a soft notice at the end of the command when an upgrade is available. Also disabled by setting the ARGUS_NO_UPDATE_CHECK environment variable, which is the right move for CI / air-gapped environments. Override the PyPI URL via ARGUS_UPDATE_CHECK_URL for TestPyPI or private mirrors. | `false` |
 | `--output-dir`, `-o` | Output directory for the combined audit package (default: ./argus-audit-package) | `./argus-audit-package` |
 | `--verbose`, `-v` | Enable verbose output | `false` |
 
@@ -204,8 +209,8 @@ argus collect [-h] [--output-dir OUTPUT_DIR] [--verbose] input_dir
 Generate formatted reports from previously captured scan results.
 
 ```
-argus report [-h] [--results-dir RESULTS_DIR] [--output-dir OUTPUT_DIR]
-                    [--verbose]
+argus report [-h] [--no-update-check] [--results-dir RESULTS_DIR]
+                    [--output-dir OUTPUT_DIR] [--verbose]
                     {terminal,markdown,sarif,json,github,gitlab,junit}
 ```
 
@@ -217,6 +222,7 @@ argus report [-h] [--results-dir RESULTS_DIR] [--output-dir OUTPUT_DIR]
 
 | Flag | Description | Default |
 |------|-------------|---------|
+| `--no-update-check` | Skip the once-per-day check for a newer argus release. The check runs in the background (zero latency cost) and prints a soft notice at the end of the command when an upgrade is available. Also disabled by setting the ARGUS_NO_UPDATE_CHECK environment variable, which is the right move for CI / air-gapped environments. Override the PyPI URL via ARGUS_UPDATE_CHECK_URL for TestPyPI or private mirrors. | `false` |
 | `--results-dir`, `-r` | Directory containing scan results JSON (default: ./argus-results) | `./argus-results` |
 | `--output-dir`, `-o` | Output directory for generated reports (default: same as results-dir) |  |
 | `--verbose`, `-v` | Enable verbose output | `false` |
@@ -227,14 +233,15 @@ Check an argus.yml config file for errors and warnings.
 Catches typos, invalid values, and unknown keys before scanning.
 
 ```
-argus validate [-h] [--config CONFIG] [--check-tools] [--strict]
-                      [--report-issue]
+argus validate [-h] [--no-update-check] [--config CONFIG]
+                      [--check-tools] [--strict] [--report-issue]
 ```
 
 **Options:**
 
 | Flag | Description | Default |
 |------|-------------|---------|
+| `--no-update-check` | Skip the once-per-day check for a newer argus release. The check runs in the background (zero latency cost) and prints a soft notice at the end of the command when an upgrade is available. Also disabled by setting the ARGUS_NO_UPDATE_CHECK environment variable, which is the right move for CI / air-gapped environments. Override the PyPI URL via ARGUS_UPDATE_CHECK_URL for TestPyPI or private mirrors. | `false` |
 | `--config`, `-c` | Path to argus.yml config file (default: auto-detect) |  |
 | `--check-tools` | Also check scanner tool availability (local + Docker) | `false` |
 | `--strict` | Treat warnings as errors (exit non-zero). Useful in CI. | `false` |
@@ -253,8 +260,14 @@ Setup in Claude Code:
     "argus": {"command": "argus", "args": ["mcp"]}
 
 ```
-argus mcp [-h]
+argus mcp [-h] [--no-update-check]
 ```
+
+**Options:**
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--no-update-check` | Skip the once-per-day check for a newer argus release. The check runs in the background (zero latency cost) and prints a soft notice at the end of the command when an upgrade is available. Also disabled by setting the ARGUS_NO_UPDATE_CHECK environment variable, which is the right move for CI / air-gapped environments. Override the PyPI URL via ARGUS_UPDATE_CHECK_URL for TestPyPI or private mirrors. | `false` |
 
 ### `argus completion`
 
@@ -276,18 +289,24 @@ Completions are generated from the live scanner registry, so
 newly added scanners appear after re-running this command.
 
 ```
-argus completion [-h] {bash,zsh}
+argus completion [-h] [--no-update-check] {bash,zsh}
 ```
 
 **Arguments:**
 
 - `shell` — Shell type to generate completions for (choices: bash, zsh)
 
+**Options:**
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--no-update-check` | Skip the once-per-day check for a newer argus release. The check runs in the background (zero latency cost) and prints a soft notice at the end of the command when an upgrade is available. Also disabled by setting the ARGUS_NO_UPDATE_CHECK environment variable, which is the right move for CI / air-gapped environments. Override the PyPI URL via ARGUS_UPDATE_CHECK_URL for TestPyPI or private mirrors. | `false` |
+
 ### `argus cache`
 
 Manage cached vulnerability databases used by container-based scanners.
 
-Argus caches scanner databases (Trivy, Grype, ClamAV, etc.) in the system
+Argus caches scanner databases (Trivy, Grype, Checkov, etc.) in the system
 temp directory so container runs don't re-download hundreds of MB each time.
 The cache persists across runs within a session but is cleaned on reboot.
 
@@ -295,8 +314,14 @@ Cache location: $TMPDIR/argus-cache (override with ARGUS_CACHE_DIR)
 For persistent caching: export ARGUS_CACHE_DIR=~/.argus/cache
 
 ```
-argus cache [-h] {info,clean} ...
+argus cache [-h] [--no-update-check] {info,clean} ...
 ```
+
+**Options:**
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--no-update-check` | Skip the once-per-day check for a newer argus release. The check runs in the background (zero latency cost) and prints a soft notice at the end of the command when an upgrade is available. Also disabled by setting the ARGUS_NO_UPDATE_CHECK environment variable, which is the right move for CI / air-gapped environments. Override the PyPI URL via ARGUS_UPDATE_CHECK_URL for TestPyPI or private mirrors. | `false` |
 
 ### `argus view`
 
@@ -319,8 +344,9 @@ Install:
   pip install 'argus-security[browser]'       # browser interface
 
 ```
-argus view [-h] [--path PATH] [--interface {terminal,browser}]
-                  [--port PORT] [--no-open] [--check]
+argus view [-h] [--no-update-check] [--path PATH]
+                  [--interface {terminal,browser}] [--port PORT] [--no-open]
+                  [--check]
                   [INTERFACE|PATH] [PATH]
 ```
 
@@ -333,6 +359,7 @@ argus view [-h] [--path PATH] [--interface {terminal,browser}]
 
 | Flag | Description | Default |
 |------|-------------|---------|
+| `--no-update-check` | Skip the once-per-day check for a newer argus release. The check runs in the background (zero latency cost) and prints a soft notice at the end of the command when an upgrade is available. Also disabled by setting the ARGUS_NO_UPDATE_CHECK environment variable, which is the right move for CI / air-gapped environments. Override the PyPI URL via ARGUS_UPDATE_CHECK_URL for TestPyPI or private mirrors. | `false` |
 | `--path`, `-p` | Results directory or argus-results.json path. Equivalent to the positional form ``argus view <iface> <path>`` but robust to argparse's ordering quirks — use this when a flag-with-value (e.g. ``--port``) sits between the interface keyword and the path (issue #168-D5). |  |
 | `--interface`, `-i` | Interface to open: terminal \| browser (alternative to positional) (terminal, browser) |  |
 | `--port` | TCP port for the browser interface (default: 8080) | `8080` |

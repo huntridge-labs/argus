@@ -42,6 +42,13 @@ dependencies = [
     # backend instead.
     "yamllint>=1.35",   # lint-yaml
     "flake8>=7.0",      # lint-python
+    # PEP 440 version comparison for the daily update-check. Without
+    # this, the ``is_newer`` helper falls through to a closed-fail
+    # branch and the upgrade notice never fires — which is correct
+    # but unhelpful. Previously assumed to be a transitive dep of
+    # pip+setuptools; that's not true on minimal venvs and led to
+    # the post-upgrade "1.1.0 → 1.0.1" downgrade notice (issue #174).
+    "packaging>=21",
 ]
 
 [project.optional-dependencies]

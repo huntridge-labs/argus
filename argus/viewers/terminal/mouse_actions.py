@@ -387,6 +387,13 @@ def verify_remote_url(url: str, timeout: float = 2.0) -> tuple[bool, str]:
     """
     if not url:
         return False, "empty URL"
+    # Defense in depth: callers construct URLs via the hardcoded https://
+    # builders in this module (cve_url, advisory_url_for_id, …), but
+    # ``url`` is still a plain str. Reject anything that isn't http(s) so
+    # an unexpected caller can't turn this HEAD probe into a file://
+    # disclosure gadget (bandit B310).
+    if not url.lower().startswith(("http://", "https://")):
+        return False, "unsupported URL scheme"
     import urllib.error
     import urllib.request
     try:
@@ -394,7 +401,8 @@ def verify_remote_url(url: str, timeout: float = 2.0) -> tuple[bool, str]:
             url, method="HEAD",
             headers={"User-Agent": "argus-view-terminal"},
         )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        # B310: scheme is enforced above; only http(s) reach this call.
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310
             status = getattr(resp, "status", None) or resp.getcode()
             if 200 <= status < 400:
                 return True, f"HTTP {status}"

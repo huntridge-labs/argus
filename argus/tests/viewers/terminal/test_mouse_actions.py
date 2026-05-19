@@ -575,6 +575,27 @@ class TestVerifyRemoteUrl:
         # the user can act on it.
         assert "error" in message.lower() or "dns" in message.lower()
 
+    def test_rejects_non_http_schemes(self, monkeypatch):
+        # Defense-in-depth: callers in this module construct URLs as
+        # hardcoded ``https://`` strings, but the ``url`` parameter is
+        # still a plain str. A future caller mistakenly handing this
+        # function a ``file://`` URL must NOT turn the HEAD probe into
+        # a local-file disclosure gadget (bandit B310). The scheme
+        # check must fire BEFORE urlopen is reached.
+        import urllib.request as urllib_request
+
+        from argus.viewers.terminal import mouse_actions
+
+        def _should_not_be_called(req, timeout=None):
+            raise AssertionError("urlopen called with non-http(s) scheme")
+
+        monkeypatch.setattr(urllib_request, "urlopen", _should_not_be_called)
+
+        for bad in ("file:///etc/passwd", "ftp://x.test", "gopher://x.test"):
+            ok, message = mouse_actions.verify_remote_url(bad)
+            assert ok is False, f"scheme {bad!r} should be rejected"
+            assert "scheme" in message.lower()
+
 
 class TestGitFileStatus:
     """``git_file_status`` is best-effort — it should never crash, and

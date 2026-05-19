@@ -28,6 +28,9 @@ scanners:
   osv:
     enabled: true
     exclude: "tests/fixtures"
+    # Accepted-with-rationale advisories live in osv-scanner.toml.
+    # Each entry carries a reason and an ignoreUntil review date.
+    config_file: "osv-scanner.toml"
 
   supply-chain:
     enabled: true

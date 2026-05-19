@@ -30,7 +30,7 @@ OFFICIAL_IMAGES = {
     "grype": "anchore/grype:v0.112.0@sha256:391bfda62888fb4e98ff5c4c81598f7431a3c1eac3f8519d69d1ff00df247c1d",
     "syft": "anchore/syft:v1.44.0@sha256:86fde6445b483d902fe011dd9f68c4987dd94e07da1e9edc004e3c2422650de6",
     "gitleaks": "zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f",
-    "clamav": "clamav/clamav:1.5@sha256:001eb4aed5df1f1a756935c41691c654ae1c22447e92259ec6f68d24fe46415d",
+    "clamav": "clamav/clamav:1.5@sha256:de10aee284800529bbdad5c45648afa81ab7cd45a14bc6d5ef7432496fef7b5c",
     "checkov": "bridgecrew/checkov:3.2.526@sha256:93a910a5854dce9b9935c18e96574162dec7ef2f07b819fd6af19f2e16ea306c",
     "osv-scanner": "ghcr.io/google/osv-scanner:v2.3.6@sha256:2e07e642463100474fc5e214b66e6beccbd6bfa63dd3fbf047b3f755e78a6cfe",
     "zap": "ghcr.io/zaproxy/zaproxy:2.17.0@sha256:8770b23f9e8b49038f413cb2b10c58c901e5b6717be221a22b1bcab5c9771b8a",
