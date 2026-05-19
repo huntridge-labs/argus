@@ -1,0 +1,21 @@
+# osv-scanner ignore list — argus dev-only transitive deps with no
+# upstream fix available. Each entry must carry a rationale and an
+# ``until`` review date; re-evaluate during the next release cycle.
+#
+# Format: https://google.github.io/osv-scanner/configuration/
+
+[[IgnoredVulns]]
+id = "GHSA-r5fr-rjxr-66jc"
+reason = """
+lodash@4.17.21 _.template code injection (CVE-2026-4800). Pulled in
+transitively by dev-only release tooling: release-it plugins,
+commitizen, and inquirer prompts. None of those call sites pass our
+content through _.template — the gadget is unreachable in our build.
+Lodash 4.17.21 is the last upstream release (2021) so no fix version
+exists. Argus ships no JavaScript at runtime; the only attack surface
+is "anyone running `npm run release` against a hostile changelog
+template," which is the same trust boundary as running the release
+itself. Re-evaluate when release-it / commitizen drop their lodash
+dependency.
+"""
+ignoreUntil = 2026-11-17

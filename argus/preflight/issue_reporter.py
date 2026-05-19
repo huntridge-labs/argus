@@ -105,7 +105,9 @@ class GitHubIssueReporter:
 
         req = urllib.request.Request(url, data=body, headers=headers, method=method)
         try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            # B310: url is built from CIContext.api_base (CI-env, trusted)
+            # plus an internal path literal; no file:// reachable.
+            with urllib.request.urlopen(req, timeout=15) as resp:  # nosec B310
                 return json.loads(resp.read().decode())
         except (urllib.error.URLError, json.JSONDecodeError, OSError) as exc:
             logger.warning("GitHub API %s %s failed: %s", method, path, exc)
@@ -183,7 +185,9 @@ class GitLabIssueReporter:
 
         req = urllib.request.Request(url, data=body, headers=headers, method=method)
         try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            # B310: url is built from CIContext.api_base (CI-env, trusted)
+            # plus an internal path literal; no file:// reachable.
+            with urllib.request.urlopen(req, timeout=15) as resp:  # nosec B310
                 return json.loads(resp.read().decode())
         except (urllib.error.URLError, json.JSONDecodeError, OSError) as exc:
             logger.warning("GitLab API %s %s failed: %s", method, path, exc)
