@@ -152,6 +152,9 @@ class TestCachedLatestVersion:
             "latest_version": "0.9.0",
         }))
         monkeypatch.setattr(update_check, "_cache_path", lambda: cache_path)
+        # Pin installed version <= cached_latest so the new staleness
+        # guard (issue #174-1.1.a) doesn't trip and force a refetch.
+        monkeypatch.setattr(update_check, "__version__", "0.8.0")
 
         with patch("argus.update_check.fetch_latest_version") as mock_fetch:
             result = update_check.cached_latest_version()
@@ -201,6 +204,58 @@ class TestCachedLatestVersion:
             result = update_check.cached_latest_version()
         assert result == "0.9.0"
 
+    def test_cache_invalidated_when_installed_newer_than_cached(
+        self, tmp_path, monkeypatch,
+    ):
+        """Regression for issue #174-1.1.a.
+
+        After ``pip install --upgrade argus-security==1.1.0`` the cache
+        from the prior 1.0.1 install still says ``latest_version:
+        1.0.1``. Without this check the helper would happily return
+        "1.0.1" as latest, and the caller would emit a "1.1.0 → 1.0.1"
+        downgrade notice forever. The fix: when installed > cached
+        latest, treat the cache as stale and refetch.
+        """
+        cache_path = tmp_path / "argus" / "update-check.json"
+        cache_path.parent.mkdir()
+        cache_path.write_text(json.dumps({
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "latest_version": "1.0.1",
+        }))
+        monkeypatch.setattr(update_check, "_cache_path", lambda: cache_path)
+        monkeypatch.setattr(update_check, "__version__", "1.1.0")
+
+        with patch(
+            "argus.update_check.fetch_latest_version",
+            return_value="1.1.0",
+        ) as mock_fetch:
+            result = update_check.cached_latest_version()
+            mock_fetch.assert_called_once()
+        # Refetched the real latest; cache was rewritten with it.
+        assert result == "1.1.0"
+        new_cache = json.loads(cache_path.read_text())
+        assert new_cache["latest_version"] == "1.1.0"
+
+    def test_cache_returned_when_cached_newer_than_installed(
+        self, tmp_path, monkeypatch,
+    ):
+        """Inverse of the invalidation case: when the cache says a
+        newer version IS available (normal upgrade-pending state),
+        return it without refetching."""
+        cache_path = tmp_path / "argus" / "update-check.json"
+        cache_path.parent.mkdir()
+        cache_path.write_text(json.dumps({
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "latest_version": "1.2.0",
+        }))
+        monkeypatch.setattr(update_check, "_cache_path", lambda: cache_path)
+        monkeypatch.setattr(update_check, "__version__", "1.1.0")
+
+        with patch("argus.update_check.fetch_latest_version") as mock_fetch:
+            result = update_check.cached_latest_version()
+            mock_fetch.assert_not_called()
+        assert result == "1.2.0"
+
 
 # ──────────────────────────────────────────────────────────────────
 # Version comparison + notice formatting                           #
@@ -217,6 +272,42 @@ class TestIsNewer:
 
     def test_older_returns_false(self):
         assert update_check.is_newer("0.8.0", "0.7.2") is False
+
+    def test_unparseable_latest_returns_false(self):
+        """Regression for issue #174-1.1.c.
+
+        The previous fallback used ``latest != current`` which would
+        return True for *any* mismatch — including a downgrade or a
+        garbage version string. With the fail-closed fallback the
+        helper suppresses the notice when it can't compute a real
+        ordering.
+        """
+        assert update_check.is_newer("1.0.0", "not-a-version") is False
+
+    def test_packaging_missing_returns_false(self, monkeypatch):
+        """Regression for issue #174-1.1.b.
+
+        Originally claimed that ``packaging`` was a "transitive dep
+        of pip+setuptools" and the missing-import branch was
+        "theoretical." A fresh ``python -m venv`` does NOT bundle
+        packaging, and the prior fallback (``latest != current``)
+        misfired in exactly that environment, producing the
+        "1.1.0 → 1.0.1" downgrade notice users reported. The new
+        behavior is fail-closed: no notice when we can't compute.
+        """
+        import builtins
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "packaging.version" or name.startswith("packaging."):
+                raise ImportError("simulated missing packaging")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        # With the old behavior this would return True (latest != current);
+        # the fixed behavior fails closed and returns False.
+        assert update_check.is_newer("1.1.0", "1.0.1") is False
+        assert update_check.is_newer("0.7.2", "0.8.0") is False
 
 
 class TestFormatNotice:
