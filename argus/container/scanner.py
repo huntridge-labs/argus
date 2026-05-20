@@ -617,7 +617,7 @@ def _run_trivy(
             cmd.extend(["--image-src", "remote"])
         cmd.append(image_ref)
 
-    logger.info("trivy invocation: %s", _redact_cmd_for_log(cmd))
+    logger.debug("trivy invocation: %s", _redact_cmd_for_log(cmd))
     try:
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=600,
@@ -741,7 +741,7 @@ def _run_grype(
             "--file", str(output_file),
         ]
 
-    logger.info("grype invocation: %s", _redact_cmd_for_log(cmd))
+    logger.debug("grype invocation: %s", _redact_cmd_for_log(cmd))
     try:
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=600,
