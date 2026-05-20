@@ -532,3 +532,43 @@ scn_detector_errors:
       note: "errors='replace' is preferred over 'strict' — a security tool showing � is better than crashing on otherwise-usable output"
 
     reference: "argus/core/engine.py and every argus/scanners/*.py read_text()"
+
+  - pattern: "unable to initialize a scan service|failed to catalog.*docker not available"
+    category: container-scanning
+    context: |
+      Trivy or Grype, running inside their sub-scanner container against a
+      private-registry image, fail almost immediately with a vague error.
+      The 1-second total runtime is a tell — the failure is at image
+      resolution, before any vulnerability scan begins.
+
+    root_cause: |
+      Two distinct gaps both surface the same way:
+
+      1. **Credentials never reach the sub-scanner container.** When
+         the container backend is in use (Trivy / Grype run inside
+         ``aquasec/trivy`` / ``anchore/grype``), Argus must forward
+         the resolved auth as ``-e VAR=value`` flags on the
+         ``docker run`` argv. Without those flags the container
+         attempts anonymous pulls; private registries reject them.
+      2. **Grype's CLI source-scheme defaults to docker-daemon
+         resolution.** From inside the ``anchore/grype`` container
+         there is no docker.sock, no podman, no snap, so Grype's
+         normal source-resolution chain fails. The ``registry:``
+         source — which honors ``GRYPE_REGISTRY_AUTH_*`` env vars —
+         is only tried when the target ref is explicitly prefixed
+         ``registry:<ref>``.
+
+    solution:
+      steps:
+        - "Configure containers.registry_username_env / registry_password_env (or the containers.registry_auth map for multi-registry setups) in argus.yml."
+        - "Verify the underlying credentials work outside Argus: ``echo $TOKEN | docker login <host> -u <user> --password-stdin && docker pull <ref>``."
+        - "Run with --verbose to surface the redacted docker run argv argus constructs; the line shows which credential env vars were forwarded and confirms Grype's ref carries the registry: prefix on remote scans."
+      note: |
+        Argus auto-prefixes Grype remote refs with ``registry:`` and
+        forwards all three sub-scanner credential env-var families
+        (TRIVY_*, GRYPE_REGISTRY_AUTH_*, SYFT_REGISTRY_AUTH_*).
+        Locally-built images (containers.images entries with
+        ``dockerfile:``) skip auth forwarding intentionally — they
+        scan via docker.sock mount, not registry pull.
+
+    reference: "argus/container/scanner.py::_registry_auth_env and docs/troubleshooting/docker.md → 'target image fails to authenticate inside the sub-scanner container'"

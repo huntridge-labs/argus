@@ -41,6 +41,47 @@ user_workflows:
     category: scanning
     sdk_command: "python -m argus scan container --severity-threshold high"
 
+  container_scanning_private_registry:
+    description: "Scan container images from a private registry (Iron Bank, GHCR-private, ECR, Artifactory, internal Harbor)"
+    category: scanning
+    when_to_use: "Any target image whose registry requires authenticated pull"
+    sdk_command: "python -m argus scan container --config argus.yml"
+    code: |
+      # argus.yml — single-registry shortcut
+      containers:
+        registry_username_env: REGISTRY_USER       # env-var NAME (not the value)
+        registry_password_env: REGISTRY_TOKEN
+        images:
+          - image: registry.example.com/myorg/app@sha256:f1e2...
+
+      # argus.yml — multi-registry map (Iron Bank-style subscription
+      # tiers, ECR-per-IAM, Artifactory tenants, etc.). Longest path-
+      # component prefix wins. Entry fields use the prefix-less
+      # username/username_env/password/password_env shape.
+      containers:
+        registry_auth:
+          registry.example.com:                          # broad default
+            username_env: REGISTRY_DEFAULT_USER
+            password_env: REGISTRY_DEFAULT_TOKEN
+          registry.example.com/internal/restricted:      # more specific
+            username_env: REGISTRY_RESTRICTED_USER
+            password_env: REGISTRY_RESTRICTED_TOKEN
+          ghcr.io/myorg:
+            username_env: GHCR_USER
+            password_env: GHCR_TOKEN
+        images:
+          - image: registry.example.com/public/app@sha256:...
+          - image: registry.example.com/internal/restricted/app@sha256:...
+          - image: ghcr.io/myorg/worker@sha256:...
+    prerequisites:
+      - "Export the credential env vars in the shell or CI step before invoking argus"
+      - "Verify docker login + docker pull work outside argus to isolate auth/access from scanner plumbing"
+    notes:
+      - "Argus forwards resolved credentials to Trivy / Grype / Syft as their native env vars (TRIVY_USERNAME/PASSWORD, GRYPE_REGISTRY_AUTH_USERNAME/PASSWORD, SYFT_REGISTRY_AUTH_USERNAME/PASSWORD) on both the local-binary and container-fallback paths."
+      - "If a registry_auth entry matches but its env var is unset, argus logs a WARNING and refuses to fall back to a broader entry — no silent privilege broadening."
+      - "Run with --verbose to surface the redacted docker run argv argus constructs; useful for confirming -e flags reach the sub-scanner container."
+    reference: "docs/config-reference.md → containers.registry_auth, docs/troubleshooting/docker.md → 'target image fails to authenticate inside the sub-scanner container', .ai/decisions.yaml → ADR-028"
+
   individual_scanner:
     description: "Use a single scanner via SDK or composite action"
     category: scanning

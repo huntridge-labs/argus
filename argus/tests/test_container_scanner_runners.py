@@ -18,8 +18,16 @@ from unittest.mock import patch
 import pytest
 
 from argus.container.scanner import (
+    _docker_env_flags,
+    _is_path_component_prefix,
+    _normalize_image_ref,
+    _redact_cmd_for_log,
+    _registry_auth_env,
+    _resolve_registry_auth,
     _run_grype,
+    _run_syft,
     _run_trivy,
+    _subprocess_env,
     _validate_scanner_output,
 )
 
@@ -270,10 +278,21 @@ class TestRunGrypeLocalDaemonScheme:
         _run_grype("myapp:dev", tmp_path, local=True)
         assert "docker:myapp:dev" in captured["cmd"]
 
-    def test_remote_target_is_not_prefixed(self, tmp_path, monkeypatch):
-        """For registry scans (``local=False``), the original ref
-        passes through untouched — the docker-daemon scheme would
-        force grype to look at a daemon that doesn't have the image."""
+    def test_remote_target_is_prefixed_with_registry_scheme(
+        self, tmp_path, monkeypatch,
+    ):
+        """For registry scans (``local=False``), the ref MUST be
+        prefixed with ``registry:`` — Grype's default source order
+        is ``docker → podman → snap``, and from inside the grype
+        container none of those are available. Without the explicit
+        prefix Grype never reaches the registry source where the
+        ``GRYPE_REGISTRY_AUTH_*`` env vars take effect, so private
+        registries silently get anonymous pulls.
+
+        Regression guard for #180: this assertion used to verify the
+        opposite (bare ref, no prefix), which baked the silent-auth-
+        failure into the test suite.
+        """
         self._force_local_binary(monkeypatch)
         captured = {}
 
@@ -285,9 +304,10 @@ class TestRunGrypeLocalDaemonScheme:
         monkeypatch.setattr("subprocess.run", fake_run)
         _run_grype("registry.example/myapp:1.0", tmp_path, local=False)
 
-        assert "registry.example/myapp:1.0" in captured["cmd"]
-        # No accidental scheme prefix on remote scans.
-        assert "docker:registry.example/myapp:1.0" not in captured["cmd"]
+        assert "registry:registry.example/myapp:1.0" in captured["cmd"]
+        # The bare un-prefixed ref must NOT be on the cmd — it would
+        # be ambiguous and Grype would try docker-daemon first.
+        assert "registry.example/myapp:1.0" not in captured["cmd"]
 
 
 class TestRunTrivy:
@@ -346,17 +366,17 @@ class TestScanImageRawOutputPersistence:
         the actual binaries."""
         from argus.container import scanner as scanner_mod
 
-        def fake_trivy(image_ref, tmp_path, local=False):
+        def fake_trivy(image_ref, tmp_path, local=False, **_kwargs):
             if "trivy" in write_files:
                 (tmp_path / "trivy-results.json").write_text('{"Results": []}')
             return []
 
-        def fake_grype(image_ref, tmp_path, local=False):
+        def fake_grype(image_ref, tmp_path, local=False, **_kwargs):
             if "grype" in write_files:
                 (tmp_path / "grype-results.json").write_text('{"matches": []}')
             return []
 
-        def fake_syft(image_ref, tmp_path):
+        def fake_syft(image_ref, tmp_path, **_kwargs):
             if "syft" in write_files:
                 (tmp_path / "syft-sbom.json").write_text('{"artifacts": []}')
 
@@ -429,7 +449,7 @@ class TestScanImageRawOutputPersistence:
         from argus.container.scanner import scan_image
         from argus.container.discovery import ContainerTarget
 
-        def fake_trivy(image_ref, tmp_path, local=False):
+        def fake_trivy(image_ref, tmp_path, local=False, **_kwargs):
             (tmp_path / "trivy-results.json").touch()  # 0-byte
             return []
 
@@ -520,14 +540,14 @@ class TestOrchestratorRecordsScannerError:
         target = ContainerTarget(name="app", image_ref="docker:argus-scan")
 
         # Trivy succeeds with one finding.
-        def fake_trivy(image_ref, tmp_path, local=False):
+        def fake_trivy(image_ref, tmp_path, local=False, **_kwargs):
             return [Finding(
                 id="CVE-2024-9999", severity=Severity.HIGH, title="test",
                 cve="CVE-2024-9999", scanner="trivy",
             )]
 
         # Grype raises the new structured RuntimeError.
-        def fake_grype(image_ref, tmp_path, local=False):
+        def fake_grype(image_ref, tmp_path, local=False, **_kwargs):
             raise RuntimeError(
                 "grype scan failed (exit 1): catalog resolution failed"
             )
@@ -681,3 +701,610 @@ class TestScanImageThreadsDockerfile:
         result = scan_image(target, scanners=("trivy", "grype"))
         assert result.dockerfile == ""
         assert result.context == ""
+
+
+# ───────────────────────────────────────────────
+# Registry credential forwarding (#180)
+# ───────────────────────────────────────────────
+#
+# The user-visible bug: ``argus scan container --config argus.yml``
+# against a private registry (Iron Bank, GHCR-private, ECR, etc.)
+# silently runs the sub-scanners with anonymous pulls because the
+# resolved registry credentials were never threaded into either the
+# subprocess env (local-binary path) or the ``docker run`` argv
+# (container-fallback path). These tests pin the fix from both ends:
+# the pure helpers in isolation, plus the runners' final cmd shape
+# under each backend.
+
+
+class TestRegistryAuthEnv:
+    """Pure-function checks for ``_registry_auth_env``."""
+
+    def test_returns_empty_when_config_is_none(self):
+        assert _registry_auth_env(None) == {}
+
+    def test_returns_empty_when_config_has_no_creds(self):
+        assert _registry_auth_env({}) == {}
+
+    def test_resolves_literal_username_and_password(self):
+        env = _registry_auth_env({
+            "registry_username": "alice",
+            "registry_password": "s3cret",
+        })
+        # Each tool's native env var receives the same resolved value.
+        assert env["TRIVY_USERNAME"] == "alice"
+        assert env["GRYPE_REGISTRY_AUTH_USERNAME"] == "alice"
+        assert env["SYFT_REGISTRY_AUTH_USERNAME"] == "alice"
+        assert env["TRIVY_PASSWORD"] == "s3cret"
+        assert env["GRYPE_REGISTRY_AUTH_PASSWORD"] == "s3cret"
+        assert env["SYFT_REGISTRY_AUTH_PASSWORD"] == "s3cret"
+
+    def test_resolves_env_var_reference(self, monkeypatch):
+        # The preferred shape — argus.yml names the env var, the
+        # actual secret lives in the runner's environment.
+        monkeypatch.setenv("IRONBANK_USER", "c_pesicka")
+        monkeypatch.setenv("IRONBANK_CLI_SECRET", "tok-abc-123")
+        env = _registry_auth_env({
+            "registry_username_env": "IRONBANK_USER",
+            "registry_password_env": "IRONBANK_CLI_SECRET",
+        })
+        assert env["TRIVY_USERNAME"] == "c_pesicka"
+        assert env["TRIVY_PASSWORD"] == "tok-abc-123"
+
+    def test_unset_env_var_resolves_to_empty(self, monkeypatch):
+        # When the referenced env var isn't set, the secret resolver
+        # returns None and we skip that credential entirely — the scan
+        # proceeds anonymously rather than crashing. Regression guard:
+        # this used to be a silent corruption (half-credentials sent
+        # to the registry) before resolve_secret started returning
+        # None cleanly.
+        monkeypatch.delenv("NOT_SET_ANYWHERE", raising=False)
+        env = _registry_auth_env({
+            "registry_username_env": "NOT_SET_ANYWHERE",
+            "registry_password_env": "NOT_SET_ANYWHERE",
+        })
+        assert env == {}
+
+
+class TestDockerEnvFlags:
+    """Pure-function check for the ``-e VAR=value`` flag builder."""
+
+    def test_empty_input_yields_empty_list(self):
+        assert _docker_env_flags({}) == []
+
+    def test_produces_e_var_value_pairs(self):
+        flags = _docker_env_flags({"FOO": "bar", "BAZ": "qux"})
+        # The pairing matters — ``-e`` must immediately precede each
+        # VAR=value token, otherwise ``docker run`` parses them as
+        # positional args.
+        assert flags[::2] == ["-e", "-e"]
+        assert set(flags[1::2]) == {"FOO=bar", "BAZ=qux"}
+
+
+class TestSubprocessEnv:
+    """``_subprocess_env`` overlays auth vars onto the host env or returns None."""
+
+    def test_returns_none_when_no_auth(self):
+        # None lets subprocess.run inherit the host env unchanged —
+        # critical for not breaking the no-creds case (every CI run
+        # without registry auth depends on this).
+        assert _subprocess_env({}) is None
+
+    def test_layers_auth_on_top_of_os_environ(self, monkeypatch):
+        monkeypatch.setenv("PATH", "/usr/bin")
+        env = _subprocess_env({"TRIVY_USERNAME": "alice"})
+        assert env is not None
+        assert env["TRIVY_USERNAME"] == "alice"
+        assert env["PATH"] == "/usr/bin"  # host env preserved
+
+
+class TestRedactCmdForLog:
+    """``_redact_cmd_for_log`` masks credential values but keeps argv shape."""
+
+    def test_redacts_known_credential_values(self):
+        cmd = [
+            "docker", "run", "--rm",
+            "-e", "TRIVY_USERNAME=alice",
+            "-e", "TRIVY_PASSWORD=s3cret-token",
+            "-v", "/tmp/argus:/output",
+            "aquasec/trivy:0.70.0",
+            "image", "--format", "json",
+        ]
+        out = _redact_cmd_for_log(cmd)
+        assert "alice" not in out
+        assert "s3cret-token" not in out
+        assert "***REDACTED***" in out
+        # Names must still be visible — debugging requires seeing
+        # WHICH vars are forwarded, just not their values.
+        assert "TRIVY_USERNAME" in out
+        assert "TRIVY_PASSWORD" in out
+        # Non-credential args must pass through verbatim.
+        assert "/tmp/argus:/output" in out
+        assert "aquasec/trivy:0.70.0" in out
+
+    def test_non_credential_env_vars_pass_through(self):
+        # If we ever add other -e flags (HTTP_PROXY, etc.) they
+        # should NOT be redacted — only the named credential set.
+        cmd = ["docker", "run", "-e", "HTTP_PROXY=http://proxy:8080", "img"]
+        out = _redact_cmd_for_log(cmd)
+        assert "http://proxy:8080" in out
+
+    def test_handles_cmd_with_no_env_flags(self):
+        cmd = ["docker", "run", "--rm", "aquasec/trivy", "image", "ref"]
+        assert _redact_cmd_for_log(cmd) == "docker run --rm aquasec/trivy image ref"
+
+
+# ───────────────────────────────────────────────
+# Runner integration: cred flags reach the docker-run argv
+# ───────────────────────────────────────────────
+
+
+def _force_container_path(monkeypatch, tool: str):
+    """Make ``_run_<tool>`` take the Docker-fallback branch.
+
+    Returns a list that ``fake_run`` callers can append the
+    intercepted cmd into for assertion.
+    """
+    monkeypatch.setattr(
+        "argus.container.scanner.shutil.which",
+        lambda name: None,
+    )
+    monkeypatch.setattr(
+        "argus.container_runtime.is_available", lambda: True,
+    )
+    monkeypatch.setattr(
+        "argus.container_runtime.pull_image",
+        lambda *a, **kw: True,
+    )
+    monkeypatch.setattr(
+        "argus.container_runtime.runtime_cmd", lambda: "docker",
+    )
+    monkeypatch.setattr(
+        "argus.containers.get_image",
+        lambda name: f"fake/{name}:test",
+    )
+
+
+class TestRunTrivyForwardsCredsInContainer:
+    """The user's #180 acceptance matrix: trivy in container, creds reach argv."""
+
+    def test_scan_cmd_includes_e_flags_for_trivy_creds(self, tmp_path, monkeypatch):
+        _force_container_path(monkeypatch, "trivy")
+
+        intercepted: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            intercepted.append(list(cmd))
+            # Write a valid (empty-results) JSON so the parser doesn't
+            # blow up after subprocess.run returns.
+            (tmp_path / "trivy-results.json").write_text('{"Results": []}')
+            return _completed(returncode=0)
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        config = {
+            "registry_username": "alice",
+            "registry_password": "s3cret",
+        }
+        _run_trivy(
+            "registry1.example.com/myapp@sha256:" + "a" * 64,
+            tmp_path, local=False, config=config,
+        )
+
+        # Two subprocess.run calls — DB pre-warm, then scan. The scan
+        # is the second one (DB-only step intentionally does NOT
+        # carry cred flags since it pulls from public ghcr.io).
+        assert len(intercepted) == 2
+        scan_cmd = intercepted[1]
+        # The pairing of -e and VAR=value tokens must survive.
+        e_pairs = {
+            (scan_cmd[i + 1])
+            for i, t in enumerate(scan_cmd)
+            if t == "-e" and i + 1 < len(scan_cmd)
+        }
+        assert "TRIVY_USERNAME=alice" in e_pairs
+        assert "TRIVY_PASSWORD=s3cret" in e_pairs
+
+    def test_no_creds_no_e_flags(self, tmp_path, monkeypatch):
+        _force_container_path(monkeypatch, "trivy")
+        intercepted: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            intercepted.append(list(cmd))
+            (tmp_path / "trivy-results.json").write_text('{"Results": []}')
+            return _completed(returncode=0)
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        _run_trivy(
+            "library/nginx:latest",
+            tmp_path, local=False, config=None,
+        )
+
+        # The no-creds path is the original behavior; argv must not
+        # acquire stray ``-e`` flags that older docker daemons in
+        # constrained CI might reject.
+        scan_cmd = intercepted[-1]
+        assert "-e" not in scan_cmd
+
+    def test_local_built_image_skips_creds_even_if_configured(self, tmp_path, monkeypatch):
+        # A locally-built image doesn't pull from any registry; the
+        # creds in argus.yml might be for OTHER targets in the same
+        # run. Forwarding them here would be harmless but noisy —
+        # confirm we don't.
+        _force_container_path(monkeypatch, "trivy")
+        intercepted: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            intercepted.append(list(cmd))
+            (tmp_path / "trivy-results.json").write_text('{"Results": []}')
+            return _completed(returncode=0)
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        _run_trivy(
+            "myapp:argus-scan",
+            tmp_path, local=True,
+            config={"registry_username": "alice", "registry_password": "s3cret"},
+        )
+        scan_cmd = intercepted[-1]
+        assert "TRIVY_USERNAME=alice" not in " ".join(scan_cmd)
+
+
+class TestRunGrypeForwardsCredsInContainer:
+    """Same acceptance for Grype's native env var names."""
+
+    def test_scan_cmd_includes_e_flags_for_grype_creds(self, tmp_path, monkeypatch):
+        _force_container_path(monkeypatch, "grype")
+        intercepted: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            intercepted.append(list(cmd))
+            (tmp_path / "grype-results.json").write_text('{"matches": []}')
+            return _completed(returncode=0)
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        config = {
+            "registry_username": "alice",
+            "registry_password": "s3cret",
+        }
+        _run_grype(
+            "registry1.example.com/myapp@sha256:" + "a" * 64,
+            tmp_path, local=False, config=config,
+        )
+
+        assert len(intercepted) == 2  # DB update + scan
+        scan_cmd = intercepted[1]
+        joined = " ".join(scan_cmd)
+        assert "-e GRYPE_REGISTRY_AUTH_USERNAME=alice" in joined
+        assert "-e GRYPE_REGISTRY_AUTH_PASSWORD=s3cret" in joined
+
+
+class TestRunSyftForwardsCredsInContainer:
+    """Syft uses its own env-var names."""
+
+    def test_cmd_includes_e_flags_for_syft_creds(self, tmp_path, monkeypatch):
+        _force_container_path(monkeypatch, "syft")
+        intercepted: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            intercepted.append(list(cmd))
+            return _completed(returncode=0)
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        config = {
+            "registry_username": "alice",
+            "registry_password": "s3cret",
+        }
+        _run_syft(
+            "registry1.example.com/myapp@sha256:" + "a" * 64,
+            tmp_path, local=False, config=config,
+        )
+
+        assert len(intercepted) == 1
+        joined = " ".join(intercepted[0])
+        assert "-e SYFT_REGISTRY_AUTH_USERNAME=alice" in joined
+        assert "-e SYFT_REGISTRY_AUTH_PASSWORD=s3cret" in joined
+
+
+class TestLocalBinaryPathReceivesCredsViaEnv:
+    """Local trivy/grype/syft inherit creds through subprocess env."""
+
+    def test_local_trivy_receives_auth_env(self, tmp_path, monkeypatch):
+        # Pretend trivy is on PATH so the container fallback is skipped.
+        monkeypatch.setattr(
+            "argus.container.scanner.shutil.which",
+            lambda name: "/usr/local/bin/trivy" if name == "trivy" else None,
+        )
+        captured_env: dict = {}
+
+        def fake_run(cmd, **kwargs):
+            captured_env.update(kwargs.get("env") or {})
+            (tmp_path / "trivy-results.json").write_text('{"Results": []}')
+            return _completed(returncode=0)
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        _run_trivy(
+            "registry1.example.com/myapp@sha256:" + "a" * 64,
+            tmp_path, local=False,
+            config={"registry_username": "alice", "registry_password": "s3cret"},
+        )
+
+        # The local-binary path used to call subprocess.run with no env
+        # argument, so resolved creds never reached trivy unless the
+        # user separately exported them. Fix: layer the auth env onto
+        # os.environ. Regression guard.
+        assert captured_env.get("TRIVY_USERNAME") == "alice"
+        assert captured_env.get("TRIVY_PASSWORD") == "s3cret"
+
+
+# ───────────────────────────────────────────────
+# Multi-registry credential map (registry_auth)
+# ───────────────────────────────────────────────
+#
+# Operators often pull from multiple registries in a single scan run
+# (Iron Bank + GHCR + ECR). And within one registry, different repo
+# paths can need different credentials (Iron Bank's restricted vs
+# open tiers, Artifactory tenants per project). The registry_auth
+# map keys credentials by registry-host + optional path prefix and
+# resolves them per-image via longest-prefix matching.
+
+
+class TestNormalizeImageRef:
+    """``_normalize_image_ref`` strips tag and digest, preserves host."""
+
+    def test_strips_digest(self):
+        assert _normalize_image_ref(
+            "registry1.dso.mil/org/repo@sha256:" + "a" * 64,
+        ) == "registry1.dso.mil/org/repo"
+
+    def test_strips_tag(self):
+        assert _normalize_image_ref(
+            "registry1.dso.mil/org/repo:1.2.3",
+        ) == "registry1.dso.mil/org/repo"
+
+    def test_strips_tag_then_digest(self):
+        assert _normalize_image_ref(
+            "registry1.dso.mil/org/repo:1.2.3@sha256:" + "b" * 64,
+        ) == "registry1.dso.mil/org/repo"
+
+    def test_preserves_host_port(self):
+        # The colon in ``localhost:5000`` is host:port, not tag.
+        # Stripping naively would lose the port.
+        assert _normalize_image_ref(
+            "localhost:5000/org/repo:1.2.3",
+        ) == "localhost:5000/org/repo"
+
+
+class TestPathComponentPrefix:
+    """``_is_path_component_prefix`` rejects string-prefix false matches."""
+
+    def test_exact_match(self):
+        assert _is_path_component_prefix(
+            "registry1.dso.mil", "registry1.dso.mil",
+        ) is True
+
+    def test_proper_prefix_with_boundary(self):
+        assert _is_path_component_prefix(
+            "registry1.dso.mil/ironbank/restricted",
+            "registry1.dso.mil/ironbank/restricted/repo",
+        ) is True
+
+    def test_string_prefix_without_boundary_rejected(self):
+        # The whole point of the helper: ``restricted`` must NOT match
+        # ``restrictedX``. A user-config typo creating that false match
+        # used to be a silent privilege-broadening bug.
+        assert _is_path_component_prefix(
+            "registry1.dso.mil/ironbank/restricted",
+            "registry1.dso.mil/ironbank/restrictedX/repo",
+        ) is False
+
+    def test_empty_prefix_never_matches(self):
+        # An empty string is technically a prefix of everything; we
+        # treat it as "no match" so missing/blank keys don't shadow
+        # real entries.
+        assert _is_path_component_prefix("", "anything") is False
+
+
+class TestResolveRegistryAuthLongestPrefix:
+    """``_resolve_registry_auth`` picks the most specific entry."""
+
+    def test_picks_specific_over_broad(self, monkeypatch):
+        monkeypatch.setenv("IB_DEFAULT_USER", "default-user")
+        monkeypatch.setenv("IB_DEFAULT_SECRET", "default-secret")
+        monkeypatch.setenv("IB_RESTRICTED_USER", "restricted-user")
+        monkeypatch.setenv("IB_RESTRICTED_SECRET", "restricted-secret")
+
+        config = {
+            "registry_auth": {
+                "registry1.dso.mil": {
+                    "username_env": "IB_DEFAULT_USER",
+                    "password_env": "IB_DEFAULT_SECRET",
+                },
+                "registry1.dso.mil/ironbank/restricted": {
+                    "username_env": "IB_RESTRICTED_USER",
+                    "password_env": "IB_RESTRICTED_SECRET",
+                },
+            },
+        }
+        username, password = _resolve_registry_auth(
+            config,
+            "registry1.dso.mil/ironbank/restricted/some-repo/image:1.2.3",
+        )
+        assert username == "restricted-user"
+        assert password == "restricted-secret"
+
+    def test_falls_back_to_broader_entry_when_path_differs(self, monkeypatch):
+        # An image under the *open* path uses the bare-host entry,
+        # not the restricted-path one.
+        monkeypatch.setenv("IB_DEFAULT_USER", "default-user")
+        monkeypatch.setenv("IB_DEFAULT_SECRET", "default-secret")
+        monkeypatch.setenv("IB_RESTRICTED_USER", "restricted-user")
+        monkeypatch.setenv("IB_RESTRICTED_SECRET", "restricted-secret")
+
+        config = {
+            "registry_auth": {
+                "registry1.dso.mil": {
+                    "username_env": "IB_DEFAULT_USER",
+                    "password_env": "IB_DEFAULT_SECRET",
+                },
+                "registry1.dso.mil/ironbank/restricted": {
+                    "username_env": "IB_RESTRICTED_USER",
+                    "password_env": "IB_RESTRICTED_SECRET",
+                },
+            },
+        }
+        username, password = _resolve_registry_auth(
+            config,
+            "registry1.dso.mil/ironbank/opensource/bigbang/podinfo@sha256:" + "a" * 64,
+        )
+        assert username == "default-user"
+        assert password == "default-secret"
+
+    def test_path_boundary_prevents_false_match(self, monkeypatch):
+        # ``restricted`` key must NOT match a sibling repo named
+        # ``restrictedX`` — that user-config typo would otherwise
+        # silently broaden auth to repos the user didn't intend.
+        monkeypatch.setenv("RESTRICTED_USER", "restricted-user")
+        monkeypatch.setenv("RESTRICTED_SECRET", "restricted-secret")
+        config = {
+            "registry_auth": {
+                "registry1.dso.mil/ironbank/restricted": {
+                    "username_env": "RESTRICTED_USER",
+                    "password_env": "RESTRICTED_SECRET",
+                },
+            },
+        }
+        username, password = _resolve_registry_auth(
+            config,
+            "registry1.dso.mil/ironbank/restrictedX/repo:1.0",
+        )
+        # No match → falls through to the bare-default (which is also
+        # unset here) → both None.
+        assert username is None
+        assert password is None
+
+    def test_falls_back_to_top_level_when_no_map_entry_matches(self, monkeypatch):
+        monkeypatch.setenv("FALLBACK_USER", "fallback-user")
+        monkeypatch.setenv("FALLBACK_SECRET", "fallback-secret")
+        config = {
+            "registry_username_env": "FALLBACK_USER",
+            "registry_password_env": "FALLBACK_SECRET",
+            "registry_auth": {
+                "ghcr.io/myorg": {
+                    "username_env": "GHCR_USER",
+                    "password_env": "GHCR_TOKEN",
+                },
+            },
+        }
+        username, password = _resolve_registry_auth(
+            config, "docker.io/library/nginx:latest",
+        )
+        # docker.io image doesn't match any map entry → bare default.
+        assert username == "fallback-user"
+        assert password == "fallback-secret"
+
+    def test_no_fallback_when_map_match_has_unresolved_env(
+        self, monkeypatch, caplog,
+    ):
+        # The privilege-broadening guard from the design doc.
+        # User set a restricted entry but forgot to export
+        # IB_RESTRICTED_SECRET. We MUST NOT silently use the bare-
+        # default creds for that restricted repo — same rule as
+        # k8s imagePullSecrets.
+        monkeypatch.setenv("FALLBACK_USER", "fallback-user")
+        monkeypatch.setenv("FALLBACK_SECRET", "fallback-secret")
+        monkeypatch.delenv("IB_RESTRICTED_USER", raising=False)
+        monkeypatch.delenv("IB_RESTRICTED_SECRET", raising=False)
+        config = {
+            "registry_username_env": "FALLBACK_USER",
+            "registry_password_env": "FALLBACK_SECRET",
+            "registry_auth": {
+                "registry1.dso.mil/ironbank/restricted": {
+                    "username_env": "IB_RESTRICTED_USER",
+                    "password_env": "IB_RESTRICTED_SECRET",
+                },
+            },
+        }
+        with caplog.at_level("WARNING"):
+            username, password = _resolve_registry_auth(
+                config,
+                "registry1.dso.mil/ironbank/restricted/repo:1.0",
+            )
+        # The matched-but-unresolved case → no creds, NOT the fallback.
+        assert username is None
+        assert password is None
+        # And the user gets a diagnostic naming the unset env var.
+        joined = " ".join(r.message for r in caplog.records)
+        assert "IB_RESTRICTED" in joined
+
+    def test_non_mapping_entry_is_skipped_with_warning(self, monkeypatch, caplog):
+        # Defensive: a malformed YAML where someone wrote
+        # ``registry1.dso.mil: token`` instead of the mapping form
+        # should warn, not crash.
+        config = {
+            "registry_auth": {
+                "registry1.dso.mil": "not-a-mapping",
+            },
+        }
+        with caplog.at_level("WARNING"):
+            username, password = _resolve_registry_auth(
+                config, "registry1.dso.mil/foo/bar:1.0",
+            )
+        assert username is None
+        assert password is None
+        joined = " ".join(r.message for r in caplog.records)
+        assert "not a mapping" in joined
+
+
+class TestRegistryAuthEnvWithImageRef:
+    """``_registry_auth_env`` integrates the map-aware resolver."""
+
+    def test_uses_per_registry_creds_when_image_ref_supplied(self, monkeypatch):
+        monkeypatch.setenv("IB_USER", "ib-user")
+        monkeypatch.setenv("IB_TOKEN", "ib-token")
+        monkeypatch.setenv("GHCR_USER", "gh-user")
+        monkeypatch.setenv("GHCR_TOKEN", "gh-token")
+        config = {
+            "registry_auth": {
+                "registry1.dso.mil": {
+                    "username_env": "IB_USER",
+                    "password_env": "IB_TOKEN",
+                },
+                "ghcr.io": {
+                    "username_env": "GHCR_USER",
+                    "password_env": "GHCR_TOKEN",
+                },
+            },
+        }
+        env_ib = _registry_auth_env(
+            config,
+            "registry1.dso.mil/foo/bar@sha256:" + "a" * 64,
+        )
+        assert env_ib["TRIVY_USERNAME"] == "ib-user"
+        assert env_ib["GRYPE_REGISTRY_AUTH_PASSWORD"] == "ib-token"
+
+        env_gh = _registry_auth_env(config, "ghcr.io/myorg/app:1.0")
+        assert env_gh["TRIVY_USERNAME"] == "gh-user"
+        assert env_gh["GRYPE_REGISTRY_AUTH_PASSWORD"] == "gh-token"
+
+    def test_skips_map_when_image_ref_is_none(self, monkeypatch):
+        # Back-compat: helper-level unit tests that exercise the
+        # single-default shape without manufacturing an image ref.
+        config = {
+            "registry_username": "alice",
+            "registry_password": "s3cret",
+            "registry_auth": {
+                # This entry must be ignored when image_ref is None.
+                "registry1.dso.mil": {
+                    "username": "ironbank-user",
+                    "password": "ironbank-token",
+                },
+            },
+        }
+        env = _registry_auth_env(config, image_ref=None)
+        assert env["TRIVY_USERNAME"] == "alice"
+        assert "ironbank-user" not in env.values()

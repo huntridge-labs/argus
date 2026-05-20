@@ -2220,3 +2220,142 @@ decisions:
       - ADR-019  # Install-from-source pattern — composite-action consumers track @VERSION refs already managed by release-it
     pr_references:
       - "(introduces the build-once-promote pipeline; replaces .github/workflows/publish-release.yml; adds the after:bump digest-injection hook and the nightly ghcr-prune workflow)"
+
+  - id: ADR-028
+    title: "Per-registry credentials for container scans via registry_auth map"
+    date: "2026-05-19"
+    status: accepted
+
+    context: |
+      The initial container-scan auth shape was a single
+      ``containers.registry_username`` / ``registry_password`` pair
+      applied to every image. Real-world setups commonly pull from
+      multiple registries in one scan (Iron Bank + GHCR + ECR is
+      typical for federal-adjacent customers), and within one
+      registry, different repo paths often require different
+      credentials (subscription tiers, IAM-per-repo, Artifactory
+      per-project tokens). A single pair forces operators to either
+      run multiple separate scans (loses unified reporting) or pick
+      the most-privileged credential and live with the
+      least-privilege violation.
+
+      Two competing UX shapes were on the table: per-image
+      credential blocks (kubectl pod-level pattern) or a host-keyed
+      map (Docker config.json / Maven mirrors / Renovate hostRules
+      pattern). Per-image is maximally explicit but duplicates
+      credentials across same-registry images and gets tedious for
+      fleets of 20+ images. Host-keyed is DRY and matches existing
+      operator mental models for ``imagePullSecrets``-style auth.
+
+    decision: |
+      Add an optional ``containers.registry_auth`` map. Keys are
+      registry-host (broad) or host/path-prefix (narrow). Image
+      resolution uses longest-path-component-prefix matching — the
+      most specific entry wins. Top-level
+      ``containers.registry_username`` / ``registry_password`` stays
+      as the implicit ``*``-wildcard default when no map entry
+      matches, so single-registry configs stay one-liners.
+
+      Two correctness rules govern the matching algorithm:
+
+      1. **Path-component boundary.** The match terminates at ``/``
+         or end-of-string. ``registry.example.com/internal/restricted``
+         matches ``.../restricted`` and ``.../restricted/repo`` but
+         NOT ``.../restrictedX/repo``. Without this guard, a typo
+         in the more-specific key would silently match a sibling
+         repo with a similar name and broaden the auth surface.
+
+      2. **No silent fallback to a broader entry.** When the
+         best-match entry's referenced env var is unset (or the
+         literal value is empty), Argus logs a WARNING naming the
+         missing variable and returns no credentials — the scan
+         attempts the registry anonymously rather than falling back
+         to a less-specific entry. Same rule k8s
+         ``imagePullSecrets`` follows: if the configured secret
+         doesn't resolve, the pull fails, it doesn't try other
+         secrets. Silently broadening auth against a repo the
+         operator explicitly marked as needing different access is
+         a privilege-misuse risk.
+
+      The top-level fallback path remains the implicit-default,
+      not a "try this if the map fails to resolve" — the no-silent-
+      fallback rule applies even when the map IS configured but the
+      matched entry doesn't resolve.
+
+    alternatives_considered:
+      - name: "Per-image credentials (kubectl-style imagePullSecrets per image entry)"
+        rejected_because: |
+          Maximum explicitness, but duplicates credentials across
+          same-registry images and creates churn whenever a registry
+          rotates a token (N image entries to update vs one map
+          entry). The host-keyed shape covers the same use case with
+          less ceremony for the common case (handful of registries,
+          dozens of images each) and degrades gracefully to per-repo
+          granularity via the path-prefix keys.
+
+      - name: "Rely entirely on ~/.docker/config.json + docker login"
+        rejected_because: |
+          Zero new config but moves state out of argus.yml and
+          requires CI steps to script ``docker login`` calls for
+          each registry. The map shape keeps declarative config self-
+          contained while still allowing ``~/.docker/config.json``
+          as a fallback path in a future enhancement.
+
+      - name: "Glob-pattern match list with order-dependent rules"
+        rejected_because: |
+          More flexible (wildcards mid-path, character classes) but
+          pays for it with order-dependence and a separate match-
+          syntax users must learn. The keyed map's "longest match
+          wins" rule is easier to document and reason about. Globs
+          can be added as a second-class fallback later if a real
+          case prefix matching can't express it surfaces.
+
+      - name: "Silent fallback to broader entry on cred resolution failure"
+        rejected_because: |
+          Convenient but defeats the point of declaring a more-
+          specific entry. If the operator wrote
+          ``registry.example.com/internal/restricted`` with its own
+          creds, silently using the bare-host default for that path
+          when the restricted env var is unset is exactly the
+          privilege-misuse the per-prefix granularity is meant to
+          prevent.
+
+    consequences:
+      positive:
+        - "Operators can scan images from N registries in one config without per-image credential ceremony."
+        - "Per-repo credential granularity for registries where it matters (subscription tiers, IAM-per-repo) without forcing it on the simple case."
+        - "Single-registry configs stay one-liners — the bare-default top-level fields still work without ever touching the map."
+        - "No silent privilege broadening when an env var is unset — Argus refuses to fall back to a less-specific entry and surfaces a WARNING naming the missing variable."
+      negative:
+        - "Two field-name schemas to remember: ``registry_username`` / ``registry_password`` at the top level vs ``username`` / ``password`` inside ``registry_auth`` entries. Documented as 'the prefix is implied by context inside an entry' but it is a small extra cognitive step."
+        - "Longest-prefix matching is a routing decision that can hide a misconfiguration (e.g. a typo in the specific entry causes a silent fall-through to the broader entry). The no-silent-fallback-on-unresolved-creds rule mitigates this for the common cred-misconfig case but cannot catch a key-typo that still happens to match a different valid entry."
+
+    implementation: |
+      - argus/container/scanner.py — new ``_normalize_image_ref``
+        (strips tag/digest, preserves host:port for ``localhost:5000``-
+        style refs), ``_is_path_component_prefix`` (boundary check),
+        and ``_resolve_registry_auth`` (longest-prefix selection with
+        the no-silent-fallback rule). ``_registry_auth_env`` gains an
+        ``image_ref`` parameter so callers can drive the matching;
+        ``_run_trivy`` / ``_run_grype`` / ``_run_syft`` thread the
+        image ref through.
+      - argus/cli.py — ``_load_container_config`` already promotes
+        legacy ``scanners.container.*`` credential fields to the
+        ``containers:`` block (ADR-028 doesn't change that
+        promotion).
+      - argus/tests/test_container_scanner_runners.py — 9 new test
+        classes covering ref normalization (host:port edge case),
+        path-component boundary (no false match on restrictedX),
+        longest-prefix selection, fallback-to-top-level when no
+        entry matches, no-fallback-when-env-unset with WARNING
+        surfaced, back-compat for image_ref=None callers.
+      - docs/config-reference.md — new "Per-registry credentials"
+        section under the ``containers`` block.
+      - argus.example.yml — commented multi-registry example.
+      - docs/troubleshooting/docker.md — new "target image fails
+        to authenticate inside the sub-scanner container" entry.
+
+    related:
+      - ADR-024  # core/secrets.py — resolve_secret precedence and stdin slot registry
+    pr_references:
+      - "(introduces containers.registry_auth + longest-prefix matching; closes #180 acceptance gap for multi-registry deployments)"

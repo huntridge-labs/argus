@@ -1559,6 +1559,27 @@ def _load_container_config(args: argparse.Namespace) -> dict:
         if isinstance(reporting_section, dict) and "keep_raw" in reporting_section:
             config["_reporting_keep_raw"] = bool(reporting_section["keep_raw"])
 
+        # Back-compat: registry credentials are documented under
+        # ``scanners.container.*`` in argus.example.yml and were the
+        # only home for them before container-scan grew first-class
+        # auth support. The canonical location going forward is the
+        # top-level ``containers:`` block, but a user who already
+        # configured creds under ``scanners.container.*`` shouldn't
+        # have their config silently stop authenticating to private
+        # registries. Promote each credential field into the
+        # container config when the canonical key isn't already set —
+        # ``containers.*`` wins when both are present.
+        scanners_section = file_config.get("scanners", {})
+        if isinstance(scanners_section, dict):
+            sc = scanners_section.get("container") or {}
+            if isinstance(sc, dict):
+                for key in (
+                    "registry_username", "registry_username_env",
+                    "registry_password", "registry_password_env",
+                ):
+                    if key in sc and key not in config:
+                        config[key] = sc[key]
+
     # CLI overrides — explicit > implicit. --image and --discover both
     # OVERWRITE the corresponding config keys so the user's intent is
     # unambiguous (and so we don't accidentally double-scan an image

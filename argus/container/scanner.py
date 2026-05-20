@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import shutil
 import tempfile
 from dataclasses import dataclass, field
@@ -13,6 +14,258 @@ from argus.scanners.container import ContainerScanner
 from .discovery import ContainerTarget
 
 logger = logging.getLogger("argus.container")
+
+
+def _normalize_image_ref(ref: str) -> str:
+    """Return the ``host/path`` portion of an image ref, stripping tag + digest.
+
+    Examples:
+      ``registry1.dso.mil/org/repo@sha256:abc``    → ``registry1.dso.mil/org/repo``
+      ``registry1.dso.mil/org/repo:1.2.3``          → ``registry1.dso.mil/org/repo``
+      ``localhost:5000/org/repo:1.2.3@sha256:abc`` → ``localhost:5000/org/repo``
+
+    Only the LAST path component's ``:`` and ``@`` are stripped, so a
+    host that includes a port (``localhost:5000``) keeps its port —
+    the colon in the first path component is part of the host, not a
+    tag separator.
+    """
+    parts = ref.split("/")
+    last = parts[-1]
+    last = last.split("@", 1)[0]
+    last = last.split(":", 1)[0]
+    parts[-1] = last
+    return "/".join(parts)
+
+
+def _is_path_component_prefix(prefix: str, full: str) -> bool:
+    """True iff ``prefix`` is a path-component prefix of ``full``.
+
+    The boundary check rules out string-prefix false matches:
+    ``registry1.dso.mil/ironbank/restricted`` matches
+    ``registry1.dso.mil/ironbank/restricted/foo`` but NOT
+    ``registry1.dso.mil/ironbank/restrictedX/foo``. Without this guard
+    a typo in the more-specific key would silently match a sibling
+    repo with similar name.
+    """
+    if not prefix:
+        return False
+    if full == prefix:
+        return True
+    return full.startswith(prefix + "/")
+
+
+def _resolve_user_pass(
+    config: dict,
+    user_field: str = "registry_username",
+    pass_field: str = "registry_password",
+) -> tuple[str | None, str | None]:
+    """Resolve a username/password field pair via the shared secrets resolver.
+
+    Honors ``*_env`` env-var references, literal forms, and the
+    ``--registry-password-stdin`` slot in precedence order — matching
+    every other credential-bearing scanner in argus.
+
+    The defaults (``registry_username`` / ``registry_password``) match
+    the top-of-``containers``-block shortcut shape. Per-registry
+    entries inside ``registry_auth`` use the prefix-less ``username``
+    / ``password`` field names (the ``registry_`` prefix is implied
+    by context); callers pass those as the optional field-name
+    arguments.
+    """
+    from argus.core.secrets import get_stdin_override, resolve_secret
+
+    username = resolve_secret(config, user_field)
+    password = resolve_secret(
+        config, pass_field,
+        stdin_override=get_stdin_override("registry_password"),
+    )
+    return username, password
+
+
+def _resolve_registry_auth(
+    config: dict, image_ref: str,
+) -> tuple[str | None, str | None]:
+    """Resolve (username, password) for ``image_ref`` using the config.
+
+    Matching order:
+
+    1. Walk ``containers.registry_auth`` for keys that are
+       path-component prefixes of the normalized ``image_ref``.
+       The LONGEST matching key wins (most specific entry).
+       ``registry1.dso.mil/ironbank/restricted`` beats
+       ``registry1.dso.mil`` when both match.
+    2. If no map entry matches, fall through to the top-level
+       ``registry_username`` / ``registry_password`` fields — the
+       legacy single-default shape, still supported as a shortcut
+       for "use these creds for every image."
+    3. If a map entry matches but its credentials resolve to
+       ``None`` (typically because the referenced env var is
+       unset), surface a WARNING naming the missing env var and
+       return ``(None, None)``. We deliberately do NOT fall back
+       to the bare-default in this case — silently broadening the
+       auth surface against a repo the user explicitly marked as
+       needing different creds is a privilege-misuse risk. Same
+       rule k8s ``imagePullSecrets`` follows: if the configured
+       secret doesn't resolve, the pull fails, it doesn't try
+       other secrets.
+    """
+    auth_map = config.get("registry_auth") or {}
+    normalized = _normalize_image_ref(image_ref)
+
+    best_key: str | None = None
+    for key in auth_map:
+        if not isinstance(key, str):
+            continue
+        if _is_path_component_prefix(key, normalized):
+            if best_key is None or len(key) > len(best_key):
+                best_key = key
+
+    if best_key is None:
+        # No specific match → bare-default shortcut at top of containers block.
+        return _resolve_user_pass(config)
+
+    entry = auth_map[best_key]
+    if not isinstance(entry, dict):
+        logger.warning(
+            "registry_auth[%r] is not a mapping; skipping (got %s)",
+            best_key, type(entry).__name__,
+        )
+        return None, None
+
+    username, password = _resolve_user_pass(
+        entry, user_field="username", pass_field="password",
+    )
+
+    if (entry.get("username_env") or entry.get("username")) and not username:
+        logger.warning(
+            "registry_auth[%s]: username unresolved (check that %s is exported)",
+            best_key, entry.get("username_env", "the configured env var"),
+        )
+    if (entry.get("password_env") or entry.get("password")) and not password:
+        logger.warning(
+            "registry_auth[%s]: password unresolved (check that %s is exported)",
+            best_key, entry.get("password_env", "the configured env var"),
+        )
+
+    return username, password
+
+
+def _registry_auth_env(
+    config: dict | None, image_ref: str | None = None,
+) -> dict[str, str]:
+    """Resolve registry credentials and map them to per-tool env vars.
+
+    Reads from one of two locations under ``config``:
+
+    * ``registry_auth`` — a registry/path-prefix-keyed map of
+      credential blocks (preferred for multi-registry setups). The
+      best match for ``image_ref`` (longest path-component prefix)
+      provides the credentials.
+    * ``registry_username`` / ``registry_password`` at the top of
+      the config — the legacy single-default shape, used when no
+      map entry matches.
+
+    The resolved values are mapped to the env-var names each
+    sub-scanner natively reads for registry auth (``TRIVY_USERNAME`` /
+    ``TRIVY_PASSWORD`` for Trivy,
+    ``GRYPE_REGISTRY_AUTH_USERNAME`` / ``GRYPE_REGISTRY_AUTH_PASSWORD``
+    for Grype, ``SYFT_REGISTRY_AUTH_USERNAME`` /
+    ``SYFT_REGISTRY_AUTH_PASSWORD`` for Syft). Returning the same value
+    under multiple tool-specific names is deliberate: every
+    ``docker run`` invocation forwards the full set, and each
+    sub-scanner ignores names it doesn't recognize. That keeps the
+    call sites identical and avoids per-tool branching on every
+    cmd build.
+
+    ``image_ref=None`` skips the registry-map path entirely — used by
+    helper-level unit tests that exercise the single-default shape
+    without manufacturing an image ref.
+
+    Returns an empty dict when no credentials are configured —
+    callers treat that as "anonymous pull" and emit no ``-e`` flags.
+    """
+    if not config:
+        return {}
+
+    if image_ref is not None:
+        username, password = _resolve_registry_auth(config, image_ref)
+    else:
+        username, password = _resolve_user_pass(config)
+
+    env: dict[str, str] = {}
+    if username:
+        env["TRIVY_USERNAME"] = username
+        env["GRYPE_REGISTRY_AUTH_USERNAME"] = username
+        env["SYFT_REGISTRY_AUTH_USERNAME"] = username
+    if password:
+        env["TRIVY_PASSWORD"] = password
+        env["GRYPE_REGISTRY_AUTH_PASSWORD"] = password
+        env["SYFT_REGISTRY_AUTH_PASSWORD"] = password
+    return env
+
+
+def _docker_env_flags(env: dict[str, str]) -> list[str]:
+    """Convert an env dict to ``-e VAR=value`` flags for ``docker run``.
+
+    ``docker run`` doesn't auto-forward host env vars into the
+    container; each one needs an explicit ``-e`` flag. We use the
+    ``VAR=value`` inline form so the resolved value travels with the
+    flag — name-only forwarding (``-e VAR``) would require the caller
+    to also configure the host env var.
+    """
+    flags: list[str] = []
+    for k, v in env.items():
+        flags += ["-e", f"{k}={v}"]
+    return flags
+
+
+def _subprocess_env(auth_env: dict[str, str]) -> dict[str, str] | None:
+    """Build the env dict for ``subprocess.run`` covering the local-binary path.
+
+    Locally-installed Trivy / Grype / Syft read their credential env
+    vars from the parent process's environment. When ``auth_env`` is
+    non-empty we layer it on top of ``os.environ`` so the resolved
+    credentials reach the subprocess even if the user hasn't exported
+    the tool-specific names themselves. ``None`` lets ``subprocess.run``
+    inherit the host environment unchanged — the historical behavior.
+    """
+    if not auth_env:
+        return None
+    return {**os.environ, **auth_env}
+
+
+def _redact_cmd_for_log(cmd: list[str]) -> str:
+    """Return a debug-friendly string of a ``docker run`` argv with
+    credential values masked.
+
+    Operates on the flat ``-e VAR=value`` pairs produced by
+    ``_docker_env_flags``. Anything other than the credential env vars
+    we recognize is passed through untouched so the user can still
+    inspect mount paths, image refs, and scanner flags. We mask the
+    value, not the variable name — debugging is impossible without
+    being able to see which vars are present.
+    """
+    safe: list[str] = []
+    skip_next = False
+    creds = {
+        "TRIVY_USERNAME", "TRIVY_PASSWORD",
+        "GRYPE_REGISTRY_AUTH_USERNAME", "GRYPE_REGISTRY_AUTH_PASSWORD",
+        "SYFT_REGISTRY_AUTH_USERNAME", "SYFT_REGISTRY_AUTH_PASSWORD",
+    }
+    for i, token in enumerate(cmd):
+        if skip_next:
+            skip_next = False
+            continue
+        if token == "-e" and i + 1 < len(cmd) and "=" in cmd[i + 1]:
+            name, _, value = cmd[i + 1].partition("=")
+            if name in creds:
+                safe.append(f"-e {name}=***REDACTED***")
+            else:
+                safe.append(f"-e {name}={value}")
+            skip_next = True
+        else:
+            safe.append(token)
+    return " ".join(safe)
 
 # Shared parser instance — reuses ContainerScanner's parsing logic
 _parser = ContainerScanner()
@@ -192,7 +445,7 @@ def scan_image(
         if "trivy" in scanners:
             try:
                 trivy_findings = _run_trivy(
-                    target.image_ref, tmp_path, local=is_local,
+                    target.image_ref, tmp_path, local=is_local, config=cfg,
                 )
             except RuntimeError as exc:
                 logger.error("trivy scan failed for %s: %s", target.image_ref, exc)
@@ -201,14 +454,14 @@ def scan_image(
         if "grype" in scanners:
             try:
                 grype_findings = _run_grype(
-                    target.image_ref, tmp_path, local=is_local,
+                    target.image_ref, tmp_path, local=is_local, config=cfg,
                 )
             except RuntimeError as exc:
                 logger.error("grype scan failed for %s: %s", target.image_ref, exc)
                 scanner_errors["grype"] = str(exc)
 
         if sbom and "syft" not in scanners:
-            _run_syft(target.image_ref, tmp_path)
+            _run_syft(target.image_ref, tmp_path, local=is_local, config=cfg)
 
         # Attack-surface sub-scanners. They take an image ref + a
         # config dict, run locally (no DB pulls), and return
@@ -428,6 +681,7 @@ def _validate_scanner_output(
 
 def _run_trivy(
     image_ref: str, tmp_path: Path, local: bool = False,
+    config: dict | None = None,
 ) -> list[Finding]:
     """Run trivy and parse results.
 
@@ -458,6 +712,10 @@ def _run_trivy(
         use_container = True
         logger.info("Running trivy via container: %s", image)
 
+    # Resolve registry credentials. Empty for locally-built images
+    # (no registry pull needed) or when no creds are configured.
+    auth_env = {} if local else _registry_auth_env(config, image_ref)
+
     if use_container:
         from argus import container_runtime
         from argus.containers import get_image
@@ -481,8 +739,10 @@ def _run_trivy(
                 db_result.returncode,
             )
 
-        # Run actual scan with --skip-db-update (DB already warm)
-        cmd = [rt, "run", "--rm"] + vol_args + [
+        # Run actual scan with --skip-db-update (DB already warm). Cred
+        # flags go on the scan step only; DB download pulls from public
+        # ghcr.io and doesn't need (or use) registry auth.
+        cmd = [rt, "run", "--rm"] + _docker_env_flags(auth_env) + vol_args + [
             image,
             "image", "--format", "json",
             "--output", "/output/trivy-results.json",
@@ -501,9 +761,11 @@ def _run_trivy(
             cmd.extend(["--image-src", "remote"])
         cmd.append(image_ref)
 
+    logger.debug("trivy invocation: %s", _redact_cmd_for_log(cmd))
     try:
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=600,
+            env=_subprocess_env(auth_env),
         )
     except subprocess.TimeoutExpired:
         logger.error("trivy timed out scanning %s", image_ref)
@@ -531,6 +793,7 @@ def _run_trivy(
 
 def _run_grype(
     image_ref: str, tmp_path: Path, local: bool = False,
+    config: dict | None = None,
 ) -> list[Finding]:
     """Run grype and parse results.
 
@@ -571,10 +834,22 @@ def _run_grype(
     #       and resolved against the local daemon, not mis-parsed as
     #       a scheme request.
     #
-    # For remote (registry) scans we leave the ref untouched — that
-    # path was working before, and forcing a local-daemon source for
-    # an image that doesn't exist locally would itself break.
-    grype_target = f"docker:{image_ref}" if local else image_ref
+    # Grype's CLI defaults to the local-daemon source even for refs
+    # that obviously can't exist on the daemon (digest-pinned remote
+    # images, registry-prefixed names). When running inside the
+    # ``anchore/grype`` container we have no docker.sock and no
+    # podman either, so the daemon path fails immediately and Grype
+    # never falls back to the ``registry:`` source on its own.
+    # Force the registry source explicitly for remote scans — that's
+    # the source that consults ``GRYPE_REGISTRY_AUTH_*`` for auth.
+    if local:
+        grype_target = f"docker:{image_ref}"
+    else:
+        grype_target = f"registry:{image_ref}"
+
+    # Resolve registry credentials. Empty for locally-built images
+    # (no registry pull needed) or when no creds are configured.
+    auth_env = {} if local else _registry_auth_env(config, image_ref)
 
     if use_container:
         from argus import container_runtime
@@ -596,7 +871,9 @@ def _run_grype(
                 db_result.returncode,
             )
 
-        cmd = [rt, "run", "--rm"] + vol_args + [
+        # Cred flags on the scan step only — the DB update pulls from
+        # public sources and ignores registry auth.
+        cmd = [rt, "run", "--rm"] + _docker_env_flags(auth_env) + vol_args + [
             image, grype_target,
             "-o", "json",
             "--file", "/output/grype-results.json",
@@ -608,9 +885,11 @@ def _run_grype(
             "--file", str(output_file),
         ]
 
+    logger.debug("grype invocation: %s", _redact_cmd_for_log(cmd))
     try:
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=600,
+            env=_subprocess_env(auth_env),
         )
     except subprocess.TimeoutExpired:
         logger.error("grype timed out scanning %s", image_ref)
@@ -641,7 +920,10 @@ def _run_grype(
         raise RuntimeError(f"grype output parse error: {exc}") from exc
 
 
-def _run_syft(image_ref: str, tmp_path: Path) -> None:
+def _run_syft(
+    image_ref: str, tmp_path: Path,
+    local: bool = False, config: dict | None = None,
+) -> None:
     """Run syft to generate an SBOM (best-effort).
 
     Tries local binary first, falls back to Docker container image.
@@ -649,6 +931,11 @@ def _run_syft(image_ref: str, tmp_path: Path) -> None:
     import subprocess
 
     output_file = tmp_path / "syft-sbom.json"
+
+    # Resolve registry credentials. Empty for locally-built images
+    # (Syft reads them through docker.sock, no registry pull) or when
+    # no creds are configured.
+    auth_env = {} if local else _registry_auth_env(config, image_ref)
 
     if shutil.which("syft") is None:
         from argus import container_runtime
@@ -666,7 +953,7 @@ def _run_syft(image_ref: str, tmp_path: Path) -> None:
         rt = container_runtime.runtime_cmd()
         # Syft needs docker.sock to read local images
         vol_args = _container_vol_args(tmp_path, "syft", mount_docker_sock=True)
-        cmd = [rt, "run", "--rm"] + vol_args + [
+        cmd = [rt, "run", "--rm"] + _docker_env_flags(auth_env) + vol_args + [
             image,
             image_ref,
             "-o", "cyclonedx-json",
@@ -680,7 +967,10 @@ def _run_syft(image_ref: str, tmp_path: Path) -> None:
         ]
 
     try:
-        subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        subprocess.run(
+            cmd, capture_output=True, text=True, timeout=300,
+            env=_subprocess_env(auth_env),
+        )
     except subprocess.TimeoutExpired:
         logger.warning("syft timed out generating SBOM for %s", image_ref)
     except FileNotFoundError:
