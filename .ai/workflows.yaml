@@ -87,7 +87,7 @@ user_workflows:
     category: scanning
     sdk_command: "python -m argus scan bandit --severity-threshold high"
     action_code: |
-      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.1.0
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.2.0
         with:
           path: src/
           fail_on_severity: high
@@ -174,7 +174,7 @@ user_workflows:
               with:
                 fetch-depth: 0  # Required for git diff
 
-            - uses: huntridge-labs/argus/.github/actions/scn-detector@1.1.0
+            - uses: huntridge-labs/argus/.github/actions/scn-detector@1.2.0
               env:
                 GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                 ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

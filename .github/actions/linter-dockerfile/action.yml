@@ -9,7 +9,7 @@ description: |
   **Usage Example:**
   ```yaml
   - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-  - uses: huntridge-labs/argus/.github/actions/linter-dockerfile@1.1.0
+  - uses: huntridge-labs/argus/.github/actions/linter-dockerfile@1.2.0
     with:
       fail_on_issues: false
   ```
@@ -126,7 +126,7 @@ runs:
 
     - name: Comment PR with Dockerfile lint results
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@1.1.0
+      uses: huntridge-labs/argus/.github/actions/comment-pr@1.2.0
       with:
         summary_file: scanner-summaries/dockerfile-lint.md
         comment_marker: dockerfile-linter-comment-marker

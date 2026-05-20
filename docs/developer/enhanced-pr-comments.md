@@ -38,7 +38,7 @@ Pass a custom title and marker to the composite to carve out your own
 comment thread (for example, a compliance-only view):
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/security-summary@1.1.0
+- uses: huntridge-labs/argus/.github/actions/security-summary@1.2.0
   with:
     title: '🛡️ Compliance Scan Summary'
     comment_marker: 'compliance-scan-comment-marker'

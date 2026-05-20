@@ -91,7 +91,7 @@ jobs:
 
       - name: Comment PR with results
         if: github.event_name == 'pull_request' && inputs.post_pr_comment
-        uses: huntridge-labs/argus/.github/actions/comment-pr@1.1.0
+        uses: huntridge-labs/argus/.github/actions/comment-pr@1.2.0
         with:
           summary_file: ./argus-results/argus-results.md
           comment_marker: clamav-scanner-comment-marker

@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.2.0](https://github.com/huntridge-labs/argus/compare/1.1.0...1.2.0) (2026-05-20)
+
+### Features
+
+* **container:** per-registry credential map for multi-registry auth ([b177c72](https://github.com/huntridge-labs/argus/commit/b177c72dc6833705c323ef2ec2393e9556ecd44c))
+* **execution:** per-upstream registry mirrors via registry_map (closes [#178](https://github.com/huntridge-labs/argus/issues/178)) ([#179](https://github.com/huntridge-labs/argus/issues/179)) ([e36c39c](https://github.com/huntridge-labs/argus/commit/e36c39ccbfa2ab8944b11c556f736dd169eb1eba))
+
+### Bug Fixes
+
+* **config:** reject duplicate keys in argus.yml at load time (closes [#177](https://github.com/huntridge-labs/argus/issues/177)) ([#183](https://github.com/huntridge-labs/argus/issues/183)) ([b7ee308](https://github.com/huntridge-labs/argus/commit/b7ee3083b804e990d402326a8e4cd604dc5f1cd2))
+* **container:** force Grype registry: source + log redacted cmd argv ([2a0a1d5](https://github.com/huntridge-labs/argus/commit/2a0a1d5feb23f463db70c4ea0231973ef745eee8)), closes [#180](https://github.com/huntridge-labs/argus/issues/180)
+* **container:** forward registry credentials to Trivy/Grype/Syft sub-scanners ([f7618da](https://github.com/huntridge-labs/argus/commit/f7618da19cb9bb0782b63e5f3c5afdb26e782d10)), closes [#180](https://github.com/huntridge-labs/argus/issues/180)
+* **security:** mitigate dogfood-scan findings (bandit B103/B310, lodash OSV) ([#175](https://github.com/huntridge-labs/argus/issues/175)) ([6c02a84](https://github.com/huntridge-labs/argus/commit/6c02a8444afb9a008ddd2211232b379aa163f44e))
+* **update-check:** suppress bogus "1.1.0 → 1.0.1" downgrade notice (closes [#174](https://github.com/huntridge-labs/argus/issues/174)) ([#176](https://github.com/huntridge-labs/argus/issues/176)) ([3c93c52](https://github.com/huntridge-labs/argus/commit/3c93c521a6ef36972e75225b59f6b7f123a8fda7)), closes [#168-N](https://github.com/huntridge-labs/argus/issues/168-N)
+
+### Security Tools
+
+* **deps:** bump clamav digest to track upstream 1.5 republish ([#181](https://github.com/huntridge-labs/argus/issues/181)) ([700f91d](https://github.com/huntridge-labs/argus/commit/700f91d8878b7023ea38b7ba6b33e21cc3aab555))
+
+### Maintenance
+
+* **container:** demote invocation logs from INFO to DEBUG ([7873e38](https://github.com/huntridge-labs/argus/commit/7873e3888ee4022fd9e9e0c954914b732b1413e9))
+
+
 ## [1.1.0](https://github.com/huntridge-labs/argus/compare/1.0.1...1.1.0) (2026-05-17)
 
 ### Features
