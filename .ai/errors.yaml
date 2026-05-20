@@ -119,6 +119,49 @@ error_patterns:
           how: "fail_on_severity: critical reduces findings count"
 
   # ==============================================================================
+  # CONFIGURATION ERRORS
+  # ==============================================================================
+
+  - pattern: "Invalid YAML.*found duplicate key"
+    category: configuration
+    context: |
+      argus.yml has the same mapping key defined twice (e.g. two
+      ``execution:`` blocks, or ``enabled`` listed twice under one
+      scanner). PyYAML's default loader silently keeps the last
+      value; argus's strict loader rejects the file at load time
+      so the user's earlier settings can't be silently dropped.
+
+    root_cause: |
+      A YAML mapping can only legally have each key once. When the
+      same key appears twice at the same nesting level — at the
+      top of argus.yml, inside ``scanners.<name>``, anywhere — the
+      second occurrence overrides the first. Pre-fix behavior:
+      validation passed, scan silently used only the second
+      definition. Post-fix behavior: argus.core.config's
+      StrictSafeLoader raises a YAMLError naming the duplicated
+      key and the line of the second occurrence.
+
+    solution:
+      steps:
+        - "Open the file at the line named in the error message"
+        - "Merge the two blocks into one — choose which value should win, write it once"
+        - "Re-run ``argus validate`` to confirm"
+      example: |
+        # WRONG — silently drops the registry setting
+        execution:
+          registry: registry.internal.corp/argus
+          backend: docker
+        execution:
+          backend: docker
+
+        # RIGHT — single block
+        execution:
+          registry: registry.internal.corp/argus
+          backend: docker
+
+    reference: "argus/core/config.py::StrictSafeLoader"
+
+  # ==============================================================================
   # CONTAINER SCANNING ERRORS
   # ==============================================================================
 

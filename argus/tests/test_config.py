@@ -240,3 +240,113 @@ class TestExecutionConfig:
         config = ArgusConfig.load(config_file)
         assert config.execution.backend == "local"
         assert config.execution.pull_policy == "never"
+
+
+# ───────────────────────────────────────────────
+# Strict YAML loader — duplicate-key detection (#177)
+# ───────────────────────────────────────────────
+#
+# PyYAML's default mapping constructor silently keeps the last value
+# when a key is duplicated. For argus.yml that means a second
+# ``execution:`` block (or any other accidental duplication at any
+# nesting level) overwrites the user's earlier settings — the schema
+# validator never sees the conflict and reports the config valid.
+# load_strict_yaml catches the duplication at parse time.
+
+
+class TestStrictYamlLoaderRejectsDuplicateKeys:
+    """``load_strict_yaml`` raises a YAMLError on any duplicate key."""
+
+    def test_top_level_duplicate_raises(self):
+        from argus.core.config import load_strict_yaml
+        import yaml
+
+        text = (
+            "version: \"1.0\"\n"
+            "execution:\n"
+            "  registry: registry.internal.corp/argus\n"
+            "  backend: docker\n"
+            "execution:\n"
+            "  backend: docker\n"
+        )
+        with pytest.raises(yaml.YAMLError) as excinfo:
+            load_strict_yaml(text)
+        # Message must name the duplicated key + the line of the
+        # second occurrence so the user can find it in their editor.
+        msg = str(excinfo.value)
+        assert "duplicate key 'execution'" in msg
+        assert "line 5" in msg
+
+    def test_nested_duplicate_raises(self):
+        # The same constructor override applies at every nesting
+        # level — PyYAML calls construct_mapping for every mapping
+        # node, not just the root.
+        from argus.core.config import load_strict_yaml
+        import yaml
+
+        text = (
+            "scanners:\n"
+            "  bandit:\n"
+            "    enabled: true\n"
+            "    enabled: false\n"
+        )
+        with pytest.raises(yaml.YAMLError) as excinfo:
+            load_strict_yaml(text)
+        msg = str(excinfo.value)
+        assert "duplicate key 'enabled'" in msg
+        assert "line 4" in msg
+
+    def test_unique_keys_load_normally(self):
+        # Regression guard: the strict loader must NOT change behavior
+        # for well-formed config — same dict the default safe_load
+        # would have produced.
+        from argus.core.config import load_strict_yaml
+
+        text = (
+            "version: \"1.0\"\n"
+            "scanners:\n"
+            "  bandit:\n"
+            "    enabled: true\n"
+            "  gitleaks:\n"
+            "    enabled: false\n"
+            "execution:\n"
+            "  backend: docker\n"
+        )
+        data = load_strict_yaml(text)
+        assert data["version"] == "1.0"
+        assert data["scanners"]["bandit"]["enabled"] is True
+        assert data["scanners"]["gitleaks"]["enabled"] is False
+        assert data["execution"]["backend"] == "docker"
+
+    def test_argus_config_load_surfaces_duplicate_as_value_error(
+        self, tmp_path,
+    ):
+        # End-to-end: ArgusConfig.load wraps the YAMLError in a clean
+        # ValueError that names the file so the user can pin the
+        # error without seeing a PyYAML traceback.
+        config_file = tmp_path / "argus.yml"
+        config_file.write_text(
+            "version: \"1.0\"\n"
+            "execution:\n"
+            "  backend: docker\n"
+            "execution:\n"
+            "  backend: local\n"
+        )
+        with pytest.raises(ValueError) as excinfo:
+            ArgusConfig.load(config_file)
+        msg = str(excinfo.value)
+        assert "Invalid YAML" in msg
+        assert str(config_file) in msg
+        assert "duplicate key 'execution'" in msg
+
+    def test_unhashable_key_is_reported_not_silently_ignored(self):
+        # Defensive guard for an exotic case: a mapping key that
+        # isn't hashable (e.g. a flow-style list used as a key) would
+        # crash the default constructor with a confusing TypeError.
+        # The strict loader reports it as a normal YAML error.
+        from argus.core.config import load_strict_yaml
+        import yaml
+
+        text = "? [a, b]\n: value\n"
+        with pytest.raises(yaml.YAMLError):
+            load_strict_yaml(text)
