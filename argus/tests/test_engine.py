@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from argus.core.config import ArgusConfig, ScannerConfig
-from argus.core.engine import ArgusEngine
+from argus.core.engine import ArgusEngine, _split_upstream
 from argus.core.models import Finding, ScanResult, Severity, ScanSummary
 
 
@@ -189,14 +189,64 @@ class TestArgusEngine:
         assert summary.results[0].total_count == 0
 
 
+class TestSplitUpstream:
+    """Pin the host-parsing heuristic that drives ``registry_map``
+    routing (issue #178). Mirrors Docker's reference grammar — the
+    first slash-segment is treated as a host only when it contains a
+    ``.`` / ``:`` or equals ``localhost``; otherwise the reference is
+    bare-name Docker Hub."""
+
+    def test_bare_name_routes_to_docker_io(self):
+        assert _split_upstream("aquasec/trivy:0.70.0") == (
+            "docker.io", "aquasec/trivy:0.70.0",
+        )
+
+    def test_explicit_docker_io_host_stripped(self):
+        assert _split_upstream("docker.io/aquasec/trivy:0.70.0") == (
+            "docker.io", "aquasec/trivy:0.70.0",
+        )
+
+    def test_ghcr_host_recognised(self):
+        assert _split_upstream("ghcr.io/google/osv-scanner:v2.3.6") == (
+            "ghcr.io", "google/osv-scanner:v2.3.6",
+        )
+
+    def test_digest_pin_travels_with_path(self):
+        # The digest must stay attached to the path for the rewritten
+        # reference to keep content-addressable verification.
+        upstream, path = _split_upstream(
+            "ghcr.io/google/osv-scanner:v2.3.6@sha256:deadbeef",
+        )
+        assert upstream == "ghcr.io"
+        assert path.endswith("@sha256:deadbeef")
+
+    def test_quay_io_routed_as_host(self):
+        assert _split_upstream("quay.io/foo/bar:tag") == (
+            "quay.io", "foo/bar:tag",
+        )
+
+    def test_localhost_with_port_recognised(self):
+        # ``localhost:5000/...`` is a common dev-loop registry shape
+        # — Docker's grammar special-cases ``localhost`` (no dots) so
+        # we match.
+        assert _split_upstream("localhost:5000/dev/img:latest") == (
+            "localhost:5000", "dev/img:latest",
+        )
+
+    def test_single_segment_treated_as_docker_io(self):
+        # No slash at all — ``redis:7`` is a Docker Hub library image.
+        assert _split_upstream("redis:7") == ("docker.io", "redis:7")
+
+
 class TestDockerExecutionBackend:
     """Test Docker execution fallback logic."""
 
-    def _make_engine(self, backend="auto", registry=""):
+    def _make_engine(self, backend="auto", registry="", registry_map=None):
         data = {
             "execution": {
                 "backend": backend,
                 "registry": registry,
+                "registry_map": registry_map or {},
             },
         }
         return ArgusEngine(ArgusConfig.from_dict(data))
@@ -318,6 +368,125 @@ class TestDockerExecutionBackend:
         engine = self._make_engine()
         scanner = MockScanner("container", container_image="")
         assert engine._resolve_image(scanner) == ""
+
+    # ──────────────────────────────────────────────────────────────
+    # registry_map — per-upstream mirroring (issue #178)
+    # ──────────────────────────────────────────────────────────────
+
+    def test_registry_map_routes_docker_hub_image(self):
+        """A bare-name Docker Hub image (``aquasec/trivy:tag``) resolves
+        through the ``docker.io`` mirror entry. The path under the
+        mirror preserves the upstream repo layout — matches how Harbor
+        proxy-cache projects actually mirror."""
+        engine = self._make_engine(registry_map={
+            "docker.io": "harbor.example.com/dockerhub-cache",
+            "ghcr.io": "harbor.example.com/ghcr-cache",
+        })
+        scanner = MockScanner("trivy", container_image="aquasec/trivy:0.70.0")
+        assert engine._resolve_image(scanner) == (
+            "harbor.example.com/dockerhub-cache/aquasec/trivy:0.70.0"
+        )
+
+    def test_registry_map_routes_ghcr_image_with_digest(self):
+        """GHCR image with ``@sha256:`` digest pin routes through the
+        ``ghcr.io`` mirror entry. The digest stays attached to the
+        rewritten path so content verification still gates the pull —
+        the same property that makes the existing flat-rewrite safe."""
+        engine = self._make_engine(registry_map={
+            "ghcr.io": "harbor.example.com/ghcr-cache",
+        })
+        scanner = MockScanner(
+            "osv",
+            container_image="ghcr.io/google/osv-scanner:v2.3.6@sha256:abc123",
+        )
+        assert engine._resolve_image(scanner) == (
+            "harbor.example.com/ghcr-cache/google/osv-scanner:v2.3.6@sha256:abc123"
+        )
+
+    def test_registry_map_unmapped_upstream_falls_back_to_legacy_registry(self):
+        """Partial map (``docker.io`` only) + legacy ``registry`` set
+        should mirror Docker Hub via the map and rewrite everything
+        else via the legacy flat-registry path. Closes the migration
+        gap for users moving from ``registry`` to ``registry_map``."""
+        engine = self._make_engine(
+            registry="harbor.example.com/fallback",
+            registry_map={
+                "docker.io": "harbor.example.com/dockerhub-cache",
+            },
+        )
+        # docker.io image routes through the map.
+        dh_scanner = MockScanner("trivy", container_image="aquasec/trivy:tag")
+        assert engine._resolve_image(dh_scanner) == (
+            "harbor.example.com/dockerhub-cache/aquasec/trivy:tag"
+        )
+        # ghcr.io image is NOT in the map — falls through to legacy.
+        ghcr_scanner = MockScanner(
+            "osv", container_image="ghcr.io/google/osv-scanner:v2.3.6",
+        )
+        assert engine._resolve_image(ghcr_scanner) == (
+            "harbor.example.com/fallback/google/osv-scanner:v2.3.6"
+        )
+
+    def test_registry_map_unmapped_with_no_legacy_leaves_image_untouched(self):
+        """``registry_map`` without a matching upstream and no legacy
+        ``registry`` returns the original reference. A partial map
+        must NOT silently break unmapped upstreams — issue #178."""
+        engine = self._make_engine(registry_map={
+            "docker.io": "harbor.example.com/dockerhub-cache",
+        })
+        scanner = MockScanner(
+            "osv", container_image="ghcr.io/google/osv-scanner:v2.3.6",
+        )
+        assert engine._resolve_image(scanner) == (
+            "ghcr.io/google/osv-scanner:v2.3.6"
+        )
+
+    def test_registry_map_wins_over_legacy_registry(self):
+        """Both ``registry`` and ``registry_map`` set, and the image's
+        upstream IS in the map → map wins. Existing single-mirror
+        users adopting ``registry_map`` for one upstream don't see
+        their legacy setting double-apply."""
+        engine = self._make_engine(
+            registry="harbor.example.com/legacy",
+            registry_map={
+                "ghcr.io": "harbor.example.com/ghcr-cache",
+            },
+        )
+        scanner = MockScanner(
+            "osv", container_image="ghcr.io/google/osv-scanner:v2.3.6",
+        )
+        assert engine._resolve_image(scanner) == (
+            "harbor.example.com/ghcr-cache/google/osv-scanner:v2.3.6"
+        )
+
+    def test_registry_map_handles_explicit_docker_io_host(self):
+        """``docker.io/aquasec/trivy:tag`` (explicit host) routes the
+        same way as the bare-name shorthand. Argus's pinned images use
+        bare-name, but third-party tooling sometimes writes the
+        explicit form."""
+        engine = self._make_engine(registry_map={
+            "docker.io": "harbor.example.com/dockerhub-cache",
+        })
+        scanner = MockScanner(
+            "trivy", container_image="docker.io/aquasec/trivy:0.70.0",
+        )
+        assert engine._resolve_image(scanner) == (
+            "harbor.example.com/dockerhub-cache/aquasec/trivy:0.70.0"
+        )
+
+    def test_registry_map_trailing_slash_on_mirror_normalised(self):
+        """A user-provided mirror with a trailing slash must not
+        produce a double-slash path — Docker tolerates it but Harbor
+        and a few other registries reject the malformed ref."""
+        engine = self._make_engine(registry_map={
+            "ghcr.io": "harbor.example.com/ghcr-cache/",
+        })
+        scanner = MockScanner(
+            "osv", container_image="ghcr.io/google/osv-scanner:v2.3.6",
+        )
+        assert engine._resolve_image(scanner) == (
+            "harbor.example.com/ghcr-cache/google/osv-scanner:v2.3.6"
+        )
 
     def test_docker_backend_no_image_raises(self):
         engine = self._make_engine(backend="docker")

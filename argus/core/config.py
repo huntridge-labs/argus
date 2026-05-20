@@ -33,7 +33,20 @@ class ExecutionConfig:
     """
 
     backend: str = "auto"  # auto | local | docker
-    registry: str = ""  # override for private registries
+    # Single-mirror override (legacy). Every image gets rewritten to
+    # ``<registry>/<original-path>``. Adequate when one mirror proxies
+    # *every* upstream argus uses (Docker Hub + GHCR). For setups where
+    # each proxy cache tracks a single upstream — the default shape of
+    # Harbor / Artifactory / ECR — use ``registry_map`` instead.
+    registry: str = ""
+    # Per-upstream registry mirrors. Keyed by the upstream host the
+    # image originates from (``docker.io``, ``ghcr.io``, etc.); value
+    # is the mirror prefix to swap in. Resolves correctly across
+    # argus's mixed image set (Docker Hub + GHCR) without forcing
+    # users to populate a single Harbor project from two upstreams
+    # manually. ``registry_map`` wins on conflict with the flat
+    # ``registry`` setting (issue #178).
+    registry_map: dict = field(default_factory=dict)
     pull_policy: str = "if-not-present"  # always | if-not-present | never
     # Pre-warm container images in the background before scanning.
     # Off-by-default would penalise the common case (most users have
@@ -281,9 +294,16 @@ def _parse_execution_config(raw: dict | None) -> ExecutionConfig:
     if not isinstance(raw, dict):
         return ExecutionConfig()
 
+    raw_map = raw.get("registry_map") or {}
+    if not isinstance(raw_map, dict):
+        raw_map = {}
+    # Coerce values to strings so the engine can rely on a clean
+    # ``str -> str`` mapping without re-validating at each call site.
+    registry_map = {str(k): str(v) for k, v in raw_map.items() if v}
     return ExecutionConfig(
         backend=raw.get("backend", "auto"),
         registry=raw.get("registry", ""),
+        registry_map=registry_map,
         pull_policy=raw.get("pull_policy", "if-not-present"),
         prewarm_images=bool(raw.get("prewarm_images", True)),
         prewarm_workers=int(raw.get("prewarm_workers", 4)),
