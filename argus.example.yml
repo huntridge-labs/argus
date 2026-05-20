@@ -99,6 +99,25 @@ reporting:
 # on the CLI. CLI flags, when supplied, override the matching keys
 # below: explicit > implicit.
 #
+# Private-registry auth (Iron Bank, ECR, GHCR-private, etc.):
+# put the env-var *names* on ``containers.registry_username_env`` /
+# ``containers.registry_password_env`` — argus reads the actual
+# secret values from the runner's environment at scan time. The same
+# resolved creds are forwarded to Trivy, Grype, and Syft as their
+# native env vars (``TRIVY_USERNAME``/``TRIVY_PASSWORD``,
+# ``GRYPE_REGISTRY_AUTH_USERNAME``/``GRYPE_REGISTRY_AUTH_PASSWORD``,
+# ``SYFT_REGISTRY_AUTH_USERNAME``/``SYFT_REGISTRY_AUTH_PASSWORD``).
+#
+# containers:
+#   registry_username_env: IRONBANK_USER       # env-var NAME
+#   registry_password_env: IRONBANK_CLI_SECRET # env-var NAME
+#   images:
+#     - image: registry1.dso.mil/ironbank/.../app@sha256:...
+#
+# Legacy: argus also reads these from ``scanners.container.*`` for
+# back-compat with the source-scan dispatch path. ``containers.*``
+# wins when both are set.
+#
 # Each ``images:`` entry uses ONE of two shapes — never both:
 #
 #   image:        Remote-pull entry. argus pulls and scans this exact

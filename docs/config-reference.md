@@ -405,6 +405,12 @@ Configuration for container image scanning via `argus scan container`. This sect
 | `images` | array of [image objects](#image-object) | | Explicit list of container images to scan. |
 | `scanners` | array of strings | `["trivy", "grype"]` | Sub-scanners to use. Values: `trivy`, `grype`, `syft`. |
 | `output_dir` | string | `"./argus-results"` | Output directory for container scan results. |
+| `registry_username` | string | | Literal username for private registry auth. Prefer `registry_username_env`. Same shape as in [Credential fields](#credential-fields). |
+| `registry_username_env` | string | | **Name** of an environment variable holding the registry username. Resolved at scan time. |
+| `registry_password` | string | | Literal password/token. Prefer `registry_password_env`. |
+| `registry_password_env` | string | | **Name** of an environment variable holding the registry password/token. |
+
+Registry credentials are forwarded to Trivy, Grype, and Syft as their native env vars (`TRIVY_USERNAME` / `TRIVY_PASSWORD`, `GRYPE_REGISTRY_AUTH_USERNAME` / `GRYPE_REGISTRY_AUTH_PASSWORD`, `SYFT_REGISTRY_AUTH_USERNAME` / `SYFT_REGISTRY_AUTH_PASSWORD`) for both the local-binary and container-fallback execution paths. For back-compat, Argus also reads these fields from `scanners.container.*` — the canonical `containers.*` location wins when both are set.
 
 ### Image Object
 
@@ -430,6 +436,20 @@ containers:
     - grype
     - syft
   output_dir: "./argus-results"
+```
+
+### Private registry example
+
+```yaml
+# Export IRONBANK_USER and IRONBANK_CLI_SECRET in the shell / CI step
+# before running. argus reads the env vars by name at scan time and
+# forwards the resolved values to every sub-scanner.
+containers:
+  registry_username_env: IRONBANK_USER
+  registry_password_env: IRONBANK_CLI_SECRET
+  images:
+    - image: registry1.dso.mil/ironbank/opensource/.../app@sha256:f1e2d3c4...
+  scanners: [trivy, grype, syft]
 ```
 
 No additional keys are permitted in the `containers` block.

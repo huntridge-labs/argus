@@ -8,6 +8,7 @@ import pytest
 from argus.cli import (
     _is_container_lifecycle,
     _is_dast_lifecycle,
+    _load_container_config,
     _print_container_terminal,
     _print_dast_terminal,
     _write_container_json,
@@ -380,3 +381,107 @@ class TestWriteDastJson:
         assert data["target_count"] == 1
         assert data["healthy_count"] == 1
         assert len(data["results"]) == 1
+
+
+# =====================================================================
+# _load_container_config: back-compat for legacy credential location (#180)
+# =====================================================================
+#
+# Background: argus.example.yml has long documented registry credentials
+# under ``scanners.container.registry_*`` because that's where the
+# source-scan ``container`` scanner reads them. The container-scan
+# subcommand (``argus scan container``), however, consumes the top-
+# level ``containers:`` block. Without back-compat, the user-reported
+# fix for #180 would silently stop authenticating until users migrate
+# their YAML — a regression nobody asked for.
+#
+# These tests pin the promotion: if creds live only at the legacy
+# location, they get copied to the canonical location; if they live at
+# both, the canonical location wins.
+
+
+class TestLoadContainerConfigPromotesLegacyCreds:
+    """``_load_container_config`` lifts ``scanners.container.registry_*`` up to the top level."""
+
+    def _write_config(self, tmp_path, body: str):
+        cfg = tmp_path / "argus.yml"
+        cfg.write_text(body)
+        return argparse.Namespace(
+            config=str(cfg),
+            images=None,
+            discover=None,
+            scanners=None,
+        )
+
+    def test_legacy_env_form_promoted_to_top_level(self, tmp_path):
+        args = self._write_config(tmp_path, """
+scanners:
+  container:
+    registry_username_env: IRONBANK_USER
+    registry_password_env: IRONBANK_CLI_SECRET
+containers:
+  images:
+    - image: registry1.example.com/app@sha256:abcd
+""")
+        config = _load_container_config(args)
+        # The runner-side resolver looks for these at the top of the
+        # dict it receives; promotion is what makes the legacy YAML
+        # shape actually authenticate.
+        assert config["registry_username_env"] == "IRONBANK_USER"
+        assert config["registry_password_env"] == "IRONBANK_CLI_SECRET"
+
+    def test_canonical_location_wins_when_both_set(self, tmp_path):
+        # The user is migrating: kept the legacy block for now but
+        # also set the canonical fields. Canonical must win — that's
+        # what makes the migration meaningful.
+        args = self._write_config(tmp_path, """
+scanners:
+  container:
+    registry_username_env: OLD_USER
+    registry_password_env: OLD_TOKEN
+containers:
+  registry_username_env: NEW_USER
+  registry_password_env: NEW_TOKEN
+  images:
+    - image: registry1.example.com/app@sha256:abcd
+""")
+        config = _load_container_config(args)
+        assert config["registry_username_env"] == "NEW_USER"
+        assert config["registry_password_env"] == "NEW_TOKEN"
+
+    def test_no_legacy_creds_means_no_promotion(self, tmp_path):
+        # Sanity: if the legacy block has no cred fields, the top-
+        # level container config stays clean — no synthetic empty
+        # cred keys appear (which would otherwise be a confusing
+        # signal to debuggers asking "why is my username unset?").
+        args = self._write_config(tmp_path, """
+scanners:
+  container:
+    enabled: true
+containers:
+  images:
+    - image: registry1.example.com/app@sha256:abcd
+""")
+        config = _load_container_config(args)
+        assert "registry_username_env" not in config
+        assert "registry_password_env" not in config
+        assert "registry_username" not in config
+        assert "registry_password" not in config
+
+    def test_legacy_literal_forms_also_promoted(self, tmp_path):
+        # Literal forms are deprecated in favor of *_env, but still
+        # supported with a config-load-time warning elsewhere. The
+        # promotion path mustn't drop them — that would silently
+        # remove the user's only credential source.
+        args = self._write_config(tmp_path, """
+scanners:
+  container:
+    registry_username: alice
+    registry_password: s3cret
+containers:
+  images:
+    - image: registry1.example.com/app@sha256:abcd
+""")
+        config = _load_container_config(args)
+        assert config["registry_username"] == "alice"
+        assert config["registry_password"] == "s3cret"

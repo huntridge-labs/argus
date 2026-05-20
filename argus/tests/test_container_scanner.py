@@ -369,15 +369,15 @@ class TestScanImageSubScannerWiring:
         """Neuter trivy / grype / syft so tests don't hit Docker."""
         monkeypatch.setattr(
             container_scanner, "_run_trivy",
-            lambda image_ref, tmp_path, local=False: [],
+            lambda image_ref, tmp_path, local=False, **_kw: [],
         )
         monkeypatch.setattr(
             container_scanner, "_run_grype",
-            lambda image_ref, tmp_path, local=False: [],
+            lambda image_ref, tmp_path, local=False, **_kw: [],
         )
         monkeypatch.setattr(
             container_scanner, "_run_syft",
-            lambda image_ref, tmp_path: None,
+            lambda image_ref, tmp_path, **_kw: None,
         )
 
     def test_default_scanners_include_exposure_and_services(self, monkeypatch):
