@@ -8,7 +8,7 @@
 
 - **What it does**: Orchestrates 14 security scanners (SAST, secrets, containers, IaC, DAST) via the argus Python SDK or GitHub Actions composite actions
 - **Primary interface**: `python -m argus scan --config argus.yml`
-- **Current version**: 0.7.0
+- **Current version**: 1.2.0
 - **License**: AGPL-3.0
 
 ### One-Liner

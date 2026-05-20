@@ -298,7 +298,7 @@ jobs:
           # Retag from SHA to version tag that containers.py expects
           for image in $(echo "$IMAGE_NAMES_JSON" | jq -r '.[].image'); do
             SHA_TAG="ghcr.io/huntridge-labs/argus/${image}:${GITHUB_SHA}"
-            VERSION_TAG="ghcr.io/huntridge-labs/argus/${image}:0.7.0"
+            VERSION_TAG="ghcr.io/huntridge-labs/argus/${image}:1.2.0"
             if docker image inspect "$SHA_TAG" > /dev/null 2>&1; then
               docker tag "$SHA_TAG" "$VERSION_TAG"
             fi

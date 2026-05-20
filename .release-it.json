@@ -139,12 +139,32 @@
         {
           "files": [
             ".github/actions/**/schemas/*.json",
-            "argus/**/schemas/*.json"
+            "argus/**/schemas/*.json",
+            "argus-config.schema.json"
           ],
           "search": {
-            "pattern": "(\"\\$id\": \"https://raw\\.githubusercontent\\.com/huntridge-labs/argus)/[^/]+(/.github/)"
+            "pattern": "(\"\\$id\": \"https://raw\\.githubusercontent\\.com/huntridge-labs/argus/)[^/]+(/)"
           },
-          "replace": "${1}/{{version}}${2}"
+          "replace": "${1}{{version}}${2}"
+        },
+        {
+          "files": [
+            "AGENTS.md"
+          ],
+          "search": {
+            "pattern": "(\\*\\*Current version\\*\\*: )\\d+\\.\\d+\\.\\d+(?:[-+][\\w.-]+)?"
+          },
+          "replace": "${1}{{version}}"
+        },
+        {
+          "files": [
+            ".ai/context.yaml"
+          ],
+          "search": {
+            "pattern": "(^  version: \")\\d+\\.\\d+\\.\\d+(?:[-+][\\w.-]+)?(\")",
+            "flags": "m"
+          },
+          "replace": "${1}{{version}}${2}"
         },
         {
           "files": [
@@ -184,6 +204,7 @@
           "files": [
             "docs/**/*.md",
             "examples/**/*.{yml,yaml,md}",
+            ".github/workflows/**/*.yml",
             "*.md"
           ],
           "search": {
