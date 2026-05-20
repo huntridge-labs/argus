@@ -1,0 +1,5047 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="OSS-first GitHub Actions security hardening — Huntridge Labs">
+      
+      
+      
+        <link rel="canonical" href="https://huntridge-labs.github.io/argus/1.2.0/architecture/">
+      
+      
+        <link rel="prev" href="../changelog/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/argus_favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Architecture - Argus Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/custom.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Argus Docs" class="md-header__button md-logo" aria-label="Argus Docs" data-md-component="logo">
+      
+  <img src="../assets/HL.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Argus Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Architecture
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/huntridge-labs/argus" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    huntridge-labs/argus
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../quick-start/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Quick Start
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guides/cli-reference/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../examples/" class="md-tabs__link">
+          
+  
+  
+  Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../contributing/" class="md-tabs__link">
+          
+  
+  
+  About
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+                
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" hidden>
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Argus Docs" class="md-nav__button md-logo" aria-label="Argus Docs" data-md-component="logo">
+      
+  <img src="../assets/HL.png" alt="logo">
+
+    </a>
+    Argus Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/huntridge-labs/argus" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    huntridge-labs/argus
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/cli-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/config-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Config Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/container-scanning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Container Scanning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/contributing-reporters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing Reporters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/failure-control/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Failure Control
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/scanners/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scanners
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/view-browser/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    View Browser
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/view-terminal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    View Terminal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_11" id="__nav_3_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Migration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/migration/0.6.x-to-1.x/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    0.6.x → 1.x
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_12" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_12" id="__nav_3_12_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Troubleshooting
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/troubleshooting/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2" id="__nav_4_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CI
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    CI
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1" id="__nav_4_2_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GitHub Actions
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_4_2_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    GitHub Actions
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1" id="__nav_4_2_1_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Actions
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_4_2_1_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Actions
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_2" id="__nav_4_2_1_1_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    🤖 AI & Reporting
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    🤖 AI & Reporting
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/ai-summary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Security Summary
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_3" id="__nav_4_2_1_1_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ✅ Code Quality & Linting
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    ✅ Code Quality & Linting
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/linter-dockerfile/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dockerfile Linter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/linter-javascript/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JavaScript Linter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/linter-json/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JSON Linter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/linter-python/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python Linter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/linter-terraform/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terraform Linter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/linter-yaml/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    YAML Linter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/linting-summary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linting Summary
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_4" id="__nav_4_2_1_1_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    📦 Container Security
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    📦 Container Security
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/parse-container-config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parse Container Config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-container/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Container Security Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-container-summary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Container Scanner Summary
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-syft/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Syft SBOM Generator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_5" id="__nav_4_2_1_1_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    🕷️ DAST
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    🕷️ DAST
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/parse-zap-config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parse ZAP Config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-zap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZAP DAST Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-zap-summary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZAP Summary Generator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_6" id="__nav_4_2_1_1_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    🔍 SAST
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    🔍 SAST
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-bandit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bandit Python Security Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-codeql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CodeQL Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-opengrep/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenGrep Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-supply-chain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supply Chain Security Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_7" id="__nav_4_2_1_1_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    🏗️ Infrastructure Security
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    🏗️ Infrastructure Security
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-checkov/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Checkov Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-trivy-iac/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trivy IaC Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_8" id="__nav_4_2_1_1_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    🛡️ Malware Detection
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    🛡️ Malware Detection
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-clamav/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ClamAV Malware Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_9" id="__nav_4_2_1_1_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    🔗 Dependency Scanning
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    🔗 Dependency Scanning
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-dependency-review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dependency Review Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-osv/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OSV Dependency Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_10" id="__nav_4_2_1_1_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    🔑 Secrets Detection
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    🔑 Secrets Detection
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scanner-gitleaks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Gitleaks Secrets Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_11" id="__nav_4_2_1_1_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    📋 Compliance & Change Control
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    📋 Compliance & Change Control
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/scn-detector/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SCN Detector
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_12" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_12" id="__nav_4_2_1_1_12_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Utility & Reporting
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    ⚙️ Utility & Reporting
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actions/security-summary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Summary
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_2" id="__nav_4_2_1_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflows
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_4_2_1_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Workflows
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/build-containers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build, Scan & Test Containers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/container-scan-from-config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Container Scan from Config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/container-scan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Container Security Scanning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/dependency-scan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dependency Security Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/ghcr-prune/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GHCR Cleanup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/infrastructure-scan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Infrastructure Security Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/linting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Quality and Linting Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/publish-pypi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Package Validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/reusable-security-hardening/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reusable Security Hardening Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-bandit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bandit Python Security Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-checkov/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Checkov Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-clamav/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ClamAV Malware Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-codeql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CodeQL Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-dependency-review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dependency Review Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-gitleaks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Gitleaks Secrets Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-grype/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Grype Container Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-opengrep/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenGrep Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-osv/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OSV Dependency Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-supply-chain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supply Chain Security Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-syft/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Generate SBOM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-trivy-container/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trivy Container Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-trivy-iac/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trivy IaC Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-zap-from-config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZAP DAST from Config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/scanner-zap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZAP DAST Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/security-reusable-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Hardening (Reusable Demo)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/security-scan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Scan (Argus)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/update-pinned-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Update pinned tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/ci/gitlab-ci-yml/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GitLab CI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/ci/jenkinsfile/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Jenkins
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/ci/azure-devops-yml/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure DevOps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_3" id="__nav_4_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configs
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configs
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/configs/ai-config-anthropic.example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Config Anthropic.example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/configs/ai-config-openai.example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Config Openai.example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/configs/ai-config.example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Config.example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/configs/container-config.example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Container Config.example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/configs/scn-profile-custom.example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scn Profile Custom.example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/configs/zap-config-grouped.example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Zap Config Grouped.example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/configs/zap-config.example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Zap Config.example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_4" id="__nav_4_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Github Enterprise
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Github Enterprise
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/github-enterprise/all-scanners/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    All Scanners
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/github-enterprise/container-scanning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Container Scanning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/github-enterprise/containerized-web-app/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Containerized Web App
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/github-enterprise/dast-scanning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DAST Scanning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/github-enterprise/infrastructure-scanning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Infrastructure Scanning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/github-enterprise/sast-only/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SAST Only
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflows
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Workflows
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/workflows/actions-container-scan-matrix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Actions Container Scan Matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/workflows/actions-linting-example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Actions Linting Example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/workflows/actions-scanner-zap-from-config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Actions Scanner Zap From Config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/workflows/actions-scanner-zap-full-example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Actions Scanner Zap Full Example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/workflows/composite-actions-example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Composite Actions Example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/workflows/scn-detection-complete.example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scn Detection Complete.example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/workflows/scn-detection-example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scn Detection Example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/workflows/sdk-github-actions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sdk Github Actions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    About
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../code_of_conduct/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code of Conduct
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Policy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+                
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" hidden>
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+  
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+  
+
+
+
+  
+  
+
+
+  <h1>Architecture</h1>
+
+<style>
+/* Escape Material's content max-width so the diagram has
+   the full viewport to work with. Material constrains via
+   ``.md-main__inner`` (the outer cap), ``.md-content``,
+   ``.md-content__inner`` and ``article`` — all four need
+   the cap dropped to let our fixed sidebars sit at the
+   viewport edges. */
+.md-main__inner { max-width: none; margin: 0; }
+.md-content { max-width: none; }
+.md-content__inner { padding: 0; margin: 0; max-width: none; }
+.md-content > article { max-width: none; padding: 0; }
+.md-content h1 { display: none; }
+
+/* The architecture page has fixed-position sidebars at
+   z-index 20 and a detail panel at z-index 30. Material's
+   sticky header defaults to z-index 4 so it slides under
+   them on scroll. Bump the header above the panel so it
+   stays the topmost piece of chrome below the tour overlay
+   (which lives at z-index 1000). */
+.md-header { z-index: 100; }
+
+/* Material's ``.md-typeset`` paragraph and list rules outrun
+   architecture.css on specificity (``.md-typeset ul`` is
+   (0,1,1) vs our ``.arch-flows__list`` at (0,1,0)). Reset
+   the structural defaults inside ``.arch-page`` so our
+   custom layout actually wins. */
+.md-typeset .arch-page ul,
+.md-typeset .arch-page ol {
+  list-style: none; padding: 0; margin: 0;
+}
+.md-typeset .arch-page li { margin: 0; }
+.md-typeset .arch-page p { margin: 0; }
+.md-typeset .arch-page h2,
+.md-typeset .arch-page h3,
+.md-typeset .arch-page h4 { margin: 0; font-weight: inherit; }
+.md-typeset .arch-page code { font-size: inherit; padding: 0; background: transparent; border-radius: 0; }
+</style>
+
+<p><link rel="stylesheet" href="../assets/architecture.css" /></p>
+<div class="arch-page" data-mode="view">
+  <main class="arch-page__main">
+    <div class="arch-toolbar">
+      <h2 class="arch-toolbar__title">Argus SDK &mdash; architecture &amp; flows</h2>
+      <button type="button" id="arch-configure-toggle"
+              class="arch-toolbar__btn" aria-pressed="false"
+              data-tooltip="Toggle multi-select mode: pick scanners across the columns and Argus generates a working argus.yml, CLI invocation, GitHub Actions workflow, or MCP client config from the selection.">
+        Configure
+      </button>
+    </div>
+
+    <div id="arch-drawer-backdrop" class="arch-drawer-backdrop"
+         aria-hidden="true"></div>
+
+    <div class="arch-columns-viewport" id="arch-columns-viewport">
+      <button type="button" id="arch-info-toggle"
+              class="arch-info-toggle"
+              aria-expanded="false" aria-controls="arch-info-popover"
+              aria-label="About this diagram" title="About this diagram">
+        <svg width="14" height="14" viewBox="0 0 16 16"
+             fill="none" stroke="currentColor" stroke-width="1.6"
+             stroke-linecap="round" stroke-linejoin="round"
+             aria-hidden="true" focusable="false">
+          <circle cx="8" cy="8" r="6.25" />
+          <path d="M8 7v4" />
+          <circle cx="8" cy="4.75" r="0.4" fill="currentColor" stroke="none" />
+        </svg>
+      </button>
+
+      <div id="arch-info-popover" class="arch-info-popover" hidden
+           role="dialog" aria-label="About this diagram">
+        Every component that powers <code>argus scan</code> &mdash; the CLI
+        surfaces, the SDK core, every scanner / linter / reporter, the
+        artifacts they produce, and the consumers that read them.
+        Pick a flow from the <strong>Flows</strong> panel on the left
+        to highlight a path through the columns and see the
+        step-by-step walkthrough on the right. Click any node for
+        source paths, related ADRs, and a copy-pasteable config
+        snippet. Drag to pan, scroll or use the zoom controls to
+        navigate. Toggle <strong>Configure</strong> to multi-select
+        scanners and generate a working <code>argus.yml</code>, CLI
+        invocation, GitHub Actions workflow, or MCP client config
+        from the selection.
+      </div>
+
+      <section id="arch-columns" class="arch-columns"
+               aria-label="Architecture columns"></section>
+
+      <div class="arch-zoom-controls" aria-label="Zoom controls">
+        <button type="button" id="arch-zoom-fit"
+                class="arch-zoom-btn arch-zoom-fit"
+                aria-label="Reset view" title="Reset view"
+                data-tooltip="Fit the entire diagram in the viewport.">
+          <svg width="14" height="14" viewBox="0 0 16 16"
+               fill="none" stroke="currentColor" stroke-width="1.6"
+               stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true" focusable="false">
+            <path d="M2 5V2h3M14 5V2h-3M2 11v3h3M14 11v3h-3" />
+          </svg>
+        </button>
+        <button type="button" id="arch-zoom-out" class="arch-zoom-btn"
+                aria-label="Zoom out" title="Zoom out"
+                data-tooltip="Zoom out (or scroll wheel down on the diagram).">&minus;</button>
+        <button type="button" id="arch-zoom-reset"
+                class="arch-zoom-btn arch-zoom-reset"
+                aria-label="Current zoom &mdash; click to reset" title="Reset zoom"
+                data-tooltip="Current zoom level. Click to reset to fit-to-view.">100%</button>
+        <button type="button" id="arch-zoom-in" class="arch-zoom-btn"
+                aria-label="Zoom in" title="Zoom in"
+                data-tooltip="Zoom in (or scroll wheel up on the diagram).">+</button>
+      </div>
+
+      <button type="button" id="arch-help-toggle"
+              class="arch-help-toggle"
+              aria-label="Replay the help tour" title="Help"
+              data-tooltip="Replay the guided tour.">
+        <svg width="14" height="14" viewBox="0 0 16 16"
+             fill="none" stroke="currentColor" stroke-width="1.6"
+             stroke-linecap="round" stroke-linejoin="round"
+             aria-hidden="true" focusable="false">
+          <circle cx="8" cy="8" r="6.25" />
+          <path d="M6 6a2 2 0 1 1 2.6 1.9c-.5.2-.6.5-.6 1V10" />
+          <circle cx="8" cy="11.75" r="0.4" fill="currentColor" stroke="none" />
+        </svg>
+      </button>
+    </div>
+
+    <section id="arch-picker" class="arch-picker" hidden
+             aria-label="Configure mode output">
+      <div class="arch-picker__controls">
+        <label for="arch-sev">severity_threshold:</label>
+        <select id="arch-sev" data-control="severity">
+          <option value="none">none</option>
+          <option value="low">low</option>
+          <option value="medium">medium</option>
+          <option value="high">high</option>
+          <option value="critical">critical</option>
+        </select>
+        <label for="arch-fmt">format:</label>
+        <select id="arch-fmt" data-control="format">
+          <option value="terminal">terminal</option>
+          <option value="markdown">markdown</option>
+          <option value="sarif">sarif</option>
+          <option value="json">json</option>
+          <option value="github">github</option>
+          <option value="gitlab">gitlab</option>
+          <option value="junit">junit</option>
+        </select>
+      </div>
+      <div class="arch-picker__tabs">
+        <button type="button" class="arch-picker__tab"
+                data-tab="yaml" aria-selected="true">argus.yml</button>
+        <button type="button" class="arch-picker__tab"
+                data-tab="cli" aria-selected="false">CLI</button>
+        <button type="button" class="arch-picker__tab"
+                data-tab="github" aria-selected="false">GitHub Actions</button>
+        <button type="button" class="arch-picker__tab"
+                data-tab="mcp" aria-selected="false">MCP client</button>
+      </div>
+      <div class="arch-picker__pane" data-pane="yaml" data-active="true"></div>
+      <div class="arch-picker__pane" data-pane="cli"></div>
+      <div class="arch-picker__pane" data-pane="github"></div>
+      <div class="arch-picker__pane" data-pane="mcp"></div>
+    </section>
+
+    <aside class="arch-tools" aria-label="External tools">
+      <h3 class="arch-tools__title"
+          data-tooltip="Third-party command-line tools that the SDK scanners shell out to. Argus doesn't bundle them &mdash; you need them on PATH or supply a container image. Click any tool to see which scanners invoke it and where the fallback lives.">External tools</h3>
+      <ul id="arch-tools-list" class="arch-tools__list"></ul>
+    </aside>
+  </main>
+
+  <button type="button" id="arch-toggle-flows"
+          class="arch-drawer-handle arch-drawer-handle--flows"
+          aria-pressed="false" aria-label="Toggle flows panel"
+          title="Flows">
+    <svg width="14" height="14" viewBox="0 0 16 16"
+         fill="none" stroke="currentColor" stroke-width="1.8"
+         stroke-linecap="round" stroke-linejoin="round"
+         aria-hidden="true" focusable="false">
+      <path d="M5 3l5 5-5 5" />
+    </svg>
+  </button>
+
+  <button type="button" id="arch-toggle-steps"
+          class="arch-drawer-handle arch-drawer-handle--steps"
+          aria-pressed="false" aria-label="Toggle steps panel"
+          title="Steps">
+    <svg width="14" height="14" viewBox="0 0 16 16"
+         fill="none" stroke="currentColor" stroke-width="1.8"
+         stroke-linecap="round" stroke-linejoin="round"
+         aria-hidden="true" focusable="false">
+      <path d="M11 3l-5 5 5 5" />
+    </svg>
+  </button>
+
+  <aside class="arch-page__sidebar arch-page__sidebar--flows"
+         aria-label="Flows">
+    <h3 class="arch-flows__title">Flows</h3>
+    <p class="arch-flow__summary">
+      Pick a flow to highlight the path through the columns.
+    </p>
+    <ul id="arch-flows-list" class="arch-flows__list"></ul>
+    <button type="button" id="arch-flow-clear" class="arch-flows__clear"
+            data-tooltip="Remove the active flow highlight and return every column to its idle (un-dimmed) state.">
+      Clear flow
+    </button>
+  </aside>
+
+  <aside class="arch-page__sidebar arch-page__sidebar--steps"
+         aria-label="Flow steps">
+    <section id="arch-steps" class="arch-steps">
+      <h3 class="arch-steps__title">Steps</h3>
+      <ol id="arch-steps-list" class="arch-steps__list"></ol>
+      <p class="arch-steps__empty">
+        Pick a flow on the left to see the step-by-step path.
+      </p>
+    </section>
+  </aside>
+
+  <div id="arch-tour" class="arch-tour" hidden role="dialog"
+       aria-label="Architecture viewer tour" aria-modal="true">
+    <div class="arch-tour__dim arch-tour__dim--top"></div>
+    <div class="arch-tour__dim arch-tour__dim--right"></div>
+    <div class="arch-tour__dim arch-tour__dim--bottom"></div>
+    <div class="arch-tour__dim arch-tour__dim--left"></div>
+    <div id="arch-tour-bubble" class="arch-tour__bubble"
+         data-placement="bottom">
+      <button type="button" id="arch-tour-close"
+              class="arch-tour__close"
+              aria-label="Exit tour" title="Exit tour">
+        <svg width="12" height="12" viewBox="0 0 16 16"
+             fill="none" stroke="currentColor" stroke-width="1.8"
+             stroke-linecap="round" aria-hidden="true" focusable="false">
+          <path d="M3 3L13 13M13 3L3 13" />
+        </svg>
+      </button>
+      <p class="arch-tour__step-count">
+        <span id="arch-tour-step-current">1</span>
+        of
+        <span id="arch-tour-step-total">1</span>
+      </p>
+      <h3 class="arch-tour__title" id="arch-tour-title"></h3>
+      <div class="arch-tour__body" id="arch-tour-body"></div>
+      <div class="arch-tour__controls">
+        <label class="arch-tour__dontshow">
+          <input type="checkbox" id="arch-tour-dontshow" />
+          Don't show again
+        </label>
+        <div class="arch-tour__nav">
+          <button type="button" id="arch-tour-prev"
+                  class="arch-tour__btn">Back</button>
+          <button type="button" id="arch-tour-next"
+                  class="arch-tour__btn arch-tour__btn--primary">Next</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <aside id="arch-panel" class="arch-panel" aria-label="Node details">
+    <button type="button" id="arch-panel-close" class="arch-panel__close"
+            aria-label="Close" title="Close">
+      <svg width="12" height="12" viewBox="0 0 16 16"
+           fill="none" stroke="currentColor" stroke-width="1.8"
+           stroke-linecap="round" aria-hidden="true" focusable="false">
+        <path d="M3 3L13 13M13 3L3 13" />
+      </svg>
+    </button>
+    <header class="arch-panel__header" id="arch-panel-header">
+      <h3 class="arch-panel__label"></h3>
+      <p class="arch-panel__kind"></p>
+    </header>
+    <div class="arch-panel__body-wrap">
+      <div class="arch-panel__body"></div>
+    </div>
+  </aside>
+</div>
+
+<script id="arch-data" type="application/json">{"schema_version": "1.0", "version": "1.2.0", "columns": [{"id": "actors", "label": "Actors", "swatch": "muted"}, {"id": "surfaces", "label": "Surfaces", "swatch": "primary"}, {"id": "core", "label": "SDK core", "swatch": "subtle"}, {"id": "scanners", "label": "Scanners & linters", "swatch": "accent"}, {"id": "reporters", "label": "Reporters", "swatch": "primary"}, {"id": "artifacts", "label": "Artifacts", "swatch": "info"}, {"id": "consumers", "label": "Consumers", "swatch": "muted"}], "nodes": [{"id": "actor:ai-assistant", "column": "actors", "label": "AI assistant", "kind": "actor", "purpose": "Claude Desktop / Cursor / Cline connecting to the argus MCP server over stdio to invoke scans and read canonical results.", "file_paths": ["argus/mcp.py"], "adr_refs": []}, {"id": "actor:ci", "column": "actors", "label": "CI workflow", "kind": "actor", "purpose": "GitHub Actions / GitLab CI / Jenkins job invoking argus via the SDK or a composite action; uploads SARIF to the security tab and posts PR comments.", "file_paths": [".github/actions/", "examples/workflows/"], "adr_refs": ["ADR-013"]}, {"id": "actor:developer", "column": "actors", "label": "Developer", "kind": "actor", "purpose": "Runs ``argus scan`` on a laptop or in a feature-branch CI job; reads results in the TUI or browser viewer.", "file_paths": [], "adr_refs": []}, {"id": "artifact:sarif", "label": "SARIF files", "is_canonical": false, "purpose": "Static Analysis Results Interchange Format files (one per SARIF-emitting scanner). Uploaded to GitHub / GitLab security tabs by the composite-action flow.", "adr_refs": [], "column": "artifacts", "kind": "artifact", "file_paths": []}, {"id": "artifact:audit-json", "label": "argus-audit.json", "is_canonical": false, "purpose": "Run summary manifest \u2014 start/end timestamps, scanner list, artifact hashes, error counts. Written by argus.audit.manifest.AuditManifest.save().", "adr_refs": ["ADR-022"], "column": "artifacts", "kind": "artifact", "file_paths": []}, {"id": "artifact:results-json", "label": "argus-results.json", "is_canonical": true, "purpose": "Single canonical scan output. Always written by JsonReporter; every viewer, the MCP resource, and every external integration reads exactly this file (ADR-018).", "adr_refs": ["ADR-018"], "column": "artifacts", "kind": "artifact", "file_paths": []}, {"id": "artifact:log-jsonl", "label": "argus.log", "is_canonical": false, "purpose": "Per-line JSON audit log emitted by argus.audit.logger. mask_secrets_in_obj runs at write time so credential-shaped strings can never leak into the trail.", "adr_refs": ["ADR-022"], "column": "artifacts", "kind": "artifact", "file_paths": []}, {"id": "artifact:argus-yml", "label": "argus.yml", "is_canonical": false, "purpose": "User-authored or argus-init-generated configuration file. Drives which scanners run and their per-scanner inputs.", "adr_refs": [], "column": "artifacts", "kind": "artifact", "file_paths": []}, {"id": "artifact:raw-dir", "label": "raw/", "is_canonical": false, "purpose": "Per-scanner raw output preserved when reporting.keep_raw is true. Forensics + manual triage. One subdir per scanner.", "adr_refs": [], "column": "artifacts", "kind": "artifact", "file_paths": []}, {"id": "consumer:pr-comments", "label": "Composite-action PR comments", "purpose": "Inline PR comments posted by the comment-pr composite action with per-scanner severity counts and links to artifacts.", "column": "consumers", "kind": "consumer", "file_paths": [], "adr_refs": []}, {"id": "consumer:github-security", "label": "GitHub Security tab", "purpose": "SARIF upload landing zone. Surfaces findings on the repo Security tab and in PR Files Changed annotations.", "column": "consumers", "kind": "consumer", "file_paths": [], "adr_refs": []}, {"id": "consumer:gitlab-security", "label": "GitLab security widgets", "purpose": "GitLab Code Quality JSON consumer. Displays findings in MR widgets.", "column": "consumers", "kind": "consumer", "file_paths": [], "adr_refs": []}, {"id": "consumer:junit-ci", "label": "JUnit-consuming CI dashboards", "purpose": "CI providers (Jenkins, GitLab, CircleCI, ...) that consume JUnit XML for build-status reporting.", "column": "consumers", "kind": "consumer", "file_paths": [], "adr_refs": []}, {"id": "consumer:mcp", "label": "MCP resources", "purpose": "AI assistants read argus://config, argus://results/latest, argus://architecture \u2014 all derived from the same canonical sources.", "column": "consumers", "kind": "consumer", "file_paths": [], "adr_refs": []}, {"id": "consumer:view-browser", "label": "argus view browser", "purpose": "FastAPI read-only viewer (127.0.0.1). Same canonical JSON, dashboard + findings + log + diff + picker + architecture routes.", "column": "consumers", "kind": "consumer", "file_paths": [], "adr_refs": []}, {"id": "consumer:view-terminal", "label": "argus view terminal", "purpose": "Textual TUI consumer of argus-results.json. Filter, search, export, dashboard, diff.", "column": "consumers", "kind": "consumer", "file_paths": [], "adr_refs": []}, {"id": "core:engine", "column": "core", "label": "ArgusEngine", "kind": "core", "purpose": "ArgusEngine orchestrating scanners and aggregating results (delegates to core/prewarm.py for background image pre-warm + lazy pulls in parallel mode). Container path honors three optional Scanner hooks: container_args/build_args (CLI argv), container_env(config)->dict (resolved values land in a subprocess.run env=... dict and docker_cmd carries only ``-e NAME`` flags \u2014 values never appear on the docker run command line, closing the ps/docker-inspect leak; None values are filtered so unset env-var-name refs don't materialize at all), and container_mounts(config)->[(host,container)] (extra read-only bind mounts; non-existent host paths are skipped with a WARNING rather than aborting the scan).", "file_paths": ["argus/core/engine.py"], "adr_refs": []}, {"id": "core:audit", "column": "core", "label": "Audit logger + manifest", "kind": "core", "purpose": "Structured audit trail for every scan run. logger.py emits JSONL log records (one per line) into ``argus-results/.../argus.log``; manifest.py writes the per-run AuditManifest summary into ``argus-audit.json``. secrets.py provides mask_secrets (regex masking for token=, password=, Bearer, URL-creds, GitHub PATs, AWS access keys, sk-keys) and the mask_secrets_in_obj recursive walker. Both write paths run mask_secrets_in_obj at serialization time as defense-in-depth \u2014 if a future contributor accidentally captures a docker_cmd / env dict / credential-shaped argv into a manifest field or log entry, the redaction pass catches it before the file lands. Both logger formatters mask the rendered ``record.getMessage()`` rather than ``record.msg`` to avoid corrupting %s format strings whose placeholders match secret-shaped patterns.", "file_paths": ["argus/audit/"], "adr_refs": []}, {"id": "core:container-engine", "column": "core", "label": "ContainerEngine", "kind": "core", "purpose": "ContainerEngine component.", "file_paths": ["argus/container/engine.py"], "adr_refs": []}, {"id": "core:prewarm", "column": "core", "label": "Image pre-warm", "kind": "core", "purpose": "ImagePrewarmer \u2014 best-effort background container image pulls. Dedup'd by image ref, capped concurrency (execution.prewarm_workers, default 4), opt-out via execution.prewarm_images: false. Skipped when pull_policy=never. Pre-warm failure falls back to inline pull in _run_in_container.", "file_paths": ["argus/core/prewarm.py"], "adr_refs": ["ADR-014"]}, {"id": "core:image-verify", "column": "core", "label": "Image verify", "kind": "core", "purpose": "Supply-chain verification for container images at pull time. verify_image(ref) classifies the ref into: argus-owned (ghcr.io/huntridge-labs/argus/* \u2014 cosign keyless verify against the publish workflow's identity + GitHub Actions OIDC issuer; failure is fatal), third-party with @sha256: digest pin (Docker enforces content-hash match at pull, no cosign call needed), or third-party tag-only (logged once per scan via report_tag_pinned_summary). Engine calls this after _pull_image succeeds; fatal results raise RuntimeError before the scanner runs. Config knob: execution.verify_image_signatures (default True; opt-out for air-gapped). Stdlib + cosign binary on PATH; no Python sigstore dep. See docs/security.md.", "file_paths": ["argus/core/image_verify.py"], "adr_refs": []}, {"id": "core:redact", "column": "core", "label": "Redact", "kind": "core", "purpose": "Pattern-based secret redaction at Finding construction (ADR-022). REDACTED_PLACEHOLDER constant + redact_secret + redact_high_risk_patterns. Runs in Finding.__post_init__ as a defense-in-depth backstop for scanners that get added without the per-scanner audit; conservative vendor-prefix-only pattern set (gh*, AKIA, AIza, glpat-, sk_live_, npm_, xox*-, JWT, PEM) \u2014 no high-entropy heuristics.", "file_paths": ["argus/core/redact.py"], "adr_refs": ["ADR-022"]}, {"id": "core:registry", "column": "core", "label": "SCANNER_REGISTRY", "kind": "core", "purpose": "SCANNER_REGISTRY component.", "file_paths": ["argus/scanners/__init__.py"], "adr_refs": ["ADR-020"]}, {"id": "core:schema", "column": "core", "label": "Schema validator", "kind": "core", "purpose": "argus.yml schema validator. Validates structure, types, allowed values, credential-field shapes, and ZAP's nested ``auth`` sub-block; emits ConfigError objects (ERROR / WARNING) that ``argus validate`` reports. Catches typos, malformed PORT/PROTO entries, and vendor-shaped literal credentials at config-load time. Stdlib-only.", "file_paths": ["argus/core/schema.py"], "adr_refs": []}, {"id": "core:secrets", "column": "core", "label": "Secrets resolver", "kind": "core", "purpose": "Credential resolution for any scanner config field. resolve_secret(config, field, *, stdin_override=None) accepts three forms in precedence order: stdin_override (highest, populated by CLI --*-password-stdin flags via a module-level slot registry \u2014 set_stdin_override / get_stdin_override / clear_stdin_overrides), <field>_env (env-var name reference; reads os.environ at scan time), or <field> literal (back-compat, warned at config-load if vendor-shaped via looks_like_literal_secret). The stdin path never reaches the per-scanner config dict so it can't leak into argus-audit.json / argus.log. validate_env_var_name enforces POSIX shell identifier rules. Stdlib-only. Used by scanners.container and scanners.zap; future scanners with credential needs use the same helper. See ADR-024.", "file_paths": ["argus/core/secrets.py"], "adr_refs": ["ADR-024"]}, {"id": "core:findings-view", "column": "core", "label": "findings_view", "kind": "core", "purpose": "Shared UI-free logic for findings display \u2014 ViewState, SEVERITY_ORDER, finding_detail_rows, compute_summary, diff_scans (scan-over-scan bucketing keyed off (scanner, id, location)). Consumed by argus view terminal (TUI ``D`` keybind, DiffScreen) and argus view browser (web UI ``/diff`` route).", "file_paths": ["argus/core/findings_view.py"], "adr_refs": []}, {"id": "reporter:container_markdown", "column": "reporters", "label": "container_markdown", "kind": "reporter", "is_canonical": false, "purpose": "Container-scan-specific Markdown layout.", "file_paths": ["argus/reporters/container_markdown.py"], "enable_via": "reporting.formats: [..., 'container_markdown'] in argus.yml, or --format=container_markdown on the CLI.", "entry_point": "argus.reporters / container_markdown", "adr_refs": ["ADR-023"]}, {"id": "reporter:github", "column": "reporters", "label": "github", "kind": "reporter", "is_canonical": false, "purpose": "GitHub Actions inline annotations (::error / ::warning).", "file_paths": ["argus/reporters/github.py"], "enable_via": "reporting.formats: [..., 'github'] in argus.yml, or --format=github on the CLI.", "entry_point": "argus.reporters / github", "adr_refs": ["ADR-023"]}, {"id": "reporter:gitlab", "column": "reporters", "label": "gitlab", "kind": "reporter", "is_canonical": false, "purpose": "GitLab Code Quality JSON (codeclimate-compatible).", "file_paths": ["argus/reporters/gitlab.py"], "enable_via": "reporting.formats: [..., 'gitlab'] in argus.yml, or --format=gitlab on the CLI.", "entry_point": "argus.reporters / gitlab", "adr_refs": ["ADR-023"]}, {"id": "reporter:json", "column": "reporters", "label": "json", "kind": "reporter", "is_canonical": true, "purpose": "Canonical argus-results.json \u2014 the artifact every consumer reads (ADR-018).", "file_paths": ["argus/reporters/json_report.py"], "enable_via": "reporting.formats: [..., 'json'] in argus.yml, or --format=json on the CLI.", "entry_point": "argus.reporters / json", "adr_refs": ["ADR-023"]}, {"id": "reporter:junit", "column": "reporters", "label": "junit", "kind": "reporter", "is_canonical": false, "purpose": "JUnit XML for CI test dashboards.", "file_paths": ["argus/reporters/junit.py"], "enable_via": "reporting.formats: [..., 'junit'] in argus.yml, or --format=junit on the CLI.", "entry_point": "argus.reporters / junit", "adr_refs": ["ADR-023"]}, {"id": "reporter:markdown", "column": "reporters", "label": "markdown", "kind": "reporter", "is_canonical": false, "purpose": "Per-scanner Markdown summary, suitable for PR comments.", "file_paths": ["argus/reporters/markdown.py"], "enable_via": "reporting.formats: [..., 'markdown'] in argus.yml, or --format=markdown on the CLI.", "entry_point": "argus.reporters / markdown", "adr_refs": ["ADR-023"]}, {"id": "reporter:sarif", "column": "reporters", "label": "sarif", "kind": "reporter", "is_canonical": false, "purpose": "Static Analysis Results Interchange Format. Upload to GitHub / GitLab security tabs.", "file_paths": ["argus/reporters/sarif.py"], "enable_via": "reporting.formats: [..., 'sarif'] in argus.yml, or --format=sarif on the CLI.", "entry_point": "argus.reporters / sarif", "adr_refs": ["ADR-023"]}, {"id": "reporter:terminal", "column": "reporters", "label": "terminal", "kind": "reporter", "is_canonical": false, "purpose": "Rich-formatted console output for interactive runs.", "file_paths": ["argus/reporters/terminal.py"], "enable_via": "reporting.formats: [..., 'terminal'] in argus.yml, or --format=terminal on the CLI.", "entry_point": "argus.reporters / terminal", "adr_refs": ["ADR-023"]}, {"id": "scanner:bandit", "column": "scanners", "label": "bandit", "kind": "scanner", "scanner_category": "sast", "purpose": "Python-specific security linter", "languages": ["python"], "output_format": "", "scanner_config": {"yaml": "scanners:\n  bandit:\n    enabled: true\n", "defaults": {}, "inputs": []}, "cli_invocation": "argus scan bandit", "file_paths": ["argus/scanners/bandit.py"], "adr_refs": ["ADR-014"]}, {"id": "scanner:checkov", "column": "scanners", "label": "checkov", "kind": "scanner", "scanner_category": "infrastructure", "purpose": "IaC policy-as-code scanning", "languages": [], "output_format": "SARIF", "scanner_config": {"yaml": "scanners:\n  checkov:\n    enabled: true\n", "defaults": {}, "inputs": []}, "cli_invocation": "argus scan checkov", "file_paths": ["argus/scanners/checkov.py"], "adr_refs": ["ADR-014"]}, {"id": "scanner:clamav", "column": "scanners", "label": "clamav", "kind": "scanner", "scanner_category": "malware", "purpose": "File-based malware detection", "languages": [], "output_format": "text", "scanner_config": {"yaml": "scanners:\n  clamav:\n    enabled: true\n", "defaults": {}, "inputs": []}, "cli_invocation": "argus scan clamav", "file_paths": ["argus/scanners/clamav.py"], "adr_refs": ["ADR-014"]}, {"id": "scanner:codeql", "column": "scanners", "label": "codeql", "kind": "scanner", "scanner_category": "sast", "purpose": "Multi-language semantic code analysis", "languages": ["python", "javascript", "typescript", "go", "java", "cpp", "ruby", "csharp", "swift", "kotlin"], "output_format": "", "scanner_config": {"yaml": "scanners:\n  codeql:\n    enabled: true\n", "defaults": {}, "inputs": []}, "cli_invocation": "argus scan codeql", "file_paths": ["argus/scanners/codeql.py"], "adr_refs": ["ADR-014"]}, {"id": "scanner:dependency-review", "column": "scanners", "label": "dependency-review", "kind": "scanner", "scanner_category": "dependencies", "purpose": "PR dependency diff analysis and license compliance", "languages": [], "output_format": "JSON", "scanner_config": {"yaml": "scanners:\n  dependency-review:\n    enabled: true\n", "defaults": {}, "inputs": []}, "cli_invocation": "argus scan dependency-review", "file_paths": ["argus/scanners/dependency_review.py"], "adr_refs": ["ADR-014"]}, {"id": "scanner:gitleaks", "column": "scanners", "label": "gitleaks", "kind": "scanner", "scanner_category": "secrets", "purpose": "Git history and file secrets detection", "languages": [], "output_format": "SARIF", "scanner_config": {"yaml": "scanners:\n  gitleaks:\n    enabled: true\n", "defaults": {}, "inputs": []}, "cli_invocation": "argus scan gitleaks", "file_paths": ["argus/scanners/gitleaks.py"], "adr_refs": ["ADR-014"]}, {"id": "scanner:grype", "column": "scanners", "label": "grype", "kind": "scanner-sub", "scanner_category": "container", "purpose": "Container vulnerability scanning (alternative)", "languages": [], "output_format": "SARIF", "scanner_config": {"yaml": "scanners:\n  grype:\n    enabled: true\n", "defaults": {}, "inputs": []}, "cli_invocation": "argus scan grype", "file_paths": ["argus/scanners/grype.py"], "adr_refs": ["ADR-014"]}, {"id": "linter:lint-dockerfile", "column": "scanners", "label": "lint-dockerfile", "kind": "linter", "purpose": "Dockerfile linting via hadolint", "output_format": "Finding (Severity.INFO)", "scanner_config": {"yaml": "scanners:\n  lint-dockerfile:\n    enabled: true\n", "defaults": {}, "inputs": []}, "cli_invocation": "argus scan lint-dockerfile", "file_paths": ["argus/linters/dockerfile.py"], "adr_refs": ["ADR-020", "ADR-014"]}, {"id": "linter:lint-javascript", "column": "scanners", "label": "lint-javascript", "kind": "linter", "purpose": "JavaScript / TypeScript linting via ESLint (with container fallback)", "output_format": "Finding (Severity.INFO)", "scanner_config": {"yaml": "scanners:\n  lint-javascript:\n    enabled: true\n", "defaults": {}, "inputs": []}, "cli_invocation": "argus scan lint-javascript", "file_paths": ["argus/linters/javascript.py"], "adr_refs": ["ADR-020", "ADR-014"]}, {"id": "linter:lint-json", "column": "scanners", "label": "lint-json", "kind": "linter", "purpose": "JSON syntax linting", "output_format": "Finding (Severity.INFO)", "scanner_config": {"yaml": "scanners:\n  lint-json:\n    enabled: true\n", "defaults": {}, "inputs": []}, "cli_invocation": "argus scan lint-json", "file_paths": ["argus/linters/json.py"], "adr_refs": ["ADR-020", "ADR-014"]}, {"id": "linter:lint-python", "column": "scanners", "label": "lint-python", "kind": "linter", "purpose": "Python code style and syntax linting", "output_format": "Finding (Severity.INFO)", "scanner_config": {"yaml": "scanners:\n  lint-python:\n    enabled: true\n", "defaults": {}, "inputs": []}, "cli_invocation": "argus scan lint-python", "file_paths": ["argus/linters/python.py"], "adr_refs": ["ADR-020", "ADR-014"]}, {"id": "linter:lint-terraform", "column": "scanners", "label": "lint-terraform", "kind": "linter", "purpose": "Terraform configuration linting", "output_format": "Finding (Severity.INFO)", "scanner_config": {"yaml": "scanners:\n  lint-terraform:\n    enabled: true\n", "defaults": {}, "inputs": []}, "cli_invocation": "argus scan lint-terraform", "file_paths": ["argus/linters/terraform.py"], "adr_refs": ["ADR-020", "ADR-014"]}, {"id": "linter:lint-yaml", "column": "scanners", "label": "lint-yaml", "kind": "linter", "purpose": "YAML syntax and style linting via yamllint", "output_format": "Finding (Severity.INFO)", "scanner_config": {"yaml": "scanners:\n  lint-yaml:\n    enabled: true\n", "defaults": {}, "inputs": []}, "cli_invocation": "argus scan lint-yaml", "file_paths": ["argus/linters/yaml.py"], "adr_refs": ["ADR-020", "ADR-014"]}, {"id": "scanner:opengrep", "column": "scanners", "label": "opengrep", "kind": "scanner", "scanner_category": "sast", "purpose": "Pattern-based multi-language scanning", "languages": ["multi"], "output_format": "", "scanner_config": {"yaml": "scanners:\n  opengrep:\n    enabled: true\n", "defaults": {}, "inputs": []}, "cli_invocation": "argus scan opengrep", "file_paths": ["argus/scanners/opengrep.py"], "adr_refs": ["ADR-014"]}, {"id": "scanner:osv", "column": "scanners", "label": "osv", "kind": "scanner", "scanner_category": "dependencies", "purpose": "Dependency vulnerability scanning via OSV database", "languages": [], "output_format": "JSON/SARIF", "scanner_config": {"yaml": "scanners:\n  osv:\n    enabled: true\n", "defaults": {}, "inputs": []}, "cli_invocation": "argus scan osv", "file_paths": ["argus/scanners/osv.py"], "adr_refs": ["ADR-014"]}, {"id": "scanner:scn-detector", "column": "scanners", "label": "scn-detector", "kind": "scanner", "scanner_category": "compliance", "purpose": "FedRAMP Significant Change Notification detection and classification", "languages": [], "output_format": "JSON, Markdown, GitHub Issues", "scanner_config": {"yaml": "scanners:\n  scn-detector:\n    enabled: true\n", "defaults": {}, "inputs": []}, "cli_invocation": "argus scan scn-detector", "file_paths": ["argus/scanners/scn_detector.py"], "adr_refs": ["ADR-014"]}, {"id": "scanner:supply-chain", "column": "scanners", "label": "supply-chain", "kind": "scanner", "scanner_category": "supply_chain", "purpose": "GitHub Actions workflow security scanning via zizmor + actionlint", "languages": [], "output_format": "JSON/SARIF", "scanner_config": {"yaml": "scanners:\n  supply-chain:\n    enabled: true\n", "defaults": {}, "inputs": []}, "cli_invocation": "argus scan supply-chain", "file_paths": ["argus/scanners/supply_chain.py"], "adr_refs": ["ADR-014"]}, {"id": "scanner:syft", "column": "scanners", "label": "syft", "kind": "scanner-sub", "scanner_category": "container", "purpose": "SBOM generation", "languages": [], "output_format": "SPDX/CycloneDX", "scanner_config": {"yaml": "scanners:\n  syft:\n    enabled: true\n", "defaults": {}, "inputs": []}, "cli_invocation": "argus scan syft", "file_paths": ["argus/scanners/syft.py"], "adr_refs": ["ADR-014"]}, {"id": "scanner:trivy", "column": "scanners", "label": "trivy", "kind": "scanner-sub", "scanner_category": "container", "purpose": "Container vulnerability scanning", "languages": [], "output_format": "SARIF", "scanner_config": {"yaml": "scanners:\n  trivy:\n    enabled: true\n", "defaults": {}, "inputs": []}, "cli_invocation": "argus scan trivy", "file_paths": ["argus/scanners/trivy.py"], "adr_refs": ["ADR-014"]}, {"id": "scanner:trivy-iac", "column": "scanners", "label": "trivy-iac", "kind": "scanner", "scanner_category": "infrastructure", "purpose": "Terraform, Kubernetes, CloudFormation scanning", "languages": [], "output_format": "SARIF", "scanner_config": {"yaml": "scanners:\n  trivy-iac:\n    enabled: true\n", "defaults": {}, "inputs": []}, "cli_invocation": "argus scan trivy-iac", "file_paths": ["argus/scanners/trivy_iac.py"], "adr_refs": ["ADR-014"]}, {"id": "scanner:zap", "column": "scanners", "label": "zap", "kind": "scanner", "scanner_category": "dast", "purpose": "Dynamic web application testing", "languages": [], "output_format": "SARIF", "scanner_config": {"yaml": "scanners:\n  zap:\n    enabled: true\n", "defaults": {}, "inputs": []}, "cli_invocation": "argus scan zap", "file_paths": ["argus/scanners/zap.py"], "adr_refs": ["ADR-014"]}, {"id": "surface:composite-actions", "column": "surfaces", "label": "Composite actions", "kind": "surface", "purpose": "Thin GitHub Actions wrappers per scanner. Pip-install argus-security, run argus scan, upload SARIF, post PR comment. No SDK code lives here \u2014 pure orchestration per ADR-013.", "file_paths": [".github/actions/"], "adr_refs": ["ADR-013"]}, {"id": "surface:mcp", "column": "surfaces", "label": "MCP stdio server", "kind": "surface", "purpose": "Bundled argus mcp implements the Model Context Protocol over stdio. Exposes tools (scan, validate, classify) and resources (argus://config, argus://results/latest, argus://architecture).", "file_paths": ["argus/mcp.py"], "adr_refs": []}, {"id": "surface:cli", "column": "surfaces", "label": "argus CLI", "kind": "surface", "purpose": "argparse entry point. Top-level dispatcher.", "file_paths": ["argus/cli.py", "argus/__main__.py"], "adr_refs": []}, {"id": "surface:cache", "column": "surfaces", "label": "argus cache", "kind": "surface-subcommand", "purpose": "argus cache info|clean \u2014 manage per-scanner DB cache volumes", "file_paths": ["argus/cli.py"], "adr_refs": []}, {"id": "surface:classify", "column": "surfaces", "label": "argus classify", "kind": "surface-subcommand", "purpose": "argus classify \u2014 classify findings by category", "file_paths": ["argus/cli.py"], "adr_refs": []}, {"id": "surface:collect", "column": "surfaces", "label": "argus collect", "kind": "surface-subcommand", "purpose": "argus collect \u2014 collect scanner outputs", "file_paths": ["argus/cli.py"], "adr_refs": []}, {"id": "surface:completion", "column": "surfaces", "label": "argus completion", "kind": "surface-subcommand", "purpose": "argus completion {bash,zsh,fish} \u2014 shell completion (dynamic from registry)", "file_paths": ["argus/cli.py"], "adr_refs": []}, {"id": "surface:init", "column": "surfaces", "label": "argus init", "kind": "surface-subcommand", "purpose": "argus init \u2014 generate a tailored argus.yml from project auto-detection", "file_paths": ["argus/cli.py"], "adr_refs": []}, {"id": "surface:mcp", "column": "surfaces", "label": "argus mcp", "kind": "surface-subcommand", "purpose": "argus mcp \u2014 start the MCP server over stdio for AI-assistant integration", "file_paths": ["argus/cli.py"], "adr_refs": []}, {"id": "surface:report", "column": "surfaces", "label": "argus report", "kind": "surface-subcommand", "purpose": "argus report <format> \u2014 re-emit results in another format without re-scanning", "file_paths": ["argus/cli.py"], "adr_refs": []}, {"id": "surface:scan", "column": "surfaces", "label": "argus scan", "kind": "surface-subcommand", "purpose": "argus scan [scanner ...] \u2014 primary entry; supports source, container, lint flows", "file_paths": ["argus/cli.py"], "adr_refs": []}, {"id": "surface:validate", "column": "surfaces", "label": "argus validate", "kind": "surface-subcommand", "purpose": "argus validate \u2014 typecheck argus.yml against the JSON Schema", "file_paths": ["argus/cli.py"], "adr_refs": []}, {"id": "surface:view", "column": "surfaces", "label": "argus view", "kind": "surface-subcommand", "purpose": "argus view [terminal|browser] \u2014 interactive triage of argus-results.json", "file_paths": ["argus/cli.py"], "adr_refs": []}, {"id": "surface:view-browser", "column": "surfaces", "label": "argus view browser", "kind": "surface", "purpose": "FastAPI + Jinja2 read-only viewer ([browser] extra). Bound to 127.0.0.1; same canonical JSON as the TUI.", "file_paths": ["argus/viewers/browser/"], "adr_refs": []}, {"id": "surface:view-terminal", "column": "surfaces", "label": "argus view terminal", "kind": "surface", "purpose": "Textual TUI ([terminal] extra). Click-through and filter the canonical argus-results.json. Mouse-first interactivity in 8.x.", "file_paths": ["argus/viewers/terminal/"], "adr_refs": []}], "edges": [{"from": "actor:ai-assistant", "to": "surface:mcp", "kind": "invokes", "adr_refs": []}, {"from": "actor:ci", "to": "surface:cli", "kind": "invokes", "adr_refs": []}, {"from": "actor:ci", "to": "surface:composite-actions", "kind": "invokes", "adr_refs": []}, {"from": "actor:developer", "to": "surface:cli", "kind": "invokes", "adr_refs": []}, {"from": "actor:developer", "to": "surface:view-browser", "kind": "invokes", "adr_refs": []}, {"from": "actor:developer", "to": "surface:view-terminal", "kind": "invokes", "adr_refs": []}, {"from": "artifact:results-json", "to": "consumer:mcp", "kind": "read-by", "adr_refs": []}, {"from": "artifact:results-json", "to": "consumer:view-browser", "kind": "read-by", "adr_refs": []}, {"from": "artifact:results-json", "to": "consumer:view-terminal", "kind": "read-by", "adr_refs": []}, {"from": "artifact:sarif", "to": "consumer:github-security", "kind": "read-by", "adr_refs": []}, {"from": "artifact:sarif", "to": "consumer:gitlab-security", "kind": "read-by", "adr_refs": []}, {"from": "core:audit", "to": "artifact:audit-json", "kind": "writes", "adr_refs": ["ADR-022"]}, {"from": "core:audit", "to": "artifact:log-jsonl", "kind": "writes", "adr_refs": ["ADR-022"]}, {"from": "core:container-engine", "to": "scanner:grype", "kind": "dispatches", "adr_refs": []}, {"from": "core:container-engine", "to": "scanner:syft", "kind": "dispatches", "adr_refs": []}, {"from": "core:container-engine", "to": "scanner:trivy", "kind": "dispatches", "adr_refs": []}, {"from": "core:engine", "to": "artifact:raw-dir", "kind": "writes", "adr_refs": []}, {"from": "core:engine", "to": "core:audit", "kind": "emits", "adr_refs": []}, {"from": "core:engine", "to": "linter:lint-dockerfile", "kind": "dispatches", "adr_refs": ["ADR-020"]}, {"from": "core:engine", "to": "linter:lint-javascript", "kind": "dispatches", "adr_refs": ["ADR-020"]}, {"from": "core:engine", "to": "linter:lint-json", "kind": "dispatches", "adr_refs": ["ADR-020"]}, {"from": "core:engine", "to": "linter:lint-python", "kind": "dispatches", "adr_refs": ["ADR-020"]}, {"from": "core:engine", "to": "linter:lint-terraform", "kind": "dispatches", "adr_refs": ["ADR-020"]}, {"from": "core:engine", "to": "linter:lint-yaml", "kind": "dispatches", "adr_refs": ["ADR-020"]}, {"from": "core:engine", "to": "reporter:container_markdown", "kind": "emits", "adr_refs": ["ADR-023"]}, {"from": "core:engine", "to": "reporter:github", "kind": "emits", "adr_refs": ["ADR-023"]}, {"from": "core:engine", "to": "reporter:gitlab", "kind": "emits", "adr_refs": ["ADR-023"]}, {"from": "core:engine", "to": "reporter:json", "kind": "emits", "adr_refs": ["ADR-023"]}, {"from": "core:engine", "to": "reporter:junit", "kind": "emits", "adr_refs": ["ADR-023"]}, {"from": "core:engine", "to": "reporter:markdown", "kind": "emits", "adr_refs": ["ADR-023"]}, {"from": "core:engine", "to": "reporter:sarif", "kind": "emits", "adr_refs": ["ADR-023"]}, {"from": "core:engine", "to": "reporter:terminal", "kind": "emits", "adr_refs": ["ADR-023"]}, {"from": "core:engine", "to": "scanner:bandit", "kind": "dispatches", "adr_refs": []}, {"from": "core:engine", "to": "scanner:checkov", "kind": "dispatches", "adr_refs": []}, {"from": "core:engine", "to": "scanner:clamav", "kind": "dispatches", "adr_refs": []}, {"from": "core:engine", "to": "scanner:codeql", "kind": "dispatches", "adr_refs": []}, {"from": "core:engine", "to": "scanner:dependency-review", "kind": "dispatches", "adr_refs": []}, {"from": "core:engine", "to": "scanner:gitleaks", "kind": "dispatches", "adr_refs": []}, {"from": "core:engine", "to": "scanner:opengrep", "kind": "dispatches", "adr_refs": []}, {"from": "core:engine", "to": "scanner:osv", "kind": "dispatches", "adr_refs": []}, {"from": "core:engine", "to": "scanner:scn-detector", "kind": "dispatches", "adr_refs": []}, {"from": "core:engine", "to": "scanner:supply-chain", "kind": "dispatches", "adr_refs": []}, {"from": "core:engine", "to": "scanner:trivy-iac", "kind": "dispatches", "adr_refs": []}, {"from": "core:engine", "to": "scanner:zap", "kind": "dispatches", "adr_refs": []}, {"from": "core:prewarm", "to": "core:image-verify", "kind": "calls", "adr_refs": []}, {"from": "reporter:json", "to": "artifact:results-json", "kind": "writes", "adr_refs": []}, {"from": "reporter:sarif", "to": "artifact:sarif", "kind": "writes", "adr_refs": []}, {"from": "surface:classify", "to": "core:engine", "kind": "drives", "adr_refs": []}, {"from": "surface:cli", "to": "surface:cache", "kind": "dispatches", "adr_refs": []}, {"from": "surface:cli", "to": "surface:classify", "kind": "dispatches", "adr_refs": []}, {"from": "surface:cli", "to": "surface:collect", "kind": "dispatches", "adr_refs": []}, {"from": "surface:cli", "to": "surface:completion", "kind": "dispatches", "adr_refs": []}, {"from": "surface:cli", "to": "surface:init", "kind": "dispatches", "adr_refs": []}, {"from": "surface:cli", "to": "surface:mcp", "kind": "dispatches", "adr_refs": []}, {"from": "surface:cli", "to": "surface:report", "kind": "dispatches", "adr_refs": []}, {"from": "surface:cli", "to": "surface:scan", "kind": "dispatches", "adr_refs": []}, {"from": "surface:cli", "to": "surface:validate", "kind": "dispatches", "adr_refs": []}, {"from": "surface:cli", "to": "surface:view", "kind": "dispatches", "adr_refs": []}, {"from": "surface:collect", "to": "core:engine", "kind": "drives", "adr_refs": []}, {"from": "surface:completion", "to": "core:registry", "kind": "reads", "adr_refs": []}, {"from": "surface:init", "to": "core:engine", "kind": "drives", "adr_refs": []}, {"from": "surface:mcp", "to": "core:engine", "kind": "dispatches", "adr_refs": []}, {"from": "surface:report", "to": "core:engine", "kind": "drives", "adr_refs": []}, {"from": "surface:scan", "to": "core:engine", "kind": "drives", "adr_refs": []}, {"from": "surface:validate", "to": "core:schema", "kind": "drives", "adr_refs": []}, {"from": "surface:view", "to": "core:engine", "kind": "drives", "adr_refs": []}, {"from": "tool:codeql", "to": "scanner:codeql", "kind": "shells-out", "adr_refs": ["ADR-014"]}, {"from": "tool:dependency-review-action", "to": "scanner:dependency-review", "kind": "shells-out", "adr_refs": ["ADR-014"]}, {"from": "tool:gitleaks", "to": "scanner:gitleaks", "kind": "shells-out", "adr_refs": ["ADR-014"]}, {"from": "tool:osv-scanner", "to": "scanner:osv", "kind": "shells-out", "adr_refs": ["ADR-014"]}, {"from": "tool:trivy", "to": "scanner:trivy", "kind": "shells-out", "adr_refs": ["ADR-014"]}, {"from": "tool:trivy", "to": "scanner:trivy-iac", "kind": "shells-out", "adr_refs": ["ADR-014"]}], "flows": [{"id": "flow-scan-source", "label": "argus scan (source)", "summary": "config \u2192 engine \u2192 scanners \u2192 findings \u2192 reporters \u2192 artifacts", "kind": "primary", "path": ["actor:developer", "surface:cli", "surface:scan", "core:engine", "scanner:bandit", "core:engine", "reporter:json", "artifact:results-json", "consumer:view-browser"], "steps": [{"node_id": "actor:developer", "index": 1}, {"node_id": "surface:cli", "index": 2}, {"node_id": "surface:scan", "index": 3}, {"node_id": "core:engine", "index": 4}, {"node_id": "scanner:bandit", "index": 5}, {"node_id": "core:engine", "index": 6}, {"node_id": "reporter:json", "index": 7}, {"node_id": "artifact:results-json", "index": 8}, {"node_id": "consumer:view-browser", "index": 9}]}, {"id": "flow-scan-container", "label": "argus scan container", "summary": "discovery \u2192 ContainerEngine \u2192 5 sub-scanners \u2192 reporters", "kind": "primary", "path": ["actor:developer", "surface:cli", "core:container-engine", "scanner:trivy", "scanner:grype", "scanner:syft", "core:engine", "reporter:json", "artifact:results-json"], "steps": [{"node_id": "actor:developer", "index": 1}, {"node_id": "surface:cli", "index": 2}, {"node_id": "core:container-engine", "index": 3}, {"node_id": "scanner:trivy", "index": 4}, {"node_id": "scanner:grype", "index": 5}, {"node_id": "scanner:syft", "index": 6}, {"node_id": "core:engine", "index": 7}, {"node_id": "reporter:json", "index": 8}, {"node_id": "artifact:results-json", "index": 9}]}, {"id": "flow-init", "label": "argus init", "summary": "Auto-detect project \u2192 tailored argus.yml", "kind": "primary", "path": ["actor:developer", "surface:cli", "surface:init", "core:engine", "artifact:argus-yml"], "steps": [{"node_id": "actor:developer", "index": 1}, {"node_id": "surface:cli", "index": 2}, {"node_id": "surface:init", "index": 3}, {"node_id": "core:engine", "index": 4}, {"node_id": "artifact:argus-yml", "index": 5}]}, {"id": "flow-validate", "label": "argus validate", "summary": "schema.py \u2192 ConfigError[]", "kind": "primary", "path": ["actor:developer", "surface:cli", "surface:validate", "core:schema"], "steps": [{"node_id": "actor:developer", "index": 1}, {"node_id": "surface:cli", "index": 2}, {"node_id": "surface:validate", "index": 3}, {"node_id": "core:schema", "index": 4}]}, {"id": "flow-view", "label": "argus view (terminal / browser)", "summary": "Load argus-results.json \u2192 findings_view \u2192 TUI or web UI", "kind": "primary", "path": ["actor:developer", "surface:cli", "surface:view", "artifact:results-json", "core:findings-view", "consumer:view-terminal", "consumer:view-browser"], "steps": [{"node_id": "actor:developer", "index": 1}, {"node_id": "surface:cli", "index": 2}, {"node_id": "surface:view", "index": 3}, {"node_id": "artifact:results-json", "index": 4}, {"node_id": "core:findings-view", "index": 5}, {"node_id": "consumer:view-terminal", "index": 6}, {"node_id": "consumer:view-browser", "index": 7}]}, {"id": "flow-report", "label": "argus report", "summary": "Re-emit canonical results without re-scanning", "kind": "primary", "path": ["actor:developer", "surface:cli", "surface:report", "artifact:results-json", "reporter:sarif", "artifact:sarif"], "steps": [{"node_id": "actor:developer", "index": 1}, {"node_id": "surface:cli", "index": 2}, {"node_id": "surface:report", "index": 3}, {"node_id": "artifact:results-json", "index": 4}, {"node_id": "reporter:sarif", "index": 5}, {"node_id": "artifact:sarif", "index": 6}]}, {"id": "flow-mcp", "label": "argus mcp", "summary": "stdio \u2192 tools dispatch \u2192 SDK entry points \u2192 resources", "kind": "primary", "path": ["actor:ai-assistant", "surface:mcp", "core:engine", "artifact:results-json", "consumer:mcp"], "steps": [{"node_id": "actor:ai-assistant", "index": 1}, {"node_id": "surface:mcp", "index": 2}, {"node_id": "core:engine", "index": 3}, {"node_id": "artifact:results-json", "index": 4}, {"node_id": "consumer:mcp", "index": 5}]}, {"id": "flow-completion", "label": "argus completion", "summary": "Dynamic shell completion from SCANNER_REGISTRY", "kind": "primary", "path": ["actor:developer", "surface:cli", "surface:completion", "core:registry"], "steps": [{"node_id": "actor:developer", "index": 1}, {"node_id": "surface:cli", "index": 2}, {"node_id": "surface:completion", "index": 3}, {"node_id": "core:registry", "index": 4}]}, {"id": "flow-cache", "label": "argus cache", "summary": "DB cache volume management", "kind": "primary", "path": ["actor:developer", "surface:cli", "surface:cache"], "steps": [{"node_id": "actor:developer", "index": 1}, {"node_id": "surface:cli", "index": 2}, {"node_id": "surface:cache", "index": 3}]}, {"id": "flow-composite", "label": "GitHub Actions composite action", "summary": "Workflow step \u2192 pip install argus-security \u2192 argus scan {scanner} \u2192 SARIF + PR comment", "kind": "primary", "path": ["actor:ci", "surface:composite-actions", "surface:cli", "core:engine", "reporter:sarif", "artifact:sarif", "consumer:github-security", "consumer:pr-comments"], "steps": [{"node_id": "actor:ci", "index": 1}, {"node_id": "surface:composite-actions", "index": 2}, {"node_id": "surface:cli", "index": 3}, {"node_id": "core:engine", "index": 4}, {"node_id": "reporter:sarif", "index": 5}, {"node_id": "artifact:sarif", "index": 6}, {"node_id": "consumer:github-security", "index": 7}, {"node_id": "consumer:pr-comments", "index": 8}]}, {"id": "flow-audit", "label": "Audit trail", "summary": "Every scan emits argus.log JSONL + argus-audit.json; mask_secrets runs at write time", "kind": "overlay", "path": ["core:engine", "core:audit", "artifact:log-jsonl", "artifact:audit-json"], "steps": [{"node_id": "core:engine", "index": 1}, {"node_id": "core:audit", "index": 2}, {"node_id": "artifact:log-jsonl", "index": 3}, {"node_id": "artifact:audit-json", "index": 4}]}, {"id": "flow-image-verify", "label": "Image verification", "summary": "Pull \u2192 image_verify \u2192 cosign keyless verify for argus-owned images; digest-pin check for third-party", "kind": "overlay", "path": ["core:engine", "core:image-verify", "core:prewarm"], "steps": [{"node_id": "core:engine", "index": 1}, {"node_id": "core:image-verify", "index": 2}, {"node_id": "core:prewarm", "index": 3}]}], "adrs": [{"id": "ADR-013", "title": "Python SDK + CLI + thin CI adapters for cross-platform portability", "status": "accepted", "summary": "Adopt a layered architecture with four components:\n1. Argus Core SDK (argus/core/) \u2014 Scanner protocol, result models, engine,\n   config loading. Pure Python, zero CI dependencies.\n2. Scanner Modules (argus/scanners/) \u2014 One Python file per scanner\n   implementing the Scanner protocol. Reuses existing parse_*.py logic.\n3. Reporters (argus/reporters/) \u2014 Output plugins per platform: terminal,\n   markdown, SARIF, JSON, GitHub, GitLab, JUnit.\n4. CI Adapters \u2014 Thin wrappers: GitHub composite actions call\n   `argus scan` + `argus report github`; GitLab CI templates call\n   `argus scan` + `argus report gitlab`; CLI for local/Jenkins.\n\nMigration is incremental over 4 phases:\n  Phase 1: Core SDK + CLI + 2-3 proof-of-concept scanners (no existing changes)\n  Phase 2: Port remaining scanners, build GitHub reporter\n  Phase 3: Simplify composite actions to thin wrappers (backward compatible)\n  Phase 4: Add GitLab/Jenkins reporters, publish to PyPI\n", "found": true}, {"id": "ADR-014", "title": "Docker execution backend for portable scanner execution", "status": "accepted", "summary": "Add a Docker execution backend to ArgusEngine:\n1. Each scanner declares its official container image (author-published)\n2. Engine checks is_available() first (local tool), falls back to\n   docker run with volume mounts if tool not installed\n3. Parsing always runs on host (SDK parses JSON/SARIF output from container)\n4. Prefer official tool author images (aquasec/trivy, anchore/grype, etc.)\n5. Only build custom images when no official image exists (bandit, opengrep,\n   supply-chain combined)\n6. Publish all-in-one image for CI convenience\n7. Container image versions managed via Dependabot docker ecosystem\n", "found": true}, {"id": "ADR-018", "title": "Canonical argus-results.json + container/<name> ScanResult naming + raw output preservation", "status": "accepted", "summary": "Three coupled changes, shipped in PR #116:\n\n1. Canonical artifact contract is universal.\n   The container flow now builds a canonical ScanSummary alongside\n   the existing ContainerScanSummary, and the JsonReporter writes\n   argus-results.json unconditionally for both source and container\n   scans. The domain-shaped container-scan.json is preserved for\n   backward compat with downstream tooling, but argus-results.json\n   is the single source of truth that viewers/MCP/external tools\n   consume. (PR #111 originally established this for source scans;\n   PR #116 extended it to containers.)\n\n2. Container findings surface as ScanResult rows with scanner names\n   of the form `container/<image-name>`. The viewers (terminal +\n   browser) and reporters render them through their normal\n   per-scanner code path \u2014 no container-specific rendering.\n\n3. Raw scanner output is preserved alongside the canonical artifact\n   under <output_dir>/raw/<scanner_or_image>/, configurable via the\n   unified reporting.keep_raw key (default true) or --no-keep-raw.\n   The container flow uses scan_image(raw_output_dir=...) and the\n   source flow uses ArgusEngine.run(raw_output_dir=...). 0-byte\n   files are explicitly skipped (they're failure-signal stubs and\n   persisting them would mislead readers).\n", "found": true}, {"id": "ADR-020", "title": "FileDiscoveryScanner template + shared linter helpers", "status": "accepted", "summary": "Ship a hybrid: helper functions for the deduplication that's\nalways useful, and a base class for the cases that genuinely\nshare a flow.\n\nargus/core/linter_template.py exports:\n\n* ``discover_files(target, patterns, exclusions=None)`` \u2014 walk\n  helper used by FileDiscoveryScanner internally and available\n  to any custom flow (e.g. jsonlint).\n* ``build_docker_command(image, workspace, container_args,\n  mount_rw=False, ws_mount='/workspace', workdir=None)`` \u2014 the\n  single source of truth for the docker-run command shape.\n  EslintLinter and TerraformLinter migrate to it.\n* ``run_utf8(cmd, *, cwd=None, timeout=None)`` \u2014 explicit\n  UTF-8 subprocess wrapper. Replaces inline encoding+errors\n  keyword args.\n* ``FileDiscoveryScanner`` \u2014 base class for the discover-then-\n  batch flow. Subclasses declare ``name``, ``file_glob``,\n  ``binary``, optionally ``container_image``, and override\n  ``_build_local_args`` / ``_build_container_args`` /\n  ``_parse_results``. The base does discovery, dispatch\n  (local-or-container), error handling (execution_failed for\n  bad exit + empty stdout, parse_failed for parser exceptions\n  \u2014 same metadata shape the engine's container path emits),\n  and the engine-compatible ScanResult shape.\n\nMigrations in this PR:\n* HadolintLinter \u2014 full migration to FileDiscoveryScanner\n  (~30 lines saved). Custom _find_dockerfiles and\n  _build_docker_command gone.\n* EslintLinter \u2014 switches its custom docker-fallback builder\n  to build_docker_command (~10 lines saved); keeps its\n  config-detection flow.\n* TerraformLinter \u2014 same. Multi-step fmt/validate/tflint flow\n  stays bespoke (it doesn't fit FileDiscoveryScanner's\n  single-batched-call shape).\n* yamllint, python_lint, jsonlint \u2014 keep their existing flow.\n  yamllint and python_lint use the \"tool walks the workspace\n  itself\" shape that doesn't benefit from discovery in Python.\n  jsonlint has a Python-stdlib fallback that the\n  FileDiscoveryScanner abstraction doesn't model. The new\n  helpers are available to them if a future change makes the\n  migration valuable.\n", "found": true}, {"id": "ADR-022", "title": "Pattern-based secret redaction as Finding-construction backstop", "status": "accepted", "summary": "Implement a pattern-based second pass that runs in\n``Finding.__post_init__``, with the explicit scope:\n\n* Patterns are limited to known-vendor-prefix tokens with\n  documented format specs. Each pattern's regex cites the\n  issuer's documentation in a source comment.\n* Generic high-entropy heuristics are excluded. Adding one\n  requires a separate ADR with concrete false-positive data.\n* Always-on; no opt-in flag, no env-var override. Findings\n  without a matching pattern incur zero cost (the regex\n  pass is O(text length \u00d7 pattern count) and pattern count\n  is small).\n* Applies to ``title``, ``description``, and every string\n  value in ``metadata`` (recursively through nested dicts /\n  lists / tuples). Other Finding fields (``id``, ``severity``,\n  ``location``, ``cwe``, ``cve``, ``scanner``) are\n  structural and don't carry free-form text.\n* The placeholder is the same ``REDACTED_PLACEHOLDER``\n  constant the per-scanner first pass uses \u2014 exporters /\n  log scrapers can grep for the same token regardless of\n  which pass redacted.\n\nInitial pattern set:\n  github_token   gh[opusr]_<36+>\n  aws_access_key (AKIA|ASIA|AIDA|AGPA|...|ACCA)<16>\n  slack_token    xox[abprs]-<10+>\n  gitlab_pat     glpat-<20+>\n  npm_token      npm_<36>\n  google_api_key AIza<35>\n  stripe_live    (sk|rk)_live_<24+>     (test keys NOT matched)\n  jwt            eyJ.<8+>.eyJ.<8+>.<8+>\n  pem_private    -----BEGIN [A-Z ]+PRIVATE KEY-----\n\nLives in ``argus/core/redact.py``. Adding a new pattern\nrequires (a) the issuer's documented format spec cited in\na source comment and (b) a positive + a negative test in\n``argus/tests/core/test_redact.py::TestHighRiskPatterns``.\n\nPer-scanner first-pass remains the primary defense. The\nbackstop is for scanners that get added without the audit\nand for vendor formats whose values reach Finding text via\npaths the scanner author didn't enumerate (e.g., a\n``raw_match`` field copied into metadata for forensics).\n", "found": true}, {"id": "ADR-023", "title": "Reporter plugin registration via Python entry-points", "status": "accepted", "summary": "Use Python's standard ``importlib.metadata`` entry-point\nmechanism, with the group name ``argus.reporters``.\n\nBuilt-ins are registered via the same mechanism third-party\nplugins use \u2014 ``pyproject.toml`` declares an entry-point per\nbuilt-in. There is no parallel \"internal\" registry: one source\nof truth, one code path, one set of failure semantics.\n\nThe loader (``argus/reporters/__init__.py``):\n\n* Walks ``importlib.metadata.entry_points().select(group=\"argus.reporters\")``\n  once per process and caches the result. Tests force a rebuild\n  via ``_reset_registry_cache_for_tests()``.\n* Validates each entry-point by ``ep.load()`` then\n  ``cls()`` then ``isinstance(instance, Reporter)``. Any\n  failure logs a WARNING and skips that plugin \u2014 argus continues\n  with whatever else loaded successfully.\n* Resolves name collisions:\n    - **Built-in vs plugin: built-in wins.** The plugin claim is\n      logged as shadowed and discarded.\n    - **Plugin vs plugin: first-wins.** ``importlib.metadata``\n      iteration order is deterministic across runs of the same\n      install set, so this is a stable resolution. The losing\n      plugin is logged.\n\n``REPORTER_REGISTRY`` is preserved as a thin read-only proxy\nbacked by the cached registry, so legacy\n``from argus.reporters import REPORTER_REGISTRY`` keeps working.\n\n``argus scan --format <name>`` (and the parallel ``argus report``\nargument) is populated from ``available_reporters()`` at\nparser-construction time, so newly-installed plugins light up\nafter a fresh ``pip install`` without an Argus release.\n", "found": true}, {"id": "ADR-024", "title": "DAST scanner tuning moves to argus.yml; composite action stays minimal", "status": "accepted", "summary": "Adopt path (2): scanner-specific tuning moves to\n``scanners.zap.*`` in ``argus.yml``. The composite-action\nsurface stays minimal \u2014 target identification (``target_url``\nor ``app_image_ref`` + ``app_ports``) plus the common\ncross-scanner inputs (``fail_on_severity``,\n``post_pr_comment``, ``enable_code_security``).\n\n**Disposition of each removed input:**\n\n*Restore via config passthrough* (``scanners.zap.<key>``):\n  api_spec              \u2014 explicit URL/path for OpenAPI scans\n  rules_file            \u2014 renamed from rules_file_name; .tsv ignore-rules path\n  cmd_options           \u2014 list[str] appended to ZAP CLI verbatim\n  max_duration_minutes  \u2014 int hard cap on scan duration\n  scan_type             \u2014 already exists: baseline | full; api implicit when api_spec is set\n  healthcheck_url       \u2014 argus polls 2xx before invoking ZAP (default timeout 60s)\n\n*Restore via env-var-referenced config* (registry auth for\nprivate ``app_image_ref``):\n  scanners.zap.registry_username: \"${REGISTRY_USER}\"\n  scanners.zap.registry_password: \"${REGISTRY_TOKEN}\"\nReuses the existing ``container`` scanner interpolation\npattern. Validator warns on literal values that don't match\n``${...}`` at config-load time. CLI override\n``--registry-password-stdin`` reads the password from stdin\n(mirrors ``docker login --password-stdin``) for ad-hoc local\nruns where setting an env var is friction.\n\n*Web-app authentication (V1)* \u2014 ZAP context-file passthrough:\n  scanners.zap.auth.context_file = \".zap/context.xml\"\n  scanners.zap.auth.username_env = \"ZAP_APP_USER\"\n  scanners.zap.auth.password_env = \"ZAP_APP_PASSWORD\"\nArgus mounts the context file into the container at a known\npath and exports the named env vars; ZAP's standard\n``{%username%}`` / ``{%password%}`` placeholders in the\ncontext file pick them up. The user owns the DOM\nspecification (login URL, form selectors via XPath/CSS,\nlogged-in regex, session management). Argus stays out of\nthat surface.\n\n*Web-app authentication (V2, deferred)* \u2014 an argus-native\n``scanners.zap.auth.form`` block we'd translate into a ZAP\ncontext. Defer until we have real consumer apps to validate\nagainst. Abstracting the DOM is inherently leaky per-app.\n\n*NOT restoring \u2014 intentional simplification* (these belong\nin the consumer's pipeline, not in argus's surface):\n  app_build_context, app_dockerfile, app_image_tag \u2014 image\n    builds belong in a prior workflow step; argus accepts\n    ``app_image_ref`` (pre-built image as sidecar) or a\n    started ``target_url``.\n  compose_file, compose_build \u2014 multi-service orchestration\n    belongs in the consumer's pipeline.\n  allow_issue_writing \u2014 conflicts with the silent-failure-\n    loud principle (ADR-016); scan findings already ride\n    PR-comments, summary aggregation, and SARIF upload.\n\n**Composite action surface after the change**\n(``.github/actions/scanner-zap/action.yml``):\n  target_url, app_image_ref, app_ports, fail_on_severity,\n  post_pr_comment, enable_code_security.\nEverything else lives in ``argus.yml``.\n\nThe same ``argus.yml`` shape works for SDK-direct users on\nany CI platform (GitLab, Jenkins, Azure DevOps, local dev) \u2014\nparity with composite-action users, no per-platform input\ndrift.\n", "found": true}], "external_tools": [{"id": "tool:codeql", "name": "codeql", "purpose": "Semantic code analysis", "critical": false, "used_by": ["scanner:codeql"], "adr_refs": ["ADR-014"]}, {"id": "tool:dependency-review-action", "name": "dependency-review-action", "purpose": "PR-based dependency diff analysis and license compliance", "critical": false, "used_by": ["scanner:dependency-review"], "adr_refs": ["ADR-014"]}, {"id": "tool:gitleaks", "name": "gitleaks", "purpose": "Secrets detection in git history", "critical": true, "used_by": ["scanner:gitleaks"], "adr_refs": ["ADR-014"]}, {"id": "tool:osv-scanner", "name": "osv-scanner", "purpose": "Dependency vulnerability scanning via OSV database", "critical": true, "used_by": ["scanner:osv"], "adr_refs": ["ADR-014"]}, {"id": "tool:trivy", "name": "trivy", "purpose": "CVE scanning for OS packages and containers", "critical": true, "used_by": ["scanner:trivy", "scanner:trivy-iac"], "adr_refs": ["ADR-014"]}]}</script>
+<script src="../assets/architecture.js" defer></script>
+
+
+
+
+
+
+
+  
+  
+
+
+
+
+  
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/huntridge-labs/argus" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.expand", "navigation.path", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
