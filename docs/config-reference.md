@@ -405,12 +405,46 @@ Configuration for container image scanning via `argus scan container`. This sect
 | `images` | array of [image objects](#image-object) | | Explicit list of container images to scan. |
 | `scanners` | array of strings | `["trivy", "grype"]` | Sub-scanners to use. Values: `trivy`, `grype`, `syft`. |
 | `output_dir` | string | `"./argus-results"` | Output directory for container scan results. |
-| `registry_username` | string | | Literal username for private registry auth. Prefer `registry_username_env`. Same shape as in [Credential fields](#credential-fields). |
-| `registry_username_env` | string | | **Name** of an environment variable holding the registry username. Resolved at scan time. |
-| `registry_password` | string | | Literal password/token. Prefer `registry_password_env`. |
-| `registry_password_env` | string | | **Name** of an environment variable holding the registry password/token. |
+| `registry_username` | string | | Literal username applied to every image when no `registry_auth` entry matches. Prefer `registry_username_env`. |
+| `registry_username_env` | string | | **Name** of an environment variable holding the default registry username. |
+| `registry_password` | string | | Literal password/token applied to every image. Prefer `registry_password_env`. |
+| `registry_password_env` | string | | **Name** of an environment variable holding the default registry password/token. |
+| `registry_auth` | mapping | | Per-registry credential map keyed by registry host (or `host/path-prefix` for finer granularity). Longest matching prefix wins. See [Per-registry credentials](#per-registry-credentials) below. |
 
-Registry credentials are forwarded to Trivy, Grype, and Syft as their native env vars (`TRIVY_USERNAME` / `TRIVY_PASSWORD`, `GRYPE_REGISTRY_AUTH_USERNAME` / `GRYPE_REGISTRY_AUTH_PASSWORD`, `SYFT_REGISTRY_AUTH_USERNAME` / `SYFT_REGISTRY_AUTH_PASSWORD`) for both the local-binary and container-fallback execution paths. For back-compat, Argus also reads these fields from `scanners.container.*` — the canonical `containers.*` location wins when both are set.
+Registry credentials are forwarded to Trivy, Grype, and Syft as their native env vars (`TRIVY_USERNAME` / `TRIVY_PASSWORD`, `GRYPE_REGISTRY_AUTH_USERNAME` / `GRYPE_REGISTRY_AUTH_PASSWORD`, `SYFT_REGISTRY_AUTH_USERNAME` / `SYFT_REGISTRY_AUTH_PASSWORD`) for both the local-binary and container-fallback execution paths. For back-compat, Argus also reads the top-level credential fields from `scanners.container.*` — the canonical `containers.*` location wins when both are set.
+
+### Per-registry credentials
+
+When scanning images from multiple registries (or different repo paths within one registry that need different credentials), declare a `registry_auth` map. Keys are matched as **path-component prefixes** of the image reference — `registry.example.com/internal/restricted` matches `.../restricted/repo` but not `.../restrictedX/repo`. The **longest matching key wins**.
+
+Each entry uses the prefix-less field names `username` / `username_env` / `password` / `password_env` (the `registry_` prefix is implied by context):
+
+```yaml
+containers:
+  registry_auth:
+    # Bare host — default for any repo at this registry.
+    "registry.example.com":
+      username_env: REGISTRY_DEFAULT_USER
+      password_env: REGISTRY_DEFAULT_TOKEN
+
+    # More specific path — wins for repos under internal/restricted/
+    # even though the bare host also matches.
+    "registry.example.com/internal/restricted":
+      username_env: REGISTRY_RESTRICTED_USER
+      password_env: REGISTRY_RESTRICTED_TOKEN
+
+    "ghcr.io/myorg":
+      username_env: GHCR_USER
+      password_env: GHCR_TOKEN
+  images:
+    - image: registry.example.com/public/app@sha256:...                  # uses REGISTRY_DEFAULT_*
+    - image: registry.example.com/internal/restricted/app@sha256:...     # uses REGISTRY_RESTRICTED_*
+    - image: ghcr.io/myorg/worker@sha256:...                              # uses GHCR_*
+```
+
+**No silent fallback to a broader entry.** If a more-specific entry matches but its credentials don't resolve (e.g. the referenced env var is unset), Argus logs a `WARNING` naming the missing variable and the scan attempts anonymously rather than falling back to a broader entry's creds. Same rule Kubernetes `imagePullSecrets` follows: silently widening the auth surface against a repo the operator explicitly marked as needing different access is a privilege-misuse risk.
+
+The top-level `registry_username` / `registry_password` (and their `*_env` references) act as the default for any image that matches no entry in `registry_auth`. Setting both a map and the top-level fields gives you "specific overrides + global default" in one config block.
 
 ### Image Object
 
@@ -441,14 +475,14 @@ containers:
 ### Private registry example
 
 ```yaml
-# Export IRONBANK_USER and IRONBANK_CLI_SECRET in the shell / CI step
+# Export REGISTRY_USER and REGISTRY_TOKEN in the shell / CI step
 # before running. argus reads the env vars by name at scan time and
 # forwards the resolved values to every sub-scanner.
 containers:
-  registry_username_env: IRONBANK_USER
-  registry_password_env: IRONBANK_CLI_SECRET
+  registry_username_env: REGISTRY_USER
+  registry_password_env: REGISTRY_TOKEN
   images:
-    - image: registry1.dso.mil/ironbank/opensource/.../app@sha256:f1e2d3c4...
+    - image: registry.example.com/myorg/app@sha256:f1e2d3c4...
   scanners: [trivy, grype, syft]
 ```
 

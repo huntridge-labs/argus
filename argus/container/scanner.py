@@ -16,23 +16,170 @@ from .discovery import ContainerTarget
 logger = logging.getLogger("argus.container")
 
 
-def _registry_auth_env(config: dict | None) -> dict[str, str]:
+def _normalize_image_ref(ref: str) -> str:
+    """Return the ``host/path`` portion of an image ref, stripping tag + digest.
+
+    Examples:
+      ``registry1.dso.mil/org/repo@sha256:abc``    → ``registry1.dso.mil/org/repo``
+      ``registry1.dso.mil/org/repo:1.2.3``          → ``registry1.dso.mil/org/repo``
+      ``localhost:5000/org/repo:1.2.3@sha256:abc`` → ``localhost:5000/org/repo``
+
+    Only the LAST path component's ``:`` and ``@`` are stripped, so a
+    host that includes a port (``localhost:5000``) keeps its port —
+    the colon in the first path component is part of the host, not a
+    tag separator.
+    """
+    parts = ref.split("/")
+    last = parts[-1]
+    last = last.split("@", 1)[0]
+    last = last.split(":", 1)[0]
+    parts[-1] = last
+    return "/".join(parts)
+
+
+def _is_path_component_prefix(prefix: str, full: str) -> bool:
+    """True iff ``prefix`` is a path-component prefix of ``full``.
+
+    The boundary check rules out string-prefix false matches:
+    ``registry1.dso.mil/ironbank/restricted`` matches
+    ``registry1.dso.mil/ironbank/restricted/foo`` but NOT
+    ``registry1.dso.mil/ironbank/restrictedX/foo``. Without this guard
+    a typo in the more-specific key would silently match a sibling
+    repo with similar name.
+    """
+    if not prefix:
+        return False
+    if full == prefix:
+        return True
+    return full.startswith(prefix + "/")
+
+
+def _resolve_user_pass(
+    config: dict,
+    user_field: str = "registry_username",
+    pass_field: str = "registry_password",
+) -> tuple[str | None, str | None]:
+    """Resolve a username/password field pair via the shared secrets resolver.
+
+    Honors ``*_env`` env-var references, literal forms, and the
+    ``--registry-password-stdin`` slot in precedence order — matching
+    every other credential-bearing scanner in argus.
+
+    The defaults (``registry_username`` / ``registry_password``) match
+    the top-of-``containers``-block shortcut shape. Per-registry
+    entries inside ``registry_auth`` use the prefix-less ``username``
+    / ``password`` field names (the ``registry_`` prefix is implied
+    by context); callers pass those as the optional field-name
+    arguments.
+    """
+    from argus.core.secrets import get_stdin_override, resolve_secret
+
+    username = resolve_secret(config, user_field)
+    password = resolve_secret(
+        config, pass_field,
+        stdin_override=get_stdin_override("registry_password"),
+    )
+    return username, password
+
+
+def _resolve_registry_auth(
+    config: dict, image_ref: str,
+) -> tuple[str | None, str | None]:
+    """Resolve (username, password) for ``image_ref`` using the config.
+
+    Matching order:
+
+    1. Walk ``containers.registry_auth`` for keys that are
+       path-component prefixes of the normalized ``image_ref``.
+       The LONGEST matching key wins (most specific entry).
+       ``registry1.dso.mil/ironbank/restricted`` beats
+       ``registry1.dso.mil`` when both match.
+    2. If no map entry matches, fall through to the top-level
+       ``registry_username`` / ``registry_password`` fields — the
+       legacy single-default shape, still supported as a shortcut
+       for "use these creds for every image."
+    3. If a map entry matches but its credentials resolve to
+       ``None`` (typically because the referenced env var is
+       unset), surface a WARNING naming the missing env var and
+       return ``(None, None)``. We deliberately do NOT fall back
+       to the bare-default in this case — silently broadening the
+       auth surface against a repo the user explicitly marked as
+       needing different creds is a privilege-misuse risk. Same
+       rule k8s ``imagePullSecrets`` follows: if the configured
+       secret doesn't resolve, the pull fails, it doesn't try
+       other secrets.
+    """
+    auth_map = config.get("registry_auth") or {}
+    normalized = _normalize_image_ref(image_ref)
+
+    best_key: str | None = None
+    for key in auth_map:
+        if not isinstance(key, str):
+            continue
+        if _is_path_component_prefix(key, normalized):
+            if best_key is None or len(key) > len(best_key):
+                best_key = key
+
+    if best_key is None:
+        # No specific match → bare-default shortcut at top of containers block.
+        return _resolve_user_pass(config)
+
+    entry = auth_map[best_key]
+    if not isinstance(entry, dict):
+        logger.warning(
+            "registry_auth[%r] is not a mapping; skipping (got %s)",
+            best_key, type(entry).__name__,
+        )
+        return None, None
+
+    username, password = _resolve_user_pass(
+        entry, user_field="username", pass_field="password",
+    )
+
+    if (entry.get("username_env") or entry.get("username")) and not username:
+        logger.warning(
+            "registry_auth[%s]: username unresolved (check that %s is exported)",
+            best_key, entry.get("username_env", "the configured env var"),
+        )
+    if (entry.get("password_env") or entry.get("password")) and not password:
+        logger.warning(
+            "registry_auth[%s]: password unresolved (check that %s is exported)",
+            best_key, entry.get("password_env", "the configured env var"),
+        )
+
+    return username, password
+
+
+def _registry_auth_env(
+    config: dict | None, image_ref: str | None = None,
+) -> dict[str, str]:
     """Resolve registry credentials and map them to per-tool env vars.
 
-    Reads ``registry_username`` / ``registry_password`` from ``config``
-    via ``argus.core.secrets.resolve_secret`` (preferring the ``*_env``
-    references over literals, with stdin overriding both). Returns the
-    env-var names each sub-scanner natively reads for registry auth:
-    ``TRIVY_USERNAME`` / ``TRIVY_PASSWORD`` for Trivy,
+    Reads from one of two locations under ``config``:
+
+    * ``registry_auth`` — a registry/path-prefix-keyed map of
+      credential blocks (preferred for multi-registry setups). The
+      best match for ``image_ref`` (longest path-component prefix)
+      provides the credentials.
+    * ``registry_username`` / ``registry_password`` at the top of
+      the config — the legacy single-default shape, used when no
+      map entry matches.
+
+    The resolved values are mapped to the env-var names each
+    sub-scanner natively reads for registry auth (``TRIVY_USERNAME`` /
+    ``TRIVY_PASSWORD`` for Trivy,
     ``GRYPE_REGISTRY_AUTH_USERNAME`` / ``GRYPE_REGISTRY_AUTH_PASSWORD``
     for Grype, ``SYFT_REGISTRY_AUTH_USERNAME`` /
-    ``SYFT_REGISTRY_AUTH_PASSWORD`` for Syft.
-
-    Returning the same value under multiple tool-specific names is
-    deliberate: every ``docker run`` invocation forwards the full set,
-    and each sub-scanner ignores names it doesn't recognize. That keeps
-    the call sites identical and avoids per-tool branching on every
+    ``SYFT_REGISTRY_AUTH_PASSWORD`` for Syft). Returning the same value
+    under multiple tool-specific names is deliberate: every
+    ``docker run`` invocation forwards the full set, and each
+    sub-scanner ignores names it doesn't recognize. That keeps the
+    call sites identical and avoids per-tool branching on every
     cmd build.
+
+    ``image_ref=None`` skips the registry-map path entirely — used by
+    helper-level unit tests that exercise the single-default shape
+    without manufacturing an image ref.
 
     Returns an empty dict when no credentials are configured —
     callers treat that as "anonymous pull" and emit no ``-e`` flags.
@@ -40,13 +187,10 @@ def _registry_auth_env(config: dict | None) -> dict[str, str]:
     if not config:
         return {}
 
-    from argus.core.secrets import get_stdin_override, resolve_secret
-
-    username = resolve_secret(config, "registry_username")
-    password = resolve_secret(
-        config, "registry_password",
-        stdin_override=get_stdin_override("registry_password"),
-    )
+    if image_ref is not None:
+        username, password = _resolve_registry_auth(config, image_ref)
+    else:
+        username, password = _resolve_user_pass(config)
 
     env: dict[str, str] = {}
     if username:
@@ -570,7 +714,7 @@ def _run_trivy(
 
     # Resolve registry credentials. Empty for locally-built images
     # (no registry pull needed) or when no creds are configured.
-    auth_env = {} if local else _registry_auth_env(config)
+    auth_env = {} if local else _registry_auth_env(config, image_ref)
 
     if use_container:
         from argus import container_runtime
@@ -705,7 +849,7 @@ def _run_grype(
 
     # Resolve registry credentials. Empty for locally-built images
     # (no registry pull needed) or when no creds are configured.
-    auth_env = {} if local else _registry_auth_env(config)
+    auth_env = {} if local else _registry_auth_env(config, image_ref)
 
     if use_container:
         from argus import container_runtime
@@ -791,7 +935,7 @@ def _run_syft(
     # Resolve registry credentials. Empty for locally-built images
     # (Syft reads them through docker.sock, no registry pull) or when
     # no creds are configured.
-    auth_env = {} if local else _registry_auth_env(config)
+    auth_env = {} if local else _registry_auth_env(config, image_ref)
 
     if shutil.which("syft") is None:
         from argus import container_runtime

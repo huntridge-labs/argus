@@ -211,6 +211,59 @@ argus scan
 `.ai/errors.yaml → "registry.*authentication.*failed"` covers the registry
 auth case end-to-end.
 
+**Fix — target image fails to authenticate inside the sub-scanner container.**
+Different failure mode from the scanner-image pull above: this is when Trivy,
+Grype, or Syft (running inside their own container) can't reach the target
+image's registry because credentials never made it into the sub-scanner's
+process. Symptoms:
+
+- Trivy: `FATAL Fatal error  run error: image scan error: scan error: unable
+  to initialize a scan service` (terse, doesn't distinguish auth from other
+  init failures).
+- Grype: `failed to catalog: errors occurred attempting to resolve '<ref>':
+  - docker: docker not available ... - podman: podman not available ...`
+  (Grype tries local-daemon sources from inside the container; if no
+  `registry:` prefix is supplied on the ref, the registry source isn't
+  attempted and the auth env vars never get used).
+
+Argus forwards resolved credentials as the sub-scanner's native env vars
+(`TRIVY_USERNAME/PASSWORD`, `GRYPE_REGISTRY_AUTH_USERNAME/PASSWORD`,
+`SYFT_REGISTRY_AUTH_USERNAME/PASSWORD`) via `-e` flags on `docker run` for
+the container backend and via `env=` for the local-binary backend. Configure
+them under `containers:` in argus.yml:
+
+```yaml
+containers:
+  # Single-default shortcut — all images use the same creds.
+  registry_username_env: REGISTRY_USER
+  registry_password_env: REGISTRY_TOKEN
+```
+
+For multi-registry setups, use the `registry_auth` map (longest-prefix
+matching):
+
+```yaml
+containers:
+  registry_auth:
+    registry.example.com:
+      username_env: REGISTRY_DEFAULT_USER
+      password_env: REGISTRY_DEFAULT_TOKEN
+    registry.example.com/internal/restricted:
+      username_env: REGISTRY_RESTRICTED_USER
+      password_env: REGISTRY_RESTRICTED_TOKEN
+```
+
+If a `registry_auth` entry matches but the referenced env var is unset,
+Argus logs a `WARNING` naming the missing variable and refuses to fall
+back to a broader entry's creds (no silent privilege broadening). Run
+with `--verbose` to see the redacted `docker run` invocation argus
+constructs — confirms which env vars were forwarded.
+
+Bisect before blaming argus: `docker pull <ref>` outside argus with the
+same creds proves whether your account has access. If `docker pull`
+fails too, the issue is creds or registry permissions, not the scan
+plumbing.
+
 **Fix — air-gapped GHES (mirror images).** Pre-pull every Argus scanner
 image on a machine with internet, push them to your internal registry, and
 point Argus at the mirror via `execution.registry`:

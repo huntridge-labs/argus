@@ -19,8 +19,11 @@ import pytest
 
 from argus.container.scanner import (
     _docker_env_flags,
+    _is_path_component_prefix,
+    _normalize_image_ref,
     _redact_cmd_for_log,
     _registry_auth_env,
+    _resolve_registry_auth,
     _run_grype,
     _run_syft,
     _run_trivy,
@@ -1036,3 +1039,272 @@ class TestLocalBinaryPathReceivesCredsViaEnv:
         # os.environ. Regression guard.
         assert captured_env.get("TRIVY_USERNAME") == "alice"
         assert captured_env.get("TRIVY_PASSWORD") == "s3cret"
+
+
+# ───────────────────────────────────────────────
+# Multi-registry credential map (registry_auth)
+# ───────────────────────────────────────────────
+#
+# Operators often pull from multiple registries in a single scan run
+# (Iron Bank + GHCR + ECR). And within one registry, different repo
+# paths can need different credentials (Iron Bank's restricted vs
+# open tiers, Artifactory tenants per project). The registry_auth
+# map keys credentials by registry-host + optional path prefix and
+# resolves them per-image via longest-prefix matching.
+
+
+class TestNormalizeImageRef:
+    """``_normalize_image_ref`` strips tag and digest, preserves host."""
+
+    def test_strips_digest(self):
+        assert _normalize_image_ref(
+            "registry1.dso.mil/org/repo@sha256:" + "a" * 64,
+        ) == "registry1.dso.mil/org/repo"
+
+    def test_strips_tag(self):
+        assert _normalize_image_ref(
+            "registry1.dso.mil/org/repo:1.2.3",
+        ) == "registry1.dso.mil/org/repo"
+
+    def test_strips_tag_then_digest(self):
+        assert _normalize_image_ref(
+            "registry1.dso.mil/org/repo:1.2.3@sha256:" + "b" * 64,
+        ) == "registry1.dso.mil/org/repo"
+
+    def test_preserves_host_port(self):
+        # The colon in ``localhost:5000`` is host:port, not tag.
+        # Stripping naively would lose the port.
+        assert _normalize_image_ref(
+            "localhost:5000/org/repo:1.2.3",
+        ) == "localhost:5000/org/repo"
+
+
+class TestPathComponentPrefix:
+    """``_is_path_component_prefix`` rejects string-prefix false matches."""
+
+    def test_exact_match(self):
+        assert _is_path_component_prefix(
+            "registry1.dso.mil", "registry1.dso.mil",
+        ) is True
+
+    def test_proper_prefix_with_boundary(self):
+        assert _is_path_component_prefix(
+            "registry1.dso.mil/ironbank/restricted",
+            "registry1.dso.mil/ironbank/restricted/repo",
+        ) is True
+
+    def test_string_prefix_without_boundary_rejected(self):
+        # The whole point of the helper: ``restricted`` must NOT match
+        # ``restrictedX``. A user-config typo creating that false match
+        # used to be a silent privilege-broadening bug.
+        assert _is_path_component_prefix(
+            "registry1.dso.mil/ironbank/restricted",
+            "registry1.dso.mil/ironbank/restrictedX/repo",
+        ) is False
+
+    def test_empty_prefix_never_matches(self):
+        # An empty string is technically a prefix of everything; we
+        # treat it as "no match" so missing/blank keys don't shadow
+        # real entries.
+        assert _is_path_component_prefix("", "anything") is False
+
+
+class TestResolveRegistryAuthLongestPrefix:
+    """``_resolve_registry_auth`` picks the most specific entry."""
+
+    def test_picks_specific_over_broad(self, monkeypatch):
+        monkeypatch.setenv("IB_DEFAULT_USER", "default-user")
+        monkeypatch.setenv("IB_DEFAULT_SECRET", "default-secret")
+        monkeypatch.setenv("IB_RESTRICTED_USER", "restricted-user")
+        monkeypatch.setenv("IB_RESTRICTED_SECRET", "restricted-secret")
+
+        config = {
+            "registry_auth": {
+                "registry1.dso.mil": {
+                    "username_env": "IB_DEFAULT_USER",
+                    "password_env": "IB_DEFAULT_SECRET",
+                },
+                "registry1.dso.mil/ironbank/restricted": {
+                    "username_env": "IB_RESTRICTED_USER",
+                    "password_env": "IB_RESTRICTED_SECRET",
+                },
+            },
+        }
+        username, password = _resolve_registry_auth(
+            config,
+            "registry1.dso.mil/ironbank/restricted/some-repo/image:1.2.3",
+        )
+        assert username == "restricted-user"
+        assert password == "restricted-secret"
+
+    def test_falls_back_to_broader_entry_when_path_differs(self, monkeypatch):
+        # An image under the *open* path uses the bare-host entry,
+        # not the restricted-path one.
+        monkeypatch.setenv("IB_DEFAULT_USER", "default-user")
+        monkeypatch.setenv("IB_DEFAULT_SECRET", "default-secret")
+        monkeypatch.setenv("IB_RESTRICTED_USER", "restricted-user")
+        monkeypatch.setenv("IB_RESTRICTED_SECRET", "restricted-secret")
+
+        config = {
+            "registry_auth": {
+                "registry1.dso.mil": {
+                    "username_env": "IB_DEFAULT_USER",
+                    "password_env": "IB_DEFAULT_SECRET",
+                },
+                "registry1.dso.mil/ironbank/restricted": {
+                    "username_env": "IB_RESTRICTED_USER",
+                    "password_env": "IB_RESTRICTED_SECRET",
+                },
+            },
+        }
+        username, password = _resolve_registry_auth(
+            config,
+            "registry1.dso.mil/ironbank/opensource/bigbang/podinfo@sha256:" + "a" * 64,
+        )
+        assert username == "default-user"
+        assert password == "default-secret"
+
+    def test_path_boundary_prevents_false_match(self, monkeypatch):
+        # ``restricted`` key must NOT match a sibling repo named
+        # ``restrictedX`` — that user-config typo would otherwise
+        # silently broaden auth to repos the user didn't intend.
+        monkeypatch.setenv("RESTRICTED_USER", "restricted-user")
+        monkeypatch.setenv("RESTRICTED_SECRET", "restricted-secret")
+        config = {
+            "registry_auth": {
+                "registry1.dso.mil/ironbank/restricted": {
+                    "username_env": "RESTRICTED_USER",
+                    "password_env": "RESTRICTED_SECRET",
+                },
+            },
+        }
+        username, password = _resolve_registry_auth(
+            config,
+            "registry1.dso.mil/ironbank/restrictedX/repo:1.0",
+        )
+        # No match → falls through to the bare-default (which is also
+        # unset here) → both None.
+        assert username is None
+        assert password is None
+
+    def test_falls_back_to_top_level_when_no_map_entry_matches(self, monkeypatch):
+        monkeypatch.setenv("FALLBACK_USER", "fallback-user")
+        monkeypatch.setenv("FALLBACK_SECRET", "fallback-secret")
+        config = {
+            "registry_username_env": "FALLBACK_USER",
+            "registry_password_env": "FALLBACK_SECRET",
+            "registry_auth": {
+                "ghcr.io/myorg": {
+                    "username_env": "GHCR_USER",
+                    "password_env": "GHCR_TOKEN",
+                },
+            },
+        }
+        username, password = _resolve_registry_auth(
+            config, "docker.io/library/nginx:latest",
+        )
+        # docker.io image doesn't match any map entry → bare default.
+        assert username == "fallback-user"
+        assert password == "fallback-secret"
+
+    def test_no_fallback_when_map_match_has_unresolved_env(
+        self, monkeypatch, caplog,
+    ):
+        # The privilege-broadening guard from the design doc.
+        # User set a restricted entry but forgot to export
+        # IB_RESTRICTED_SECRET. We MUST NOT silently use the bare-
+        # default creds for that restricted repo — same rule as
+        # k8s imagePullSecrets.
+        monkeypatch.setenv("FALLBACK_USER", "fallback-user")
+        monkeypatch.setenv("FALLBACK_SECRET", "fallback-secret")
+        monkeypatch.delenv("IB_RESTRICTED_USER", raising=False)
+        monkeypatch.delenv("IB_RESTRICTED_SECRET", raising=False)
+        config = {
+            "registry_username_env": "FALLBACK_USER",
+            "registry_password_env": "FALLBACK_SECRET",
+            "registry_auth": {
+                "registry1.dso.mil/ironbank/restricted": {
+                    "username_env": "IB_RESTRICTED_USER",
+                    "password_env": "IB_RESTRICTED_SECRET",
+                },
+            },
+        }
+        with caplog.at_level("WARNING"):
+            username, password = _resolve_registry_auth(
+                config,
+                "registry1.dso.mil/ironbank/restricted/repo:1.0",
+            )
+        # The matched-but-unresolved case → no creds, NOT the fallback.
+        assert username is None
+        assert password is None
+        # And the user gets a diagnostic naming the unset env var.
+        joined = " ".join(r.message for r in caplog.records)
+        assert "IB_RESTRICTED" in joined
+
+    def test_non_mapping_entry_is_skipped_with_warning(self, monkeypatch, caplog):
+        # Defensive: a malformed YAML where someone wrote
+        # ``registry1.dso.mil: token`` instead of the mapping form
+        # should warn, not crash.
+        config = {
+            "registry_auth": {
+                "registry1.dso.mil": "not-a-mapping",
+            },
+        }
+        with caplog.at_level("WARNING"):
+            username, password = _resolve_registry_auth(
+                config, "registry1.dso.mil/foo/bar:1.0",
+            )
+        assert username is None
+        assert password is None
+        joined = " ".join(r.message for r in caplog.records)
+        assert "not a mapping" in joined
+
+
+class TestRegistryAuthEnvWithImageRef:
+    """``_registry_auth_env`` integrates the map-aware resolver."""
+
+    def test_uses_per_registry_creds_when_image_ref_supplied(self, monkeypatch):
+        monkeypatch.setenv("IB_USER", "ib-user")
+        monkeypatch.setenv("IB_TOKEN", "ib-token")
+        monkeypatch.setenv("GHCR_USER", "gh-user")
+        monkeypatch.setenv("GHCR_TOKEN", "gh-token")
+        config = {
+            "registry_auth": {
+                "registry1.dso.mil": {
+                    "username_env": "IB_USER",
+                    "password_env": "IB_TOKEN",
+                },
+                "ghcr.io": {
+                    "username_env": "GHCR_USER",
+                    "password_env": "GHCR_TOKEN",
+                },
+            },
+        }
+        env_ib = _registry_auth_env(
+            config,
+            "registry1.dso.mil/foo/bar@sha256:" + "a" * 64,
+        )
+        assert env_ib["TRIVY_USERNAME"] == "ib-user"
+        assert env_ib["GRYPE_REGISTRY_AUTH_PASSWORD"] == "ib-token"
+
+        env_gh = _registry_auth_env(config, "ghcr.io/myorg/app:1.0")
+        assert env_gh["TRIVY_USERNAME"] == "gh-user"
+        assert env_gh["GRYPE_REGISTRY_AUTH_PASSWORD"] == "gh-token"
+
+    def test_skips_map_when_image_ref_is_none(self, monkeypatch):
+        # Back-compat: helper-level unit tests that exercise the
+        # single-default shape without manufacturing an image ref.
+        config = {
+            "registry_username": "alice",
+            "registry_password": "s3cret",
+            "registry_auth": {
+                # This entry must be ignored when image_ref is None.
+                "registry1.dso.mil": {
+                    "username": "ironbank-user",
+                    "password": "ironbank-token",
+                },
+            },
+        }
+        env = _registry_auth_env(config, image_ref=None)
+        assert env["TRIVY_USERNAME"] == "alice"
+        assert "ironbank-user" not in env.values()
