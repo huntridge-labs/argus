@@ -1308,3 +1308,177 @@ class TestRegistryAuthEnvWithImageRef:
         env = _registry_auth_env(config, image_ref=None)
         assert env["TRIVY_USERNAME"] == "alice"
         assert "ironbank-user" not in env.values()
+
+
+# ───────────────────────────────────────────────
+# execution.registry / registry_map plumbing (#186)
+# ───────────────────────────────────────────────
+#
+# The source-scan path routes scanner-image pulls through
+# ArgusEngine._resolve_image, which reads execution.registry /
+# registry_map from ArgusConfig. The container-scan path consumes a
+# dict (not ArgusConfig) and used to pull raw upstream refs regardless
+# of the operator's mirror policy. Fix: _load_container_config stashes
+# the execution.* values under synthetic underscore keys, and the
+# runners call _resolve_sub_scanner_image at every get_image() →
+# pull_image() site.
+
+
+class TestResolveSubScannerImage:
+    """Helper-level checks for the container-side resolver wrapper."""
+
+    def test_returns_unchanged_when_no_config(self):
+        from argus.container.scanner import _resolve_sub_scanner_image
+        assert _resolve_sub_scanner_image(
+            "aquasec/trivy:0.70.0", None,
+        ) == "aquasec/trivy:0.70.0"
+        assert _resolve_sub_scanner_image("aquasec/trivy:0.70.0", {}) == "aquasec/trivy:0.70.0"
+
+    def test_returns_unchanged_when_no_synthetic_keys_set(self):
+        # A config with creds / scanners / images but no
+        # _execution_registry* must NOT rewrite — back-compat guard
+        # for every operator that hasn't set up a mirror.
+        from argus.container.scanner import _resolve_sub_scanner_image
+        assert _resolve_sub_scanner_image(
+            "aquasec/trivy:0.70.0",
+            {"registry_username_env": "FOO", "images": []},
+        ) == "aquasec/trivy:0.70.0"
+
+    def test_applies_registry_map(self):
+        from argus.container.scanner import _resolve_sub_scanner_image
+        rewritten = _resolve_sub_scanner_image(
+            "aquasec/trivy:0.70.0",
+            {"_execution_registry_map": {"docker.io": "harbor.corp/dockerhub-cache"}},
+        )
+        assert rewritten == "harbor.corp/dockerhub-cache/aquasec/trivy:0.70.0"
+
+    def test_falls_back_to_flat_registry(self):
+        from argus.container.scanner import _resolve_sub_scanner_image
+        rewritten = _resolve_sub_scanner_image(
+            "ghcr.io/google/osv-scanner:v2.3.6",
+            {
+                "_execution_registry_map": {"docker.io": "harbor.corp/dockerhub-cache"},
+                "_execution_registry": "harbor.corp/argus",
+            },
+        )
+        # ghcr.io has no map entry → flat ``_execution_registry`` wins.
+        assert rewritten == "harbor.corp/argus/google/osv-scanner:v2.3.6"
+
+
+class TestRunTrivyUsesResolvedImage:
+    """The ``docker run`` cmd argv carries the mirror-rewritten image."""
+
+    def test_trivy_docker_run_uses_mapped_mirror(self, tmp_path, monkeypatch):
+        _force_container_path(monkeypatch, "trivy")
+        intercepted: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            intercepted.append(list(cmd))
+            (tmp_path / "trivy-results.json").write_text('{"Results": []}')
+            return _completed(returncode=0)
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        # ``_force_container_path`` mocks get_image to return
+        # ``fake/trivy:test`` — a bare-name docker.io shape. The map
+        # routes docker.io to harbor.corp/dockerhub-cache, so the cmd
+        # should reference the mirror path.
+        _run_trivy(
+            "registry.example.com/myapp@sha256:" + "a" * 64,
+            tmp_path, local=False,
+            config={
+                "_execution_registry_map": {
+                    "docker.io": "harbor.corp/dockerhub-cache",
+                },
+            },
+        )
+
+        # DB pre-warm + scan = 2 invocations. BOTH must use the
+        # rewritten image — pulling the DB from upstream when the
+        # operator has a mirror configured would defeat the mirror.
+        assert len(intercepted) == 2
+        for cmd in intercepted:
+            joined = " ".join(cmd)
+            assert "harbor.corp/dockerhub-cache/fake/trivy:test" in joined
+            # The bare upstream form must NOT appear as the image
+            # positional — that's the pre-fix bug shape.
+            assert "fake/trivy:test " not in joined.replace(
+                "harbor.corp/dockerhub-cache/fake/trivy:test", "",
+            )
+
+    def test_trivy_unchanged_when_no_mirror_config(self, tmp_path, monkeypatch):
+        # Critical back-compat: configs without any execution.* synthetic
+        # key see the original ``fake/trivy:test`` ref unchanged.
+        _force_container_path(monkeypatch, "trivy")
+        intercepted: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            intercepted.append(list(cmd))
+            (tmp_path / "trivy-results.json").write_text('{"Results": []}')
+            return _completed(returncode=0)
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+        _run_trivy(
+            "library/nginx:latest",
+            tmp_path, local=False, config=None,
+        )
+
+        for cmd in intercepted:
+            joined = " ".join(cmd)
+            assert "fake/trivy:test" in joined
+            assert "harbor" not in joined  # no rewrite occurred
+
+
+class TestRunGrypeUsesResolvedImage:
+    """Grype's docker-run cmd honors the mirror config the same way Trivy does."""
+
+    def test_grype_docker_run_uses_mapped_mirror(self, tmp_path, monkeypatch):
+        _force_container_path(monkeypatch, "grype")
+        intercepted: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            intercepted.append(list(cmd))
+            (tmp_path / "grype-results.json").write_text('{"matches": []}')
+            return _completed(returncode=0)
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+        _run_grype(
+            "registry.example.com/myapp@sha256:" + "a" * 64,
+            tmp_path, local=False,
+            config={
+                "_execution_registry_map": {
+                    "docker.io": "harbor.corp/dockerhub-cache",
+                },
+            },
+        )
+
+        # DB update + scan = 2 invocations. Both use rewritten image.
+        assert len(intercepted) == 2
+        for cmd in intercepted:
+            assert "harbor.corp/dockerhub-cache/fake/grype:test" in " ".join(cmd)
+
+
+class TestRunSyftUsesResolvedImage:
+    """Syft's docker-run cmd honors the mirror config."""
+
+    def test_syft_docker_run_uses_mapped_mirror(self, tmp_path, monkeypatch):
+        _force_container_path(monkeypatch, "syft")
+        intercepted: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            intercepted.append(list(cmd))
+            return _completed(returncode=0)
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+        _run_syft(
+            "registry.example.com/myapp@sha256:" + "a" * 64,
+            tmp_path, local=False,
+            config={
+                "_execution_registry_map": {
+                    "docker.io": "harbor.corp/dockerhub-cache",
+                },
+            },
+        )
+
+        assert len(intercepted) == 1
+        assert "harbor.corp/dockerhub-cache/fake/syft:test" in " ".join(intercepted[0])

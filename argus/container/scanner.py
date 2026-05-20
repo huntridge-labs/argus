@@ -267,6 +267,35 @@ def _redact_cmd_for_log(cmd: list[str]) -> str:
             safe.append(token)
     return " ".join(safe)
 
+
+def _resolve_sub_scanner_image(image_ref: str, config: dict | None) -> str:
+    """Apply ``execution.registry`` / ``execution.registry_map`` rewrites
+    to a sub-scanner image reference (Trivy / Grype / Syft).
+
+    The source-scan engine already routes through
+    ``ArgusEngine._resolve_image`` for the same effect, but the
+    container-scan path used to pull raw upstream refs regardless of
+    config. This helper reads the synthetic keys
+    ``_execution_registry`` / ``_execution_registry_map`` stashed by
+    ``argus.cli._load_container_config`` and delegates to the shared
+    pure-function resolver — same algorithm, same logging shape,
+    same back-compat fallthrough.
+
+    Returns the original ``image_ref`` unchanged when no mirror config
+    is in play, so the no-mirror case sees zero behavior change.
+    Issue #186.
+    """
+    if not image_ref or not config:
+        return image_ref
+    from argus.core.engine import resolve_image_ref
+
+    return resolve_image_ref(
+        image_ref,
+        registry=config.get("_execution_registry"),
+        registry_map=config.get("_execution_registry_map"),
+    )
+
+
 # Shared parser instance — reuses ContainerScanner's parsing logic
 _parser = ContainerScanner()
 
@@ -702,7 +731,7 @@ def _run_trivy(
         from argus import container_runtime
         from argus.containers import get_image
 
-        image = get_image("trivy")
+        image = _resolve_sub_scanner_image(get_image("trivy"), config)
         if not image or not container_runtime.is_available():
             logger.warning("trivy not available (local or container) — skipping")
             return []
@@ -721,7 +750,7 @@ def _run_trivy(
         from argus.containers import get_image
 
         rt = container_runtime.runtime_cmd()
-        image = get_image("trivy")
+        image = _resolve_sub_scanner_image(get_image("trivy"), config)
 
         # Mount docker.sock when scanning local images so trivy can
         # see images on the host daemon
@@ -811,7 +840,7 @@ def _run_grype(
         from argus import container_runtime
         from argus.containers import get_image
 
-        image = get_image("grype")
+        image = _resolve_sub_scanner_image(get_image("grype"), config)
         if not image or not container_runtime.is_available():
             logger.warning("grype not available (local or container) — skipping")
             return []
@@ -856,7 +885,7 @@ def _run_grype(
         from argus.containers import get_image
 
         rt = container_runtime.runtime_cmd()
-        image = get_image("grype")
+        image = _resolve_sub_scanner_image(get_image("grype"), config)
 
         # Mount docker.sock when scanning local images
         vol_args = _container_vol_args(tmp_path, "grype", mount_docker_sock=local)
@@ -941,7 +970,7 @@ def _run_syft(
         from argus import container_runtime
         from argus.containers import get_image
 
-        image = get_image("syft")
+        image = _resolve_sub_scanner_image(get_image("syft"), config)
         if not image or not container_runtime.is_available():
             logger.debug("syft not available (local or container) — skipping SBOM")
             return
