@@ -1527,8 +1527,9 @@ def _load_container_config(args: argparse.Namespace) -> dict:
     if config_path:
         try:
             import yaml
+            from argus.core.config import load_strict_yaml
             with open(config_path, "r", encoding="utf-8") as fh:
-                file_config = yaml.safe_load(fh) or {}
+                file_config = load_strict_yaml(fh) or {}
         except FileNotFoundError as exc:
             raise ValueError(f"Config file not found: {config_path}") from exc
         except yaml.YAMLError as exc:
@@ -3170,7 +3171,8 @@ def cmd_validate(args: argparse.Namespace) -> int:
         return EXIT_ERROR
 
     try:
-        data = yaml.safe_load(raw_text)
+        from argus.core.config import load_strict_yaml
+        data = load_strict_yaml(raw_text)
     except yaml.YAMLError as exc:
         print(f"Invalid YAML in {config_path}: {exc}", file=sys.stderr)
         return EXIT_ERROR

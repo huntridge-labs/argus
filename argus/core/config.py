@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Optional, IO, Union
 
 import yaml
 
@@ -10,6 +10,78 @@ from .models import Severity
 
 
 _DEFAULT_CONFIG_NAMES = ["argus.yml", "argus.yaml", ".argus.yml", ".argus.yaml"]
+
+
+class StrictSafeLoader(yaml.SafeLoader):
+    """``yaml.SafeLoader`` that rejects duplicate mapping keys.
+
+    PyYAML's default mapping constructor silently keeps only the last
+    value when a key is duplicated. For argus.yml that means a
+    second ``execution:`` block (or any other accidental
+    duplication, at any nesting level) overwrites the user's earlier
+    settings — the schema validator never sees the conflict and
+    happily reports the config valid.
+
+    This loader catches the duplication at parse time so the user
+    gets a clear error naming the duplicated key and the line where
+    the second occurrence sits. Same constructor override applies
+    at every nesting level because PyYAML calls
+    ``construct_mapping`` for every mapping node it encounters,
+    not just the root.
+    """
+
+
+def _construct_mapping_strict(loader: yaml.SafeLoader, node, deep: bool = False) -> dict:
+    """Mapping constructor that raises on the second occurrence of a key.
+
+    Line numbers are 1-indexed in the error so they match what the
+    user sees in their editor; PyYAML's internal ``start_mark.line``
+    is 0-indexed.
+    """
+    if not isinstance(node, yaml.MappingNode):
+        raise yaml.constructor.ConstructorError(
+            None, None,
+            f"expected a mapping node, but found {node.id}",
+            node.start_mark,
+        )
+    mapping: dict = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        try:
+            hash(key)
+        except TypeError as exc:
+            raise yaml.constructor.ConstructorError(
+                "while constructing a mapping", node.start_mark,
+                f"found unhashable key ({exc})", key_node.start_mark,
+            )
+        if key in mapping:
+            raise yaml.constructor.ConstructorError(
+                "while constructing a mapping", node.start_mark,
+                f"found duplicate key {key!r} "
+                f"(line {key_node.start_mark.line + 1}, "
+                f"column {key_node.start_mark.column + 1})",
+                key_node.start_mark,
+            )
+        mapping[key] = loader.construct_object(value_node, deep=deep)
+    return mapping
+
+
+StrictSafeLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    _construct_mapping_strict,
+)
+
+
+def load_strict_yaml(stream: Union[str, IO]) -> object:
+    """Parse YAML with duplicate-key detection.
+
+    Drop-in replacement for ``yaml.safe_load`` that uses
+    ``StrictSafeLoader``. Raises ``yaml.constructor.ConstructorError``
+    when a duplicate mapping key is encountered at any nesting level;
+    callers that already catch ``yaml.YAMLError`` (the base class)
+    pick up the new failure mode for free with no try/except changes.
+    """
+    return yaml.load(stream, Loader=StrictSafeLoader)
 
 
 @dataclass
@@ -140,11 +212,10 @@ class ArgusConfig:
         """
         try:
             from argus.init import detect_project, generate_config
-            import yaml as _yaml
 
             signals = detect_project(Path("."))
             config_text = generate_config(signals)
-            data = _yaml.safe_load(config_text)
+            data = load_strict_yaml(config_text)
             if isinstance(data, dict):
                 return cls.from_dict(data)
         except Exception:
@@ -188,8 +259,16 @@ class ArgusConfig:
     @classmethod
     def _load_file(cls, path: Path) -> "ArgusConfig":
         """Read, validate, and parse a YAML config file."""
-        with open(path, "r", encoding="utf-8") as fh:
-            data = yaml.safe_load(fh)
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                data = load_strict_yaml(fh)
+        except yaml.YAMLError as exc:
+            # Covers ConstructorError raised by load_strict_yaml on
+            # duplicate keys plus any other PyYAML parse failure. Wrap
+            # in ValueError so the caller's existing
+            # "invalid argus config" handling path catches it,
+            # without a bare PyYAML traceback leaking to the user.
+            raise ValueError(f"Invalid YAML in {path}: {exc}") from exc
         if not isinstance(data, dict):
             return cls()
 
