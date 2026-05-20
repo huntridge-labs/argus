@@ -89,6 +89,40 @@ def _subprocess_env(auth_env: dict[str, str]) -> dict[str, str] | None:
         return None
     return {**os.environ, **auth_env}
 
+
+def _redact_cmd_for_log(cmd: list[str]) -> str:
+    """Return a debug-friendly string of a ``docker run`` argv with
+    credential values masked.
+
+    Operates on the flat ``-e VAR=value`` pairs produced by
+    ``_docker_env_flags``. Anything other than the credential env vars
+    we recognize is passed through untouched so the user can still
+    inspect mount paths, image refs, and scanner flags. We mask the
+    value, not the variable name — debugging is impossible without
+    being able to see which vars are present.
+    """
+    safe: list[str] = []
+    skip_next = False
+    creds = {
+        "TRIVY_USERNAME", "TRIVY_PASSWORD",
+        "GRYPE_REGISTRY_AUTH_USERNAME", "GRYPE_REGISTRY_AUTH_PASSWORD",
+        "SYFT_REGISTRY_AUTH_USERNAME", "SYFT_REGISTRY_AUTH_PASSWORD",
+    }
+    for i, token in enumerate(cmd):
+        if skip_next:
+            skip_next = False
+            continue
+        if token == "-e" and i + 1 < len(cmd) and "=" in cmd[i + 1]:
+            name, _, value = cmd[i + 1].partition("=")
+            if name in creds:
+                safe.append(f"-e {name}=***REDACTED***")
+            else:
+                safe.append(f"-e {name}={value}")
+            skip_next = True
+        else:
+            safe.append(token)
+    return " ".join(safe)
+
 # Shared parser instance — reuses ContainerScanner's parsing logic
 _parser = ContainerScanner()
 
@@ -583,6 +617,7 @@ def _run_trivy(
             cmd.extend(["--image-src", "remote"])
         cmd.append(image_ref)
 
+    logger.info("trivy invocation: %s", _redact_cmd_for_log(cmd))
     try:
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=600,
@@ -655,10 +690,18 @@ def _run_grype(
     #       and resolved against the local daemon, not mis-parsed as
     #       a scheme request.
     #
-    # For remote (registry) scans we leave the ref untouched — that
-    # path was working before, and forcing a local-daemon source for
-    # an image that doesn't exist locally would itself break.
-    grype_target = f"docker:{image_ref}" if local else image_ref
+    # Grype's CLI defaults to the local-daemon source even for refs
+    # that obviously can't exist on the daemon (digest-pinned remote
+    # images, registry-prefixed names). When running inside the
+    # ``anchore/grype`` container we have no docker.sock and no
+    # podman either, so the daemon path fails immediately and Grype
+    # never falls back to the ``registry:`` source on its own.
+    # Force the registry source explicitly for remote scans — that's
+    # the source that consults ``GRYPE_REGISTRY_AUTH_*`` for auth.
+    if local:
+        grype_target = f"docker:{image_ref}"
+    else:
+        grype_target = f"registry:{image_ref}"
 
     # Resolve registry credentials. Empty for locally-built images
     # (no registry pull needed) or when no creds are configured.
@@ -698,6 +741,7 @@ def _run_grype(
             "--file", str(output_file),
         ]
 
+    logger.info("grype invocation: %s", _redact_cmd_for_log(cmd))
     try:
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=600,

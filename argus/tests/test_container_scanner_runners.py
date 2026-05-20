@@ -19,6 +19,7 @@ import pytest
 
 from argus.container.scanner import (
     _docker_env_flags,
+    _redact_cmd_for_log,
     _registry_auth_env,
     _run_grype,
     _run_syft,
@@ -274,10 +275,21 @@ class TestRunGrypeLocalDaemonScheme:
         _run_grype("myapp:dev", tmp_path, local=True)
         assert "docker:myapp:dev" in captured["cmd"]
 
-    def test_remote_target_is_not_prefixed(self, tmp_path, monkeypatch):
-        """For registry scans (``local=False``), the original ref
-        passes through untouched — the docker-daemon scheme would
-        force grype to look at a daemon that doesn't have the image."""
+    def test_remote_target_is_prefixed_with_registry_scheme(
+        self, tmp_path, monkeypatch,
+    ):
+        """For registry scans (``local=False``), the ref MUST be
+        prefixed with ``registry:`` — Grype's default source order
+        is ``docker → podman → snap``, and from inside the grype
+        container none of those are available. Without the explicit
+        prefix Grype never reaches the registry source where the
+        ``GRYPE_REGISTRY_AUTH_*`` env vars take effect, so private
+        registries silently get anonymous pulls.
+
+        Regression guard for #180: this assertion used to verify the
+        opposite (bare ref, no prefix), which baked the silent-auth-
+        failure into the test suite.
+        """
         self._force_local_binary(monkeypatch)
         captured = {}
 
@@ -289,9 +301,10 @@ class TestRunGrypeLocalDaemonScheme:
         monkeypatch.setattr("subprocess.run", fake_run)
         _run_grype("registry.example/myapp:1.0", tmp_path, local=False)
 
-        assert "registry.example/myapp:1.0" in captured["cmd"]
-        # No accidental scheme prefix on remote scans.
-        assert "docker:registry.example/myapp:1.0" not in captured["cmd"]
+        assert "registry:registry.example/myapp:1.0" in captured["cmd"]
+        # The bare un-prefixed ref must NOT be on the cmd — it would
+        # be ambiguous and Grype would try docker-daemon first.
+        assert "registry.example/myapp:1.0" not in captured["cmd"]
 
 
 class TestRunTrivy:
@@ -780,6 +793,42 @@ class TestSubprocessEnv:
         assert env is not None
         assert env["TRIVY_USERNAME"] == "alice"
         assert env["PATH"] == "/usr/bin"  # host env preserved
+
+
+class TestRedactCmdForLog:
+    """``_redact_cmd_for_log`` masks credential values but keeps argv shape."""
+
+    def test_redacts_known_credential_values(self):
+        cmd = [
+            "docker", "run", "--rm",
+            "-e", "TRIVY_USERNAME=alice",
+            "-e", "TRIVY_PASSWORD=s3cret-token",
+            "-v", "/tmp/argus:/output",
+            "aquasec/trivy:0.70.0",
+            "image", "--format", "json",
+        ]
+        out = _redact_cmd_for_log(cmd)
+        assert "alice" not in out
+        assert "s3cret-token" not in out
+        assert "***REDACTED***" in out
+        # Names must still be visible — debugging requires seeing
+        # WHICH vars are forwarded, just not their values.
+        assert "TRIVY_USERNAME" in out
+        assert "TRIVY_PASSWORD" in out
+        # Non-credential args must pass through verbatim.
+        assert "/tmp/argus:/output" in out
+        assert "aquasec/trivy:0.70.0" in out
+
+    def test_non_credential_env_vars_pass_through(self):
+        # If we ever add other -e flags (HTTP_PROXY, etc.) they
+        # should NOT be redacted — only the named credential set.
+        cmd = ["docker", "run", "-e", "HTTP_PROXY=http://proxy:8080", "img"]
+        out = _redact_cmd_for_log(cmd)
+        assert "http://proxy:8080" in out
+
+    def test_handles_cmd_with_no_env_flags(self):
+        cmd = ["docker", "run", "--rm", "aquasec/trivy", "image", "ref"]
+        assert _redact_cmd_for_log(cmd) == "docker run --rm aquasec/trivy image ref"
 
 
 # ───────────────────────────────────────────────
