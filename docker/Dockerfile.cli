@@ -6,7 +6,7 @@
 # ---------------------------------------------------------------------------
 # Stage 1: Download and verify binary tools
 # ---------------------------------------------------------------------------
-FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d AS builder
+FROM alpine:3.23.4@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11 AS builder
 
 ARG TRIVY_VERSION=0.70.0
 ARG GRYPE_VERSION=0.112.0
@@ -59,7 +59,7 @@ RUN ARCH=$(cat /tmp/arch_opengrep) && \
 # ---------------------------------------------------------------------------
 # Stage 2: Runtime image
 # ---------------------------------------------------------------------------
-FROM python:3.13-alpine@sha256:420cd0bf0f3998275875e02ecd5808168cf0843cbb4d3c536432f729247b2acc
+FROM python:3.14.5-alpine@sha256:5a824eb82cc75361f98611f3cfc5091ea33f10a6ccea4d4ebdabbc523b9a1614
 
 LABEL org.opencontainers.image.source="https://github.com/huntridge-labs/argus"
 LABEL org.opencontainers.image.description="Argus CLI — all-in-one security scanning toolkit"
