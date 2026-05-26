@@ -79,10 +79,10 @@ If the build fails, release-it never runs and nothing public happens. If release
 
 | What | Managed by | Config |
 |------|-----------|--------|
-| Official image tags + digests | Renovate | `renovate.yaml` docker regex manager (`pinDigests: true`) |
+| Official image tags + digests | Renovate | `.github/renovate.json` docker regex manager (`pinDigests: true`) |
 | Custom image tags | release-it regex bumper | `.release-it.json` |
 | Custom image `@sha256:` digests | release pipeline + `after:bump` hook | `scripts/release_it/inject_image_digests.py` |
-| Dockerfile tool versions | Renovate | `renovate.yaml` ARG pattern manager |
+| Dockerfile tool versions | Renovate | `.github/renovate.json` ARG pattern manager |
 | `containers.py` aliases | Manual | `_ALIASES` dict (e.g., opengrep → semgrep) |
 
 The regex-bumper pattern for `argus/containers.py` matches `[^"@]+` (everything up to `@` or `"`) so it only touches the version segment, leaving the `@sha256:...` tail for the hook to rewrite.

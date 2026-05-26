@@ -21,7 +21,7 @@ from pathlib import Path
 # instead of the ``SKIPPED_TAG_PIN`` warn-only path, closing the
 # supply-chain gap surfaced in the post-PR-146 audit.
 #
-# Renovate (renovate.yaml) keeps both the tag and the digest current
+# Renovate (.github/renovate.json) keeps both the tag and the digest current
 # on a 7-day stability lag — when the upstream publisher cuts a new
 # release, Renovate rewrites BOTH the version segment and the digest
 # segment in a single PR.
