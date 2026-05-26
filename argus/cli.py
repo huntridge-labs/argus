@@ -1186,10 +1186,26 @@ def _build_validate_parser(subparsers: argparse._SubParsersAction, parent: argpa
         help="Path to argus.yml config file (default: auto-detect)",
     )
     validate_parser.add_argument(
+        "--schema",
+        action="store_true",
+        default=False,
+        help="Run schema validation only (default behavior; explicit form for scripting).",
+    )
+    validate_parser.add_argument(
         "--check-tools",
         action="store_true",
         default=False,
         help="Also check scanner tool availability (local + Docker)",
+    )
+    validate_parser.add_argument(
+        "--deep",
+        action="store_true",
+        default=False,
+        help=(
+            "Live validation of config settings: scanner tools, registry / "
+            "registry_map reachability, and on-disk paths. Implies --check-tools. "
+            "Requires Docker on PATH for registry probes."
+        ),
     )
     validate_parser.add_argument(
         "--strict",
@@ -3279,14 +3295,24 @@ def cmd_validate(args: argparse.Namespace) -> int:
                 ref = entry.get("image") or entry.get("dockerfile") or "<unknown>"
                 print(f"     - {ref}")
 
-    # Tool readiness check
+    # Tool readiness check. --deep implies --check-tools so the user
+    # gets the full live picture from one flag.
+    deep = getattr(args, "deep", False)
+    check_tools = getattr(args, "check_tools", False) or deep
     unavailable = []
     tool_statuses = []
-    if getattr(args, "check_tools", False) and enabled_names:
+    if check_tools and enabled_names:
         registry = data.get("execution", {}).get("registry", "")
         unavailable, tool_statuses = _check_tool_readiness(enabled_names, backend, registry)
         if unavailable and strict:
             print(f"\n❌ {len(unavailable)} scanner(s) unavailable (--strict)")
+
+    # Deep checks — registry reachability + on-disk paths. Each probe
+    # is independent and reports its own pass/fail; counts aggregate
+    # into ``deep_failures`` for the exit-code calculation below.
+    deep_failures = 0
+    if deep:
+        deep_failures = _run_deep_checks(data)
 
     # Living issue reporting (runs before exit so the issue captures full state)
     if report_issue:
@@ -3299,13 +3325,115 @@ def cmd_validate(args: argparse.Namespace) -> int:
             strict=strict,
         )
 
+    # Conditional --deep hint. Only printed when:
+    #  - schema validation passed (no fatal errors)
+    #  - --deep wasn't already requested
+    #  - the config has options --deep would actually exercise
+    # Keeps the default `argus validate` quiet on minimal configs.
+    if not fatal and not deep:
+        from argus.preflight.deep_hints import compute_deep_hints
+
+        hints = compute_deep_hints(data)
+        if hints:
+            print("\n   Live checks available (run with --deep):")
+            for h in hints:
+                print(f"     - {h}")
+
     if fatal:
         return EXIT_ERROR
     if strict and warnings:
         return EXIT_ERROR
     if unavailable and strict:
         return EXIT_ERROR
+    if deep_failures:
+        return EXIT_ERROR
     return EXIT_SUCCESS
+
+
+def _run_deep_checks(data: dict) -> int:
+    """Run deep validation probes and print results.
+
+    Returns the count of `status="fail"` results across all probes,
+    which the caller folds into the validate exit code. Pure detection
+    lives in ``argus.preflight.deep_checks``; this wrapper formats the
+    output specific to ``argus validate --deep``.
+    """
+    from argus.preflight.deep_checks import (
+        check_paths,
+        check_registry_reachability,
+    )
+
+    execution = data.get("execution", {}) if isinstance(data.get("execution"), dict) else {}
+    registry = execution.get("registry") or ""
+    registry_map = execution.get("registry_map") or {}
+
+    # Source of truth for "what images would this config touch": the
+    # explicit containers.images block plus the scanner tool images
+    # already cataloged in argus.containers (Trivy, Grype, etc., used
+    # when the engine container-runs a scanner). The user cares about
+    # the first set the most; we include the second when relevant
+    # scanners are enabled so the operator's mirror policy is verified
+    # end-to-end.
+    container_images: list[str] = []
+    containers_cfg = data.get("containers")
+    if isinstance(containers_cfg, dict):
+        for entry in containers_cfg.get("images") or []:
+            if isinstance(entry, dict) and isinstance(entry.get("image"), str):
+                container_images.append(entry["image"])
+            elif isinstance(entry, str):
+                container_images.append(entry)
+
+    scanner_images: list[str] = []
+    enabled_scanners = []
+    scanners_cfg = data.get("scanners", {}) or {}
+    if isinstance(scanners_cfg, dict):
+        for name, cfg in scanners_cfg.items():
+            if isinstance(cfg, dict) and not cfg.get("enabled", True):
+                continue
+            enabled_scanners.append(name)
+    if enabled_scanners:
+        from argus.containers import get_image
+        seen = set()
+        for name in enabled_scanners:
+            ref = get_image(name)
+            if ref and ref not in seen:
+                scanner_images.append(ref)
+                seen.add(ref)
+
+    total_failures = 0
+
+    if registry or registry_map or container_images or scanner_images:
+        all_images = container_images + scanner_images
+        if all_images:
+            print("\n   Registry reachability:")
+            results = check_registry_reachability(
+                all_images,
+                registry=registry,
+                registry_map=registry_map,
+            )
+            icon = {"ok": "✅", "fail": "❌", "skip": "⏭️ ", "warn": "⚠️ "}
+            for r in results:
+                print(f"     {icon.get(r.status, '?')} {r.name}")
+                if r.status != "ok":
+                    print(f"         {r.message}")
+                if r.status == "fail":
+                    total_failures += 1
+
+    # Paths are always probed under --deep (cheap, no network).
+    path_results = check_paths(data)
+    if path_results:
+        print("\n   Paths:")
+        icon = {"ok": "✅", "fail": "❌", "skip": "⏭️ ", "warn": "⚠️ "}
+        for r in path_results:
+            print(f"     {icon.get(r.status, '?')} {r.name}")
+            if r.status != "ok":
+                print(f"         {r.message}")
+            if r.status == "fail":
+                total_failures += 1
+
+    if total_failures:
+        print(f"\n❌ {total_failures} deep-check failure(s)")
+    return total_failures
 
 
 def _check_tool_readiness(

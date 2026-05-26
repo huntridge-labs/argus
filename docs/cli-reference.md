@@ -233,8 +233,8 @@ Check an argus.yml config file for errors and warnings.
 Catches typos, invalid values, and unknown keys before scanning.
 
 ```
-argus validate [-h] [--no-update-check] [--config CONFIG]
-                      [--check-tools] [--strict] [--report-issue]
+argus validate [-h] [--no-update-check] [--config CONFIG] [--schema]
+                      [--check-tools] [--deep] [--strict] [--report-issue]
 ```
 
 **Options:**
@@ -243,7 +243,9 @@ argus validate [-h] [--no-update-check] [--config CONFIG]
 |------|-------------|---------|
 | `--no-update-check` | Skip the once-per-day check for a newer argus release. The check runs in the background (zero latency cost) and prints a soft notice at the end of the command when an upgrade is available. Also disabled by setting the ARGUS_NO_UPDATE_CHECK environment variable, which is the right move for CI / air-gapped environments. Override the PyPI URL via ARGUS_UPDATE_CHECK_URL for TestPyPI or private mirrors. | `false` |
 | `--config`, `-c` | Path to argus.yml config file (default: auto-detect) |  |
+| `--schema` | Run schema validation only (default behavior; explicit form for scripting). | `false` |
 | `--check-tools` | Also check scanner tool availability (local + Docker) | `false` |
+| `--deep` | Live validation of config settings: scanner tools, registry / registry_map reachability, and on-disk paths. Implies --check-tools. Requires Docker on PATH for registry probes. | `false` |
 | `--strict` | Treat warnings as errors (exit non-zero). Useful in CI. | `false` |
 | `--report-issue` | Create or update a living issue on GitHub/GitLab with validation results. Requires GITHUB_TOKEN or CI_JOB_TOKEN. | `false` |
 
