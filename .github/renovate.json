@@ -1,0 +1,215 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Renovate configuration for dependencies Dependabot can't track. Dependabot handles GitHub Actions SHAs, npm, pip, and Dockerfile FROM. Renovate handles image tags pinned in Python source plus tool versions in shell scripts and Dockerfiles. SUPPLY CHAIN POLICY: all updates wait 7 days after release (see Trivy supply chain attack GHSA-69fq-xp46-6x23, March 2026) so a compromised release has time to be caught before we propose it.",
+  "extends": [
+    "config:recommended"
+  ],
+  "enabledManagers": [
+    "custom.regex"
+  ],
+  "dependencyDashboard": true,
+  "labels": [
+    "dependencies",
+    "automated"
+  ],
+  "commitMessagePrefix": "chore(deps):",
+  "schedule": [
+    "before 9am on Monday"
+  ],
+  "timezone": "America/New_York",
+  "minimumReleaseAge": "7 days",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Container image refs (tag + digest) in argus/containers.py \u2014 depName is captured from the regex itself (the image path), so no per-tool expansion needed.",
+      "managerFilePatterns": [
+        "argus/containers\\.py"
+      ],
+      "matchStrings": [
+        "\"(?<depName>[a-z0-9./-]+):(?<currentValue>[^\"@]+)(?:@(?<currentDigest>sha256:[a-f0-9]+))?\""
+      ],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Trivy version in Dockerfiles",
+      "managerFilePatterns": [
+        "docker/Dockerfile\\..+"
+      ],
+      "matchStrings": [
+        "ARG TRIVY_VERSION=(?<currentValue>[\\d.]+)"
+      ],
+      "depNameTemplate": "trivy",
+      "packageNameTemplate": "aquasecurity/trivy",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "Grype version in Dockerfiles",
+      "managerFilePatterns": [
+        "docker/Dockerfile\\..+"
+      ],
+      "matchStrings": [
+        "ARG GRYPE_VERSION=(?<currentValue>[\\d.]+)"
+      ],
+      "depNameTemplate": "grype",
+      "packageNameTemplate": "anchore/grype",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "Syft version in Dockerfiles",
+      "managerFilePatterns": [
+        "docker/Dockerfile\\..+"
+      ],
+      "matchStrings": [
+        "ARG SYFT_VERSION=(?<currentValue>[\\d.]+)"
+      ],
+      "depNameTemplate": "syft",
+      "packageNameTemplate": "anchore/syft",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "Gitleaks version in Dockerfiles",
+      "managerFilePatterns": [
+        "docker/Dockerfile\\..+"
+      ],
+      "matchStrings": [
+        "ARG GITLEAKS_VERSION=(?<currentValue>[\\d.]+)"
+      ],
+      "depNameTemplate": "gitleaks",
+      "packageNameTemplate": "gitleaks/gitleaks",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "Actionlint version in Dockerfiles",
+      "managerFilePatterns": [
+        "docker/Dockerfile\\..+"
+      ],
+      "matchStrings": [
+        "ARG ACTIONLINT_VERSION=(?<currentValue>[\\d.]+)"
+      ],
+      "depNameTemplate": "actionlint",
+      "packageNameTemplate": "rhysd/actionlint",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "Opengrep version in Dockerfiles",
+      "managerFilePatterns": [
+        "docker/Dockerfile\\..+"
+      ],
+      "matchStrings": [
+        "ARG OPENGREP_VERSION=(?<currentValue>[\\d.]+)"
+      ],
+      "depNameTemplate": "opengrep",
+      "packageNameTemplate": "opengrep/opengrep",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "Zizmor version in Dockerfiles",
+      "managerFilePatterns": [
+        "docker/Dockerfile\\..+"
+      ],
+      "matchStrings": [
+        "ARG ZIZMOR_VERSION=(?<currentValue>[\\d.]+)"
+      ],
+      "depNameTemplate": "zizmor",
+      "packageNameTemplate": "woodruffw/zizmor",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "Bandit version in Dockerfiles (PyPI)",
+      "managerFilePatterns": [
+        "docker/Dockerfile\\..+"
+      ],
+      "matchStrings": [
+        "ARG BANDIT_VERSION=(?<currentValue>[\\d.]+)"
+      ],
+      "depNameTemplate": "bandit",
+      "packageNameTemplate": "bandit",
+      "datasourceTemplate": "pypi"
+    },
+    {
+      "customType": "regex",
+      "description": "PyYAML version in Dockerfiles (PyPI)",
+      "managerFilePatterns": [
+        "docker/Dockerfile\\..+"
+      ],
+      "matchStrings": [
+        "ARG PYYAML_VERSION=(?<currentValue>[\\d.]+)"
+      ],
+      "depNameTemplate": "pyyaml",
+      "packageNameTemplate": "pyyaml",
+      "datasourceTemplate": "pypi"
+    },
+    {
+      "customType": "regex",
+      "description": "Opengrep version pinned in composite actions",
+      "managerFilePatterns": [
+        "\\.github/actions/.+/action\\.yml"
+      ],
+      "matchStrings": [
+        "OPENGREP_VERSION[=:]\\s*['\"]?(?<currentValue>[\\d.]+)['\"]?"
+      ],
+      "depNameTemplate": "opengrep",
+      "packageNameTemplate": "opengrep/opengrep",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "Actionlint version pinned in composite actions",
+      "managerFilePatterns": [
+        "\\.github/actions/.+/action\\.yml"
+      ],
+      "matchStrings": [
+        "ACTIONLINT_VERSION[=:]\\s*['\"]?(?<currentValue>[\\d.]+)['\"]?"
+      ],
+      "depNameTemplate": "actionlint",
+      "packageNameTemplate": "rhysd/actionlint",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "Zizmor version pinned in composite actions",
+      "managerFilePatterns": [
+        "\\.github/actions/.+/action\\.yml"
+      ],
+      "matchStrings": [
+        "ZIZMOR_VERSION[=:]\\s*['\"]?(?<currentValue>[\\d.]+)['\"]?"
+      ],
+      "depNameTemplate": "zizmor",
+      "packageNameTemplate": "woodruffw/zizmor",
+      "datasourceTemplate": "github-releases"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Group all container image updates; pinDigests appends @sha256:... for immutable refs",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDatasources": [
+        "docker"
+      ],
+      "groupName": "container-images",
+      "pinDigests": true,
+      "automerge": false
+    },
+    {
+      "description": "Group all GitHub-released tool version bumps",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDatasources": [
+        "github-releases"
+      ],
+      "groupName": "tool-versions",
+      "automerge": false
+    }
+  ]
+}

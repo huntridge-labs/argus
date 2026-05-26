@@ -631,7 +631,7 @@ Examples are automatically validated by `.github/workflows/test-examples-functio
 - `argus.example.yml` - Quick-start configuration template
 - `docs/config-reference.md` - Full `argus.yml` specification
 - `version.yaml` - Single version source for releases
-- `renovate.yaml` - Dependency update configuration
+- `.github/renovate.json` - Dependency update configuration (Renovate)
 - `CONTRIBUTING.md` - Composite actions contributor guide
 - `tests/CONTRIBUTING.md` - How to add tests for actions
 - `examples/README.md` - Example usage patterns and testing info
