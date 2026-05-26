@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from argus.core.config import ArgusConfig, ScannerConfig
-from argus.core.engine import ArgusEngine, _split_upstream
+from argus.core.engine import ArgusEngine, _split_upstream, resolve_image_ref
 from argus.core.models import Finding, ScanResult, Severity, ScanSummary
 
 
@@ -236,6 +236,96 @@ class TestSplitUpstream:
     def test_single_segment_treated_as_docker_io(self):
         # No slash at all — ``redis:7`` is a Docker Hub library image.
         assert _split_upstream("redis:7") == ("docker.io", "redis:7")
+
+
+class TestResolveImageRef:
+    """Pure-function checks for ``resolve_image_ref`` — the shared
+    helper used by both the source-scan engine wrapper
+    (``ArgusEngine._resolve_image``) and the container-scan path
+    (``container/scanner.py::_resolve_sub_scanner_image``).
+    Issue #186."""
+
+    def test_no_registry_no_map_returns_image_unchanged(self):
+        # Zero config = zero rewrite. Critical back-compat guard —
+        # every config without execution.registry / registry_map must
+        # see identical pull behavior post-fix.
+        assert resolve_image_ref("aquasec/trivy:0.70.0") == "aquasec/trivy:0.70.0"
+
+    def test_empty_image_returns_empty(self):
+        # The wrapper passes ``getattr(scanner, 'container_image', '')``
+        # — orchestrator scanners (like the container scanner itself)
+        # leave it empty intentionally. Helper must not crash.
+        assert resolve_image_ref("", registry="harbor.corp/argus") == ""
+
+    def test_flat_registry_rewrites_bare_name(self):
+        assert resolve_image_ref(
+            "aquasec/trivy:0.70.0",
+            registry="harbor.corp/argus",
+        ) == "harbor.corp/argus/aquasec/trivy:0.70.0"
+
+    def test_flat_registry_rewrites_host_segment(self):
+        # Host segment is detected by ``.`` or ``:`` in the first
+        # slash-segment — replace it with the configured registry.
+        assert resolve_image_ref(
+            "ghcr.io/google/osv-scanner:v2.3.6",
+            registry="harbor.corp/argus",
+        ) == "harbor.corp/argus/google/osv-scanner:v2.3.6"
+
+    def test_registry_map_routes_docker_hub_image(self):
+        # Bare-name image normalises to docker.io and gets the
+        # docker.io mirror entry.
+        assert resolve_image_ref(
+            "aquasec/trivy:0.70.0",
+            registry_map={
+                "docker.io": "harbor.corp/dockerhub-cache",
+                "ghcr.io":   "harbor.corp/ghcr-cache",
+            },
+        ) == "harbor.corp/dockerhub-cache/aquasec/trivy:0.70.0"
+
+    def test_registry_map_routes_ghcr_image_with_digest(self):
+        # Digest pin travels with the rewritten path — content-
+        # addressable pull still verifies the same bytes.
+        assert resolve_image_ref(
+            "ghcr.io/google/osv-scanner@sha256:" + "a" * 64,
+            registry_map={"ghcr.io": "harbor.corp/ghcr-cache"},
+        ) == "harbor.corp/ghcr-cache/google/osv-scanner@sha256:" + "a" * 64
+
+    def test_partial_map_falls_through_to_flat_registry(self):
+        # docker.io is mapped → rewrites. ghcr.io is NOT mapped but
+        # the flat ``registry`` is set → falls through to the legacy
+        # flat-rewrite path. Partial maps with a flat fallback are
+        # the realistic shape for mixed proxy setups.
+        registry_map = {"docker.io": "harbor.corp/dockerhub-cache"}
+        flat = "harbor.corp/argus"
+
+        # docker.io match → map wins
+        assert resolve_image_ref(
+            "aquasec/trivy:0.70.0",
+            registry=flat, registry_map=registry_map,
+        ) == "harbor.corp/dockerhub-cache/aquasec/trivy:0.70.0"
+
+        # ghcr.io has no map entry → flat fallback
+        assert resolve_image_ref(
+            "ghcr.io/google/osv-scanner:v2.3.6",
+            registry=flat, registry_map=registry_map,
+        ) == "harbor.corp/argus/google/osv-scanner:v2.3.6"
+
+    def test_partial_map_no_flat_leaves_unmapped_unchanged(self):
+        # docker.io mapped, ghcr.io not mapped, NO flat registry →
+        # ghcr.io image must NOT silently double-rewrite. Falls all
+        # the way through to original.
+        assert resolve_image_ref(
+            "ghcr.io/google/osv-scanner:v2.3.6",
+            registry_map={"docker.io": "harbor.corp/dockerhub-cache"},
+        ) == "ghcr.io/google/osv-scanner:v2.3.6"
+
+    def test_mirror_trailing_slash_normalized(self):
+        # Operator-friendly: a trailing slash in the mirror config
+        # mustn't produce a double-slash in the rewritten ref.
+        assert resolve_image_ref(
+            "aquasec/trivy:0.70.0",
+            registry_map={"docker.io": "harbor.corp/dockerhub-cache/"},
+        ) == "harbor.corp/dockerhub-cache/aquasec/trivy:0.70.0"
 
 
 class TestDockerExecutionBackend:

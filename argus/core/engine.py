@@ -61,6 +61,62 @@ def _split_upstream(image: str) -> tuple[str, str]:
     return "docker.io", image
 
 
+def resolve_image_ref(
+    image: str,
+    registry: str | None = None,
+    registry_map: dict | None = None,
+) -> str:
+    """Apply ``execution.registry`` / ``execution.registry_map`` rewrites
+    to a container image reference. Pure function — shared by the
+    source-scan engine and the container-scan runners (issue #186).
+
+    Resolution order:
+
+    1. ``registry_map`` — per-upstream mirror table. The image's
+       normalised upstream host (``docker.io`` for bare-name refs,
+       otherwise the leading host segment) is looked up in the map;
+       on hit, the host is swapped for the mirror and the path under
+       it is preserved verbatim. Matches how Harbor / Artifactory /
+       ECR proxy-cache projects actually mirror single upstreams.
+    2. ``registry`` — flat single-mirror rewrite. Kept for
+       back-compat and for shops with one registry proxying every
+       upstream.
+    3. Original image reference, unchanged.
+
+    Tag and ``@sha256:`` digest pin always travel with the path so
+    content-addressable verification still gates the pull. Empty
+    ``image`` returns ``""`` unchanged so callers can pre-flight
+    optional refs without branching.
+    """
+    if not image:
+        return ""
+
+    if registry_map:
+        upstream, path = _split_upstream(image)
+        mirror = registry_map.get(upstream)
+        if mirror:
+            rewritten = f"{mirror.rstrip('/')}/{path}"
+            logger.debug(
+                "Registry map: %s → %s (via %s)", image, rewritten, upstream,
+            )
+            return rewritten
+        # No map entry for this upstream — fall through to the legacy
+        # flat-registry path. A partial map (only ``docker.io`` set)
+        # therefore leaves GHCR pulls alone instead of silently
+        # double-rewriting them.
+
+    if registry:
+        parts = image.split("/", 1)
+        if len(parts) == 2 and ("." in parts[0] or ":" in parts[0]):
+            rewritten = f"{registry}/{parts[1]}"
+        else:
+            rewritten = f"{registry}/{image}"
+        logger.debug("Registry override: %s → %s", image, rewritten)
+        return rewritten
+
+    return image
+
+
 def _classify_pull_error(stderr: str) -> tuple[str, bool]:
     """Classify a docker/podman ``pull`` failure for human-readable
     logging and retry policy.
@@ -877,54 +933,19 @@ class ArgusEngine:
         return result.returncode == 0
 
     def _resolve_image(self, scanner) -> str:
-        """Resolve the full container image reference, applying registry override.
+        """Resolve the full container image reference for a Scanner instance.
 
-        Resolution order (issue #178):
-
-        1. ``execution.registry_map`` — per-upstream mirror table. The
-           image's normalised upstream host (``docker.io`` for bare-name
-           references, otherwise the leading host segment) is looked up
-           in the map; on hit, the host is swapped for the mirror and
-           the path under it is preserved verbatim. Matches how Harbor /
-           Artifactory / ECR proxy-cache projects actually mirror
-           single upstreams.
-        2. ``execution.registry`` — flat single-mirror rewrite. Kept for
-           backwards compatibility and for shops with a single registry
-           proxying every upstream.
-        3. Original image reference, unchanged.
-
-        Tag and ``@sha256:`` digest pin always travel with the path so
-        content-addressable verification still gates the pull.
+        Thin wrapper around the module-level ``resolve_image_ref``
+        helper — see its docstring for the resolution order. Reads
+        ``container_image`` from the scanner attribute and applies the
+        ``execution.registry`` / ``execution.registry_map`` config from
+        this engine's ArgusConfig.
         """
-        image = getattr(scanner, "container_image", "")
-        if not image:
-            return ""
-
-        registry_map = getattr(self.config.execution, "registry_map", {}) or {}
-        if registry_map:
-            upstream, path = _split_upstream(image)
-            mirror = registry_map.get(upstream)
-            if mirror:
-                rewritten = f"{mirror.rstrip('/')}/{path}"
-                logger.debug(
-                    "Registry map: %s → %s (via %s)", image, rewritten, upstream,
-                )
-                return rewritten
-            # No map entry for this upstream — fall through to the legacy
-            # flat-registry path. A partial map (only ``docker.io`` set)
-            # therefore leaves GHCR pulls alone instead of silently
-            # double-rewriting them.
-
-        registry = self.config.execution.registry
-        if registry:
-            parts = image.split("/", 1)
-            if len(parts) == 2 and ("." in parts[0] or ":" in parts[0]):
-                image = f"{registry}/{parts[1]}"
-            else:
-                image = f"{registry}/{image}"
-            logger.debug("Registry override: %s", image)
-
-        return image
+        return resolve_image_ref(
+            getattr(scanner, "container_image", ""),
+            registry=self.config.execution.registry,
+            registry_map=getattr(self.config.execution, "registry_map", None),
+        )
 
     def _run_in_container(
         self, scanner, path: str, config: dict | None

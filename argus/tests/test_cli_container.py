@@ -485,3 +485,86 @@ containers:
         config = _load_container_config(args)
         assert config["registry_username"] == "alice"
         assert config["registry_password"] == "s3cret"
+
+
+# =====================================================================
+# _load_container_config: plumbs execution.registry / registry_map (#186)
+# =====================================================================
+#
+# The source-scan path routes scanner-image pulls through the engine's
+# resolver, which reads ``execution.registry`` / ``execution.registry_map``
+# off ArgusConfig. The container-scan path doesn't see ArgusConfig at
+# all — it consumes the dict ``_load_container_config`` builds. Without
+# explicit plumbing, the operator's mirror policy was silently ignored
+# for every ``argus scan container`` invocation against a config with a
+# mirror. The fix stashes both fields under synthetic underscore keys
+# the same way ``_reporting_keep_raw`` is stashed.
+
+
+class TestLoadContainerConfigPlumbsExecutionRegistry:
+    """``execution.registry`` / ``registry_map`` reach the container config dict."""
+
+    def _write_config(self, tmp_path, body: str):
+        cfg = tmp_path / "argus.yml"
+        cfg.write_text(body)
+        return argparse.Namespace(
+            config=str(cfg),
+            images=None,
+            discover=None,
+            scanners=None,
+        )
+
+    def test_flat_registry_stashed_under_synthetic_key(self, tmp_path):
+        args = self._write_config(tmp_path, """
+execution:
+  registry: harbor.internal.corp/argus
+containers:
+  images:
+    - image: registry.example.com/app@sha256:abcd
+""")
+        config = _load_container_config(args)
+        assert config["_execution_registry"] == "harbor.internal.corp/argus"
+
+    def test_registry_map_stashed_under_synthetic_key(self, tmp_path):
+        args = self._write_config(tmp_path, """
+execution:
+  registry_map:
+    docker.io: harbor.internal.corp/dockerhub-cache
+    ghcr.io:   harbor.internal.corp/ghcr-cache
+containers:
+  images:
+    - image: registry.example.com/app@sha256:abcd
+""")
+        config = _load_container_config(args)
+        assert config["_execution_registry_map"] == {
+            "docker.io": "harbor.internal.corp/dockerhub-cache",
+            "ghcr.io":   "harbor.internal.corp/ghcr-cache",
+        }
+
+    def test_no_execution_block_no_synthetic_keys(self, tmp_path):
+        # Sanity: configs without an execution block stay clean — no
+        # synthetic empty values, no surprise dict entries that could
+        # confuse downstream lookups.
+        args = self._write_config(tmp_path, """
+containers:
+  images:
+    - image: registry.example.com/app@sha256:abcd
+""")
+        config = _load_container_config(args)
+        assert "_execution_registry" not in config
+        assert "_execution_registry_map" not in config
+
+    def test_empty_registry_map_not_stashed(self, tmp_path):
+        # An empty map (or one with only blank values) is functionally
+        # the same as no map — don't stash it. Avoids triggering the
+        # resolver's "map-is-set" branch on what is effectively a
+        # default config.
+        args = self._write_config(tmp_path, """
+execution:
+  registry_map: {}
+containers:
+  images:
+    - image: registry.example.com/app@sha256:abcd
+""")
+        config = _load_container_config(args)
+        assert "_execution_registry_map" not in config

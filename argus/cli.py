@@ -1560,6 +1560,23 @@ def _load_container_config(args: argparse.Namespace) -> dict:
         if isinstance(reporting_section, dict) and "keep_raw" in reporting_section:
             config["_reporting_keep_raw"] = bool(reporting_section["keep_raw"])
 
+        # Plumb ``execution.registry`` and ``execution.registry_map``
+        # through to the container engine so the Trivy/Grype/Syft sub-
+        # scanner image pulls honor the operator's mirror policy. Same
+        # synthetic-key pattern as ``_reporting_keep_raw`` above.
+        # Without this, the source-scan path correctly routes through
+        # ArgusEngine._resolve_image but ``argus scan container`` pulls
+        # raw upstream refs regardless of config (#186).
+        execution_section = file_config.get("execution", {})
+        if isinstance(execution_section, dict):
+            if execution_section.get("registry"):
+                config["_execution_registry"] = str(execution_section["registry"])
+            raw_map = execution_section.get("registry_map") or {}
+            if isinstance(raw_map, dict) and raw_map:
+                config["_execution_registry_map"] = {
+                    str(k): str(v) for k, v in raw_map.items() if v
+                }
+
         # Back-compat: registry credentials are documented under
         # ``scanners.container.*`` in argus.example.yml and were the
         # only home for them before container-scan grew first-class
