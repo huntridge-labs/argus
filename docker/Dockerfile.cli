@@ -66,7 +66,7 @@ LABEL org.opencontainers.image.description="Argus CLI — all-in-one security sc
 LABEL org.opencontainers.image.licenses="AGPL-3.0"
 
 ARG BANDIT_VERSION=1.9.4
-ARG PYYAML_VERSION=6.0.2
+ARG PYYAML_VERSION=6.0.3
 ARG ZIZMOR_VERSION=1.24.1
 
 # Install system packages and patch OS-level vulnerabilities
