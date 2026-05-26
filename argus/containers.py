@@ -45,6 +45,10 @@ OFFICIAL_IMAGES = {
     # the official multi-arch distribution (~3 MB). shellcheck is GPL-3.0
     # but runs container-isolated, so the licence never touches Argus.
     "shellcheck": "koalaman/shellcheck-alpine:stable@sha256:c82fe42504fbc9fc68f15d36638e5ee2324ebb8b94e96a3c4e395bf361c49183",
+    # gosec — Go-native SAST. The securego/gosec image tags ``:latest``
+    # mutably, so the digest pin below is the content-hash gate that
+    # protects us between Renovate-driven bumps.
+    "gosec": "securego/gosec:latest@sha256:2cf71ea78210c496c65e3a987576a9c8317b68e20f2960520b3f6f8f9f539be5",
     # lint-terraform docker fallbacks. terraform fmt/validate run via
     # the official Hashicorp image; tflint via its official image.
     "terraform": "hashicorp/terraform:1.15.3@sha256:a12a7a9301bbab26589c0a353d5bdfc68bd1a52aa818cbdd698bf0dec094bd61",

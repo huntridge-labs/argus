@@ -1,0 +1,76 @@
+{
+  "Golang errors": {},
+  "Issues": [
+    {
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "cwe": {
+        "id": "89",
+        "url": "https://cwe.mitre.org/data/definitions/89.html"
+      },
+      "rule_id": "G201",
+      "details": "SQL string formatting",
+      "file": "tests/fixtures/test-apps/go-app/db.go",
+      "code": "query := fmt.Sprintf(\"SELECT * FROM users WHERE id = %s\", userID)",
+      "line": "42",
+      "column": "11",
+      "nosec": false,
+      "suppressions": null
+    },
+    {
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "cwe": {
+        "id": "798",
+        "url": "https://cwe.mitre.org/data/definitions/798.html"
+      },
+      "rule_id": "G101",
+      "details": "Potential hardcoded credentials: const apiKey = \"s3cr3t-pw-XYZ123\"",
+      "file": "tests/fixtures/test-apps/go-app/config.go",
+      "code": "const apiKey = \"s3cr3t-pw-XYZ123\"",
+      "line": "8",
+      "column": "7",
+      "nosec": false,
+      "suppressions": null
+    },
+    {
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "cwe": {
+        "id": "22",
+        "url": "https://cwe.mitre.org/data/definitions/22.html"
+      },
+      "rule_id": "G304",
+      "details": "Potential file inclusion via variable",
+      "file": "tests/fixtures/test-apps/go-app/files.go",
+      "code": "data, err := os.ReadFile(userPath)",
+      "line": "17",
+      "column": "21",
+      "nosec": false,
+      "suppressions": null
+    },
+    {
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "cwe": {
+        "id": "703",
+        "url": "https://cwe.mitre.org/data/definitions/703.html"
+      },
+      "rule_id": "G104",
+      "details": "Errors unhandled",
+      "file": "tests/fixtures/test-apps/go-app/main.go",
+      "code": "w.Write(payload)",
+      "line": "31",
+      "column": "2",
+      "nosec": false,
+      "suppressions": null
+    }
+  ],
+  "Stats": {
+    "files": 4,
+    "lines": 245,
+    "nosec": 0,
+    "found": 4
+  },
+  "GosecVersion": "2.21.4"
+}

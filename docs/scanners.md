@@ -54,6 +54,7 @@ See [examples/github-enterprise/](../examples/github-enterprise/) for GHES templ
   - [CodeQL](#codeql)
   - [Gitleaks](#gitleaks)
   - [Bandit](#bandit)
+  - [gosec](#gosec)
   - [OpenGrep (Semgrep)](#opengrep-semgrep)
 - [Container Scanners](#container-scanners)
   - [Trivy Container](#trivy-container)
@@ -169,6 +170,49 @@ with:
   enable_code_security: true
   fail_on_severity: high
 ```
+
+</details>
+
+### gosec
+
+Go-native security linter — the Go equivalent of Bandit. Inspects the Go AST for security anti-patterns such as hardcoded credentials (G101), SQL injection via string formatting (G201), and file path traversal (G304), with deeper precision than pattern-based scanning.
+
+**Supported languages:** `go`
+
+**Severity levels:** LOW, MEDIUM, HIGH
+
+<details>
+<summary><strong>Configuration & Examples</strong></summary>
+
+**Configuration:**
+
+| Input | Description | Default | Required |
+|-------|-------------|---------|----------|
+| `enable_code_security` | Upload to GitHub Security tab | `false` | No |
+| `post_pr_comment` | Post findings as PR comments | `true` | No |
+| `fail_on_severity` | Fail on any finding | `none` | No |
+
+**SDK config (`argus.yml`):**
+
+```yaml
+scanners:
+  - gosec
+scan_path: "."
+fail_on_severity: high
+```
+
+Optional per-scanner keys: `config_file` (path to a gosec config passed via `-conf`) and `exclude` (comma-separated rule IDs passed via `-exclude`).
+
+**Example:**
+
+```yaml
+with:
+  scanners: gosec
+  enable_code_security: true
+  fail_on_severity: high
+```
+
+> **Secret redaction:** for the G101 (hardcoded-credentials) rule, gosec's `code` excerpt and `details` string contain the matched literal. Argus drops the code excerpt and scrubs the literal from the description before the finding reaches any reporter, export, or the MCP server.
 
 </details>
 
