@@ -314,6 +314,9 @@ scanners:
     - name: lint-terraform
       purpose: "Terraform configuration linting"
       output: "Finding (Severity.INFO)"
+    - name: lint-shell
+      purpose: "Shell script linting via shellcheck (extension + shebang discovery)"
+      output: "Finding (Severity.INFO)"
 
 dependencies:
   external:
@@ -548,12 +551,18 @@ docsite:
       #     shape; tool takes the path and discovers files internally.
       #   * lint-json — Python json.loads fallback when the jsonlint
       #     binary is absent.
+      #   * lint-shell (ShellcheckLinter) — subclass of
+      #     FileDiscoveryScanner that overrides scan() to add shebang
+      #     sniffing on top of extension globbing (*.sh/.bash/.zsh/.ksh
+      #     plus #!/bin/sh-style scripts). Docker fallback via the
+      #     koalaman/shellcheck-alpine image.
       - lint-yaml
       - lint-json
       - lint-python
       - lint-javascript
       - lint-dockerfile
       - lint-terraform
+      - lint-shell
     reporters:
       - terminal
       - markdown

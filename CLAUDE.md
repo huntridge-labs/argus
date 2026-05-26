@@ -406,7 +406,7 @@ Linters follow the same `Scanner` protocol as security scanners but live in the 
 
 **Reference implementation**: See `argus/linters/yamllint.py` for a complete, well-documented example.
 
-**Existing linters**: `lint-yaml`, `lint-json`, `lint-python`, `lint-javascript`, `lint-dockerfile`, `lint-terraform`
+**Existing linters**: `lint-yaml`, `lint-json`, `lint-python`, `lint-javascript`, `lint-dockerfile`, `lint-terraform`, `lint-shell`
 
 ### Composite Action (for GitHub Actions users)
 
@@ -456,7 +456,7 @@ See `CONTRIBUTING.md` for the complete composite actions development guide. Key 
 | **Supply Chain** | scanner-supply-chain | GitHub Actions workflow security (zizmor + actionlint) |
 | **DAST** | scanner-zap | Web applications |
 | **Compliance** | scn-detector | FedRAMP SCN detection |
-| **Linting** | linter-yaml<br>linter-json<br>linter-python<br>linter-javascript<br>linter-dockerfile<br>linter-terraform | Syntax & style |
+| **Linting** | linter-yaml<br>linter-json<br>linter-python<br>linter-javascript<br>linter-dockerfile<br>linter-terraform<br>lint-shell | Syntax & style |
 
 ## Testing
 
