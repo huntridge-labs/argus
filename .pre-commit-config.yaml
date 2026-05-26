@@ -96,6 +96,6 @@ repos:
       - id: check-cli-docs
         name: Check CLI docs are up to date
         entry: python -m scripts.ci.check_cli_docs
-        language: system
+        language: python
         pass_filenames: false
         files: ^(argus/cli\.py|docs/cli-reference\.md)$
