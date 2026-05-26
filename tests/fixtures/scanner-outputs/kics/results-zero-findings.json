@@ -1,0 +1,25 @@
+{
+  "kics_version": "v2.1.3",
+  "files_scanned": 6,
+  "lines_scanned": 412,
+  "files_parsed": 6,
+  "lines_parsed": 412,
+  "queries_total": 3012,
+  "queries_failed_to_execute": 0,
+  "scan_id": "console",
+  "severity_counters": {
+    "HIGH": 0,
+    "MEDIUM": 0,
+    "LOW": 0,
+    "INFO": 0,
+    "TRACE": 0
+  },
+  "total_counter": 0,
+  "total_bom_resources": 0,
+  "start": "2026-05-26T12:00:00.000000Z",
+  "end": "2026-05-26T12:00:09.000000Z",
+  "paths": [
+    "/workspace"
+  ],
+  "queries": []
+}

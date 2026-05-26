@@ -62,6 +62,7 @@ See [examples/github-enterprise/](../examples/github-enterprise/) for GHES templ
 - [Infrastructure Scanners](#infrastructure-scanners)
   - [Trivy IaC](#trivy-iac)
   - [Checkov](#checkov)
+  - [KICS](#kics)
 - [Malware Scanner](#malware-scanner)
   - [ClamAV](#clamav)
 - [DAST Scanners](#dast-scanners)
@@ -526,6 +527,46 @@ with:
   framework: terraform
   enable_code_security: true
 ```
+
+</details>
+
+### KICS
+
+Checkmarx KICS (Keeping Infrastructure as Code Secure) — multi-format IaC scanner with ~3000 built-in queries (Apache-2.0). Covers formats `trivy-iac`/`checkov` handle poorly or not at all, most notably **Ansible**.
+
+**Supported frameworks:** Ansible, Bicep, Helm, Terraform, Kubernetes, Dockerfile, CloudFormation, OpenAPI, Tekton, Buildah, and server-side template engines.
+
+KICS, `trivy-iac`, and `checkov` are designed to run concurrently — they catch different things on the same target. Scope KICS to `--scanners kics` if you only want the formats the other two miss.
+
+<details>
+<summary><strong>Configuration & Examples</strong></summary>
+
+**SDK usage:**
+
+```bash
+# Run KICS on its own
+argus scan kics --path infrastructure/
+
+# Run the full IaC trio
+argus scan trivy-iac checkov kics
+```
+
+**Severity levels:** HIGH, MEDIUM, LOW, INFO (mapped directly to Argus severities).
+
+**Config (`argus.yml`):**
+
+| Key | Description | Default |
+|-----|-------------|---------|
+| `config_file` | Path to a KICS config file (`--config`) | `''` |
+| `exclude` | Comma-separated paths to exclude (`--exclude-paths`) | `''` |
+
+```yaml
+scanners:
+  kics:
+    exclude: "examples,vendor"
+```
+
+> **Secrets handling:** KICS echoes the offending source snippet in each match's `actual_value` / `search_value` fields, which for a secrets-class query is the secret itself. Argus redacts all per-match value fields before they reach a finding — the `file:line` location and query name remain as triage signal.
 
 </details>
 
@@ -1029,7 +1070,7 @@ with:
 python -m argus scan codeql opengrep bandit gitleaks
 
 # Infrastructure only
-python -m argus scan trivy-iac checkov
+python -m argus scan trivy-iac checkov kics
 
 # Container only
 python -m argus scan container
