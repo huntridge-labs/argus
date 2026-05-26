@@ -23,7 +23,7 @@
       "customType": "regex",
       "description": "Container image refs (tag + digest) in argus/containers.py \u2014 depName is captured from the regex itself (the image path), so no per-tool expansion needed.",
       "managerFilePatterns": [
-        "argus/containers\\.py"
+        "argus/containers.py"
       ],
       "matchStrings": [
         "\"(?<depName>[a-z0-9./-]+):(?<currentValue>[^\"@]+)(?:@(?<currentDigest>sha256:[a-f0-9]+))?\""
@@ -34,7 +34,7 @@
       "customType": "regex",
       "description": "Trivy version in Dockerfiles",
       "managerFilePatterns": [
-        "docker/Dockerfile\\..+"
+        "docker/Dockerfile.*"
       ],
       "matchStrings": [
         "ARG TRIVY_VERSION=(?<currentValue>[\\d.]+)"
@@ -47,7 +47,7 @@
       "customType": "regex",
       "description": "Grype version in Dockerfiles",
       "managerFilePatterns": [
-        "docker/Dockerfile\\..+"
+        "docker/Dockerfile.*"
       ],
       "matchStrings": [
         "ARG GRYPE_VERSION=(?<currentValue>[\\d.]+)"
@@ -60,7 +60,7 @@
       "customType": "regex",
       "description": "Syft version in Dockerfiles",
       "managerFilePatterns": [
-        "docker/Dockerfile\\..+"
+        "docker/Dockerfile.*"
       ],
       "matchStrings": [
         "ARG SYFT_VERSION=(?<currentValue>[\\d.]+)"
@@ -73,7 +73,7 @@
       "customType": "regex",
       "description": "Gitleaks version in Dockerfiles",
       "managerFilePatterns": [
-        "docker/Dockerfile\\..+"
+        "docker/Dockerfile.*"
       ],
       "matchStrings": [
         "ARG GITLEAKS_VERSION=(?<currentValue>[\\d.]+)"
@@ -86,7 +86,7 @@
       "customType": "regex",
       "description": "Actionlint version in Dockerfiles",
       "managerFilePatterns": [
-        "docker/Dockerfile\\..+"
+        "docker/Dockerfile.*"
       ],
       "matchStrings": [
         "ARG ACTIONLINT_VERSION=(?<currentValue>[\\d.]+)"
@@ -99,7 +99,7 @@
       "customType": "regex",
       "description": "Opengrep version in Dockerfiles",
       "managerFilePatterns": [
-        "docker/Dockerfile\\..+"
+        "docker/Dockerfile.*"
       ],
       "matchStrings": [
         "ARG OPENGREP_VERSION=(?<currentValue>[\\d.]+)"
@@ -112,7 +112,7 @@
       "customType": "regex",
       "description": "Zizmor version in Dockerfiles",
       "managerFilePatterns": [
-        "docker/Dockerfile\\..+"
+        "docker/Dockerfile.*"
       ],
       "matchStrings": [
         "ARG ZIZMOR_VERSION=(?<currentValue>[\\d.]+)"
@@ -125,7 +125,7 @@
       "customType": "regex",
       "description": "Bandit version in Dockerfiles (PyPI)",
       "managerFilePatterns": [
-        "docker/Dockerfile\\..+"
+        "docker/Dockerfile.*"
       ],
       "matchStrings": [
         "ARG BANDIT_VERSION=(?<currentValue>[\\d.]+)"
@@ -138,7 +138,7 @@
       "customType": "regex",
       "description": "PyYAML version in Dockerfiles (PyPI)",
       "managerFilePatterns": [
-        "docker/Dockerfile\\..+"
+        "docker/Dockerfile.*"
       ],
       "matchStrings": [
         "ARG PYYAML_VERSION=(?<currentValue>[\\d.]+)"
@@ -151,7 +151,7 @@
       "customType": "regex",
       "description": "Opengrep version pinned in composite actions",
       "managerFilePatterns": [
-        "\\.github/actions/.+/action\\.yml"
+        ".github/actions/*/action.yml"
       ],
       "matchStrings": [
         "OPENGREP_VERSION[=:]\\s*['\"]?(?<currentValue>[\\d.]+)['\"]?"
@@ -164,7 +164,7 @@
       "customType": "regex",
       "description": "Actionlint version pinned in composite actions",
       "managerFilePatterns": [
-        "\\.github/actions/.+/action\\.yml"
+        ".github/actions/*/action.yml"
       ],
       "matchStrings": [
         "ACTIONLINT_VERSION[=:]\\s*['\"]?(?<currentValue>[\\d.]+)['\"]?"
@@ -177,7 +177,7 @@
       "customType": "regex",
       "description": "Zizmor version pinned in composite actions",
       "managerFilePatterns": [
-        "\\.github/actions/.+/action\\.yml"
+        ".github/actions/*/action.yml"
       ],
       "matchStrings": [
         "ZIZMOR_VERSION[=:]\\s*['\"]?(?<currentValue>[\\d.]+)['\"]?"
