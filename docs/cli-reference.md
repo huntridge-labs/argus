@@ -234,7 +234,8 @@ Catches typos, invalid values, and unknown keys before scanning.
 
 ```
 argus validate [-h] [--no-update-check] [--config CONFIG] [--schema]
-                      [--check-tools] [--deep] [--strict] [--report-issue]
+                      [--check-tools] [--deep] [--verbose] [--strict]
+                      [--report-issue]
 ```
 
 **Options:**
@@ -246,6 +247,7 @@ argus validate [-h] [--no-update-check] [--config CONFIG] [--schema]
 | `--schema` | Run schema validation only (default behavior; explicit form for scripting). | `false` |
 | `--check-tools` | Also check scanner tool availability (local + Docker) | `false` |
 | `--deep` | Live validation of config settings: scanner tools, registry / registry_map reachability, and on-disk paths. Implies --check-tools. Requires Docker on PATH for registry probes. | `false` |
+| `--verbose`, `-v` | Show full image references including the 64-character @sha256 digest. Default truncates digests for readability. | `false` |
 | `--strict` | Treat warnings as errors (exit non-zero). Useful in CI. | `false` |
 | `--report-issue` | Create or update a living issue on GitHub/GitLab with validation results. Requires GITHUB_TOKEN or CI_JOB_TOKEN. | `false` |
 

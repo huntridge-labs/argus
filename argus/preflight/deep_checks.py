@@ -15,13 +15,31 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Callable, Literal
 
 
 Status = Literal["ok", "fail", "skip", "warn"]
 Severity = Literal["error", "warning", "info"]
+
+
+def short_ref(image_ref: str, verbose: bool = False, digest_chars: int = 6) -> str:
+    """Truncate a ``tag@sha256:...`` reference for display.
+
+    The 64-character digest tail dominates terminal output and isn't
+    actionable to read in full — the operator wants the tag + a hint
+    of which digest, not the whole hash. ``verbose=True`` returns the
+    untruncated ref so ``argus validate --deep -v`` can dump the
+    canonical form for copy-paste / escalation.
+    """
+    if verbose or "@sha256:" not in image_ref:
+        return image_ref
+    head, _, digest = image_ref.partition("@sha256:")
+    if len(digest) <= digest_chars * 2 + 1:
+        return image_ref
+    return f"{head}@sha256:{digest[:digest_chars]}…{digest[-digest_chars:]}"
 
 
 @dataclass(frozen=True)
@@ -75,12 +93,27 @@ def check_registry_reachability(
     images: list[str],
     registry: str = "",
     registry_map: dict | None = None,
+    *,
+    max_workers: int = 8,
+    progress: Callable[[int, "DeepCheckResult"], None] | None = None,
 ) -> list[DeepCheckResult]:
     """For each image, apply registry rewriting then probe the manifest.
 
     Empty image list returns []. Each image emits exactly one result
-    with the rewritten ref as the `name` (so the output shows what was
-    actually probed, not just the upstream).
+    with the rewritten ref as the ``name`` (so the output shows what
+    was actually probed, not just the upstream).
+
+    Probes run concurrently in a ``ThreadPoolExecutor`` — six independent
+    ``docker manifest inspect`` calls take ~3s wall-clock instead of
+    ~15s sequential. Results are returned in **input order** (not
+    finish order) so the operator sees the same row layout as the
+    config.
+
+    ``progress(idx, result)`` is invoked once per completion in
+    finish-order — useful for streaming a live progress display while
+    keeping the final return value stably ordered. The callback runs
+    on a worker thread; format-only callers can ignore thread-safety,
+    but anyone touching mutable state should serialize the update.
     """
     if not images:
         return []
@@ -90,45 +123,55 @@ def check_registry_reachability(
     # pipeline.
     from argus.core.engine import resolve_image_ref
 
-    results: list[DeepCheckResult] = []
-    for image in images:
-        resolved = resolve_image_ref(image, registry or None, registry_map or None)
-        success, detail = manifest_probe(resolved)
-        if detail == "no docker":
-            results.append(DeepCheckResult(
-                name=resolved,
+    resolved = [
+        resolve_image_ref(img, registry or None, registry_map or None)
+        for img in images
+    ]
+
+    # Short-circuit before spinning up the pool: if Docker is missing,
+    # every probe will say so identically. One explanation + N quiet
+    # skip rows reads better than N identical Docker-missing lines.
+    if not shutil.which("docker"):
+        results: list[DeepCheckResult] = []
+        for i, ref in enumerate(resolved):
+            r = DeepCheckResult(
+                name=ref,
                 status="skip",
                 severity="info",
-                message="Docker not on PATH — install Docker to probe registries",
-            ))
-            # Once we know Docker is missing, every subsequent image
-            # will report the same. Emit the first as the explanation
-            # and short-circuit the rest as quieter info rows so the
-            # output table doesn't drown the user in identical lines.
-            for extra in images[len(results):]:
-                extra_resolved = resolve_image_ref(extra, registry or None, registry_map or None)
-                results.append(DeepCheckResult(
-                    name=extra_resolved,
-                    status="skip",
-                    severity="info",
-                    message="(skipped — no Docker)",
-                ))
-            return results
-        if success:
-            results.append(DeepCheckResult(
-                name=resolved,
-                status="ok",
-                severity="info",
-                message=detail,
-            ))
-        else:
-            results.append(DeepCheckResult(
-                name=resolved,
-                status="fail",
-                severity="error",
-                message=detail,
-            ))
-    return results
+                message=(
+                    "Docker not on PATH — install Docker to probe registries"
+                    if i == 0
+                    else "(skipped — no Docker)"
+                ),
+            )
+            results.append(r)
+            if progress is not None:
+                progress(i, r)
+        return results
+
+    # Concurrent execution. The slot list keeps input order; futures
+    # write into their own index. `as_completed` drives the progress
+    # callback in finish-order so the operator sees results trickle
+    # in rather than blocking on the slowest probe.
+    slots: list[DeepCheckResult | None] = [None] * len(resolved)
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        future_to_idx = {
+            ex.submit(manifest_probe, ref): (i, ref)
+            for i, ref in enumerate(resolved)
+        }
+        for future in as_completed(future_to_idx):
+            i, ref = future_to_idx[future]
+            success, detail = future.result()
+            if success:
+                r = DeepCheckResult(name=ref, status="ok", severity="info", message=detail)
+            else:
+                r = DeepCheckResult(name=ref, status="fail", severity="error", message=detail)
+            slots[i] = r
+            if progress is not None:
+                progress(i, r)
+
+    # `slots` is fully populated by the time the executor exits.
+    return [r for r in slots if r is not None]
 
 
 def check_paths(

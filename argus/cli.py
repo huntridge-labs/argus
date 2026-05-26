@@ -1208,6 +1208,15 @@ def _build_validate_parser(subparsers: argparse._SubParsersAction, parent: argpa
         ),
     )
     validate_parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        default=False,
+        help=(
+            "Show full image references including the 64-character @sha256 "
+            "digest. Default truncates digests for readability."
+        ),
+    )
+    validate_parser.add_argument(
         "--strict",
         action="store_true",
         default=False,
@@ -3296,23 +3305,38 @@ def cmd_validate(args: argparse.Namespace) -> int:
                 print(f"     - {ref}")
 
     # Tool readiness check. --deep implies --check-tools so the user
-    # gets the full live picture from one flag.
+    # gets the full live picture from one flag. The unified table also
+    # subsumes the separate Registry-reachability section when --deep
+    # is requested — scanner image refs only appear once, beside their
+    # owning scanner, rather than in two duplicate tables.
     deep = getattr(args, "deep", False)
+    verbose = getattr(args, "verbose", False)
     check_tools = getattr(args, "check_tools", False) or deep
+    execution = data.get("execution", {}) if isinstance(data.get("execution"), dict) else {}
     unavailable = []
     tool_statuses = []
+    probe_failures = 0
     if check_tools and enabled_names:
-        registry = data.get("execution", {}).get("registry", "")
-        unavailable, tool_statuses = _check_tool_readiness(enabled_names, backend, registry)
+        registry = execution.get("registry") or ""
+        registry_map = execution.get("registry_map") or {}
+        unavailable, tool_statuses, probe_failures = _render_scanner_table(
+            enabled_names,
+            backend=backend,
+            registry=registry,
+            registry_map=registry_map,
+            probe=deep,
+            verbose=verbose,
+        )
         if unavailable and strict:
             print(f"\n❌ {len(unavailable)} scanner(s) unavailable (--strict)")
 
-    # Deep checks — registry reachability + on-disk paths. Each probe
-    # is independent and reports its own pass/fail; counts aggregate
-    # into ``deep_failures`` for the exit-code calculation below.
-    deep_failures = 0
+    # Deep checks — `containers.images` (separate from scanner images)
+    # plus on-disk paths. The scanner-image reachability check ran
+    # above as part of the unified table; this only handles the
+    # additional surfaces the table didn't cover.
+    deep_failures = probe_failures
     if deep:
-        deep_failures = _run_deep_checks(data)
+        deep_failures += _run_deep_checks(data, verbose=verbose)
 
     # Living issue reporting (runs before exit so the issue captures full state)
     if report_issue:
@@ -3350,30 +3374,38 @@ def cmd_validate(args: argparse.Namespace) -> int:
     return EXIT_SUCCESS
 
 
-def _run_deep_checks(data: dict) -> int:
-    """Run deep validation probes and print results.
+def _run_deep_checks(data: dict, *, verbose: bool = False) -> int:
+    """Run deep validation probes for surfaces the unified scanner
+    table doesn't already cover.
 
-    Returns the count of `status="fail"` results across all probes,
-    which the caller folds into the validate exit code. Pure detection
-    lives in ``argus.preflight.deep_checks``; this wrapper formats the
-    output specific to ``argus validate --deep``.
+    Scanner-tool image reachability has already been printed inline
+    next to each scanner in ``_render_scanner_table``. This function
+    handles the two remaining surfaces:
+
+    * ``containers.images`` — explicit images the operator wants to
+      scan. Distinct from scanner-tool images; rendered as its own
+      section so the operator can tell which mirror policy applies
+      to *their* container fleet vs the scanner internals.
+    * On-disk paths — search_paths, output_dirs, per-scanner excludes.
+      Fast, no network.
+
+    Returns the count of ``status="fail"`` results, folded into the
+    validate exit code by the caller.
     """
     from argus.preflight.deep_checks import (
         check_paths,
         check_registry_reachability,
+        short_ref,
     )
 
     execution = data.get("execution", {}) if isinstance(data.get("execution"), dict) else {}
     registry = execution.get("registry") or ""
     registry_map = execution.get("registry_map") or {}
 
-    # Source of truth for "what images would this config touch": the
-    # explicit containers.images block plus the scanner tool images
-    # already cataloged in argus.containers (Trivy, Grype, etc., used
-    # when the engine container-runs a scanner). The user cares about
-    # the first set the most; we include the second when relevant
-    # scanners are enabled so the operator's mirror policy is verified
-    # end-to-end.
+    # containers.images — explicit operator-specified images. Scanner
+    # images are NOT included here; they're printed by the unified
+    # scanner table above. Keeping the two sets separate prevents the
+    # operator from having to mentally diff "my images vs internal".
     container_images: list[str] = []
     containers_cfg = data.get("containers")
     if isinstance(containers_cfg, dict):
@@ -3383,41 +3415,35 @@ def _run_deep_checks(data: dict) -> int:
             elif isinstance(entry, str):
                 container_images.append(entry)
 
-    scanner_images: list[str] = []
-    enabled_scanners = []
-    scanners_cfg = data.get("scanners", {}) or {}
-    if isinstance(scanners_cfg, dict):
-        for name, cfg in scanners_cfg.items():
-            if isinstance(cfg, dict) and not cfg.get("enabled", True):
-                continue
-            enabled_scanners.append(name)
-    if enabled_scanners:
-        from argus.containers import get_image
-        seen = set()
-        for name in enabled_scanners:
-            ref = get_image(name)
-            if ref and ref not in seen:
-                scanner_images.append(ref)
-                seen.add(ref)
-
     total_failures = 0
 
-    if registry or registry_map or container_images or scanner_images:
-        all_images = container_images + scanner_images
-        if all_images:
-            print("\n   Registry reachability:")
-            results = check_registry_reachability(
-                all_images,
-                registry=registry,
-                registry_map=registry_map,
+    if container_images:
+        import threading
+        print(f"\n   Container images (from containers.images):")
+        print(f"     ⏳ probing {len(container_images)} image(s) in parallel…")
+        print_lock = threading.Lock()
+        start_time = time.monotonic()
+
+        def on_progress(idx: int, result) -> None:
+            elapsed = time.monotonic() - start_time
+            icon = {"ok": "✅", "fail": "❌", "skip": "⏭️ ", "warn": "⚠️ "}.get(
+                result.status, "?"
             )
-            icon = {"ok": "✅", "fail": "❌", "skip": "⏭️ ", "warn": "⚠️ "}
-            for r in results:
-                print(f"     {icon.get(r.status, '?')} {r.name}")
-                if r.status != "ok":
-                    print(f"         {r.message}")
-                if r.status == "fail":
-                    total_failures += 1
+            display = short_ref(result.name, verbose=verbose)
+            with print_lock:
+                print(f"     {icon} {display}  ({elapsed:.1f}s)")
+                if result.status == "fail":
+                    print(f"         {result.message}")
+                elif result.status == "skip" and "install Docker" in result.message:
+                    print(f"         {result.message}")
+
+        results = check_registry_reachability(
+            container_images,
+            registry=registry,
+            registry_map=registry_map,
+            progress=on_progress,
+        )
+        total_failures += sum(1 for r in results if r.status == "fail")
 
     # Paths are always probed under --deep (cheap, no network).
     path_results = check_paths(data)
@@ -3436,47 +3462,121 @@ def _run_deep_checks(data: dict) -> int:
     return total_failures
 
 
-def _check_tool_readiness(
-    enabled_names: list[str], backend: str, registry: str = ""
-) -> tuple[list[str], list]:
-    """Check whether enabled scanners can actually run.
+def _render_scanner_table(
+    enabled_names: list[str],
+    *,
+    backend: str,
+    registry: str = "",
+    registry_map: dict | None = None,
+    probe: bool = False,
+    verbose: bool = False,
+) -> tuple[list[str], list, int]:
+    """Render the unified per-scanner readiness + reachability table.
 
-    Returns (unavailable_names, tool_statuses). Pure detection lives in
-    `argus.preflight.tool_check`; this wrapper handles the detailed
-    per-scanner output specific to `argus validate --check-tools`.
+    Replaces the older split between "Tool readiness" and "Registry
+    reachability" sections. Each enabled scanner gets exactly one row
+    showing its provisioning mode (local | container | unavailable),
+    the rewritten image ref when applicable, and — under ``probe=True``
+    — the live ``docker manifest inspect`` status for container-mode
+    scanners. Local scanners and unavailable scanners print
+    immediately. Container-mode rows are dispatched to a thread pool
+    and printed in finish-order so the user sees activity instead of
+    a 15-second silent block.
+
+    Returns ``(unavailable_names, tool_statuses, probe_failure_count)``.
+    The first two preserve the prior ``_check_tool_readiness`` shape so
+    `_report_issue` and `--strict` accounting keep working unchanged.
     """
-    from argus.scanners import SCANNER_REGISTRY
+    import threading
+    from argus.preflight.deep_checks import (
+        check_registry_reachability,
+        short_ref,
+    )
     from argus.preflight.tool_check import (
         check_scanner_readiness,
         container_runtime_available,
         unavailable_names,
     )
+    from argus.scanners import SCANNER_REGISTRY
 
     statuses = check_scanner_readiness(enabled_names, backend=backend, registry=registry)
 
     if registry:
         print(f"\n   Registry: {registry}")
-    print("\n   Tool readiness:")
-    for status in statuses:
+    if registry_map:
+        print(f"   Registry map: {len(registry_map)} upstream(s)")
+    print("\n   Scanners:")
+
+    # Print local + unavailable rows immediately. Stash container-mode
+    # rows for the parallel probe pass.
+    name_col = max((len(s.name) for s in statuses), default=0) + 2
+    container_rows: list[tuple[int, str, str, list[str]]] = []  # (orig_idx, image_ref, name, net_deps)
+    for idx, status in enumerate(statuses):
         name = status.name
         cls = SCANNER_REGISTRY.get(name)
         if cls is None:
-            print(f"     {name}: ⚠️  unknown scanner (not in registry)")
-        elif status.available and status.method == "local":
-            print(f"     {name}: ✅ installed locally")
+            print(f"     ⚠️  {name:<{name_col}} unknown scanner (not in registry)")
+            continue
+        if status.available and status.method == "local":
+            print(f"     ✅ {name:<{name_col}} local")
+            for dep in status.network_deps:
+                print(f"            ℹ️  Requires network: {dep}")
         elif status.available and status.method == "container":
-            print(f"     {name}: 🐳 will use container ({status.image})")
+            container_rows.append((idx, status.image, name, list(status.network_deps)))
         else:
             install_cmd = cls().install_command() or "see docs"
             if backend == "local":
-                print(f"     {name}: ❌ not found (install: {install_cmd})")
+                print(f"     ❌ {name:<{name_col}} not found (install: {install_cmd})")
             elif not container_runtime_available():
-                print(f"     {name}: ❌ not found, Docker not available (install: {install_cmd})")
+                print(f"     ❌ {name:<{name_col}} not found, no container runtime (install: {install_cmd})")
             else:
-                print(f"     {name}: ❌ not found, no container image (install: {install_cmd})")
+                print(f"     ❌ {name:<{name_col}} not found, no container image (install: {install_cmd})")
 
-        for dep in status.network_deps:
-            print(f"             ℹ️  Requires network: {dep}")
+    probe_failures = 0
+
+    if container_rows and not probe:
+        # --check-tools alone: show container assignments without
+        # probing. Same format as the probe path so the table reads
+        # consistently across modes.
+        for _, image, name, net_deps in container_rows:
+            print(f"     🐳 {name:<{name_col}} {short_ref(image, verbose=verbose)}")
+            for dep in net_deps:
+                print(f"            ℹ️  Requires network: {dep}")
+    elif container_rows and probe:
+        # --deep: probe each container image concurrently. Print rows
+        # as probes complete so the user sees activity (~3s wall-clock
+        # for ~6 images vs ~15s sequential).
+        images_to_probe = [row[1] for row in container_rows]
+        print(f"     ⏳ probing {len(images_to_probe)} container image(s) in parallel…")
+
+        row_by_idx = {i: row for i, row in enumerate(container_rows)}
+        print_lock = threading.Lock()
+        start_time = time.monotonic()
+        per_start: dict[int, float] = {i: start_time for i in range(len(images_to_probe))}
+
+        def on_progress(probe_idx: int, result) -> None:
+            orig_idx, _image, name, net_deps = row_by_idx[probe_idx]
+            elapsed = time.monotonic() - per_start[probe_idx]
+            icon = {"ok": "✅", "fail": "❌", "skip": "⏭️ ", "warn": "⚠️ "}.get(
+                result.status, "?"
+            )
+            display = short_ref(result.name, verbose=verbose)
+            with print_lock:
+                print(f"     🐳 {name:<{name_col}} {icon} {display}  ({elapsed:.1f}s)")
+                if result.status == "fail":
+                    print(f"            {result.message}")
+                elif result.status == "skip" and "install Docker" in result.message:
+                    print(f"            {result.message}")
+                for dep in net_deps:
+                    print(f"            ℹ️  Requires network: {dep}")
+
+        results = check_registry_reachability(
+            images_to_probe,
+            registry=registry,
+            registry_map=registry_map or {},
+            progress=on_progress,
+        )
+        probe_failures = sum(1 for r in results if r.status == "fail")
 
     if not container_runtime_available() and backend != "local":
         print(
@@ -3487,7 +3587,7 @@ def _check_tool_readiness(
             "      Install Docker, Podman, or nerdctl — or set execution.backend: local in argus.yml"
         )
 
-    return unavailable_names(statuses), statuses
+    return unavailable_names(statuses), statuses, probe_failures
 
 
 def _report_issue(
