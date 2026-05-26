@@ -246,3 +246,52 @@ class TestSupplyChainContainerArgs:
         assert isinstance(args, list)
         assert len(args) == 1
         assert "zizmor" in args[0]
+
+
+# ───────────────────────────────────────────────
+# Empty / whitespace-only output handling
+# ───────────────────────────────────────────────
+#
+# When zizmor finds no issues on a clean workflow set, or actionlint
+# short-circuits because no workflow files exist, the sub-tool can
+# write an empty or whitespace-only file. Without the guard,
+# ``json.loads('')`` raises ``Expecting value: line 1 column 1`` and
+# the engine surfaces it as a misleading "parser couldn't interpret
+# it" warning when the scanner actually ran cleanly.
+
+
+class TestSupplyChainEmptyOutput:
+    """All three parse entry points must treat empty output as zero findings."""
+
+    def test_parse_results_empty_file_returns_no_findings(self, tmp_path):
+        empty = tmp_path / "supply-chain-results.json"
+        empty.write_text("")
+        assert SupplyChainScanner().parse_results(empty) == []
+
+    def test_parse_results_whitespace_only_returns_no_findings(self, tmp_path):
+        # ``json.loads('   \n')`` raises the same JSONDecodeError as the
+        # empty case — strip-then-check is what makes both safe.
+        ws = tmp_path / "supply-chain-results.json"
+        ws.write_text("   \n\n  \t  \n")
+        assert SupplyChainScanner().parse_results(ws) == []
+
+    def test_parse_zizmor_results_empty_file_returns_no_findings(self, tmp_path):
+        empty = tmp_path / "zizmor-results.json"
+        empty.write_text("")
+        assert SupplyChainScanner().parse_zizmor_results(empty) == []
+
+    def test_parse_actionlint_results_empty_file_returns_no_findings(self, tmp_path):
+        empty = tmp_path / "actionlint-results.json"
+        empty.write_text("")
+        assert SupplyChainScanner().parse_actionlint_results(empty) == []
+
+    def test_non_empty_malformed_json_still_raises(self, tmp_path):
+        # Regression guard: the empty-string guard must NOT swallow
+        # genuine parse failures. A non-empty file with garbage content
+        # is a real bug (truncated output, schema drift, etc.) and the
+        # engine's "scanner produced output but the parser couldn't
+        # interpret it" warning is the right response in that case.
+        bad = tmp_path / "supply-chain-results.json"
+        bad.write_text("{not-valid-json")
+        with pytest.raises(json.JSONDecodeError):
+            SupplyChainScanner().parse_results(bad)

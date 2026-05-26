@@ -131,7 +131,17 @@ class SupplyChainScanner:
         For explicit parsing, use parse_zizmor_results or
         parse_actionlint_results directly.
         """
-        data = json.loads(raw_output_path.read_text(encoding="utf-8", errors="replace"))
+        text = raw_output_path.read_text(encoding="utf-8", errors="replace").strip()
+        # Empty / whitespace-only output is the "no findings" case for
+        # both sub-tools (zizmor with a clean workflow set, actionlint
+        # short-circuited because no workflows exist). Without this
+        # guard ``json.loads('')`` raises ``Expecting value: line 1
+        # column 1`` and the engine surfaces it as a misleading
+        # "parser couldn't interpret it" warning when the scanner
+        # actually ran cleanly.
+        if not text:
+            return []
+        data = json.loads(text)
 
         # SARIF format (zizmor)
         if "$schema" in data or "runs" in data:
@@ -145,7 +155,10 @@ class SupplyChainScanner:
 
     def parse_zizmor_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse zizmor SARIF output into findings."""
-        data = json.loads(raw_output_path.read_text(encoding="utf-8", errors="replace"))
+        text = raw_output_path.read_text(encoding="utf-8", errors="replace").strip()
+        if not text:
+            return []
+        data = json.loads(text)
         findings: list[Finding] = []
 
         for run in data.get("runs", []):
@@ -162,7 +175,10 @@ class SupplyChainScanner:
         self, raw_output_path: Path
     ) -> list[Finding]:
         """Parse actionlint JSON output into findings."""
-        data = json.loads(raw_output_path.read_text(encoding="utf-8", errors="replace"))
+        text = raw_output_path.read_text(encoding="utf-8", errors="replace").strip()
+        if not text:
+            return []
+        data = json.loads(text)
         if not isinstance(data, list):
             return []
 
