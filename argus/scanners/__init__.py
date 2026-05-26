@@ -10,6 +10,7 @@ from .grype import GrypeScanner
 from .kics import KICSScanner
 from .opengrep import OpengrepScanner
 from .osv import OsvScanner
+from .promptfoo import PromptfooScanner
 from .supply_chain import SupplyChainScanner
 from .trivy import TrivyScanner
 from .trivy_iac import TrivyIacScanner
@@ -27,6 +28,7 @@ __all__ = [
     "KICSScanner",
     "OpengrepScanner",
     "OsvScanner",
+    "PromptfooScanner",
     "SupplyChainScanner",
     "TrivyScanner",
     "TrivyIacScanner",
@@ -53,6 +55,7 @@ SCANNER_REGISTRY = {
     "supply-chain": SupplyChainScanner,
     "zap": ZapScanner,
     "container": ContainerScanner,
+    "promptfoo": PromptfooScanner,
 }
 
 # Merge linter modules into the scanner registry so they can be

@@ -25,6 +25,11 @@ RUNTIME_NETWORK_DEPS: dict[str, list[str]] = {
     "checkov": [
         "Checkov registry — downloads custom policies if configured",
     ],
+    "promptfoo": [
+        "LLM provider APIs (OpenAI, Anthropic, etc.) — sends adversarial "
+        "prompts to the configured model endpoints at scan time; "
+        "requires provider API keys",
+    ],
 }
 
 
