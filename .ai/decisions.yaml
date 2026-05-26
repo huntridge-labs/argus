@@ -296,13 +296,13 @@ decisions:
     usage_examples:
       standalone: |
         # Individual scanner posts its own PR comment
-        - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.2.0
+        - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.2.1
           with:
             post_pr_comment: true
 
       reusable: |
         # Only security-summary posts comprehensive comment
-        uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@1.2.0
+        uses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@1.2.1
         with:
           scanners: all
           post_pr_comment: true  # Controls security-summary, not individual scanners
@@ -797,7 +797,7 @@ decisions:
         click twice to see findings.
       - Composites installed only `pip install pyyaml`, assuming argus-security
         was on PYTHONPATH via side effects. A consumer pulling the composite
-        via `uses: huntridge-labs/argus/.github/actions/scanner-*@1.2.0 had no
+        via `uses: huntridge-labs/argus/.github/actions/scanner-*@1.2.1 had no
         reliable way to get the SDK installed.
 
     decision: |
@@ -883,7 +883,7 @@ decisions:
           needs: [scanner-codeql, scanner-opengrep, scanner-container, scanner-zap]
           if: always()
           steps:
-            - uses: huntridge-labs/argus/.github/actions/security-summary@1.2.0
+            - uses: huntridge-labs/argus/.github/actions/security-summary@1.2.1
               with:
                 scan_statuses: |
                   {
@@ -897,7 +897,7 @@ decisions:
         # Opt-out of blocking on scanner failures (e.g., for a canary report):
         security-summary:
           steps:
-            - uses: huntridge-labs/argus/.github/actions/security-summary@1.2.0
+            - uses: huntridge-labs/argus/.github/actions/security-summary@1.2.1
               with:
                 fail_on_scanner_failure: 'false'
                 scan_statuses: '{"...": "..."}'

@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.2.1](https://github.com/huntridge-labs/argus/compare/1.2.0...1.2.1) (2026-05-26)
+
+### Bug Fixes
+
+* **ci:** move renovate config to discoverable path and modernize managers (closes [#195](https://github.com/huntridge-labs/argus/issues/195)) ([#199](https://github.com/huntridge-labs/argus/issues/199)) ([617c386](https://github.com/huntridge-labs/argus/commit/617c38694154f300d2f747c9e14446a566ba47b1))
+* **container:** honor execution.registry/registry_map for sub-scanner image pulls (closes [#186](https://github.com/huntridge-labs/argus/issues/186)) ([#187](https://github.com/huntridge-labs/argus/issues/187)) ([6ecbcc3](https://github.com/huntridge-labs/argus/commit/6ecbcc3dae9a493ff2653799ceccd7769df304a8))
+* **supply-chain:** treat empty scanner output as zero findings, not parse error ([#185](https://github.com/huntridge-labs/argus/issues/185)) ([f5fd806](https://github.com/huntridge-labs/argus/commit/f5fd806ee99cc1b6c6bcf28db25ad99b80ef633b))
+
+### Security Tools
+
+* **deps:** bump clamav and eslint digests to track upstream republishes ([#198](https://github.com/huntridge-labs/argus/issues/198)) ([7e0a230](https://github.com/huntridge-labs/argus/commit/7e0a230a427cb3786e2cd774e706221b11998469))
+
+### Dependencies
+
+* **deps:** bump the docker-all group across 2 directories with 3 updates ([#194](https://github.com/huntridge-labs/argus/issues/194)) ([a5de592](https://github.com/huntridge-labs/argus/commit/a5de5928a05698876c54ceec4354718729c9c2fc))
+* **deps:** Update container-images ([#201](https://github.com/huntridge-labs/argus/issues/201)) ([53fca89](https://github.com/huntridge-labs/argus/commit/53fca89014a2125b3e7e2c7a5452b19334919c60))
+* **deps:** Update dependency pyyaml to v6.0.3 ([#202](https://github.com/huntridge-labs/argus/issues/202)) ([9180def](https://github.com/huntridge-labs/argus/commit/9180def0af68705b0857f55e413b282bd1f16957))
+* **deps:** Update tool-versions ([#203](https://github.com/huntridge-labs/argus/issues/203)) ([7b6108d](https://github.com/huntridge-labs/argus/commit/7b6108d55c5fdb07ab2916a5241be9c5cc7044a1))
+
+### Maintenance
+
+* **release:** close release-it bumper gaps + bump stale version literals ([#184](https://github.com/huntridge-labs/argus/issues/184)) ([9626515](https://github.com/huntridge-labs/argus/commit/962651581776acf45617feb9ffa46e4957fa314a))
+
+
 ## [1.2.0](https://github.com/huntridge-labs/argus/compare/1.1.0...1.2.0) (2026-05-20)
 
 ### Features
