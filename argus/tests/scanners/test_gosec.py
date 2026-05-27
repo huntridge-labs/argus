@@ -80,6 +80,33 @@ class TestGosecScannerMeta:
         assert "-out=/tmp/out.json" in args
         assert "/workspace/..." in args
 
+    def test_build_args_routes_path_excludes_to_exclude_dir(self):
+        # Regression: the engine injects a comma-joined PATH list into
+        # config["exclude"]. gosec's -exclude is for RULE IDs and rejects
+        # a path list outright (exit 2), so paths MUST go to -exclude-dir,
+        # one repeatable flag per pattern. This is the bug that made gosec
+        # silently scan nothing.
+        from argus.core.scanner_template import ScanPaths
+
+        scanner = GosecScanner()
+        paths = ScanPaths(workspace="/workspace", output="/tmp/out.json")
+        args = scanner.build_args(paths, {"exclude": "node_modules,.git,*.egg-info"})
+
+        assert "-exclude" not in args, "path list must not go to -exclude (rule IDs)"
+        # One -exclude-dir per pattern, in order.
+        dir_values = [args[i + 1] for i, a in enumerate(args) if a == "-exclude-dir"]
+        assert dir_values == ["node_modules", "\\.git", ".*\\.egg\\-info"]
+
+    def test_glob_to_regex_translates_wildcards_safely(self):
+        # *.egg-info must become a compilable regex (gosec compiles each
+        # -exclude-dir value); a bare "*" is an invalid regex quantifier.
+        import re as _re
+        from argus.scanners.gosec import _glob_to_regex
+
+        out = _glob_to_regex("*.egg-info")
+        assert out == ".*\\.egg\\-info"
+        _re.compile(out)  # must not raise
+
 
 class TestGosecRedaction:
     """gosec's G101 (hardcoded-credentials) rule puts the offending Go

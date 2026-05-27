@@ -8,6 +8,7 @@ pattern-based opengrep coverage Argus relied on for Go before.
 """
 
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -28,6 +29,16 @@ from argus.core.version import parse_tool_version
 _HARDCODED_SECRET_RULES = frozenset({
     "G101",   # Look for hardcoded credentials
 })
+
+
+def _glob_to_regex(pattern: str) -> str:
+    """Translate a shell-glob exclusion pattern to a gosec -exclude-dir
+    regex. gosec compiles each -exclude-dir value with regexp, so a bare
+    glob like ``*.egg-info`` would fail to compile. Escape regex
+    metacharacters, then restore the two glob wildcards argus uses.
+    """
+    escaped = re.escape(pattern)
+    return escaped.replace(r"\*", ".*").replace(r"\?", ".")
 
 
 class GosecScanner:
@@ -72,7 +83,17 @@ class GosecScanner:
             args.extend(["-conf", resolved])
         exclude = config.get("exclude")
         if exclude:
-            args.extend(["-exclude", exclude])
+            # gosec's -exclude takes RULE IDs (G101, G404, …); directory
+            # exclusion is -exclude-dir, which is repeatable and matches
+            # each value as a regex against the path. The engine injects a
+            # comma-joined PATH list into config["exclude"] (same shape it
+            # feeds bandit's path-based --exclude), so route it to
+            # -exclude-dir — one flag per pattern — translating shell
+            # globs (e.g. "*.egg-info") into safe regexes. Passing the
+            # path list to -exclude makes gosec reject the whole run.
+            for pattern in (p.strip() for p in exclude.split(",")):
+                if pattern:
+                    args.extend(["-exclude-dir", _glob_to_regex(pattern)])
         # gosec scans Go packages recursively from the target directory.
         args.append(f"{paths.workspace}/...")
         return args
