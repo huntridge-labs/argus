@@ -83,9 +83,10 @@ def _container_scanner_names() -> list[str]:
     return sorted(n for n in SCANNER_REGISTRY if _is_container_scanner(n))
 
 
-def _smoke_argv(name: str, fixture_dir: str) -> list[str] | None:
+def _smoke_argv(name: str, fixture_dir: str) -> list[str] | None:  # pragma: no cover
     """Build the `argus scan` argv for a scanner's smoke run, or None if
-    the scanner is exempt / not inferable."""
+    the scanner is exempt / not inferable. Runs only inside the
+    Docker-gated test, so it's excluded from the no-Docker coverage run."""
     if name in SMOKE_EXEMPT:
         return None
     inst = SCANNER_REGISTRY[name]()
@@ -101,7 +102,7 @@ def _smoke_argv(name: str, fixture_dir: str) -> list[str] | None:
 
 
 @pytest.fixture(scope="module")
-def smoke_fixture(tmp_path_factory) -> str:
+def smoke_fixture(tmp_path_factory) -> str:  # pragma: no cover
     """A tiny directory with one innocuous file per common language, so
     every directory scanner has something to chew on without tripping a
     real finding (we assert the scanner *ran*, not what it found)."""
@@ -125,7 +126,7 @@ def smoke_fixture(tmp_path_factory) -> str:
     return str(d)
 
 
-def _docker_available() -> bool:
+def _docker_available() -> bool:  # pragma: no cover
     if not shutil.which("docker"):
         return False
     try:
@@ -144,10 +145,13 @@ requires_docker = pytest.mark.skipif(
 @pytest.mark.slow
 @requires_docker
 @pytest.mark.parametrize("scanner_name", _container_scanner_names())
-def test_container_scanner_invocation_accepted(scanner_name, smoke_fixture):
+def test_container_scanner_invocation_accepted(scanner_name, smoke_fixture):  # pragma: no cover
     """The scanner's container actually runs against a fixture without a
     start-up failure. --fail-on-scanner-error turns 'couldn't start' into
-    a non-zero exit, so this catches bad entrypoints / rejected flags."""
+    a non-zero exit, so this catches bad entrypoints / rejected flags.
+
+    Docker-gated (mark.slow + skipif) — never runs in the no-Docker
+    coverage suite, so it's excluded from coverage measurement."""
     argv = _smoke_argv(scanner_name, smoke_fixture)
     if argv is None:
         pytest.skip(f"{scanner_name}: {SMOKE_EXEMPT.get(scanner_name, 'not a directory scanner')}")
@@ -223,7 +227,7 @@ def test_every_container_scanner_is_covered():
         inferable = category in _DIRECTORY_CATEGORIES
         exempt = name in SMOKE_EXEMPT
         if not (inferable or exempt):
-            uncovered.append((name, category))
+            uncovered.append((name, category))  # pragma: no cover - failure branch only
     assert not uncovered, (
         "These container scanners have no smoke coverage. Add a directory "
         "category, or list them in SMOKE_EXEMPT with a reason:\n"

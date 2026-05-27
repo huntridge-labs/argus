@@ -21,7 +21,7 @@ coverage:
     # Docker-gated test files like test_container_smoke.py (whose
     # slow/skip branches don't execute in the fast coverage run) drag
     # down the patch metric.
-    - "argus/tests/**/*"
+    - "argus/tests/**"
     - "examples/**/*"
     - "docs/**/*"
     - "*.md"
