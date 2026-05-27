@@ -1,0 +1,93 @@
+name: Container Smoke
+
+# Runs the real `docker run` invocation of each *changed* container
+# scanner against a tiny fixture, so a broken entrypoint / rejected flags
+# fail the PR — the class of bug that fixture-parsing unit tests miss
+# (e.g. gosec's -exclude path-list, promptfoo's bare-`eval` entrypoint).
+#
+# PR-only by design: by the time a change reaches main/tags the PR gate
+# already validated it, so we don't re-pull on merge. Scoped to changed
+# scanners (scripts/ci/affected_scanners) to keep Docker Hub pulls minimal
+# without a registry login — a typical scanner PR pulls one image; an
+# engine/registry change runs the full matrix.
+#
+# Security note: the only workflow inputs used are github.base_ref (a
+# branch name) and a pytest -k expression computed in-job from the trusted
+# scanner registry. Both are passed through `env:` and referenced as
+# quoted shell variables — never interpolated directly into run: scripts.
+
+on:
+  pull_request:
+    paths:
+      - "argus/scanners/**"
+      - "argus/linters/**"
+      - "argus/core/engine.py"
+      - "argus/core/scanner_template.py"
+      - "argus/containers.py"
+      - "argus/tests/test_container_smoke.py"
+      - "scripts/ci/affected_scanners.py"
+      - ".github/workflows/container-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  container-smoke:
+    name: Container Smoke (changed scanners)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0 # full history so the diff against the base resolves
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.13"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e '.[all]'
+
+      - name: Determine affected scanners
+        id: affected
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags origin "$BASE_REF"
+          AFFECTED=$(python -m scripts.ci.affected_scanners "origin/$BASE_REF")
+          echo "Affected scanners:"; echo "${AFFECTED:-<none>}"
+          {
+            echo "list<<AFFECTED_EOF"
+            echo "$AFFECTED"
+            echo "AFFECTED_EOF"
+          } >> "$GITHUB_OUTPUT"
+          if [ "$AFFECTED" = "ALL" ]; then
+            echo "kexpr=ALL" >> "$GITHUB_OUTPUT"
+          elif [ -n "$AFFECTED" ]; then
+            KEXPR=$(echo "$AFFECTED" | paste -sd '|' - | sed 's/|/ or /g')
+            echo "kexpr=$KEXPR" >> "$GITHUB_OUTPUT"
+          else
+            echo "kexpr=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Container smoke (scoped to changed scanners)
+        if: steps.affected.outputs.kexpr != ''
+        env:
+          KEXPR: ${{ steps.affected.outputs.kexpr }}
+        run: |
+          if [ "$KEXPR" = "ALL" ]; then
+            echo "Engine/registry change — running full container smoke matrix."
+            pytest argus/tests/test_container_smoke.py -m slow --no-cov -q
+          else
+            echo "Running container smoke for: $KEXPR"
+            pytest argus/tests/test_container_smoke.py -m slow --no-cov -q -k "$KEXPR"
+          fi
+
+      - name: No scanners changed
+        if: steps.affected.outputs.kexpr == ''
+        run: echo "No scanner modules changed in this PR — container smoke not needed."

@@ -50,7 +50,14 @@ jobs:
 
       - name: Run E2E tests (slow, Docker-dependent)
         if: matrix.python-version == '3.13'
-        run: pytest -m slow --no-cov -q || true
+        # Container-invocation smoke (test_container_smoke.py) is excluded
+        # here — it has a dedicated, blocking, changed-scanner-scoped job
+        # (container-smoke.yml). Running it here too would re-pull every
+        # scanner image unscoped and swallow failures behind `|| true`.
+        # The remaining slow docker-integration tests stay non-blocking for
+        # now; de-`|| true`-ing them is a separate follow-up (needs flake
+        # hardening + the git-config-isolation fix).
+        run: pytest -m slow --no-cov -q --ignore=argus/tests/test_container_smoke.py || true
 
       - name: Check version reference coverage
         if: matrix.python-version == '3.13'
