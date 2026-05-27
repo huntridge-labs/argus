@@ -171,6 +171,46 @@ def test_container_scanner_invocation_accepted(scanner_name, smoke_fixture):
     )
 
 
+@pytest.mark.parametrize("scanner_name", _container_scanner_names())
+def test_container_image_is_digest_pinned(scanner_name):
+    """Every container scanner's image must be pinned to an immutable
+    ``@sha256:`` digest — not a floating tag. A bare tag lets the upstream
+    publisher swap bytes under us (the clamav/eslint rot we hit) and
+    breaks reproducibility + the content-addressable supply-chain gate.
+    No Docker required."""
+    image = SCANNER_REGISTRY[scanner_name]().container_image
+    assert "@sha256:" in image, (
+        f"{scanner_name} image is not digest-pinned: {image!r}. "
+        f"Pin it as tag@sha256:... in argus/containers.py."
+    )
+
+
+@pytest.mark.parametrize("scanner_name", _container_scanner_names())
+def test_arg_construction_does_not_crash(scanner_name):
+    """Constructing the container argv must not raise and must yield a
+    non-empty command. Catches scanners whose arg builder blows up on a
+    minimal/empty config before any container ever runs. No Docker."""
+    from argus.core.scanner_template import ScanPaths
+
+    if scanner_name in SMOKE_EXEMPT:
+        # Image-scanning sub-tools (trivy/grype) and external-target
+        # scanners require a non-empty config (image ref / target URL),
+        # so "empty config" isn't a valid input to assert against.
+        pytest.skip(f"{scanner_name}: {SMOKE_EXEMPT[scanner_name]}")
+
+    inst = SCANNER_REGISTRY[scanner_name]()
+    if hasattr(inst, "build_args"):
+        paths = ScanPaths(workspace="/workspace", output="/tmp/out.json")
+        args = inst.build_args(paths, {})
+    elif hasattr(inst, "container_args"):
+        args = inst.container_args({})
+    else:
+        pytest.skip(f"{scanner_name}: no build_args/container_args (FileDiscovery linter)")
+    assert isinstance(args, list) and args, (
+        f"{scanner_name} produced an empty/invalid argv: {args!r}"
+    )
+
+
 def test_every_container_scanner_is_covered():
     """Forcing function: every container scanner must be either
     smoke-inferable (a known directory category) or explicitly exempt.
