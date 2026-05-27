@@ -3,9 +3,13 @@ scopes container smoke tests."""
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 from scripts.ci.affected_scanners import (
     CROSS_CUTTING,
     affected_scanners,
+    changed_files,
+    main,
 )
 
 
@@ -47,3 +51,45 @@ class TestAffectedScanners:
         # A change to a non-scanner argus module maps to nothing (and is
         # not cross-cutting).
         assert affected_scanners(["argus/reporters/terminal.py"]) == []
+
+
+class TestChangedFiles:
+    def test_parses_git_diff_output(self):
+        with patch("scripts.ci.affected_scanners.subprocess.run") as run:
+            run.return_value = MagicMock(
+                stdout="argus/scanners/bandit.py\nREADME.md\n\n"
+            )
+            files = changed_files("origin/main")
+        # Trailing/blank lines stripped; three-dot diff range used.
+        assert files == ["argus/scanners/bandit.py", "README.md"]
+        assert run.call_args[0][0] == [
+            "git", "diff", "--name-only", "origin/main...HEAD",
+        ]
+
+
+class TestMain:
+    def test_prints_ALL_for_cross_cutting(self, capsys):
+        with patch(
+            "scripts.ci.affected_scanners.changed_files",
+            return_value=["argus/core/engine.py"],
+        ):
+            rc = main(["origin/main"])
+        assert rc == 0
+        assert capsys.readouterr().out.strip() == "ALL"
+
+    def test_prints_scanner_names(self, capsys):
+        with patch(
+            "scripts.ci.affected_scanners.changed_files",
+            return_value=["argus/scanners/bandit.py", "argus/scanners/gitleaks.py"],
+        ):
+            main([])  # default base ref
+        out = capsys.readouterr().out.split()
+        assert out == ["bandit", "gitleaks"]
+
+    def test_prints_nothing_when_no_scanner_changed(self, capsys):
+        with patch(
+            "scripts.ci.affected_scanners.changed_files",
+            return_value=["README.md"],
+        ):
+            main(["origin/main"])
+        assert capsys.readouterr().out.strip() == ""
