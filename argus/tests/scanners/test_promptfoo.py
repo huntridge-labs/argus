@@ -93,6 +93,18 @@ class TestPromptfooSecretHandling:
 class TestPromptfooContainerArgs:
     """Container-arg construction from argus.yml passthrough config."""
 
+    def test_entrypoint_overridden_to_promptfoo_binary(self):
+        # Regression: the promptfoo image's default entrypoint
+        # (docker-entrypoint.sh) execs "$@" verbatim, so passing the
+        # ["eval", ...] args without overriding the entrypoint makes the
+        # container try to exec the bare word "eval" (exit 127, scanner
+        # never runs). The engine adds --entrypoint <container_entrypoint>,
+        # so this must be the promptfoo binary for the args to run as
+        # "promptfoo eval ...".
+        scanner = PromptfooScanner()
+        assert scanner.container_entrypoint == "promptfoo"
+        assert scanner.container_args({})[0] == "eval"
+
     def test_default_args(self):
         args = PromptfooScanner().container_args({})
         assert args[0] == "eval"

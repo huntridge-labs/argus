@@ -113,6 +113,12 @@ class PromptfooScanner:
     category = "llm-security"
     languages = ["llm"]
     container_image = get_image("promptfoo")
+    # The promptfoo image ships ENTRYPOINT ["docker-entrypoint.sh"], which
+    # execs "$@" verbatim — so passing ["eval", ...] makes it try to exec
+    # the bare word "eval" (a promptfoo subcommand, not a binary) and fail
+    # with exit 127. Override the entrypoint to the promptfoo binary so the
+    # container_args below run as "promptfoo eval ...".
+    container_entrypoint = "promptfoo"
 
     def container_args(self, config: dict | None = None) -> list[str]:
         """Return CLI args for running promptfoo in a container."""
