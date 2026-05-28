@@ -42,8 +42,8 @@ scanners:
   #   # external $& call injection, plus duplicate-label, unreachable-
   #   # code, undeclared-label, routine-name-mismatch, and label-
   #   # fallthrough diagnostics.
-  #   # Requires either ``pip install argus-security[m]`` +
-  #   # ``scripts/build-m-grammar.sh`` (local) or the scanner-m
+  #   # Requires either ``pip install argus-security[mumps]`` +
+  #   # ``scripts/build-mumps-grammar.sh`` (local) or the scanner-mumps
   #   # container image (no local toolchain needed).
   #   enabled: true
   #   path: "routines"

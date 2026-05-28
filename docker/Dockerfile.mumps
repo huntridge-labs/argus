@@ -56,10 +56,10 @@ RUN apk add --no-cache --virtual .ts-build-deps gcc musl-dev python3-dev && \
 
 RUN adduser -D -u 1000 argus
 
-# Pre-built grammar from the builder stage; ARGUS_M_GRAMMAR points the
+# Pre-built grammar from the builder stage; ARGUS_MUMPS_GRAMMAR points the
 # scanner at it without further configuration.
 COPY --from=grammar-builder /opt/grammars/mumps.so /opt/argus/grammars/mumps.so
-ENV ARGUS_M_GRAMMAR=/opt/argus/grammars/mumps.so
+ENV ARGUS_MUMPS_GRAMMAR=/opt/argus/grammars/mumps.so
 
 # Argus from this branch's source — same layout as Dockerfile.cli.
 COPY argus/ /opt/argus/argus/
@@ -68,8 +68,8 @@ ENV PYTHONPATH=/opt/argus
 
 USER argus
 WORKDIR /workspace
-# ENTRYPOINT is just the argus invocation prefix. The full "scan m
+# ENTRYPOINT is just the argus invocation prefix. The full "scan mumps
 # --path ... --output-dir ... --format json" args come from
-# MScanner.build_args via the engine's container template (engine
+# MumpsScanner.build_args via the engine's container template (engine
 # strips argv[0], the build_args "argus" sentinel, before append).
 ENTRYPOINT ["python", "-m", "argus"]

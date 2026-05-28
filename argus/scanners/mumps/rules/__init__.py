@@ -1,6 +1,6 @@
 """Rule registry for the MUMPS scanner.
 
-Rules are listed in ID order. ``MScanner`` iterates ``RULES`` to produce
+Rules are listed in ID order. ``MumpsScanner`` iterates ``RULES`` to produce
 findings; new rules added in follow-up commits land here.
 """
 

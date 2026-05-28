@@ -212,7 +212,7 @@ calls that need to land before the integration touches argus's surfaces.
 
 ## In-flight initiatives
 
-### MUMPS / M language SAST (`argus scan m`)
+### MUMPS / M language SAST (`argus scan mumps`)
 
 Closes the OSS gap behind mHawk (IDEA Systems, commercial, the only purpose-built MUMPS
 SAST). Target audience is federal / healthcare orgs running VistA on YottaDB or GT.M whose
@@ -235,21 +235,21 @@ command's source line.
 #### Phase 1 — Core taint coverage (shipped, PR #213)
 
 **Architecture**
-- `argus/scanners/m/` sub-package: parser wrapper (`parser.py`), Rule abstract base
+- `argus/scanners/mumps/` sub-package: parser wrapper (`parser.py`), Rule abstract base
   (`rule.py`), shared taint collector (`taint.py`), cross-file call-graph builder
   (`callgraph.py`), 16 rule modules in `rules/`, and `scanner.py` implementing the
   `Scanner` protocol.
 - Intra-procedural taint engine with three built-in source classes plus user-extensible
   patterns. Document-order walk over the parse tree.
-- Two-phase scan loop in `MScanner.scan`: phase 1 parses every `.m` file in the path;
+- Two-phase scan loop in `MumpsScanner.scan`: phase 1 parses every `.m` file in the path;
   phase 2 builds a `CallGraph` over those parses; phase 3 runs each rule with the
   graph available via `config['_callgraph']`. M001 already consumes the graph to
   annotate findings with `inter_procedural_callers` metadata. Full taint propagation
   through the graph is Phase 2.5 work.
 - SARIF v2.1.0 emission via the existing reporter — all 14 rule IDs declared in the
   driver block.
-- Two installation paths: `pip install argus-security[m]` + `scripts/build-m-grammar.sh`
-  for local execution, or the `scanner-m` container image (Alpine, multi-stage, grammar
+- Two installation paths: `pip install argus-security[mumps]` + `scripts/build-mumps-grammar.sh`
+  for local execution, or the `scanner-mumps` container image (Alpine, multi-stage, grammar
   pre-compiled at image build time, 28.6 MB compressed). Container build is validated
   end-to-end locally; image publish lands as a Phase 2 item.
 - Registered in `SCANNER_REGISTRY`; category `sast`. Auto-exposed via the Argus MCP
@@ -306,9 +306,9 @@ operators tune the full source → sanitizer → sink → severity pipeline agai
 own codebase without forking or vendor escalation.
 
 **Test coverage**
-- 25 unit tests (`argus/tests/scanners/test_m_scanner.py`) cover the scanner protocol
+- 25 unit tests (`argus/tests/scanners/test_mumps_scanner.py`) cover the scanner protocol
   and rule registry without needing a compiled grammar.
-- 31 integration tests (`argus/tests/scanners/test_m_rules.py`) parse real `.m`
+- 31 integration tests (`argus/tests/scanners/test_mumps_rules.py`) parse real `.m`
   fixtures and assert per-rule behaviour. CI compiles `mumps.so` in the test-unit
   workflow's setup step so these run on every PR.
 - Per-rule line coverage: 88-100%.
@@ -319,7 +319,7 @@ The single largest remaining gap is inter-procedural detection. Everything else 
 incremental progress against mHawk's diagnostic surface or operational maturity.
 
 - **Inter-procedural taint propagation.** The call-graph foundation
-  shipped in Phase 1 (`argus/scanners/m/callgraph.py`) — every multi-file scan
+  shipped in Phase 1 (`argus/scanners/mumps/callgraph.py`) — every multi-file scan
   builds a `CallGraph` of routines and `DO` / `GOTO` / `^ROUTINE` edges, and M001
   findings already carry `inter_procedural_callers` metadata. **What's still ahead**
   is the propagation pass that consumes the graph: per-routine taint summaries
@@ -333,7 +333,7 @@ incremental progress against mHawk's diagnostic surface or operational maturity.
   "any-formal-anywhere-is-defined" heuristic Phase 1 ships. Unlocks precise def-use
   diagnostics inside routines that take parameters.
 - **Container image publish + workflow wiring.** Image lands at
-  `ghcr.io/huntridge-labs/argus/scanner-m:VERSION@sha256:...`; `CUSTOM_IMAGES` in
+  `ghcr.io/huntridge-labs/argus/scanner-mumps:VERSION@sha256:...`; `CUSTOM_IMAGES` in
   `argus/containers.py` picks up the SHA-pinned tag; `argus.yml` `containers.images`
   adds the build entry so the build-containers workflow exercises it on every PR.
   Auto-covered by `container-smoke` once the image is published.
@@ -400,7 +400,7 @@ incremental progress against mHawk's diagnostic surface or operational maturity.
   security-summary across every scanner; no parallel toolchain for MUMPS vs every other
   language in the codebase.
 - **Air-gappable container distribution** matching the rest of Argus's posture — the
-  `scanner-m` image is self-contained (grammar pre-compiled at image build time, no
+  `scanner-mumps` image is self-contained (grammar pre-compiled at image build time, no
   network access required at scan time).
 - **Auditable, YAML-configurable rules** — taint sources (shipped in Phase 1 via
   `scanners.m.taint_sources.patterns`), sanitizers (Phase 2), and per-rule severity

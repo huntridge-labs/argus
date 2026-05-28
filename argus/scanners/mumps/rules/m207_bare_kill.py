@@ -50,6 +50,6 @@ class BareKillRule(Rule):
                 ),
                 location=f"{parsed.path}:{line_index + 1}:1",
                 cwe=self.cwe,
-                scanner="m",
+                scanner="mumps",
                 metadata={"line": line.rstrip()},
             )

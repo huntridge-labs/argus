@@ -3,10 +3,10 @@
 These tests parse real .m fixture files and assert each rule fires (or
 does not fire) as documented. They require the compiled
 tree-sitter-mumps grammar shared library to be reachable — locally
-that's ``scripts/build-m-grammar.sh``; in CI / container execution
-it's the ``scanner-m`` image. When the grammar is not installed all
+that's ``scripts/build-mumps-grammar.sh``; in CI / container execution
+it's the ``scanner-mumps`` image. When the grammar is not installed all
 tests in this module skip cleanly so the unit-level coverage in
-``test_m_scanner.py`` still runs.
+``test_mumps_scanner.py`` still runs.
 """
 
 from __future__ import annotations
@@ -17,26 +17,26 @@ import pytest
 
 from argus.core.models import Severity
 from argus.core.redact import REDACTED_PLACEHOLDER
-from argus.scanners.m import MScanner
-from argus.scanners.m.parser import tree_sitter_available
+from argus.scanners.mumps import MumpsScanner
+from argus.scanners.mumps.parser import tree_sitter_available
 
 
 pytestmark = pytest.mark.skipif(
     not tree_sitter_available(),
     reason=(
         "MUMPS tree-sitter grammar not installed. Run "
-        "scripts/build-m-grammar.sh or use the scanner-m container."
+        "scripts/build-mumps-grammar.sh or use the scanner-mumps container."
     ),
 )
 
 
 @pytest.fixture
 def m_fixtures_dir() -> Path:
-    return Path(__file__).parent / "m" / "fixtures"
+    return Path(__file__).parent / "mumps" / "fixtures"
 
 
 def _scan(path: Path):
-    return MScanner().scan(str(path))
+    return MumpsScanner().scan(str(path))
 
 
 def _findings_with_id(result, rule_id: str):
@@ -71,13 +71,13 @@ class TestM001XECUTEInjection:
         # $ZIO is not a built-in source; without config the rule should
         # not fire on a $ZIO-driven XECUTE.
         path = m_fixtures_dir / "m001_zio_custom.m"
-        baseline = MScanner().scan(str(path))
+        baseline = MumpsScanner().scan(str(path))
         assert _findings_with_id(baseline, "M001") == [], (
             "$ZIO must not be a built-in taint source"
         )
         # With taint_sources.patterns set, the same fixture fires.
         config = {"taint_sources": {"patterns": [r"\$ZIO\b"]}}
-        with_config = MScanner().scan(str(path), config)
+        with_config = MumpsScanner().scan(str(path), config)
         hits = _findings_with_id(with_config, "M001")
         assert hits, (
             "M001 must fire when taint_sources.patterns adds the custom source"
@@ -322,13 +322,13 @@ class TestConfigurableSanitizers:
 
         # Baseline: no sanitizer config — M001 fires because CMD picks
         # up RAW's taint through the assignment text.
-        baseline = MScanner().scan(str(path))
+        baseline = MumpsScanner().scan(str(path))
         # The detection depends on whether _tainted_references matches
         # RAW inside CMD's RHS. Phase 1's taint model adds CMD to the
         # tainted set when the RHS references RAW, which is the case
         # here via the function call argument. Verify both branches.
         config = {"sanitizers": ["$$ESCAPE^HTML"]}
-        with_sanitizer = MScanner().scan(str(path), config)
+        with_sanitizer = MumpsScanner().scan(str(path), config)
         baseline_hits = _findings_with_id(baseline, "M001")
         sanitized_hits = _findings_with_id(with_sanitizer, "M001")
         # With sanitizer config, M001 should fire fewer times than baseline
@@ -345,7 +345,7 @@ class TestPerRuleSeverityOverride:
         # M001 default severity is HIGH. Override to LOW; the finding
         # should land at LOW.
         config = {"rules": {"M001": {"severity": "low"}}}
-        result = MScanner().scan(
+        result = MumpsScanner().scan(
             str(m_fixtures_dir / "m001_xecute_taint.m"), config,
         )
         hits = _findings_with_id(result, "M001")
@@ -363,7 +363,7 @@ class TestPerRuleSeverityOverride:
         # represent per-finding precision the user override should
         # not erase.
         config = {"rules": {"M003": {"severity": "medium"}}}
-        result = MScanner().scan(
+        result = MumpsScanner().scan(
             str(m_fixtures_dir / "m003_pipe_taint.m"), config,
         )
         hits = _findings_with_id(result, "M003")
@@ -382,13 +382,13 @@ class TestInterProceduralCallGraph:
     and rules can annotate findings with caller information."""
 
     def test_callgraph_built_on_multi_file_scan(self, m_fixtures_dir):
-        result = MScanner().scan(str(m_fixtures_dir / "interproc"))
+        result = MumpsScanner().scan(str(m_fixtures_dir / "interproc"))
         graph = result.metadata.get("callgraph") or {}
         assert graph.get("routines") == 2, "two .m files == two routine nodes"
         assert graph.get("edges") >= 1, "CALLER -> TAINTED edge must be recorded"
 
     def test_m001_finding_includes_callers_metadata(self, m_fixtures_dir):
-        result = MScanner().scan(str(m_fixtures_dir / "interproc"))
+        result = MumpsScanner().scan(str(m_fixtures_dir / "interproc"))
         m001_in_tainted = [
             f for f in result.findings
             if f.id == "M001" and "TAINTED.m" in (f.location or "")
@@ -402,7 +402,7 @@ class TestInterProceduralCallGraph:
         # Scanning only TAINTED.m (no CALLER.m in the scan path) means
         # the call graph has no edges into TAINTED. M001 still fires
         # but ``inter_procedural_callers`` should be absent (or empty).
-        result = MScanner().scan(str(m_fixtures_dir / "interproc" / "TAINTED.m"))
+        result = MumpsScanner().scan(str(m_fixtures_dir / "interproc" / "TAINTED.m"))
         m001 = [f for f in result.findings if f.id == "M001"]
         assert m001, "M001 must still fire intra-file"
         callers = m001[0].metadata.get("inter_procedural_callers", [])

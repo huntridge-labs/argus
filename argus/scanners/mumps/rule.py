@@ -73,6 +73,6 @@ class Rule(ABC):
             description=description or self.title,
             location=parsed.location(node),
             cwe=self.cwe,
-            scanner="m",
+            scanner="mumps",
             metadata=metadata or {},
         )

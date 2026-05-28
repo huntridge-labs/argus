@@ -8,7 +8,7 @@ execution.
 
 Detection runs in two passes:
 
-1. **Source pass** — :func:`argus.scanners.m.taint.collect_tainted_variables`
+1. **Source pass** — :func:`argus.scanners.mumps.taint.collect_tainted_variables`
    walks the routine once, collecting every variable assigned from a
    Phase 1+ taint source. Sources: ``READ`` arguments, assignment RHS
    referencing ``$ZARGV``, and assignment RHS referencing the HTTP
@@ -74,7 +74,7 @@ class XECUTEInjectionRule(Rule):
         tainted = collect_tainted_variables(parsed, config)
         if not tainted:
             return
-        # Cross-routine context: when MScanner.scan ran over multiple
+        # Cross-routine context: when MumpsScanner.scan ran over multiple
         # files it puts the call graph on ``config['_callgraph']``.
         # Use it to annotate findings with the routines that reach
         # this one, so reviewers see the blast radius without re-

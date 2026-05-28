@@ -3,17 +3,17 @@
 The grammar (``janus-llm/tree-sitter-mumps``, Apache-2.0, MITRE Public
 Release 23-4084) is not on PyPI. We support two install paths:
 
-1. **Container execution.** The ``scanner-m`` image (built by
-   ``docker/Dockerfile.m``) compiles ``mumps.so`` at image build time and
+1. **Container execution.** The ``scanner-mumps`` image (built by
+   ``docker/Dockerfile.mumps``) compiles ``mumps.so`` at image build time and
    places it at ``/opt/argus/grammars/mumps.so``. The scanner inside the
    container loads it from there.
 
 2. **Local execution.** Developers who already have ``py-tree-sitter``
-   installed can run ``scripts/build-m-grammar.sh`` to compile the
+   installed can run ``scripts/build-mumps-grammar.sh`` to compile the
    grammar into ``~/.cache/argus/grammars/mumps.so``. The scanner picks
    it up automatically.
 
-The override hook ``ARGUS_M_GRAMMAR`` lets CI pin a known-good build.
+The override hook ``ARGUS_MUMPS_GRAMMAR`` lets CI pin a known-good build.
 
 All ``tree_sitter`` imports are deferred so ``argus`` can be imported
 on systems that do not have py-tree-sitter installed.
@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 
-GRAMMAR_ENV_VAR = "ARGUS_M_GRAMMAR"
+GRAMMAR_ENV_VAR = "ARGUS_MUMPS_GRAMMAR"
 
 _DEFAULT_GRAMMAR_PATHS = (
     "/opt/argus/grammars/mumps.so",
@@ -92,7 +92,7 @@ class ParsedSource:
         return f"{self.path}:{line}:{col}"
 
 
-class MParser:
+class MumpsParser:
     """Lazy-initialized parser for MUMPS source files.
 
     Cached at the class level so the grammar shared library is loaded
@@ -113,14 +113,14 @@ class MParser:
         except ImportError as exc:
             raise GrammarUnavailable(
                 "py-tree-sitter not installed. Install via "
-                "`pip install argus-security[m]` or use the scanner-m container image.",
+                "`pip install argus-security[mumps]` or use the scanner-mumps container image.",
             ) from exc
         grammar = find_grammar()
         if grammar is None:
             paths = ", ".join(str(p) for p in grammar_search_paths())
             raise GrammarUnavailable(
                 f"MUMPS grammar shared library not found. Searched: {paths}. "
-                "Run scripts/build-m-grammar.sh or use the scanner-m container image.",
+                "Run scripts/build-mumps-grammar.sh or use the scanner-mumps container image.",
             )
         cls._language = Language(str(grammar), "mumps")
         parser = Parser()

@@ -12,7 +12,7 @@ This module is the *foundation* for that future work. It loads every
 references (``D LABEL^ROUTINE``, ``D ^ROUTINE``, ``GOTO ^ROUTINE``),
 and produces an immutable :class:`CallGraph` keyed by routine name.
 Rules can consume the graph through ``config['_callgraph']`` (set by
-``MScanner.scan`` when it runs over a directory) to annotate findings
+``MumpsScanner.scan`` when it runs over a directory) to annotate findings
 with caller information today; the actual taint-propagation pass
 that consumes the same graph lands in Phase 2.5.
 

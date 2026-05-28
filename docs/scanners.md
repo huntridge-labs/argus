@@ -244,7 +244,7 @@ with:
 
 </details>
 
-### MUMPS / M language (`m`)
+### MUMPS / M language (`mumps`)
 
 OSS SAST for the MUMPS / M language (VistA, YottaDB, GT.M, FileMan). Phase 1+ ships six rules backed by [`janus-llm/tree-sitter-mumps`](https://github.com/janus-llm/tree-sitter-mumps) (Apache-2.0, MITRE Public Release 23-4084) pinned at `345f3fb2`. Target audience is federal / healthcare orgs whose procurement posture rules out closed-source MUMPS SAST.
 
@@ -316,15 +316,15 @@ The scanner needs a compiled `mumps.so` shared library. Two install paths:
 
 1. **Local execution.** Install py-tree-sitter and compile the grammar once:
    ```bash
-   pip install 'argus-security[m]'
-   ./scripts/build-m-grammar.sh
+   pip install 'argus-security[mumps]'
+   ./scripts/build-mumps-grammar.sh
    # Drops mumps.so at ~/.cache/argus/grammars/
-   argus scan m --path ./routines
+   argus scan mumps --path ./routines
    ```
 
-2. **Container execution.** The `scanner-m` image (built by `docker/Dockerfile.m`) ships a prebuilt grammar at `/opt/argus/grammars/mumps.so`. No local toolchain needed; the engine routes here automatically when local execution is unavailable.
+2. **Container execution.** The `scanner-mumps` image (built by `docker/Dockerfile.mumps`) ships a prebuilt grammar at `/opt/argus/grammars/mumps.so`. No local toolchain needed; the engine routes here automatically when local execution is unavailable.
 
-The `ARGUS_M_GRAMMAR` environment variable overrides the lookup path when a CI pipeline pins a custom build.
+The `ARGUS_MUMPS_GRAMMAR` environment variable overrides the lookup path when a CI pipeline pins a custom build.
 
 **Example:**
 
@@ -340,7 +340,7 @@ reporters:
 
 > **Secret redaction:** for the M004 (hard-coded credentials) rule, the matched literal value is replaced with the redaction placeholder before the finding is constructed. Defense-in-depth: `Finding.__post_init__` runs the pattern-based redactor as a second pass. The literal never reaches any reporter, export, or the MCP server. Integration test `test_literal_value_is_redacted` enforces this contract.
 
-> **Taint scope:** Phase 1 taint *detection* is intra-file. Recognized taint sources are `READ` (terminal input), `$ZARGV` (YottaDB / GT.M process arguments), and the HTTP context globals `^%CGI`, `^%REQUEST`, `^%session`. The collector is shared between M001 / M003 / M005 / M006 so every taint-sink rule sees the full source surface uniformly. The **inter-procedural call graph** is built on every multi-file scan (`argus/scanners/m/callgraph.py`); M001 findings carry an `inter_procedural_callers` metadata list naming the routines that reach the sink. Full inter-procedural taint *propagation* (formal-argument routing, recursion-safe fixpoint) lands in Phase 2.5 — see `docs/developer/SDK-ROADMAP.md`.
+> **Taint scope:** Phase 1 taint *detection* is intra-file. Recognized taint sources are `READ` (terminal input), `$ZARGV` (YottaDB / GT.M process arguments), and the HTTP context globals `^%CGI`, `^%REQUEST`, `^%session`. The collector is shared between M001 / M003 / M005 / M006 so every taint-sink rule sees the full source surface uniformly. The **inter-procedural call graph** is built on every multi-file scan (`argus/scanners/mumps/callgraph.py`); M001 findings carry an `inter_procedural_callers` metadata list naming the routines that reach the sink. Full inter-procedural taint *propagation* (formal-argument routing, recursion-safe fixpoint) lands in Phase 2.5 — see `docs/developer/SDK-ROADMAP.md`.
 
 </details>
 

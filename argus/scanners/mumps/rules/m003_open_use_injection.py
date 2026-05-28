@@ -12,7 +12,7 @@ with the device. The relevant abuses:
   on file devices, attacker-chosen server on socket devices.
 
 Detection uses the shared
-:func:`argus.scanners.m.taint.collect_tainted_variables` collector to
+:func:`argus.scanners.mumps.taint.collect_tainted_variables` collector to
 seed the tainted set (READ, ``$ZARGV``, HTTP context globals) and then
 walks for ``O`` / ``OPEN`` and ``U`` / ``USE`` commands whose argument
 expression text references one of those names.

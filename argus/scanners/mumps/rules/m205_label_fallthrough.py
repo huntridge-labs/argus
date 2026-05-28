@@ -32,7 +32,7 @@ import re
 from typing import Iterable, Optional
 
 from argus.core.models import Finding, Severity
-from ..parser import ParsedSource, walk
+from ..parser import ParsedSource
 from ..rule import Rule
 
 # Anchored to the command's leading token. Excludes postconditionals

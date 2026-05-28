@@ -1,15 +1,15 @@
-"""MScanner — Argus scanner module for MUMPS / M language sources.
+"""MumpsScanner — Argus scanner module for MUMPS / M language sources.
 
 Wraps the rule registry under the ``Scanner`` protocol so the engine can
 invoke it like any other SAST scanner. Execution model: pure Python
 inside the host process when ``py-tree-sitter`` and the compiled grammar
-are present; the engine routes to the ``scanner-m`` container image
+are present; the engine routes to the ``scanner-mumps`` container image
 otherwise (mirrors the bandit / gitleaks fallback path).
 
 The scanner walks ``path`` for files matching ``DEFAULT_EXTENSIONS``,
-parses each via :class:`MParser`, and runs every entry in
-``argus.scanners.m.rules.RULES`` against the parse tree. Findings are
-emitted with ``scanner="m"`` and an id from the rule (``M001``, ...).
+parses each via :class:`MumpsParser`, and runs every entry in
+``argus.scanners.mumps.rules.RULES`` against the parse tree. Findings are
+emitted with ``scanner="mumps"`` and an id from the rule (``M001``, ...).
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from pathlib import Path
 
 from argus.core.models import Finding, ScanResult
 
-from .parser import GrammarUnavailable, MParser, tree_sitter_available
+from .parser import GrammarUnavailable, MumpsParser, tree_sitter_available
 from .rules import RULES
 
 
@@ -29,10 +29,10 @@ from .rules import RULES
 DEFAULT_EXTENSIONS = (".m",)
 
 
-class MScanner:
+class MumpsScanner:
     """SAST scanner for MUMPS / M language source files."""
 
-    name = "m"
+    name = "mumps"
     description = (
         "MUMPS / M language SAST. Detects XECUTE injection, indirection "
         "injection, hard-coded credentials in globals, and structural "
@@ -41,10 +41,10 @@ class MScanner:
     category = "sast"
     languages = ["mumps"]
     # Container image registration is wired up in a follow-up commit once
-    # ``scanner-m`` is published to ghcr.io. ``is_available()`` gates
+    # ``scanner-mumps`` is published to ghcr.io. ``is_available()`` gates
     # local execution until then. The image's ENTRYPOINT runs
     # ``python -m argus`` so ``build_args`` only supplies the
-    # ``scan m ...`` portion (the engine strips argv[0]).
+    # ``scan mumps ...`` portion (the engine strips argv[0]).
     container_image = ""
     container_entrypoint = "argus"
 
@@ -79,7 +79,7 @@ class MScanner:
             files_scanned += 1
             try:
                 source_bytes = source_path.read_bytes()
-                parsed = MParser.parse(source_path, source_bytes)
+                parsed = MumpsParser.parse(source_path, source_bytes)
             except GrammarUnavailable:
                 # Re-raise: callers (engine) know how to route this into
                 # the container fallback path. Don't silently produce a
@@ -132,10 +132,10 @@ class MScanner:
         )
 
     def build_args(self, paths, config: dict | None = None) -> list[str]:
-        """Container argv for ``argus scan m`` inside ``scanner-m``.
+        """Container argv for ``argus scan mumps`` inside ``scanner-mumps``.
 
         The image's ENTRYPOINT is ``["python", "-m", "argus"]`` so this
-        method supplies ``scan m --path ... --output-dir ...`` after the
+        method supplies ``scan mumps --path ... --output-dir ...`` after the
         engine strips argv[0]. Honoured by the standard scanner_template
         once ``container_image`` is wired up in a follow-up commit;
         until then the method exists to satisfy the
@@ -145,7 +145,7 @@ class MScanner:
         config = config or {}
         output_dir = str(PurePosixPath(paths.output).parent) if paths.output else "/output"
         args = [
-            "argus", "scan", "m",
+            "argus", "scan", "mumps",
             "--path", paths.workspace,
             "--output-dir", output_dir,
             "--format", "json",
@@ -162,9 +162,9 @@ class MScanner:
     def install_command(self) -> str | None:
         """Hint the user how to enable local execution."""
         return (
-            "pip install argus-security[m] && "
-            "scripts/build-m-grammar.sh  "
-            "# or use the scanner-m container image"
+            "pip install argus-security[mumps] && "
+            "scripts/build-mumps-grammar.sh  "
+            "# or use the scanner-mumps container image"
         )
 
     def tool_version(self) -> str | None:

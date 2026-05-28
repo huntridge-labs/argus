@@ -12,7 +12,7 @@ host-side helper runs.
 Detection: walk for ``function_call`` nodes whose ``function_name``
 starts with ``$&``. Compare the argument-subtree text against the
 shared tainted-variable set produced by
-:func:`argus.scanners.m.taint.collect_tainted_variables`.
+:func:`argus.scanners.mumps.taint.collect_tainted_variables`.
 
 HIGH severity rather than CRITICAL — the helper's effect depends on
 the specific implementation. Some helpers are pure (``$&strlen``);
