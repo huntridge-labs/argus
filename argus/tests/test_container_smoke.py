@@ -102,28 +102,45 @@ def _smoke_argv(name: str, fixture_dir: str) -> list[str] | None:  # pragma: no 
 
 
 @pytest.fixture(scope="module")
-def smoke_fixture(tmp_path_factory) -> str:  # pragma: no cover
+def smoke_fixture() -> str:  # pragma: no cover
     """A tiny directory with one innocuous file per common language, so
     every directory scanner has something to chew on without tripping a
-    real finding (we assert the scanner *ran*, not what it found)."""
-    d = tmp_path_factory.mktemp("smoke")
-    (d / "main.py").write_text("def add(a, b):\n    return a + b\n")
-    (d / "main.go").write_text("package main\n\nfunc main() {}\n")
-    (d / "main.tf").write_text('variable "x" {\n  default = 1\n}\n')
-    (d / "Dockerfile").write_text("FROM alpine:3.19\nRUN echo hi\n")
-    (d / "script.sh").write_text("#!/bin/bash\necho hello\n")
-    (d / "data.yaml").write_text("key: value\n")
+    real finding (we assert the scanner *ran*, not what it found).
+
+    Created world-readable directly under the system temp. Scanner
+    containers that run as a non-root user (e.g. opengrep) bind-mount
+    this as /workspace and must be able to traverse + read it. pytest's
+    own tmp dirs are mode 0700 under a 0700 ``pytest-of-<user>/`` parent,
+    which a non-root container can't read on Linux CI — so we don't use
+    tmp_path_factory here and instead chmod the tree 0755/0644 under
+    /tmp (1777, world-traversable)."""
+    import shutil
+    import tempfile
+
+    base = Path(tempfile.mkdtemp(prefix="argus-smoke-"))
+    (base / "main.py").write_text("def add(a, b):\n    return a + b\n")
+    (base / "main.go").write_text("package main\n\nfunc main() {}\n")
+    (base / "main.tf").write_text('variable "x" {\n  default = 1\n}\n')
+    (base / "Dockerfile").write_text("FROM alpine:3.19\nRUN echo hi\n")
+    (base / "script.sh").write_text("#!/bin/bash\necho hello\n")
+    (base / "data.yaml").write_text("key: value\n")
     # A lockfile so the dependency (sca) scanners have a manifest to read.
-    (d / "requirements.txt").write_text("requests==2.32.0\n")
+    (base / "requirements.txt").write_text("requests==2.32.0\n")
     # A workflow so the supply-chain scanner (zizmor + actionlint) has a
     # target. Empty-workflow handling is already covered by #185.
-    wf = d / ".github" / "workflows"
+    wf = base / ".github" / "workflows"
     wf.mkdir(parents=True)
     (wf / "ci.yml").write_text(
         "name: ci\non: [push]\njobs:\n  build:\n    runs-on: ubuntu-latest\n"
         "    steps:\n      - uses: actions/checkout@v4\n"
     )
-    return str(d)
+    # World-readable/traversable so any container UID can read the mount.
+    for root, dirs, files in os.walk(base):
+        os.chmod(root, 0o755)
+        for name in files:
+            os.chmod(os.path.join(root, name), 0o644)
+    yield str(base)
+    shutil.rmtree(base, ignore_errors=True)
 
 
 def _docker_available() -> bool:  # pragma: no cover
