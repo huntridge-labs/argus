@@ -318,16 +318,20 @@ own codebase without forking or vendor escalation.
 The single largest remaining gap is inter-procedural detection. Everything else is
 incremental progress against mHawk's diagnostic surface or operational maturity.
 
-- **Inter-procedural taint propagation.** The call-graph foundation
-  shipped in Phase 1 (`argus/scanners/mumps/callgraph.py`) — every multi-file scan
-  builds a `CallGraph` of routines and `DO` / `GOTO` / `^ROUTINE` edges, and M001
-  findings already carry `inter_procedural_callers` metadata. **What's still ahead**
-  is the propagation pass that consumes the graph: per-routine taint summaries
-  (`call ENTRY^X with argN tainted → state in X`); recursion / mutual-recursion
-  handling via worklist iteration to fixpoint; formal-argument sub-typing so a
-  callee marks its parameters tainted when the caller passes a tainted value. Most
-  real-world MUMPS injection bugs cross at least one routine boundary; closing the
-  propagation gap is the single biggest perception-of-parity win against mHawk.
+- **Inter-procedural taint propagation — one-hop shipped (opt-in).**
+  The call graph (`argus/scanners/mumps/callgraph.py`) carries per-call actual
+  arguments and per-routine entry formals; `interproc.propagate_inbound_taint`
+  runs a recursion-safe monotone worklist (capped by
+  `scanners.mumps.interprocedural.max_depth`, default 1) that taints a callee's
+  formal when a caller passes a tainted actual. Gated behind
+  `interprocedural.enabled` (default off); when on, the callee's sinks fire on the
+  propagated formal. Real-corpus note: legacy VistA largely uses the shared-scratch-
+  variable calling convention rather than positional parameters, so the Kernel scan
+  surfaced no additional findings with it on — the yield is on parameter-passing
+  code. **Still ahead:** multi-hop (`max_depth > 1`) beyond the cycle-safe worklist
+  already in place, return-value taint (callee returns a tainted value the caller
+  stores), global-through-routine flow, extrinsic `$$fn^rtn` argument propagation,
+  and per-finding provenance metadata (`propagated_from` / `via_param`).
 - **Formal-argument scope tracking.** Entry-label parameter lists (`LABEL(ARG1,ARG2)`)
   become scope-aware definitions for M203 / M204 instead of the conservative
   "any-formal-anywhere-is-defined" heuristic Phase 1 ships. Unlocks precise def-use

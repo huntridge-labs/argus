@@ -85,6 +85,7 @@ class MumpsScanner:
         from .callgraph import build_callgraph_from_facts, extract_facts
 
         source_paths = list(self._iter_sources(target, extensions))
+        ip_enabled, ip_max_depth = _interproc_settings(config)
 
         # Pass A — extract lightweight call-graph facts per file, then
         # drop each parse tree before moving to the next file. Holding
@@ -93,6 +94,7 @@ class MumpsScanner:
         # file's tree at once, which is what previously exhausted RAM on
         # large corpora (a routine name index, not a tree pile).
         facts = []
+        local_taint: dict[str, set[str]] = {}
         for source_path in source_paths:
             try:
                 parsed = MumpsParser.parse(source_path, source_path.read_bytes())
@@ -106,12 +108,26 @@ class MumpsScanner:
                 # Pass B (which counts files_scanned / parse_failures).
                 continue
             facts.append(extract_facts(parsed))
+            if ip_enabled:
+                # Per-routine local taint feeds the propagation pass.
+                local_taint[Path(source_path).stem.upper()] = (
+                    collect_tainted_variables(parsed, config)
+                )
             del parsed  # release the tree before the next file
 
         callgraph = build_callgraph_from_facts(facts)
         rule_config = dict(config)
         rule_config["_callgraph"] = callgraph
         active_rules = [r for r in RULES if _rule_enabled(r, config)]
+
+        # Inter-procedural taint (opt-in): propagate each caller's local
+        # taint one hop into its callees' formal parameters.
+        inbound_taint: dict[str, set[str]] = {}
+        if ip_enabled:
+            from .interproc import propagate_inbound_taint
+            inbound_taint = propagate_inbound_taint(
+                callgraph, local_taint, ip_max_depth,
+            )
 
         # Pass B — re-parse each file on demand, run the rules, drop the
         # tree. The extra parse adds a few percent of wall time; the
@@ -128,8 +144,15 @@ class MumpsScanner:
                 continue
             # Compute the tainted-variable set once per file and share it
             # via config so the four taint-sink rules don't each re-walk
-            # the tree to recompute the identical set.
-            rule_config["_tainted"] = collect_tainted_variables(parsed, config)
+            # the tree to recompute the identical set. When inter-
+            # procedural analysis is on, union in the formals this
+            # routine receives tainted from its callers.
+            tainted = collect_tainted_variables(parsed, config)
+            if ip_enabled:
+                inbound = inbound_taint.get(Path(source_path).stem.upper())
+                if inbound:
+                    tainted = tainted | inbound
+            rule_config["_tainted"] = tainted
             for rule in active_rules:
                 try:
                     rule_findings = list(rule.analyze(parsed, rule_config))
@@ -242,6 +265,22 @@ class MumpsScanner:
             scanner=self.name,
             metadata={"rule": rule.id, "error_type": type(exc).__name__},
         )
+
+
+def _interproc_settings(config: dict | None) -> tuple[bool, int]:
+    """Resolve ``scanners.mumps.interprocedural`` config.
+
+    Returns ``(enabled, max_depth)``. Disabled by default so existing
+    scans are byte-identical; ``max_depth`` defaults to 1 (one call hop)
+    and is clamped to at least 1 when enabled.
+    """
+    block = (config or {}).get("interprocedural") or {}
+    enabled = bool(block.get("enabled", False))
+    try:
+        max_depth = int(block.get("max_depth", 1))
+    except (TypeError, ValueError):
+        max_depth = 1
+    return enabled, max(1, max_depth)
 
 
 def _rule_enabled(rule, config: dict | None) -> bool:

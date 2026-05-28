@@ -444,7 +444,9 @@ class TestSharedTaintAndCallGraphIndex:
         cg = build_callgraph([MumpsParser.parse(path, path.read_bytes())])
         node = next(iter(cg.routines.values()))
         fields = {f.name for f in dataclasses.fields(RoutineNode)}
-        assert fields == {"name", "path", "labels"}
+        # Lightweight fields only — name/path/labels/entry_formals.
+        # The invariant that matters for the OOM fix: NO parse tree.
+        assert fields == {"name", "path", "labels", "entry_formals"}
         assert not hasattr(node, "parsed")
 
 
@@ -539,6 +541,52 @@ class TestInterProceduralCallGraph:
         assert callers == [], (
             "No cross-file context when only one file is in the scan path"
         )
+
+
+_IP_ON = {"interprocedural": {"enabled": True}}
+
+
+class TestInterProceduralTaint:
+    """One-hop inter-procedural taint (opt-in via config)."""
+
+    def test_disabled_by_default(self, m_fixtures_dir):
+        # Without the flag, cross-file taint does not flow: SINK's XECUTE
+        # of formal P is not tainted, so M001 stays silent.
+        result = _scan(m_fixtures_dir / "interproc2")
+        assert _findings_with_id(result, "M001") == []
+
+    def test_propagates_tainted_actual_to_callee_formal(self, m_fixtures_dir):
+        # SRC READ-taints CMD and calls RUN^SINK(CMD); with interproc on,
+        # SINK's formal P becomes tainted and ``X P`` fires M001.
+        result = MumpsScanner().scan(str(m_fixtures_dir / "interproc2"), _IP_ON)
+        sink_hits = [
+            f for f in _findings_with_id(result, "M001")
+            if "SINK.m" in (f.location or "")
+        ]
+        assert sink_hits, "M001 must fire on SINK after one-hop propagation"
+
+    def test_constant_actual_does_not_propagate(self, m_fixtures_dir):
+        # CONST calls RUN^SAFE("literal") — a constant actual must not
+        # taint SAFE's formal, so SAFE stays clean even with interproc on.
+        result = MumpsScanner().scan(str(m_fixtures_dir / "interproc2"), _IP_ON)
+        safe_hits = [
+            f for f in _findings_with_id(result, "M001")
+            if "SAFE.m" in (f.location or "")
+        ]
+        assert safe_hits == [], "constant actuals must not propagate taint"
+
+    def test_propagation_unit(self, m_fixtures_dir):
+        # Direct unit test of the worklist over the built call graph.
+        from argus.scanners.mumps.parser import MumpsParser
+        from argus.scanners.mumps.callgraph import build_callgraph
+        from argus.scanners.mumps.interproc import propagate_inbound_taint
+        d = m_fixtures_dir / "interproc2"
+        parses = [MumpsParser.parse(p, p.read_bytes()) for p in sorted(d.glob("*.m"))]
+        cg = build_callgraph(parses)
+        inbound = propagate_inbound_taint(cg, {"SRC": {"CMD"}}, max_depth=1)
+        assert inbound.get("SINK") == {"P"}
+        # SAFE got no tainted caller.
+        assert "SAFE" not in inbound or inbound["SAFE"] == set()
 
 
 class TestScanResultShape:

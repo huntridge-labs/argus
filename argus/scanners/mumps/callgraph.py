@@ -51,6 +51,13 @@ class CallEdge:
     """``path:line:col`` of the call site, for downstream Finding
     location."""
 
+    actual_arg_names: tuple[frozenset[str], ...] = ()
+    """Positional actual arguments at the call site. Entry ``i`` is the
+    set of uppercased identifier names referenced in the i-th actual
+    (``D RUN^B(CMD,1)`` -> ``(frozenset({'CMD'}), frozenset())``).
+    Drives one-hop inter-procedural taint: if an actual references a
+    tainted name, the callee's i-th formal becomes tainted."""
+
 
 @dataclass(frozen=True)
 class RoutineNode:
@@ -72,22 +79,29 @@ class RoutineNode:
     labels: frozenset[str]
     """All label names declared in this routine, uppercased."""
 
+    entry_formals: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    """Entry-label (uppercased) -> positional formal parameter names.
+    ``RUN(P,Q)`` -> ``{'RUN': ('P', 'Q')}``. Used by the inter-procedural
+    taint pass to map a caller's tainted actual to the callee's formal."""
+
 
 @dataclass(frozen=True)
 class RoutineFacts:
     """Lightweight per-file extraction result.
 
     Produced by :func:`extract_facts` from a parsed source, holding
-    everything the call graph needs (name, path, labels, edges) and
-    **no reference to the parse tree** so the tree can be released
-    immediately after extraction. This is the unit the streaming scan
-    loop accumulates instead of holding every tree resident.
+    everything the call graph needs (name, path, labels, edges,
+    entry formals) and **no reference to the parse tree** so the tree
+    can be released immediately after extraction. This is the unit the
+    streaming scan loop accumulates instead of holding every tree
+    resident.
     """
 
     name: str
     path: Path
     labels: frozenset[str]
     edges: tuple[CallEdge, ...]
+    entry_formals: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -148,6 +162,75 @@ def _collect_labels(parsed: ParsedSource) -> frozenset[str]:
     return frozenset(labels)
 
 
+_VAR_NODE_TYPES = frozenset({"local_variable", "identifier", "variable"})
+
+
+def _identifier_names_in(node, parsed: ParsedSource) -> frozenset[str]:
+    """Uppercased identifier names referenced anywhere under ``node``."""
+    names: set[str] = set()
+    for descendant in walk(node):
+        if descendant.type in _VAR_NODE_TYPES:
+            names.add(parsed.node_text(descendant).strip().upper())
+    return frozenset(names)
+
+
+def _actual_arg_names(routine_call_node, parsed: ParsedSource):
+    """Positional actual-argument identifier sets for a call site.
+
+    ``RUN^B(CMD,1)`` -> ``(frozenset({'CMD'}), frozenset())`` — the
+    grammar shapes a call's actuals as a single ``arguments`` child of
+    ``routine_call`` with positional ``argument`` children.
+    """
+    args = None
+    for child in routine_call_node.children:
+        if child.type == "arguments":
+            args = child
+            break
+    if args is None:
+        return ()
+    actuals: list[frozenset[str]] = []
+    for child in args.children:
+        if child.type == "argument":
+            actuals.append(_identifier_names_in(child, parsed))
+    return tuple(actuals)
+
+
+def _collect_entry_formals(parsed: ParsedSource) -> dict[str, tuple[str, ...]]:
+    """Map each entry label to its positional formal-parameter names.
+
+    A parameterized label parses as ``routine_definition`` -> ``label``,
+    then an ``arguments`` node as a *direct child* of the
+    routine_definition (command argument lists live nested under their
+    ``command`` node, never directly under routine_definition).
+    """
+    formals: dict[str, tuple[str, ...]] = {}
+    for node in walk(parsed.tree.root_node):
+        if node.type != "routine_definition":
+            continue
+        label_name = None
+        arg_node = None
+        for child in node.children:
+            if child.type == "label" and label_name is None:
+                text = parsed.node_text(child).strip()
+                label_name = text.split(None, 1)[0].split("(", 1)[0].upper() if text else None
+            elif child.type == "arguments" and arg_node is None:
+                arg_node = child
+        if not label_name or arg_node is None:
+            continue
+        positions: list[str] = []
+        for child in arg_node.children:
+            if child.type == "argument":
+                names = [
+                    parsed.node_text(d).strip().upper()
+                    for d in walk(child)
+                    if d.type in _VAR_NODE_TYPES
+                ]
+                positions.append(names[0] if names else "")
+        if positions:
+            formals[label_name] = tuple(positions)
+    return formals
+
+
 def _collect_call_edges(node_name: str, parsed: ParsedSource) -> list[CallEdge]:
     edges: list[CallEdge] = []
     for node in walk(parsed.tree.root_node):
@@ -168,6 +251,7 @@ def _collect_call_edges(node_name: str, parsed: ParsedSource) -> list[CallEdge]:
             callee_routine=callee_routine,
             callee_label=callee_label_upper,
             call_site=parsed.location(node),
+            actual_arg_names=_actual_arg_names(node, parsed),
         ))
     return edges
 
@@ -187,6 +271,7 @@ def extract_facts(parsed: ParsedSource) -> RoutineFacts:
         path=Path(parsed.path),
         labels=_collect_labels(parsed),
         edges=tuple(_collect_call_edges(name, parsed)),
+        entry_formals=_collect_entry_formals(parsed),
     )
 
 
@@ -200,7 +285,10 @@ def build_callgraph_from_facts(facts: Iterable[RoutineFacts]) -> CallGraph:
     edges: list[CallEdge] = []
     for fact in facts:
         routines[fact.name] = RoutineNode(
-            name=fact.name, path=fact.path, labels=fact.labels,
+            name=fact.name,
+            path=fact.path,
+            labels=fact.labels,
+            entry_formals=fact.entry_formals,
         )
         edges.extend(fact.edges)
     callers: dict[str, list[CallEdge]] = {}

@@ -79,6 +79,15 @@ scanners:
   #   #     enabled: true             # opt in (off by default)
   #   #   M202:
   #   #     enabled: false            # silence a rule entirely
+  #   #
+  #   # One-hop inter-procedural taint (off by default). When on, a
+  #   # tainted argument passed to LABEL^ROUTINE(...) taints the
+  #   # callee's formal parameter so the callee's sinks fire. Yields
+  #   # on parameter-passing code; legacy VistA's shared-scratch-var
+  #   # calling style sees little additional signal.
+  #   # interprocedural:
+  #   #   enabled: true
+  #   #   max_depth: 1               # call hops a taint value may travel
 
   # container:
   #   enabled: false
