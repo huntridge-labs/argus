@@ -342,6 +342,16 @@ incremental progress against mHawk's diagnostic surface or operational maturity.
   empty IF / ELSE body, bare KILL of all locals, NEW without later KILL pairing,
   JOB without ID capture, deprecated intrinsics, label-name collision with reserved
   word. Each is a 1-2 hour rule + fixture + test cycle.
+- **Streaming scan loop for mega-corpora.** The Phase 1 two-phase scan loop holds
+  every parsed source in memory so the call-graph builder can walk all of them. That
+  works fine for a single package (hundreds of routines) but doesn't scale to the
+  26K+-routine full VistA-FOIA dump — the resident set size grows past system memory
+  and the scan locks the terminal. Fixes: (a) batch by package directory so each
+  batch fits in memory and the call graph is built per-batch (loses cross-package
+  edges), (b) two-pass-on-disk — write an intermediate label / call-edge JSONL per
+  source, build the graph from the JSONL pass, then re-parse each source on demand
+  during the rule pass. Option (b) keeps full cross-corpus call-graph fidelity at the
+  cost of two parse passes; reasonable for the corpora big enough to need it.
 - **First false-positive triage pass.** Run against WorldVistA / RPMS / MailMan
   forks, capture FP patterns by rule, refine. mHawk's actual moat is years of this
   cycle — we have to start it.
