@@ -255,6 +255,39 @@ class TestM205LabelFallthrough:
         assert _findings_with_id(result, "M205") == []
 
 
+class TestM203ImplicitDeclaration:
+    def test_fires_on_typo_read_before_define(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m203_typo.m")
+        hits = _findings_with_id(result, "M203")
+        assert hits, "M203 must fire on a variable read without a prior definition"
+        names = {f.metadata.get("variable") for f in hits}
+        assert "USR" in names
+        # USER is defined; must NOT be flagged
+        assert "USER" not in names
+
+
+class TestM204UnusedLocal:
+    def test_fires_on_dead_set(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m204_dead_set.m")
+        hits = _findings_with_id(result, "M204")
+        assert hits, "M204 must fire on a SET whose target is never read"
+        names = {f.metadata.get("variable") for f in hits}
+        assert "LEFTOVER" in names
+        # USED is read by the W command; must NOT be flagged
+        assert "USED" not in names
+
+
+class TestM206KillGlobalNoSubscript:
+    def test_fires_on_bare_global_kill(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m206_kill_tree.m")
+        hits = _findings_with_id(result, "M206")
+        assert hits, "M206 must fire on KILL of a bare global (no subscript)"
+        globals_killed = {f.metadata.get("global") for f in hits}
+        assert "^DATA" in globals_killed
+        # ^TEMP("scratch") is subscripted; must NOT be flagged
+        assert "^TEMP" not in globals_killed
+
+
 class TestScanResultShape:
     def test_metadata_records_files_scanned_and_rules(self, m_fixtures_dir):
         result = _scan(m_fixtures_dir / "m002_indirection.m")

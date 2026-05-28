@@ -99,7 +99,7 @@ class TestRuleRegistry:
         assert ids == {
             "M001", "M002", "M003", "M004", "M005", "M006",
             "M101", "M102",
-            "M201", "M202", "M205",
+            "M201", "M202", "M203", "M204", "M205", "M206",
         }
 
     def test_rule_ids_are_distinct(self):
@@ -113,7 +113,7 @@ class TestRuleRegistry:
                 assert rule.cwe, f"{rule.id} must declare a CWE"
 
     def test_diagnostic_rules_have_no_cwe(self):
-        diagnostic_ids = {"M101", "M102", "M201", "M202", "M205"}
+        diagnostic_ids = {"M101", "M102", "M201", "M202", "M203", "M204", "M205", "M206"}
         for rule in RULES:
             if rule.id in diagnostic_ids:
                 assert rule.cwe is None

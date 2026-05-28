@@ -14,7 +14,10 @@ from .m101_duplicate_label import DuplicateLabelRule
 from .m102_unreachable_after_quit import UnreachableAfterQuitRule
 from .m201_unresolved_label import UnresolvedLabelRule
 from .m202_routine_name_mismatch import RoutineNameMismatchRule
+from .m203_implicit_declaration import ImplicitDeclarationRule
+from .m204_unused_local import UnusedLocalRule
 from .m205_label_fallthrough import LabelFallthroughRule
+from .m206_kill_global_no_subscript import KillGlobalNoSubscriptRule
 
 RULES = [
     XECUTEInjectionRule(),
@@ -27,7 +30,10 @@ RULES = [
     UnreachableAfterQuitRule(),
     UnresolvedLabelRule(),
     RoutineNameMismatchRule(),
+    ImplicitDeclarationRule(),
+    UnusedLocalRule(),
     LabelFallthroughRule(),
+    KillGlobalNoSubscriptRule(),
 ]
 
 __all__ = [
@@ -42,5 +48,8 @@ __all__ = [
     "UnreachableAfterQuitRule",
     "UnresolvedLabelRule",
     "RoutineNameMismatchRule",
+    "ImplicitDeclarationRule",
+    "UnusedLocalRule",
     "LabelFallthroughRule",
+    "KillGlobalNoSubscriptRule",
 ]

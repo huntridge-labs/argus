@@ -266,7 +266,10 @@ OSS SAST for the MUMPS / M language (VistA, YottaDB, GT.M, FileMan). Phase 1+ sh
 | `M102` | Unreachable code after unconditional QUIT / HALT | INFO | n/a |
 | `M201` | DO / GOTO to undeclared label | INFO | n/a |
 | `M202` | Routine name does not match filename | INFO | n/a |
+| `M203` | Local variable read before it was defined | INFO | n/a |
+| `M204` | Local variable set but never read | INFO | n/a |
 | `M205` | Label body falls through into the following label | INFO | n/a |
+| `M206` | KILL of an entire global tree (no subscript) | INFO | n/a |
 
 The security rules above cover all five MUMPS-specific code-injection sinks — XECUTE (M001), indirection (M002), OPEN/USE device arguments (M003), dynamic routine dispatch (M005), and external `$&` calls (M006) — plus data-at-rest credential leaks (M004). Together they exceed the public mHawk taint-sink surface for intra-procedural detection.
 

@@ -255,9 +255,17 @@ USE / HALT / QUIT all collapse into a single `keyword` regex (text-driven match 
     project-wide routine index.
   - **M202** first label does not match filename stem (diagnostic). GT.M / YottaDB /
     Cache all enforce this convention; a mismatch breaks `DO ^ROUTINE` dispatch.
+  - **M203** local variable read before it was defined (diagnostic). MUMPS treats
+    undefined locals as the empty string; a typo on the definition site is silent
+    at runtime.
+  - **M204** local variable set but never read (diagnostic). Catches dead SETs from
+    removed features and typos on the *use* site.
   - **M205** label body falls through into the following label (diagnostic). Catches
     routines whose label bodies forget the terminating `Q` and silently spill into
     the next label.
+  - **M206** KILL of an entire global tree (diagnostic, high real-world impact).
+    `K ^G` deletes the whole global tree from the database; production VistA
+    outages have been traced to exactly this construct.
 - Local execution via `scripts/build-m-grammar.sh`; container fallback via
   `docker/Dockerfile.m` which pre-compiles `mumps.so` at image build time.
 - Installed via `pip install 'argus-security[m]'`; integration tests build the grammar
