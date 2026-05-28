@@ -31,7 +31,8 @@ from typing import Iterable
 from argus.core.models import Finding, Severity
 from ..parser import ParsedSource, walk
 from ..rule import Rule
-from ..taint import collect_tainted_variables
+from ..taint import resolve_tainted
+from ._common import tainted_references
 
 _OPEN_KEYWORD_RE = re.compile(r"^\s*O(?:PEN)?\b", re.IGNORECASE)
 _USE_KEYWORD_RE = re.compile(r"^\s*U(?:SE)?\b", re.IGNORECASE)
@@ -76,17 +77,6 @@ def _command_line_text(parsed: ParsedSource, node) -> str:
     return line
 
 
-def _argument_node(command_node):
-    for field_name in ("arguments", "argument", "expression"):
-        node = command_node.child_by_field_name(field_name)
-        if node is not None:
-            return node
-    for child in command_node.children:
-        if child.type in {"arguments", "argument"}:
-            return child
-    return None
-
-
 class OpenUseInjectionRule(Rule):
     id = "M003"
     severity = Severity.HIGH
@@ -94,7 +84,7 @@ class OpenUseInjectionRule(Rule):
     cwe = "CWE-78"
 
     def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
-        tainted = collect_tainted_variables(parsed, config)
+        tainted = resolve_tainted(parsed, config)
         if not tainted:
             return
         for node in walk(parsed.tree.root_node):
@@ -115,7 +105,7 @@ class OpenUseInjectionRule(Rule):
             args_for_taint = re.sub(
                 r"^\s*(?:O(?:PEN)?|U(?:SE)?)\b", "", line_text, count=1, flags=re.IGNORECASE,
             )
-            hits = _tainted_references(args_for_taint, tainted)
+            hits = tainted_references(args_for_taint, tainted)
             if not hits:
                 continue
             keyword = "OPEN" if is_open else "USE"
@@ -150,14 +140,3 @@ class OpenUseInjectionRule(Rule):
                     "argument": arg_text[:200],
                 },
             )
-
-
-def _tainted_references(arg_text: str, tainted: set[str]) -> set[str]:
-    hits: set[str] = set()
-    if not arg_text or not tainted:
-        return hits
-    upper_arg = arg_text.upper()
-    for name in tainted:
-        if re.search(rf"\b{re.escape(name)}\b", upper_arg):
-            hits.add(name)
-    return hits

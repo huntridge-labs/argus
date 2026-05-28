@@ -7,6 +7,8 @@ of being re-derived (and drifting) across rule files.
 
 from __future__ import annotations
 
+import re
+
 from ..parser import ParsedSource, walk
 
 # Node types the grammar uses for a variable reference.
@@ -95,6 +97,23 @@ def collect_formal_args(parsed: ParsedSource) -> set[str]:
                 if descendant.type in VAR_TYPES:
                     names.add(parsed.node_text(descendant).strip().upper())
     return names
+
+
+def tainted_references(arg_text: str, tainted: set[str]) -> set[str]:
+    """Return the subset of ``tainted`` referenced as whole-word
+    identifiers in ``arg_text`` (case-insensitive).
+
+    Shared by the taint-sink rules (M001 / M003 / M006) that check
+    whether a sink argument mentions a tainted variable.
+    """
+    hits: set[str] = set()
+    if not arg_text or not tainted:
+        return hits
+    upper = arg_text.upper()
+    for name in tainted:
+        if re.search(rf"\b{re.escape(name)}\b", upper):
+            hits.add(name)
+    return hits
 
 
 def known_external_vars(config: dict | None) -> set[str]:

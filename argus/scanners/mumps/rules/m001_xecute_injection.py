@@ -31,21 +31,11 @@ from typing import Iterable
 from argus.core.models import Finding, Severity
 from ..parser import ParsedSource, walk
 from ..rule import Rule
-from ..taint import collect_tainted_variables
+from ..taint import resolve_tainted
+from ._common import argument_node, tainted_references
 
 
 _XECUTE_KEYWORD_RE = re.compile(r"^\s*X(?:ECUTE)?\b", re.IGNORECASE)
-
-
-def _argument_node(command_node):
-    for field_name in ("arguments", "argument", "expression"):
-        node = command_node.child_by_field_name(field_name)
-        if node is not None:
-            return node
-    for child in command_node.children:
-        if child.type in {"arguments", "argument"}:
-            return child
-    return None
 
 
 def _argument_is_string_literal(parsed: ParsedSource, arg_node) -> bool:
@@ -71,7 +61,7 @@ class XECUTEInjectionRule(Rule):
     cwe = "CWE-95"
 
     def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
-        tainted = collect_tainted_variables(parsed, config)
+        tainted = resolve_tainted(parsed, config)
         if not tainted:
             return
         # Cross-routine context: when MumpsScanner.scan ran over multiple
@@ -87,11 +77,11 @@ class XECUTEInjectionRule(Rule):
             command_text = parsed.node_text(node)
             if not _XECUTE_KEYWORD_RE.match(command_text):
                 continue
-            args = _argument_node(node)
+            args = argument_node(node)
             if _argument_is_string_literal(parsed, args):
                 continue
             arg_text = parsed.node_text(args).strip() if args else ""
-            hits = _tainted_references(arg_text, tainted)
+            hits = tainted_references(arg_text, tainted)
             if not hits:
                 continue
             metadata: dict = {
@@ -126,18 +116,3 @@ def _resolve_callers(parsed: ParsedSource, config: dict | None) -> list[str]:
     from pathlib import Path
     name = Path(parsed.path).stem.upper()
     return sorted({edge.caller for edge in callgraph.callers_of(name)})
-
-
-def _tainted_references(arg_text: str, tainted: set[str]) -> set[str]:
-    """Return the subset of ``tainted`` referenced as identifiers in
-    ``arg_text``. Whole-word match (case-insensitive) to avoid flagging
-    substrings of unrelated variable names.
-    """
-    hits: set[str] = set()
-    if not arg_text or not tainted:
-        return hits
-    upper_arg = arg_text.upper()
-    for name in tainted:
-        if re.search(rf"\b{re.escape(name)}\b", upper_arg):
-            hits.add(name)
-    return hits

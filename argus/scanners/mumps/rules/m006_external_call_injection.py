@@ -23,13 +23,13 @@ gets its calibrated severity bump.
 
 from __future__ import annotations
 
-import re
 from typing import Iterable
 
 from argus.core.models import Finding, Severity
 from ..parser import ParsedSource, walk
 from ..rule import Rule
-from ..taint import collect_tainted_variables
+from ..taint import resolve_tainted
+from ._common import tainted_references
 
 
 def _function_name_text(parsed: ParsedSource, call_node) -> str:
@@ -56,7 +56,7 @@ class ExternalCallInjectionRule(Rule):
     cwe = "CWE-78"
 
     def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
-        tainted = collect_tainted_variables(parsed, config)
+        tainted = resolve_tainted(parsed, config)
         if not tainted:
             return
         for node in walk(parsed.tree.root_node):
@@ -66,7 +66,7 @@ class ExternalCallInjectionRule(Rule):
             if not _is_external_call(name):
                 continue
             call_text = parsed.node_text(node)
-            hits = _tainted_references(call_text, tainted)
+            hits = tainted_references(call_text, tainted)
             if not hits:
                 continue
             yield self.make_finding(
@@ -84,14 +84,3 @@ class ExternalCallInjectionRule(Rule):
                     "taint_sources": sorted(hits),
                 },
             )
-
-
-def _tainted_references(call_text: str, tainted: set[str]) -> set[str]:
-    hits: set[str] = set()
-    if not call_text or not tainted:
-        return hits
-    upper = call_text.upper()
-    for name in tainted:
-        if re.search(rf"\b{re.escape(name)}\b", upper):
-            hits.add(name)
-    return hits

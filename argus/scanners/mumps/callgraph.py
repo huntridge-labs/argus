@@ -80,15 +80,19 @@ class CallGraph:
     edges: tuple[CallEdge, ...] = ()
     """All cross-routine references found, in scan order."""
 
+    # Pre-built indexes so ``callers_of`` / ``callees_of`` are O(1)
+    # instead of an O(edges) linear scan per lookup. On a 4,000-edge
+    # graph queried per finding that linear scan was O(edges x findings).
+    _callers_by_routine: dict[str, tuple[CallEdge, ...]] = field(default_factory=dict)
+    _callees_by_routine: dict[str, tuple[CallEdge, ...]] = field(default_factory=dict)
+
     def callers_of(self, routine: str) -> tuple[CallEdge, ...]:
         """Return every CallEdge whose ``callee_routine`` is ``routine``."""
-        target = routine.upper()
-        return tuple(edge for edge in self.edges if edge.callee_routine == target)
+        return self._callers_by_routine.get(routine.upper(), ())
 
     def callees_of(self, routine: str) -> tuple[CallEdge, ...]:
         """Return every CallEdge whose ``caller`` is ``routine``."""
-        source = routine.upper()
-        return tuple(edge for edge in self.edges if edge.caller == source)
+        return self._callees_by_routine.get(routine.upper(), ())
 
 
 # Matches the ``LABEL^ROUTINE`` and ``^ROUTINE`` reference forms in
@@ -162,4 +166,15 @@ def build_callgraph(parsed_sources: Iterable[ParsedSource]) -> CallGraph:
         labels = _collect_labels(parsed)
         routines[name] = RoutineNode(name=name, parsed=parsed, labels=labels)
         edges.extend(_collect_call_edges(name, parsed))
-    return CallGraph(routines=routines, edges=tuple(edges))
+    # Build the caller/callee indexes once so lookups are O(1).
+    callers: dict[str, list[CallEdge]] = {}
+    callees: dict[str, list[CallEdge]] = {}
+    for edge in edges:
+        callers.setdefault(edge.callee_routine, []).append(edge)
+        callees.setdefault(edge.caller, []).append(edge)
+    return CallGraph(
+        routines=routines,
+        edges=tuple(edges),
+        _callers_by_routine={k: tuple(v) for k, v in callers.items()},
+        _callees_by_routine={k: tuple(v) for k, v in callees.items()},
+    )

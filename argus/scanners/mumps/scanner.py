@@ -20,6 +20,7 @@ from argus.core.models import Finding, ScanResult
 
 from .parser import GrammarUnavailable, MumpsParser, tree_sitter_available
 from .rules import RULES
+from .taint import collect_tainted_variables
 
 
 # MUMPS source files in the wild use ``.m``, ``.mac`` (Caché macro),
@@ -102,6 +103,10 @@ class MumpsScanner:
         # Phase 3: run each rule against each parsed source.
         active_rules = [r for r in RULES if _rule_enabled(r, config)]
         for source_path, parsed in parsed_units:
+            # Compute the tainted-variable set once per file and share it
+            # via config so the four taint-sink rules don't each re-walk
+            # the tree to recompute the identical set.
+            rule_config["_tainted"] = collect_tainted_variables(parsed, config)
             for rule in active_rules:
                 try:
                     rule_findings = list(rule.analyze(parsed, rule_config))

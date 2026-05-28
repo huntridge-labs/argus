@@ -25,7 +25,7 @@ from typing import Iterable
 from argus.core.models import Finding, Severity
 from ..parser import ParsedSource, walk
 from ..rule import Rule
-from ..taint import collect_tainted_variables
+from ..taint import resolve_tainted
 
 
 def _indirection_descendants(do_node):
@@ -53,7 +53,7 @@ class TaintedDispatchRule(Rule):
     cwe = "CWE-95"
 
     def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
-        tainted = collect_tainted_variables(parsed, config)
+        tainted = resolve_tainted(parsed, config)
         if not tainted:
             return
         for node in walk(parsed.tree.root_node):

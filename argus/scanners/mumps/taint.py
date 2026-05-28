@@ -222,6 +222,23 @@ def collect_tainted_variables(
     return tainted
 
 
+def resolve_tainted(parsed: ParsedSource, config: dict | None) -> set[str]:
+    """Return the per-file tainted-variable set, reusing a shared copy
+    when the scanner has already computed it.
+
+    ``MumpsScanner.scan`` computes the taint set once per file and stashes
+    it on ``config['_tainted']`` so the four taint-sink rules
+    (M001/M003/M005/M006) don't each re-walk the tree to recompute the
+    identical set. When ``_tainted`` is absent — standalone rule use, or
+    a test that builds its own config — fall back to computing it.
+    """
+    if config is not None:
+        shared = config.get("_tainted")
+        if shared is not None:
+            return shared
+    return collect_tainted_variables(parsed, config)
+
+
 def _compile_extra_patterns(config: dict | None) -> list[re.Pattern]:
     """Compile user-supplied regex patterns from
     ``config['taint_sources']['patterns']``. Invalid regexes are

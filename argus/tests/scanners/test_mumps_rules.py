@@ -400,6 +400,40 @@ class TestConfigurableSanitizers:
         )
 
 
+class TestSharedTaintAndCallGraphIndex:
+    def test_resolve_tainted_uses_shared_set(self, m_fixtures_dir):
+        # When config carries a precomputed _tainted set, resolve_tainted
+        # returns it verbatim (the scanner's per-file sharing path).
+        from argus.scanners.mumps.parser import MumpsParser
+        from argus.scanners.mumps.taint import resolve_tainted
+        path = m_fixtures_dir / "m001_xecute_taint.m"
+        parsed = MumpsParser.parse(path, path.read_bytes())
+        sentinel = {"SENTINEL"}
+        assert resolve_tainted(parsed, {"_tainted": sentinel}) is sentinel
+
+    def test_resolve_tainted_falls_back_without_shared(self, m_fixtures_dir):
+        from argus.scanners.mumps.parser import MumpsParser
+        from argus.scanners.mumps.taint import resolve_tainted
+        path = m_fixtures_dir / "m001_xecute_taint.m"
+        parsed = MumpsParser.parse(path, path.read_bytes())
+        # No _tainted in config -> compute; CMD is READ-tainted.
+        assert "CMD" in resolve_tainted(parsed, None)
+
+    def test_callgraph_index_matches_linear_scan(self, m_fixtures_dir):
+        from argus.scanners.mumps.parser import MumpsParser
+        from argus.scanners.mumps.callgraph import build_callgraph
+        d = m_fixtures_dir / "interproc"
+        parses = [
+            MumpsParser.parse(p, p.read_bytes()) for p in sorted(d.glob("*.m"))
+        ]
+        cg = build_callgraph(parses)
+        # TAINTED is called by CALLER; the O(1) index must agree with a
+        # manual scan of edges.
+        manual = tuple(e for e in cg.edges if e.callee_routine == "TAINTED")
+        assert cg.callers_of("TAINTED") == manual
+        assert cg.callers_of("NOSUCHROUTINE") == ()
+
+
 class TestPerRuleEnableDisable:
     def test_disable_a_normally_on_rule(self, m_fixtures_dir):
         # M101 (duplicate label) is on by default; disabling it via
