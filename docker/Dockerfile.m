@@ -58,4 +58,8 @@ ENV PYTHONPATH=/opt/argus
 
 USER argus
 WORKDIR /workspace
-ENTRYPOINT ["python", "-m", "argus", "scan", "m"]
+# ENTRYPOINT is just the argus invocation prefix. The full "scan m
+# --path ... --output-dir ... --format json" args come from
+# MScanner.build_args via the engine's container template (engine
+# strips argv[0], the build_args "argus" sentinel, before append).
+ENTRYPOINT ["python", "-m", "argus"]

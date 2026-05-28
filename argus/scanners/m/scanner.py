@@ -42,9 +42,11 @@ class MScanner:
     languages = ["mumps"]
     # Container image registration is wired up in a follow-up commit once
     # ``scanner-m`` is published to ghcr.io. ``is_available()`` gates
-    # local execution until then.
+    # local execution until then. The image's ENTRYPOINT runs
+    # ``python -m argus`` so ``build_args`` only supplies the
+    # ``scan m ...`` portion (the engine strips argv[0]).
     container_image = ""
-    container_entrypoint = ""
+    container_entrypoint = "argus"
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Walk ``path`` for MUMPS sources, parse each, run every rule."""
@@ -94,6 +96,30 @@ class MScanner:
                 "rules_run": [r.id for r in RULES],
             },
         )
+
+    def build_args(self, paths, config: dict | None = None) -> list[str]:
+        """Container argv for ``argus scan m`` inside ``scanner-m``.
+
+        The image's ENTRYPOINT is ``["python", "-m", "argus"]`` so this
+        method supplies ``scan m --path ... --output-dir ...`` after the
+        engine strips argv[0]. Honoured by the standard scanner_template
+        once ``container_image`` is wired up in a follow-up commit;
+        until then the method exists to satisfy the
+        ``test_all_scanners_have_container_args`` contract.
+        """
+        from pathlib import PurePosixPath
+        config = config or {}
+        output_dir = str(PurePosixPath(paths.output).parent) if paths.output else "/output"
+        args = [
+            "argus", "scan", "m",
+            "--path", paths.workspace,
+            "--output-dir", output_dir,
+            "--format", "json",
+        ]
+        extra = config.get("extra_args")
+        if extra:
+            args.extend(str(a) for a in extra)
+        return args
 
     def is_available(self) -> bool:
         """True when py-tree-sitter + the compiled grammar are reachable."""
