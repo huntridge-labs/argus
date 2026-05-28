@@ -286,6 +286,12 @@ scanners:
       purpose: "Dynamic web application testing"
       output: SARIF
 
+  llm_security:
+    - name: promptfoo
+      purpose: "LLM red-team / eval — prompt injection, jailbreaks, PII leakage (OWASP LLM Top 10)"
+      output: JSON
+      note: "Opt-in (not in 'all'); container-first; requires provider API keys (OpenAI/Anthropic/etc.) + network at scan time. Keys resolved via argus.core.secrets env-var indirection; adversarial prompts and model responses are never echoed into findings. See ADR-024 credential pattern."
+
   supply_chain:
     - name: supply-chain
       purpose: "GitHub Actions workflow security scanning via zizmor + actionlint"
@@ -542,6 +548,7 @@ docsite:
       - supply-chain
       - zap
       - container
+      - promptfoo
     linters:
       # Implementation patterns:
       #   * lint-dockerfile (HadolintLinter) — subclass of

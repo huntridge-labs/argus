@@ -68,6 +68,8 @@ See [examples/github-enterprise/](../examples/github-enterprise/) for GHES templ
   - [ClamAV](#clamav)
 - [DAST Scanners](#dast-scanners)
   - [ZAP](#zap)
+- [LLM-Security Scanners](#llm-security-scanners)
+  - [promptfoo](#promptfoo)
 - [Common Configuration Patterns](#common-configuration-patterns)
 ## SAST Scanners
 
@@ -1084,6 +1086,71 @@ jobs:
 
 </details>
 
+
+## LLM-Security Scanners
+
+### promptfoo
+
+[promptfoo](https://github.com/promptfoo/promptfoo) is an OSS LLM eval and
+red-team framework with 60+ plugins aligned to the
+[OWASP LLM Top 10](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
+(prompt injection, jailbreaks, PII leakage, hallucination, bias). Argus
+runs it container-first, so the Node.js runtime stays inside the promptfoo
+image and never touches Argus core.
+
+> **Opt-in scanner.** promptfoo is **not** included in `all`. It requires
+> provider API keys (OpenAI, Anthropic, etc.) **and network access at scan
+> time** — every probe is a live request to the configured model endpoint.
+> Enable it explicitly and budget for provider API usage.
+
+**Key Features:**
+- Red-team probes (prompt injection, jailbreak, PII, RBAC/BOLA, SSRF, …) and plain eval assertions
+- Failed red-team probes map to `HIGH`; failed eval assertions to `MEDIUM`
+- Adversarial prompts and model responses are **never** echoed into Argus findings — only structural metadata (plugin id, assertion type, provider) is surfaced, so secrets/PII in prompts or responses don't leak into reports
+
+---
+
+#### Quick Start
+
+**1. Author a promptfoo config** (e.g. `promptfooconfig.yaml`) per the
+[promptfoo docs](https://www.promptfoo.dev/docs/configuration/guide/) —
+declare your providers, prompts, and red-team plugins there.
+
+**2. Configure Argus** (`argus.yml`):
+
+```yaml
+scanners:
+  promptfoo:
+    enabled: true
+    config_file: "promptfooconfig.yaml"   # mounted at /app/promptfooconfig.yaml
+
+    # Provider API keys — name the env var; argus reads os.environ at
+    # scan time and exports it into the container. The literal value
+    # never appears in argus.yml.
+    openai_api_key_env: OPENAI_API_KEY
+    anthropic_api_key_env: ANTHROPIC_API_KEY
+
+    # Any additional provider: map the provider's native env-var name
+    # to the host env var holding the secret.
+    api_keys:
+      MISTRAL_API_KEY: MY_MISTRAL_SECRET
+
+    cmd_options:
+      - "--max-concurrency"
+      - "2"
+```
+
+**3. Run the scan**:
+
+```bash
+OPENAI_API_KEY=sk-... argus scan promptfoo --config argus.yml
+```
+
+The scanner invokes `promptfoo eval -c <config> -o /output/results.json
+--no-progress-bar` inside the container and normalizes failing results
+into Argus findings.
+
+---
 
 ## Common Configuration Patterns
 
