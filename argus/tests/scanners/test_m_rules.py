@@ -173,6 +173,62 @@ class TestM102UnreachableAfterQuit:
         assert _findings_with_id(result, "M102") == []
 
 
+class TestM006ExternalCallInjection:
+    def test_fires_on_tainted_external_call(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m006_external_taint.m")
+        hits = _findings_with_id(result, "M006")
+        assert hits, "M006 must fire when $& call receives a tainted argument"
+        assert all(f.severity == Severity.HIGH for f in hits)
+        assert all(f.cwe == "CWE-78" for f in hits)
+        for finding in hits:
+            assert finding.metadata.get("function", "").startswith("$&")
+
+    def test_pure_external_call_does_not_fire(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m006_external_clean.m")
+        assert _findings_with_id(result, "M006") == []
+
+
+class TestM201UnresolvedLabel:
+    def test_fires_on_missing_label_reference(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m201_missing.m")
+        hits = _findings_with_id(result, "M201")
+        assert hits, "M201 must fire when DO references an undeclared label"
+        labels = {f.metadata.get("label") for f in hits}
+        assert "MISSING" in labels
+
+    def test_resolved_labels_do_not_fire(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m201_resolved.m")
+        assert _findings_with_id(result, "M201") == []
+
+
+class TestM202RoutineNameMismatch:
+    def test_fires_on_mismatch(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m202mismatch.m")
+        hits = _findings_with_id(result, "M202")
+        assert hits, "M202 must fire when first label differs from filename stem"
+        finding = hits[0]
+        assert finding.metadata.get("declared") == "WRONGNAME"
+        assert finding.metadata.get("expected") == "M202MISMATCH"
+
+    def test_matching_name_does_not_fire(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m202clean.m")
+        assert _findings_with_id(result, "M202") == []
+
+
+class TestM205LabelFallthrough:
+    def test_fires_on_fallthrough(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m205_fallthrough.m")
+        hits = _findings_with_id(result, "M205")
+        assert hits, "M205 must fire when a label body falls through"
+        finding = hits[0]
+        assert finding.metadata.get("preceding_label") == "LABELA"
+        assert finding.metadata.get("fallthrough_into") == "LABELB"
+
+    def test_terminated_labels_do_not_fire(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m205_terminated.m")
+        assert _findings_with_id(result, "M205") == []
+
+
 class TestScanResultShape:
     def test_metadata_records_files_scanned_and_rules(self, m_fixtures_dir):
         result = _scan(m_fixtures_dir / "m002_indirection.m")

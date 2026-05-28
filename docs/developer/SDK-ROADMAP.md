@@ -244,9 +244,20 @@ USE / HALT / QUIT all collapse into a single `keyword` regex (text-driven match 
     severity when a `DO @VAR` indirection's referenced variable is READ-tainted.
     Completes the 4-of-4 mHawk taint-sink surface (XECUTE / indirection / OPEN/USE /
     dispatch) at parity for intra-procedural detection.
+  - **M006** tainted argument to external (`$&`) call (CWE-78). HIGH severity on
+    `$&Helper(arg)` when `arg` references a tainted variable. Extends taint coverage
+    to host-side helper invocations (`$&system`, `$&pipe`, custom registered callouts).
   - **M101** duplicate label (diagnostic). Two labels with the same name in one routine.
   - **M102** unreachable code after unconditional QUIT / HALT (diagnostic). Pulled forward
     from Phase 2; postconditional Q / H are correctly excluded.
+  - **M201** DO / GOTO to undeclared label (diagnostic). Intra-file resolution against
+    declared labels; cross-routine `^ROUTINE` references skipped pending Phase 2's
+    project-wide routine index.
+  - **M202** first label does not match filename stem (diagnostic). GT.M / YottaDB /
+    Cache all enforce this convention; a mismatch breaks `DO ^ROUTINE` dispatch.
+  - **M205** label body falls through into the following label (diagnostic). Catches
+    routines whose label bodies forget the terminating `Q` and silently spill into
+    the next label.
 - Local execution via `scripts/build-m-grammar.sh`; container fallback via
   `docker/Dockerfile.m` which pre-compiles `mumps.so` at image build time.
 - Installed via `pip install 'argus-security[m]'`; integration tests build the grammar

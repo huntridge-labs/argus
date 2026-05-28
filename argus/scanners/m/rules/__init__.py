@@ -9,8 +9,12 @@ from .m002_indirection_injection import IndirectionInjectionRule
 from .m003_open_use_injection import OpenUseInjectionRule
 from .m004_hardcoded_creds import HardcodedCredentialsRule
 from .m005_tainted_dispatch import TaintedDispatchRule
+from .m006_external_call_injection import ExternalCallInjectionRule
 from .m101_duplicate_label import DuplicateLabelRule
 from .m102_unreachable_after_quit import UnreachableAfterQuitRule
+from .m201_unresolved_label import UnresolvedLabelRule
+from .m202_routine_name_mismatch import RoutineNameMismatchRule
+from .m205_label_fallthrough import LabelFallthroughRule
 
 RULES = [
     XECUTEInjectionRule(),
@@ -18,8 +22,12 @@ RULES = [
     OpenUseInjectionRule(),
     HardcodedCredentialsRule(),
     TaintedDispatchRule(),
+    ExternalCallInjectionRule(),
     DuplicateLabelRule(),
     UnreachableAfterQuitRule(),
+    UnresolvedLabelRule(),
+    RoutineNameMismatchRule(),
+    LabelFallthroughRule(),
 ]
 
 __all__ = [
@@ -29,6 +37,10 @@ __all__ = [
     "OpenUseInjectionRule",
     "HardcodedCredentialsRule",
     "TaintedDispatchRule",
+    "ExternalCallInjectionRule",
     "DuplicateLabelRule",
     "UnreachableAfterQuitRule",
+    "UnresolvedLabelRule",
+    "RoutineNameMismatchRule",
+    "LabelFallthroughRule",
 ]

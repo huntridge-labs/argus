@@ -256,15 +256,19 @@ OSS SAST for the MUMPS / M language (VistA, YottaDB, GT.M, FileMan). Phase 1+ sh
 
 | Rule | Title | Severity | CWE |
 |------|-------|----------|-----|
-| `M001` | XECUTE of READ-tainted expression | HIGH | CWE-95 |
+| `M001` | XECUTE of tainted expression | HIGH | CWE-95 |
 | `M002` | Indirection (`@`) of non-literal expression | HIGH | CWE-94 |
-| `M003` | OPEN / USE of READ-tainted device argument | HIGH | CWE-78 |
+| `M003` | OPEN / USE of tainted device argument | HIGH | CWE-78 |
 | `M004` | Hard-coded credential in MUMPS global | CRITICAL | CWE-798 |
-| `M005` | DO of READ-tainted indirection (dynamic dispatch) | CRITICAL | CWE-95 |
+| `M005` | DO of tainted indirection (dynamic dispatch) | CRITICAL | CWE-95 |
+| `M006` | Tainted argument to external (`$&`) call | HIGH | CWE-78 |
 | `M101` | Duplicate label declared in routine | INFO | n/a |
 | `M102` | Unreachable code after unconditional QUIT / HALT | INFO | n/a |
+| `M201` | DO / GOTO to undeclared label | INFO | n/a |
+| `M202` | Routine name does not match filename | INFO | n/a |
+| `M205` | Label body falls through into the following label | INFO | n/a |
 
-The four security rules above (M001, M003, M005, plus M004's data-at-rest credential check) cover the same taint-sink surface mHawk advertises — XECUTE, indirection, OPEN/USE, and dynamic dispatch — at parity for intra-procedural detection.
+The security rules above cover all five MUMPS-specific code-injection sinks — XECUTE (M001), indirection (M002), OPEN/USE device arguments (M003), dynamic routine dispatch (M005), and external `$&` calls (M006) — plus data-at-rest credential leaks (M004). Together they exceed the public mHawk taint-sink surface for intra-procedural detection.
 
 <details>
 <summary><strong>Configuration & Examples</strong></summary>
