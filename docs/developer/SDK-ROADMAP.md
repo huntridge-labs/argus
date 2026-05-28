@@ -341,11 +341,17 @@ incremental progress against mHawk's diagnostic surface or operational maturity.
   `argus/containers.py` picks up the SHA-pinned tag; `argus.yml` `containers.images`
   adds the build entry so the build-containers workflow exercises it on every PR.
   Auto-covered by `container-smoke` once the image is published.
-- **Diagnostic rule expansion** to roughly 20 (from 8 today, targeting the cheapest /
-  highest-signal half of mHawk's claimed 32). Candidates: undeclared global reference,
-  empty IF / ELSE body, bare KILL of all locals, NEW without later KILL pairing,
-  JOB without ID capture, deprecated intrinsics, label-name collision with reserved
-  word. Each is a 1-2 hour rule + fixture + test cycle.
+- ~~**Diagnostic rule expansion** to roughly 20.~~ **Shipped (21 diagnostics).** Added
+  M209 (call arg-count mismatch), M210 (duplicate NEW), M211 (scratch global without
+  `$J`, CWE-362), M212 (argumentless FOR with no exit, CWE-835), M213 (QUIT-arg in
+  FOR), M214 (naked global ref, off by default), M215 (non-portable Z-command), M216 /
+  M217 (non-portable `$Z` function / special var, off by default), M218 (exec on label
+  line), M219 (line over the SAC 245 limit). Each AST-verified by probe and
+  FP-validated on the VistA Kernel corpus before shipping. **Still ahead toward
+  mHawk's ~32:** magic device-number in OPEN/USE (needs a configurable allowlist),
+  `;;`version-header check (convention-only, off by default), lowercase-keyword
+  (grammar-blocked), and a useful-NEW / dead-store rule (needs the cross-file scope
+  pass to avoid high FP).
 - ~~**Streaming scan loop for mega-corpora.**~~ **Shipped.** `MumpsScanner.scan`
   is now a streaming two-pass loop: Pass A parses each file, extracts lightweight
   call-graph facts (labels + cross-routine edges, all strings) and drops the tree;

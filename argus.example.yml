@@ -58,6 +58,11 @@ scanners:
   #   #     - "\\$ZIO\\b"             # YottaDB pending input
   #   #     - "\\^MyApp\\.input\\b"   # site-specific HTTP global
   #   #
+  #   # Shared scratch globals M211 requires to be $J-subscripted
+  #   # (default ^TMP, ^UTILITY), and the M219 line-length limit.
+  #   # scratch_globals: ["^TMP", "^UTILITY", "^XTMP"]
+  #   # max_line_length: 245
+  #   #
   #   # Functions / intrinsics that REMOVE taint when applied. A variable
   #   # assigned from a sanitizer call is treated as clean by every
   #   # taint-aware rule (M001 / M003 / M005 / M006).

@@ -272,8 +272,19 @@ OSS SAST for the MUMPS / M language (VistA, YottaDB, GT.M, FileMan). Phase 1+ sh
 | `M206` | KILL of an entire global tree (no subscript) | INFO | n/a |
 | `M207` | Bare KILL command deletes every local variable | INFO | n/a |
 | `M208` | Bare NEW command stacks every local variable | INFO | n/a |
+| `M209` | Call passes more arguments than the entry declares | MEDIUM | n/a |
+| `M210` | Duplicate variable in a single NEW argument list | LOW | n/a |
+| `M211` | Scratch global (`^TMP`/`^UTILITY`) written without `$J` | INFO | CWE-362 |
+| `M212` | Argumentless FOR with no loop exit (infinite loop) | HIGH | CWE-835 |
+| `M213` | QUIT with an argument inside a FOR loop | MEDIUM | n/a |
+| `M214` | Naked global reference (`^(sub)`) | INFO | n/a (off by default) |
+| `M215` | Non-portable Z-command (`ZSYSTEM`/`ZGOTO`/…) | LOW | n/a |
+| `M216` | Non-portable `$Z` intrinsic function | INFO | n/a (off by default) |
+| `M217` | Non-portable `$Z` special variable | INFO | n/a (off by default) |
+| `M218` | Executable code on the routine label (first) line | LOW | n/a |
+| `M219` | Source line exceeds the SAC 245-char limit | LOW | n/a |
 
-The security rules above cover all five MUMPS-specific code-injection sinks — XECUTE (M001), indirection (M002), OPEN/USE device arguments (M003), dynamic routine dispatch (M005), and external `$&` calls (M006) — plus data-at-rest credential leaks (M004). Together they exceed the public mHawk taint-sink surface for intra-procedural detection.
+The security rules above cover all five MUMPS-specific code-injection sinks — XECUTE (M001), indirection (M002), OPEN/USE device arguments (M003), dynamic routine dispatch (M005), and external `$&` calls (M006) — plus data-at-rest credential leaks (M004). Together they exceed the public mHawk taint-sink surface for intra-procedural detection. The diagnostic rules (M101–M102, M201–M219) cover structural, control-flow (infinite FOR, value-QUIT-in-FOR), def-use, call-arity, scratch-global concurrency, VistA SAC, and portability checks — 21 diagnostics toward mHawk's ~32. Rules marked *off by default* (M205, M214, M216, M217) are opt-in via `rules.<id>.enabled: true` because they are either idiomatic in legacy VistA (naked refs, fallthrough) or portability-inventory only.
 
 <details>
 <summary><strong>Configuration & Examples</strong></summary>
@@ -294,6 +305,9 @@ Optional per-scanner keys:
 - `rules.<id>.severity` — per-rule severity override. Replaces the rule's default baseline severity. Per-finding precision (M003's PIPE bump to CRITICAL) is preserved — only baseline severity is user-tunable. Accepts `critical` / `high` / `medium` / `low` / `info`.
 - `rules.<id>.enabled` — turn an individual rule on or off. Most rules are on by default; **M205 (label fallthrough) is off by default** because top-to-bottom fallthrough between labels is the intended idiom in old-style linear VistA routines (it was ~69% false-positive on the VistA Kernel). Opt in with `rules.M205.enabled: true` if your codebase follows strict one-label-one-entry-point discipline.
 - `known_external_vars` — list of variable names treated as externally defined / read (extends the built-in VistA / FileMan / Kernel allowlist used by M203 / M204).
+- `scratch_globals` — list of shared scratch globals that must be `$J`-subscripted (M211); defaults to `["^TMP", "^UTILITY"]`.
+- `max_line_length` — SAC line-length limit for M219 (default 245).
+- `rules.M202.ignore_patterns` — regex list of routine-name families to exclude from the filename-mismatch check (M202).
 - `interprocedural.enabled` / `interprocedural.max_depth` — opt in to one-hop cross-routine taint propagation (default off; `max_depth` default 1). When on, a tainted actual argument passed to `LABEL^ROUTINE(...)` taints the callee's matching formal parameter, so the callee's sinks (XECUTE / OPEN-USE / dispatch / external call of that formal) fire. Yields on parameter-passing code; codebases using the classic shared-scratch-variable calling convention (much of legacy VistA) see little additional signal.
 
 ```yaml
