@@ -129,6 +129,48 @@ def is_command_mnemonic(text: str) -> bool:
     return text.strip().upper() in COMMAND_MNEMONICS
 
 
+# MUMPS argumentless FOR: the empty argument is written as the keyword
+# followed by TWO spaces (the missing arg, then the command separator),
+# or the keyword alone at end of line. A controller FOR (``F I=1:1:N``)
+# has exactly one space before the loop variable. This text test is the
+# reliable discriminator — the grammar drops the ``loop_control`` child
+# for expression-bound counted FORs (``F J=1:1:$L(X)``), so a
+# structural "no loop_control" check misclassifies them as argumentless.
+_ARGLESS_FOR_RE = re.compile(r"^\s*F(?:OR)?(?:\s{2,}|\s*$)", re.IGNORECASE)
+
+
+def is_argumentless_for(parsed: ParsedSource, for_node) -> bool:
+    """True when ``for_node`` is an argumentless FOR (``F  ...`` / bare
+    ``F``), as opposed to a controller FOR (``F I=1:1:N``)."""
+    return bool(_ARGLESS_FOR_RE.match(parsed.node_text(for_node)))
+
+
+def physical_line(parsed: ParsedSource, node, from_column: bool = True) -> str:
+    """Return the source line containing ``node``, comment-stripped.
+
+    Several constructs the grammar mis-shapes (OPEN parameter lists, an
+    argumentless ``FOR`` whose body + ``Q:`` exit spill out to sibling
+    nodes) can only be reasoned about from the raw physical line. With
+    ``from_column`` the slice starts at the node's start column so an
+    earlier token on the same line isn't considered.
+
+    Comment-stripping is naive (a ``;`` inside a string literal ends the
+    line early); the failure mode is a missed token, never a spurious
+    one — acceptable for the line-scan heuristics that use this.
+    """
+    row = node.start_point[0]
+    lines = parsed.source_bytes.split(b"\n")
+    if row >= len(lines):
+        return parsed.node_text(node)
+    line = lines[row].decode("utf-8", errors="replace")
+    if from_column:
+        line = line[node.start_point[1]:]
+    semi = line.find(";")
+    if semi >= 0:
+        line = line[:semi]
+    return line
+
+
 def preceded_by_error(node) -> bool:
     """True when ``node`` (or its parent) has an immediately preceding
     ERROR sibling — the signature of a grammar misparse such as the

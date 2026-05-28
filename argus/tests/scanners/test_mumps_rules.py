@@ -367,6 +367,31 @@ class TestM208BareNew:
         assert len(hits) == 1
 
 
+class TestM212InfiniteFor:
+    def test_fires_on_argumentless_for_without_exit(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m212_infinite_for.m")
+        hits = _findings_with_id(result, "M212")
+        assert hits, "M212 must fire on an argumentless FOR with no exit"
+        assert all(f.severity == Severity.HIGH for f in hits)
+        assert all(f.cwe == "CWE-835" for f in hits)
+
+    def test_bounded_and_inline_exit_for_do_not_fire(self, m_fixtures_dir):
+        # $ORDER walk with inline Q: exit + a counted FOR — neither fires.
+        result = _scan(m_fixtures_dir / "m212_bounded_for.m")
+        assert _findings_with_id(result, "M212") == []
+
+
+class TestM213QuitArgInFor:
+    def test_fires_on_quit_with_arg_in_for(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m213_quit_arg_in_for.m")
+        hits = _findings_with_id(result, "M213")
+        assert hits, "M213 must fire on QUIT-with-argument inside a FOR"
+
+    def test_postconditional_quit_does_not_fire(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m213_postcond_quit.m")
+        assert _findings_with_id(result, "M213") == []
+
+
 class TestConfigurableSanitizers:
     def test_sanitizer_removes_taint(self, m_fixtures_dir, tmp_path):
         # Construct a fixture inline that wraps a READ-tainted value in

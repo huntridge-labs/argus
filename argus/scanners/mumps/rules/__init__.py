@@ -20,6 +20,8 @@ from .m205_label_fallthrough import LabelFallthroughRule
 from .m206_kill_global_no_subscript import KillGlobalNoSubscriptRule
 from .m207_bare_kill import BareKillRule
 from .m208_bare_new import BareNewRule
+from .m212_infinite_for import InfiniteForRule
+from .m213_quit_arg_in_for import QuitArgInForRule
 
 RULES = [
     XECUTEInjectionRule(),
@@ -38,6 +40,8 @@ RULES = [
     KillGlobalNoSubscriptRule(),
     BareKillRule(),
     BareNewRule(),
+    InfiniteForRule(),
+    QuitArgInForRule(),
 ]
 
 __all__ = [
@@ -58,4 +62,6 @@ __all__ = [
     "KillGlobalNoSubscriptRule",
     "BareKillRule",
     "BareNewRule",
+    "InfiniteForRule",
+    "QuitArgInForRule",
 ]
