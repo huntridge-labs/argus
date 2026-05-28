@@ -6,7 +6,7 @@ findings; new rules added in follow-up commits land here.
 
 from .m001_xecute_injection import XECUTEInjectionRule
 from .m002_indirection_injection import IndirectionInjectionRule
-from .m004_hardcoded_credentials import HardcodedCredentialsRule
+from .m004_hardcoded_creds import HardcodedCredentialsRule
 from .m101_duplicate_label import DuplicateLabelRule
 
 RULES = [
