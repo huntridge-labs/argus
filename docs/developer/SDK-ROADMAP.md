@@ -236,10 +236,16 @@ command's source line.
 
 **Architecture**
 - `argus/scanners/m/` sub-package: parser wrapper (`parser.py`), Rule abstract base
-  (`rule.py`), shared taint collector (`taint.py`), 14 rule modules in `rules/`, and
-  `scanner.py` implementing the `Scanner` protocol.
+  (`rule.py`), shared taint collector (`taint.py`), cross-file call-graph builder
+  (`callgraph.py`), 16 rule modules in `rules/`, and `scanner.py` implementing the
+  `Scanner` protocol.
 - Intra-procedural taint engine with three built-in source classes plus user-extensible
   patterns. Document-order walk over the parse tree.
+- Two-phase scan loop in `MScanner.scan`: phase 1 parses every `.m` file in the path;
+  phase 2 builds a `CallGraph` over those parses; phase 3 runs each rule with the
+  graph available via `config['_callgraph']`. M001 already consumes the graph to
+  annotate findings with `inter_procedural_callers` metadata. Full taint propagation
+  through the graph is Phase 2.5 work.
 - SARIF v2.1.0 emission via the existing reporter — all 14 rule IDs declared in the
   driver block.
 - Two installation paths: `pip install argus-security[m]` + `scripts/build-m-grammar.sh`
@@ -312,13 +318,16 @@ own codebase without forking or vendor escalation.
 The single largest remaining gap is inter-procedural detection. Everything else is
 incremental progress against mHawk's diagnostic surface or operational maturity.
 
-- **Inter-procedural taint engine.** Largest technical lift in this whole roadmap.
-  Pre-pass that loads every routine in the scan path; call-graph builder across `DO` /
-  `GOTO` / `routine_call` / `^ROUTINE` references; per-routine taint summaries
-  (`call ENTRY^X with argN tainted → state in X`); recursion / mutual-recursion handling
-  via worklist iteration to fixpoint. Most real-world MUMPS injection bugs cross at
-  least one routine boundary; closing this is the single biggest perception-of-parity
-  win against mHawk.
+- **Inter-procedural taint propagation.** The call-graph foundation
+  shipped in Phase 1 (`argus/scanners/m/callgraph.py`) — every multi-file scan
+  builds a `CallGraph` of routines and `DO` / `GOTO` / `^ROUTINE` edges, and M001
+  findings already carry `inter_procedural_callers` metadata. **What's still ahead**
+  is the propagation pass that consumes the graph: per-routine taint summaries
+  (`call ENTRY^X with argN tainted → state in X`); recursion / mutual-recursion
+  handling via worklist iteration to fixpoint; formal-argument sub-typing so a
+  callee marks its parameters tainted when the caller passes a tainted value. Most
+  real-world MUMPS injection bugs cross at least one routine boundary; closing the
+  propagation gap is the single biggest perception-of-parity win against mHawk.
 - **Formal-argument scope tracking.** Entry-label parameter lists (`LABEL(ARG1,ARG2)`)
   become scope-aware definitions for M203 / M204 instead of the conservative
   "any-formal-anywhere-is-defined" heuristic Phase 1 ships. Unlocks precise def-use

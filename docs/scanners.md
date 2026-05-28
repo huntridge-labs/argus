@@ -340,7 +340,7 @@ reporters:
 
 > **Secret redaction:** for the M004 (hard-coded credentials) rule, the matched literal value is replaced with the redaction placeholder before the finding is constructed. Defense-in-depth: `Finding.__post_init__` runs the pattern-based redactor as a second pass. The literal never reaches any reporter, export, or the MCP server. Integration test `test_literal_value_is_redacted` enforces this contract.
 
-> **Taint scope:** Phase 1 taint analysis is intra-file. Recognized taint sources are `READ` (terminal input), `$ZARGV` (YottaDB / GT.M process arguments), and the HTTP context globals `^%CGI`, `^%REQUEST`, `^%session`. The collector is shared between M001 / M003 / M005, so every taint-sink rule sees the full source surface uniformly. Inter-procedural taint (call-graph construction across `DO` / `GOTO` / `routine_call`) and formal-argument tracking land in Phase 2 — see `docs/developer/SDK-ROADMAP.md`.
+> **Taint scope:** Phase 1 taint *detection* is intra-file. Recognized taint sources are `READ` (terminal input), `$ZARGV` (YottaDB / GT.M process arguments), and the HTTP context globals `^%CGI`, `^%REQUEST`, `^%session`. The collector is shared between M001 / M003 / M005 / M006 so every taint-sink rule sees the full source surface uniformly. The **inter-procedural call graph** is built on every multi-file scan (`argus/scanners/m/callgraph.py`); M001 findings carry an `inter_procedural_callers` metadata list naming the routines that reach the sink. Full inter-procedural taint *propagation* (formal-argument routing, recursion-safe fixpoint) lands in Phase 2.5 — see `docs/developer/SDK-ROADMAP.md`.
 
 </details>
 

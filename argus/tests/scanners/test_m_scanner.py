@@ -139,21 +139,47 @@ class TestGrammarLoading:
             MParser.parse(Path("x.m"), b" ; empty\n")
 
 
+class _StubNode:
+    """Empty AST node — has no children so walk() yields only itself
+    and the call-graph builder finds zero labels / edges."""
+
+    type = "stub_root"
+    children: list = []
+    is_named = True
+
+    @property
+    def parent(self):
+        return None
+
+    def child_by_field_name(self, _name):
+        return None
+
+
+class _StubTree:
+    def __init__(self):
+        self.root_node = _StubNode()
+
+
 class _StubParsed:
     """Minimal ParsedSource stand-in for tests that mock MParser.parse.
 
     Tests that drive the scan loop don't need a real tree-sitter tree;
-    rules are mocked or stubbed at the loop level. Carries the path
-    so any finding constructor that wants ``location`` still works.
+    rules are mocked or stubbed at the loop level. The call-graph
+    builder always runs in the new two-phase scan loop, so we give it
+    an empty tree to walk (zero routines / edges) instead of None.
     """
 
     def __init__(self, path: Path):
         self.path = path
         self.source_bytes = b""
-        self.tree = None
+        self.source_text = ""
+        self.tree = _StubTree()
 
     def location(self, node):
         return str(self.path)
+
+    def node_text(self, node):
+        return ""
 
 
 class TestScanLoopBehaviour:

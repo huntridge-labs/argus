@@ -376,6 +376,41 @@ class TestPerRuleSeverityOverride:
         )
 
 
+class TestInterProceduralCallGraph:
+    """Cross-file call-graph foundation. Full inter-procedural taint
+    propagation is Phase 2.5; today the graph is built on every scan
+    and rules can annotate findings with caller information."""
+
+    def test_callgraph_built_on_multi_file_scan(self, m_fixtures_dir):
+        result = MScanner().scan(str(m_fixtures_dir / "interproc"))
+        graph = result.metadata.get("callgraph") or {}
+        assert graph.get("routines") == 2, "two .m files == two routine nodes"
+        assert graph.get("edges") >= 1, "CALLER -> TAINTED edge must be recorded"
+
+    def test_m001_finding_includes_callers_metadata(self, m_fixtures_dir):
+        result = MScanner().scan(str(m_fixtures_dir / "interproc"))
+        m001_in_tainted = [
+            f for f in result.findings
+            if f.id == "M001" and "TAINTED.m" in (f.location or "")
+        ]
+        assert m001_in_tainted, "M001 must fire on TAINTED.m's READ -> XECUTE"
+        callers = m001_in_tainted[0].metadata.get("inter_procedural_callers")
+        assert callers, "Cross-file callers must be recorded when scan crosses files"
+        assert "CALLER" in callers, "CALLER -> TAINTED edge must surface in metadata"
+
+    def test_single_file_scan_has_no_cross_callers(self, m_fixtures_dir):
+        # Scanning only TAINTED.m (no CALLER.m in the scan path) means
+        # the call graph has no edges into TAINTED. M001 still fires
+        # but ``inter_procedural_callers`` should be absent (or empty).
+        result = MScanner().scan(str(m_fixtures_dir / "interproc" / "TAINTED.m"))
+        m001 = [f for f in result.findings if f.id == "M001"]
+        assert m001, "M001 must still fire intra-file"
+        callers = m001[0].metadata.get("inter_procedural_callers", [])
+        assert callers == [], (
+            "No cross-file context when only one file is in the scan path"
+        )
+
+
 class TestScanResultShape:
     def test_metadata_records_files_scanned_and_rules(self, m_fixtures_dir):
         result = _scan(m_fixtures_dir / "m002_indirection.m")

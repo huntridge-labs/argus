@@ -74,6 +74,13 @@ class XECUTEInjectionRule(Rule):
         tainted = collect_tainted_variables(parsed, config)
         if not tainted:
             return
+        # Cross-routine context: when MScanner.scan ran over multiple
+        # files it puts the call graph on ``config['_callgraph']``.
+        # Use it to annotate findings with the routines that reach
+        # this one, so reviewers see the blast radius without re-
+        # scanning. Full inter-procedural taint propagation lands in
+        # Phase 2.5; this is the demonstrative wiring.
+        callers = _resolve_callers(parsed, config)
         for node in walk(parsed.tree.root_node):
             if node.type != "command":
                 continue
@@ -87,6 +94,12 @@ class XECUTEInjectionRule(Rule):
             hits = _tainted_references(arg_text, tainted)
             if not hits:
                 continue
+            metadata: dict = {
+                "taint_sources": sorted(hits),
+                "argument": arg_text[:200],
+            }
+            if callers:
+                metadata["inter_procedural_callers"] = callers
             yield self.make_finding(
                 parsed,
                 node,
@@ -96,11 +109,23 @@ class XECUTEInjectionRule(Rule):
                     "$ZARGV, or an HTTP context global). The runtime value "
                     "of those variables is executed as MUMPS code."
                 ),
-                metadata={
-                    "taint_sources": sorted(hits),
-                    "argument": arg_text[:200],
-                },
+                metadata=metadata,
             )
+
+
+def _resolve_callers(parsed: ParsedSource, config: dict | None) -> list[str]:
+    """Return uppercased routine names that call into the routine
+    containing ``parsed``, or an empty list when there's no call graph
+    or no callers. Resolves the current routine's name from its file
+    basename (matches GT.M / YottaDB / Caché dispatch)."""
+    if not config:
+        return []
+    callgraph = config.get("_callgraph")
+    if callgraph is None:
+        return []
+    from pathlib import Path
+    name = Path(parsed.path).stem.upper()
+    return sorted({edge.caller for edge in callgraph.callers_of(name)})
 
 
 def _tainted_references(arg_text: str, tainted: set[str]) -> set[str]:

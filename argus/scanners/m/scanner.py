@@ -49,7 +49,14 @@ class MScanner:
     container_entrypoint = "argus"
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
-        """Walk ``path`` for MUMPS sources, parse each, run every rule."""
+        """Walk ``path`` for MUMPS sources, parse each, run every rule.
+
+        Two-phase loop: first pre-parse every ``.m`` file in the scan
+        path, then build the cross-file call graph, then run each rule
+        with the graph available via ``config['_callgraph']``. The
+        pre-parse pass adds one parse per file but lets every rule see
+        cross-routine context for free.
+        """
         config = config or {}
         extensions = tuple(config.get("extensions", DEFAULT_EXTENSIONS))
         findings: list[Finding] = []
@@ -64,6 +71,10 @@ class MScanner:
                 metadata={"error": f"path does not exist: {path}"},
             )
 
+        # Phase 1: parse every source. Collect ParsedSource handles
+        # along with their original path so we can dispatch findings
+        # per file later.
+        parsed_units: list[tuple[Path, object]] = []
         for source_path in self._iter_sources(target, extensions):
             files_scanned += 1
             try:
@@ -78,9 +89,21 @@ class MScanner:
                 parse_failures += 1
                 findings.append(self._parse_failure_finding(source_path, str(exc)))
                 continue
+            parsed_units.append((source_path, parsed))
+
+        # Phase 2: build the cross-file call graph in a single
+        # additional walk per source. Rules consume it via
+        # config['_callgraph'] when they want cross-routine context.
+        from .callgraph import build_callgraph
+        callgraph = build_callgraph(parsed for _, parsed in parsed_units)
+        rule_config = dict(config)
+        rule_config["_callgraph"] = callgraph
+
+        # Phase 3: run each rule against each parsed source.
+        for source_path, parsed in parsed_units:
             for rule in RULES:
                 try:
-                    rule_findings = list(rule.analyze(parsed, config))
+                    rule_findings = list(rule.analyze(parsed, rule_config))
                 except Exception as exc:  # noqa: BLE001
                     # Rule crash must not take down the whole scan;
                     # surface it as a finding so it's visible in output
@@ -101,6 +124,10 @@ class MScanner:
                 "files_scanned": files_scanned,
                 "parse_failures": parse_failures,
                 "rules_run": [r.id for r in RULES],
+                "callgraph": {
+                    "routines": len(callgraph.routines),
+                    "edges": len(callgraph.edges),
+                },
             },
         )
 
