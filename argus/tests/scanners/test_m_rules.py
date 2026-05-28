@@ -91,6 +91,22 @@ class TestM004HardcodedCredentials:
         assert _findings_with_id(result, "M004") == []
 
 
+class TestM003OpenUseInjection:
+    def test_fires_on_tainted_open_argument(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m003_open_taint.m")
+        hits = _findings_with_id(result, "M003")
+        assert hits, "M003 must fire when OPEN/USE references a READ-tainted var"
+        assert all(f.severity == Severity.HIGH for f in hits)
+        assert all(f.cwe == "CWE-78" for f in hits)
+        commands = {f.metadata.get("command") for f in hits}
+        # Both OPEN and USE in the fixture should trip the rule
+        assert "OPEN" in commands or "USE" in commands
+
+    def test_constant_device_does_not_fire(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m003_open_clean.m")
+        assert _findings_with_id(result, "M003") == []
+
+
 class TestM101DuplicateLabel:
     def test_fires_on_duplicate_label(self, m_fixtures_dir):
         result = _scan(m_fixtures_dir / "m101_dup_label.m")
@@ -106,6 +122,25 @@ class TestM101DuplicateLabel:
     def test_unique_labels_do_not_fire(self, m_fixtures_dir):
         result = _scan(m_fixtures_dir / "m101_unique_labels.m")
         assert _findings_with_id(result, "M101") == []
+
+
+class TestM102UnreachableAfterQuit:
+    def test_fires_on_unconditional_break(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m102_unreachable.m")
+        hits = _findings_with_id(result, "M102")
+        assert len(hits) == 2, (
+            "M102 must fire once per unconditional break with a following command"
+        )
+        assert all(f.severity == Severity.INFO for f in hits)
+        break_commands = {f.metadata.get("break_command") for f in hits}
+        assert "Q" in break_commands or "H" in break_commands
+
+    def test_postconditional_break_does_not_fire(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m102_postconditional.m")
+        # Only the final unconditional Q at end-of-routine could
+        # theoretically fire, but it has no following command and so
+        # the rule should produce no findings on this fixture.
+        assert _findings_with_id(result, "M102") == []
 
 
 class TestScanResultShape:
