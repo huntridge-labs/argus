@@ -52,11 +52,21 @@ class MumpsScanner:
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Walk ``path`` for MUMPS sources, parse each, run every rule.
 
-        Two-phase loop: first pre-parse every ``.m`` file in the scan
-        path, then build the cross-file call graph, then run each rule
-        with the graph available via ``config['_callgraph']``. The
-        pre-parse pass adds one parse per file but lets every rule see
-        cross-routine context for free.
+        Streaming two-pass loop, bounded to one parse tree resident at a
+        time:
+
+        * **Pass A** parses each file, extracts lightweight call-graph
+          facts (labels + cross-routine edges, all strings), and drops
+          the tree. The cross-file call graph is built from those facts.
+        * **Pass B** re-parses each file on demand, runs every enabled
+          rule (with the call graph available via ``config['_callgraph']``
+          and the per-file taint set via ``config['_tainted']``), and
+          drops the tree.
+
+        Re-parsing each file twice costs a few percent of wall time but
+        keeps peak memory flat regardless of corpus size — the earlier
+        parse-everything-first design held every tree resident and
+        exhausted RAM on large corpora.
         """
         config = config or {}
         extensions = tuple(config.get("extensions", DEFAULT_EXTENSIONS))
@@ -72,37 +82,50 @@ class MumpsScanner:
                 metadata={"error": f"path does not exist: {path}"},
             )
 
-        # Phase 1: parse every source. Collect ParsedSource handles
-        # along with their original path so we can dispatch findings
-        # per file later.
-        parsed_units: list[tuple[Path, object]] = []
-        for source_path in self._iter_sources(target, extensions):
+        from .callgraph import build_callgraph_from_facts, extract_facts
+
+        source_paths = list(self._iter_sources(target, extensions))
+
+        # Pass A — extract lightweight call-graph facts per file, then
+        # drop each parse tree before moving to the next file. Holding
+        # only the facts (labels + cross-routine edges, all strings)
+        # keeps resident memory at one tree at a time instead of every
+        # file's tree at once, which is what previously exhausted RAM on
+        # large corpora (a routine name index, not a tree pile).
+        facts = []
+        for source_path in source_paths:
+            try:
+                parsed = MumpsParser.parse(source_path, source_path.read_bytes())
+            except GrammarUnavailable:
+                # Re-raise: callers (engine) route this into the
+                # container fallback path rather than reporting a clean
+                # zero-findings scan.
+                raise
+            except OSError:
+                # Read/parse failure is reported authoritatively in
+                # Pass B (which counts files_scanned / parse_failures).
+                continue
+            facts.append(extract_facts(parsed))
+            del parsed  # release the tree before the next file
+
+        callgraph = build_callgraph_from_facts(facts)
+        rule_config = dict(config)
+        rule_config["_callgraph"] = callgraph
+        active_rules = [r for r in RULES if _rule_enabled(r, config)]
+
+        # Pass B — re-parse each file on demand, run the rules, drop the
+        # tree. The extra parse adds a few percent of wall time; the
+        # memory ceiling is what matters for whole-corpus scans.
+        for source_path in source_paths:
             files_scanned += 1
             try:
-                source_bytes = source_path.read_bytes()
-                parsed = MumpsParser.parse(source_path, source_bytes)
+                parsed = MumpsParser.parse(source_path, source_path.read_bytes())
             except GrammarUnavailable:
-                # Re-raise: callers (engine) know how to route this into
-                # the container fallback path. Don't silently produce a
-                # zero-findings result that looks like a clean scan.
                 raise
             except OSError as exc:
                 parse_failures += 1
                 findings.append(self._parse_failure_finding(source_path, str(exc)))
                 continue
-            parsed_units.append((source_path, parsed))
-
-        # Phase 2: build the cross-file call graph in a single
-        # additional walk per source. Rules consume it via
-        # config['_callgraph'] when they want cross-routine context.
-        from .callgraph import build_callgraph
-        callgraph = build_callgraph(parsed for _, parsed in parsed_units)
-        rule_config = dict(config)
-        rule_config["_callgraph"] = callgraph
-
-        # Phase 3: run each rule against each parsed source.
-        active_rules = [r for r in RULES if _rule_enabled(r, config)]
-        for source_path, parsed in parsed_units:
             # Compute the tainted-variable set once per file and share it
             # via config so the four taint-sink rules don't each re-walk
             # the tree to recompute the identical set.
@@ -122,6 +145,7 @@ class MumpsScanner:
                         rule_findings, rule.severity, override,
                     )
                 findings.extend(rule_findings)
+            del parsed  # release this file's tree before the next
 
         return ScanResult(
             scanner=self.name,

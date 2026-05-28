@@ -56,18 +56,38 @@ class CallEdge:
 class RoutineNode:
     """One routine in the call graph.
 
-    ``parsed`` is the ParsedSource the rest of the scanner already
-    holds — keeping it here lets call-graph consumers re-walk the
-    routine without re-parsing.
+    Holds only lightweight facts — the routine name, its source path,
+    and its declared labels. It deliberately does NOT retain the
+    tree-sitter parse tree: pinning every file's tree was what made the
+    full-corpus scan exhaust memory. Consumers that need to re-walk a
+    routine re-parse it on demand from ``path``.
     """
 
     name: str
     """Uppercased routine name (file basename without extension)."""
 
-    parsed: ParsedSource
+    path: Path
+    """Source file path, for on-demand re-parse."""
 
     labels: frozenset[str]
     """All label names declared in this routine, uppercased."""
+
+
+@dataclass(frozen=True)
+class RoutineFacts:
+    """Lightweight per-file extraction result.
+
+    Produced by :func:`extract_facts` from a parsed source, holding
+    everything the call graph needs (name, path, labels, edges) and
+    **no reference to the parse tree** so the tree can be released
+    immediately after extraction. This is the unit the streaming scan
+    loop accumulates instead of holding every tree resident.
+    """
+
+    name: str
+    path: Path
+    labels: frozenset[str]
+    edges: tuple[CallEdge, ...]
 
 
 @dataclass(frozen=True)
@@ -152,21 +172,37 @@ def _collect_call_edges(node_name: str, parsed: ParsedSource) -> list[CallEdge]:
     return edges
 
 
-def build_callgraph(parsed_sources: Iterable[ParsedSource]) -> CallGraph:
-    """Construct a :class:`CallGraph` from the parsed sources for one scan.
+def extract_facts(parsed: ParsedSource) -> RoutineFacts:
+    """Extract the lightweight call-graph facts for one parsed source.
 
-    Cheap: one walk per source for labels, one walk per source for
-    cross-routine references. No taint propagation, no fixpoint
-    iteration — pure structural extraction.
+    Two walks (labels, cross-routine references) producing only strings
+    — the returned :class:`RoutineFacts` holds no reference to the parse
+    tree, so the caller can drop the tree immediately after this returns.
+    This is what lets the streaming scan loop bound memory to one tree
+    at a time instead of holding every file's tree resident.
+    """
+    name = Path(parsed.path).stem.upper()
+    return RoutineFacts(
+        name=name,
+        path=Path(parsed.path),
+        labels=_collect_labels(parsed),
+        edges=tuple(_collect_call_edges(name, parsed)),
+    )
+
+
+def build_callgraph_from_facts(facts: Iterable[RoutineFacts]) -> CallGraph:
+    """Build a :class:`CallGraph` from pre-extracted lightweight facts.
+
+    No parse trees involved — pure structural assembly plus the O(1)
+    caller/callee index construction.
     """
     routines: dict[str, RoutineNode] = {}
     edges: list[CallEdge] = []
-    for parsed in parsed_sources:
-        name = Path(parsed.path).stem.upper()
-        labels = _collect_labels(parsed)
-        routines[name] = RoutineNode(name=name, parsed=parsed, labels=labels)
-        edges.extend(_collect_call_edges(name, parsed))
-    # Build the caller/callee indexes once so lookups are O(1).
+    for fact in facts:
+        routines[fact.name] = RoutineNode(
+            name=fact.name, path=fact.path, labels=fact.labels,
+        )
+        edges.extend(fact.edges)
     callers: dict[str, list[CallEdge]] = {}
     callees: dict[str, list[CallEdge]] = {}
     for edge in edges:
@@ -178,3 +214,16 @@ def build_callgraph(parsed_sources: Iterable[ParsedSource]) -> CallGraph:
         _callers_by_routine={k: tuple(v) for k, v in callers.items()},
         _callees_by_routine={k: tuple(v) for k, v in callees.items()},
     )
+
+
+def build_callgraph(parsed_sources: Iterable[ParsedSource]) -> CallGraph:
+    """Construct a :class:`CallGraph` from parsed sources.
+
+    Convenience wrapper over :func:`extract_facts` +
+    :func:`build_callgraph_from_facts`, kept for callers (and tests)
+    that already hold the parsed sources. Note this form materializes
+    facts for every source before building; the memory-bounded streaming
+    path in ``MumpsScanner.scan`` calls ``extract_facts`` per file and
+    drops each tree instead.
+    """
+    return build_callgraph_from_facts(extract_facts(p) for p in parsed_sources)

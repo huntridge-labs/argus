@@ -433,6 +433,20 @@ class TestSharedTaintAndCallGraphIndex:
         assert cg.callers_of("TAINTED") == manual
         assert cg.callers_of("NOSUCHROUTINE") == ()
 
+    def test_callgraph_nodes_hold_no_parse_tree(self, m_fixtures_dir):
+        # Memory-bounded streaming guard: RoutineNode must NOT retain a
+        # ParsedSource / tree (that pinned every file's tree and caused
+        # the OOM). It carries only name, path, labels.
+        import dataclasses
+        from argus.scanners.mumps.parser import MumpsParser
+        from argus.scanners.mumps.callgraph import build_callgraph, RoutineNode
+        path = m_fixtures_dir / "m001_xecute_taint.m"
+        cg = build_callgraph([MumpsParser.parse(path, path.read_bytes())])
+        node = next(iter(cg.routines.values()))
+        fields = {f.name for f in dataclasses.fields(RoutineNode)}
+        assert fields == {"name", "path", "labels"}
+        assert not hasattr(node, "parsed")
+
 
 class TestPerRuleEnableDisable:
     def test_disable_a_normally_on_rule(self, m_fixtures_dir):
