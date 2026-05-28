@@ -31,21 +31,25 @@ from typing import Iterable
 from argus.core.models import Finding, Severity
 from ..parser import ParsedSource, walk
 from ..rule import Rule
+from ._common import VAR_TYPES, argument_node, known_external_vars
 
 _NEW_KEYWORD_RE = re.compile(r"^\s*N(?:EW)?\b", re.IGNORECASE)
 _READ_KEYWORD_RE = re.compile(r"^\s*R(?:EAD)?\b", re.IGNORECASE)
-_VAR_TYPES = frozenset({"local_variable", "identifier", "variable"})
 
 
-def _argument_node(command_node):
-    for field_name in ("arguments", "argument", "expression"):
-        node = command_node.child_by_field_name(field_name)
-        if node is not None:
-            return node
-    for child in command_node.children:
-        if child.type in {"arguments", "argument"}:
-            return child
-    return None
+def _used_token_pattern(name: str) -> re.Pattern:
+    """Whole-token matcher for ``name`` that tolerates a leading ``%``.
+
+    A plain ``\\b{name}\\b`` never matches a ``%``-prefixed local because
+    there is no word boundary before ``%`` (both ``%`` and a preceding
+    space/start are non-word) — that bug made ~two-thirds of ``%``-var
+    M204 findings false. Use explicit token-boundary lookarounds that
+    treat ``%`` as part of the identifier instead.
+    """
+    return re.compile(
+        rf"(?<![A-Za-z0-9%]){re.escape(name)}(?![A-Za-z0-9])",
+        re.IGNORECASE,
+    )
 
 
 def _collect_definitions(parsed: ParsedSource):
@@ -53,7 +57,7 @@ def _collect_definitions(parsed: ParsedSource):
     for node in walk(parsed.tree.root_node):
         if node.type == "assignment":
             named = [c for c in node.children if c.is_named]
-            if named and named[0].type in _VAR_TYPES:
+            if named and named[0].type in VAR_TYPES:
                 yield (
                     named[0].start_byte,
                     named[0].end_byte,
@@ -64,11 +68,11 @@ def _collect_definitions(parsed: ParsedSource):
             text = parsed.node_text(node)
             if not (_NEW_KEYWORD_RE.match(text) or _READ_KEYWORD_RE.match(text)):
                 continue
-            args = _argument_node(node)
+            args = argument_node(node)
             if args is None:
                 continue
             for descendant in walk(args):
-                if descendant.type in _VAR_TYPES:
+                if descendant.type in VAR_TYPES:
                     yield (
                         descendant.start_byte,
                         descendant.end_byte,
@@ -115,7 +119,7 @@ class UnusedLocalRule(Rule):
         # consider it referenced.
         used_names: set[str] = set()
         for node in walk(parsed.tree.root_node):
-            if node.type not in _VAR_TYPES:
+            if node.type not in VAR_TYPES:
                 continue
             pos = (node.start_byte, node.end_byte)
             if pos in def_positions:
@@ -130,20 +134,24 @@ class UnusedLocalRule(Rule):
         # a docstring that mentions the variable from making it look
         # used.
         source_text_no_comments = _strip_mumps_comments(parsed.source_text)
+        # Well-known platform / API variables are read by callers, not
+        # this routine — never flag a SET to one as "unused".
+        external = known_external_vars(config)
         flagged_positions: set[tuple[int, int]] = set()
         for start, end, name, node in defs:
             if not name:
                 continue
-            if name in used_names:
+            if name in used_names or name in external:
                 continue
             # Backstop: look for the name outside its definition range
             # in the comment-stripped source. Eliminates false positives
             # on names consumed via XECUTE @VAR / indirection that the
             # AST walker can't trace, without letting a docstring
-            # mention re-mark the name as used.
+            # mention re-mark the name as used. The token matcher
+            # tolerates a leading ``%`` (the old ``\b`` form could not).
             before = source_text_no_comments[:start]
             after = source_text_no_comments[end:]
-            pattern = re.compile(rf"\b{re.escape(name)}\b", re.IGNORECASE)
+            pattern = _used_token_pattern(name)
             if pattern.search(before) or pattern.search(after):
                 continue
             # One finding per definition site.

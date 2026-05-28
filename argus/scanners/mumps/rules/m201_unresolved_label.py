@@ -28,6 +28,7 @@ from typing import Iterable
 from argus.core.models import Finding, Severity
 from ..parser import ParsedSource, walk
 from ..rule import Rule
+from ._common import is_command_mnemonic, preceded_by_error
 
 
 def _collect_declared_labels(parsed: ParsedSource) -> set[str]:
@@ -65,6 +66,17 @@ class UnresolvedLabelRule(Rule):
                 continue
             # Skip indirection (``@VAR``); that's M002 / M005 territory.
             if text.startswith("@"):
+                continue
+            # Grammar-misparse guards (the bulk of this rule's false
+            # positives on real corpora):
+            #  - a bare command keyword the grammar emitted as a call
+            #    target (``DTIME`` in ``R X:DTIME`` splits to ``D``+``TIME``);
+            #  - any call adjacent to an ERROR node, the signature of a
+            #    line the grammar couldn't parse (read-timeouts,
+            #    postconditionals).
+            if is_command_mnemonic(text):
+                continue
+            if preceded_by_error(node):
                 continue
             # Trim any opening paren (``LABEL(arg)``) before lookup
             label = text.split("(", 1)[0].strip().upper()

@@ -14,6 +14,7 @@ Names are case-insensitive on every MUMPS dialect we target.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Iterable
 
@@ -35,6 +36,19 @@ def _label_name(parsed: ParsedSource, label_node) -> str:
     return text.split(None, 1)[0].upper() if text else ""
 
 
+def _normalize_routine_name(name: str) -> str:
+    """Drop the percent-routine sigil so a ``%``-routine matches its
+    on-disk filename.
+
+    VistA's percent-routines (``%ZTLOAD``) are stored on filesystems
+    that disallow ``%`` as ``_ZTLOAD.m`` — the universal ``%``↔``_``
+    substitution. Stripping a single leading ``%`` or ``_`` from both
+    sides before comparison makes the convention a match instead of a
+    finding.
+    """
+    return name[1:] if name[:1] in ("%", "_") else name
+
+
 class RoutineNameMismatchRule(Rule):
     id = "M202"
     severity = Severity.INFO
@@ -49,8 +63,19 @@ class RoutineNameMismatchRule(Rule):
         if not declared:
             return
         expected = Path(parsed.path).stem.upper()
-        if declared == expected:
+        # Percent-routine convention: ``%FOO`` <-> ``_FOO.m``.
+        if _normalize_routine_name(declared) == _normalize_routine_name(expected):
             return
+        # Site-configurable ignore patterns (regex, matched against the
+        # uppercased declared name) for platform-variant routine
+        # families, e.g. ``.*(VXD|IS2|ONT|DTM|MSM|GTM)$``.
+        ignore = (config or {}).get("rules", {}).get(self.id, {}).get("ignore_patterns") or []
+        for pat in ignore:
+            try:
+                if re.search(pat, declared, re.IGNORECASE):
+                    return
+            except re.error:
+                continue
         yield self.make_finding(
             parsed,
             first,

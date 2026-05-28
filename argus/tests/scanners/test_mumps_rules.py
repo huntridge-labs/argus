@@ -226,6 +226,14 @@ class TestM201UnresolvedLabel:
         result = _scan(m_fixtures_dir / "m201_resolved.m")
         assert _findings_with_id(result, "M201") == []
 
+    def test_read_timeout_not_flagged(self, m_fixtures_dir):
+        # ``R X:DTIME`` misparses into a spurious routine_call ``TIME``
+        # next to an ERROR node; the guards must suppress it.
+        result = _scan(m_fixtures_dir / "m201_read_timeout.m")
+        labels = {f.metadata.get("label") for f in _findings_with_id(result, "M201")}
+        assert "TIME" not in labels
+        assert "DTIME" not in labels
+
 
 class TestM202RoutineNameMismatch:
     def test_fires_on_mismatch(self, m_fixtures_dir):
@@ -238,6 +246,18 @@ class TestM202RoutineNameMismatch:
 
     def test_matching_name_does_not_fire(self, m_fixtures_dir):
         result = _scan(m_fixtures_dir / "m202clean.m")
+        assert _findings_with_id(result, "M202") == []
+
+    def test_percent_routine_matches_after_strip(self, m_fixtures_dir):
+        # Label ``%M202PCT`` vs stem ``M202PCT`` — the %-routine
+        # convention is a match, not a mismatch.
+        result = _scan(m_fixtures_dir / "M202PCT.m")
+        assert _findings_with_id(result, "M202") == []
+
+    def test_ignore_patterns_suppresses(self, m_fixtures_dir):
+        # A site can suppress platform-variant families by regex.
+        cfg = {"rules": {"M202": {"ignore_patterns": ["^WRONG"]}}}
+        result = MumpsScanner().scan(str(m_fixtures_dir / "m202mismatch.m"), cfg)
         assert _findings_with_id(result, "M202") == []
 
 
@@ -280,6 +300,26 @@ class TestM203ImplicitDeclaration:
         # USER is defined; must NOT be flagged
         assert "USER" not in names
 
+    def test_formal_args_not_flagged(self, m_fixtures_dir):
+        # Formal params A,B parse as ``arguments`` siblings of the label.
+        result = _scan(m_fixtures_dir / "m203_formal_args.m")
+        names = {f.metadata.get("variable") for f in _findings_with_id(result, "M203")}
+        assert "A" not in names and "B" not in names
+
+    def test_external_vars_not_flagged(self, m_fixtures_dir):
+        # DUZ and U are on the known_external_vars allowlist.
+        result = _scan(m_fixtures_dir / "m203_external_var.m")
+        names = {f.metadata.get("variable") for f in _findings_with_id(result, "M203")}
+        assert "DUZ" not in names and "U" not in names
+
+    def test_custom_external_var_via_config(self, m_fixtures_dir):
+        # A site-specific var added through known_external_vars config
+        # must also be treated as defined.
+        cfg = {"known_external_vars": ["USR"]}
+        result = MumpsScanner().scan(str(m_fixtures_dir / "m203_typo.m"), cfg)
+        names = {f.metadata.get("variable") for f in _findings_with_id(result, "M203")}
+        assert "USR" not in names
+
 
 class TestM204UnusedLocal:
     def test_fires_on_dead_set(self, m_fixtures_dir):
@@ -290,6 +330,13 @@ class TestM204UnusedLocal:
         assert "LEFTOVER" in names
         # USED is read by the W command; must NOT be flagged
         assert "USED" not in names
+
+    def test_percent_var_not_flagged(self, m_fixtures_dir):
+        # %X is read by the W command; the %-aware token matcher must
+        # see the use (the old \\b pattern could not).
+        result = _scan(m_fixtures_dir / "m204_percent_var.m")
+        names = {f.metadata.get("variable") for f in _findings_with_id(result, "M204")}
+        assert "%X" not in names
 
 
 class TestM206KillGlobalNoSubscript:

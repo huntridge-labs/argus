@@ -14,10 +14,14 @@ variable reference is a *use*, and a use of a name not yet in the
 
 Known limitations (intentional for Phase 1):
 
-* Formal arguments on entry labels (``LABEL(ARG)``) — we add them to
-  ``defined`` greedily from the ``label`` node's text rather than
-  attaching them to that label's scope. This trades scope precision
-  for fewer false positives.
+* Formal arguments on entry labels (``LABEL(ARG)``) are seeded into the
+  ``defined`` set file-globally (extracted structurally from the
+  ``arguments`` siblings of each label node), not scoped to their own
+  entry. This trades scope precision for far fewer false positives.
+* Well-known VistA / FileMan / Kernel variables (``DUZ``, ``DT``,
+  ``U``, ``IO*``, ...) are treated as externally defined via the
+  ``known_external_vars`` allowlist. Per-routine accuracy for the rest
+  awaits the Phase 2 cross-file scope pass.
 * Cross-routine implicit-NEW (``ARG`` brought in by a calling routine)
   — out of scope until inter-procedural taint lands in Phase 2.
 * MUMPS chained SETs (``S X=1,Y=X+1``) — covered correctly because the
@@ -33,26 +37,19 @@ from typing import Iterable
 from argus.core.models import Finding, Severity
 from ..parser import ParsedSource, walk
 from ..rule import Rule
+from ._common import (
+    VAR_TYPES,
+    argument_node,
+    collect_formal_args,
+    known_external_vars,
+)
 
 _NEW_KEYWORD_RE = re.compile(r"^\s*N(?:EW)?\b", re.IGNORECASE)
 _READ_KEYWORD_RE = re.compile(r"^\s*R(?:EAD)?\b", re.IGNORECASE)
-# Variable references in the M scanner uniformly use these node types.
-_VAR_TYPES = frozenset({"local_variable", "identifier", "variable"})
 # A handful of MUMPS built-ins surface in the grammar as `local_variable`
 # nodes (``$T``, ``$ZARGV``, format helpers). Recognize them so we
 # don't flag intrinsics as undefined locals.
 _INTRINSIC_PREFIXES = ("$", "%")
-
-
-def _argument_node(command_node):
-    for field_name in ("arguments", "argument", "expression"):
-        node = command_node.child_by_field_name(field_name)
-        if node is not None:
-            return node
-    for child in command_node.children:
-        if child.type in {"arguments", "argument"}:
-            return child
-    return None
 
 
 def _collect_definition_positions(parsed: ParsedSource) -> set[tuple[int, int]]:
@@ -64,38 +61,19 @@ def _collect_definition_positions(parsed: ParsedSource) -> set[tuple[int, int]]:
     for node in walk(parsed.tree.root_node):
         if node.type == "assignment":
             named = [c for c in node.children if c.is_named]
-            if named and named[0].type in _VAR_TYPES:
+            if named and named[0].type in VAR_TYPES:
                 defs.add((named[0].start_byte, named[0].end_byte))
         elif node.type == "command":
             text = parsed.node_text(node)
             if not (_NEW_KEYWORD_RE.match(text) or _READ_KEYWORD_RE.match(text)):
                 continue
-            args = _argument_node(node)
+            args = argument_node(node)
             if args is None:
                 continue
             for descendant in walk(args):
-                if descendant.type in _VAR_TYPES:
+                if descendant.type in VAR_TYPES:
                     defs.add((descendant.start_byte, descendant.end_byte))
     return defs
-
-
-def _collect_label_arguments(parsed: ParsedSource) -> set[str]:
-    """Return uppercased names of formal arguments declared on any
-    label in the file. Conservative — we accept any token inside the
-    parentheses following a label name as a formal argument."""
-    names: set[str] = set()
-    for node in walk(parsed.tree.root_node):
-        if node.type != "label":
-            continue
-        text = parsed.node_text(node)
-        match = re.search(r"\(([^)]*)\)", text)
-        if not match:
-            continue
-        for arg in match.group(1).split(","):
-            cleaned = arg.strip().upper()
-            if cleaned and cleaned.replace("%", "").isalnum():
-                names.add(cleaned)
-    return names
 
 
 def _is_intrinsic(name: str) -> bool:
@@ -110,10 +88,15 @@ class ImplicitDeclarationRule(Rule):
 
     def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
         def_positions = _collect_definition_positions(parsed)
-        defined = _collect_label_arguments(parsed)
+        # Seed the defined set with (a) formal arguments declared on any
+        # entry label — they parse as ``arguments`` siblings of the
+        # label node, which the old label-text regex never saw — and
+        # (b) well-known VistA / FileMan / Kernel variables set by the
+        # platform or a calling API rather than this routine.
+        defined = collect_formal_args(parsed) | known_external_vars(config)
         flagged_names: set[str] = set()
         for node in walk(parsed.tree.root_node):
-            if node.type not in _VAR_TYPES:
+            if node.type not in VAR_TYPES:
                 continue
             position = (node.start_byte, node.end_byte)
             if position in def_positions:
