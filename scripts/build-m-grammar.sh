@@ -39,8 +39,14 @@ git clone --quiet "${TREE_SITTER_MUMPS_REPO}" "${WORK_DIR}/src-tree"
 ( cd "${WORK_DIR}/src-tree" && git checkout --quiet "${TREE_SITTER_MUMPS_SHA}" )
 
 echo "Compiling shared library to ${OUT_PATH}"
+# ``-Wno-error=implicit-function-declaration`` works around gcc 14+'s
+# default of promoting that warning to an error. tree-sitter-mumps'
+# scanner.c calls ``isspace`` without including ``<ctype.h>``; rather
+# than patch the vendored grammar source we downgrade the diagnostic.
 ( cd "${WORK_DIR}/src-tree" && \
-  gcc -O2 -shared -fPIC -I src -o "${OUT_PATH}" src/parser.c src/scanner.c )
+  gcc -O2 -shared -fPIC -I src \
+      -Wno-error=implicit-function-declaration \
+      -o "${OUT_PATH}" src/parser.c src/scanner.c )
 
 echo "MUMPS grammar installed at ${OUT_PATH}"
 echo ""

@@ -15,10 +15,17 @@ ARG TREE_SITTER_MUMPS_SHA=345f3fb29a6a281a9e28d244e901732bc68c51fc
 RUN apk add --no-cache git build-base
 
 WORKDIR /build
+# ``-Wno-error=implicit-function-declaration`` is load-bearing: Alpine
+# ships gcc 14+, which promotes the warning to an error by default.
+# tree-sitter-mumps' scanner.c calls ``isspace`` without including
+# ``<ctype.h>``; rather than patch the vendored grammar source, we
+# downgrade the diagnostic for the build.
 RUN git clone https://github.com/janus-llm/tree-sitter-mumps.git . && \
     git checkout "${TREE_SITTER_MUMPS_SHA}" && \
     mkdir -p /opt/grammars && \
-    gcc -O2 -shared -fPIC -I src -o /opt/grammars/mumps.so src/parser.c src/scanner.c
+    gcc -O2 -shared -fPIC -I src \
+        -Wno-error=implicit-function-declaration \
+        -o /opt/grammars/mumps.so src/parser.c src/scanner.c
 
 # ---------------------------------------------------------------------------
 # Stage 2: Runtime image
@@ -35,13 +42,16 @@ ARG TREE_SITTER_VERSION=0.21.3
 RUN apk upgrade --no-cache && \
     apk add --no-cache libstdc++
 
-# py-tree-sitter v0.21 retains the Language(path, name) constructor we use.
-# Pin tight — v0.22 reworked the API. The build deps are installed into
-# a virtual package so they can be removed in the same layer once the
-# wheel (if needed; cp314 / musllinux wheels are not always published)
-# is built and installed.
+# Python deps: py-tree-sitter v0.21 (we use the Language(path, name)
+# constructor that v0.22 dropped), plus the minimum Argus core needs
+# to import and run a scan. ``--virtual .ts-build-deps`` lets us drop
+# gcc / python-dev after the install layer so the runtime image stays
+# small (the grammar is already compiled in the previous stage).
 RUN apk add --no-cache --virtual .ts-build-deps gcc musl-dev python3-dev && \
-    pip install --no-cache-dir "tree-sitter==${TREE_SITTER_VERSION}" && \
+    pip install --no-cache-dir \
+        "tree-sitter==${TREE_SITTER_VERSION}" \
+        "PyYAML>=6.0.2" \
+        "packaging>=21" && \
     apk del .ts-build-deps
 
 RUN adduser -D -u 1000 argus
