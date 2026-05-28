@@ -1,0 +1,65 @@
+"""Rule abstraction for the MUMPS scanner.
+
+Each rule subclasses ``Rule`` and implements ``analyze(parsed)``,
+returning ``Finding`` instances. The scanner runs every registered rule
+against every parsed file; rules are responsible for filtering down to
+their own concern.
+
+A rule's ``id`` (``M001``, ``M002``, ...) and ``cwe`` become the
+``Finding.id`` / ``Finding.cwe`` fields. The ``severity`` is fixed per
+rule for Phase 1; in later phases config will allow overrides via the
+``rules.severity`` map in argus.yml.
+"""
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from typing import Iterable, Optional
+
+from argus.core.models import Finding, Severity
+from .parser import ParsedSource
+
+
+class Rule(ABC):
+    """Abstract base for a MUMPS scanner rule.
+
+    Subclasses **must** declare the four class-level attributes
+    (``id``, ``severity``, ``title``, ``cwe``) and implement
+    ``analyze``. The ``description_template`` is optional; rules that
+    interpolate runtime values into the description override
+    ``finding_description``.
+    """
+
+    id: str = ""
+    severity: Severity = Severity.MEDIUM
+    title: str = ""
+    cwe: Optional[str] = None
+
+    @abstractmethod
+    def analyze(self, parsed: ParsedSource) -> Iterable[Finding]:
+        """Yield findings for this rule against ``parsed``."""
+
+    def make_finding(
+        self,
+        parsed: ParsedSource,
+        node,
+        *,
+        description: Optional[str] = None,
+        metadata: Optional[dict] = None,
+    ) -> Finding:
+        """Construct a Finding with rule defaults filled in.
+
+        Subclasses call this to keep finding construction terse and
+        consistent. The ``location`` is derived from the tree-sitter
+        node's start position.
+        """
+        return Finding(
+            id=self.id,
+            severity=self.severity,
+            title=self.title,
+            description=description or self.title,
+            location=parsed.location(node),
+            cwe=self.cwe,
+            scanner="m",
+            metadata=metadata or {},
+        )

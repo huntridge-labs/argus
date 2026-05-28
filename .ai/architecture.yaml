@@ -237,6 +237,9 @@ scanners:
     - name: opengrep
       purpose: "Pattern-based multi-language scanning"
       languages: [multi]
+    - name: m
+      purpose: "MUMPS / M language SAST. Phase 1: M001 XECUTE injection (CWE-95), M002 indirection injection (CWE-94), M004 hard-coded credentials in globals (CWE-798), M101 duplicate label (diagnostic). Parser foundation: janus-llm/tree-sitter-mumps pinned to 345f3fb29a6a281a9e28d244e901732bc68c51fc (MITRE Public Release 23-4084, Apache-2.0). Local execution via scripts/build-m-grammar.sh; container fallback via docker/Dockerfile.m which pre-compiles the grammar at image build time. Phase 2/3 trajectory captured in docs/developer/SDK-ROADMAP.md."
+      languages: [mumps]
 
   secrets:
     - name: gitleaks
