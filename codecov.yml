@@ -15,6 +15,13 @@ coverage:
 
   ignore:
     - "tests/**/*"
+    # The SDK's own test suite lives under argus/tests/ — exclude it too
+    # (coverage measures the code under test, not the tests). The
+    # top-level tests/**/* line above misses this location, which let
+    # Docker-gated test files like test_container_smoke.py (whose
+    # slow/skip branches don't execute in the fast coverage run) drag
+    # down the patch metric.
+    - "argus/tests/**"
     - "examples/**/*"
     - "docs/**/*"
     - "*.md"

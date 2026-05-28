@@ -31,4 +31,33 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
+# --- Container-invocation smoke (scoped to changed scanners) ---
+# Actually runs scanner containers to catch invocation bugs (bad
+# entrypoint, rejected flags) that fixture-parsing unit tests miss.
+# Locally the registry cache makes pulls cheap. Skips cleanly when Docker
+# isn't available — CI runs the same scoped smoke on PRs. Scope comes from
+# scripts/ci/affected_scanners: only the changed scanners run, or the full
+# matrix when an engine/registry/template change could affect all.
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  AFFECTED=$(python -m scripts.ci.affected_scanners origin/main 2>/dev/null)
+  if [ -z "$AFFECTED" ]; then
+    echo "✅ No scanner modules changed — skipping container smoke."
+  elif [ "$AFFECTED" = "ALL" ]; then
+    echo "⏳ Engine/registry change — running full container smoke matrix..."
+    if ! pytest argus/tests/test_container_smoke.py -m slow --no-cov -q; then
+      echo "❌ Container smoke failed. A scanner's container invocation is broken."
+      exit 1
+    fi
+  else
+    KEXPR=$(echo "$AFFECTED" | paste -sd '|' - | sed 's/|/ or /g')
+    echo "⏳ Running container smoke for changed scanners: $KEXPR"
+    if ! pytest argus/tests/test_container_smoke.py -m slow --no-cov -q -k "$KEXPR"; then
+      echo "❌ Container smoke failed. A scanner's container invocation is broken."
+      exit 1
+    fi
+  fi
+else
+  echo "⚠️  Docker not available — skipping container smoke (CI runs it on PRs)."
+fi
+
 echo "✅ All tests passed! Safe to push."
