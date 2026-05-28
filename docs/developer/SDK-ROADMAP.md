@@ -225,78 +225,139 @@ GT.M + InterSystems Caché/IRIS, compiled `.o` analysis, SARIF v2.1.0, LSP, and 
 integration. Functional parity is a 12-month target, not 18-24. Re-verify quarterly.
 
 **Foundation:** `janus-llm/tree-sitter-mumps` (Apache-2.0, MITRE Public Release 23-4084),
-vendored at pinned SHA. Known grammar gaps documented: `block` does not nest,
-`pattern` is `/TODO/`, `for_statement` initializer partially commented out, XECUTE / OPEN /
-USE / HALT / QUIT all collapse into a single `keyword` regex (text-driven match required).
+vendored at pinned SHA `345f3fb2`. Known grammar gaps worked around in the rule modules:
+single-letter command keywords (`R`, `K`) are sometimes elided from the `keyword` child;
+OPEN parameter lists (`:(COMMAND=...)`) parse as phantom sibling commands; IF condition
+bodies surface ERROR nodes; the `pattern` operator (`?`) is a TODO stub. Where structural
+queries are unreliable, the rules fall back to text-anchored matching against the
+command's source line.
 
 #### Phase 1 — Core taint coverage (shipped, PR #213)
 
-- `argus/scanners/m/` sub-package: parser wrapper, Rule abstract base, intra-procedural
-  taint engine, SARIF v2.1.0 emission via the existing reporter.
-- Rule set:
-  - **M001** XECUTE injection (CWE-95). Taint from READ into XECUTE argument.
-  - **M002** indirection injection (CWE-94). Indirection of non-literal expression.
-  - **M003** OPEN / USE injection (CWE-78). Pulled forward from Phase 2; taint from READ
-    into device arguments. PIPE-device parameter-string parsing remains deferred to
-    Phase 2 (the rule fires HIGH on any tainted device argument today).
-  - **M004** hard-coded credentials in globals (CWE-798). `SET ^G(...)="literal"` pattern.
-  - **M005** tainted dynamic dispatch (CWE-95). Pulled forward from Phase 2; CRITICAL
-    severity when a `DO @VAR` indirection's referenced variable is READ-tainted.
-    Completes the 4-of-4 mHawk taint-sink surface (XECUTE / indirection / OPEN/USE /
-    dispatch) at parity for intra-procedural detection.
-  - **M006** tainted argument to external (`$&`) call (CWE-78). HIGH severity on
-    `$&Helper(arg)` when `arg` references a tainted variable. Extends taint coverage
-    to host-side helper invocations (`$&system`, `$&pipe`, custom registered callouts).
-  - **M101** duplicate label (diagnostic). Two labels with the same name in one routine.
-  - **M102** unreachable code after unconditional QUIT / HALT (diagnostic). Pulled forward
-    from Phase 2; postconditional Q / H are correctly excluded.
-  - **M201** DO / GOTO to undeclared label (diagnostic). Intra-file resolution against
-    declared labels; cross-routine `^ROUTINE` references skipped pending Phase 2's
-    project-wide routine index.
-  - **M202** first label does not match filename stem (diagnostic). GT.M / YottaDB /
-    Cache all enforce this convention; a mismatch breaks `DO ^ROUTINE` dispatch.
-  - **M203** local variable read before it was defined (diagnostic). MUMPS treats
-    undefined locals as the empty string; a typo on the definition site is silent
-    at runtime.
-  - **M204** local variable set but never read (diagnostic). Catches dead SETs from
-    removed features and typos on the *use* site.
-  - **M205** label body falls through into the following label (diagnostic). Catches
-    routines whose label bodies forget the terminating `Q` and silently spill into
-    the next label.
-  - **M206** KILL of an entire global tree (diagnostic, high real-world impact).
-    `K ^G` deletes the whole global tree from the database; production VistA
-    outages have been traced to exactly this construct.
-- Local execution via `scripts/build-m-grammar.sh`; container fallback via
-  `docker/Dockerfile.m` which pre-compiles `mumps.so` at image build time.
-- Installed via `pip install 'argus-security[m]'`; integration tests build the grammar
-  in CI's setup step and run against real fixtures.
-- Registered in `SCANNER_REGISTRY`; category `sast`.
+**Architecture**
+- `argus/scanners/m/` sub-package: parser wrapper (`parser.py`), Rule abstract base
+  (`rule.py`), shared taint collector (`taint.py`), 14 rule modules in `rules/`, and
+  `scanner.py` implementing the `Scanner` protocol.
+- Intra-procedural taint engine with three built-in source classes plus user-extensible
+  patterns. Document-order walk over the parse tree.
+- SARIF v2.1.0 emission via the existing reporter — all 14 rule IDs declared in the
+  driver block.
+- Two installation paths: `pip install argus-security[m]` + `scripts/build-m-grammar.sh`
+  for local execution, or the `scanner-m` container image (Alpine, multi-stage, grammar
+  pre-compiled at image build time, 28.6 MB compressed). Container build is validated
+  end-to-end locally; image publish lands as a Phase 2 item.
+- Registered in `SCANNER_REGISTRY`; category `sast`. Auto-exposed via the Argus MCP
+  server (`argus_list_scanners` / `argus_scan`).
+
+**Security rules — covers the five MUMPS code-injection sinks plus credential leak**
+- **M001** XECUTE injection (CWE-95, HIGH). Tainted variable in an XECUTE argument.
+- **M002** indirection injection (CWE-94, HIGH). Indirection of a non-literal expression.
+- **M003** OPEN / USE device injection (CWE-78, HIGH; **CRITICAL on PIPE devices**).
+  PIPE detection via `"PIPE"` device-name literal or `COMMAND=` parameter marker bumps
+  severity since PIPE arguments shell-execute at runtime.
+- **M004** hard-coded credentials in globals (CWE-798, CRITICAL). `SET ^G(...)="literal"`
+  with credential-shaped subscript. Literal value is redacted before reaching the Finding.
+- **M005** tainted dynamic dispatch (CWE-95, CRITICAL). `DO @VAR` where VAR is tainted.
+- **M006** tainted argument to external `$&` call (CWE-78, HIGH). Host-side helper
+  invocation (`$&system`, `$&pipe`, custom callouts) with tainted argument.
+
+**Diagnostic rules**
+- **M101** duplicate label in routine.
+- **M102** unreachable code after unconditional QUIT / HALT (postconditional excluded).
+- **M201** DO / GOTO to a label not declared in this file (cross-routine refs skipped
+  pending Phase 2's project-wide routine index).
+- **M202** first label does not match filename stem (GT.M / YottaDB / Caché convention).
+- **M203** local variable read before it was defined (typo on the definition site).
+- **M204** local variable set but never read (def-use analysis with comment-stripped
+  source-text fallback for XECUTE-consumed names).
+- **M205** label body falls through into the following label without an unconditional
+  `Q` / `H` / `G`.
+- **M206** KILL of an entire global tree (`K ^G` with no subscript) — high real-world
+  impact; production VistA outages have been traced to exactly this construct.
+
+**Taint sources (built-in)**
+- `READ` / `R` command arguments
+- `$ZARGV` (YottaDB / GT.M process arguments)
+- HTTP context globals `^%CGI`, `^%REQUEST`, `^%session`
+
+**Config-driven taint extension**
+- `scanners.m.taint_sources.patterns` in `argus.yml` accepts arbitrary regex strings
+  that join the source set seen by every taint-aware rule. Lets users add site-specific
+  intrinsics (`$ZIO`, custom HTTP globals, vendor input routines) without forking the
+  scanner. Differentiator vs. mHawk's closed rule engine.
+
+**Test coverage**
+- 25 unit tests (`argus/tests/scanners/test_m_scanner.py`) cover the scanner protocol
+  and rule registry without needing a compiled grammar.
+- 31 integration tests (`argus/tests/scanners/test_m_rules.py`) parse real `.m`
+  fixtures and assert per-rule behaviour. CI compiles `mumps.so` in the test-unit
+  workflow's setup step so these run on every PR.
+- Per-rule line coverage: 88-100%.
 
 #### Phase 2 — Deepening (six-month horizon)
-- **Inter-procedural taint.** Call-graph construction across `DO` / `GOTO` / routine_call;
-  per-routine taint summaries; recursion handling. Single largest technical lift; most
-  real-world MUMPS injection bugs cross at least one routine boundary.
-- **Broader taint sources.** `$ZARGV` (process arguments), formal arguments on entry
-  labels, HTTP-context globals (`%CGI`, `%session`).
-- **Diagnostic rule expansion** to roughly 15 of mHawk's 32 (unresolved references,
-  routine name mismatches, common style/error patterns surfaced by the AST).
-- **Docker image publish + container fallback wiring.** Image lands at
-  `ghcr.io/huntridge-labs/argus/scanner-m`; `CUSTOM_IMAGES` in `argus/containers.py`
-  picks up the SHA-pinned tag; `argus.yml` `containers.images` adds the build entry so
-  the build-containers workflow exercises it. Auto-covered by `container-smoke` once
-  the image is published.
+
+The single largest remaining gap is inter-procedural detection. Everything else is
+incremental progress against mHawk's diagnostic surface or operational maturity.
+
+- **Inter-procedural taint engine.** Largest technical lift in this whole roadmap.
+  Pre-pass that loads every routine in the scan path; call-graph builder across `DO` /
+  `GOTO` / `routine_call` / `^ROUTINE` references; per-routine taint summaries
+  (`call ENTRY^X with argN tainted → state in X`); recursion / mutual-recursion handling
+  via worklist iteration to fixpoint. Most real-world MUMPS injection bugs cross at
+  least one routine boundary; closing this is the single biggest perception-of-parity
+  win against mHawk.
+- **Formal-argument scope tracking.** Entry-label parameter lists (`LABEL(ARG1,ARG2)`)
+  become scope-aware definitions for M203 / M204 instead of the conservative
+  "any-formal-anywhere-is-defined" heuristic Phase 1 ships. Unlocks precise def-use
+  diagnostics inside routines that take parameters.
+- **Container image publish + workflow wiring.** Image lands at
+  `ghcr.io/huntridge-labs/argus/scanner-m:VERSION@sha256:...`; `CUSTOM_IMAGES` in
+  `argus/containers.py` picks up the SHA-pinned tag; `argus.yml` `containers.images`
+  adds the build entry so the build-containers workflow exercises it on every PR.
+  Auto-covered by `container-smoke` once the image is published.
+- **Diagnostic rule expansion** to roughly 20 (from 8 today, targeting the cheapest /
+  highest-signal half of mHawk's claimed 32). Candidates: undeclared global reference,
+  empty IF / ELSE body, bare KILL of all locals, NEW without later KILL pairing,
+  JOB without ID capture, deprecated intrinsics, label-name collision with reserved
+  word. Each is a 1-2 hour rule + fixture + test cycle.
+- **Per-rule severity overrides via argus.yml.** `scanners.m.rules.M203.severity: low`
+  lets operators tune the noise floor of the diagnostic surface against their codebase
+  without disabling rules outright.
+- **First false-positive triage pass.** Run against WorldVistA / RPMS / MailMan
+  forks, capture FP patterns by rule, refine. mHawk's actual moat is years of this
+  cycle — we have to start it.
+- **Configurable per-rule sanitizers.** `scanners.m.sanitizers` accepts function /
+  intrinsic names that remove taint when applied (`$$VALIDATE^LIBRARY`, etc.). Pairs
+  with the existing config-driven taint sources to make the whole flow tunable.
 
 #### Phase 3 — Full parity stretch (twelve-month horizon, MUMPS subject-matter expert engaged)
 
 - **ObjectScript / Caché / IRIS dialect support.** Grammar fork or upstream contribution
-  to MITRE for `Class Foo Extends Bar`, `..method()` dot-notation, `$ZF` / `$ZOBJ*`
-  intrinsics. Unlocks the InterSystems shops mHawk currently owns alone.
-- **Compiled `.o` file analysis** for YottaDB object files.
-- **LSP server** for VS Code + NeoVim (Go to Definition, Find References, Completion).
-- **Diagnostic rule expansion** to roughly 25-30 (closing the rest of mHawk's diagnostic
-  surface).
-- **False-positive triage cycle** against real OSS MUMPS codebases (WorldVistA, RPMS,
-  MailMan) to ground the rules in production patterns.
+  to MITRE for `Class Foo Extends Bar { Method ... }`, `..method()` dot-notation,
+  `$ZF` / `$ZOBJ*` intrinsics, and the `.mac` / `.int` / `.cls` file extensions.
+  Every Phase 1 rule re-validated against the new node types. Unlocks the InterSystems
+  shops mHawk currently owns alone.
+- **Compiled `.o` file analysis** for YottaDB object files. Useful for audit scenarios
+  where source isn't available; format is sparsely documented so the analyzer is
+  expected to be partial.
+- **LSP server** for VS Code + NeoVim — Go to Definition (cross-routine, using the
+  Phase 2 call graph), Find References, Completion, on-save diagnostics. Reuses the
+  parser and rule infrastructure; pygls makes the server itself thin.
+- **Diagnostic rule expansion** to 30+ (closing the rest of mHawk's claimed 32). The
+  long tail is style / convention rules that need real-corpus calibration to ship
+  without overwhelming users.
+- **Sustained false-positive triage cycle** against WorldVistA / RPMS / MailMan / OSEHRA
+  forks. Per-quarter pass: capture FP patterns, refine rules, document accepted-FP
+  baselines. This is mHawk's actual moat (years of customer-base tuning); we close it
+  by operating publicly with auditable rules and a tight feedback loop.
+- **Performance hardening.** Profile against routine corpora measured in thousands of
+  files; identify hot paths in the AST walks; selectively Cython-compile the taint
+  collector and rule iteration if a measurable difference exists. Rust port is not
+  on the table — interop cost outweighs the speed gain at this scale.
+- **MCP-driven triage tools.** `argus_explain_finding` extended for MUMPS-specific
+  context (cite the relevant Caché / GT.M / YottaDB documentation page); a dedicated
+  `argus_m_routine_callgraph` MCP tool that surfaces the Phase 2 call graph for
+  AI-assisted code review.
 
 #### Known persistent gaps
 
@@ -305,14 +366,24 @@ USE / HALT / QUIT all collapse into a single `keyword` regex (text-driven match 
 - **Pattern operator (`?`) support** depends on upstreaming a grammar fix to MITRE.
   Sanitizer auto-inference remains config-driven until then.
 
-#### Differentiators (not parity targets)
+#### Differentiators (not parity targets — durable axes where Argus wins)
 
 - **OSS / Apache-2.0 license** with no procurement barrier for federal / healthcare orgs.
 - **Native SARIF v2.1.0 with full Argus suite integration** — unified scanner output;
-  shared `argus view` triage; shared MCP at the suite level.
-- **Air-gappable container distribution** matching the rest of Argus's posture.
-- **Auditable, YAML-configurable rules** — taint sources / sanitizers / sinks declared in
-  config, no closed-source rule engine.
+  shared `argus view` triage; shared MCP server at the suite level; aggregated
+  security-summary across every scanner; no parallel toolchain for MUMPS vs every other
+  language in the codebase.
+- **Air-gappable container distribution** matching the rest of Argus's posture — the
+  `scanner-m` image is self-contained (grammar pre-compiled at image build time, no
+  network access required at scan time).
+- **Auditable, YAML-configurable rules** — taint sources (shipped in Phase 1 via
+  `scanners.m.taint_sources.patterns`), sanitizers (Phase 2), and per-rule severity
+  (Phase 2) declared in `argus.yml`. No closed-source rule engine. Operators can tune
+  the scanner against their codebase without forking or vendor escalation.
+- **MCP integration baked into the suite, not bolted on.** Argus's MCP server auto-
+  exposes every scanner including `m`; the AI assistant can drive scans, list rules,
+  and (Phase 3) walk the call graph through the same protocol surface mHawk reserves
+  for its dedicated MCP product.
 
 ---
 
