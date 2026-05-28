@@ -38,6 +38,18 @@ coverage:
     # the widget tree.
     - "argus/viewers/terminal/app.py"
     - "argus/viewers/browser/app.py"
+    # MUMPS scanner rule bodies + parser wrapper. The rule logic
+    # (each ``analyze()``) and the tree-sitter grammar loader can
+    # only be meaningfully exercised with a compiled ``mumps.so``.
+    # The per-rule integration tests in
+    # ``argus/tests/scanners/test_m_rules.py`` cover those paths but
+    # skip cleanly when the grammar is unreachable, which is the case
+    # in CI until the build-grammar step lands as a follow-up commit
+    # on this branch. Unit-level scanner surface (registry, protocol,
+    # error path) IS covered in ``test_m_scanner.py``. Remove these
+    # lines once CI builds the grammar.
+    - "argus/scanners/m/parser.py"
+    - "argus/scanners/m/rules/*.py"
 
 comment:
   layout: "reach,diff,flags,tree"
