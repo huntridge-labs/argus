@@ -4,6 +4,7 @@ from .eslint import EslintLinter
 from .hadolint import HadolintLinter
 from .jsonlint import JsonlintLinter
 from .python_lint import PythonLinter
+from .shellcheck import ShellcheckLinter
 from .terraform import TerraformLinter
 from .yamllint import YamllintLinter
 
@@ -12,6 +13,7 @@ __all__ = [
     "HadolintLinter",
     "JsonlintLinter",
     "PythonLinter",
+    "ShellcheckLinter",
     "TerraformLinter",
     "YamllintLinter",
     "LINTER_REGISTRY",
@@ -27,6 +29,7 @@ LINTER_REGISTRY = {
     "lint-javascript": EslintLinter,
     "lint-dockerfile": HadolintLinter,
     "lint-terraform": TerraformLinter,
+    "lint-shell": ShellcheckLinter,
 }
 
 
