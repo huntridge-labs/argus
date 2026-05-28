@@ -367,6 +367,36 @@ class TestM208BareNew:
         assert len(hits) == 1
 
 
+class TestM209ArgCountMismatch:
+    def test_fires_when_too_many_actuals(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "argcount")
+        hits = _findings_with_id(result, "M209")
+        assert hits, "M209 must fire when a call passes more args than formals"
+        f = hits[0]
+        assert "CALLER.m" in (f.location or ""), "finding is at the call site"
+        assert f.metadata.get("actuals") == 3
+        assert f.metadata.get("formals") == 2
+        assert "RUN^CALLEE" in f.metadata.get("callee", "")
+
+    def test_correct_arity_does_not_fire(self, m_fixtures_dir):
+        # OK^CALLEE(1,2) into a 2-formal entry must not be flagged; only
+        # the over-arity RUN^CALLEE call fires.
+        result = _scan(m_fixtures_dir / "argcount")
+        assert len(_findings_with_id(result, "M209")) == 1
+
+
+class TestM210DuplicateNew:
+    def test_fires_on_duplicate_new_target(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m210_dup_new.m")
+        hits = _findings_with_id(result, "M210")
+        assert hits, "M210 must fire on a repeated name in one NEW list"
+        assert hits[0].metadata.get("variable") == "IEN"
+
+    def test_distinct_new_targets_do_not_fire(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m210_unique_new.m")
+        assert _findings_with_id(result, "M210") == []
+
+
 class TestM212InfiniteFor:
     def test_fires_on_argumentless_for_without_exit(self, m_fixtures_dir):
         result = _scan(m_fixtures_dir / "m212_infinite_for.m")

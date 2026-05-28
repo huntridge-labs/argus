@@ -58,6 +58,11 @@ class CallEdge:
     Drives one-hop inter-procedural taint: if an actual references a
     tainted name, the callee's i-th formal becomes tainted."""
 
+    has_nested_call: bool = False
+    """True when an actual argument itself contains a nested call
+    (``D RUN^B($$MAX^X(A,B))``). The positional split is unreliable
+    then, so the arg-count rule (M209) skips such edges."""
+
 
 @dataclass(frozen=True)
 class RoutineNode:
@@ -175,11 +180,14 @@ def _identifier_names_in(node, parsed: ParsedSource) -> frozenset[str]:
 
 
 def _actual_arg_names(routine_call_node, parsed: ParsedSource):
-    """Positional actual-argument identifier sets for a call site.
+    """Positional actual-argument identifier sets + nested-call flag.
 
-    ``RUN^B(CMD,1)`` -> ``(frozenset({'CMD'}), frozenset())`` — the
-    grammar shapes a call's actuals as a single ``arguments`` child of
-    ``routine_call`` with positional ``argument`` children.
+    ``RUN^B(CMD,1)`` -> ``((frozenset({'CMD'}), frozenset()), False)`` —
+    the grammar shapes a call's actuals as a single ``arguments`` child
+    of ``routine_call`` with positional ``argument`` children. The bool
+    is True when any actual contains a nested call (``$$MAX^X(A,B)`` or
+    another ``routine_call``), which makes positional counting
+    unreliable for M209.
     """
     args = None
     for child in routine_call_node.children:
@@ -187,12 +195,18 @@ def _actual_arg_names(routine_call_node, parsed: ParsedSource):
             args = child
             break
     if args is None:
-        return ()
+        return (), False
     actuals: list[frozenset[str]] = []
+    has_nested = False
     for child in args.children:
-        if child.type == "argument":
-            actuals.append(_identifier_names_in(child, parsed))
-    return tuple(actuals)
+        if child.type != "argument":
+            continue
+        actuals.append(_identifier_names_in(child, parsed))
+        for desc in walk(child):
+            if desc.type in ("function_call", "routine_call"):
+                has_nested = True
+                break
+    return tuple(actuals), has_nested
 
 
 def _collect_entry_formals(parsed: ParsedSource) -> dict[str, tuple[str, ...]]:
@@ -246,12 +260,14 @@ def _collect_call_edges(node_name: str, parsed: ParsedSource) -> list[CallEdge]:
         callee_routine = match.group("routine").upper()
         callee_label = match.group("label")
         callee_label_upper = callee_label.upper() if callee_label else None
+        actuals, has_nested = _actual_arg_names(node, parsed)
         edges.append(CallEdge(
             caller=node_name,
             callee_routine=callee_routine,
             callee_label=callee_label_upper,
             call_site=parsed.location(node),
-            actual_arg_names=_actual_arg_names(node, parsed),
+            actual_arg_names=actuals,
+            has_nested_call=has_nested,
         ))
     return edges
 
