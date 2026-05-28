@@ -258,6 +258,10 @@ scanners:
     - name: checkov
       purpose: "IaC policy-as-code scanning"
       output: SARIF
+    - name: kics
+      purpose: "Multi-format IaC scanning — Ansible, Bicep, Helm, Terraform, Kubernetes, Dockerfile, CloudFormation, OpenAPI"
+      output: JSON
+      note: "Checkmarx KICS (Apache-2.0). Runs concurrently with trivy-iac/checkov — they catch different things on the same target (issue #188)"
 
   dependencies:
     - name: osv
@@ -526,6 +530,7 @@ docsite:
       - gitleaks
       - osv
       - checkov
+      - kics
       - opengrep
       - supply-chain
       - zap

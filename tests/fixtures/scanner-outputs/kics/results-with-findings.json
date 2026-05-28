@@ -1,0 +1,116 @@
+{
+  "kics_version": "v2.1.3",
+  "files_scanned": 6,
+  "lines_scanned": 412,
+  "files_parsed": 6,
+  "lines_parsed": 412,
+  "queries_total": 3012,
+  "queries_failed_to_execute": 0,
+  "scan_id": "console",
+  "severity_counters": {
+    "HIGH": 1,
+    "MEDIUM": 1,
+    "LOW": 1,
+    "INFO": 1,
+    "TRACE": 0
+  },
+  "total_counter": 4,
+  "total_bom_resources": 0,
+  "start": "2026-05-26T12:00:00.000000Z",
+  "end": "2026-05-26T12:00:11.000000Z",
+  "paths": [
+    "/workspace"
+  ],
+  "queries": [
+    {
+      "query_name": "Passwords And Secrets - Generic Password",
+      "query_id": "487f4be7-3fd9-4506-a07a-eae252180c08",
+      "query_url": "https://docs.kics.io/latest/secrets/",
+      "severity": "HIGH",
+      "platform": "Ansible",
+      "category": "Secret Management",
+      "description": "Query to find passwords and secrets in infrastructure code.",
+      "description_id": "d69d8d87",
+      "cwe": "798",
+      "files": [
+        {
+          "file_name": "playbooks/deploy.yml",
+          "similarity_id": "a1b2c3",
+          "line": 14,
+          "issue_type": "RedundantAttribute",
+          "search_key": "db_password",
+          "search_value": "db_password: s3cr3t-pw-KICS999",
+          "expected_value": "Hardcoded secret should not be present",
+          "actual_value": "db_password: s3cr3t-pw-KICS999"
+        }
+      ]
+    },
+    {
+      "query_name": "S3 Bucket Without Server-Side-Encryption",
+      "query_id": "63ec5b46-7c4a-4e3e-9b8f-3d2c8e1f0a11",
+      "query_url": "https://docs.kics.io/latest/queries/terraform-queries/aws/63ec5b46/",
+      "severity": "MEDIUM",
+      "platform": "Terraform",
+      "category": "Encryption",
+      "description": "S3 Bucket should have server-side encryption enabled.",
+      "description_id": "1f9a2b3c",
+      "cwe": "311",
+      "files": [
+        {
+          "file_name": "terraform/s3.tf",
+          "similarity_id": "d4e5f6",
+          "line": 8,
+          "issue_type": "MissingAttribute",
+          "search_key": "aws_s3_bucket[data].server_side_encryption_configuration",
+          "search_value": "",
+          "expected_value": "server_side_encryption_configuration should be defined",
+          "actual_value": "server_side_encryption_configuration is undefined"
+        }
+      ]
+    },
+    {
+      "query_name": "Container Running As Root",
+      "query_id": "22cd11b8-1d3a-4f2e-8a7c-9b0e6f5d4c33",
+      "query_url": "https://docs.kics.io/latest/queries/k8s-queries/22cd11b8/",
+      "severity": "LOW",
+      "platform": "Kubernetes",
+      "category": "Insecure Configurations",
+      "description": "Container should not run as root.",
+      "description_id": "5c6d7e8f",
+      "files": [
+        {
+          "file_name": "k8s/deployment.yaml",
+          "similarity_id": "g7h8i9",
+          "line": 23,
+          "issue_type": "MissingAttribute",
+          "search_key": "spec.template.spec.securityContext.runAsNonRoot",
+          "search_value": "",
+          "expected_value": "runAsNonRoot should be set to true",
+          "actual_value": "runAsNonRoot is undefined"
+        }
+      ]
+    },
+    {
+      "query_name": "Healthcheck Instruction Missing",
+      "query_id": "b03a748a-542d-44f4-bb86-9199ab4fd2d5",
+      "query_url": "https://docs.kics.io/latest/queries/dockerfile-queries/b03a748a/",
+      "severity": "INFO",
+      "platform": "Dockerfile",
+      "category": "Insecure Configurations",
+      "description": "Ensure that HEALTHCHECK is being used.",
+      "description_id": "9a0b1c2d",
+      "files": [
+        {
+          "file_name": "Dockerfile",
+          "similarity_id": "j0k1l2",
+          "line": 1,
+          "issue_type": "MissingAttribute",
+          "search_key": "FROM={{alpine:3.19}}",
+          "search_value": "",
+          "expected_value": "Dockerfile should contain instruction 'HEALTHCHECK'",
+          "actual_value": "Dockerfile does not contain instruction 'HEALTHCHECK'"
+        }
+      ]
+    }
+  ]
+}
