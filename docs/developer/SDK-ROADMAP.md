@@ -208,6 +208,89 @@ calls that need to land before the integration touches argus's surfaces.
 - **"Open in portal" deep-links.** `argus-portal://scan/<id>` or HTTP URL. Works if scans
   have portal-assigned IDs.
 
+---
+
+## In-flight initiatives
+
+### MUMPS / M language SAST (`argus scan m`)
+
+Closes the OSS gap behind mHawk (IDEA Systems, commercial, the only purpose-built MUMPS
+SAST). Target audience is federal / healthcare orgs running VistA on YottaDB or GT.M whose
+procurement posture rules out closed-source SAST. Multi-phase capability build, not a
+follow-up.
+
+**Vendor reality check** (`mumps.cz`, captured 2026-05-28): mHawk ships **4 taint rules
++ 32 diagnostic rules = 36 total**, in Rust, with inter-procedural taint flow, YottaDB +
+GT.M + InterSystems Caché/IRIS, compiled `.o` analysis, SARIF v2.1.0, LSP, and MCP
+integration. Functional parity is a 12-month target, not 18-24. Re-verify quarterly.
+
+**Foundation:** `janus-llm/tree-sitter-mumps` (Apache-2.0, MITRE Public Release 23-4084),
+vendored at pinned SHA. Known grammar gaps documented: `block` does not nest,
+`pattern` is `/TODO/`, `for_statement` initializer partially commented out, XECUTE / OPEN /
+USE / HALT / QUIT all collapse into a single `keyword` regex (text-driven match required).
+
+#### Phase 1 — Core taint coverage (this PR)
+
+- `argus/scanners/m/` sub-package: parser wrapper, Rule abstract base, intra-procedural
+  taint engine, SARIF v2.1.0 emission via the existing reporter.
+- Rule set:
+  - **M001** XECUTE injection (CWE-95). Taint from READ + global reads into XECUTE argument.
+  - **M002** indirection injection (CWE-94). Taint into the `@` operator. Cleanest
+    structural query of the four since `indirection` is a named node.
+  - **M004** hard-coded credentials in globals (CWE-798). `SET ^G(...)="literal"` pattern.
+  - **M101** duplicate label (diagnostic). Two labels with the same name in one routine.
+- Local-only execution (no container image); installed via `pip install argus-security[m]`.
+- Fixtures + per-rule tests; registered in `SCANNER_REGISTRY`; category `sast`.
+- Explicitly deferred to later phases: M003, M005, M102, inter-procedural taint,
+  ObjectScript, `.o` analysis, LSP, full mHawk diagnostic surface.
+
+#### Phase 2 — Taint parity with mHawk (six-month horizon)
+
+- **M003** OPEN/USE injection (CWE-78). Taint into device arguments. HIGH severity, not
+  CRITICAL; PIPE-device caveat documented since accurate PIPE detection requires parsing
+  device parameter strings (`/COMMAND=`).
+- **M005** tainted global dispatch (CWE-95). Taint into routine name resolution
+  (`DO @^GLOB(...)`, `XECUTE` of a subscript composed from input). Matches mHawk's
+  fourth taint sink, closing the day-one gap.
+- **M102** unreachable code after QUIT/HALT (diagnostic).
+- **Inter-procedural taint.** Call-graph construction across `DO` / `GOTO` / routine_call;
+  per-routine taint summaries; recursion handling. Single largest technical lift; most
+  real-world MUMPS injection bugs cross at least one routine boundary.
+- **Diagnostic rule expansion** to roughly 15 of mHawk's 32 (unresolved references,
+  routine name mismatches, common style/error patterns surfaced by the AST).
+- **Docker image + container fallback** (matches the bandit pattern: local-first,
+  container fallback). Auto-covered by the `container-smoke` harness once an image exists.
+
+#### Phase 3 — Full parity stretch (twelve-month horizon, MUMPS subject-matter expert engaged)
+
+- **ObjectScript / Caché / IRIS dialect support.** Grammar fork or upstream contribution
+  to MITRE for `Class Foo Extends Bar`, `..method()` dot-notation, `$ZF` / `$ZOBJ*`
+  intrinsics. Unlocks the InterSystems shops mHawk currently owns alone.
+- **Compiled `.o` file analysis** for YottaDB object files.
+- **LSP server** for VS Code + NeoVim (Go to Definition, Find References, Completion).
+- **Diagnostic rule expansion** to roughly 25-30 (closing the rest of mHawk's diagnostic
+  surface).
+- **False-positive triage cycle** against real OSS MUMPS codebases (WorldVistA, RPMS,
+  MailMan) to ground the rules in production patterns.
+
+#### Known persistent gaps
+
+- **VA-specific FileMan / HL7 / FHIR adapter patterns.** mHawk has years of customer-base
+  tuning here. Closing this without sustained subject-matter expertise on the team is unrealistic.
+- **Pattern operator (`?`) support** depends on upstreaming a grammar fix to MITRE.
+  Sanitizer auto-inference remains config-driven until then.
+
+#### Differentiators (not parity targets)
+
+- **OSS / Apache-2.0 license** with no procurement barrier for federal / healthcare orgs.
+- **Native SARIF v2.1.0 with full Argus suite integration** — unified scanner output;
+  shared `argus view` triage; shared MCP at the suite level.
+- **Air-gappable container distribution** matching the rest of Argus's posture.
+- **Auditable, YAML-configurable rules** — taint sources / sanitizers / sinks declared in
+  config, no closed-source rule engine.
+
+---
+
 ### 0.6.x parity (deferred)
 
 - **Web-app authentication V2 — argus-native form block.** A `scanners.zap.auth.form` block
