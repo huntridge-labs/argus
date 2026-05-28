@@ -231,6 +231,9 @@ scanners:
     - name: bandit
       purpose: "Python-specific security linter"
       languages: [python]
+    - name: gosec
+      purpose: "Go-native security linter (G101 hardcoded creds, G201 SQL injection, G304 path traversal, etc.)"
+      languages: [go]
     - name: opengrep
       purpose: "Pattern-based multi-language scanning"
       languages: [multi]
@@ -528,6 +531,7 @@ docsite:
       "tests/": "Co-located pytest tests (180 tests, 83%+ coverage)"
     scanners:
       - bandit
+      - gosec
       - clamav
       - trivy-iac
       - gitleaks

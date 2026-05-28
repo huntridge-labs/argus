@@ -5,6 +5,7 @@ from .checkov import CheckovScanner
 from .clamav import ClamavScanner
 from .container import ContainerScanner
 from .gitleaks import GitleaksScanner
+from .gosec import GosecScanner
 from .grype import GrypeScanner
 from .kics import KICSScanner
 from .opengrep import OpengrepScanner
@@ -21,6 +22,7 @@ __all__ = [
     "ClamavScanner",
     "ContainerScanner",
     "GitleaksScanner",
+    "GosecScanner",
     "GrypeScanner",
     "KICSScanner",
     "OpengrepScanner",
@@ -38,6 +40,7 @@ __all__ = [
 
 SCANNER_REGISTRY = {
     "bandit": BanditScanner,
+    "gosec": GosecScanner,
     "clamav": ClamavScanner,
     "trivy": TrivyScanner,
     "trivy-iac": TrivyIacScanner,
