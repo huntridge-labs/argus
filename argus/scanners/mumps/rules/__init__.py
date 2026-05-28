@@ -24,6 +24,10 @@ from .m209_arg_count_mismatch import ArgCountMismatchRule
 from .m210_duplicate_new import DuplicateNewRule
 from .m212_infinite_for import InfiniteForRule
 from .m213_quit_arg_in_for import QuitArgInForRule
+from .m214_naked_global import NakedGlobalRule
+from .m215_nonportable_zcommand import NonPortableZCommandRule
+from .m216_nonportable_zfunction import NonPortableZFunctionRule
+from .m217_nonportable_zsvn import NonPortableZSpecialVarRule
 
 RULES = [
     XECUTEInjectionRule(),
@@ -46,6 +50,10 @@ RULES = [
     DuplicateNewRule(),
     InfiniteForRule(),
     QuitArgInForRule(),
+    NakedGlobalRule(),
+    NonPortableZCommandRule(),
+    NonPortableZFunctionRule(),
+    NonPortableZSpecialVarRule(),
 ]
 
 __all__ = [
@@ -70,4 +78,8 @@ __all__ = [
     "DuplicateNewRule",
     "InfiniteForRule",
     "QuitArgInForRule",
+    "NakedGlobalRule",
+    "NonPortableZCommandRule",
+    "NonPortableZFunctionRule",
+    "NonPortableZSpecialVarRule",
 ]

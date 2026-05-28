@@ -422,6 +422,65 @@ class TestM213QuitArgInFor:
         assert _findings_with_id(result, "M213") == []
 
 
+def _on(rule_id):
+    return {"rules": {rule_id: {"enabled": True}}}
+
+
+class TestM214NakedGlobal:
+    def test_fires_on_naked_reference(self, m_fixtures_dir):
+        result = MumpsScanner().scan(
+            str(m_fixtures_dir / "m214_naked_global.m"), _on("M214"),
+        )
+        hits = _findings_with_id(result, "M214")
+        assert len(hits) == 1, "only the naked ^(2) reference should fire"
+        assert hits[0].metadata.get("reference", "").startswith("^(")
+
+    def test_off_by_default(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m214_naked_global.m")
+        assert _findings_with_id(result, "M214") == []
+
+
+class TestM215NonPortableZCommand:
+    def test_fires_on_z_commands(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m215_zcommand.m")
+        cmds = {f.metadata.get("command") for f in _findings_with_id(result, "M215")}
+        assert "ZSYSTEM" in cmds and "ZGOTO" in cmds
+
+    def test_standard_command_not_flagged(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m215_zcommand.m")
+        # Exactly the two Z-commands, nothing else (the W is portable).
+        assert len(_findings_with_id(result, "M215")) == 2
+
+
+class TestM216NonPortableZFunction:
+    def test_fires_on_z_intrinsic(self, m_fixtures_dir):
+        result = MumpsScanner().scan(
+            str(m_fixtures_dir / "m216_zfunction.m"), _on("M216"),
+        )
+        fns = {f.metadata.get("function") for f in _findings_with_id(result, "M216")}
+        assert "$ZD" in fns
+        # $P (standard) must not fire.
+        assert all("$P" not in (x or "") for x in fns)
+
+    def test_off_by_default(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m216_zfunction.m")
+        assert _findings_with_id(result, "M216") == []
+
+
+class TestM217NonPortableZSpecialVar:
+    def test_fires_on_z_special_var(self, m_fixtures_dir):
+        result = MumpsScanner().scan(
+            str(m_fixtures_dir / "m217_zsvn.m"), _on("M217"),
+        )
+        svns = {f.metadata.get("special_variable") for f in _findings_with_id(result, "M217")}
+        assert "$ZV" in svns
+        assert "$H" not in svns
+
+    def test_off_by_default(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m217_zsvn.m")
+        assert _findings_with_id(result, "M217") == []
+
+
 class TestConfigurableSanitizers:
     def test_sanitizer_removes_taint(self, m_fixtures_dir, tmp_path):
         # Construct a fixture inline that wraps a READ-tainted value in

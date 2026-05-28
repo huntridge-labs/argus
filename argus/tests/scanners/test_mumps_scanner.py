@@ -101,6 +101,7 @@ class TestRuleRegistry:
             "M101", "M102",
             "M201", "M202", "M203", "M204", "M205", "M206",
             "M207", "M208", "M209", "M210", "M212", "M213",
+            "M214", "M215", "M216", "M217",
         }
 
     def test_rule_ids_are_distinct(self):
@@ -118,6 +119,7 @@ class TestRuleRegistry:
             "M101", "M102",
             "M201", "M202", "M203", "M204", "M205", "M206", "M207", "M208",
             "M209", "M210", "M213",  # M212 carries CWE-835, excluded here
+            "M214", "M215", "M216", "M217",
         }
         for rule in RULES:
             if rule.id in diagnostic_ids:
