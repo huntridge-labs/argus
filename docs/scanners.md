@@ -310,7 +310,7 @@ reporters:
 
 > **Secret redaction:** for the M004 (hard-coded credentials) rule, the matched literal value is replaced with the redaction placeholder before the finding is constructed. Defense-in-depth: `Finding.__post_init__` runs the pattern-based redactor as a second pass. The literal never reaches any reporter, export, or the MCP server. Integration test `test_literal_value_is_redacted` enforces this contract.
 
-> **Taint scope:** Phase 1 taint analysis is intra-file. Inter-procedural taint (call-graph construction across `DO` / `GOTO` / routine_call) lands in Phase 2 — see `docs/developer/SDK-ROADMAP.md`. Until then, M001 / M003 detect READ → sink paths that stay within a single routine file.
+> **Taint scope:** Phase 1 taint analysis is intra-file. Recognized taint sources are `READ` (terminal input), `$ZARGV` (YottaDB / GT.M process arguments), and the HTTP context globals `^%CGI`, `^%REQUEST`, `^%session`. The collector is shared between M001 / M003 / M005, so every taint-sink rule sees the full source surface uniformly. Inter-procedural taint (call-graph construction across `DO` / `GOTO` / `routine_call`) and formal-argument tracking land in Phase 2 — see `docs/developer/SDK-ROADMAP.md`.
 
 </details>
 

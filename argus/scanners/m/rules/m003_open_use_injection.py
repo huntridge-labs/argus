@@ -1,4 +1,4 @@
-"""M003 — OPEN / USE injection from READ-tainted input (CWE-78).
+"""M003 — OPEN / USE injection from tainted input (CWE-78).
 
 MUMPS implementations let device arguments shape what the runtime does
 with the device. The relevant abuses:
@@ -11,10 +11,11 @@ with the device. The relevant abuses:
   or network endpoint a routine reads from or writes to. Path traversal
   on file devices, attacker-chosen server on socket devices.
 
-Detection mirrors M001's intra-file READ-taint flow: walk the routine,
-remember every variable assigned from a ``READ``, then flag every
-``OPEN`` / ``USE`` command whose argument expression references one of
-those names.
+Detection uses the shared
+:func:`argus.scanners.m.taint.collect_tainted_variables` collector to
+seed the tainted set (READ, ``$ZARGV``, HTTP context globals) and then
+walks for ``O`` / ``OPEN`` and ``U`` / ``USE`` commands whose argument
+expression text references one of those names.
 
 HIGH severity (not CRITICAL): accurate ``PIPE`` detection requires
 parsing the device parameter string (``/COMMAND=...``), and most
@@ -30,8 +31,8 @@ from typing import Iterable
 from argus.core.models import Finding, Severity
 from ..parser import ParsedSource, walk
 from ..rule import Rule
+from ..taint import collect_tainted_variables
 
-_READ_KEYWORD_RE = re.compile(r"^\s*R(?:EAD)?\b", re.IGNORECASE)
 _OPEN_KEYWORD_RE = re.compile(r"^\s*O(?:PEN)?\b", re.IGNORECASE)
 _USE_KEYWORD_RE = re.compile(r"^\s*U(?:SE)?\b", re.IGNORECASE)
 
@@ -47,42 +48,27 @@ def _argument_node(command_node):
     return None
 
 
-def _extract_target_identifiers(arg_node) -> list[str]:
-    if arg_node is None:
-        return []
-    targets: list[str] = []
-    for node in walk(arg_node):
-        if node.type in {"identifier", "local_variable", "variable"}:
-            targets.append(node.text.decode("utf-8", errors="replace").strip())
-    return targets
-
-
 class OpenUseInjectionRule(Rule):
     id = "M003"
     severity = Severity.HIGH
-    title = "OPEN / USE of READ-tainted device argument"
+    title = "OPEN / USE of tainted device argument"
     cwe = "CWE-78"
 
     def analyze(self, parsed: ParsedSource) -> Iterable[Finding]:
-        tainted: set[str] = set()
+        tainted = collect_tainted_variables(parsed)
+        if not tainted:
+            return
         for node in walk(parsed.tree.root_node):
             if node.type != "command":
                 continue
             command_text = parsed.node_text(node)
-            args = _argument_node(node)
-            if _READ_KEYWORD_RE.match(command_text):
-                for name in _extract_target_identifiers(args):
-                    if name:
-                        tainted.add(name.upper())
-                continue
             is_open = bool(_OPEN_KEYWORD_RE.match(command_text))
             is_use = bool(_USE_KEYWORD_RE.match(command_text))
             if not (is_open or is_use):
                 continue
-            if not tainted:
-                continue
+            args = _argument_node(node)
             arg_text = parsed.node_text(args).strip() if args else ""
-            hits = self._tainted_references(arg_text, tainted)
+            hits = _tainted_references(arg_text, tainted)
             if not hits:
                 continue
             keyword = "OPEN" if is_open else "USE"
@@ -91,10 +77,11 @@ class OpenUseInjectionRule(Rule):
                 node,
                 description=(
                     f"{keyword} argument references variable(s) {sorted(hits)} "
-                    "previously assigned from READ. A tainted device name or "
-                    "parameter string can redirect I/O to attacker-chosen "
-                    "files / sockets or, on PIPE devices, execute arbitrary "
-                    "shell commands."
+                    "assigned from an externally-controlled source (READ, "
+                    "$ZARGV, or an HTTP context global). A tainted device "
+                    "name or parameter string can redirect I/O to "
+                    "attacker-chosen files / sockets or, on PIPE devices, "
+                    "execute arbitrary shell commands."
                 ),
                 metadata={
                     "command": keyword,
@@ -103,13 +90,13 @@ class OpenUseInjectionRule(Rule):
                 },
             )
 
-    @staticmethod
-    def _tainted_references(arg_text: str, tainted: set[str]) -> set[str]:
-        hits: set[str] = set()
-        if not arg_text or not tainted:
-            return hits
-        upper_arg = arg_text.upper()
-        for name in tainted:
-            if re.search(rf"\b{re.escape(name)}\b", upper_arg):
-                hits.add(name)
+
+def _tainted_references(arg_text: str, tainted: set[str]) -> set[str]:
+    hits: set[str] = set()
+    if not arg_text or not tainted:
         return hits
+    upper_arg = arg_text.upper()
+    for name in tainted:
+        if re.search(rf"\b{re.escape(name)}\b", upper_arg):
+            hits.add(name)
+    return hits

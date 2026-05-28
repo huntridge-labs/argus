@@ -1,26 +1,24 @@
-"""M001 — XECUTE injection from READ-tainted input (CWE-95).
+"""M001 — XECUTE injection from tainted input (CWE-95).
 
 ``XECUTE expr`` evaluates ``expr`` as MUMPS code at runtime. When
 ``expr`` is composed from anything a caller can influence (a ``READ``
-into a terminal variable, an HTTP query parameter loaded into a global,
-a routine-argument string from an upstream caller) the call is
-remote-code-execution.
+into a terminal variable, ``$ZARGV`` on a YottaDB / GT.M command line,
+an HTTP context global like ``^%CGI``) the call is remote-code-
+execution.
 
-The grammar (``janus-llm/tree-sitter-mumps``) sometimes elides the
-``keyword`` child of a ``command`` node for short single-letter keywords
-like ``R`` (READ), so this rule does keyword detection via a regex
-against the command's source text rather than the structural field.
-Detection runs in two passes over the tree:
+Detection runs in two passes:
 
-1. **Source pass** — find every ``command`` whose text begins with
-   ``R``/``READ`` and add its target variable identifiers to a tainted
-   set.
-2. **Sink pass** — for each ``X``/``XECUTE`` command, check whether its
-   argument expression text references any tainted name. If so, emit a
-   finding.
+1. **Source pass** — :func:`argus.scanners.m.taint.collect_tainted_variables`
+   walks the routine once, collecting every variable assigned from a
+   Phase 1+ taint source. Sources: ``READ`` arguments, assignment RHS
+   referencing ``$ZARGV``, and assignment RHS referencing the HTTP
+   context globals ``^%CGI`` / ``^%REQUEST`` / ``^%session``.
+2. **Sink pass** — for each ``X`` / ``XECUTE`` command, check whether
+   its argument expression text references any tainted name. If so,
+   emit a finding.
 
 Phase 1 is intra-file (a "routine" is treated as one scope). Phase 2
-will add per-routine scoping plus inter-procedural call-graph taint.
+adds per-routine scoping plus inter-procedural call-graph taint.
 String-literal XECUTEs (``X "WRITE 1"``) are always safe and never
 flagged.
 """
@@ -33,23 +31,13 @@ from typing import Iterable
 from argus.core.models import Finding, Severity
 from ..parser import ParsedSource, walk
 from ..rule import Rule
+from ..taint import collect_tainted_variables
 
 
-# Text-anchored keyword detection. The command's source includes any
-# leading whitespace, the keyword, an optional postconditional
-# (``S:cond X=Y``), and the arguments. Matching against the leading
-# token sidesteps the grammar's inconsistent ``keyword`` field surface.
-_READ_KEYWORD_RE = re.compile(r"^\s*R(?:EAD)?\b", re.IGNORECASE)
 _XECUTE_KEYWORD_RE = re.compile(r"^\s*X(?:ECUTE)?\b", re.IGNORECASE)
 
 
 def _argument_node(command_node):
-    """Return the arguments subtree for a command, or None.
-
-    The grammar declares ``arguments`` as a child type rather than a
-    named field on every command alternative, so we fall back to a
-    type-based scan when ``child_by_field_name`` returns nothing.
-    """
     for field_name in ("arguments", "argument", "expression"):
         node = command_node.child_by_field_name(field_name)
         if node is not None:
@@ -58,23 +46,6 @@ def _argument_node(command_node):
         if child.type in {"arguments", "argument"}:
             return child
     return None
-
-
-def _extract_target_identifiers(arg_node) -> list[str]:
-    """Identifier tokens that are direct read-targets of ``READ``.
-
-    MUMPS ``READ`` arguments mix format-control characters (``!``,
-    ``#``), prompt strings, and target variables. We collect identifier
-    nodes from the arguments subtree as a conservative approximation;
-    false positives here only widen the tainted set, never narrow it.
-    """
-    if arg_node is None:
-        return []
-    targets: list[str] = []
-    for node in walk(arg_node):
-        if node.type in {"identifier", "local_variable", "variable"}:
-            targets.append(node.text.decode("utf-8", errors="replace").strip())
-    return targets
 
 
 def _argument_is_string_literal(parsed: ParsedSource, arg_node) -> bool:
@@ -96,27 +67,24 @@ def _argument_is_string_literal(parsed: ParsedSource, arg_node) -> bool:
 class XECUTEInjectionRule(Rule):
     id = "M001"
     severity = Severity.HIGH
-    title = "XECUTE of READ-tainted expression"
+    title = "XECUTE of tainted expression"
     cwe = "CWE-95"
 
     def analyze(self, parsed: ParsedSource) -> Iterable[Finding]:
-        tainted: set[str] = set()
+        tainted = collect_tainted_variables(parsed)
+        if not tainted:
+            return
         for node in walk(parsed.tree.root_node):
             if node.type != "command":
                 continue
             command_text = parsed.node_text(node)
-            args = _argument_node(node)
-            if _READ_KEYWORD_RE.match(command_text):
-                for name in _extract_target_identifiers(args):
-                    if name:
-                        tainted.add(name.upper())
-                continue
             if not _XECUTE_KEYWORD_RE.match(command_text):
                 continue
+            args = _argument_node(node)
             if _argument_is_string_literal(parsed, args):
                 continue
             arg_text = parsed.node_text(args).strip() if args else ""
-            hits = self._tainted_references(arg_text, tainted)
+            hits = _tainted_references(arg_text, tainted)
             if not hits:
                 continue
             yield self.make_finding(
@@ -124,8 +92,9 @@ class XECUTEInjectionRule(Rule):
                 node,
                 description=(
                     f"XECUTE argument references variable(s) {sorted(hits)} "
-                    "previously assigned from READ. The runtime value of "
-                    "those variables is executed as MUMPS code."
+                    "assigned from an externally-controlled source (READ, "
+                    "$ZARGV, or an HTTP context global). The runtime value "
+                    "of those variables is executed as MUMPS code."
                 ),
                 metadata={
                     "taint_sources": sorted(hits),
@@ -133,17 +102,17 @@ class XECUTEInjectionRule(Rule):
                 },
             )
 
-    @staticmethod
-    def _tainted_references(arg_text: str, tainted: set[str]) -> set[str]:
-        """Return the subset of ``tainted`` referenced as identifiers in
-        ``arg_text``. Whole-word match (case-insensitive) to avoid
-        flagging substrings of unrelated variable names.
-        """
-        hits: set[str] = set()
-        if not arg_text or not tainted:
-            return hits
-        upper_arg = arg_text.upper()
-        for name in tainted:
-            if re.search(rf"\b{re.escape(name)}\b", upper_arg):
-                hits.add(name)
+
+def _tainted_references(arg_text: str, tainted: set[str]) -> set[str]:
+    """Return the subset of ``tainted`` referenced as identifiers in
+    ``arg_text``. Whole-word match (case-insensitive) to avoid flagging
+    substrings of unrelated variable names.
+    """
+    hits: set[str] = set()
+    if not arg_text or not tainted:
         return hits
+    upper_arg = arg_text.upper()
+    for name in tainted:
+        if re.search(rf"\b{re.escape(name)}\b", upper_arg):
+            hits.add(name)
+    return hits

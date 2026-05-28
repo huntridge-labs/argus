@@ -4,20 +4,29 @@ Multiple rules (``M001`` XECUTE, ``M003`` OPEN/USE, ``M005`` tainted
 dispatch) all need the same first pass: walk the parse tree, identify
 variables assigned from a tainted source, hand the rule a ``set`` of
 uppercased identifier names. Keeping the logic here removes the
-near-duplicate ``_READ_KEYWORD_RE`` + ``_extract_target_identifiers``
-copies that lived inside each rule module.
+near-duplicate keyword regex + identifier extraction copies that
+otherwise live inside each rule module.
 
-Phase 1 taint sources:
+Phase 1+ taint sources recognized here:
 
-* ``READ`` / ``R`` commands. Every identifier in the argument subtree
+* **READ / R** commands. Every identifier in the argument subtree
   is added to the tainted set. Format specifiers (``!``) and string
   prompts are skipped naturally because they aren't ``local_variable``
   / ``identifier`` nodes.
+* **``$ZARGV``** (YottaDB / GT.M process arguments). When an
+  ``assignment`` RHS references ``$ZARGV`` in any form
+  (``$ZARGV``, ``$ZARGV(1)``, ``$P($ZARGV(2)," ")``) the LHS is
+  marked tainted.
+* **HTTP context globals.** ``^%CGI(...)``, ``^%REQUEST(...)``, and
+  ``^%session(...)`` carry per-request input on legacy VistA web
+  stacks. An ``assignment`` whose RHS references one of these
+  taints its LHS.
 
-Phase 2 will broaden this to include ``$ZARGV`` (process arguments),
-formal arguments on entry labels, and the HTTP context globals
-``^%CGI`` / ``^%session``. The collector signature is intentionally
-stable so adding sources doesn't require rule changes.
+Phase 2 will add formal arguments on entry labels (requires
+inter-procedural scope analysis), additional implementation-specific
+intrinsics (``$ZIO``, ``$ZQUIT``), and configurable sources via
+``argus.yml``. The collector signature is intentionally stable so
+adding sources doesn't require rule changes.
 """
 
 from __future__ import annotations
@@ -31,6 +40,16 @@ from .parser import ParsedSource, walk
 # ``keyword`` child for single-letter READ commands (``R CMD``), so a
 # text-anchored match is more reliable than a child_by_field_name lookup.
 _READ_KEYWORD_RE = re.compile(r"^\s*R(?:EAD)?\b", re.IGNORECASE)
+
+# Substring patterns we look for inside an assignment RHS to decide
+# whether the LHS picks up taint. Whole-word matching keeps unrelated
+# locals named ``ZARGV`` or ``CGI`` from misfiring.
+_NON_READ_TAINT_PATTERNS = (
+    re.compile(r"\$ZARGV\b", re.IGNORECASE),
+    re.compile(r"\^%CGI\b"),
+    re.compile(r"\^%REQUEST\b"),
+    re.compile(r"\^%session\b"),
+)
 
 
 def _argument_node(command_node):
@@ -62,15 +81,45 @@ def _extract_target_identifiers(arg_node) -> list[str]:
     return targets
 
 
-def collect_read_tainted_variables(parsed: ParsedSource) -> set[str]:
-    """Return the set of uppercased identifier names assigned from READ.
+def _named_children(node):
+    return [c for c in node.children if c.is_named]
 
-    Single pass over the parse tree. Order matters for *checking* taint
-    (the sink rules walk in document order so a READ later than the
-    sink doesn't taint it), but for the collected set itself it doesn't
-    — the rule rebuilds taint incrementally during its own walk in
-    document order. This helper is here for rules that don't need
-    document-order incrementality (most diagnostic-style sinks).
+
+def _assignment_lhs_rhs(assignment_node):
+    """Return ``(lhs_node, rhs_node)`` for an ``assignment`` subtree.
+
+    Picks the first and last named children — resilient against minor
+    grammar revisions that might add intermediate annotation nodes.
+    """
+    named = _named_children(assignment_node)
+    if len(named) < 2:
+        return None, None
+    return named[0], named[-1]
+
+
+def _lhs_identifier_name(parsed: ParsedSource, lhs_node) -> str:
+    """Return the uppercased identifier name from an assignment LHS,
+    or an empty string when the LHS is not a single local variable."""
+    if lhs_node is None:
+        return ""
+    if lhs_node.type in {"local_variable", "identifier", "variable"}:
+        return parsed.node_text(lhs_node).strip().upper()
+    return ""
+
+
+def _rhs_contains_non_read_taint(parsed: ParsedSource, rhs_node) -> bool:
+    if rhs_node is None:
+        return False
+    text = parsed.node_text(rhs_node)
+    return any(p.search(text) for p in _NON_READ_TAINT_PATTERNS)
+
+
+def collect_read_tainted_variables(parsed: ParsedSource) -> set[str]:
+    """READ-only subset of the tainted variable set.
+
+    Retained for backwards compatibility / per-source debugging. Most
+    callers want :func:`collect_tainted_variables` which covers the
+    full Phase 1+ source surface.
     """
     tainted: set[str] = set()
     for node in walk(parsed.tree.root_node):
@@ -84,11 +133,36 @@ def collect_read_tainted_variables(parsed: ParsedSource) -> set[str]:
     return tainted
 
 
+def collect_tainted_variables(parsed: ParsedSource) -> set[str]:
+    """Return the set of uppercased identifier names tainted by any
+    Phase 1+ source: READ commands, ``$ZARGV`` references in an
+    assignment RHS, or HTTP context globals (``^%CGI`` / ``^%REQUEST``
+    / ``^%session``) in an assignment RHS.
+
+    Single document pass. False positives widen the set (more findings
+    later) but never narrow it — the sink rules add their own context
+    before emitting a Finding.
+    """
+    tainted: set[str] = collect_read_tainted_variables(parsed)
+    for node in walk(parsed.tree.root_node):
+        if node.type != "assignment":
+            continue
+        lhs, rhs = _assignment_lhs_rhs(node)
+        if lhs is None or rhs is None:
+            continue
+        if not _rhs_contains_non_read_taint(parsed, rhs):
+            continue
+        name = _lhs_identifier_name(parsed, lhs)
+        if name:
+            tainted.add(name)
+    return tainted
+
+
 def is_read_command(parsed: ParsedSource, command_node) -> bool:
     """Lightweight predicate for "is this command a READ?" — used by
     rules that walk the tree once incrementally rather than pre-collect
-    via ``collect_read_tainted_variables``. The read-target identifier
-    extraction lives in ``read_targets``."""
+    via ``collect_tainted_variables``. The read-target identifier
+    extraction lives in :func:`read_targets`."""
     return bool(_READ_KEYWORD_RE.match(parsed.node_text(command_node)))
 
 

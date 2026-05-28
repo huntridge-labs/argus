@@ -55,6 +55,18 @@ class TestM001XECUTEInjection:
         result = _scan(m_fixtures_dir / "m001_xecute_clean.m")
         assert _findings_with_id(result, "M001") == []
 
+    def test_fires_on_zargv_tainted_xecute(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m001_zargv_taint.m")
+        hits = _findings_with_id(result, "M001")
+        assert hits, "M001 must recognize $ZARGV as a taint source"
+        assert all(f.severity == Severity.HIGH for f in hits)
+
+    def test_fires_on_cgi_tainted_xecute(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m001_cgi_taint.m")
+        hits = _findings_with_id(result, "M001")
+        assert hits, "M001 must recognize ^%CGI(...) as a taint source"
+        assert all(f.severity == Severity.HIGH for f in hits)
+
 
 class TestM002IndirectionInjection:
     def test_fires_on_variable_indirection(self, m_fixtures_dir):
