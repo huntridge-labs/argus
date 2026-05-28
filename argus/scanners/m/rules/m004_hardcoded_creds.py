@@ -1,27 +1,26 @@
 """M004 — hard-coded credentials in MUMPS globals (CWE-798).
 
 Storing a credential in a global with a credential-shaped subscript is
-the canonical pattern: ``SET ^CONFIG("DB","PASSWORD")="hunter2"``. The
-literal sits in the routine source, gets checked into VCS, and persists
-in compiled object files. mHawk flags this as one of its four taint
-sinks at HIGH severity; we match that posture at CRITICAL severity given
-the literal's permanence.
+the canonical leak pattern: ``SET ^CONFIG("DB","PASSWORD")="hunter2"``.
+The literal sits in the routine source, gets checked into VCS, and
+persists in compiled object files. mHawk flags this as one of its four
+taint sinks at HIGH severity; we match that posture at CRITICAL severity
+given the literal's permanence.
 
-Detection runs over tree-sitter ``command`` nodes (so commented-out
-examples and string literals appearing in unrelated contexts cannot
-false-positive) and applies a focused regex to each ``SET`` command's
-text:
+The grammar parses ``SET <global>=<literal>`` as an ``assignment`` node,
+not a ``command`` node — separate from XECUTE / READ / OPEN. The
+``assignment`` has the global on the left, an unnamed ``=`` operator
+literal, and the value on the right. We walk the LHS for a
+credential-shaped subscript string and verify the RHS is a single
+string literal before flagging.
 
-  SET  ^GLOBAL ( ... "PASSWORD-LIKE-KEY" ... )  =  "literal"
-
-The literal value is **redacted** before it lands in the finding; this
-rule must not exfiltrate the very secret it flags.
+The matched literal value is **redacted** before it lands in the
+finding — this rule must not exfiltrate the very secret it flags.
 """
 
 from __future__ import annotations
 
-import re
-from typing import Iterable
+from typing import Iterable, Optional
 
 from argus.core.models import Finding, Severity
 from argus.core.redact import REDACTED_PLACEHOLDER
@@ -31,33 +30,51 @@ from ..rule import Rule
 # Subscript tokens that strongly suggest a credential. Kept narrow to
 # keep false-positive rate low; broaden in Phase 2 once we have a
 # triage cycle against real MUMPS corpora.
-_CREDENTIAL_KEYS = (
+_CREDENTIAL_KEYS = frozenset({
     "PASSWORD", "PASSWD", "PWD",
     "SECRET", "API_KEY", "APIKEY", "APITOKEN",
-    "TOKEN", "CREDENTIAL", "PRIVATE_KEY", "PRIVATEKEY",
-)
+    "TOKEN", "CREDENTIAL", "CREDENTIALS",
+    "PRIVATE_KEY", "PRIVATEKEY",
+})
 
-# One regex compiled once for performance. The (?i) flag makes the
-# credential subscript matching case-insensitive; literal values keep
-# their original case for redaction.
-_SET_KEYWORD_RE = re.compile(r"^\s*S(?:ET)?(?::[^\s]+)?\b", re.IGNORECASE)
 
-_CREDENTIAL_SET_RE = re.compile(
-    r"""
-    \^                              # global sigil
-    [A-Za-z%][A-Za-z0-9]*           # global name
-    \(                              # subscript open
-    [^)]*?                          # any preceding subscripts (lazy)
-    "(?P<key>"""
-    + "|".join(_CREDENTIAL_KEYS) +
-    r""")"                          # the credential-shaped subscript literal
-    [^)]*?                          # any trailing subscripts (lazy)
-    \)                              # subscript close
-    \s*=\s*                         # assignment
-    "(?P<value>[^"]+)"              # the credential literal value
-    """,
-    re.IGNORECASE | re.VERBOSE,
-)
+def _named_children(node):
+    return [c for c in node.children if c.is_named]
+
+
+def _lhs_rhs(assignment_node):
+    """Return ``(lhs_node, rhs_node)`` from an ``assignment`` subtree.
+
+    The grammar lays the assignment out as ``lhs '=' rhs`` with the
+    ``=`` token as an unnamed child. Pick the first and last named
+    children to stay resilient against minor grammar revisions.
+    """
+    named = _named_children(assignment_node)
+    if len(named) < 2:
+        return None, None
+    return named[0], named[-1]
+
+
+def _credential_subscript(parsed: ParsedSource, lhs_node) -> Optional[str]:
+    """Return a matched credential subscript name, or None.
+
+    Walks ``lhs_node`` (a ``global_array``) looking for string literals
+    inside its ``array_index``. Compares the unquoted, uppercased text
+    against ``_CREDENTIAL_KEYS``.
+    """
+    for descendant in walk(lhs_node):
+        if descendant.type != "string":
+            continue
+        raw = parsed.node_text(descendant).strip()
+        unquoted = raw[1:-1] if raw.startswith('"') and raw.endswith('"') else raw
+        normalized = unquoted.upper()
+        if normalized in _CREDENTIAL_KEYS:
+            return normalized
+    return None
+
+
+def _is_string_literal(node) -> bool:
+    return node is not None and node.type in {"string", "string_literal"}
 
 
 class HardcodedCredentialsRule(Rule):
@@ -68,25 +85,30 @@ class HardcodedCredentialsRule(Rule):
 
     def analyze(self, parsed: ParsedSource) -> Iterable[Finding]:
         for node in walk(parsed.tree.root_node):
-            if node.type != "command":
+            if node.type != "assignment":
                 continue
-            command_text = parsed.node_text(node)
-            if not _SET_KEYWORD_RE.match(command_text):
+            lhs, rhs = _lhs_rhs(node)
+            if lhs is None or rhs is None:
                 continue
-            for match in _CREDENTIAL_SET_RE.finditer(command_text):
-                key = match.group("key").upper()
-                yield self.make_finding(
-                    parsed,
-                    node,
-                    description=(
-                        f"SET assigns a literal value to a global with a "
-                        f"'{key}'-shaped subscript. The literal sits in "
-                        "the routine source and compiled object files. "
-                        "Replace with a runtime lookup against a secret "
-                        "store or environment variable."
-                    ),
-                    metadata={
-                        "credential_key": key,
-                        "value": REDACTED_PLACEHOLDER,
-                    },
-                )
+            if lhs.type != "global_array":
+                continue
+            if not _is_string_literal(rhs):
+                continue
+            key = _credential_subscript(parsed, lhs)
+            if key is None:
+                continue
+            yield self.make_finding(
+                parsed,
+                node,
+                description=(
+                    f"SET assigns a literal value to a global with a "
+                    f"'{key}'-shaped subscript. The literal sits in "
+                    "the routine source and compiled object files. "
+                    "Replace with a runtime lookup against a secret "
+                    "store or environment variable."
+                ),
+                metadata={
+                    "credential_key": key,
+                    "value": REDACTED_PLACEHOLDER,
+                },
+            )

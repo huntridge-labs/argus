@@ -94,22 +94,22 @@ class TestMScannerScan:
 class TestRuleRegistry:
     """Rule registry shape — IDs, severities, distinct identifiers."""
 
-    def test_four_rules_registered(self):
+    def test_phase_one_rules_registered(self):
         ids = {rule.id for rule in RULES}
-        assert ids == {"M001", "M002", "M004", "M101"}
+        assert ids == {"M001", "M002", "M003", "M004", "M101", "M102"}
 
     def test_rule_ids_are_distinct(self):
         ids = [rule.id for rule in RULES]
         assert len(ids) == len(set(ids)), "duplicate rule IDs"
 
     def test_security_rules_have_cwes(self):
-        cwe_required = {"M001", "M002", "M004"}
+        cwe_required = {"M001", "M002", "M003", "M004"}
         for rule in RULES:
             if rule.id in cwe_required:
                 assert rule.cwe, f"{rule.id} must declare a CWE"
 
     def test_diagnostic_rules_have_no_cwe(self):
-        diagnostic_ids = {"M101"}
+        diagnostic_ids = {"M101", "M102"}
         for rule in RULES:
             if rule.id in diagnostic_ids:
                 assert rule.cwe is None
@@ -119,14 +119,14 @@ class TestGrammarLoading:
     """Behaviour when the grammar shared library cannot be located."""
 
     def test_grammar_unavailable_raises_clear_error(self, monkeypatch):
-        monkeypatch.setenv("ARGUS_M_GRAMMAR", "/nonexistent/path/mumps.so")
-        # Bust the parser cache so the env override is picked up.
+        from argus.scanners.m import parser as parser_module
+        # Force every grammar lookup path to miss. monkeypatching
+        # find_grammar is more robust than setting ARGUS_M_GRAMMAR
+        # since the test harness may have a built grammar in
+        # ~/.cache/argus/grammars/mumps.so from a prior local run.
+        monkeypatch.setattr(parser_module, "find_grammar", lambda: None)
         monkeypatch.setattr(MParser, "_parser", None)
         monkeypatch.setattr(MParser, "_language", None)
-        # Inject a tree_sitter shim if not installed, so the failure
-        # path we exercise is "grammar missing", not "py-tree-sitter
-        # missing". Both routes raise GrammarUnavailable, but this is
-        # the route the test intentionally documents.
         with pytest.raises(GrammarUnavailable):
             MParser.parse(Path("x.m"), b" ; empty\n")
 

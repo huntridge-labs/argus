@@ -6,16 +6,18 @@ into a terminal variable, an HTTP query parameter loaded into a global,
 a routine-argument string from an upstream caller) the call is
 remote-code-execution.
 
-The grammar (``janus-llm/tree-sitter-mumps``) collapses every command
-keyword into a single regex node, so structural querying alone cannot
-distinguish ``XECUTE`` from ``SET``. Detection runs in two passes over
-the tree:
+The grammar (``janus-llm/tree-sitter-mumps``) sometimes elides the
+``keyword`` child of a ``command`` node for short single-letter keywords
+like ``R`` (READ), so this rule does keyword detection via a regex
+against the command's source text rather than the structural field.
+Detection runs in two passes over the tree:
 
-1. **Source pass** — collect the set of variable names that were
-   assigned from a ``READ`` command earlier in source order.
-2. **Sink pass** — for each ``XECUTE`` / ``X`` command, check whether
-   its argument expression text references any tainted name. If so,
-   emit a finding.
+1. **Source pass** — find every ``command`` whose text begins with
+   ``R``/``READ`` and add its target variable identifiers to a tainted
+   set.
+2. **Sink pass** — for each ``X``/``XECUTE`` command, check whether its
+   argument expression text references any tainted name. If so, emit a
+   finding.
 
 Phase 1 is intra-file (a "routine" is treated as one scope). Phase 2
 will add per-routine scoping plus inter-procedural call-graph taint.
@@ -33,27 +35,28 @@ from ..parser import ParsedSource, walk
 from ..rule import Rule
 
 
-_READ_KEYWORDS = frozenset({"R", "READ"})
-_XECUTE_KEYWORDS = frozenset({"X", "XECUTE"})
-
-
-def _keyword_text(parsed: ParsedSource, command_node) -> str:
-    """Return the command keyword in uppercase, or empty string."""
-    field = command_node.child_by_field_name("keyword")
-    if field is not None:
-        return parsed.node_text(field).strip().upper()
-    for child in command_node.children:
-        if child.type == "keyword":
-            return parsed.node_text(child).strip().upper()
-    return ""
+# Text-anchored keyword detection. The command's source includes any
+# leading whitespace, the keyword, an optional postconditional
+# (``S:cond X=Y``), and the arguments. Matching against the leading
+# token sidesteps the grammar's inconsistent ``keyword`` field surface.
+_READ_KEYWORD_RE = re.compile(r"^\s*R(?:EAD)?\b", re.IGNORECASE)
+_XECUTE_KEYWORD_RE = re.compile(r"^\s*X(?:ECUTE)?\b", re.IGNORECASE)
 
 
 def _argument_node(command_node):
-    """Return the arguments subtree for a command, or None."""
+    """Return the arguments subtree for a command, or None.
+
+    The grammar declares ``arguments`` as a child type rather than a
+    named field on every command alternative, so we fall back to a
+    type-based scan when ``child_by_field_name`` returns nothing.
+    """
     for field_name in ("arguments", "argument", "expression"):
         node = command_node.child_by_field_name(field_name)
         if node is not None:
             return node
+    for child in command_node.children:
+        if child.type in {"arguments", "argument"}:
+            return child
     return None
 
 
@@ -101,14 +104,14 @@ class XECUTEInjectionRule(Rule):
         for node in walk(parsed.tree.root_node):
             if node.type != "command":
                 continue
-            keyword = _keyword_text(parsed, node)
+            command_text = parsed.node_text(node)
             args = _argument_node(node)
-            if keyword in _READ_KEYWORDS:
+            if _READ_KEYWORD_RE.match(command_text):
                 for name in _extract_target_identifiers(args):
                     if name:
                         tainted.add(name.upper())
                 continue
-            if keyword not in _XECUTE_KEYWORDS:
+            if not _XECUTE_KEYWORD_RE.match(command_text):
                 continue
             if _argument_is_string_literal(parsed, args):
                 continue
