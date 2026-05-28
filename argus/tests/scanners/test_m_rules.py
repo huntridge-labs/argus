@@ -107,6 +107,24 @@ class TestM003OpenUseInjection:
         assert _findings_with_id(result, "M003") == []
 
 
+class TestM005TaintedDispatch:
+    def test_fires_on_tainted_do_indirection(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m005_dispatch_taint.m")
+        hits = _findings_with_id(result, "M005")
+        assert hits, "M005 must fire when DO indirection references a READ-tainted var"
+        assert all(f.severity == Severity.CRITICAL for f in hits)
+        assert all(f.cwe == "CWE-95" for f in hits)
+        # Taint sources should be recorded for downstream triage
+        for finding in hits:
+            assert finding.metadata.get("taint_sources"), (
+                "M005 must record the tainted variable name(s)"
+            )
+
+    def test_static_dispatch_does_not_fire(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m005_dispatch_clean.m")
+        assert _findings_with_id(result, "M005") == []
+
+
 class TestM101DuplicateLabel:
     def test_fires_on_duplicate_label(self, m_fixtures_dir):
         result = _scan(m_fixtures_dir / "m101_dup_label.m")

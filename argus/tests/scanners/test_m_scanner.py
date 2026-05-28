@@ -96,14 +96,14 @@ class TestRuleRegistry:
 
     def test_phase_one_rules_registered(self):
         ids = {rule.id for rule in RULES}
-        assert ids == {"M001", "M002", "M003", "M004", "M101", "M102"}
+        assert ids == {"M001", "M002", "M003", "M004", "M005", "M101", "M102"}
 
     def test_rule_ids_are_distinct(self):
         ids = [rule.id for rule in RULES]
         assert len(ids) == len(set(ids)), "duplicate rule IDs"
 
     def test_security_rules_have_cwes(self):
-        cwe_required = {"M001", "M002", "M003", "M004"}
+        cwe_required = {"M001", "M002", "M003", "M004", "M005"}
         for rule in RULES:
             if rule.id in cwe_required:
                 assert rule.cwe, f"{rule.id} must declare a CWE"

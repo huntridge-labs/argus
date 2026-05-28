@@ -240,6 +240,10 @@ USE / HALT / QUIT all collapse into a single `keyword` regex (text-driven match 
     into device arguments. PIPE-device parameter-string parsing remains deferred to
     Phase 2 (the rule fires HIGH on any tainted device argument today).
   - **M004** hard-coded credentials in globals (CWE-798). `SET ^G(...)="literal"` pattern.
+  - **M005** tainted dynamic dispatch (CWE-95). Pulled forward from Phase 2; CRITICAL
+    severity when a `DO @VAR` indirection's referenced variable is READ-tainted.
+    Completes the 4-of-4 mHawk taint-sink surface (XECUTE / indirection / OPEN/USE /
+    dispatch) at parity for intra-procedural detection.
   - **M101** duplicate label (diagnostic). Two labels with the same name in one routine.
   - **M102** unreachable code after unconditional QUIT / HALT (diagnostic). Pulled forward
     from Phase 2; postconditional Q / H are correctly excluded.
@@ -249,11 +253,8 @@ USE / HALT / QUIT all collapse into a single `keyword` regex (text-driven match 
   in CI's setup step and run against real fixtures.
 - Registered in `SCANNER_REGISTRY`; category `sast`.
 
-#### Phase 2 — Taint parity with mHawk (six-month horizon)
+#### Phase 2 — Deepening (six-month horizon)
 
-- **M005** tainted global dispatch (CWE-95). Taint into routine name resolution
-  (`DO @^GLOB(...)`, `XECUTE` of a subscript composed from input). Matches mHawk's
-  fourth taint sink, closing the day-one gap.
 - **M003 refinement.** PIPE device parameter-string parsing (`/COMMAND=`) so PIPE-bound
   OPEN / USE sites bump from HIGH to CRITICAL.
 - **Inter-procedural taint.** Call-graph construction across `DO` / `GOTO` / routine_call;

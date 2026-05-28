@@ -8,6 +8,7 @@ from .m001_xecute_injection import XECUTEInjectionRule
 from .m002_indirection_injection import IndirectionInjectionRule
 from .m003_open_use_injection import OpenUseInjectionRule
 from .m004_hardcoded_creds import HardcodedCredentialsRule
+from .m005_tainted_dispatch import TaintedDispatchRule
 from .m101_duplicate_label import DuplicateLabelRule
 from .m102_unreachable_after_quit import UnreachableAfterQuitRule
 
@@ -16,6 +17,7 @@ RULES = [
     IndirectionInjectionRule(),
     OpenUseInjectionRule(),
     HardcodedCredentialsRule(),
+    TaintedDispatchRule(),
     DuplicateLabelRule(),
     UnreachableAfterQuitRule(),
 ]
@@ -26,6 +28,7 @@ __all__ = [
     "IndirectionInjectionRule",
     "OpenUseInjectionRule",
     "HardcodedCredentialsRule",
+    "TaintedDispatchRule",
     "DuplicateLabelRule",
     "UnreachableAfterQuitRule",
 ]

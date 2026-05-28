@@ -260,8 +260,11 @@ OSS SAST for the MUMPS / M language (VistA, YottaDB, GT.M, FileMan). Phase 1+ sh
 | `M002` | Indirection (`@`) of non-literal expression | HIGH | CWE-94 |
 | `M003` | OPEN / USE of READ-tainted device argument | HIGH | CWE-78 |
 | `M004` | Hard-coded credential in MUMPS global | CRITICAL | CWE-798 |
+| `M005` | DO of READ-tainted indirection (dynamic dispatch) | CRITICAL | CWE-95 |
 | `M101` | Duplicate label declared in routine | INFO | n/a |
 | `M102` | Unreachable code after unconditional QUIT / HALT | INFO | n/a |
+
+The four security rules above (M001, M003, M005, plus M004's data-at-rest credential check) cover the same taint-sink surface mHawk advertises — XECUTE, indirection, OPEN/USE, and dynamic dispatch — at parity for intra-procedural detection.
 
 <details>
 <summary><strong>Configuration & Examples</strong></summary>
