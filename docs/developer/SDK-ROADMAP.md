@@ -229,37 +229,45 @@ vendored at pinned SHA. Known grammar gaps documented: `block` does not nest,
 `pattern` is `/TODO/`, `for_statement` initializer partially commented out, XECUTE / OPEN /
 USE / HALT / QUIT all collapse into a single `keyword` regex (text-driven match required).
 
-#### Phase 1 — Core taint coverage (this PR)
+#### Phase 1 — Core taint coverage (shipped, PR #213)
 
 - `argus/scanners/m/` sub-package: parser wrapper, Rule abstract base, intra-procedural
   taint engine, SARIF v2.1.0 emission via the existing reporter.
 - Rule set:
-  - **M001** XECUTE injection (CWE-95). Taint from READ + global reads into XECUTE argument.
-  - **M002** indirection injection (CWE-94). Taint into the `@` operator. Cleanest
-    structural query of the four since `indirection` is a named node.
+  - **M001** XECUTE injection (CWE-95). Taint from READ into XECUTE argument.
+  - **M002** indirection injection (CWE-94). Indirection of non-literal expression.
+  - **M003** OPEN / USE injection (CWE-78). Pulled forward from Phase 2; taint from READ
+    into device arguments. PIPE-device parameter-string parsing remains deferred to
+    Phase 2 (the rule fires HIGH on any tainted device argument today).
   - **M004** hard-coded credentials in globals (CWE-798). `SET ^G(...)="literal"` pattern.
   - **M101** duplicate label (diagnostic). Two labels with the same name in one routine.
-- Local-only execution (no container image); installed via `pip install argus-security[m]`.
-- Fixtures + per-rule tests; registered in `SCANNER_REGISTRY`; category `sast`.
-- Explicitly deferred to later phases: M003, M005, M102, inter-procedural taint,
-  ObjectScript, `.o` analysis, LSP, full mHawk diagnostic surface.
+  - **M102** unreachable code after unconditional QUIT / HALT (diagnostic). Pulled forward
+    from Phase 2; postconditional Q / H are correctly excluded.
+- Local execution via `scripts/build-m-grammar.sh`; container fallback via
+  `docker/Dockerfile.m` which pre-compiles `mumps.so` at image build time.
+- Installed via `pip install 'argus-security[m]'`; integration tests build the grammar
+  in CI's setup step and run against real fixtures.
+- Registered in `SCANNER_REGISTRY`; category `sast`.
 
 #### Phase 2 — Taint parity with mHawk (six-month horizon)
 
-- **M003** OPEN/USE injection (CWE-78). Taint into device arguments. HIGH severity, not
-  CRITICAL; PIPE-device caveat documented since accurate PIPE detection requires parsing
-  device parameter strings (`/COMMAND=`).
 - **M005** tainted global dispatch (CWE-95). Taint into routine name resolution
   (`DO @^GLOB(...)`, `XECUTE` of a subscript composed from input). Matches mHawk's
   fourth taint sink, closing the day-one gap.
-- **M102** unreachable code after QUIT/HALT (diagnostic).
+- **M003 refinement.** PIPE device parameter-string parsing (`/COMMAND=`) so PIPE-bound
+  OPEN / USE sites bump from HIGH to CRITICAL.
 - **Inter-procedural taint.** Call-graph construction across `DO` / `GOTO` / routine_call;
   per-routine taint summaries; recursion handling. Single largest technical lift; most
   real-world MUMPS injection bugs cross at least one routine boundary.
+- **Broader taint sources.** `$ZARGV` (process arguments), formal arguments on entry
+  labels, HTTP-context globals (`%CGI`, `%session`).
 - **Diagnostic rule expansion** to roughly 15 of mHawk's 32 (unresolved references,
   routine name mismatches, common style/error patterns surfaced by the AST).
-- **Docker image + container fallback** (matches the bandit pattern: local-first,
-  container fallback). Auto-covered by the `container-smoke` harness once an image exists.
+- **Docker image publish + container fallback wiring.** Image lands at
+  `ghcr.io/huntridge-labs/argus/scanner-m`; `CUSTOM_IMAGES` in `argus/containers.py`
+  picks up the SHA-pinned tag; `argus.yml` `containers.images` adds the build entry so
+  the build-containers workflow exercises it. Auto-covered by `container-smoke` once
+  the image is published.
 
 #### Phase 3 — Full parity stretch (twelve-month horizon, MUMPS subject-matter expert engaged)
 

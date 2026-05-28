@@ -244,6 +244,73 @@ with:
 
 </details>
 
+### MUMPS / M language (`m`)
+
+OSS SAST for the MUMPS / M language (VistA, YottaDB, GT.M, FileMan). Phase 1+ ships six rules backed by [`janus-llm/tree-sitter-mumps`](https://github.com/janus-llm/tree-sitter-mumps) (Apache-2.0, MITRE Public Release 23-4084) pinned at `345f3fb2`. Target audience is federal / healthcare orgs whose procurement posture rules out closed-source MUMPS SAST.
+
+**Supported languages:** `mumps`
+
+**File extensions:** `.m` (Caché `.mac` / `.int` arrive in Phase 2 alongside ObjectScript dialect support)
+
+**Severity levels:** INFO, HIGH, CRITICAL
+
+| Rule | Title | Severity | CWE |
+|------|-------|----------|-----|
+| `M001` | XECUTE of READ-tainted expression | HIGH | CWE-95 |
+| `M002` | Indirection (`@`) of non-literal expression | HIGH | CWE-94 |
+| `M003` | OPEN / USE of READ-tainted device argument | HIGH | CWE-78 |
+| `M004` | Hard-coded credential in MUMPS global | CRITICAL | CWE-798 |
+| `M101` | Duplicate label declared in routine | INFO | n/a |
+| `M102` | Unreachable code after unconditional QUIT / HALT | INFO | n/a |
+
+<details>
+<summary><strong>Configuration & Examples</strong></summary>
+
+**SDK config (`argus.yml`):**
+
+```yaml
+scanners:
+  - m
+scan_path: ./routines
+fail_on_severity: high
+```
+
+Optional per-scanner key: `extensions` (defaults to `[".m"]`).
+
+**Installation paths:**
+
+The scanner needs a compiled `mumps.so` shared library. Two install paths:
+
+1. **Local execution.** Install py-tree-sitter and compile the grammar once:
+   ```bash
+   pip install 'argus-security[m]'
+   ./scripts/build-m-grammar.sh
+   # Drops mumps.so at ~/.cache/argus/grammars/
+   argus scan m --path ./routines
+   ```
+
+2. **Container execution.** The `scanner-m` image (built by `docker/Dockerfile.m`) ships a prebuilt grammar at `/opt/argus/grammars/mumps.so`. No local toolchain needed; the engine routes here automatically when local execution is unavailable.
+
+The `ARGUS_M_GRAMMAR` environment variable overrides the lookup path when a CI pipeline pins a custom build.
+
+**Example:**
+
+```yaml
+scanners:
+  - m
+scan_path: ./routines
+fail_on_severity: high
+reporters:
+  - terminal
+  - sarif
+```
+
+> **Secret redaction:** for the M004 (hard-coded credentials) rule, the matched literal value is replaced with the redaction placeholder before the finding is constructed. Defense-in-depth: `Finding.__post_init__` runs the pattern-based redactor as a second pass. The literal never reaches any reporter, export, or the MCP server. Integration test `test_literal_value_is_redacted` enforces this contract.
+
+> **Taint scope:** Phase 1 taint analysis is intra-file. Inter-procedural taint (call-graph construction across `DO` / `GOTO` / routine_call) lands in Phase 2 — see `docs/developer/SDK-ROADMAP.md`. Until then, M001 / M003 detect READ → sink paths that stay within a single routine file.
+
+</details>
+
 ## Container Scanners
 
 ### Trivy Container
