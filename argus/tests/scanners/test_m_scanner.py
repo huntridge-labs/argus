@@ -71,6 +71,25 @@ class TestMScannerScan:
         found = list(scanner._iter_sources(tmp_path, (".m",)))
         assert m_file in found
 
+    def test_iter_sources_accepts_single_file_target(self, tmp_path):
+        m_file = tmp_path / "one.m"
+        m_file.write_text("ONE ; ok\n Q\n")
+        non_m = tmp_path / "one.txt"
+        non_m.write_text("ignore\n")
+
+        scanner = MScanner()
+        assert list(scanner._iter_sources(m_file, (".m",))) == [m_file]
+        assert list(scanner._iter_sources(non_m, (".m",))) == []
+
+    def test_is_available_true_when_grammar_present(self, monkeypatch):
+        from argus.scanners.m import parser as parser_module
+        monkeypatch.setattr(parser_module, "tree_sitter_available", lambda: True)
+        # MScanner.is_available re-imports via the module, so patch the
+        # symbol the scanner pulled at import time too.
+        from argus.scanners.m import scanner as scanner_module
+        monkeypatch.setattr(scanner_module, "tree_sitter_available", lambda: True)
+        assert MScanner().is_available() is True
+
 
 class TestRuleRegistry:
     """Rule registry shape — IDs, severities, distinct identifiers."""
@@ -110,3 +129,194 @@ class TestGrammarLoading:
         # the route the test intentionally documents.
         with pytest.raises(GrammarUnavailable):
             MParser.parse(Path("x.m"), b" ; empty\n")
+
+
+class _StubParsed:
+    """Minimal ParsedSource stand-in for tests that mock MParser.parse.
+
+    Tests that drive the scan loop don't need a real tree-sitter tree;
+    rules are mocked or stubbed at the loop level. Carries the path
+    so any finding constructor that wants ``location`` still works.
+    """
+
+    def __init__(self, path: Path):
+        self.path = path
+        self.source_bytes = b""
+        self.tree = None
+
+    def location(self, node):
+        return str(self.path)
+
+
+class TestScanLoopBehaviour:
+    """Drive the scan() loop with MParser.parse mocked.
+
+    These tests cover the path-walking, per-file dispatch, per-rule
+    invocation, and the parse-failure / rule-crash recovery branches
+    without needing a compiled grammar.
+    """
+
+    def _write_m_file(self, dir_path: Path, name: str = "test.m") -> Path:
+        path = dir_path / name
+        path.write_text("TEST ; stub\n Q\n")
+        return path
+
+    def test_scan_invokes_every_rule_per_file(self, tmp_path, monkeypatch):
+        from argus.scanners.m import scanner as scanner_module
+        self._write_m_file(tmp_path)
+
+        captured: list[str] = []
+
+        class _RecordingRule:
+            id = "TEST-RULE"
+            def analyze(self, parsed):
+                captured.append(parsed.path.name)
+                return []
+
+        monkeypatch.setattr(MParser, "parse", lambda p, b: _StubParsed(p))
+        monkeypatch.setattr(scanner_module, "RULES", [_RecordingRule()])
+
+        result = MScanner().scan(str(tmp_path))
+        assert result.metadata["files_scanned"] == 1
+        assert captured == ["test.m"]
+
+    def test_scan_re_raises_grammar_unavailable(self, tmp_path, monkeypatch):
+        self._write_m_file(tmp_path)
+
+        def _raise_grammar(p, b):
+            raise GrammarUnavailable("no grammar")
+
+        monkeypatch.setattr(MParser, "parse", _raise_grammar)
+        with pytest.raises(GrammarUnavailable):
+            MScanner().scan(str(tmp_path))
+
+    def test_scan_emits_parse_failure_finding_on_oserror(self, tmp_path, monkeypatch):
+        self._write_m_file(tmp_path)
+
+        def _raise_os(p, b):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(MParser, "parse", _raise_os)
+        result = MScanner().scan(str(tmp_path))
+        assert result.metadata["parse_failures"] == 1
+        parse_fail = [f for f in result.findings if f.id == "M-PARSE-FAIL"]
+        assert len(parse_fail) == 1
+        assert "disk full" in parse_fail[0].description
+
+    def test_scan_emits_rule_crash_finding_when_rule_raises(
+        self, tmp_path, monkeypatch,
+    ):
+        from argus.scanners.m import scanner as scanner_module
+        self._write_m_file(tmp_path)
+
+        class _ExplodingRule:
+            id = "BOOM"
+            def analyze(self, parsed):
+                raise RuntimeError("rule went sideways")
+
+        monkeypatch.setattr(MParser, "parse", lambda p, b: _StubParsed(p))
+        monkeypatch.setattr(scanner_module, "RULES", [_ExplodingRule()])
+        result = MScanner().scan(str(tmp_path))
+        crashes = [f for f in result.findings if f.id == "M-RULE-CRASH"]
+        assert len(crashes) == 1
+        assert "BOOM" in crashes[0].title
+        assert crashes[0].metadata["rule"] == "BOOM"
+        assert crashes[0].metadata["error_type"] == "RuntimeError"
+
+    def test_scan_aggregates_findings_across_rules(self, tmp_path, monkeypatch):
+        from argus.core.models import Finding, Severity
+        from argus.scanners.m import scanner as scanner_module
+        self._write_m_file(tmp_path)
+
+        class _Rule:
+            def __init__(self, rule_id):
+                self.id = rule_id
+            def analyze(self, parsed):
+                return [Finding(
+                    id=self.id,
+                    severity=Severity.INFO,
+                    title="stub",
+                    location=parsed.location(None),
+                    scanner="m",
+                )]
+
+        monkeypatch.setattr(MParser, "parse", lambda p, b: _StubParsed(p))
+        monkeypatch.setattr(scanner_module, "RULES", [_Rule("A"), _Rule("B")])
+        result = MScanner().scan(str(tmp_path))
+        ids = sorted(f.id for f in result.findings)
+        assert ids == ["A", "B"]
+
+    def test_scan_filters_only_m_extension_files(self, tmp_path, monkeypatch):
+        from argus.scanners.m import scanner as scanner_module
+        (tmp_path / "ignore.txt").write_text("not mumps\n")
+        (tmp_path / "code.m").write_text("CODE ; ok\n Q\n")
+        seen: list[str] = []
+
+        class _Rule:
+            id = "X"
+            def analyze(self, parsed):
+                seen.append(parsed.path.name)
+                return []
+
+        monkeypatch.setattr(MParser, "parse", lambda p, b: _StubParsed(p))
+        monkeypatch.setattr(scanner_module, "RULES", [_Rule()])
+        MScanner().scan(str(tmp_path))
+        assert seen == ["code.m"]
+
+
+class TestBuildArgs:
+    """``build_args`` shape — the container CLI argv the engine appends
+    to the ``scanner-m`` image's ENTRYPOINT after stripping argv[0]."""
+
+    def test_returns_argus_scan_m_with_path_and_output(self):
+        from argus.core.scanner_template import ScanPaths
+        args = MScanner().build_args(
+            ScanPaths(workspace="/workspace", output="/output/results.json"),
+        )
+        assert args[0] == "argus"  # sentinel stripped by engine
+        assert "scan" in args and "m" in args
+        assert "--path" in args
+        assert args[args.index("--path") + 1] == "/workspace"
+        assert "--output-dir" in args
+        assert args[args.index("--output-dir") + 1] == "/output"
+        assert "--format" in args
+        assert args[args.index("--format") + 1] == "json"
+
+    def test_extra_args_appended(self):
+        from argus.core.scanner_template import ScanPaths
+        args = MScanner().build_args(
+            ScanPaths(workspace="/w", output="/o/results.json"),
+            {"extra_args": ["--verbose", "--rule", "M001"]},
+        )
+        assert args[-3:] == ["--verbose", "--rule", "M001"]
+
+    def test_handles_missing_output_path(self):
+        from argus.core.scanner_template import ScanPaths
+        args = MScanner().build_args(ScanPaths(workspace="/w", output=""))
+        assert args[args.index("--output-dir") + 1] == "/output"
+
+
+class TestToolVersion:
+    """``tool_version()`` reports the py-tree-sitter version when
+    installed, ``None`` otherwise. Mock both branches because the test
+    environment's tree_sitter presence is not guaranteed."""
+
+    def test_returns_none_when_tree_sitter_missing(self, monkeypatch):
+        import builtins
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "tree_sitter":
+                raise ImportError("not installed in this env")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        assert MScanner().tool_version() is None
+
+    def test_returns_version_when_available(self, monkeypatch):
+        import sys
+        import types
+        fake = types.ModuleType("tree_sitter")
+        fake.__version__ = "0.21.3"
+        monkeypatch.setitem(sys.modules, "tree_sitter", fake)
+        assert MScanner().tool_version() == "0.21.3"
