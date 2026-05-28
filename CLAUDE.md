@@ -447,7 +447,7 @@ See `CONTRIBUTING.md` for the complete composite actions development guide. Key 
 
 | Category | Actions | Documentation |
 |----------|---------|---------------|
-| **SAST** | scanner-codeql<br>scanner-bandit<br>scanner-gosec<br>scanner-opengrep<br>scanner-m | Multi-language<br>Python<br>Go<br>Pattern-based<br>MUMPS / M (14 rules: M001-M006, M101-M102, M201-M206 — mHawk taint-sink parity + 8 diagnostics) |
+| **SAST** | scanner-codeql<br>scanner-bandit<br>scanner-gosec<br>scanner-opengrep<br>scanner-m | Multi-language<br>Python<br>Go<br>Pattern-based<br>MUMPS / M (16 rules: M001-M006, M101-M102, M201-M208 — mHawk taint-sink parity + 10 diagnostics) |
 | **Secrets** | scanner-gitleaks | Git history & files |
 | **Dependencies** | scanner-osv<br>scanner-dependency-review | OSV database<br>PR diff analysis & license compliance |
 | **Infrastructure** | scanner-trivy-iac<br>scanner-checkov | Terraform, K8s, etc.<br>Multi-framework |

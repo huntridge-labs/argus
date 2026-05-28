@@ -80,12 +80,19 @@ class MScanner:
                 continue
             for rule in RULES:
                 try:
-                    findings.extend(rule.analyze(parsed, config))
+                    rule_findings = list(rule.analyze(parsed, config))
                 except Exception as exc:  # noqa: BLE001
                     # Rule crash must not take down the whole scan;
                     # surface it as a finding so it's visible in output
                     # rather than disappearing into logs.
                     findings.append(self._rule_crash_finding(rule, source_path, exc))
+                    continue
+                override = _severity_override(rule, config)
+                if override is not None:
+                    rule_findings = _apply_severity_override(
+                        rule_findings, rule.severity, override,
+                    )
+                findings.extend(rule_findings)
 
         return ScanResult(
             scanner=self.name,
@@ -178,3 +185,41 @@ class MScanner:
             scanner=self.name,
             metadata={"rule": rule.id, "error_type": type(exc).__name__},
         )
+
+
+def _severity_override(rule, config: dict | None):
+    """Resolve ``scanners.m.rules.<id>.severity`` from the config into
+    a Severity enum, or ``None`` when no override is configured.
+
+    Unknown severity strings degrade gracefully — ``None`` is returned
+    rather than aborting the scan on a typo.
+    """
+    if not config:
+        return None
+    rule_cfg = (config.get("rules") or {}).get(rule.id) or {}
+    raw = rule_cfg.get("severity")
+    if not raw:
+        return None
+    from argus.core.models import Severity
+    resolved = Severity.from_string(str(raw))
+    if resolved == Severity.UNKNOWN:
+        return None
+    return resolved
+
+
+def _apply_severity_override(findings, default_severity, override):
+    """Replace the severity on findings that fired at the rule's
+    *default* severity.
+
+    Per-finding precision (M003's PIPE bump to CRITICAL) is preserved:
+    a finding whose severity already differs from the rule default is
+    left untouched. Only the baseline severity is user-tunable.
+    """
+    import dataclasses
+    out = []
+    for finding in findings:
+        if finding.severity == default_severity:
+            out.append(dataclasses.replace(finding, severity=override))
+        else:
+            out.append(finding)
+    return out

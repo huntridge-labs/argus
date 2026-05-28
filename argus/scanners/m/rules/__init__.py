@@ -18,6 +18,8 @@ from .m203_implicit_declaration import ImplicitDeclarationRule
 from .m204_unused_local import UnusedLocalRule
 from .m205_label_fallthrough import LabelFallthroughRule
 from .m206_kill_global_no_subscript import KillGlobalNoSubscriptRule
+from .m207_bare_kill import BareKillRule
+from .m208_bare_new import BareNewRule
 
 RULES = [
     XECUTEInjectionRule(),
@@ -34,6 +36,8 @@ RULES = [
     UnusedLocalRule(),
     LabelFallthroughRule(),
     KillGlobalNoSubscriptRule(),
+    BareKillRule(),
+    BareNewRule(),
 ]
 
 __all__ = [
@@ -52,4 +56,6 @@ __all__ = [
     "UnusedLocalRule",
     "LabelFallthroughRule",
     "KillGlobalNoSubscriptRule",
+    "BareKillRule",
+    "BareNewRule",
 ]

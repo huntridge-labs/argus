@@ -57,6 +57,22 @@ scanners:
   #   #   patterns:
   #   #     - "\\$ZIO\\b"             # YottaDB pending input
   #   #     - "\\^MyApp\\.input\\b"   # site-specific HTTP global
+  #   #
+  #   # Functions / intrinsics that REMOVE taint when applied. A variable
+  #   # assigned from a sanitizer call is treated as clean by every
+  #   # taint-aware rule (M001 / M003 / M005 / M006).
+  #   # sanitizers:
+  #   #   - "$$ESCAPE^HTML"           # output encoder
+  #   #   - "$$VALIDATE^INPUT"        # input validator
+  #   #
+  #   # Per-rule severity overrides. The default severity is replaced
+  #   # for every finding the rule emits at its baseline. Per-finding
+  #   # precision (e.g. M003's PIPE-device CRITICAL bump) is preserved.
+  #   # rules:
+  #   #   M203:
+  #   #     severity: low             # demote noisy diagnostic
+  #   #   M001:
+  #   #     severity: critical        # promote XECUTE for this codebase
 
   # container:
   #   enabled: false

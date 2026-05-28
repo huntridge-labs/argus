@@ -133,6 +133,46 @@ def collect_read_tainted_variables(parsed: ParsedSource) -> set[str]:
     return tainted
 
 
+def _sanitized_variables(
+    parsed: ParsedSource, sanitizer_names: list[str],
+) -> set[str]:
+    """Return uppercased variable names assigned from a sanitizer call.
+
+    A sanitizer is a function whose return value is trusted — applying
+    it to a tainted value produces a clean value. Configured via
+    ``scanners.m.sanitizers`` in ``argus.yml``::
+
+        scanners:
+          m:
+            sanitizers:
+              - "$$VALIDATE^LIBRARY"
+              - "$$ESCAPE^HTML"
+
+    Phase 1 detection is conservative: any assignment whose RHS text
+    references one of the named sanitizers marks the LHS as sanitized
+    for the whole file. Document-order precision (a sanitization that
+    happens *after* the sink doesn't actually clean the sink) lands
+    with the inter-procedural rewrite.
+    """
+    if not sanitizer_names:
+        return set()
+    escaped = "|".join(re.escape(name) for name in sanitizer_names)
+    pattern = re.compile(rf"(?:{escaped})", re.IGNORECASE)
+    sanitized: set[str] = set()
+    for node in walk(parsed.tree.root_node):
+        if node.type != "assignment":
+            continue
+        lhs, rhs = _assignment_lhs_rhs(node)
+        if lhs is None or rhs is None:
+            continue
+        if not pattern.search(parsed.node_text(rhs)):
+            continue
+        name = _lhs_identifier_name(parsed, lhs)
+        if name:
+            sanitized.add(name)
+    return sanitized
+
+
 def collect_tainted_variables(
     parsed: ParsedSource,
     config: dict | None = None,
@@ -173,6 +213,12 @@ def collect_tainted_variables(
         name = _lhs_identifier_name(parsed, lhs)
         if name:
             tainted.add(name)
+    # Sanitizers explicitly clean variables. Subtract after collection
+    # so the user-configured sanitizer set always wins over the
+    # built-in source patterns.
+    sanitizer_names = (config or {}).get("sanitizers") or []
+    if sanitizer_names:
+        tainted -= _sanitized_variables(parsed, sanitizer_names)
     return tainted
 
 

@@ -274,17 +274,30 @@ command's source line.
   `Q` / `H` / `G`.
 - **M206** KILL of an entire global tree (`K ^G` with no subscript) — high real-world
   impact; production VistA outages have been traced to exactly this construct.
+- **M207** bare `K` (no arguments) deletes every local in the routine scope.
+- **M208** bare `N` (no arguments) stacks every local in the routine scope.
 
 **Taint sources (built-in)**
 - `READ` / `R` command arguments
 - `$ZARGV` (YottaDB / GT.M process arguments)
 - HTTP context globals `^%CGI`, `^%REQUEST`, `^%session`
 
-**Config-driven taint extension**
-- `scanners.m.taint_sources.patterns` in `argus.yml` accepts arbitrary regex strings
-  that join the source set seen by every taint-aware rule. Lets users add site-specific
-  intrinsics (`$ZIO`, custom HTTP globals, vendor input routines) without forking the
-  scanner. Differentiator vs. mHawk's closed rule engine.
+**Configurability (argus.yml `scanners.m.*`)**
+- `taint_sources.patterns` — extend the recognized taint-source surface with arbitrary
+  regex strings. Variables assigned from an RHS matching a user pattern join the
+  built-in tainted set seen by every taint-aware rule. Lets users add site-specific
+  intrinsics (`$ZIO`, custom HTTP globals, vendor input routines) without forking.
+- `sanitizers` — functions / intrinsics that remove taint when applied. A variable
+  assigned from a sanitizer call (`S X=$$ESCAPE^HTML(RAW)`) is treated as clean by
+  every taint-aware rule. Pairs with the source-patterns config to make the entire
+  taint flow tunable per codebase.
+- `rules.<id>.severity` — per-rule severity override. Replaces the rule's default
+  baseline; per-finding precision (M003's PIPE-CRITICAL bump) is preserved. Accepts
+  `critical` / `high` / `medium` / `low` / `info`; unknown values degrade gracefully.
+
+Together these three knobs are the differentiator vs. mHawk's closed rule engine —
+operators tune the full source → sanitizer → sink → severity pipeline against their
+own codebase without forking or vendor escalation.
 
 **Test coverage**
 - 25 unit tests (`argus/tests/scanners/test_m_scanner.py`) cover the scanner protocol
@@ -320,15 +333,9 @@ incremental progress against mHawk's diagnostic surface or operational maturity.
   empty IF / ELSE body, bare KILL of all locals, NEW without later KILL pairing,
   JOB without ID capture, deprecated intrinsics, label-name collision with reserved
   word. Each is a 1-2 hour rule + fixture + test cycle.
-- **Per-rule severity overrides via argus.yml.** `scanners.m.rules.M203.severity: low`
-  lets operators tune the noise floor of the diagnostic surface against their codebase
-  without disabling rules outright.
 - **First false-positive triage pass.** Run against WorldVistA / RPMS / MailMan
   forks, capture FP patterns by rule, refine. mHawk's actual moat is years of this
   cycle — we have to start it.
-- **Configurable per-rule sanitizers.** `scanners.m.sanitizers` accepts function /
-  intrinsic names that remove taint when applied (`$$VALIDATE^LIBRARY`, etc.). Pairs
-  with the existing config-driven taint sources to make the whole flow tunable.
 
 #### Phase 3 — Full parity stretch (twelve-month horizon, MUMPS subject-matter expert engaged)
 

@@ -270,6 +270,8 @@ OSS SAST for the MUMPS / M language (VistA, YottaDB, GT.M, FileMan). Phase 1+ sh
 | `M204` | Local variable set but never read | INFO | n/a |
 | `M205` | Label body falls through into the following label | INFO | n/a |
 | `M206` | KILL of an entire global tree (no subscript) | INFO | n/a |
+| `M207` | Bare KILL command deletes every local variable | INFO | n/a |
+| `M208` | Bare NEW command stacks every local variable | INFO | n/a |
 
 The security rules above cover all five MUMPS-specific code-injection sinks — XECUTE (M001), indirection (M002), OPEN/USE device arguments (M003), dynamic routine dispatch (M005), and external `$&` calls (M006) — plus data-at-rest credential leaks (M004). Together they exceed the public mHawk taint-sink surface for intra-procedural detection.
 
@@ -287,18 +289,26 @@ fail_on_severity: high
 
 Optional per-scanner keys:
 - `extensions` — file extensions to scan (defaults to `[".m"]`).
-- `taint_sources.patterns` — list of regex strings appended to the built-in taint-source set. Any assignment whose RHS matches one of these patterns taints its LHS. Use for site-specific intrinsics or HTTP globals beyond `READ` / `$ZARGV` / `^%CGI` / `^%REQUEST` / `^%session`:
+- `taint_sources.patterns` — list of regex strings appended to the built-in taint-source set. Any assignment whose RHS matches one of these patterns taints its LHS. Use for site-specific intrinsics or HTTP globals beyond `READ` / `$ZARGV` / `^%CGI` / `^%REQUEST` / `^%session`.
+- `sanitizers` — list of function / intrinsic names that *remove* taint when applied. A variable assigned from an expression that calls one of these is treated as clean by every taint-aware rule. Pair with the existing source-patterns config to make the full taint flow tunable per codebase.
+- `rules.<id>.severity` — per-rule severity override. Replaces the rule's default baseline severity. Per-finding precision (M003's PIPE bump to CRITICAL) is preserved — only baseline severity is user-tunable. Accepts `critical` / `high` / `medium` / `low` / `info`.
 
-  ```yaml
-  scanners:
-    - m
-  scanners:
-    m:
-      taint_sources:
-        patterns:
-          - "\\$ZIO\\b"             # YottaDB pending input
-          - "\\^MyApp\\.input\\b"   # site-specific HTTP global
-  ```
+```yaml
+scanners:
+  m:
+    taint_sources:
+      patterns:
+        - "\\$ZIO\\b"             # YottaDB pending input
+        - "\\^MyApp\\.input\\b"   # site-specific HTTP global
+    sanitizers:
+      - "$$ESCAPE^HTML"           # output-encoder
+      - "$$VALIDATE^INPUT"        # input-validator
+    rules:
+      M203:
+        severity: low             # demote noisy diagnostic
+      M001:
+        severity: critical        # promote XECUTE in this codebase
+```
 
 **Installation paths:**
 
