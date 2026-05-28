@@ -34,6 +34,12 @@ class Rule(ABC):
     severity: Severity = Severity.MEDIUM
     title: str = ""
     cwe: Optional[str] = None
+    # Whether the rule runs unless the user flips it via
+    # ``scanners.mumps.rules.<id>.enabled``. Defaults to True. A rule
+    # sets this False when it is too noisy or codebase-specific to be on
+    # for everyone (e.g. M205 label-fallthrough, which is the intended
+    # idiom in old-style linear VistA routines).
+    enabled_by_default: bool = True
 
     @abstractmethod
     def analyze(

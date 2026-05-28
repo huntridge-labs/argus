@@ -241,9 +241,16 @@ class TestM202RoutineNameMismatch:
         assert _findings_with_id(result, "M202") == []
 
 
+# M205 ships off-by-default (too noisy on linear-style VistA routines),
+# so its tests must opt in explicitly.
+_M205_ON = {"rules": {"M205": {"enabled": True}}}
+
+
 class TestM205LabelFallthrough:
     def test_fires_on_fallthrough(self, m_fixtures_dir):
-        result = _scan(m_fixtures_dir / "m205_fallthrough.m")
+        result = MumpsScanner().scan(
+            str(m_fixtures_dir / "m205_fallthrough.m"), _M205_ON,
+        )
         hits = _findings_with_id(result, "M205")
         assert hits, "M205 must fire when a label body falls through"
         finding = hits[0]
@@ -251,8 +258,16 @@ class TestM205LabelFallthrough:
         assert finding.metadata.get("fallthrough_into") == "LABELB"
 
     def test_terminated_labels_do_not_fire(self, m_fixtures_dir):
-        result = _scan(m_fixtures_dir / "m205_terminated.m")
+        result = MumpsScanner().scan(
+            str(m_fixtures_dir / "m205_terminated.m"), _M205_ON,
+        )
         assert _findings_with_id(result, "M205") == []
+
+    def test_disabled_by_default(self, m_fixtures_dir):
+        # Without opt-in config, M205 must not run at all.
+        result = _scan(m_fixtures_dir / "m205_fallthrough.m")
+        assert _findings_with_id(result, "M205") == []
+        assert "M205" not in result.metadata["rules_run"]
 
 
 class TestM203ImplicitDeclaration:
@@ -336,6 +351,26 @@ class TestConfigurableSanitizers:
             "Configuring a sanitizer must remove at least one taint hit "
             "or have nothing to remove"
         )
+
+
+class TestPerRuleEnableDisable:
+    def test_disable_a_normally_on_rule(self, m_fixtures_dir):
+        # M101 (duplicate label) is on by default; disabling it via
+        # config must suppress it and drop it from rules_run.
+        path = m_fixtures_dir / "m101_dup_label.m"
+        baseline = _scan(path)
+        assert _findings_with_id(baseline, "M101"), "M101 fires by default"
+        disabled = MumpsScanner().scan(
+            str(path), {"rules": {"M101": {"enabled": False}}},
+        )
+        assert _findings_with_id(disabled, "M101") == []
+        assert "M101" not in disabled.metadata["rules_run"]
+
+    def test_enable_a_normally_off_rule(self, m_fixtures_dir):
+        # M205 is off by default; enabling it makes it run.
+        path = m_fixtures_dir / "m205_fallthrough.m"
+        on = MumpsScanner().scan(str(path), {"rules": {"M205": {"enabled": True}}})
+        assert "M205" in on.metadata["rules_run"]
 
 
 class TestPerRuleSeverityOverride:

@@ -100,8 +100,9 @@ class MumpsScanner:
         rule_config["_callgraph"] = callgraph
 
         # Phase 3: run each rule against each parsed source.
+        active_rules = [r for r in RULES if _rule_enabled(r, config)]
         for source_path, parsed in parsed_units:
-            for rule in RULES:
+            for rule in active_rules:
                 try:
                     rule_findings = list(rule.analyze(parsed, rule_config))
                 except Exception as exc:  # noqa: BLE001
@@ -123,7 +124,7 @@ class MumpsScanner:
             metadata={
                 "files_scanned": files_scanned,
                 "parse_failures": parse_failures,
-                "rules_run": [r.id for r in RULES],
+                "rules_run": [r.id for r in active_rules],
                 "callgraph": {
                     "routines": len(callgraph.routines),
                     "edges": len(callgraph.edges),
@@ -212,6 +213,23 @@ class MumpsScanner:
             scanner=self.name,
             metadata={"rule": rule.id, "error_type": type(exc).__name__},
         )
+
+
+def _rule_enabled(rule, config: dict | None) -> bool:
+    """Resolve whether ``rule`` should run.
+
+    ``scanners.mumps.rules.<id>.enabled`` (bool) overrides the rule's
+    ``enabled_by_default`` when present. Absent config preserves each
+    rule's default, so existing setups are unchanged except for rules
+    that ship off-by-default (e.g. M205).
+    """
+    default = getattr(rule, "enabled_by_default", True)
+    if not config:
+        return default
+    rule_cfg = (config.get("rules") or {}).get(rule.id) or {}
+    if "enabled" in rule_cfg:
+        return bool(rule_cfg["enabled"])
+    return default
 
 
 def _severity_override(rule, config: dict | None):

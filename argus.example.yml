@@ -65,14 +65,20 @@ scanners:
   #   #   - "$$ESCAPE^HTML"           # output encoder
   #   #   - "$$VALIDATE^INPUT"        # input validator
   #   #
-  #   # Per-rule severity overrides. The default severity is replaced
-  #   # for every finding the rule emits at its baseline. Per-finding
-  #   # precision (e.g. M003's PIPE-device CRITICAL bump) is preserved.
+  #   # Per-rule controls. ``severity`` replaces a rule's baseline
+  #   # severity (per-finding precision like M003's PIPE CRITICAL bump
+  #   # is preserved). ``enabled`` turns a rule on/off. Most rules are
+  #   # on by default; M205 (label fallthrough) ships OFF because
+  #   # fallthrough is the intended idiom in linear VistA routines.
   #   # rules:
   #   #   M203:
   #   #     severity: low             # demote noisy diagnostic
   #   #   M001:
   #   #     severity: critical        # promote XECUTE for this codebase
+  #   #   M205:
+  #   #     enabled: true             # opt in (off by default)
+  #   #   M202:
+  #   #     enabled: false            # silence a rule entirely
 
   # container:
   #   enabled: false

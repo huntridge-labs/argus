@@ -268,7 +268,7 @@ OSS SAST for the MUMPS / M language (VistA, YottaDB, GT.M, FileMan). Phase 1+ sh
 | `M202` | Routine name does not match filename | INFO | n/a |
 | `M203` | Local variable read before it was defined | INFO | n/a |
 | `M204` | Local variable set but never read | INFO | n/a |
-| `M205` | Label body falls through into the following label | INFO | n/a |
+| `M205` | Label body falls through into the following label | INFO | n/a (off by default) |
 | `M206` | KILL of an entire global tree (no subscript) | INFO | n/a |
 | `M207` | Bare KILL command deletes every local variable | INFO | n/a |
 | `M208` | Bare NEW command stacks every local variable | INFO | n/a |
@@ -292,6 +292,7 @@ Optional per-scanner keys:
 - `taint_sources.patterns` — list of regex strings appended to the built-in taint-source set. Any assignment whose RHS matches one of these patterns taints its LHS. Use for site-specific intrinsics or HTTP globals beyond `READ` / `$ZARGV` / `^%CGI` / `^%REQUEST` / `^%session`.
 - `sanitizers` — list of function / intrinsic names that *remove* taint when applied. A variable assigned from an expression that calls one of these is treated as clean by every taint-aware rule. Pair with the existing source-patterns config to make the full taint flow tunable per codebase.
 - `rules.<id>.severity` — per-rule severity override. Replaces the rule's default baseline severity. Per-finding precision (M003's PIPE bump to CRITICAL) is preserved — only baseline severity is user-tunable. Accepts `critical` / `high` / `medium` / `low` / `info`.
+- `rules.<id>.enabled` — turn an individual rule on or off. Most rules are on by default; **M205 (label fallthrough) is off by default** because top-to-bottom fallthrough between labels is the intended idiom in old-style linear VistA routines (it was ~69% false-positive on the VistA Kernel). Opt in with `rules.M205.enabled: true` if your codebase follows strict one-label-one-entry-point discipline.
 
 ```yaml
 scanners:
@@ -308,6 +309,10 @@ scanners:
         severity: low             # demote noisy diagnostic
       M001:
         severity: critical        # promote XECUTE in this codebase
+      M205:
+        enabled: true             # opt in (off by default)
+      M202:
+        enabled: false            # silence a rule entirely
 ```
 
 **Installation paths:**

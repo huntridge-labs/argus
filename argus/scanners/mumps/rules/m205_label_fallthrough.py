@@ -83,6 +83,13 @@ class LabelFallthroughRule(Rule):
     severity = Severity.INFO
     title = "Label body falls through into the following label"
     cwe = None  # diagnostic
+    # Off by default: in old-style linear VistA routines, top-to-bottom
+    # fallthrough between labels is the intended control-flow idiom, so
+    # this rule is overwhelmingly false-positive on real corpora (69% of
+    # its findings on the VistA Kernel cluster in linear-style routines).
+    # Opt in with ``scanners.mumps.rules.M205.enabled: true`` for
+    # codebases that follow strict one-label-one-entry-point discipline.
+    enabled_by_default = False
 
     def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
         root = parsed.tree.root_node
