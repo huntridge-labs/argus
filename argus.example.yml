@@ -35,6 +35,18 @@ scanners:
   supply-chain:
     enabled: true
 
+  # m:
+  #   # MUMPS / M language SAST. Opt-in: most repos don't have .m files.
+  #   # Detects XECUTE / indirection / OPEN/USE injection, hard-coded
+  #   # credentials in globals, dynamic dispatch with tainted input,
+  #   # plus duplicate-label and unreachable-code diagnostics.
+  #   # Requires either ``pip install argus-security[m]`` +
+  #   # ``scripts/build-m-grammar.sh`` (local) or the scanner-m
+  #   # container image (no local toolchain needed).
+  #   enabled: true
+  #   path: "routines"
+  #   # extensions: [".m"]  # default
+
   # container:
   #   enabled: false
   #   image_ref: "myapp:latest"
