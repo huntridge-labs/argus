@@ -36,6 +36,45 @@ from ..taint import collect_tainted_variables
 _OPEN_KEYWORD_RE = re.compile(r"^\s*O(?:PEN)?\b", re.IGNORECASE)
 _USE_KEYWORD_RE = re.compile(r"^\s*U(?:SE)?\b", re.IGNORECASE)
 
+# PIPE-device markers. Either of these in the command's source text
+# strongly indicates a PIPE device (YottaDB ``OPEN "PIPE":(COMMAND=...)``
+# or the parameter-string form ``OPEN dev:(COMMAND="...")``). PIPE
+# device arguments execute as shell commands, so a tainted PIPE
+# argument is OS-level RCE rather than just I/O redirection.
+_PIPE_MARKERS = (
+    re.compile(r'"\s*PIPE\s*"', re.IGNORECASE),
+    re.compile(r"/?COMMAND\s*=", re.IGNORECASE),
+)
+
+
+def _is_pipe_device(command_text: str) -> bool:
+    return any(p.search(command_text) for p in _PIPE_MARKERS)
+
+
+def _command_line_text(parsed: ParsedSource, node) -> str:
+    """Return the source line containing ``node`` with any trailing
+    MUMPS comment stripped.
+
+    The grammar can't parse OPEN's full ``DEV:(PARAMS):TIMEOUT`` form
+    — ``:(PARAMS)`` ends up as a phantom sibling command with an empty
+    keyword. Rule logic that needs to see the parameters has to fall
+    back to the raw source line. Comment-stripping prevents a comment
+    word like ``; PIPE not used here`` from tripping the PIPE markers.
+    """
+    row = node.start_point[0]
+    lines = parsed.source_bytes.split(b"\n")
+    if row >= len(lines):
+        return parsed.node_text(node)
+    line = lines[row].decode("utf-8", errors="replace")
+    # Strip trailing ``;...`` MUMPS comment. Naive: doesn't account for
+    # a ``;`` inside a string literal, but that's rare on OPEN / USE
+    # lines and the worst case is a missed PIPE marker, not a false
+    # positive.
+    semi = line.find(";")
+    if semi >= 0:
+        line = line[:semi]
+    return line
+
 
 def _argument_node(command_node):
     for field_name in ("arguments", "argument", "expression"):
@@ -66,25 +105,47 @@ class OpenUseInjectionRule(Rule):
             is_use = bool(_USE_KEYWORD_RE.match(command_text))
             if not (is_open or is_use):
                 continue
-            args = _argument_node(node)
-            arg_text = parsed.node_text(args).strip() if args else ""
-            hits = _tainted_references(arg_text, tainted)
+            # Use the full source line for both taint detection and
+            # PIPE classification. The grammar's OPEN-parameter-list
+            # gap (see ``_command_line_text`` docstring) means the
+            # argument subtree misses ``:(COMMAND=...)`` content.
+            line_text = _command_line_text(parsed, node)
+            # Drop the keyword token from the line so we don't match
+            # a variable named ``O`` or ``U`` against the keyword itself.
+            args_for_taint = re.sub(
+                r"^\s*(?:O(?:PEN)?|U(?:SE)?)\b", "", line_text, count=1, flags=re.IGNORECASE,
+            )
+            hits = _tainted_references(args_for_taint, tainted)
             if not hits:
                 continue
             keyword = "OPEN" if is_open else "USE"
+            is_pipe = _is_pipe_device(line_text)
+            arg_text = args_for_taint.strip()
+            severity = Severity.CRITICAL if is_pipe else self.severity
+            description = (
+                f"{keyword} argument references variable(s) {sorted(hits)} "
+                "assigned from an externally-controlled source (READ, "
+                "$ZARGV, or an HTTP context global). "
+            )
+            if is_pipe:
+                description += (
+                    "The command targets a PIPE device (`PIPE` device-name "
+                    "or `COMMAND=` parameter detected), so the tainted "
+                    "value is shell-executed at runtime: OS-level RCE."
+                )
+            else:
+                description += (
+                    "A tainted device name or parameter string can redirect "
+                    "I/O to attacker-chosen files / sockets."
+                )
             yield self.make_finding(
                 parsed,
                 node,
-                description=(
-                    f"{keyword} argument references variable(s) {sorted(hits)} "
-                    "assigned from an externally-controlled source (READ, "
-                    "$ZARGV, or an HTTP context global). A tainted device "
-                    "name or parameter string can redirect I/O to "
-                    "attacker-chosen files / sockets or, on PIPE devices, "
-                    "execute arbitrary shell commands."
-                ),
+                description=description,
+                severity=severity,
                 metadata={
                     "command": keyword,
+                    "device_class": "PIPE" if is_pipe else "generic",
                     "taint_sources": sorted(hits),
                     "argument": arg_text[:200],
                 },

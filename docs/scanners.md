@@ -258,7 +258,7 @@ OSS SAST for the MUMPS / M language (VistA, YottaDB, GT.M, FileMan). Phase 1+ sh
 |------|-------|----------|-----|
 | `M001` | XECUTE of tainted expression | HIGH | CWE-95 |
 | `M002` | Indirection (`@`) of non-literal expression | HIGH | CWE-94 |
-| `M003` | OPEN / USE of tainted device argument | HIGH | CWE-78 |
+| `M003` | OPEN / USE of tainted device argument (CRITICAL on PIPE devices) | HIGH | CWE-78 |
 | `M004` | Hard-coded credential in MUMPS global | CRITICAL | CWE-798 |
 | `M005` | DO of tainted indirection (dynamic dispatch) | CRITICAL | CWE-95 |
 | `M006` | Tainted argument to external (`$&`) call | HIGH | CWE-78 |

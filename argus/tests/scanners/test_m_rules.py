@@ -118,6 +118,16 @@ class TestM003OpenUseInjection:
         result = _scan(m_fixtures_dir / "m003_open_clean.m")
         assert _findings_with_id(result, "M003") == []
 
+    def test_pipe_device_bumps_to_critical(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m003_pipe_taint.m")
+        hits = _findings_with_id(result, "M003")
+        assert hits, "M003 must fire on a tainted PIPE-device argument"
+        pipe_hits = [f for f in hits if f.metadata.get("device_class") == "PIPE"]
+        assert pipe_hits, "PIPE detection must classify the device"
+        assert all(f.severity == Severity.CRITICAL for f in pipe_hits), (
+            "PIPE-bound OPEN/USE with tainted argument is OS-level RCE, must be CRITICAL"
+        )
+
 
 class TestM005TaintedDispatch:
     def test_fires_on_tainted_do_indirection(self, m_fixtures_dir):

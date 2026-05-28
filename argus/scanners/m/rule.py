@@ -46,16 +46,19 @@ class Rule(ABC):
         *,
         description: Optional[str] = None,
         metadata: Optional[dict] = None,
+        severity: Optional[Severity] = None,
     ) -> Finding:
         """Construct a Finding with rule defaults filled in.
 
         Subclasses call this to keep finding construction terse and
         consistent. The ``location`` is derived from the tree-sitter
-        node's start position.
+        node's start position. ``severity`` overrides the class-level
+        default — used by rules that calibrate severity per finding
+        (e.g. M003 bumping to CRITICAL on PIPE-device sites).
         """
         return Finding(
             id=self.id,
-            severity=self.severity,
+            severity=severity or self.severity,
             title=self.title,
             description=description or self.title,
             location=parsed.location(node),

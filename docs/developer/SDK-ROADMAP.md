@@ -265,9 +265,6 @@ USE / HALT / QUIT all collapse into a single `keyword` regex (text-driven match 
 - Registered in `SCANNER_REGISTRY`; category `sast`.
 
 #### Phase 2 — Deepening (six-month horizon)
-
-- **M003 refinement.** PIPE device parameter-string parsing (`/COMMAND=`) so PIPE-bound
-  OPEN / USE sites bump from HIGH to CRITICAL.
 - **Inter-procedural taint.** Call-graph construction across `DO` / `GOTO` / routine_call;
   per-routine taint summaries; recursion handling. Single largest technical lift; most
   real-world MUMPS injection bugs cross at least one routine boundary.
