@@ -45,7 +45,20 @@ jobs:
           pip install -e '.[all]'
           pip install pytest-deadfixtures
 
+      - name: Build MUMPS tree-sitter grammar
+        # Compiles janus-llm/tree-sitter-mumps at the pinned SHA into
+        # ~/.cache/argus/grammars/mumps.so so the M scanner's per-rule
+        # integration tests in argus/tests/scanners/test_m_rules.py can
+        # actually run instead of skip. The script is idempotent and
+        # the compile takes ~15s on ubuntu-latest.
+        run: scripts/build-m-grammar.sh
+
       - name: Run all tests
+        # ARGUS_M_GRAMMAR is unset on purpose: parser.py probes
+        # ~/.cache/argus/grammars/mumps.so by default and the build
+        # step writes there. Setting an explicit path here would
+        # diverge from the default lookup, which is the path users
+        # without an env var actually take.
         run: pytest
 
       - name: Run E2E tests (slow, Docker-dependent)
