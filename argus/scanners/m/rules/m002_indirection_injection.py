@@ -42,7 +42,7 @@ class IndirectionInjectionRule(Rule):
     title = "Possible code-injection via indirection (@)"
     cwe = "CWE-94"
 
-    def analyze(self, parsed: ParsedSource) -> Iterable[Finding]:
+    def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
         for node in walk(parsed.tree.root_node):
             if node.type != "indirection":
                 continue

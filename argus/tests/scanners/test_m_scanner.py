@@ -173,7 +173,7 @@ class TestScanLoopBehaviour:
 
         class _RecordingRule:
             id = "TEST-RULE"
-            def analyze(self, parsed):
+            def analyze(self, parsed, config=None):
                 captured.append(parsed.path.name)
                 return []
 
@@ -215,7 +215,7 @@ class TestScanLoopBehaviour:
 
         class _ExplodingRule:
             id = "BOOM"
-            def analyze(self, parsed):
+            def analyze(self, parsed, config=None):
                 raise RuntimeError("rule went sideways")
 
         monkeypatch.setattr(MParser, "parse", lambda p, b: _StubParsed(p))
@@ -235,7 +235,7 @@ class TestScanLoopBehaviour:
         class _Rule:
             def __init__(self, rule_id):
                 self.id = rule_id
-            def analyze(self, parsed):
+            def analyze(self, parsed, config=None):
                 return [Finding(
                     id=self.id,
                     severity=Severity.INFO,
@@ -258,7 +258,7 @@ class TestScanLoopBehaviour:
 
         class _Rule:
             id = "X"
-            def analyze(self, parsed):
+            def analyze(self, parsed, config=None):
                 seen.append(parsed.path.name)
                 return []
 

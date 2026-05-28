@@ -133,29 +133,64 @@ def collect_read_tainted_variables(parsed: ParsedSource) -> set[str]:
     return tainted
 
 
-def collect_tainted_variables(parsed: ParsedSource) -> set[str]:
+def collect_tainted_variables(
+    parsed: ParsedSource,
+    config: dict | None = None,
+) -> set[str]:
     """Return the set of uppercased identifier names tainted by any
     Phase 1+ source: READ commands, ``$ZARGV`` references in an
     assignment RHS, or HTTP context globals (``^%CGI`` / ``^%REQUEST``
     / ``^%session``) in an assignment RHS.
 
-    Single document pass. False positives widen the set (more findings
-    later) but never narrow it — the sink rules add their own context
-    before emitting a Finding.
+    ``config`` may carry a ``taint_sources.patterns`` list (regex
+    strings, treated as additional matchers against assignment RHS
+    text). Use this to extend the source surface for site-specific
+    intrinsics (``$ZIO``, custom HTTP globals, vendor-specific input
+    routines) without forking the rules:
+
+        scanners:
+          m:
+            taint_sources:
+              patterns:
+                - "\\\\$ZIO\\\\b"
+                - "\\\\^MyApp\\\\.input\\\\b"
+
+    Invalid regex patterns are silently skipped — the rest of the
+    collection continues. Single document pass overall.
     """
     tainted: set[str] = collect_read_tainted_variables(parsed)
+    extra_patterns = _compile_extra_patterns(config)
+    all_patterns = _NON_READ_TAINT_PATTERNS + tuple(extra_patterns)
     for node in walk(parsed.tree.root_node):
         if node.type != "assignment":
             continue
         lhs, rhs = _assignment_lhs_rhs(node)
         if lhs is None or rhs is None:
             continue
-        if not _rhs_contains_non_read_taint(parsed, rhs):
+        rhs_text = parsed.node_text(rhs)
+        if not any(p.search(rhs_text) for p in all_patterns):
             continue
         name = _lhs_identifier_name(parsed, lhs)
         if name:
             tainted.add(name)
     return tainted
+
+
+def _compile_extra_patterns(config: dict | None) -> list[re.Pattern]:
+    """Compile user-supplied regex patterns from
+    ``config['taint_sources']['patterns']``. Invalid regexes are
+    silently dropped so a typo in argus.yml does not abort the scan.
+    """
+    if not config:
+        return []
+    raw = (config.get("taint_sources") or {}).get("patterns") or []
+    compiled: list[re.Pattern] = []
+    for pattern in raw:
+        try:
+            compiled.append(re.compile(pattern, re.IGNORECASE))
+        except re.error:
+            continue
+    return compiled
 
 
 def is_read_command(parsed: ParsedSource, command_node) -> bool:

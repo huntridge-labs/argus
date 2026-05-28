@@ -36,8 +36,18 @@ class Rule(ABC):
     cwe: Optional[str] = None
 
     @abstractmethod
-    def analyze(self, parsed: ParsedSource) -> Iterable[Finding]:
-        """Yield findings for this rule against ``parsed``."""
+    def analyze(
+        self,
+        parsed: ParsedSource,
+        config: Optional[dict] = None,
+    ) -> Iterable[Finding]:
+        """Yield findings for this rule against ``parsed``.
+
+        ``config`` is the per-scanner config dict (``scanners.m`` block
+        in ``argus.yml``). Most rules ignore it; taint-aware rules use
+        ``config['taint_sources']`` to extend the recognized source
+        surface beyond the built-in READ / $ZARGV / HTTP-global set.
+        """
 
     def make_finding(
         self,

@@ -67,6 +67,22 @@ class TestM001XECUTEInjection:
         assert hits, "M001 must recognize ^%CGI(...) as a taint source"
         assert all(f.severity == Severity.HIGH for f in hits)
 
+    def test_custom_taint_pattern_opt_in_via_config(self, m_fixtures_dir):
+        # $ZIO is not a built-in source; without config the rule should
+        # not fire on a $ZIO-driven XECUTE.
+        path = m_fixtures_dir / "m001_zio_custom.m"
+        baseline = MScanner().scan(str(path))
+        assert _findings_with_id(baseline, "M001") == [], (
+            "$ZIO must not be a built-in taint source"
+        )
+        # With taint_sources.patterns set, the same fixture fires.
+        config = {"taint_sources": {"patterns": [r"\$ZIO\b"]}}
+        with_config = MScanner().scan(str(path), config)
+        hits = _findings_with_id(with_config, "M001")
+        assert hits, (
+            "M001 must fire when taint_sources.patterns adds the custom source"
+        )
+
 
 class TestM002IndirectionInjection:
     def test_fires_on_variable_indirection(self, m_fixtures_dir):

@@ -41,7 +41,7 @@ class RoutineNameMismatchRule(Rule):
     title = "Routine name does not match filename"
     cwe = None  # diagnostic
 
-    def analyze(self, parsed: ParsedSource) -> Iterable[Finding]:
+    def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
         first = _first_label(parsed)
         if first is None:
             return

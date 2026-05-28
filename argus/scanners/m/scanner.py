@@ -80,7 +80,7 @@ class MScanner:
                 continue
             for rule in RULES:
                 try:
-                    findings.extend(rule.analyze(parsed))
+                    findings.extend(rule.analyze(parsed, config))
                 except Exception as exc:  # noqa: BLE001
                     # Rule crash must not take down the whole scan;
                     # surface it as a finding so it's visible in output

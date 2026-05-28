@@ -52,7 +52,7 @@ class UnresolvedLabelRule(Rule):
     title = "DO / GOTO to undeclared label"
     cwe = None  # diagnostic
 
-    def analyze(self, parsed: ParsedSource) -> Iterable[Finding]:
+    def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
         declared = _collect_declared_labels(parsed)
         for node in walk(parsed.tree.root_node):
             if node.type != "routine_call":

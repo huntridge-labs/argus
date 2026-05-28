@@ -282,7 +282,20 @@ scan_path: ./routines
 fail_on_severity: high
 ```
 
-Optional per-scanner key: `extensions` (defaults to `[".m"]`).
+Optional per-scanner keys:
+- `extensions` — file extensions to scan (defaults to `[".m"]`).
+- `taint_sources.patterns` — list of regex strings appended to the built-in taint-source set. Any assignment whose RHS matches one of these patterns taints its LHS. Use for site-specific intrinsics or HTTP globals beyond `READ` / `$ZARGV` / `^%CGI` / `^%REQUEST` / `^%session`:
+
+  ```yaml
+  scanners:
+    - m
+  scanners:
+    m:
+      taint_sources:
+        patterns:
+          - "\\$ZIO\\b"             # YottaDB pending input
+          - "\\^MyApp\\.input\\b"   # site-specific HTTP global
+  ```
 
 **Installation paths:**
 

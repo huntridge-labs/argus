@@ -39,13 +39,24 @@ scanners:
   #   # MUMPS / M language SAST. Opt-in: most repos don't have .m files.
   #   # Detects XECUTE / indirection / OPEN/USE injection, hard-coded
   #   # credentials in globals, dynamic dispatch with tainted input,
-  #   # plus duplicate-label and unreachable-code diagnostics.
+  #   # external $& call injection, plus duplicate-label, unreachable-
+  #   # code, undeclared-label, routine-name-mismatch, and label-
+  #   # fallthrough diagnostics.
   #   # Requires either ``pip install argus-security[m]`` +
   #   # ``scripts/build-m-grammar.sh`` (local) or the scanner-m
   #   # container image (no local toolchain needed).
   #   enabled: true
   #   path: "routines"
   #   # extensions: [".m"]  # default
+  #   #
+  #   # Extend the built-in taint source set (READ, $ZARGV,
+  #   # ^%CGI / ^%REQUEST / ^%session) with custom patterns. Any
+  #   # variable assigned from an RHS matching these regexes joins
+  #   # the tainted set seen by M001 / M003 / M005 / M006.
+  #   # taint_sources:
+  #   #   patterns:
+  #   #     - "\\$ZIO\\b"             # YottaDB pending input
+  #   #     - "\\^MyApp\\.input\\b"   # site-specific HTTP global
 
   # container:
   #   enabled: false

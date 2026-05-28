@@ -55,8 +55,8 @@ class ExternalCallInjectionRule(Rule):
     title = "Tainted argument to external ($&) call"
     cwe = "CWE-78"
 
-    def analyze(self, parsed: ParsedSource) -> Iterable[Finding]:
-        tainted = collect_tainted_variables(parsed)
+    def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
+        tainted = collect_tainted_variables(parsed, config)
         if not tainted:
             return
         for node in walk(parsed.tree.root_node):

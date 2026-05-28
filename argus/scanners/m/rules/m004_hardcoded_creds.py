@@ -83,7 +83,7 @@ class HardcodedCredentialsRule(Rule):
     title = "Hard-coded credential in MUMPS global"
     cwe = "CWE-798"
 
-    def analyze(self, parsed: ParsedSource) -> Iterable[Finding]:
+    def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
         for node in walk(parsed.tree.root_node):
             if node.type != "assignment":
                 continue

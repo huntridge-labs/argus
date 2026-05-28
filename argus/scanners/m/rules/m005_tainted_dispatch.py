@@ -52,8 +52,8 @@ class TaintedDispatchRule(Rule):
     title = "DO of READ-tainted indirection (dynamic routine dispatch)"
     cwe = "CWE-95"
 
-    def analyze(self, parsed: ParsedSource) -> Iterable[Finding]:
-        tainted = collect_tainted_variables(parsed)
+    def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
+        tainted = collect_tainted_variables(parsed, config)
         if not tainted:
             return
         for node in walk(parsed.tree.root_node):

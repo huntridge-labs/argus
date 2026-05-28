@@ -25,7 +25,7 @@ class DuplicateLabelRule(Rule):
     title = "Duplicate label declared in routine"
     cwe = None  # diagnostic, not a CWE
 
-    def analyze(self, parsed: ParsedSource) -> Iterable[Finding]:
+    def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
         seen: dict[str, object] = {}
         for node in walk(parsed.tree.root_node):
             if node.type != "label":

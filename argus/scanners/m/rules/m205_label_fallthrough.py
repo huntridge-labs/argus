@@ -84,7 +84,7 @@ class LabelFallthroughRule(Rule):
     title = "Label body falls through into the following label"
     cwe = None  # diagnostic
 
-    def analyze(self, parsed: ParsedSource) -> Iterable[Finding]:
+    def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
         root = parsed.tree.root_node
         # Collect top-level routine_definition nodes in document order.
         # ``program`` is typically the root with routine_definitions as

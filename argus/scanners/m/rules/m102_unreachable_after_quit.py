@@ -41,7 +41,7 @@ class UnreachableAfterQuitRule(Rule):
     title = "Unreachable code after unconditional QUIT / HALT"
     cwe = None  # diagnostic, not a CWE
 
-    def analyze(self, parsed: ParsedSource) -> Iterable[Finding]:
+    def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
         for parent in walk(parsed.tree.root_node):
             # Look for command siblings: consecutive ``command`` children
             # under the same parent. After the first unconditional break
