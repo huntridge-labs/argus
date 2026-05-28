@@ -426,6 +426,51 @@ def _on(rule_id):
     return {"rules": {rule_id: {"enabled": True}}}
 
 
+class TestM211ScratchGlobalNoJob:
+    def test_fires_on_scratch_without_job(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m211_scratch.m")
+        hits = _findings_with_id(result, "M211")
+        assert len(hits) == 1, "only the $J-less ^TMP write should fire"
+        assert hits[0].cwe == "CWE-362"
+        assert hits[0].metadata.get("global") == "^TMP"
+
+    def test_lock_and_job_subscript_do_not_fire(self, m_fixtures_dir):
+        # The ^TMP($J,...) write and the LOCK must not be flagged.
+        result = _scan(m_fixtures_dir / "m211_scratch.m")
+        refs = [f.metadata.get("reference", "") for f in _findings_with_id(result, "M211")]
+        assert all("$J" not in r for r in refs)
+
+    def test_configurable_scratch_globals(self, m_fixtures_dir):
+        # A site can disable the default set by overriding it.
+        cfg = {"scratch_globals": ["^SCRATCH"]}
+        result = MumpsScanner().scan(str(m_fixtures_dir / "m211_scratch.m"), cfg)
+        assert _findings_with_id(result, "M211") == []
+
+
+class TestM218ExecOnLabelLine:
+    def test_fires_on_code_on_label_line(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m218_exec_label.m")
+        assert _findings_with_id(result, "M218"), "M218 must fire on exec on the header line"
+
+    def test_clean_header_does_not_fire(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m218_clean_label.m")
+        assert _findings_with_id(result, "M218") == []
+
+
+class TestM219LineLength:
+    def test_fires_on_long_line(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m219_long_line.m")
+        hits = _findings_with_id(result, "M219")
+        assert len(hits) == 1
+        assert hits[0].metadata.get("length") > 245
+
+    def test_configurable_limit(self, m_fixtures_dir):
+        # Raise the limit above the offending line -> no finding.
+        cfg = {"max_line_length": 1000}
+        result = MumpsScanner().scan(str(m_fixtures_dir / "m219_long_line.m"), cfg)
+        assert _findings_with_id(result, "M219") == []
+
+
 class TestM214NakedGlobal:
     def test_fires_on_naked_reference(self, m_fixtures_dir):
         result = MumpsScanner().scan(

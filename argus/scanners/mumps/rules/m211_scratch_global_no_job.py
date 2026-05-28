@@ -1,0 +1,96 @@
+"""M211 — scratch global (^TMP / ^UTILITY) written without a $J subscript
+(CWE-362 race condition).
+
+VistA's shared scratch globals (``^TMP``, ``^UTILITY``) are used by
+every concurrent process. The SAC requires subscripting them by ``$J``
+(the process id) so each job gets a private branch:
+
+    S ^TMP($J,"KEY")=value     ; correct — per-process
+    S ^TMP("KEY")=value        ; WRONG — cross-process collision
+
+A write (or KILL / MERGE) of a scratch global with no ``$J`` in its
+subscripts can clobber another process's data — a real concurrency bug.
+Technically valid M, so this ships at INFO with the impact spelled out
+in the description (mirrors M206's escalate-via-text approach).
+
+Detection (probe-verified): an ``assignment`` whose write target is a
+``global_array`` named ``^TMP`` / ``^UTILITY`` with no ``special_variable
+'$J'`` in its ``array_index``; likewise ``KILL`` / ``MERGE`` targets.
+``LOCK`` is excluded automatically — it wraps the global in a
+``unary_expression`` under a ``command``, not an assignment / KILL /
+MERGE. The scratch-global set is configurable via
+``scanners.mumps.scratch_globals``.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Iterable
+
+from argus.core.models import Finding, Severity
+from ..parser import ParsedSource, walk
+from ..rule import Rule
+from ._common import argument_node
+
+_DEFAULT_SCRATCH = ("^TMP", "^UTILITY")
+_KILL_MERGE_RE = re.compile(r"^\s*(?:K(?:ILL)?|M(?:ERGE)?)\b", re.IGNORECASE)
+
+
+def _scratch_globals(config: dict | None) -> set[str]:
+    extra = (config or {}).get("scratch_globals")
+    names = list(extra) if extra else list(_DEFAULT_SCRATCH)
+    return {str(n).strip().upper() for n in names}
+
+
+def _global_array_name(parsed: ParsedSource, garr) -> str:
+    for child in garr.children:
+        if child.type == "global_variable":
+            return parsed.node_text(child).strip().upper()
+    return ""
+
+
+def _has_job_subscript(parsed: ParsedSource, garr) -> bool:
+    for desc in walk(garr):
+        if desc.type == "special_variable" and parsed.node_text(desc).strip().upper() == "$J":
+            return True
+    return False
+
+
+class ScratchGlobalNoJobRule(Rule):
+    id = "M211"
+    severity = Severity.INFO
+    title = "Scratch global written without a $J subscript"
+    cwe = "CWE-362"
+
+    def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
+        scratch = _scratch_globals(config)
+        for node in walk(parsed.tree.root_node):
+            target = None
+            if node.type == "assignment":
+                named = [c for c in node.children if c.is_named]
+                if named and named[0].type == "global_array":
+                    target = named[0]
+            elif node.type == "command" and _KILL_MERGE_RE.match(parsed.node_text(node)):
+                args = argument_node(node)
+                if args is not None:
+                    target = next(
+                        (d for d in walk(args) if d.type == "global_array"), None,
+                    )
+            if target is None:
+                continue
+            name = _global_array_name(parsed, target)
+            if name not in scratch:
+                continue
+            if _has_job_subscript(parsed, target):
+                continue
+            yield self.make_finding(
+                parsed,
+                target,
+                description=(
+                    f"{name} is a shared scratch global but this write has no "
+                    "$J subscript, so concurrent processes can clobber each "
+                    f"other's data. Subscript by $J, e.g. {name}($J,...). "
+                    "(CWE-362 race condition.)"
+                ),
+                metadata={"global": name, "reference": parsed.node_text(target).strip()[:80]},
+            )

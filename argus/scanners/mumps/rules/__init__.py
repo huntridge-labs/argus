@@ -22,12 +22,15 @@ from .m207_bare_kill import BareKillRule
 from .m208_bare_new import BareNewRule
 from .m209_arg_count_mismatch import ArgCountMismatchRule
 from .m210_duplicate_new import DuplicateNewRule
+from .m211_scratch_global_no_job import ScratchGlobalNoJobRule
 from .m212_infinite_for import InfiniteForRule
 from .m213_quit_arg_in_for import QuitArgInForRule
 from .m214_naked_global import NakedGlobalRule
 from .m215_nonportable_zcommand import NonPortableZCommandRule
 from .m216_nonportable_zfunction import NonPortableZFunctionRule
 from .m217_nonportable_zsvn import NonPortableZSpecialVarRule
+from .m218_exec_on_label_line import ExecOnLabelLineRule
+from .m219_line_length import LineLengthRule
 
 RULES = [
     XECUTEInjectionRule(),
@@ -48,12 +51,15 @@ RULES = [
     BareNewRule(),
     ArgCountMismatchRule(),
     DuplicateNewRule(),
+    ScratchGlobalNoJobRule(),
     InfiniteForRule(),
     QuitArgInForRule(),
     NakedGlobalRule(),
     NonPortableZCommandRule(),
     NonPortableZFunctionRule(),
     NonPortableZSpecialVarRule(),
+    ExecOnLabelLineRule(),
+    LineLengthRule(),
 ]
 
 __all__ = [
@@ -76,10 +82,13 @@ __all__ = [
     "BareNewRule",
     "ArgCountMismatchRule",
     "DuplicateNewRule",
+    "ScratchGlobalNoJobRule",
     "InfiniteForRule",
     "QuitArgInForRule",
     "NakedGlobalRule",
     "NonPortableZCommandRule",
     "NonPortableZFunctionRule",
     "NonPortableZSpecialVarRule",
+    "ExecOnLabelLineRule",
+    "LineLengthRule",
 ]
