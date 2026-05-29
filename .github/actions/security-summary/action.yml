@@ -39,12 +39,17 @@ description: |
         with:
           scan_statuses: |
             {
-              "bandit": "${{ needs.bandit-scan.result }}",
-              "gitleaks": "${{ needs.gitleaks-scan.result }}",
-              "container": "${{ needs.container-scan.result }}",
-              "zap": "${{ needs.zap-scan.result }}"
+              "bandit": "$[[ needs.bandit-scan.result ]]",
+              "gitleaks": "$[[ needs.gitleaks-scan.result ]]",
+              "container": "$[[ needs.container-scan.result ]]",
+              "zap": "$[[ needs.zap-scan.result ]]"
             }
   ```
+
+  The `$[[ ... ]]` values above are placeholders: a composite action cannot
+  reference the `needs` context, so a real GitHub expression here would fail
+  to load this manifest. In your own workflow use the standard expression
+  syntax wrapping `needs.<job>.result` for each scanner.
 
 inputs:
   summary_pattern:

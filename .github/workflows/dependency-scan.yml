@@ -102,10 +102,8 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install argus dependencies
-        run: |
-          pip install --quiet pyyaml
-          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      - name: Install Argus
+        uses: huntridge-labs/argus/.github/actions/setup-argus@1.2.1
 
       - name: Run OSV Scanner via argus CLI
         env:

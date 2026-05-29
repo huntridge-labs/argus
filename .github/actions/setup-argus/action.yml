@@ -1,0 +1,28 @@
+name: 'Setup Argus'
+description: 'Install the Argus SDK from the pinned action checkout so python -m argus is available.'
+
+# Shared install step for the reusable scanner workflows. They invoke
+# ``python -m argus scan <name>`` but run in the *caller's* repo, so argus
+# is not on the path by default. This action installs the SDK from the
+# argus repo checkout that GitHub fetches to run the action, which pins
+# the SDK to the exact ref the workflow referenced this action at (the
+# same pattern the scanner composite wrappers already use). Assumes Python
+# is already set up by the caller (the workflows run actions/setup-python
+# first).
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Argus SDK from the pinned checkout
+      shell: bash
+      run: |
+        set -euo pipefail
+        # github.action_path is .github/actions/setup-argus inside the
+        # fetched argus repo; the repo root (pyproject.toml + the argus/
+        # package) is three levels up.
+        ROOT="$(cd "${{ github.action_path }}/../../.." && pwd)"
+        pip install --quiet "$ROOT"
+
+branding:
+  icon: 'download'
+  color: 'blue'
