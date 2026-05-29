@@ -43,7 +43,7 @@ OFFICIAL_IMAGES = {
     # promptfoo LLM red-team / eval. Opt-in scanner; requires provider
     # API keys + network at scan time. The publisher tags ``:latest``
     # (mutable), so the digest pin below is the content-hash gate.
-    "promptfoo": "ghcr.io/promptfoo/promptfoo:latest@sha256:e1e9302969920b69907e978d4d20ec1f025fcec924591e7cbd0d68cb2a1f54c1",
+    "promptfoo": "ghcr.io/promptfoo/promptfoo:latest@sha256:3993e7c105bcbc1c8f763309552728dd2bf30ff5c9c2e14ec69297b42d096f80",
     "hadolint": "hadolint/hadolint:v2.14.0@sha256:27086352fd5e1907ea2b934eb1023f217c5ae087992eb59fde121dce9c9ff21e",
     # lint-shell via shellcheck. The koalaman/shellcheck-alpine image is
     # the official multi-arch distribution (~3 MB). shellcheck is GPL-3.0
