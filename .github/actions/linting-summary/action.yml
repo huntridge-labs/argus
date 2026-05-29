@@ -39,14 +39,19 @@ description: |
         with:
           scan_statuses: |
             {
-              "yaml": "${{ needs.yaml-lint.result }}",
-              "json": "${{ needs.json-lint.result }}",
-              "python": "${{ needs.python-lint.result }}",
-              "javascript": "${{ needs.javascript-lint.result }}",
-              "dockerfile": "${{ needs.dockerfile-lint.result }}",
-              "terraform": "${{ needs.terraform-lint.result }}"
+              "yaml": "$[[ needs.yaml-lint.result ]]",
+              "json": "$[[ needs.json-lint.result ]]",
+              "python": "$[[ needs.python-lint.result ]]",
+              "javascript": "$[[ needs.javascript-lint.result ]]",
+              "dockerfile": "$[[ needs.dockerfile-lint.result ]]",
+              "terraform": "$[[ needs.terraform-lint.result ]]"
             }
   ```
+
+  The `$[[ ... ]]` values above are placeholders: a composite action cannot
+  reference the `needs` context, so a real GitHub expression here would fail
+  to load this manifest. In your own workflow use the standard expression
+  syntax wrapping `needs.<job>.result` for each linter.
 
   **Important:**
   - Add this job AFTER all your linter jobs
