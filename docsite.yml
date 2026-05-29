@@ -46,6 +46,7 @@ categories:
 excluded_actions:
   - comment-pr
   - get-job-id
+  - setup-argus
 
 excluded_workflows:
   - release
