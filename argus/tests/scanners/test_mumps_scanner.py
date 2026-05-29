@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from argus.core.models import Severity
 from argus.scanners import SCANNER_REGISTRY, get_scanner
 from argus.scanners.mumps import MumpsScanner
 from argus.scanners.mumps.parser import GrammarUnavailable, MumpsParser
@@ -319,6 +320,8 @@ class TestBuildArgs:
         assert args[args.index("--output-dir") + 1] == "/output"
         assert "--format" in args
         assert args[args.index("--format") + 1] == "json"
+        # Flat output so the engine's top-level glob finds argus-results.json.
+        assert "--no-timestamp" in args
 
     def test_extra_args_appended(self):
         from argus.core.scanner_template import ScanPaths
@@ -332,6 +335,68 @@ class TestBuildArgs:
         from argus.core.scanner_template import ScanPaths
         args = MumpsScanner().build_args(ScanPaths(workspace="/w", output=""))
         assert args[args.index("--output-dir") + 1] == "/output"
+
+
+class TestParseResults:
+    """``parse_results`` lifts mumps findings out of a container run's
+    nested ``argus-results.json`` report. The container runs ``argus scan
+    mumps`` (which emits the standard Argus JSON report); the engine hands
+    that file back here to rebuild ``Finding`` objects."""
+
+    def _write_report(self, tmp_path):
+        import json
+        report = {
+            "results": [
+                {
+                    "scanner": "mumps",
+                    "findings": [
+                        {
+                            "id": "M001",
+                            "severity": "high",
+                            "title": "XECUTE of tainted expression",
+                            "description": "desc",
+                            "location": "/workspace/EVIL.m:3:2",
+                            "cwe": "CWE-95",
+                            "cve": None,
+                            "scanner": "mumps",
+                            "metadata": {"taint_sources": ["READ"]},
+                        },
+                        {
+                            "id": "B100",
+                            "severity": "low",
+                            "title": "not a mumps finding",
+                            "location": "/workspace/x.py:1",
+                            "scanner": "bandit",
+                        },
+                    ],
+                },
+            ],
+        }
+        (tmp_path / "argus-results.json").write_text(json.dumps(report))
+        (tmp_path / "argus-audit.json").write_text(
+            json.dumps({"argus_version": "x", "scan_id": "y"})
+        )
+
+    def test_reconstructs_only_mumps_findings(self, tmp_path):
+        self._write_report(tmp_path)
+        findings = MumpsScanner().parse_results(tmp_path / "argus-results.json")
+        assert len(findings) == 1
+        f = findings[0]
+        assert f.id == "M001"
+        assert f.severity == Severity.HIGH
+        assert f.cwe == "CWE-95"
+        assert f.scanner == "mumps"
+        # The /workspace mount prefix is stripped to a repo-relative path.
+        assert f.location == "EVIL.m:3:2"
+        assert f.metadata.get("taint_sources") == ["READ"]
+
+    def test_resolves_to_results_when_handed_audit_manifest(self, tmp_path):
+        # The engine globs *.json and may hand us argus-audit.json first;
+        # parse_results must still read findings from the sibling results
+        # file rather than returning nothing.
+        self._write_report(tmp_path)
+        findings = MumpsScanner().parse_results(tmp_path / "argus-audit.json")
+        assert [f.id for f in findings] == ["M001"]
 
 
 class TestToolVersion:

@@ -35,13 +35,13 @@ scanners:
   supply-chain:
     enabled: true
 
-  # m:
+  # mumps:
   #   # MUMPS / M language SAST. Opt-in: most repos don't have .m files.
   #   # Detects XECUTE / indirection / OPEN/USE injection, hard-coded
   #   # credentials in globals, dynamic dispatch with tainted input,
-  #   # external $& call injection, plus duplicate-label, unreachable-
-  #   # code, undeclared-label, routine-name-mismatch, and label-
-  #   # fallthrough diagnostics.
+  #   # external $& call injection, plus 21 structural, def-use,
+  #   # concurrency, control-flow, and portability diagnostics
+  #   # (M101-M102, M201-M219).
   #   # Requires either ``pip install argus-security[mumps]`` +
   #   # ``scripts/build-mumps-grammar.sh`` (local) or the scanner-mumps
   #   # container image (no local toolchain needed).
@@ -52,7 +52,7 @@ scanners:
   #   # Extend the built-in taint source set (READ, $ZARGV,
   #   # ^%CGI / ^%REQUEST / ^%session) with custom patterns. Any
   #   # variable assigned from an RHS matching these regexes joins
-  #   # the tainted set seen by M001 / M003 / M005 / M006.
+  #   # the tainted set seen by M001 / M002 / M003 / M005 / M006.
   #   # taint_sources:
   #   #   patterns:
   #   #     - "\\$ZIO\\b"             # YottaDB pending input
@@ -63,6 +63,10 @@ scanners:
   #   # scratch_globals: ["^TMP", "^UTILITY", "^XTMP"]
   #   # max_line_length: 245
   #   #
+  #   # Extra externally-defined vars (VistA / FileMan / Kernel) that
+  #   # union with the built-in defaults; affects M003 / M203 / M204.
+  #   # known_external_vars: ["DUZ", "DT", "DTIME"]
+  #   #
   #   # M002 fires HIGH only on indirection of a TAINTED variable. Set
   #   # this true to also surface indirection of non-tainted expressions
   #   # as an INFO advisory (audit/modernization sweeps; never gates).
@@ -70,7 +74,7 @@ scanners:
   #   #
   #   # Functions / intrinsics that REMOVE taint when applied. A variable
   #   # assigned from a sanitizer call is treated as clean by every
-  #   # taint-aware rule (M001 / M003 / M005 / M006).
+  #   # taint-aware rule (M001 / M002 / M003 / M005 / M006).
   #   # sanitizers:
   #   #   - "$$ESCAPE^HTML"           # output encoder
   #   #   - "$$VALIDATE^INPUT"        # input validator

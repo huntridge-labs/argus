@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from argus.containers import get_image
 from argus.core.models import Finding, ScanResult
 
 from .parser import GrammarUnavailable, MumpsParser, tree_sitter_available
@@ -41,12 +42,12 @@ class MumpsScanner:
     )
     category = "sast"
     languages = ["mumps"]
-    # Container image registration is wired up in a follow-up commit once
-    # ``scanner-mumps`` is published to ghcr.io. ``is_available()`` gates
-    # local execution until then. The image's ENTRYPOINT runs
+    # ``scanner-mumps`` is published to ghcr.io, so the engine routes
+    # here (backend auto/docker) when the local grammar is absent, giving
+    # zero-toolchain execution. The image's ENTRYPOINT runs
     # ``python -m argus`` so ``build_args`` only supplies the
     # ``scan mumps ...`` portion (the engine strips argv[0]).
-    container_image = ""
+    container_image = get_image("mumps")
     container_entrypoint = "argus"
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
@@ -189,10 +190,9 @@ class MumpsScanner:
 
         The image's ENTRYPOINT is ``["python", "-m", "argus"]`` so this
         method supplies ``scan mumps --path ... --output-dir ...`` after the
-        engine strips argv[0]. Honoured by the standard scanner_template
-        once ``container_image`` is wired up in a follow-up commit;
-        until then the method exists to satisfy the
-        ``test_all_scanners_have_container_args`` contract.
+        engine strips argv[0]. Honoured by the engine's container path
+        whenever ``container_image`` resolves (the published
+        ``scanner-mumps`` image) and Docker is available.
         """
         from pathlib import PurePosixPath
         config = config or {}
@@ -202,11 +202,64 @@ class MumpsScanner:
             "--path", paths.workspace,
             "--output-dir", output_dir,
             "--format", "json",
+            # Flat output (no timestamped subdir) so the engine's
+            # top-level glob of output_dir picks up argus-results.json.
+            "--no-timestamp",
+            # No registry / network work needed at scan time.
+            "--no-update-check",
         ]
         extra = config.get("extra_args")
         if extra:
             args.extend(str(a) for a in extra)
         return args
+
+    def parse_results(self, raw_output_path) -> list[Finding]:
+        """Lift mumps findings out of a container run's JSON report.
+
+        On the container path the engine runs ``argus scan mumps`` nested
+        inside ``scanner-mumps``; that writes the standard Argus JSON
+        report (``argus-results.json``), which the engine hands here. We
+        rebuild the mumps findings as ``Finding`` objects. Local execution
+        never calls this - it returns findings straight from ``scan()``.
+        """
+        import json
+
+        from argus.core.models import Severity
+
+        # ``argus scan`` writes two JSON files (argus-results.json plus the
+        # argus-audit.json manifest). The engine hands us whichever its glob
+        # saw first, so resolve to the results file in the same directory -
+        # findings never live in the audit manifest.
+        path = Path(raw_output_path)
+        if path.name != "argus-results.json":
+            sibling = path.parent / "argus-results.json"
+            if sibling.exists():
+                path = sibling
+        data = json.loads(path.read_text(encoding="utf-8"))
+        findings: list[Finding] = []
+        for result in data.get("results", []):
+            for raw in result.get("findings", []):
+                if (raw.get("scanner") or result.get("scanner")) != self.name:
+                    continue
+                location = raw.get("location")
+                # Strip the container mount prefix so locations read as
+                # repo-relative rather than exposing the ``/workspace`` mount.
+                if location and location.startswith("/workspace/"):
+                    location = location[len("/workspace/"):]
+                findings.append(
+                    Finding(
+                        id=raw.get("id", ""),
+                        severity=Severity.from_string(raw.get("severity", "info")),
+                        title=raw.get("title", ""),
+                        description=raw.get("description", ""),
+                        location=location,
+                        cwe=raw.get("cwe"),
+                        cve=raw.get("cve"),
+                        scanner=self.name,
+                        metadata=raw.get("metadata") or {},
+                    )
+                )
+        return findings
 
     def is_available(self) -> bool:
         """True when py-tree-sitter + the compiled grammar are reachable."""
@@ -301,7 +354,7 @@ def _rule_enabled(rule, config: dict | None) -> bool:
 
 
 def _severity_override(rule, config: dict | None):
-    """Resolve ``scanners.m.rules.<id>.severity`` from the config into
+    """Resolve ``scanners.mumps.rules.<id>.severity`` from the config into
     a Severity enum, or ``None`` when no override is configured.
 
     Unknown severity strings degrade gracefully — ``None`` is returned

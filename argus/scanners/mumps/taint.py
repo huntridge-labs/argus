@@ -140,10 +140,10 @@ def _sanitized_variables(
 
     A sanitizer is a function whose return value is trusted — applying
     it to a tainted value produces a clean value. Configured via
-    ``scanners.m.sanitizers`` in ``argus.yml``::
+    ``scanners.mumps.sanitizers`` in ``argus.yml``::
 
         scanners:
-          m:
+          mumps:
             sanitizers:
               - "$$VALIDATE^LIBRARY"
               - "$$ESCAPE^HTML"
@@ -189,7 +189,7 @@ def collect_tainted_variables(
     routines) without forking the rules:
 
         scanners:
-          m:
+          mumps:
             taint_sources:
               patterns:
                 - "\\\\$ZIO\\\\b"

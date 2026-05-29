@@ -66,10 +66,20 @@ COPY argus/ /opt/argus/argus/
 COPY argus.example.yml /opt/argus/
 ENV PYTHONPATH=/opt/argus
 
+# Expose an ``argus`` command on PATH. The engine's container runner sets
+# ``--entrypoint argus`` (matching every other scanner, whose
+# container_entrypoint is a real binary on PATH). This image runs Argus
+# from source via ``python -m argus``, so a tiny shim makes ``argus``
+# resolve for both the engine and a manual
+# ``docker run <image> scan mumps ...``.
+RUN printf '#!/bin/sh\nexec python -m argus "$@"\n' > /usr/local/bin/argus \
+    && chmod +x /usr/local/bin/argus
+
 USER argus
 WORKDIR /workspace
-# ENTRYPOINT is just the argus invocation prefix. The full "scan mumps
-# --path ... --output-dir ... --format json" args come from
-# MumpsScanner.build_args via the engine's container template (engine
-# strips argv[0], the build_args "argus" sentinel, before append).
-ENTRYPOINT ["python", "-m", "argus"]
+# ENTRYPOINT is the ``argus`` shim. The full "scan mumps --path ...
+# --output-dir ... --format json" args come from MumpsScanner.build_args
+# via the engine's container template (engine strips argv[0], the
+# build_args "argus" sentinel, before append). A manual
+# ``docker run <image> scan mumps --path /workspace`` works the same way.
+ENTRYPOINT ["argus"]

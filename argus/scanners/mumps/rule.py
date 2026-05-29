@@ -49,7 +49,7 @@ class Rule(ABC):
     ) -> Iterable[Finding]:
         """Yield findings for this rule against ``parsed``.
 
-        ``config`` is the per-scanner config dict (``scanners.m`` block
+        ``config`` is the per-scanner config dict (``scanners.mumps`` block
         in ``argus.yml``). Most rules ignore it; taint-aware rules use
         ``config['taint_sources']`` to extend the recognized source
         surface beyond the built-in READ / $ZARGV / HTTP-global set.

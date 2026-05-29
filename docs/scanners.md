@@ -56,6 +56,7 @@ See [examples/github-enterprise/](../examples/github-enterprise/) for GHES templ
   - [Bandit](#bandit)
   - [gosec](#gosec)
   - [OpenGrep (Semgrep)](#opengrep-semgrep)
+  - [MUMPS / M language](#mumps--m-language-mumps)
 - [Container Scanners](#container-scanners)
   - [Trivy Container](#trivy-container)
   - [Grype](#grype)
@@ -246,13 +247,13 @@ with:
 
 ### MUMPS / M language (`mumps`)
 
-OSS SAST for the MUMPS / M language (VistA, YottaDB, GT.M, FileMan). Phase 1+ ships six rules backed by [`janus-llm/tree-sitter-mumps`](https://github.com/janus-llm/tree-sitter-mumps) (Apache-2.0, MITRE Public Release 23-4084) pinned at `345f3fb2`. Target audience is federal / healthcare orgs whose procurement posture rules out closed-source MUMPS SAST.
+OSS SAST for the MUMPS / M language (VistA, YottaDB, GT.M, FileMan). Phase 1+ ships 27 rules (6 security M001-M006, 21 diagnostics M101-M102 and M201-M219) backed by [`janus-llm/tree-sitter-mumps`](https://github.com/janus-llm/tree-sitter-mumps) (Apache-2.0, MITRE Public Release 23-4084) pinned at `345f3fb2`. Target audience is federal / healthcare orgs whose procurement posture rules out closed-source MUMPS SAST.
 
 **Supported languages:** `mumps`
 
 **File extensions:** `.m` (Caché `.mac` / `.int` arrive in Phase 2 alongside ObjectScript dialect support)
 
-**Severity levels:** INFO, HIGH, CRITICAL
+**Severity levels:** INFO, LOW, MEDIUM, HIGH, CRITICAL
 
 | Rule | Title | Severity | CWE |
 |------|-------|----------|-----|
@@ -260,7 +261,7 @@ OSS SAST for the MUMPS / M language (VistA, YottaDB, GT.M, FileMan). Phase 1+ sh
 | `M002` | Indirection (`@`) of a tainted expression | HIGH | CWE-94 |
 | `M003` | OPEN / USE of tainted device argument (CRITICAL on PIPE devices) | HIGH | CWE-78 |
 | `M004` | Hard-coded credential in MUMPS global | CRITICAL | CWE-798 |
-| `M005` | DO of tainted indirection (dynamic dispatch) | CRITICAL | CWE-95 |
+| `M005` | DO of READ-tainted indirection (dynamic routine dispatch) | CRITICAL | CWE-95 |
 | `M006` | Tainted argument to external (`$&`) call | HIGH | CWE-78 |
 | `M101` | Duplicate label declared in routine | INFO | n/a |
 | `M102` | Unreachable code after unconditional QUIT / HALT | INFO | n/a |
@@ -293,7 +294,7 @@ The security rules above cover all five MUMPS-specific code-injection sinks — 
 
 ```yaml
 scanners:
-  - m
+  - mumps
 scan_path: ./routines
 fail_on_severity: high
 ```
@@ -304,7 +305,7 @@ Optional per-scanner keys:
 - `sanitizers` — list of function / intrinsic names that *remove* taint when applied. A variable assigned from an expression that calls one of these is treated as clean by every taint-aware rule. Pair with the existing source-patterns config to make the full taint flow tunable per codebase.
 - `rules.<id>.severity` — per-rule severity override. Replaces the rule's default baseline severity. Per-finding precision (M003's PIPE bump to CRITICAL) is preserved — only baseline severity is user-tunable. Accepts `critical` / `high` / `medium` / `low` / `info`.
 - `rules.<id>.enabled` — turn an individual rule on or off. Most rules are on by default; **M205 (label fallthrough) is off by default** because top-to-bottom fallthrough between labels is the intended idiom in old-style linear VistA routines (it was ~69% false-positive on the VistA Kernel). Opt in with `rules.M205.enabled: true` if your codebase follows strict one-label-one-entry-point discipline.
-- `known_external_vars` — list of variable names treated as externally defined / read (extends the built-in VistA / FileMan / Kernel allowlist used by M203 / M204).
+- `known_external_vars` — list of variable names treated as externally defined / read (extends the built-in VistA / FileMan / Kernel allowlist used by M003 / M203 / M204).
 - `flag_generic_indirection` — when `true`, M002 also emits an INFO advisory for indirection of a *non-tainted* non-constant expression (default `false`). By default M002 fires HIGH only on indirection of a tainted variable; the generic stream is for audit / modernization sweeps and never counts toward a severity gate.
 - `scratch_globals` — list of shared scratch globals that must be `$J`-subscripted (M211); defaults to `["^TMP", "^UTILITY"]`.
 - `max_line_length` — SAC line-length limit for M219 (default 245).
@@ -313,7 +314,7 @@ Optional per-scanner keys:
 
 ```yaml
 scanners:
-  m:
+  mumps:
     taint_sources:
       patterns:
         - "\\$ZIO\\b"             # YottaDB pending input
@@ -334,25 +335,38 @@ scanners:
 
 **Installation paths:**
 
-The scanner needs a compiled `mumps.so` shared library. Two install paths:
+The scanner needs a compiled `mumps.so` shared library. The `scanner-mumps` container image (built by `docker/Dockerfile.mumps`) bundles a prebuilt grammar at `/opt/argus/grammars/mumps.so`, so the container path needs no local toolchain. Three ways to run it:
 
-1. **Local execution.** Install py-tree-sitter and compile the grammar once:
+1. **Container, via the SDK (recommended).** With Docker available, the engine pulls and runs the image automatically - no grammar build:
+   ```bash
+   pip install 'argus-security[mumps]'
+   argus scan mumps --path ./routines
+   ```
+
+2. **Container, directly.** No Python or Argus install at all:
+   ```bash
+   docker run --rm -v "$PWD:/workspace:ro" \
+     ghcr.io/huntridge-labs/argus/scanner-mumps:mumps-preview \
+     scan mumps --path /workspace
+   ```
+
+3. **Local execution.** Run in-process; compile the grammar once (needs a C compiler + git):
    ```bash
    pip install 'argus-security[mumps]'
    ./scripts/build-mumps-grammar.sh
    # Drops mumps.so at ~/.cache/argus/grammars/
-   argus scan mumps --path ./routines
+   argus scan mumps --path ./routines   # backend: local, or no Docker present
    ```
 
-2. **Container execution.** The `scanner-mumps` image (built by `docker/Dockerfile.mumps`) ships a prebuilt grammar at `/opt/argus/grammars/mumps.so`. No local toolchain needed; the engine routes here automatically when local execution is unavailable.
+The `ARGUS_MUMPS_GRAMMAR` environment variable overrides the grammar lookup path when a CI pipeline pins a custom build.
 
-The `ARGUS_MUMPS_GRAMMAR` environment variable overrides the lookup path when a CI pipeline pins a custom build.
+> **Preview image:** `:mumps-preview` is a pre-merge build published from the `feat/scanner-m-mumps` branch (mutable tag, workstation-built - no cosign / SLSA attestations yet). On merge the release pipeline republishes it multi-arch with attestations under the versioned `scanner-mumps:<version>` tag, and `argus/containers.py` is repinned to that digest.
 
 **Example:**
 
 ```yaml
 scanners:
-  - m
+  - mumps
 scan_path: ./routines
 fail_on_severity: high
 reporters:
@@ -362,7 +376,7 @@ reporters:
 
 > **Secret redaction:** for the M004 (hard-coded credentials) rule, the matched literal value is replaced with the redaction placeholder before the finding is constructed. Defense-in-depth: `Finding.__post_init__` runs the pattern-based redactor as a second pass. The literal never reaches any reporter, export, or the MCP server. Integration test `test_literal_value_is_redacted` enforces this contract.
 
-> **Taint scope:** Phase 1 taint *detection* is intra-file. Recognized taint sources are `READ` (terminal input), `$ZARGV` (YottaDB / GT.M process arguments), and the HTTP context globals `^%CGI`, `^%REQUEST`, `^%session`. The collector is shared between M001 / M003 / M005 / M006 so every taint-sink rule sees the full source surface uniformly. The **inter-procedural call graph** is built on every multi-file scan (`argus/scanners/mumps/callgraph.py`); M001 findings carry an `inter_procedural_callers` metadata list naming the routines that reach the sink. **One-hop taint propagation** across that graph is available via `interprocedural.enabled` (opt-in): a tainted actual argument flows into the callee's formal parameter (recursion-safe monotone worklist, `max_depth`-capped). Deeper multi-hop propagation, return-value taint, and per-finding provenance remain on the roadmap.
+> **Taint scope:** Phase 1 taint *detection* is intra-file. Recognized taint sources are `READ` (terminal input), `$ZARGV` (YottaDB / GT.M process arguments), and the HTTP context globals `^%CGI`, `^%REQUEST`, `^%session`. The collector is shared between M001 / M002 / M003 / M005 / M006 so every taint-sink rule sees the full source surface uniformly. The **inter-procedural call graph** is built on every multi-file scan (`argus/scanners/mumps/callgraph.py`); M001 findings carry an `inter_procedural_callers` metadata list naming the routines that reach the sink. **One-hop taint propagation** across that graph is available via `interprocedural.enabled` (opt-in): a tainted actual argument flows into the callee's formal parameter (recursion-safe monotone worklist, `max_depth`-capped). Deeper multi-hop propagation, return-value taint, and per-finding provenance remain on the roadmap.
 
 </details>
 

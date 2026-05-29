@@ -237,21 +237,25 @@ command's source line.
 **Architecture**
 - `argus/scanners/mumps/` sub-package: parser wrapper (`parser.py`), Rule abstract base
   (`rule.py`), shared taint collector (`taint.py`), cross-file call-graph builder
-  (`callgraph.py`), 16 rule modules in `rules/`, and `scanner.py` implementing the
+  (`callgraph.py`), 27 rule modules in `rules/`, and `scanner.py` implementing the
   `Scanner` protocol.
 - Intra-procedural taint engine with three built-in source classes plus user-extensible
   patterns. Document-order walk over the parse tree.
-- Two-phase scan loop in `MumpsScanner.scan`: phase 1 parses every `.m` file in the path;
-  phase 2 builds a `CallGraph` over those parses; phase 3 runs each rule with the
-  graph available via `config['_callgraph']`. M001 already consumes the graph to
-  annotate findings with `inter_procedural_callers` metadata. Full taint propagation
-  through the graph is Phase 2.5 work.
-- SARIF v2.1.0 emission via the existing reporter — all 14 rule IDs declared in the
+- Streaming two-pass scan loop in `MumpsScanner.scan`: pass 1 parses each `.m` file,
+  extracts lightweight per-routine facts (labels, formals, call edges) and drops the
+  parse tree; the `CallGraph` is built from those facts; pass 2 re-parses each file on
+  demand and runs each rule with the graph available via `config['_callgraph']`. Peak
+  resident memory is bounded to a single parse tree regardless of corpus size. M001
+  findings carry `inter_procedural_callers` metadata; opt-in one-hop inbound taint
+  propagation through the graph ships in Phase 2 (off by default).
+- SARIF v2.1.0 emission via the existing reporter - all 27 rule IDs declared in the
   driver block.
 - Two installation paths: `pip install argus-security[mumps]` + `scripts/build-mumps-grammar.sh`
   for local execution, or the `scanner-mumps` container image (Alpine, multi-stage, grammar
-  pre-compiled at image build time, 28.6 MB compressed). Container build is validated
-  end-to-end locally; image publish lands as a Phase 2 item.
+  pre-compiled at image build time, 28.6 MB compressed). The image runs `argus scan mumps`
+  internally; the engine harvests its `argus-results.json` via `MumpsScanner.parse_results`.
+  Published as a pre-merge preview (`:mumps-preview`); on release the pipeline republishes
+  it multi-arch + cosign-signed under the versioned tag.
 - Registered in `SCANNER_REGISTRY`; category `sast`. Auto-exposed via the Argus MCP
   server (`argus_list_scanners` / `argus_scan`).
 
@@ -263,7 +267,7 @@ command's source line.
   severity since PIPE arguments shell-execute at runtime.
 - **M004** hard-coded credentials in globals (CWE-798, CRITICAL). `SET ^G(...)="literal"`
   with credential-shaped subscript. Literal value is redacted before reaching the Finding.
-- **M005** tainted dynamic dispatch (CWE-95, CRITICAL). `DO @VAR` where VAR is tainted.
+- **M005** tainted dynamic dispatch (CWE-95, CRITICAL). `DO @VAR` where VAR is READ-tainted (dynamic routine dispatch).
 - **M006** tainted argument to external `$&` call (CWE-78, HIGH). Host-side helper
   invocation (`$&system`, `$&pipe`, custom callouts) with tainted argument.
 
@@ -282,13 +286,24 @@ command's source line.
   impact; production VistA outages have been traced to exactly this construct.
 - **M207** bare `K` (no arguments) deletes every local in the routine scope.
 - **M208** bare `N` (no arguments) stacks every local in the routine scope.
+- **M209** call passes more arguments than the entry point declares (MEDIUM).
+- **M210** duplicate variable in a single NEW argument list (LOW).
+- **M211** scratch global written without a `$J` subscript (CWE-362).
+- **M212** argumentless FOR with no loop exit, possible infinite loop (CWE-835, HIGH).
+- **M213** QUIT with an argument inside a FOR loop (MEDIUM).
+- **M214** naked global reference (`^` with no global name; off by default).
+- **M215** non-portable Z-command (LOW).
+- **M216** non-portable `$Z` intrinsic function (off by default).
+- **M217** non-portable `$Z` special variable (off by default).
+- **M218** executable code on the routine label (first) line (LOW).
+- **M219** source line exceeds the SAC length limit (default 245; LOW).
 
 **Taint sources (built-in)**
 - `READ` / `R` command arguments
 - `$ZARGV` (YottaDB / GT.M process arguments)
 - HTTP context globals `^%CGI`, `^%REQUEST`, `^%session`
 
-**Configurability (argus.yml `scanners.m.*`)**
+**Configurability (argus.yml `scanners.mumps.*`)**
 - `taint_sources.patterns` — extend the recognized taint-source surface with arbitrary
   regex strings. Variables assigned from an RHS matching a user pattern join the
   built-in tainted set seen by every taint-aware rule. Lets users add site-specific
@@ -300,6 +315,18 @@ command's source line.
 - `rules.<id>.severity` — per-rule severity override. Replaces the rule's default
   baseline; per-finding precision (M003's PIPE-CRITICAL bump) is preserved. Accepts
   `critical` / `high` / `medium` / `low` / `info`; unknown values degrade gracefully.
+- `rules.<id>.enabled` - per-rule on/off toggle alongside the severity override
+  (M205 / M214 / M216 / M217 ship off by default).
+- `extensions` - scanned file extensions (default `[".m"]`).
+- `flag_generic_indirection` - when true, M002 also emits an INFO advisory for every
+  `@` indirection even when the operand is not tainted (default false).
+- `known_external_vars` - extra VistA / FileMan / Kernel vars treated as externally
+  defined; unions with the built-in defaults and affects M003 / M203 / M204.
+- `scratch_globals` - M211 scratch globals that require a `$J` subscript
+  (default `["^TMP", "^UTILITY"]`).
+- `max_line_length` - M219 SAC line-length limit (default 245).
+- `interprocedural.enabled` / `interprocedural.max_depth` - one-hop cross-file inbound
+  taint via the call graph (default off, depth 1).
 
 Together these three knobs are the differentiator vs. mHawk's closed rule engine —
 operators tune the full source → sanitizer → sink → severity pipeline against their
@@ -308,7 +335,7 @@ own codebase without forking or vendor escalation.
 **Test coverage**
 - 25 unit tests (`argus/tests/scanners/test_mumps_scanner.py`) cover the scanner protocol
   and rule registry without needing a compiled grammar.
-- 31 integration tests (`argus/tests/scanners/test_mumps_rules.py`) parse real `.m`
+- 84 integration tests (`argus/tests/scanners/test_mumps_rules.py`) parse real `.m`
   fixtures and assert per-rule behaviour. CI compiles `mumps.so` in the test-unit
   workflow's setup step so these run on every PR.
 - Per-rule line coverage: 88-100%.
@@ -336,11 +363,14 @@ incremental progress against mHawk's diagnostic surface or operational maturity.
   become scope-aware definitions for M203 / M204 instead of the conservative
   "any-formal-anywhere-is-defined" heuristic Phase 1 ships. Unlocks precise def-use
   diagnostics inside routines that take parameters.
-- **Container image publish + workflow wiring.** Image lands at
-  `ghcr.io/huntridge-labs/argus/scanner-mumps:VERSION@sha256:...`; `CUSTOM_IMAGES` in
-  `argus/containers.py` picks up the SHA-pinned tag; `argus.yml` `containers.images`
-  adds the build entry so the build-containers workflow exercises it on every PR.
-  Auto-covered by `container-smoke` once the image is published.
+- ~~**Container image publish + workflow wiring.**~~ **Shipped (preview).** The image is
+  published at `ghcr.io/huntridge-labs/argus/scanner-mumps:mumps-preview@sha256:...`;
+  `CUSTOM_IMAGES` in `argus/containers.py` pins that digest, `MumpsScanner.container_image`
+  resolves it, `argus.yml` `containers.images` adds the build entry (so build-containers /
+  container-smoke exercise it on every PR), and `release.yml` builds + cosign-signs it on
+  release (release-it then repins `containers.py` to `scanner-mumps:<version>`). Remaining:
+  the current `:mumps-preview` tag is a workstation build without SLSA attestations - the
+  attested artifact arrives with the first release that includes the new matrix entry.
 - ~~**Diagnostic rule expansion** to roughly 20.~~ **Shipped (21 diagnostics).** Added
   M209 (call arg-count mismatch), M210 (duplicate NEW), M211 (scratch global without
   `$J`, CWE-362), M212 (argumentless FOR with no exit, CWE-835), M213 (QUIT-arg in
@@ -361,9 +391,17 @@ incremental progress against mHawk's diagnostic surface or operational maturity.
   (729 files) dropped from 184 MiB to 68 MiB peak RSS, and the projected ~4.3 GiB
   full-corpus footprint that locked the machine is gone. The re-parse costs a few
   percent of wall time. (The full 26K-routine scan is now memory-safe to run.)
-- **First false-positive triage pass.** Run against WorldVistA / RPMS / MailMan
-  forks, capture FP patterns by rule, refine. mHawk's actual moat is years of this
-  cycle — we have to start it.
+- ~~**First false-positive triage pass.**~~ **Shipped for the core sinks.** FP-hardening
+  of the four core taint sinks cut VistA-corpus findings from 5,377 to 159 (-97%) while
+  retaining the one genuine in-corpus vuln (a tainted GOTO in DGPTMSGD) and recovering a
+  previously-missed `$&` injection. M001 / M002 / M003 / M005 / M006 are now precise
+  enough to gate CI on. Still ahead: extend the cycle across WorldVistA / RPMS / MailMan
+  forks and capture per-rule accepted-FP baselines (mHawk's actual moat is years of this
+  cycle).
+- **Flow-sensitive (def-use / document-order) taint - deferred by design.** Stage 2
+  document-order taint is intentionally not pursued: it is unsound on MUMPS's irregular
+  GOTO / DO control flow and risks hiding real vulnerabilities. The current flow-
+  insensitive intersection (document-order-agnostic) is the deliberate choice.
 
 #### Phase 3 — Full parity stretch (twelve-month horizon, MUMPS subject-matter expert engaged)
 
@@ -411,12 +449,12 @@ incremental progress against mHawk's diagnostic surface or operational maturity.
 - **Air-gappable container distribution** matching the rest of Argus's posture — the
   `scanner-mumps` image is self-contained (grammar pre-compiled at image build time, no
   network access required at scan time).
-- **Auditable, YAML-configurable rules** — taint sources (shipped in Phase 1 via
-  `scanners.m.taint_sources.patterns`), sanitizers (Phase 2), and per-rule severity
-  (Phase 2) declared in `argus.yml`. No closed-source rule engine. Operators can tune
+- **Auditable, YAML-configurable rules** — taint sources
+  (`scanners.mumps.taint_sources.patterns`), sanitizers, and per-rule severity and
+  enablement, all shipped and declared in `argus.yml`. No closed-source rule engine. Operators can tune
   the scanner against their codebase without forking or vendor escalation.
 - **MCP integration baked into the suite, not bolted on.** Argus's MCP server auto-
-  exposes every scanner including `m`; the AI assistant can drive scans, list rules,
+  exposes every scanner including `mumps`; the AI assistant can drive scans, list rules,
   and (Phase 3) walk the call graph through the same protocol surface mHawk reserves
   for its dedicated MCP product.
 
