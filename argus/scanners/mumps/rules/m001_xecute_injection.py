@@ -39,19 +39,44 @@ _XECUTE_KEYWORD_RE = re.compile(r"^\s*X(?:ECUTE)?\b", re.IGNORECASE)
 
 
 def _argument_is_string_literal(parsed: ParsedSource, arg_node) -> bool:
-    """True when an XECUTE argument is a single string literal.
+    """True when an XECUTE argument bottoms out in a single string literal.
 
-    Concatenations like ``X "WRITE "_INPUT`` are not literals: they're
-    built at runtime and remain candidates for the sink pass.
+    The grammar nests a constant XECUTE as
+    ``arguments -> argument -> string`` (the string is a *grandchild*),
+    so a single-level child check misses it and the literal fires — a
+    pure false positive. Descend through single-named-child wrappers
+    and return True only when the bottom node is a string.
+
+    A concatenation like ``X "WRITE "_INPUT`` has more than one named
+    child at the ``argument`` level, so it is *not* a literal and
+    correctly remains a candidate for the taint sink pass.
     """
-    if arg_node is None:
-        return False
-    if arg_node.type in {"string_literal", "string"}:
-        return True
-    children = [c for c in arg_node.children if c.is_named]
-    if len(children) == 1 and children[0].type in {"string_literal", "string"}:
-        return True
+    node = arg_node
+    while node is not None:
+        if node.type in {"string_literal", "string"}:
+            return True
+        named = [c for c in node.children if c.is_named]
+        if len(named) != 1:
+            return False
+        node = named[0]
     return False
+
+
+def _is_real_xecute(command_text: str) -> bool:
+    """Discriminate a real XECUTE command from a grammar misparse.
+
+    ``_XECUTE_KEYWORD_RE`` matches at a word boundary, so an expression
+    the grammar mis-shaped into a command — ``I X<1!(X>OSMAX)`` — looks
+    like ``X`` glued to a relational/pattern operator. A genuine XECUTE
+    is ``X <expr>`` or ``X:cond <expr>``: the keyword is followed by
+    whitespace, end-of-text, or a postconditional ``:``. Anything else
+    (``<``, ``>``, ``=``, ``[``, ``'``, ``(``) is a misparse.
+    """
+    m = _XECUTE_KEYWORD_RE.match(command_text)
+    if m is None:
+        return False
+    after = command_text[m.end():m.end() + 1]
+    return after == "" or after.isspace() or after == ":"
 
 
 class XECUTEInjectionRule(Rule):
@@ -75,7 +100,7 @@ class XECUTEInjectionRule(Rule):
             if node.type != "command":
                 continue
             command_text = parsed.node_text(node)
-            if not _XECUTE_KEYWORD_RE.match(command_text):
+            if not _is_real_xecute(command_text):
                 continue
             args = argument_node(node)
             if _argument_is_string_literal(parsed, args):

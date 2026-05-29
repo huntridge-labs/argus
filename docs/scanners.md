@@ -257,7 +257,7 @@ OSS SAST for the MUMPS / M language (VistA, YottaDB, GT.M, FileMan). Phase 1+ sh
 | Rule | Title | Severity | CWE |
 |------|-------|----------|-----|
 | `M001` | XECUTE of tainted expression | HIGH | CWE-95 |
-| `M002` | Indirection (`@`) of non-literal expression | HIGH | CWE-94 |
+| `M002` | Indirection (`@`) of a tainted expression | HIGH | CWE-94 |
 | `M003` | OPEN / USE of tainted device argument (CRITICAL on PIPE devices) | HIGH | CWE-78 |
 | `M004` | Hard-coded credential in MUMPS global | CRITICAL | CWE-798 |
 | `M005` | DO of tainted indirection (dynamic dispatch) | CRITICAL | CWE-95 |
@@ -305,6 +305,7 @@ Optional per-scanner keys:
 - `rules.<id>.severity` — per-rule severity override. Replaces the rule's default baseline severity. Per-finding precision (M003's PIPE bump to CRITICAL) is preserved — only baseline severity is user-tunable. Accepts `critical` / `high` / `medium` / `low` / `info`.
 - `rules.<id>.enabled` — turn an individual rule on or off. Most rules are on by default; **M205 (label fallthrough) is off by default** because top-to-bottom fallthrough between labels is the intended idiom in old-style linear VistA routines (it was ~69% false-positive on the VistA Kernel). Opt in with `rules.M205.enabled: true` if your codebase follows strict one-label-one-entry-point discipline.
 - `known_external_vars` — list of variable names treated as externally defined / read (extends the built-in VistA / FileMan / Kernel allowlist used by M203 / M204).
+- `flag_generic_indirection` — when `true`, M002 also emits an INFO advisory for indirection of a *non-tainted* non-constant expression (default `false`). By default M002 fires HIGH only on indirection of a tainted variable; the generic stream is for audit / modernization sweeps and never counts toward a severity gate.
 - `scratch_globals` — list of shared scratch globals that must be `$J`-subscripted (M211); defaults to `["^TMP", "^UTILITY"]`.
 - `max_line_length` — SAC line-length limit for M219 (default 245).
 - `rules.M202.ignore_patterns` — regex list of routine-name families to exclude from the filename-mismatch check (M202).

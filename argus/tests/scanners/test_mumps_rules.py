@@ -67,6 +67,17 @@ class TestM001XECUTEInjection:
         assert hits, "M001 must recognize ^%CGI(...) as a taint source"
         assert all(f.severity == Severity.HIGH for f in hits)
 
+    def test_pure_literal_xecute_not_flagged_even_with_taint(self, m_fixtures_dir):
+        # X is READ-tainted but the XECUTE arg is a constant string —
+        # nothing interpolated. The literal-descent fix must suppress it.
+        result = _scan(m_fixtures_dir / "m001_literal_with_taint.m")
+        assert _findings_with_id(result, "M001") == []
+
+    def test_concatenation_with_taint_fires(self, m_fixtures_dir):
+        # A literal concatenated with a tainted var is real injection.
+        result = _scan(m_fixtures_dir / "m001_concat_taint.m")
+        assert _findings_with_id(result, "M001"), "concat with tainted var must fire"
+
     def test_custom_taint_pattern_opt_in_via_config(self, m_fixtures_dir):
         # $ZIO is not a built-in source; without config the rule should
         # not fire on a $ZIO-driven XECUTE.
@@ -85,16 +96,33 @@ class TestM001XECUTEInjection:
 
 
 class TestM002IndirectionInjection:
-    def test_fires_on_variable_indirection(self, m_fixtures_dir):
+    def test_fires_on_tainted_indirection(self, m_fixtures_dir):
         result = _scan(m_fixtures_dir / "m002_indirection.m")
         hits = _findings_with_id(result, "M002")
-        assert hits, "M002 must fire on @VAR indirection"
+        assert hits, "M002 must fire HIGH on indirection of a READ-tainted var"
         assert all(f.severity == Severity.HIGH for f in hits)
         assert all(f.cwe == "CWE-94" for f in hits)
+        assert all(f.metadata.get("taint_sources") for f in hits)
 
     def test_clean_routine_does_not_fire(self, m_fixtures_dir):
         result = _scan(m_fixtures_dir / "m002_clean.m")
         assert _findings_with_id(result, "M002") == []
+
+    def test_constant_indirection_not_flagged_by_default(self, m_fixtures_dir):
+        # Indirection of a non-tainted (source-constant) variable is the
+        # benign idiom; taint-gating must suppress it by default.
+        result = _scan(m_fixtures_dir / "m002_constant_indirection.m")
+        assert _findings_with_id(result, "M002") == []
+
+    def test_generic_indirection_flag_surfaces_at_info(self, m_fixtures_dir):
+        # The generic-indirection advisory is opt-in and INFO-only.
+        cfg = {"flag_generic_indirection": True}
+        result = MumpsScanner().scan(
+            str(m_fixtures_dir / "m002_constant_indirection.m"), cfg,
+        )
+        hits = _findings_with_id(result, "M002")
+        assert hits, "generic indirection must surface when the flag is on"
+        assert all(f.severity == Severity.INFO for f in hits)
 
 
 class TestM004HardcodedCredentials:

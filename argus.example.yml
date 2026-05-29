@@ -63,6 +63,11 @@ scanners:
   #   # scratch_globals: ["^TMP", "^UTILITY", "^XTMP"]
   #   # max_line_length: 245
   #   #
+  #   # M002 fires HIGH only on indirection of a TAINTED variable. Set
+  #   # this true to also surface indirection of non-tainted expressions
+  #   # as an INFO advisory (audit/modernization sweeps; never gates).
+  #   # flag_generic_indirection: false
+  #   #
   #   # Functions / intrinsics that REMOVE taint when applied. A variable
   #   # assigned from a sanitizer call is treated as clean by every
   #   # taint-aware rule (M001 / M003 / M005 / M006).

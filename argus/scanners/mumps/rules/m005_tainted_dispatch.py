@@ -26,6 +26,7 @@ from argus.core.models import Finding, Severity
 from ..parser import ParsedSource, walk
 from ..rule import Rule
 from ..taint import resolve_tainted
+from ._common import identifier_names
 
 
 def _indirection_descendants(do_node):
@@ -33,17 +34,6 @@ def _indirection_descendants(do_node):
     for descendant in walk(do_node):
         if descendant.type == "indirection":
             yield descendant
-
-
-def _identifier_names(node) -> set[str]:
-    """Collect uppercased identifier names inside ``node`` (any depth)."""
-    names: set[str] = set()
-    for descendant in walk(node):
-        if descendant.type in {"identifier", "local_variable", "variable"}:
-            names.add(
-                descendant.text.decode("utf-8", errors="replace").strip().upper()
-            )
-    return names
 
 
 class TaintedDispatchRule(Rule):
@@ -60,7 +50,7 @@ class TaintedDispatchRule(Rule):
             if node.type != "do_statement":
                 continue
             for indirection in _indirection_descendants(node):
-                referenced = _identifier_names(indirection)
+                referenced = identifier_names(parsed, indirection)
                 hits = referenced & tainted
                 if not hits:
                     continue

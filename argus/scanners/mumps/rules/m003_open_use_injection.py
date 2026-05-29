@@ -32,10 +32,40 @@ from argus.core.models import Finding, Severity
 from ..parser import ParsedSource, walk
 from ..rule import Rule
 from ..taint import resolve_tainted
-from ._common import tainted_references
+from ._common import (
+    argument_node,
+    known_external_vars,
+    preceded_by_error,
+    tainted_references,
+)
 
 _OPEN_KEYWORD_RE = re.compile(r"^\s*O(?:PEN)?\b", re.IGNORECASE)
 _USE_KEYWORD_RE = re.compile(r"^\s*U(?:SE)?\b", re.IGNORECASE)
+_KEYWORD_STRIP_RE = re.compile(r"^\s*(?:O(?:PEN)?|U(?:SE)?)\b", re.IGNORECASE)
+
+
+def _device_expression(args_for_taint: str) -> str:
+    """Return just the first device expression from an OPEN/USE argument
+    string (keyword already stripped).
+
+    ``O:cond DEV:(params):timeout,DEV2`` -> ``DEV``. Strips a leading
+    postconditional (``:cond`` attached to the keyword, ending at the
+    first space) and stops at the first param delimiter ``:`` or
+    next-device ``,``. The point is to taint-match the *device* slice
+    only, not the whole line — most generic-path false positives were a
+    tainted var elsewhere on the line (a READ target, a timeout) being
+    matched as if it were the device.
+    """
+    s = args_for_taint.strip()
+    if s.startswith(":"):
+        sp = s.find(" ")
+        s = s[sp + 1:].strip() if sp >= 0 else ""
+    end = len(s)
+    for i, ch in enumerate(s):
+        if ch in ":,":
+            end = i
+            break
+    return s[:end].strip()
 
 # PIPE-device markers. Either of these in the command's source text
 # strongly indicates a PIPE device (YottaDB ``OPEN "PIPE":(COMMAND=...)``
@@ -87,6 +117,7 @@ class OpenUseInjectionRule(Rule):
         tainted = resolve_tainted(parsed, config)
         if not tainted:
             return
+        external = known_external_vars(config)
         for node in walk(parsed.tree.root_node):
             if node.type != "command":
                 continue
@@ -95,22 +126,25 @@ class OpenUseInjectionRule(Rule):
             is_use = bool(_USE_KEYWORD_RE.match(command_text))
             if not (is_open or is_use):
                 continue
-            # Use the full source line for both taint detection and
-            # PIPE classification. The grammar's OPEN-parameter-list
-            # gap (see ``_command_line_text`` docstring) means the
-            # argument subtree misses ``:(COMMAND=...)`` content.
-            line_text = _command_line_text(parsed, node)
-            # Drop the keyword token from the line so we don't match
-            # a variable named ``O`` or ``U`` against the keyword itself.
-            args_for_taint = re.sub(
-                r"^\s*(?:O(?:PEN)?|U(?:SE)?)\b", "", line_text, count=1, flags=re.IGNORECASE,
-            )
-            hits = tainted_references(args_for_taint, tainted)
-            if not hits:
+            # Must be a real OPEN/USE with an argument. This also drops
+            # the ``D O...`` (DO subroutine) misparse where the grammar
+            # emits a bare ``O`` command, which sits next to an ERROR node.
+            if argument_node(node) is None or preceded_by_error(node):
                 continue
+            line_text = _command_line_text(parsed, node)
+            args_for_taint = _KEYWORD_STRIP_RE.sub("", line_text, count=1)
             keyword = "OPEN" if is_open else "USE"
             is_pipe = _is_pipe_device(line_text)
-            arg_text = args_for_taint.strip()
+            # PIPE is the real RCE case: a tainted value anywhere in the
+            # parameter string is shell-executed, so match the whole
+            # argument string. The generic file/socket path matches only
+            # the device expression — a tainted READ-target or timeout
+            # elsewhere on the line is not the device and must not fire.
+            scope = args_for_taint if is_pipe else _device_expression(args_for_taint)
+            hits = tainted_references(scope, tainted) - external
+            if not hits:
+                continue
+            arg_text = scope.strip()
             severity = Severity.CRITICAL if is_pipe else self.severity
             description = (
                 f"{keyword} argument references variable(s) {sorted(hits)} "

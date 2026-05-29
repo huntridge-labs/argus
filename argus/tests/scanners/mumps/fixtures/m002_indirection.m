@@ -1,7 +1,7 @@
-M002IND ; M002 fixture: indirection of a variable
+M002IND ; M002 fixture: indirection of a READ-tainted variable
  ;
- ; ``@CMD`` evaluates the runtime value of CMD as MUMPS code.
- ; M002 must fire on the ``@CMD`` site.
- S CMD="WRITE ""dynamic"""
+ ; CMD is read from the terminal, then ``@CMD`` evaluates its runtime
+ ; value as MUMPS code. M002 (taint-gated) must fire HIGH on @CMD.
+ R CMD
  X @CMD
  Q

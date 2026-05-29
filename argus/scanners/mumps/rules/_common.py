@@ -99,19 +99,39 @@ def collect_formal_args(parsed: ParsedSource) -> set[str]:
     return names
 
 
+def identifier_names(parsed: ParsedSource, node) -> set[str]:
+    """Uppercased identifier/local-variable names referenced anywhere
+    under ``node``. Used by the taint-sink rules to intersect a sink's
+    operand against the tainted set (the AST-precise model M005 pioneered
+    and M002 now shares)."""
+    names: set[str] = set()
+    for descendant in walk(node):
+        if descendant.type in VAR_TYPES:
+            names.add(parsed.node_text(descendant).strip().upper())
+    return names
+
+
 def tainted_references(arg_text: str, tainted: set[str]) -> set[str]:
-    """Return the subset of ``tainted`` referenced as whole-word
-    identifiers in ``arg_text`` (case-insensitive).
+    """Return the subset of ``tainted`` referenced as a MUMPS identifier
+    token in ``arg_text`` (case-insensitive).
 
     Shared by the taint-sink rules (M001 / M003 / M006) that check
     whether a sink argument mentions a tainted variable.
+
+    Token boundaries use ``[A-Za-z0-9%]`` lookarounds, NOT ``\\b``:
+    ``\\b`` treats ``_`` (MUMPS's concatenation operator) as a word
+    character, so ``"code"_TAINTED`` would never match the tainted var
+    after the ``_`` — a false negative on exactly the dangerous
+    concatenated-injection pattern. The ``%`` in the class keeps a
+    plain ``X`` from matching inside ``%X`` (a distinct variable).
     """
     hits: set[str] = set()
     if not arg_text or not tainted:
         return hits
     upper = arg_text.upper()
     for name in tainted:
-        if re.search(rf"\b{re.escape(name)}\b", upper):
+        pattern = rf"(?<![A-Za-z0-9%]){re.escape(name)}(?![A-Za-z0-9%])"
+        if re.search(pattern, upper):
             hits.add(name)
     return hits
 

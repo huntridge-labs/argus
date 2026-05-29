@@ -2,18 +2,26 @@
 
 MUMPS indirection lets a variable expand into arbitrary code: ``SET
 X="^GLOBAL(""KEY"")=1"`` followed by ``XECUTE @X`` runs whatever the
-attacker can put into ``X``. Indirection of a variable expression is
-the lowest-friction code-injection primitive in the language.
+attacker can put into ``X``. Indirection of a *tainted* value is a
+code-injection primitive.
 
-The ``indirection`` node is named in ``janus-llm/tree-sitter-mumps`` so
-this is the cleanest structural rule of Phase 1. We flag every
-indirection whose operand is **not** a string literal — those are the
-ones where the runtime value comes from somewhere other than the source
-file.
+Precision: the rule is **taint-gated**. It fires at HIGH only when the
+indirected expression references a tainted variable (READ / $ZARGV /
+HTTP context global, or a config-supplied source) — the same AST
+intersect model M005 uses. This is the Phase-2 refinement the original
+docstring promised: flagging *every* non-literal indirection produced
+~5,000 findings on two VistA packages (≈94% of all core-sink noise),
+almost all benign ``S @X=Y`` / ``W @X`` idioms, which made the whole
+core surface un-gateable.
 
-Phase 2 will refine this with intra-procedural taint so we only flag
-indirections of values originating from ``READ`` / globals / formal
-arguments rather than every variable indirection.
+The generic "indirection of a non-constant, non-tainted expression"
+signal is still available for audit / modernization sweeps, but it
+ships **off by default** and at INFO: set
+``scanners.mumps.flag_generic_indirection: true`` to surface it. It
+never counts toward a severity gate.
+
+Constant indirection (``@("WRITE 1")``, ``@(1)``) has no variable to
+inject and is never flagged.
 """
 
 from __future__ import annotations
@@ -23,17 +31,8 @@ from typing import Iterable
 from argus.core.models import Finding, Severity
 from ..parser import ParsedSource, walk
 from ..rule import Rule
-
-# Operand types that represent a constant value baked into source. An
-# indirection whose operand is one of these has nothing to inject and
-# is a false positive in practice.
-_CONSTANT_OPERAND_TYPES = frozenset({
-    "string_literal",
-    "string",
-    "number",
-    "numeric_literal",
-    "integer_literal",
-})
+from ..taint import resolve_tainted
+from ._common import identifier_names
 
 
 class IndirectionInjectionRule(Rule):
@@ -43,43 +42,45 @@ class IndirectionInjectionRule(Rule):
     cwe = "CWE-94"
 
     def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
+        tainted = resolve_tainted(parsed, config)
+        flag_generic = bool((config or {}).get("flag_generic_indirection", False))
+        if not tainted and not flag_generic:
+            return
         for node in walk(parsed.tree.root_node):
             if node.type != "indirection":
                 continue
-            operand = self._operand(node)
-            if operand is None:
-                # Empty indirection (grammar accepts ``@`` standalone in
-                # places) — nothing actionable, skip.
+            # All identifier names inside the indirection — handles
+            # ``@VAR``, ``@(U_VAR)`` (the ``@(expr)`` form whose operand
+            # the grammar shapes as a bare ``(`` token), and
+            # ``@^GLOB(SUB)``. Empty / pure-constant indirection
+            # (``@("x")`` / ``@(1)``) has no names and is skipped.
+            names = identifier_names(parsed, node)
+            if not names:
                 continue
-            if operand.type in _CONSTANT_OPERAND_TYPES:
-                continue
-            operand_text = parsed.node_text(operand).strip()
-            yield self.make_finding(
-                parsed,
-                node,
-                description=(
-                    "Indirection of a non-constant expression "
-                    f"(@{operand_text}). The value of '{operand_text}' is "
-                    "evaluated as MUMPS code at runtime; if it can be "
-                    "influenced by external input the caller can execute "
-                    "arbitrary commands."
-                ),
-                metadata={"operand": operand_text, "operand_type": operand.type},
-            )
-
-    @staticmethod
-    def _operand(indirection_node):
-        """Return the expression node inside an ``@expr`` indirection.
-
-        Tries the ``operand`` / ``expression`` field name first, then
-        falls back to the first non-``@`` child to stay resilient against
-        minor grammar revisions.
-        """
-        for field_name in ("operand", "expression", "argument"):
-            child = indirection_node.child_by_field_name(field_name)
-            if child is not None:
-                return child
-        for child in indirection_node.children:
-            if child.type != "@":
-                return child
-        return None
+            text = parsed.node_text(node).strip()
+            hits = names & tainted
+            if hits:
+                yield self.make_finding(
+                    parsed,
+                    node,
+                    description=(
+                        f"Indirection (@{text.lstrip('@')}) of tainted "
+                        f"variable(s) {sorted(hits)}. The value is evaluated "
+                        "as MUMPS code / a name reference at runtime; an "
+                        "externally-controlled value here is code injection."
+                    ),
+                    metadata={"taint_sources": sorted(hits), "operand": text[:200]},
+                )
+            elif flag_generic:
+                yield self.make_finding(
+                    parsed,
+                    node,
+                    severity=Severity.INFO,
+                    description=(
+                        f"Indirection of a non-constant expression (@{text.lstrip('@')}). "
+                        "Not taint-confirmed; review if the value can be "
+                        "externally influenced. (Generic-indirection advisory; "
+                        "enable via scanners.mumps.flag_generic_indirection.)"
+                    ),
+                    metadata={"operand": text[:200], "generic": True},
+                )
