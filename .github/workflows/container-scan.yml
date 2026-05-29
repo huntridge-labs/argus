@@ -114,10 +114,8 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install argus dependencies
-        run: |
-          pip install --quiet pyyaml
-          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      - name: Install Argus
+        uses: huntridge-labs/argus/.github/actions/setup-argus@1.2.1
 
       - name: Discover Dockerfiles in repository
         id: discover
@@ -194,10 +192,8 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install argus dependencies
-        run: |
-          pip install --quiet pyyaml
-          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      - name: Install Argus
+        uses: huntridge-labs/argus/.github/actions/setup-argus@1.2.1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4
@@ -266,10 +262,8 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install argus dependencies
-        run: |
-          pip install --quiet pyyaml
-          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      - name: Install Argus
+        uses: huntridge-labs/argus/.github/actions/setup-argus@1.2.1
 
       - name: Authenticate to container registry
         if: inputs.registry_username != ''

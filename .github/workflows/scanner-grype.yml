@@ -92,9 +92,7 @@ jobs:
           python-version: '3.13'
 
       - name: Install Argus
-        run: |
-          pip install --quiet pyyaml
-          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+        uses: huntridge-labs/argus/.github/actions/setup-argus@1.2.1
 
       - name: Run scan
         run: |
