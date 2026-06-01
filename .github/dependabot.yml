@@ -57,6 +57,16 @@ updates:
     cooldown:
       default-days: 7
 
+    # Don't try to "update" our own actions. The composite wrappers and
+    # reusable workflows pin this repo's own composite actions (comment-pr,
+    # setup-argus) by tag; release-it version-bumps those on release, not
+    # Dependabot. These self-references proliferated in the early-April
+    # composite-wrapper rewrite, matching when the github-actions ecosystem
+    # stopped producing PRs (#196) -- the prime suspect for the stall.
+    # Ignoring them is correct regardless of that.
+    ignore:
+      - dependency-name: "huntridge-labs/argus*"
+
   # Python (pip) dependencies
   - package-ecosystem: "pip"
     directory: "/"
