@@ -2359,3 +2359,109 @@ decisions:
       - ADR-024  # core/secrets.py — resolve_secret precedence and stdin slot registry
     pr_references:
       - "(introduces containers.registry_auth + longest-prefix matching; closes #180 acceptance gap for multi-registry deployments)"
+
+  - id: ADR-029
+    title: "GitHub Actions dependency updates handled by Renovate, not Dependabot"
+    date: "2026-06-01"
+    status: accepted
+
+    context: |
+      Dependabot's github-actions ecosystem silently stopped opening
+      PRs (#196) despite real updates being available across our
+      workflows and composite actions. Root cause was confirmed from
+      the updater job log (run 26753720008): the ecosystem was
+      configured with ``directories: ["/", "/.github/actions/*"]``,
+      which fans out to ~30 composite-action directories. Dependabot
+      runs one updater job per (ecosystem, directory) pair and the
+      whole github-actions ecosystem shares a single GitHub-hosted
+      job that is hard-capped at ``max-updater-run-time`` (2700s /
+      45 min, NOT user-configurable on GitHub-hosted Dependabot).
+      The fan-out exhausted that budget on git-fetch churn before any
+      PR was produced — the job ended with
+      ``##[error]The operation was canceled`` (dependabot-core
+      #11645). Independently, the ``cooldown`` we set interacts badly
+      with frequently-released actions: Dependabot only checks the
+      age of the latest release and, if that is inside the cooldown
+      window, skips the dependency entirely rather than offering the
+      newest eligible older version (dependabot-core #13691).
+
+      An earlier attempt (#218) added ``ignore: huntridge-labs/argus*``
+      on the theory that self-referential composite-action pins were
+      the stall. That was merged but did NOT fix the timeout — it was
+      the wrong root cause. dependabot-core #6704 (composite
+      ``action.yml`` ``uses:`` not bumped) is a separate open
+      limitation that also affects us.
+
+    decision: |
+      Move GitHub Actions updates off Dependabot and onto Renovate,
+      which already runs in this repo for custom managers. Renovate's
+      github-actions manager scans every workflow and composite
+      ``action.yml`` repo-wide in a single pass (no per-directory job
+      model, so no 45-min fan-out timeout) and its ``minimumReleaseAge``
+      cooldown offers the newest version older than the window instead
+      of skipping the dependency.
+
+      - ``.github/renovate.json``: add ``github-actions`` to
+        ``enabledManagers`` and three packageRules — minor/patch/digest
+        grouped (``github-actions-minor-patch``), major separated
+        (``github-actions-major``), both with ``pinDigests: true`` to
+        keep the ``@sha # vX`` pin style; and a rule disabling updates
+        to our own ``huntridge-labs/argus`` composite actions
+        (release-it version-bumps those on tag, not Renovate). The
+        global ``minimumReleaseAge: 7 days`` supply-chain delay,
+        weekly schedule, and ``chore(deps):`` prefix auto-apply.
+      - ``.github/dependabot.yml``: remove the entire github-actions
+        ecosystem block. Dependabot keeps pip, docker, and npm — those
+        are single-directory ecosystems unaffected by the fan-out
+        timeout and have no Renovate manager configured.
+
+    alternatives_considered:
+      - name: "Increase the Dependabot updater timeout"
+        rejected_because: |
+          ``max-updater-run-time`` is fixed at 2700s on GitHub-hosted
+          Dependabot and is not exposed in dependabot.yml. The only way
+          to raise it is self-hosting the Dependabot updater, which is
+          far more operational surface than the problem warrants.
+      - name: "Split github-actions into ~30 per-directory Dependabot blocks"
+        rejected_because: |
+          Each (ecosystem, directory) pair gets its own job and budget,
+          which would sidestep the shared-timeout, but it means
+          hand-maintaining 30+ near-identical blocks that must track
+          every new/removed composite action — brittle and noisy. It
+          also does nothing for the cooldown-skip bug (#13691), which
+          is independent of directory count.
+      - name: "Keep Dependabot + ignore self-referential action pins (#218)"
+        rejected_because: |
+          Already tried and merged; the timeout persisted. The
+          self-refs were never the cause — the directory fan-out was.
+      - name: "Run both Dependabot and Renovate on github-actions"
+        rejected_because: |
+          Duplicate, conflicting PRs for the same ``uses:`` bump. One
+          tool must own each ecosystem; Renovate owns github-actions,
+          Dependabot owns pip/docker/npm.
+
+    consequences:
+      positive:
+        - "github-actions updates resume — Renovate's repo-wide single pass has no per-directory timeout."
+        - "Frequently-released actions are no longer skipped: minimumReleaseAge offers the newest version older than the 7-day window instead of skipping the dependency (fixes the #13691 interaction)."
+        - "SHA pins preserved and maintained: pinDigests keeps the @sha # vX shape and bumps the digest in place."
+        - "Composite action.yml uses: refs are now covered (Renovate scans them; Dependabot's #6704 left them stale)."
+      negative:
+        - "Two update tools to reason about — contributors must know github-actions PRs come from Renovate and pip/docker/npm from Dependabot. Documented in both config files' headers."
+        - "Renovate groups and labels differ slightly from Dependabot's (groupName vs Dependabot groups); existing PR-filtering automation keyed on Dependabot labels won't match the github-actions PRs."
+
+    implementation: |
+      - .github/renovate.json — enabledManagers gains "github-actions";
+        three github-actions packageRules appended (minor-patch group +
+        pinDigests, major group + pinDigests, disable
+        huntridge-labs/argus self-refs); description rewritten to state
+        the Dependabot→Renovate split and cite #196 / dependabot-core
+        #11645 / #13691.
+      - .github/dependabot.yml — github-actions ecosystem block removed,
+        replaced by a pointer comment to renovate.json; pip/docker/npm
+        unchanged.
+
+    related:
+      - ADR-014  # Third-party images stay SHA-pinned via Renovate (same pinDigests philosophy for actions)
+    pr_references:
+      - "(moves github-actions updates from Dependabot to Renovate; closes #196; supersedes the #218 ignore-self-refs attempt)"
