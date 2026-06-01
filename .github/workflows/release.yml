@@ -151,7 +151,12 @@ jobs:
       pull-requests: write
       packages: write       # buildx push + imagetools create on GHCR
       id-token: write       # cosign keyless signing + PyPI OIDC trusted publish
-    if: (github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(release):')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.dryRun != 'true')
+    # Manual-only. Pushes to main no longer auto-trigger a publishing
+    # release (that queued a prod-gated run per merge that had to be
+    # cancelled). Cut releases deliberately via the Actions "Run workflow"
+    # button — weekly cadence, or ad-hoc for hotfixes. The dry-run preview
+    # below still runs on every push for visibility.
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.dryRun != 'true'
 
     env:
       IMAGE_REGISTRY: ghcr.io/huntridge-labs/argus
@@ -267,7 +272,7 @@ jobs:
           echo "Pre-release version: ${VERSION_BEFORE}"
 
       - name: Release (Auto)
-        if: github.event_name == 'push' || github.event.inputs.releaseType == 'auto'
+        if: github.event.inputs.releaseType == 'auto'
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
           HUSKY: 0
