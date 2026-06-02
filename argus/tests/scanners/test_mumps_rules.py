@@ -969,6 +969,19 @@ class TestM007CodeLoadInjection:
         assert all(f.cwe == "CWE-95" for f in hits)
 
 
+class TestFormalsUntrusted:
+    def test_formal_param_sink_off_by_default_on_when_opted_in(self, m_fixtures_dir):
+        path = str(m_fixtures_dir / "m_formals_taint.m")
+        # Default: formal parameters are not a taint source, so a sink fed by
+        # a parameter (origin in the caller) does not fire.
+        assert _findings_with_id(MumpsScanner().scan(path, {}), "M006") == []
+        # Audit mode: formals are untrusted -> the $ZF shell injection fires.
+        cfg = {"taint_sources": {"formals_untrusted": True}}
+        assert _findings_with_id(MumpsScanner().scan(path, cfg), "M006"), (
+            "formals_untrusted must surface a formal-parameter-derived shell injection"
+        )
+
+
 class TestRuleProfiles:
     def test_security_only_runs_security_drops_lint(self, m_fixtures_dir):
         cfg = {"profile": "security-only"}

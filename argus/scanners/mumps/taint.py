@@ -332,6 +332,14 @@ def collect_tainted_variables(
     collection continues. Single document pass overall.
     """
     tainted: set[str] = collect_read_tainted_variables(parsed)
+    if _formals_untrusted(config):
+        # Attack-surface audit mode: treat every entry-label formal parameter
+        # as an untrusted boundary input, so a sink fed by a parameter whose
+        # taint origin is in a caller (multiple hops away) still fires. Off by
+        # default — it widens the source surface to all API entry points;
+        # opt in via scanners.mumps.taint_sources.formals_untrusted: true.
+        from argus.scanners.mumps.rules._common import collect_formal_args
+        tainted |= collect_formal_args(parsed)
     extra_patterns = _compile_extra_patterns(config)
     all_patterns = _NON_READ_TAINT_PATTERNS + tuple(extra_patterns)
 
@@ -434,6 +442,15 @@ def resolve_tainted(parsed: ParsedSource, config: dict | None) -> set[str]:
         if shared is not None:
             return shared
     return collect_tainted_variables(parsed, config)
+
+
+def _formals_untrusted(config: dict | None) -> bool:
+    """Whether entry-label formal parameters should be seeded as taint
+    sources (attack-surface audit mode). Off unless
+    ``scanners.mumps.taint_sources.formals_untrusted`` is truthy."""
+    if not config:
+        return False
+    return bool((config.get("taint_sources") or {}).get("formals_untrusted"))
 
 
 def _compile_extra_patterns(config: dict | None) -> list[re.Pattern]:
