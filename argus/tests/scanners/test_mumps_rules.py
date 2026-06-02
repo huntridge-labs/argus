@@ -479,6 +479,15 @@ class TestM212InfiniteFor:
         result = _scan(m_fixtures_dir / "m212_bounded_for.m")
         assert _findings_with_id(result, "M212") == []
 
+    def test_device_variable_not_read_as_for(self, m_fixtures_dir):
+        # ``U F`` / ``C F`` / ``O F`` (a device var named F) misparse into
+        # for_statement nodes; M212 must fire only on the genuine infinite
+        # loop (INF), never on the device lines.
+        result = _scan(m_fixtures_dir / "m212_devicevar.m")
+        hits = _findings_with_id(result, "M212")
+        assert len(hits) == 1, "only the real argumentless FOR (INF) should fire"
+        assert hits[0].location.endswith(":2:2")
+
 
 class TestM213QuitArgInFor:
     def test_fires_on_quit_with_arg_in_for(self, m_fixtures_dir):

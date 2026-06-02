@@ -49,6 +49,12 @@ class InfiniteForRule(Rule):
             if not is_argumentless_for(parsed, node):
                 continue
             line = physical_line(parsed, node)
+            # A genuine argumentless FOR carries its body on the SAME line
+            # (``F  <body>``). A line that is just the bare keyword is not a
+            # loop — it is a device variable named ``F`` mis-tokenized from
+            # ``U F`` / ``C F`` / ``O F`` into a for_statement. Skip it.
+            if line.strip().upper() in ("F", "FOR"):
+                continue
             if _EXIT_RE.search(line):
                 continue
             yield self.make_finding(
