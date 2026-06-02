@@ -267,8 +267,8 @@ OSS SAST for the MUMPS / M language (VistA, YottaDB, GT.M, FileMan). Phase 1+ sh
 | `M102` | Unreachable code after unconditional QUIT / HALT | INFO | n/a |
 | `M201` | DO / GOTO to undeclared label | INFO | n/a |
 | `M202` | Routine name does not match filename | INFO | n/a |
-| `M203` | Local variable read before it was defined | INFO | n/a |
-| `M204` | Local variable set but never read | INFO | n/a |
+| `M203` | Local variable read before it was defined | INFO | n/a (off by default) |
+| `M204` | Local variable declared (NEW/READ) but never read | INFO | n/a |
 | `M205` | Label body falls through into the following label | INFO | n/a (off by default) |
 | `M206` | KILL of an entire global tree (no subscript) | INFO | n/a |
 | `M207` | Bare KILL command deletes every local variable | INFO | n/a |
@@ -285,7 +285,11 @@ OSS SAST for the MUMPS / M language (VistA, YottaDB, GT.M, FileMan). Phase 1+ sh
 | `M218` | Executable code on the routine label (first) line | LOW | n/a |
 | `M219` | Source line exceeds the SAC 245-char limit | LOW | n/a |
 
-The security rules above cover all five MUMPS-specific code-injection sinks — XECUTE (M001), indirection (M002), OPEN/USE device arguments (M003), dynamic routine dispatch (M005), and external `$&` calls (M006) — plus data-at-rest credential leaks (M004). Together they exceed the public mHawk taint-sink surface for intra-procedural detection. The diagnostic rules (M101–M102, M201–M219) cover structural, control-flow (infinite FOR, value-QUIT-in-FOR), def-use, call-arity, scratch-global concurrency, VistA SAC, and portability checks — 21 diagnostics toward mHawk's ~32. Rules marked *off by default* (M205, M214, M216, M217) are opt-in via `rules.<id>.enabled: true` because they are either idiomatic in legacy VistA (naked refs, fallthrough) or portability-inventory only.
+The security rules above cover all five MUMPS-specific code-injection sinks — XECUTE (M001), indirection (M002), OPEN/USE device arguments (M003), dynamic routine dispatch (M005), and external `$&` calls (M006) — plus data-at-rest credential leaks (M004). Together they exceed the public mHawk taint-sink surface for intra-procedural detection. The diagnostic rules (M101–M102, M201–M219) cover structural, control-flow (infinite FOR, value-QUIT-in-FOR), def-use, call-arity, scratch-global concurrency, VistA SAC, and portability checks — 21 diagnostics toward mHawk's ~32. Rules marked *off by default* (M203, M205, M214, M216, M217) are opt-in via `rules.<id>.enabled: true` because they are either idiomatic in legacy VistA (naked refs, fallthrough), portability-inventory only, or — in M203's case — too sensitive to the grammar's misparse of complex routines to ship on by default (see below).
+
+**Default profile precision.** The default profile is tuned so a clean codebase stays quiet and a real one yields actionable signal rather than a wall of noise. Verified against two public MUMPS corpora: a small utility library produced 2 INFO diagnostics, and a full MUMPS web server produced 38 findings — 10 of them RCE-class security findings (3 CRITICAL + 7 HIGH from M003 shell-pipe `OPEN`/`USE` and M006 `$ZF(-1,…)`), the rest focused lint (dead declarations, bare-global `KILL`, non-portable Z-commands). **M203 (read-before-def) ships off** because MUMPS's dynamic scoping plus the tree-sitter grammar's misparse of complex chained-`SET`/device lines leave a residual false-positive tail no intra-routine heuristic fully clears; it is a useful opt-in audit pass (`rules.M203.enabled: true`) but not trustworthy enough for an unattended default. **M204 (unused local)** flags only dead `NEW`/`READ` declarations, not `SET`-then-unused, whose value is frequently consumed by a callee via implicit-`NEW` inheritance the intra-routine pass cannot see.
+
+**Known Phase-1 limitation (cross-file request dispatch).** Web-framework request routing where the handler is selected across files — `do @ROUTINE` driven by a URL map, or `X %WCALL` reached through `$$RPC^XWBPRS()` — needs inter-procedural array-flow that the one-hop `interprocedural.enabled` pass does not yet model, so those dispatch sinks are not flagged by default. The roadmap's multi-hop / return-value taint work closes this; until then, extend `taint_sources.patterns` with your framework's request global if you want the intra-file portion of those chains surfaced.
 
 <details>
 <summary><strong>Configuration & Examples</strong></summary>
@@ -304,7 +308,7 @@ Optional per-scanner keys:
 - `taint_sources.patterns` — list of regex strings appended to the built-in taint-source set. Any assignment whose RHS matches one of these patterns taints its LHS. Use for site-specific intrinsics or HTTP globals beyond `READ` / `$ZARGV` / `^%CGI` / `^%REQUEST` / `^%session`.
 - `sanitizers` — list of function / intrinsic names that *remove* taint when applied. A variable assigned from an expression that calls one of these is treated as clean by every taint-aware rule. Pair with the existing source-patterns config to make the full taint flow tunable per codebase.
 - `rules.<id>.severity` — per-rule severity override. Replaces the rule's default baseline severity. Per-finding precision (M003's PIPE bump to CRITICAL) is preserved — only baseline severity is user-tunable. Accepts `critical` / `high` / `medium` / `low` / `info`.
-- `rules.<id>.enabled` — turn an individual rule on or off. Most rules are on by default; **M205 (label fallthrough) is off by default** because top-to-bottom fallthrough between labels is the intended idiom in old-style linear VistA routines (it was ~69% false-positive on the VistA Kernel). Opt in with `rules.M205.enabled: true` if your codebase follows strict one-label-one-entry-point discipline.
+- `rules.<id>.enabled` — turn an individual rule on or off. Most rules are on by default; **M203, M205, M214, M216, and M217 ship off by default.** M203 (read-before-def) is the noisiest rule on real code — enable it (`rules.M203.enabled: true`) for a deliberate implicit-declaration audit. M205 (label fallthrough) is off because top-to-bottom fallthrough between labels is the intended idiom in old-style linear VistA routines (it was ~69% false-positive on the VistA Kernel) — opt in if your codebase follows strict one-label-one-entry-point discipline. M214/M216/M217 are portability-inventory checks, opt-in for migration audits.
 - `known_external_vars` — list of variable names treated as externally defined / read (extends the built-in VistA / FileMan / Kernel allowlist used by M003 / M203 / M204).
 - `flag_generic_indirection` — when `true`, M002 also emits an INFO advisory for indirection of a *non-tainted* non-constant expression (default `false`). By default M002 fires HIGH only on indirection of a tainted variable; the generic stream is for audit / modernization sweeps and never counts toward a severity gate.
 - `scratch_globals` — list of shared scratch globals that must be `$J`-subscripted (M211); defaults to `["^TMP", "^UTILITY"]`.
@@ -324,7 +328,7 @@ scanners:
       - "$$VALIDATE^INPUT"        # input-validator
     rules:
       M203:
-        severity: low             # demote noisy diagnostic
+        enabled: true             # opt in to read-before-def audit (off by default)
       M001:
         severity: critical        # promote XECUTE in this codebase
       M205:

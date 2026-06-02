@@ -91,6 +91,14 @@ class ImplicitDeclarationRule(Rule):
     severity = Severity.INFO
     title = "Local variable read before it was defined"
     cwe = None  # diagnostic
+    # Off by default: read-before-def is the noisiest rule on real code
+    # because MUMPS is dynamically scoped and the tree-sitter grammar
+    # misparses complex chained-SET / device lines, leaving a residual
+    # false-positive tail no intra-routine heuristic fully clears. The
+    # idiom fixes above make it usable as an opt-in audit pass; enable via
+    # ``scanners.mumps.rules.M203.enabled: true``. Phase 2's flow-sensitive
+    # + inter-procedural scope analysis is the path to default-on.
+    enabled_by_default = False
 
     def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
         # ObjectScript / Caché files are a different dialect the VistA-M

@@ -39,6 +39,19 @@ def _scan(path: Path):
     return MumpsScanner().scan(str(path))
 
 
+def _scan_enabling(path: Path, rule_id: str, extra: dict | None = None):
+    """Scan with an off-by-default rule explicitly turned on.
+
+    M203 (read-before-def) ships off-by-default — it is the noisiest rule
+    on real code — so its behavioural tests must opt in via config, exactly
+    as a user auditing for implicit declarations would.
+    """
+    cfg = {"rules": {rule_id: {"enabled": True}}}
+    if extra:
+        cfg.update(extra)
+    return MumpsScanner().scan(str(path), cfg)
+
+
 def _findings_with_id(result, rule_id: str):
     return [f for f in result.findings if f.id == rule_id]
 
@@ -334,7 +347,7 @@ class TestM205LabelFallthrough:
 
 class TestM203ImplicitDeclaration:
     def test_fires_on_typo_read_before_define(self, m_fixtures_dir):
-        result = _scan(m_fixtures_dir / "m203_typo.m")
+        result = _scan_enabling(m_fixtures_dir / "m203_typo.m", "M203")
         hits = _findings_with_id(result, "M203")
         assert hits, "M203 must fire on a variable read without a prior definition"
         names = {f.metadata.get("variable") for f in hits}
@@ -344,21 +357,22 @@ class TestM203ImplicitDeclaration:
 
     def test_formal_args_not_flagged(self, m_fixtures_dir):
         # Formal params A,B parse as ``arguments`` siblings of the label.
-        result = _scan(m_fixtures_dir / "m203_formal_args.m")
+        result = _scan_enabling(m_fixtures_dir / "m203_formal_args.m", "M203")
         names = {f.metadata.get("variable") for f in _findings_with_id(result, "M203")}
         assert "A" not in names and "B" not in names
 
     def test_external_vars_not_flagged(self, m_fixtures_dir):
         # DUZ and U are on the known_external_vars allowlist.
-        result = _scan(m_fixtures_dir / "m203_external_var.m")
+        result = _scan_enabling(m_fixtures_dir / "m203_external_var.m", "M203")
         names = {f.metadata.get("variable") for f in _findings_with_id(result, "M203")}
         assert "DUZ" not in names and "U" not in names
 
     def test_custom_external_var_via_config(self, m_fixtures_dir):
         # A site-specific var added through known_external_vars config
         # must also be treated as defined.
-        cfg = {"known_external_vars": ["USR"]}
-        result = MumpsScanner().scan(str(m_fixtures_dir / "m203_typo.m"), cfg)
+        result = _scan_enabling(
+            m_fixtures_dir / "m203_typo.m", "M203", {"known_external_vars": ["USR"]}
+        )
         names = {f.metadata.get("variable") for f in _findings_with_id(result, "M203")}
         assert "USR" not in names
 
@@ -366,7 +380,7 @@ class TestM203ImplicitDeclaration:
         # Real-MUMPS idioms that the def-use pass must not mistake for a
         # read-before-def: FOR loop control vars, $GET/$DATA guarded reads,
         # OPEN/USE device-parameter keywords, and pass-by-reference actuals.
-        result = _scan(m_fixtures_dir / "m203_idioms.m")
+        result = _scan_enabling(m_fixtures_dir / "m203_idioms.m", "M203")
         names = {f.metadata.get("variable") for f in _findings_with_id(result, "M203")}
         assert "USRNAME" in names, "genuine read-before-def typo must still fire"
         for clean in ("ARG1", "ARG2", "I", "MAYBE", "PERHAPS", "READONLY", "NOECHO", "PASSED"):
@@ -377,7 +391,9 @@ class TestObjectScriptGuard:
     def test_objectscript_file_skips_structural_rules(self, m_fixtures_dir):
         # A Caché / ObjectScript file must not produce VistA-M structural
         # findings (M201/M203) — the VistA-M grammar mangles its syntax.
-        result = _scan(m_fixtures_dir / "m_objectscript.m")
+        # Enable M203 (off by default) so the guard, not the gate, is what
+        # suppresses it.
+        result = _scan_enabling(m_fixtures_dir / "m_objectscript.m", "M203")
         assert _findings_with_id(result, "M201") == []
         assert _findings_with_id(result, "M203") == []
 
