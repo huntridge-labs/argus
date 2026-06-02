@@ -237,8 +237,8 @@ command's source line.
 **Architecture**
 - `argus/scanners/mumps/` sub-package: parser wrapper (`parser.py`), Rule abstract base
   (`rule.py`), shared taint collector (`taint.py`), cross-file call-graph builder
-  (`callgraph.py`), 27 rule modules in `rules/`, and `scanner.py` implementing the
-  `Scanner` protocol.
+  (`callgraph.py`), 28 rule modules in `rules/` (7 security M001-M007 + 21
+  diagnostics; see Phase 1.5), and `scanner.py` implementing the `Scanner` protocol.
 - Intra-procedural taint engine with three built-in source classes plus user-extensible
   patterns. Document-order walk over the parse tree.
 - Streaming two-pass scan loop in `MumpsScanner.scan`: pass 1 parses each `.m` file,
@@ -248,7 +248,7 @@ command's source line.
   resident memory is bounded to a single parse tree regardless of corpus size. M001
   findings carry `inter_procedural_callers` metadata; opt-in one-hop inbound taint
   propagation through the graph ships in Phase 2 (off by default).
-- SARIF v2.1.0 emission via the existing reporter - all 27 rule IDs declared in the
+- SARIF v2.1.0 emission via the existing reporter - all rule IDs declared in the
   driver block.
 - Two installation paths: `pip install argus-security[mumps]` + `scripts/build-mumps-grammar.sh`
   for local execution, or the `scanner-mumps` container image (Alpine, multi-stage, grammar
@@ -316,7 +316,9 @@ command's source line.
   baseline; per-finding precision (M003's PIPE-CRITICAL bump) is preserved. Accepts
   `critical` / `high` / `medium` / `low` / `info`; unknown values degrade gracefully.
 - `rules.<id>.enabled` - per-rule on/off toggle alongside the severity override
-  (M205 / M214 / M216 / M217 ship off by default).
+  (M203 / M205 / M214 / M216 / M217 ship off by default; M002 / M201 / M204 were
+  re-enabled in Phase 1.5). `profile` (`security-only` / `lint-only` / `strict`)
+  selects a preset; an explicit per-rule `enabled` overrides it.
 - `extensions` - scanned file extensions (default `[".m"]`).
 - `flag_generic_indirection` - when true, M002 also emits an INFO advisory for every
   `@` indirection even when the operand is not tainted (default false).
@@ -340,6 +342,47 @@ own codebase without forking or vendor escalation.
   workflow's setup step so these run on every PR.
 - Per-rule line coverage: 88-100%.
 
+#### Phase 1.5 — At-scale precision hardening & rule re-enablement (shipped, PR #213)
+
+Validated against six real MUMPS projects (1,162 routines: a utility lib, a
+MUMPS web server, two YottaDB projects, and the VistA Kernel + Programmer
+Environment), adjudicating every distinct finding class against the source.
+Default-profile findings dropped **1,628 → 234** with the real security signal
+intact (85 security: 34 CRITICAL, 18 HIGH). A repeatable harness
+(`scripts/scan-mumps-corpus.py`) plus a golden security-count regression test
+and a streaming-memory guard institutionalize it. This section supersedes the
+Phase 1 rule descriptions where they differ.
+
+- **M007 added** — tainted source loaded/compiled as code (`ZLINK` / `ZINSERT`
+  / `ZCOMPILE`, CWE-95). The taint-sink surface is now XECUTE / indirection /
+  OPEN-USE / dispatch / external-call / code-load (28 rules total).
+- **M002 / M201 / M204 re-enabled on by default** after the precision work that
+  made them trustworthy (they previously shipped off as FP-dominant): M002 is
+  position-aware (`@(<expr>)` expression form only; 52→0 FPs on the Kernel);
+  M201 uses a text-scanned column-0 label index + call-graph cross-routine
+  resolution (48→0); M204 treats a dead NEW/READ as live when the file makes
+  any `^ROUTINE` call that could inherit it via implicit-NEW (832→6, all
+  genuine).
+- **Severity calibration:** M003 device taxonomy (PIPE shell = CRITICAL/RCE,
+  socket = HIGH/SSRF, file/generic = MEDIUM, replacing flat HIGH); M006
+  per-helper map (exec helpers / `$ZF(-1)` = CRITICAL, file/socket = HIGH, pure
+  helpers suppressed); M005 no longer flags `@$S(cond:"A",1:"B")` fixed-literal
+  dispatch tables.
+- **Sound sanitizers:** numeric coercion (`S N=+X`, flow-insensitive) and
+  charset pattern-match guards (`I X?1A.7AN`, **flow-sensitive** — cleans only
+  sinks past the guard in the same label body, so a validation gap on a
+  different entry path still fires). M211 recognizes `$J`-derived job
+  subscripts; M202 ships a platform-variant suffix table.
+- **Operator controls:** `profile` presets (`security-only` / `lint-only` /
+  `strict`), inline `;argus:ignore[M0xx]` suppression (counted in
+  `metadata.suppressed`), and `taint_sources.formals_untrusted` (opt-in
+  attack-surface audit that seeds entry-label formals as untrusted, surfacing
+  caller-origin / multi-hop sinks the precise default does not chase).
+- **Output:** the shared finding detail pane (`core/findings_view.py`) now
+  surfaces taint/sink metadata for code scanners instead of empty dependency
+  rows, so MUMPS findings render with their actionable detail in both the
+  terminal TUI and browser views.
+
 #### Phase 2 — Deepening (six-month horizon)
 
 The single largest remaining gap is inter-procedural detection. Everything else is
@@ -359,6 +402,9 @@ incremental progress against mHawk's diagnostic surface or operational maturity.
   already in place, return-value taint (callee returns a tainted value the caller
   stores), global-through-routine flow, extrinsic `$$fn^rtn` argument propagation,
   and per-finding provenance metadata (`propagated_from` / `via_param`).
+  Phase 1.5 shipped the call-graph cross-routine *label* resolution for M201
+  and the opt-in `taint_sources.formals_untrusted` audit source (seed formals
+  as untrusted); true caller→callee taint flow remains the open item here.
 - **Formal-argument scope tracking.** Entry-label parameter lists (`LABEL(ARG1,ARG2)`)
   become scope-aware definitions for M203 / M204 instead of the conservative
   "any-formal-anywhere-is-defined" heuristic Phase 1 ships. Unlocks precise def-use
