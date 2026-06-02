@@ -1,8 +1,12 @@
-M204DSET ; M204 fixture: variable set but never read
+M204DECL ; M204 fixture: a dead NEW/READ declaration fires; a dead SET does not
  ;
- ; LEFTOVER is assigned then never consumed; likely dead code or
- ; a leftover from a removed feature. M204 must fire on the SET.
+ ; LEFTOVER is NEWed but never read — a dead declaration M204 flags.
+ ; SETONLY is assigned but never read; that is NOT flagged — a SET value
+ ; is often consumed by a callee via implicit-NEW inheritance, the
+ ; FP-prone case the Phase 1 intra-routine pass cannot see.
+ ; USED is read, so it never flags.
+ N LEFTOVER
  S USED="alive"
- S LEFTOVER="dead"
+ S SETONLY="quiet"
  W USED,!
  Q

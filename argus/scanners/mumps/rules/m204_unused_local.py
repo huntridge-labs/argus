@@ -63,6 +63,7 @@ def _collect_definitions(parsed: ParsedSource):
                     named[0].end_byte,
                     parsed.node_text(named[0]).strip().upper(),
                     named[0],
+                    "ASSIGN",
                 )
         elif node.type == "command":
             text = parsed.node_text(node)
@@ -78,6 +79,7 @@ def _collect_definitions(parsed: ParsedSource):
                         descendant.end_byte,
                         parsed.node_text(descendant).strip().upper(),
                         descendant,
+                        "DECL",
                     )
 
 
@@ -106,12 +108,12 @@ def _strip_mumps_comments(source: str) -> str:
 class UnusedLocalRule(Rule):
     id = "M204"
     severity = Severity.INFO
-    title = "Local variable set but never read"
+    title = "Local variable declared (NEW/READ) but never read"
     cwe = None  # diagnostic
 
     def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
         defs = list(_collect_definitions(parsed))
-        def_positions = {(s, e) for s, e, _, _ in defs}
+        def_positions = {(s, e) for s, e, _, _, _ in defs}
         # Collect every local-variable reference outside the def sites
         # as a "use". Also include the raw source-text count as a
         # backstop for indirection / XECUTE consumption: if the name
@@ -138,8 +140,18 @@ class UnusedLocalRule(Rule):
         # this routine — never flag a SET to one as "unused".
         external = known_external_vars(config)
         flagged_positions: set[tuple[int, int]] = set()
-        for start, end, name, node in defs:
+        for start, end, name, node, origin in defs:
             if not name:
+                continue
+            # Only flag NEW / READ declarations that go unused. A bare
+            # ``S X=...`` that nothing reads in-file is the FP-prone case:
+            # the value is frequently consumed by a callee through implicit
+            # NEW inheritance or returned via a by-reference actual — reads
+            # the intra-file pass cannot see (~45% FP on real code). A dead
+            # NEW/READ has no such inter-routine escape hatch and is a
+            # reliable signal. The SET-then-unused case returns with the
+            # Phase-2 inter-procedural pass.
+            if origin == "ASSIGN":
                 continue
             if name in used_names or name in external:
                 continue
@@ -162,13 +174,13 @@ class UnusedLocalRule(Rule):
                 parsed,
                 node,
                 description=(
-                    f"Local variable '{name}' is assigned here but never "
-                    "read anywhere else in the routine. If this is dead "
-                    "code, remove the SET. If callers read it through "
-                    "indirection (`X @VAR`) or inter-routine scope, that "
-                    "use is not tracked by Phase 1 — add an explanatory "
-                    "comment or wait for the Phase 2 inter-procedural "
-                    "pass."
+                    f"Local variable '{name}' is declared (NEW/READ) here "
+                    "but never read anywhere in the routine. A dead NEW/READ "
+                    "is almost always a leftover or a typo on the use site — "
+                    "remove the declaration or fix the reader. (SET-but-"
+                    "unused locals are not flagged: their value is often "
+                    "consumed by a callee through implicit-NEW inheritance, "
+                    "which the Phase 1 intra-routine pass cannot see.)"
                 ),
                 metadata={"variable": name},
             )

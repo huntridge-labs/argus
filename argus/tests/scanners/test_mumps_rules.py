@@ -391,14 +391,16 @@ class TestObjectScriptGuard:
 
 
 class TestM204UnusedLocal:
-    def test_fires_on_dead_set(self, m_fixtures_dir):
+    def test_fires_on_dead_declaration_not_dead_set(self, m_fixtures_dir):
         result = _scan(m_fixtures_dir / "m204_dead_set.m")
-        hits = _findings_with_id(result, "M204")
-        assert hits, "M204 must fire on a SET whose target is never read"
-        names = {f.metadata.get("variable") for f in hits}
+        names = {f.metadata.get("variable") for f in _findings_with_id(result, "M204")}
+        # A NEW'd-but-never-read local is a reliable dead declaration.
         assert "LEFTOVER" in names
-        # USED is read by the W command; must NOT be flagged
+        # USED is read by the W command; must NOT be flagged.
         assert "USED" not in names
+        # A SET-but-unused local is the FP-prone (inter-routine) case and is
+        # intentionally NOT flagged at default precision.
+        assert "SETONLY" not in names
 
     def test_percent_var_not_flagged(self, m_fixtures_dir):
         # %X is read by the W command; the %-aware token matcher must
