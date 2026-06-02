@@ -83,15 +83,15 @@ jobs:
         uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
 
       - name: Setup Node.js
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version: '22'
+          node-version: '24'
           cache: 'pnpm'
 
       - name: Setup Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
-          python-version: '3.12'
+          python-version: '3.14'
           cache: 'pip'
 
       - name: Install dependencies
@@ -151,7 +151,12 @@ jobs:
       pull-requests: write
       packages: write       # buildx push + imagetools create on GHCR
       id-token: write       # cosign keyless signing + PyPI OIDC trusted publish
-    if: (github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(release):')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.dryRun != 'true')
+    # Manual-only. Pushes to main no longer auto-trigger a publishing
+    # release (that queued a prod-gated run per merge that had to be
+    # cancelled). Cut releases deliberately via the Actions "Run workflow"
+    # button — weekly cadence, or ad-hoc for hotfixes. The dry-run preview
+    # below still runs on every push for visibility.
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.dryRun != 'true'
 
     env:
       IMAGE_REGISTRY: ghcr.io/huntridge-labs/argus
@@ -168,15 +173,15 @@ jobs:
         uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
 
       - name: Setup Node.js
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version: '22'
+          node-version: '24'
           cache: 'pnpm'
 
       - name: Setup Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
-          python-version: '3.12'
+          python-version: '3.14'
           cache: 'pip'
 
       - name: Install dependencies
@@ -200,14 +205,14 @@ jobs:
           git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
       - name: Log in to GHCR
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
 
       - name: Build and push containers (build-id tag)
         env:
@@ -268,7 +273,7 @@ jobs:
           echo "Pre-release version: ${VERSION_BEFORE}"
 
       - name: Release (Auto)
-        if: github.event_name == 'push' || github.event.inputs.releaseType == 'auto'
+        if: github.event.inputs.releaseType == 'auto'
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
           HUSKY: 0
@@ -321,7 +326,7 @@ jobs:
 
       - name: Install cosign
         if: env.RELEASED == 'true'
-        uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb # v3
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Sign images by digest
         # Signing by digest (not tag) means the signature stays valid even

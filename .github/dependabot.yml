@@ -9,53 +9,12 @@
 
 version: 2
 updates:
-  # GitHub Actions - grouped by semantic version level
-  - package-ecosystem: "github-actions"
-    directories:
-      - "/"
-      - "/.github/actions/*"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "America/New_York"
-
-    # Group updates by semantic version level
-    groups:
-      # Major version updates (e.g., v1 -> v2)
-      # These require careful review as they may contain breaking changes
-      github-actions-major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
-
-      # Minor and patch version updates (e.g., v1.2 -> v1.3, v1.2.3 -> v1.2.4)
-      # New features and bug fixes, generally safe to update together
-      github-actions-minor-patch:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-
-    # Commit message configuration
-    commit-message:
-      prefix: "chore(deps)"
-
-    # PR configuration
-    open-pull-requests-limit: 10
-
-    # Labels for PRs
-    labels:
-      - "dependencies"
-      - "github-actions"
-      - "automated"
-
-    # Allow Dependabot to rebase PRs
-    rebase-strategy: "auto"
-    cooldown:
-      default-days: 7
+  # GitHub Actions updates are handled by Renovate (.github/renovate.json),
+  # not Dependabot. Dependabot's per-directory github-actions updater timed
+  # out scanning the composite-action directories and, with a cooldown set,
+  # skipped frequently-released actions (dependabot-core #11645 / #13691).
+  # Renovate scans workflows + composite action.yml repo-wide in one pass.
+  # See #196.
 
   # Python (pip) dependencies
   - package-ecosystem: "pip"

@@ -229,7 +229,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
-          python-version: '3.13'
+          python-version: '3.14'
 
       - name: Lint wrapper install lines
         # Patterns live in env so GitHub Actions' expression parser
@@ -830,7 +830,7 @@ jobs:
 
     services:
       podinfo:
-        image: stefanprodan/podinfo:latest@sha256:187803cdf611a19d4fffbdf6a4260a01be4c09ffe9924b28902424fc0639ceb8
+        image: stefanprodan/podinfo:latest@sha256:453e2238f70c00dfba6803ddb99a4bb86982ee549f7273f43f90ac58f0714a81
         ports:
           - 9898:9898
 
@@ -1078,13 +1078,90 @@ jobs:
           post_pr_comment: 'false'
         continue-on-error: true
 
-      - name: Verify summary action executed
+      - name: Verify summary action loaded and executed
         shell: bash
+        env:
+          SUMMARY_OUTCOME: ${{ steps.summary.outcome }}
         run: |
+          # outcome != success means the composite failed to load or run.
+          # Regression guard for #212 (invalid `needs` context in the action
+          # description). continue-on-error above lets the job reach this
+          # assertion instead of dying on the manifest-load error.
+          if [ "$SUMMARY_OUTCOME" != "success" ]; then
+            echo "::error::linting-summary did not run (outcome=$SUMMARY_OUTCOME) — see issue #212."
+            exit 1
+          fi
           {
             echo "## Linting Summary Test Results"
-            echo "✅ Summary action executed"
+            echo "✅ Summary action loaded and executed"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # ============================================================================
+  # Summary / security-summary — load-and-run guard for issue #212.
+  # ============================================================================
+  test-security-summary:
+    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):')
+    name: Summary / security-summary
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Run security-summary action
+        id: summary
+        uses: ./.github/actions/security-summary
+        with:
+          post_pr_comment: 'false'
+          scan_statuses: |
+            { "bandit": "success", "gitleaks": "success" }
+        continue-on-error: true
+
+      - name: Verify summary action loaded and executed
+        shell: bash
+        env:
+          SUMMARY_OUTCOME: ${{ steps.summary.outcome }}
+        run: |
+          if [ "$SUMMARY_OUTCOME" != "success" ]; then
+            echo "::error::security-summary did not run (outcome=$SUMMARY_OUTCOME) — see issue #212."
+            exit 1
+          fi
+          {
+            echo "## Security Summary Test Results"
+            echo "✅ Summary action loaded and executed"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ============================================================================
+  # Setup Argus — install-from-checkout guard for issue #211.
+  # ============================================================================
+  test-setup-argus:
+    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):')
+    name: Setup / setup-argus
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.14'
+
+      - name: Install Argus via setup-argus
+        uses: ./.github/actions/setup-argus
+
+      - name: Verify argus is importable and runnable
+        shell: bash
+        run: |
+          python -m argus --version
+          python -c "import argus; print('argus import OK')"
 
   # ============================================================================
   # Config Parsers
@@ -1159,7 +1236,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ env.NODE_VERSION }}
 
