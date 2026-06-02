@@ -348,6 +348,16 @@ class TestM203ImplicitDeclaration:
         names = {f.metadata.get("variable") for f in _findings_with_id(result, "M203")}
         assert "USR" not in names
 
+    def test_common_idioms_not_flagged_but_typo_is(self, m_fixtures_dir):
+        # Real-MUMPS idioms that the def-use pass must not mistake for a
+        # read-before-def: FOR loop control vars, $GET/$DATA guarded reads,
+        # OPEN/USE device-parameter keywords, and pass-by-reference actuals.
+        result = _scan(m_fixtures_dir / "m203_idioms.m")
+        names = {f.metadata.get("variable") for f in _findings_with_id(result, "M203")}
+        assert "USRNAME" in names, "genuine read-before-def typo must still fire"
+        for clean in ("ARG1", "ARG2", "I", "MAYBE", "PERHAPS", "READONLY", "NOECHO", "PASSED"):
+            assert clean not in names, f"{clean} is a valid idiom, not a read-before-def"
+
 
 class TestM204UnusedLocal:
     def test_fires_on_dead_set(self, m_fixtures_dir):

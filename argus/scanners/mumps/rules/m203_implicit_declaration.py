@@ -38,10 +38,14 @@ from argus.core.models import Finding, Severity
 from ..parser import ParsedSource, walk
 from ..rule import Rule
 from ._common import (
+    DEVICE_PARAM_KEYWORDS,
     VAR_TYPES,
     argument_node,
     collect_formal_args,
+    for_loop_vars,
+    guarded_read,
     known_external_vars,
+    within_error,
 )
 
 _NEW_KEYWORD_RE = re.compile(r"^\s*N(?:EW)?\b", re.IGNORECASE)
@@ -93,7 +97,12 @@ class ImplicitDeclarationRule(Rule):
         # label node, which the old label-text regex never saw — and
         # (b) well-known VistA / FileMan / Kernel variables set by the
         # platform or a calling API rather than this routine.
-        defined = collect_formal_args(parsed) | known_external_vars(config)
+        defined = (
+            collect_formal_args(parsed)
+            | known_external_vars(config)
+            | DEVICE_PARAM_KEYWORDS
+            | for_loop_vars(parsed.source_bytes)
+        )
         flagged_names: set[str] = set()
         for node in walk(parsed.tree.root_node):
             if node.type not in VAR_TYPES:
@@ -106,6 +115,16 @@ class ImplicitDeclarationRule(Rule):
                 continue
             name = parsed.node_text(node).strip().upper()
             if not name or _is_intrinsic(name):
+                continue
+            # Tokens inside a grammar misparse (ERROR subtree) are unreliable;
+            # reads through $GET/$DATA are deliberate defensive reads and
+            # $TEXT/$T operands are labels, not bugs.
+            if within_error(node) or guarded_read(parsed, node):
+                continue
+            # Pass-by-reference actual (``D TAG(.X)``) is an output binding,
+            # not a read; a ``.``-prefixed name is also ObjectScript property
+            # access. Neither is a local-variable value read.
+            if node.start_byte > 0 and parsed.source_bytes[node.start_byte - 1:node.start_byte] == b".":
                 continue
             if name in defined:
                 continue
