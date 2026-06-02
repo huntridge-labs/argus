@@ -52,6 +52,29 @@ _NON_READ_TAINT_PATTERNS = (
 )
 
 
+# A RHS that *is* a $ORDER / $QUERY traversal yields the next subscript
+# key, not the tainted value stored at the node — so it must not carry
+# taint to its LHS (the canonical ``F  S I=$O(@G@(I))`` loop iterator).
+_TRAVERSAL_RHS_RE = re.compile(r"\$(?:O|ORDER|Q|QUERY)\s*\(", re.IGNORECASE)
+
+
+def _references_tainted(rhs_text: str, tainted: set[str]) -> bool:
+    """True when the RHS text references any already-tainted variable as a
+    MUMPS identifier token.
+
+    Boundary class is ``[A-Za-z0-9%]`` (not ``\\b``) so the concatenation
+    operator ``_`` does not block a match: in ``"do "_CMD`` the tainted
+    ``CMD`` must be seen right after the ``_``.
+    """
+    if not tainted:
+        return False
+    upper = rhs_text.upper()
+    for name in tainted:
+        if re.search(rf"(?<![A-Za-z0-9%]){re.escape(name)}(?![A-Za-z0-9%])", upper):
+            return True
+    return False
+
+
 def _argument_node(command_node):
     """Return the arguments subtree for a command, or None."""
     for field_name in ("arguments", "argument", "expression"):
@@ -201,24 +224,57 @@ def collect_tainted_variables(
     tainted: set[str] = collect_read_tainted_variables(parsed)
     extra_patterns = _compile_extra_patterns(config)
     all_patterns = _NON_READ_TAINT_PATTERNS + tuple(extra_patterns)
+
+    # Single pass: record every assignment's (lhs_name, rhs_text) and seed
+    # taint from any direct source pattern in the RHS.
+    assignments: list[tuple[str, str]] = []
+    traversal_iters: set[str] = set()
     for node in walk(parsed.tree.root_node):
         if node.type != "assignment":
             continue
         lhs, rhs = _assignment_lhs_rhs(node)
         if lhs is None or rhs is None:
             continue
-        rhs_text = parsed.node_text(rhs)
-        if not any(p.search(rhs_text) for p in all_patterns):
-            continue
         name = _lhs_identifier_name(parsed, lhs)
-        if name:
+        if not name:
+            continue
+        rhs_text = parsed.node_text(rhs)
+        assignments.append((name, rhs_text))
+        if _TRAVERSAL_RHS_RE.match(rhs_text.lstrip()):
+            traversal_iters.add(name)
+        if any(p.search(rhs_text) for p in all_patterns):
             tainted.add(name)
-    # Sanitizers explicitly clean variables. Subtract after collection
-    # so the user-configured sanitizer set always wins over the
-    # built-in source patterns.
+
+    # Sanitizers clean a value; subtract them up front so they neither
+    # count as tainted nor propagate taint downstream.
     sanitizer_names = (config or {}).get("sanitizers") or []
-    if sanitizer_names:
-        tainted -= _sanitized_variables(parsed, sanitizer_names)
+    sanitized = _sanitized_variables(parsed, sanitizer_names) if sanitizer_names else set()
+    tainted -= sanitized
+    # A variable that is ever a $ORDER/$QUERY loop iterator holds subscript
+    # keys from a structure walk, not an external value. Flow-insensitive
+    # taint can't see that a later ``S X=$Q(@X)`` overwrites an earlier
+    # tainted X, so exclude such names entirely (a Phase-1 stand-in for
+    # flow-sensitive taint) — this is the dominant @-indirection FP source.
+    tainted -= traversal_iters
+
+    # Transitive propagation to a fixpoint. Real MUMPS injection is built
+    # up across several SET / concatenation steps (``S CMD="do "_ARG``), so
+    # an assignment whose RHS references an already-tainted variable taints
+    # its LHS too. Without this the source->sink chain breaks and the
+    # taint-sink rules (M001/M003/M005/M006) never fire on real code.
+    # $ORDER/$QUERY traversal results are excluded (the LHS gets a subscript
+    # key, not the tainted value), and sanitized LHSs stay clean.
+    changed = True
+    while changed:
+        changed = False
+        for name, rhs_text in assignments:
+            if name in tainted or name in sanitized or name in traversal_iters:
+                continue
+            if _TRAVERSAL_RHS_RE.match(rhs_text.lstrip()):
+                continue
+            if _references_tainted(rhs_text, tainted):
+                tainted.add(name)
+                changed = True
     return tainted
 
 

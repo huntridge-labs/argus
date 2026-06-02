@@ -832,3 +832,25 @@ class TestScanResultShape:
         assert result.metadata["files_scanned"] == 1
         assert "M001" in result.metadata["rules_run"]
         assert "M101" in result.metadata["rules_run"]
+
+
+class TestTransitiveTaintSecurity:
+    def test_m001_fires_through_multi_hop_concat_chain(self, m_fixtures_dir):
+        # READ -> S PART="DO "_ARG -> S CMD=PART_... -> X CMD. Without
+        # transitive propagation the source never reaches the XECUTE sink.
+        result = _scan(m_fixtures_dir / "m001_transitive.m")
+        hits = _findings_with_id(result, "M001")
+        assert hits, "M001 must follow taint across SET/concatenation hops"
+        assert all(f.severity == Severity.HIGH for f in hits)
+
+    def test_m006_fires_on_tainted_zf_shell_not_literal(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m006_zf_shell.m")
+        hits = _findings_with_id(result, "M006")
+        assert len(hits) == 1, "$ZF(-1,...) with a tainted arg fires; literal does not"
+        assert hits[0].location.endswith(":3:7")
+
+    def test_m002_excludes_order_traversal_iterator(self, m_fixtures_dir):
+        # X is READ-tainted then overwritten by a $ORDER traversal; the
+        # later @X is the traversal value, not the external one — no FP.
+        result = _scan(m_fixtures_dir / "m002_traversal_iter.m")
+        assert _findings_with_id(result, "M002") == []

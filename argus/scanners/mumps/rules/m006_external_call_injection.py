@@ -23,6 +23,7 @@ gets its calibrated severity bump.
 
 from __future__ import annotations
 
+import re
 from typing import Iterable
 
 from argus.core.models import Finding, Severity
@@ -30,6 +31,12 @@ from ..parser import ParsedSource, walk
 from ..rule import Rule
 from ..taint import resolve_tainted
 from ._common import tainted_references
+
+# GT.M / YottaDB ``$ZF(-n, ...)`` invokes a host OS function; ``$ZF(-1, cmd)``
+# runs ``cmd`` through the shell. The negative-selector forms are the
+# OS-exec surface — a tainted argument there is command injection, the same
+# class as a ``$&`` helper. (Positive-index ``$ZF`` forms are string ops.)
+_ZF_SHELL_RE = re.compile(r"\$ZF\s*\(\s*-\s*\d", re.IGNORECASE)
 
 
 def _function_name_text(parsed: ParsedSource, call_node) -> str:
@@ -43,16 +50,17 @@ def _function_name_text(parsed: ParsedSource, call_node) -> str:
     return ""
 
 
-def _is_external_call(name: str) -> bool:
-    """``$&Helper`` is an external system call; ``$Function`` is a
-    built-in intrinsic. Only the ``$&`` form invokes host-side code."""
-    return name.startswith("$&")
+def _is_external_call(name: str, call_text: str) -> bool:
+    """True for a host-side external call: the ``$&Helper`` mechanism, or
+    the GT.M/YottaDB ``$ZF(-n, ...)`` OS-function form. A plain
+    ``$Function`` intrinsic is not."""
+    return name.startswith("$&") or bool(_ZF_SHELL_RE.search(call_text))
 
 
 class ExternalCallInjectionRule(Rule):
     id = "M006"
     severity = Severity.HIGH
-    title = "Tainted argument to external ($&) call"
+    title = "Tainted argument to external ($& / $ZF) call"
     cwe = "CWE-78"
 
     def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
@@ -63,9 +71,9 @@ class ExternalCallInjectionRule(Rule):
             if node.type != "function_call":
                 continue
             name = _function_name_text(parsed, node)
-            if not _is_external_call(name):
-                continue
             call_text = parsed.node_text(node)
+            if not _is_external_call(name, call_text):
+                continue
             hits = tainted_references(call_text, tainted)
             if not hits:
                 continue
