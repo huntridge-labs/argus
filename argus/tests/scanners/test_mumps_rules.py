@@ -373,6 +373,23 @@ class TestM203ImplicitDeclaration:
             assert clean not in names, f"{clean} is a valid idiom, not a read-before-def"
 
 
+class TestObjectScriptGuard:
+    def test_objectscript_file_skips_structural_rules(self, m_fixtures_dir):
+        # A Caché / ObjectScript file must not produce VistA-M structural
+        # findings (M201/M203) — the VistA-M grammar mangles its syntax.
+        result = _scan(m_fixtures_dir / "m_objectscript.m")
+        assert _findings_with_id(result, "M201") == []
+        assert _findings_with_id(result, "M203") == []
+
+    def test_detector_separates_dialects(self):
+        from argus.scanners.mumps.rules._common import is_objectscript
+
+        assert is_objectscript(
+            b" n % s %=##class(X).Get()\n i $SYSTEM.Status.Foo\n d ..Bar()\n"
+        )
+        assert not is_objectscript(b"TAG ; standard M\n S X=1\n Q\n")
+
+
 class TestM204UnusedLocal:
     def test_fires_on_dead_set(self, m_fixtures_dir):
         result = _scan(m_fixtures_dir / "m204_dead_set.m")

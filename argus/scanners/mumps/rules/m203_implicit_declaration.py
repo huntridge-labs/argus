@@ -44,7 +44,9 @@ from ._common import (
     collect_formal_args,
     for_loop_vars,
     guarded_read,
+    is_objectscript,
     known_external_vars,
+    within_device_param,
     within_error,
 )
 
@@ -91,6 +93,11 @@ class ImplicitDeclarationRule(Rule):
     cwe = None  # diagnostic
 
     def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
+        # ObjectScript / Caché files are a different dialect the VistA-M
+        # grammar mangles (class syntax, dot-methods); skip them rather than
+        # report every mis-tokenized fragment as an undefined local.
+        if is_objectscript(parsed.source_bytes):
+            return
         def_positions = _collect_definition_positions(parsed)
         # Seed the defined set with (a) formal arguments declared on any
         # entry label — they parse as ``arguments`` siblings of the
@@ -119,7 +126,11 @@ class ImplicitDeclarationRule(Rule):
             # Tokens inside a grammar misparse (ERROR subtree) are unreliable;
             # reads through $GET/$DATA are deliberate defensive reads and
             # $TEXT/$T operands are labels, not bugs.
-            if within_error(node) or guarded_read(parsed, node):
+            if (
+                within_error(node)
+                or guarded_read(parsed, node)
+                or within_device_param(parsed, node)
+            ):
                 continue
             # Pass-by-reference actual (``D TAG(.X)``) is an output binding,
             # not a read; a ``.``-prefixed name is also ObjectScript property

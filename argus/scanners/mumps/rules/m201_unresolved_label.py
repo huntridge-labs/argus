@@ -28,7 +28,7 @@ from typing import Iterable
 from argus.core.models import Finding, Severity
 from ..parser import ParsedSource, walk
 from ..rule import Rule
-from ._common import is_command_mnemonic, preceded_by_error
+from ._common import is_command_mnemonic, is_objectscript, preceded_by_error
 
 
 def _collect_declared_labels(parsed: ParsedSource) -> set[str]:
@@ -54,6 +54,11 @@ class UnresolvedLabelRule(Rule):
     cwe = None  # diagnostic
 
     def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
+        # ObjectScript dot-method syntax (``config.Method()``, ``DUZ``) is
+        # not VistA-M label dispatch; the grammar mangles it into phantom
+        # ``routine_call`` targets. Skip such files rather than emit FPs.
+        if is_objectscript(parsed.source_bytes):
+            return
         declared = _collect_declared_labels(parsed)
         for node in walk(parsed.tree.root_node):
             if node.type != "routine_call":

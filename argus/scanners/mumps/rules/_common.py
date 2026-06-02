@@ -123,7 +123,46 @@ def for_loop_vars(source_bytes: bytes) -> set[str]:
     return {m.group(1).upper() for m in _FOR_VAR_RE.finditer(text)}
 
 
+_OBJECTSCRIPT_MARKERS = re.compile(
+    r"##class\(|\$system\.|&sql\(|\.\.[A-Za-z]\w*\(|"
+    r"\bclass\s+[%\w.]+\s+extends\b|"
+    r"^\s*(?:property|method|classmethod|parameter)\s+[A-Za-z]",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def is_objectscript(source_bytes: bytes, threshold: int = 3) -> bool:
+    """True when a file is InterSystems ObjectScript / Caché, not standard
+    MUMPS.
+
+    The VistA-M tree-sitter grammar mangles ObjectScript (class syntax,
+    ``##class()``, dot-method calls, ``$SYSTEM.*``), so the VistA-M-specific
+    structural rules (M201/M203) skip such files rather than emit wholesale
+    false positives. Standard-M files score 0; a genuine ObjectScript file
+    scores well above the threshold (M-Web-Server's webinit.m: 17).
+    """
+    text = source_bytes.decode("utf-8", errors="replace")
+    return len(_OBJECTSCRIPT_MARKERS.findall(text)) >= threshold
+
+
 _GUARD_PREFIXES = ("$G(", "$GET(", "$D(", "$DATA(", "$T(", "$TEXT(")
+
+
+def within_device_param(parsed: ParsedSource, node) -> bool:
+    """True when ``node`` sits inside a misparsed OPEN/USE device-parameter
+    list.
+
+    The grammar cannot model ``:(p1:p2=v:...)`` device parameters and emits
+    the list as a ``postconditional`` whose text begins ``:(`` — distinct
+    from a real postconditional ``:cond``. Its tokens are device keywords
+    and values, not local-variable reads.
+    """
+    cur = node.parent
+    while cur is not None:
+        if cur.type == "postconditional" and parsed.node_text(cur).lstrip().startswith(":("):
+            return True
+        cur = cur.parent
+    return False
 
 
 def guarded_read(parsed: ParsedSource, node) -> bool:
