@@ -10,6 +10,7 @@ from .m003_open_use_injection import OpenUseInjectionRule
 from .m004_hardcoded_creds import HardcodedCredentialsRule
 from .m005_tainted_dispatch import TaintedDispatchRule
 from .m006_external_call_injection import ExternalCallInjectionRule
+from .m007_code_load_injection import CodeLoadInjectionRule
 from .m101_duplicate_label import DuplicateLabelRule
 from .m102_unreachable_after_quit import UnreachableAfterQuitRule
 from .m201_unresolved_label import UnresolvedLabelRule
@@ -39,6 +40,7 @@ RULES = [
     HardcodedCredentialsRule(),
     TaintedDispatchRule(),
     ExternalCallInjectionRule(),
+    CodeLoadInjectionRule(),
     DuplicateLabelRule(),
     UnreachableAfterQuitRule(),
     UnresolvedLabelRule(),

@@ -892,6 +892,44 @@ class TestTransitiveTaintSecurity:
         assert _findings_with_id(result, "M002") == []
 
 
+class TestM007CodeLoadInjection:
+    def test_fires_on_tainted_code_load(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m007_code_load.m")
+        hits = _findings_with_id(result, "M007")
+        assert len(hits) == 2, "ZLINK / ZINSERT of a tainted value fire; literal does not"
+        assert all(f.severity == Severity.HIGH for f in hits)
+        assert all(f.cwe == "CWE-95" for f in hits)
+
+
+class TestRuleProfiles:
+    def test_security_only_runs_security_drops_lint(self, m_fixtures_dir):
+        cfg = {"profile": "security-only"}
+        sec = MumpsScanner().scan(str(m_fixtures_dir / "m007_code_load.m"), cfg)
+        assert _findings_with_id(sec, "M007"), "security-only keeps security rules"
+        lint = MumpsScanner().scan(str(m_fixtures_dir / "m102_unreachable.m"), cfg)
+        assert _findings_with_id(lint, "M102") == [], "security-only drops lint rules"
+
+    def test_lint_only_runs_lint_drops_security(self, m_fixtures_dir):
+        cfg = {"profile": "lint-only"}
+        lint = MumpsScanner().scan(str(m_fixtures_dir / "m102_unreachable.m"), cfg)
+        assert _findings_with_id(lint, "M102"), "lint-only keeps diagnostics"
+        sec = MumpsScanner().scan(str(m_fixtures_dir / "m007_code_load.m"), cfg)
+        assert _findings_with_id(sec, "M007") == [], "lint-only drops security rules"
+
+    def test_strict_enables_off_by_default_rule(self, m_fixtures_dir):
+        # M203 (read-before-def) is off by default; strict turns it on.
+        result = MumpsScanner().scan(str(m_fixtures_dir / "m203_typo.m"), {"profile": "strict"})
+        assert _findings_with_id(result, "M203"), "strict enables off-by-default rules"
+
+
+class TestInlineSuppression:
+    def test_inline_ignore_suppresses_matching_rule(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m_suppress.m")
+        m001 = _findings_with_id(result, "M001")
+        assert len(m001) == 1, "the ;argus:ignore[M001] line is suppressed; the other fires"
+        assert result.metadata.get("suppressed") == 1, "suppressions are counted, not silent"
+
+
 class TestAtScaleRegressions:
     """Regressions found validating against real corpora (VistA Kernel,
     VPE, M-Web-Server) — each pins a false-positive class the scanner

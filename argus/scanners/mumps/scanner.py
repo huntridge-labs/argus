@@ -14,6 +14,7 @@ emitted with ``scanner="mumps"`` and an id from the rule (``M001``, ...).
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from argus.containers import get_image
@@ -74,6 +75,7 @@ class MumpsScanner:
         findings: list[Finding] = []
         files_scanned = 0
         parse_failures = 0
+        suppressed_count = 0
 
         target = Path(path)
         if not target.exists():
@@ -154,6 +156,7 @@ class MumpsScanner:
                 if inbound:
                     tainted = tainted | inbound
             rule_config["_tainted"] = tainted
+            file_findings: list[Finding] = []
             for rule in active_rules:
                 try:
                     rule_findings = list(rule.analyze(parsed, rule_config))
@@ -168,7 +171,19 @@ class MumpsScanner:
                     rule_findings = _apply_severity_override(
                         rule_findings, rule.severity, override,
                     )
-                findings.extend(rule_findings)
+                file_findings.extend(rule_findings)
+            # Honour inline ``;argus:ignore`` directives. Counted (not silently
+            # dropped) so suppression is visible in scan metadata.
+            supp = _suppression_map(parsed.source_text)
+            if supp:
+                kept: list[Finding] = []
+                for finding in file_findings:
+                    if _is_suppressed(finding, supp):
+                        suppressed_count += 1
+                    else:
+                        kept.append(finding)
+                file_findings = kept
+            findings.extend(file_findings)
             del parsed  # release this file's tree before the next
 
         return ScanResult(
@@ -177,6 +192,7 @@ class MumpsScanner:
             metadata={
                 "files_scanned": files_scanned,
                 "parse_failures": parse_failures,
+                "suppressed": suppressed_count,
                 "rules_run": [r.id for r in active_rules],
                 "callgraph": {
                     "routines": len(callgraph.routines),
@@ -336,13 +352,25 @@ def _interproc_settings(config: dict | None) -> tuple[bool, int]:
     return enabled, max(1, max_depth)
 
 
+def _is_security_rule(rule) -> bool:
+    """Security rules are the M00x family (M001-M006); the M1xx / M2xx
+    families are diagnostics / lint."""
+    return rule.id[:2].upper() == "M0"
+
+
 def _rule_enabled(rule, config: dict | None) -> bool:
     """Resolve whether ``rule`` should run.
 
-    ``scanners.mumps.rules.<id>.enabled`` (bool) overrides the rule's
-    ``enabled_by_default`` when present. Absent config preserves each
-    rule's default, so existing setups are unchanged except for rules
-    that ship off-by-default (e.g. M205).
+    Precedence: an explicit ``scanners.mumps.rules.<id>.enabled`` always
+    wins. Otherwise a ``scanners.mumps.profile`` preset applies:
+
+    * ``security-only`` — only the security rules that are on by default;
+    * ``lint-only`` — only the diagnostics that are on by default;
+    * ``strict`` — every rule, including the off-by-default ones;
+    * ``default`` / unset — each rule's ``enabled_by_default``.
+
+    Absent config preserves each rule's default, so existing setups are
+    unchanged.
     """
     default = getattr(rule, "enabled_by_default", True)
     if not config:
@@ -350,7 +378,53 @@ def _rule_enabled(rule, config: dict | None) -> bool:
     rule_cfg = (config.get("rules") or {}).get(rule.id) or {}
     if "enabled" in rule_cfg:
         return bool(rule_cfg["enabled"])
+    profile = str(config.get("profile") or "").strip().lower()
+    if profile == "strict":
+        return True
+    if profile == "security-only":
+        return _is_security_rule(rule) and default
+    if profile == "lint-only":
+        return (not _is_security_rule(rule)) and default
     return default
+
+
+_IGNORE_RE = re.compile(r";\s*argus:ignore(?:\[([^\]]*)\])?", re.IGNORECASE)
+
+
+def _suppression_map(source_text: str) -> dict[int, set[str]]:
+    """Map a 1-based line number to the set of rule ids an inline
+    ``;argus:ignore`` directive silences on it, or ``{'*'}`` for all rules.
+
+    ``;argus:ignore`` silences every finding on the line; ``;argus:ignore[M002]``
+    or ``;argus:ignore[M002,M211]`` silences only the listed rules. A directive
+    also covers the line immediately below it (so it can sit on its own line
+    above the flagged statement)."""
+    out: dict[int, set[str]] = {}
+    for i, line in enumerate(source_text.splitlines(), start=1):
+        match = _IGNORE_RE.search(line)
+        if match is None:
+            continue
+        ids = match.group(1)
+        out[i] = (
+            {s.strip().upper() for s in ids.split(",") if s.strip()} if ids else {"*"}
+        )
+    return out
+
+
+def _is_suppressed(finding, supp: dict[int, set[str]]) -> bool:
+    """True when an inline ignore directive on the finding's line (or the
+    line above it) covers the finding's rule id."""
+    if not supp or not finding.location:
+        return False
+    try:
+        line = int(finding.location.rsplit(":", 2)[1])
+    except (IndexError, ValueError):
+        return False
+    for candidate in (line, line - 1):
+        ids = supp.get(candidate)
+        if ids and ("*" in ids or finding.id.upper() in ids):
+            return True
+    return False
 
 
 def _severity_override(rule, config: dict | None):
