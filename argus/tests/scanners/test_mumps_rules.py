@@ -892,6 +892,56 @@ class TestTransitiveTaintSecurity:
         assert _findings_with_id(result, "M002") == []
 
 
+class TestRegressionGuards:
+    """At-scale regression guards: a golden aggregate of the security signal
+    across the whole fixture corpus, and the streaming memory invariant."""
+
+    # Locks the taint + sink behaviour against silent regression. Lint rules
+    # are excluded (e.g. M202's count is a fixture-naming artifact, not
+    # behaviour under test). Update only with a deliberate, reviewed change.
+    GOLDEN_SECURITY = {
+        "M001": 8, "M002": 1, "M003": 5, "M004": 2,
+        "M005": 4, "M006": 3, "M007": 2,
+    }
+
+    def test_security_findings_golden(self, m_fixtures_dir):
+        from collections import Counter
+        result = MumpsScanner().scan(str(m_fixtures_dir), {})
+        counts = {
+            k: v for k, v in Counter(f.id for f in result.findings).items()
+            if k[:2] == "M0"
+        }
+        assert counts == self.GOLDEN_SECURITY, (
+            "security finding counts changed; if intentional, update GOLDEN_SECURITY"
+        )
+
+    def test_streaming_scan_holds_one_tree_at_a_time(self, tmp_path, monkeypatch):
+        # The two-pass loop must keep at most one parse tree resident at a
+        # time (it ``del``s each after use) — what bounds memory on whole-VistA
+        # scans. Track concurrently-live ParsedSource objects via weakrefs.
+        import gc
+        import weakref
+        from argus.scanners.mumps.parser import MumpsParser
+        for i in range(5):
+            (tmp_path / f"r{i}.m").write_text("FOO ; routine\n S X=1\n Q\n")
+        alive: weakref.WeakSet = weakref.WeakSet()
+        high = {"max": 0}
+        original_parse = MumpsParser.parse
+
+        def tracked(path, source_bytes):
+            gc.collect()
+            parsed = original_parse(path, source_bytes)
+            alive.add(parsed)
+            high["max"] = max(high["max"], len(alive))
+            return parsed
+
+        monkeypatch.setattr(MumpsParser, "parse", staticmethod(tracked))
+        MumpsScanner().scan(str(tmp_path), {})
+        assert high["max"] <= 1, (
+            f"streaming loop must hold one parse tree at a time; saw {high['max']}"
+        )
+
+
 class TestM007CodeLoadInjection:
     def test_fires_on_tainted_code_load(self, m_fixtures_dir):
         result = _scan(m_fixtures_dir / "m007_code_load.m")
