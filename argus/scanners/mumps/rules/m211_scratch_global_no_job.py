@@ -34,12 +34,38 @@ from ._common import argument_node
 
 _DEFAULT_SCRATCH = ("^TMP", "^UTILITY")
 _KILL_MERGE_RE = re.compile(r"^\s*(?:K(?:ILL)?|M(?:ERGE)?)\b", re.IGNORECASE)
+# An assignment whose RHS is exactly the process-id special variable
+# (``S JOB=$J`` / ``S L=$JOB``) yields a job-private value, so a scratch
+# global subscripted by that local is per-process — not a race.
+_JOB_DERIVE_RE = re.compile(r"^\$J(?:OB)?$", re.IGNORECASE)
 
 
 def _scratch_globals(config: dict | None) -> set[str]:
     extra = (config or {}).get("scratch_globals")
     names = list(extra) if extra else list(_DEFAULT_SCRATCH)
     return {str(n).strip().upper() for n in names}
+
+
+def _job_private_locals(parsed: ParsedSource, config: dict | None) -> set[str]:
+    """Local variable names that hold the process id, so a scratch global
+    subscripted by one of them is process-private.
+
+    Sound by construction: a name qualifies only if it is *provably* assigned
+    ``$J``/``$JOB`` somewhere in the routine, or it is in the configurable
+    ``rules.M211.job_subscripts`` allowlist (for the cross-routine convention
+    where the job id arrives as a formal argument named e.g. ``JOB``)."""
+    names: set[str] = set()
+    for node in walk(parsed.tree.root_node):
+        if node.type != "assignment":
+            continue
+        named = [c for c in node.children if c.is_named]
+        if len(named) < 2 or named[0].type not in {"local_variable", "identifier", "variable"}:
+            continue
+        if _JOB_DERIVE_RE.match(parsed.node_text(named[-1]).strip()):
+            names.add(parsed.node_text(named[0]).strip().upper())
+    allow = (config or {}).get("rules", {}).get("M211", {}).get("job_subscripts") or []
+    names |= {str(n).strip().upper() for n in allow}
+    return names
 
 
 def _global_array_name(parsed: ParsedSource, garr) -> str:
@@ -49,9 +75,15 @@ def _global_array_name(parsed: ParsedSource, garr) -> str:
     return ""
 
 
-def _has_job_subscript(parsed: ParsedSource, garr) -> bool:
+def _has_job_subscript(parsed: ParsedSource, garr, job_locals: set[str]) -> bool:
     for desc in walk(garr):
         if desc.type == "special_variable" and parsed.node_text(desc).strip().upper() == "$J":
+            return True
+        if (
+            job_locals
+            and desc.type in {"local_variable", "identifier", "variable"}
+            and parsed.node_text(desc).strip().upper() in job_locals
+        ):
             return True
     return False
 
@@ -64,6 +96,7 @@ class ScratchGlobalNoJobRule(Rule):
 
     def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
         scratch = _scratch_globals(config)
+        job_locals = _job_private_locals(parsed, config)
         for node in walk(parsed.tree.root_node):
             target = None
             if node.type == "assignment":
@@ -81,7 +114,7 @@ class ScratchGlobalNoJobRule(Rule):
             name = _global_array_name(parsed, target)
             if name not in scratch:
                 continue
-            if _has_job_subscript(parsed, target):
+            if _has_job_subscript(parsed, target, job_locals):
                 continue
             yield self.make_finding(
                 parsed,

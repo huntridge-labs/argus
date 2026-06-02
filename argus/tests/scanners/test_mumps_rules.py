@@ -165,8 +165,12 @@ class TestM003OpenUseInjection:
         result = _scan(m_fixtures_dir / "m003_open_taint.m")
         hits = _findings_with_id(result, "M003")
         assert hits, "M003 must fire when OPEN/USE references a READ-tainted var"
-        assert all(f.severity == Severity.HIGH for f in hits)
         assert all(f.cwe == "CWE-78" for f in hits)
+        # A bare OPEN/USE of a tainted device with no PIPE/socket params is
+        # I/O redirection / path traversal — MEDIUM under the device taxonomy,
+        # not the old flat HIGH.
+        assert all(f.severity == Severity.MEDIUM for f in hits)
+        assert all(f.metadata.get("device_class") == "GENERIC" for f in hits)
         commands = {f.metadata.get("command") for f in hits}
         # Both OPEN and USE in the fixture should trip the rule
         assert "OPEN" in commands or "USE" in commands
@@ -259,8 +263,10 @@ class TestM006ExternalCallInjection:
         result = _scan(m_fixtures_dir / "m006_external_taint.m")
         hits = _findings_with_id(result, "M006")
         assert hits, "M006 must fire when $& call receives a tainted argument"
-        assert all(f.severity == Severity.HIGH for f in hits)
         assert all(f.cwe == "CWE-78" for f in hits)
+        # $&SYSTEM is a shell-execution helper — a tainted argument is RCE,
+        # graded CRITICAL by the helper-classification map.
+        assert all(f.severity == Severity.CRITICAL for f in hits)
         for finding in hits:
             assert finding.metadata.get("function", "").startswith("$&")
 
@@ -905,3 +911,48 @@ class TestAtScaleRegressions:
         assert _findings_with_id(result, "M005"), (
             "direct READ -> D @VAR dispatch must still flag"
         )
+
+
+class TestPhaseAPrecision:
+    """Phase A accuracy tuning validated against the at-scale corpora:
+    sound sanitizers, device taxonomy, helper classification, job-private
+    scratch subscripts."""
+
+    def test_sound_sanitizers_clear_taint_without_hiding_injection(self, m_fixtures_dir):
+        # Numeric coercion (+N) and a charset pattern-match guard (?1A.7AN)
+        # both sanitize; the raw READ value still reaches the sink.
+        result = _scan(m_fixtures_dir / "m_sanitizer.m")
+        m001_sources = {
+            s for f in _findings_with_id(result, "M001")
+            for s in f.metadata.get("taint_sources", [])
+        }
+        assert "EVIL" in m001_sources, "raw READ -> XECUTE must still fire"
+        assert "SAFE" not in m001_sources and "N" not in m001_sources, (
+            "a numeric-coerced value (S SAFE=+N) must be sanitized"
+        )
+        assert _findings_with_id(result, "M005") == [], (
+            "a charset pattern-guarded dispatch target must be sanitized"
+        )
+
+    def test_m211_job_derived_subscript_is_private(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m211_job_local.m")
+        refs = [f.metadata.get("reference", "") for f in _findings_with_id(result, "M211")]
+        assert any("SHARED" in r for r in refs), 'unscoped ^TMP("SHARED") is a real race'
+        assert not any("JOB" in r for r in refs), (
+            "^TMP(JOB,...) with JOB=$J is process-private and must not fire"
+        )
+
+    def test_m006_pure_helper_suppressed_shell_is_critical(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m006_pure_helper.m")
+        hits = _findings_with_id(result, "M006")
+        assert len(hits) == 1, "$&STRLEN (pure) suppressed; only $ZF(-1,...) shell fires"
+        assert hits[0].severity == Severity.CRITICAL
+
+    def test_m003_device_taxonomy_grades_severity(self, m_fixtures_dir):
+        result = _scan(m_fixtures_dir / "m003_socket_file.m")
+        by_class = {
+            f.metadata.get("device_class"): f.severity
+            for f in _findings_with_id(result, "M003")
+        }
+        assert by_class.get("SOCKET") == Severity.HIGH, "tainted socket target is SSRF (HIGH)"
+        assert by_class.get("FILE") == Severity.MEDIUM, "tainted file path is traversal (MEDIUM)"

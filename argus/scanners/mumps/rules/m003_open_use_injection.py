@@ -82,6 +82,54 @@ def _is_pipe_device(command_text: str) -> bool:
     return any(p.search(command_text) for p in _PIPE_MARKERS)
 
 
+# Socket / network device markers (GT.M "SOCKET" / Caché |TCP|/|TNT|, or a
+# CONNECT= parameter). A tainted socket target is an attacker-chosen network
+# endpoint — SSRF / connection redirection, not OS command execution.
+_SOCKET_MARKERS = (
+    re.compile(r"\|\s*T(?:CP|NT)\s*\|", re.IGNORECASE),
+    re.compile(r'"\s*SOCKET\s*"', re.IGNORECASE),
+    re.compile(r"/?CONNECT\s*=", re.IGNORECASE),
+    re.compile(r"\bZSOCKET\b", re.IGNORECASE),
+)
+# File-device parameter markers. A plain file OPEN with a tainted path is a
+# path-traversal / arbitrary file read-write — serious, but not RCE.
+_FILE_PARAM_MARKERS = (
+    re.compile(
+        r"/?(?:NEWVERSION|READONLY|WRITEONLY|RECORDSIZE|BLOCKSIZE|APPEND|REWIND)\b",
+        re.IGNORECASE,
+    ),
+)
+
+
+def _classify_device(command_text: str) -> str:
+    """Classify the OPEN/USE device by blast radius: PIPE (shell command
+    execution), SOCKET (network endpoint), FILE (filesystem path), or
+    GENERIC (unclassified I/O redirection)."""
+    if _is_pipe_device(command_text):
+        return "PIPE"
+    if any(p.search(command_text) for p in _SOCKET_MARKERS):
+        return "SOCKET"
+    if any(p.search(command_text) for p in _FILE_PARAM_MARKERS):
+        return "FILE"
+    return "GENERIC"
+
+
+# Severity by device class: a PIPE command string is shell-executed (RCE),
+# a socket target is SSRF, a file path is traversal/file-write, and an
+# unclassified device is lower-impact I/O redirection. This replaces the
+# old flat-HIGH-for-everything behaviour that over-severitied plain reads.
+_DEVICE_SEVERITY = {
+    "PIPE": Severity.CRITICAL,
+    "SOCKET": Severity.HIGH,
+    "FILE": Severity.MEDIUM,
+    "GENERIC": Severity.MEDIUM,
+}
+# PIPE and SOCKET carry the tainted value inside the parameter list (the
+# COMMAND= / CONNECT= string), so taint-match the whole argument; FILE and
+# GENERIC put the tainted value in the device expression itself.
+_WHOLE_ARG_CLASSES = frozenset({"PIPE", "SOCKET"})
+
+
 def _command_line_text(parsed: ParsedSource, node) -> str:
     """Return the source line containing ``node`` with any trailing
     MUMPS comment stripped.
@@ -134,34 +182,47 @@ class OpenUseInjectionRule(Rule):
             line_text = _command_line_text(parsed, node)
             args_for_taint = _KEYWORD_STRIP_RE.sub("", line_text, count=1)
             keyword = "OPEN" if is_open else "USE"
-            is_pipe = _is_pipe_device(line_text)
-            # PIPE is the real RCE case: a tainted value anywhere in the
-            # parameter string is shell-executed, so match the whole
-            # argument string. The generic file/socket path matches only
-            # the device expression — a tainted READ-target or timeout
-            # elsewhere on the line is not the device and must not fire.
-            scope = args_for_taint if is_pipe else _device_expression(args_for_taint)
+            device_class = _classify_device(line_text)
+            # PIPE / SOCKET carry the tainted value inside the parameter
+            # list, so match the whole argument string. FILE / GENERIC put
+            # the tainted value in the device expression itself — matching
+            # only that slice keeps a tainted READ-target or timeout
+            # elsewhere on the line from firing as if it were the device.
+            scope = (
+                args_for_taint
+                if device_class in _WHOLE_ARG_CLASSES
+                else _device_expression(args_for_taint)
+            )
             hits = tainted_references(scope, tainted) - external
             if not hits:
                 continue
             arg_text = scope.strip()
-            severity = Severity.CRITICAL if is_pipe else self.severity
+            severity = _DEVICE_SEVERITY[device_class]
+            impact = {
+                "PIPE": (
+                    "The command targets a PIPE device (`PIPE` device-name or "
+                    "`COMMAND=`/`SHELL=` parameter detected), so the tainted "
+                    "value is shell-executed at runtime: OS-level RCE."
+                ),
+                "SOCKET": (
+                    "The device is a network socket, so a tainted target lets "
+                    "an attacker choose the endpoint the routine connects to "
+                    "(SSRF / connection redirection)."
+                ),
+                "FILE": (
+                    "A tainted file device path is a path-traversal / "
+                    "arbitrary file read-write primitive."
+                ),
+                "GENERIC": (
+                    "A tainted device name or parameter string can redirect "
+                    "I/O to an attacker-influenced destination."
+                ),
+            }[device_class]
             description = (
                 f"{keyword} argument references variable(s) {sorted(hits)} "
                 "assigned from an externally-controlled source (READ, "
-                "$ZARGV, or an HTTP context global). "
+                f"$ZARGV, or an HTTP context global). {impact}"
             )
-            if is_pipe:
-                description += (
-                    "The command targets a PIPE device (`PIPE` device-name "
-                    "or `COMMAND=` parameter detected), so the tainted "
-                    "value is shell-executed at runtime: OS-level RCE."
-                )
-            else:
-                description += (
-                    "A tainted device name or parameter string can redirect "
-                    "I/O to attacker-chosen files / sockets."
-                )
             yield self.make_finding(
                 parsed,
                 node,
@@ -169,7 +230,7 @@ class OpenUseInjectionRule(Rule):
                 severity=severity,
                 metadata={
                     "command": keyword,
-                    "device_class": "PIPE" if is_pipe else "generic",
+                    "device_class": device_class,
                     "taint_sources": sorted(hits),
                     "argument": arg_text[:200],
                 },

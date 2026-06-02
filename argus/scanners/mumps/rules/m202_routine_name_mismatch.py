@@ -49,6 +49,16 @@ def _normalize_routine_name(name: str) -> str:
     return name[1:] if name[:1] in ("%", "_") else name
 
 
+# Known VistA platform-variant tags. A routine FOO with per-platform
+# implementations ships as FOODTM.m / FOOGTM.m / FOOMSM.m ..., each declaring
+# the canonical first label FOO; the filename still resolves the routine, so
+# the stem/label mismatch is by design rather than a dispatch error.
+_PLATFORM_SUFFIXES = frozenset({
+    "DTM", "GTM", "MSM", "MSQ", "IS2", "ISM", "VXD", "ONT", "DSM",
+    "CHE", "CACHE", "YDB",
+})
+
+
 class RoutineNameMismatchRule(Rule):
     id = "M202"
     severity = Severity.INFO
@@ -75,6 +85,10 @@ class RoutineNameMismatchRule(Rule):
         # label/file mismatch is still a real finding.
         denorm = _normalize_routine_name(declared)
         if declared[:1] in ("%", "_") and denorm and expected.startswith(denorm):
+            return
+        # Non-% platform-variant families: stem is the canonical label plus a
+        # known platform tag (FOO declared in FOODTM.m / FOOGTM.m).
+        if denorm and expected.startswith(denorm) and expected[len(denorm):] in _PLATFORM_SUFFIXES:
             return
         # Site-configurable ignore patterns (regex, matched against the
         # uppercased declared name) for platform-variant routine

@@ -206,6 +206,51 @@ def _sanitized_variables(
     return sanitized
 
 
+# A RHS that coerces its value to a number cannot carry shell or code
+# metacharacters: ``+X`` is the integer prefix of X regardless of X's
+# content (``+"12;rm -rf"`` is 12), and the length / numeric intrinsics
+# return integers. Such an assignment sanitizes its LHS for injection
+# sinks. Require no concatenation (``_``) after the leading ``+`` so a
+# string like ``+X_Y`` is NOT mistaken for a pure numeric value.
+_NUMERIC_SANITIZE_RE = re.compile(
+    r"^\+[^_]*$|^\$(?:L|LENGTH|NUMBER|ZL|ZLENGTH)\(", re.IGNORECASE
+)
+
+# MUMPS pattern-match test ``VAR?<pattern>`` / ``VAR'?<pattern>``. The
+# Pattern codes: A=alpha, N=numeric, U=uppercase, L=lowercase,
+# P=punctuation, C=control, E=everything. A pattern built only from
+# A/N/U/L plus counts and groups is a metacharacter-free charset.
+_PATTERN_TEST_RE = re.compile(
+    r"(?<![\w$.])([%A-Za-z][A-Za-z0-9]*)\s*'?\?\s*([0-9A-Za-z.,()\"]+)"
+)
+_SAFE_CHARSET_PAT_RE = re.compile(r"^[0-9.,()]*(?:[ANUL][0-9.,()]*)+$", re.IGNORECASE)
+
+
+def _charset_guarded_variables(parsed: ParsedSource) -> set[str]:
+    """Variables constrained to a metacharacter-free charset by a MUMPS
+    pattern-match test (``I X?1A.7AN`` / ``I X'?1A.7AN Q``).
+
+    A value that must match a pattern composed solely of the alpha/numeric
+    pattern codes (A, N, U, L) plus counts/groups cannot contain shell or
+    MUMPS metacharacters (``/ ; _ @`` space ``"`` ...), so it is safe to
+    reach an OPEN/USE/XECUTE sink — the canonical VistA input-validation
+    idiom the routine-name / path loaders use. SOUND and conservative:
+    patterns containing punctuation (P), control (C), or "everything" (E)
+    codes, or a string literal, are NOT treated as sanitizing — we would
+    rather keep a false positive than hide a real injection. Flow-insensitive
+    whole-name stand-in, consistent with the traversal/text-source sets.
+    """
+    guarded: set[str] = set()
+    for line in parsed.source_text.splitlines():
+        semi = line.find(";")
+        if semi >= 0:
+            line = line[:semi]
+        for match in _PATTERN_TEST_RE.finditer(line):
+            if _SAFE_CHARSET_PAT_RE.match(match.group(2)):
+                guarded.add(match.group(1).strip().upper())
+    return guarded
+
+
 def collect_tainted_variables(
     parsed: ParsedSource,
     config: dict | None = None,
@@ -240,6 +285,7 @@ def collect_tainted_variables(
     assignments: list[tuple[str, str]] = []
     traversal_iters: set[str] = set()
     text_sources: set[str] = set()
+    numeric_sanitized: set[str] = set()
     for node in walk(parsed.tree.root_node):
         if node.type != "assignment":
             continue
@@ -249,20 +295,32 @@ def collect_tainted_variables(
         name = _lhs_identifier_name(parsed, lhs)
         if not name:
             continue
-        rhs_text = parsed.node_text(rhs)
+        # Take the full RHS expression from the assignment text (everything
+        # after the first ``=``), not just the last named child: a leading
+        # unary operator (``+N``) or intrinsic wrapper is otherwise dropped,
+        # which would miss numeric-coercion sanitization and split taint.
+        assign_text = parsed.node_text(node)
+        eq = assign_text.find("=")
+        rhs_text = assign_text[eq + 1:] if eq >= 0 else parsed.node_text(rhs)
         assignments.append((name, rhs_text))
         stripped = rhs_text.lstrip()
         if _TRAVERSAL_RHS_RE.match(stripped):
             traversal_iters.add(name)
         if _TEXT_RHS_RE.match(stripped):
             text_sources.add(name)
+        if _NUMERIC_SANITIZE_RE.match(stripped):
+            numeric_sanitized.add(name)
         if any(p.search(rhs_text) for p in all_patterns):
             tainted.add(name)
 
     # Sanitizers clean a value; subtract them up front so they neither
-    # count as tainted nor propagate taint downstream.
+    # count as tainted nor propagate taint downstream. Built-in sanitizers
+    # (numeric coercion, charset-constraining pattern-match guards) join the
+    # config-supplied ones — all SOUND, i.e. they only ever remove taint.
     sanitizer_names = (config or {}).get("sanitizers") or []
     sanitized = _sanitized_variables(parsed, sanitizer_names) if sanitizer_names else set()
+    sanitized |= numeric_sanitized
+    sanitized |= _charset_guarded_variables(parsed)
     tainted -= sanitized
     # A variable that is ever a $ORDER/$QUERY loop iterator holds subscript
     # keys from a structure walk, not an external value. Flow-insensitive
