@@ -110,6 +110,13 @@ class UnusedLocalRule(Rule):
     severity = Severity.INFO
     title = "Local variable declared (NEW/READ) but never read"
     cwe = None  # diagnostic
+    # Off by default: FP-dominant at scale. MUMPS implicit-NEW inheritance
+    # means a NEW-scoped var is frequently read only by a callee further down
+    # the call tree, which the intra-routine def-use pass cannot see — so a
+    # live declaration reads as dead. Re-enabling on by default awaits
+    # inter-procedural def-use over callgraph.py. Opt in via
+    # ``scanners.mumps.rules.M204.enabled: true`` for a single-routine audit.
+    enabled_by_default = False
 
     def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
         defs = list(_collect_definitions(parsed))

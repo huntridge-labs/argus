@@ -58,6 +58,16 @@ _NON_READ_TAINT_PATTERNS = (
 _TRAVERSAL_RHS_RE = re.compile(r"\$(?:O|ORDER|Q|QUERY)\s*\(", re.IGNORECASE)
 
 
+# A RHS that *is* a $TEXT / $T self-reference yields the routine's OWN
+# source text (a fixed in-program dispatch table read via $T(LABEL+offset)),
+# not external input — even when the line OFFSET is a user-controlled index.
+# Tainting the LHS because the offset references a tainted var is a false
+# positive: it mislabels the canonical VistA menu driver
+# ``S X=$T(MENU+OPT) D @$P(X,";",4)`` as RCE. Treat such LHSs as untainted,
+# exactly like $ORDER/$QUERY traversal iterators below.
+_TEXT_RHS_RE = re.compile(r"^\s*\$(?:T|TEXT)\s*\(", re.IGNORECASE)
+
+
 def _references_tainted(rhs_text: str, tainted: set[str]) -> bool:
     """True when the RHS text references any already-tainted variable as a
     MUMPS identifier token.
@@ -229,6 +239,7 @@ def collect_tainted_variables(
     # taint from any direct source pattern in the RHS.
     assignments: list[tuple[str, str]] = []
     traversal_iters: set[str] = set()
+    text_sources: set[str] = set()
     for node in walk(parsed.tree.root_node):
         if node.type != "assignment":
             continue
@@ -240,8 +251,11 @@ def collect_tainted_variables(
             continue
         rhs_text = parsed.node_text(rhs)
         assignments.append((name, rhs_text))
-        if _TRAVERSAL_RHS_RE.match(rhs_text.lstrip()):
+        stripped = rhs_text.lstrip()
+        if _TRAVERSAL_RHS_RE.match(stripped):
             traversal_iters.add(name)
+        if _TEXT_RHS_RE.match(stripped):
+            text_sources.add(name)
         if any(p.search(rhs_text) for p in all_patterns):
             tainted.add(name)
 
@@ -256,6 +270,11 @@ def collect_tainted_variables(
     # tainted X, so exclude such names entirely (a Phase-1 stand-in for
     # flow-sensitive taint) — this is the dominant @-indirection FP source.
     tainted -= traversal_iters
+    # $TEXT/$T self-source assignments hold fixed program text, not external
+    # input; exclude them (and block re-tainting via propagation below) so
+    # the VistA menu-driver dispatch ``S X=$T(MENU+OPT) D @$P(X,";",4)`` is
+    # not flagged as injection. Same flow-insensitive Phase-1 stand-in.
+    tainted -= text_sources
 
     # Transitive propagation to a fixpoint. Real MUMPS injection is built
     # up across several SET / concatenation steps (``S CMD="do "_ARG``), so
@@ -268,7 +287,12 @@ def collect_tainted_variables(
     while changed:
         changed = False
         for name, rhs_text in assignments:
-            if name in tainted or name in sanitized or name in traversal_iters:
+            if (
+                name in tainted
+                or name in sanitized
+                or name in traversal_iters
+                or name in text_sources
+            ):
                 continue
             if _TRAVERSAL_RHS_RE.match(rhs_text.lstrip()):
                 continue

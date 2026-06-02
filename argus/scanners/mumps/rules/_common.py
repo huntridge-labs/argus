@@ -46,6 +46,12 @@ DEFAULT_EXTERNAL_VARS = frozenset({
     "IOBS", "IOP", "IOS", "POP", "ZTSK", "ZTQUEUED", "ZTREQ",
     # Common scratch / menu globals-as-locals
     "X", "Y", "XQY", "XQDIC", "XQABTST", "XUMF", "XQUR",
+    # FileMan / Kernel %-prefixed scratch family. DIC / DIE / ^%DT and the
+    # %ZIS device handler NEW and populate these as call-scoped scratch, so a
+    # routine that NEWs them before such a call reads them only through the
+    # callee via implicit-NEW inheritance — M203/M204 must treat them as
+    # externally defined rather than undeclared / dead.
+    "%", "%Y", "%Y1", "%DT", "%DS", "%H", "%I", "%X", "%Z", "%ZIS",
 })
 
 # OPEN / USE device-parameter keywords. The vendored tree-sitter-mumps

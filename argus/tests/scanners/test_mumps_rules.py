@@ -110,7 +110,7 @@ class TestM001XECUTEInjection:
 
 class TestM002IndirectionInjection:
     def test_fires_on_tainted_indirection(self, m_fixtures_dir):
-        result = _scan(m_fixtures_dir / "m002_indirection.m")
+        result = _scan_enabling(m_fixtures_dir / "m002_indirection.m", "M002")
         hits = _findings_with_id(result, "M002")
         assert hits, "M002 must fire HIGH on indirection of a READ-tainted var"
         assert all(f.severity == Severity.HIGH for f in hits)
@@ -118,18 +118,18 @@ class TestM002IndirectionInjection:
         assert all(f.metadata.get("taint_sources") for f in hits)
 
     def test_clean_routine_does_not_fire(self, m_fixtures_dir):
-        result = _scan(m_fixtures_dir / "m002_clean.m")
+        result = _scan_enabling(m_fixtures_dir / "m002_clean.m", "M002")
         assert _findings_with_id(result, "M002") == []
 
     def test_constant_indirection_not_flagged_by_default(self, m_fixtures_dir):
         # Indirection of a non-tainted (source-constant) variable is the
         # benign idiom; taint-gating must suppress it by default.
-        result = _scan(m_fixtures_dir / "m002_constant_indirection.m")
+        result = _scan_enabling(m_fixtures_dir / "m002_constant_indirection.m", "M002")
         assert _findings_with_id(result, "M002") == []
 
     def test_generic_indirection_flag_surfaces_at_info(self, m_fixtures_dir):
         # The generic-indirection advisory is opt-in and INFO-only.
-        cfg = {"flag_generic_indirection": True}
+        cfg = {"flag_generic_indirection": True, "rules": {"M002": {"enabled": True}}}
         result = MumpsScanner().scan(
             str(m_fixtures_dir / "m002_constant_indirection.m"), cfg,
         )
@@ -271,20 +271,20 @@ class TestM006ExternalCallInjection:
 
 class TestM201UnresolvedLabel:
     def test_fires_on_missing_label_reference(self, m_fixtures_dir):
-        result = _scan(m_fixtures_dir / "m201_missing.m")
+        result = _scan_enabling(m_fixtures_dir / "m201_missing.m", "M201")
         hits = _findings_with_id(result, "M201")
         assert hits, "M201 must fire when DO references an undeclared label"
         labels = {f.metadata.get("label") for f in hits}
         assert "MISSING" in labels
 
     def test_resolved_labels_do_not_fire(self, m_fixtures_dir):
-        result = _scan(m_fixtures_dir / "m201_resolved.m")
+        result = _scan_enabling(m_fixtures_dir / "m201_resolved.m", "M201")
         assert _findings_with_id(result, "M201") == []
 
     def test_read_timeout_not_flagged(self, m_fixtures_dir):
         # ``R X:DTIME`` misparses into a spurious routine_call ``TIME``
         # next to an ERROR node; the guards must suppress it.
-        result = _scan(m_fixtures_dir / "m201_read_timeout.m")
+        result = _scan_enabling(m_fixtures_dir / "m201_read_timeout.m", "M201")
         labels = {f.metadata.get("label") for f in _findings_with_id(result, "M201")}
         assert "TIME" not in labels
         assert "DTIME" not in labels
@@ -391,9 +391,12 @@ class TestObjectScriptGuard:
     def test_objectscript_file_skips_structural_rules(self, m_fixtures_dir):
         # A Caché / ObjectScript file must not produce VistA-M structural
         # findings (M201/M203) — the VistA-M grammar mangles its syntax.
-        # Enable M203 (off by default) so the guard, not the gate, is what
-        # suppresses it.
-        result = _scan_enabling(m_fixtures_dir / "m_objectscript.m", "M203")
+        # Enable both M201 and M203 (off by default) so the guard, not the
+        # gate, is what suppresses them.
+        result = MumpsScanner().scan(
+            str(m_fixtures_dir / "m_objectscript.m"),
+            {"rules": {"M201": {"enabled": True}, "M203": {"enabled": True}}},
+        )
         assert _findings_with_id(result, "M201") == []
         assert _findings_with_id(result, "M203") == []
 
@@ -408,7 +411,7 @@ class TestObjectScriptGuard:
 
 class TestM204UnusedLocal:
     def test_fires_on_dead_declaration_not_dead_set(self, m_fixtures_dir):
-        result = _scan(m_fixtures_dir / "m204_dead_set.m")
+        result = _scan_enabling(m_fixtures_dir / "m204_dead_set.m", "M204")
         names = {f.metadata.get("variable") for f in _findings_with_id(result, "M204")}
         # A NEW'd-but-never-read local is a reliable dead declaration.
         assert "LEFTOVER" in names
@@ -421,7 +424,7 @@ class TestM204UnusedLocal:
     def test_percent_var_not_flagged(self, m_fixtures_dir):
         # %X is read by the W command; the %-aware token matcher must
         # see the use (the old \\b pattern could not).
-        result = _scan(m_fixtures_dir / "m204_percent_var.m")
+        result = _scan_enabling(m_fixtures_dir / "m204_percent_var.m", "M204")
         names = {f.metadata.get("variable") for f in _findings_with_id(result, "M204")}
         assert "%X" not in names
 
@@ -870,5 +873,35 @@ class TestTransitiveTaintSecurity:
     def test_m002_excludes_order_traversal_iterator(self, m_fixtures_dir):
         # X is READ-tainted then overwritten by a $ORDER traversal; the
         # later @X is the traversal value, not the external one — no FP.
-        result = _scan(m_fixtures_dir / "m002_traversal_iter.m")
+        result = _scan_enabling(m_fixtures_dir / "m002_traversal_iter.m", "M002")
         assert _findings_with_id(result, "M002") == []
+
+
+class TestAtScaleRegressions:
+    """Regressions found validating against real corpora (VistA Kernel,
+    VPE, M-Web-Server) — each pins a false-positive class the scanner
+    over-fired on at scale before the fix."""
+
+    def test_m102_argument_bearing_breaks_do_not_fire(self, m_fixtures_dir):
+        # ``Q X`` returns a value and ``H .05`` is HANG, not HALT; an
+        # argument-bearing break is not an unconditional exit, so the
+        # following code is reachable. (M102 was the top VistA idiom FP.)
+        result = _scan(m_fixtures_dir / "m102_argument_break.m")
+        assert _findings_with_id(result, "M102") == []
+
+    def test_m005_text_dispatch_table_not_tainted(self, m_fixtures_dir):
+        # ``S X=$T(MENU+OPT) D @$P(X,";",4)`` is the VistA menu driver: X is
+        # the routine's own $TEXT source (a fixed dispatch table), so even
+        # though the line offset OPT is READ-tainted, X must not be tainted
+        # and the M005 dispatch must not fire.
+        result = _scan(m_fixtures_dir / "m005_menu_dispatch.m")
+        assert _findings_with_id(result, "M005") == []
+
+    def test_m005_direct_read_dispatch_still_fires(self, m_fixtures_dir):
+        # Contrast: a value READ straight into the dispatch target IS
+        # attacker-controlled and must still fire, so the $TEXT untaint
+        # did not blanket-suppress M005.
+        result = _scan(m_fixtures_dir / "m005_dispatch_taint.m")
+        assert _findings_with_id(result, "M005"), (
+            "direct READ -> D @VAR dispatch must still flag"
+        )

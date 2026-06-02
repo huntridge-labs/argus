@@ -40,6 +40,16 @@ class IndirectionInjectionRule(Rule):
     severity = Severity.HIGH
     title = "Possible code-injection via indirection (@)"
     cwe = "CWE-94"
+    # Off by default: FP-dominant at scale. The rule fires on ANY indirection
+    # whose operand references a tainted name, with no check of syntactic
+    # POSITION — so non-executable name/glvn indirection (a SET target
+    # ``S @X=..``, a subscripted data ref ``@X@(sub)``, a LOCK name
+    # ``L +@X``) is reported as code injection alongside genuine executable
+    # indirection (``X @v`` / ``D @v`` / ``@(expr)`` eval). The executable
+    # cases are still covered by M001 (XECUTE) and M005 (D @dispatch).
+    # Re-enabling on by default awaits position-aware gating. Opt in via
+    # ``scanners.mumps.rules.M002.enabled: true``.
+    enabled_by_default = False
 
     def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
         tainted = resolve_tainted(parsed, config)

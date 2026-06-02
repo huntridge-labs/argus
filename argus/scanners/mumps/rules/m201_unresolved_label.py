@@ -52,6 +52,15 @@ class UnresolvedLabelRule(Rule):
     severity = Severity.INFO
     title = "DO / GOTO to undeclared label"
     cwe = None  # diagnostic
+    # Off by default: FP-dominant at scale. The declared-labels extractor
+    # drops labels whose bodies contain heavy quote-escaping and the final
+    # label block, so legitimate intra-file forward references read as
+    # undeclared; misparses (ObjectScript ``.Property`` dot-syntax becoming a
+    # phantom ``GOTO``, the command token after an argumentless ``D ``) also
+    # surface as phantom DO/GOTO targets. Re-enabling on by default awaits an
+    # extractor + misparse-guard rewrite. Opt in via
+    # ``scanners.mumps.rules.M201.enabled: true``.
+    enabled_by_default = False
 
     def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
         # ObjectScript dot-method syntax (``config.Method()``, ``DUZ``) is

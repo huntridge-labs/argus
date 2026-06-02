@@ -66,6 +66,16 @@ class RoutineNameMismatchRule(Rule):
         # Percent-routine convention: ``%FOO`` <-> ``_FOO.m``.
         if _normalize_routine_name(declared) == _normalize_routine_name(expected):
             return
+        # Percent-routine platform-variant families: a ``%``-routine's source
+        # is routinely split across files whose stem begins with the
+        # de-sigiled label plus a platform tag (``%ZIS4`` -> ZIS4ONT.m /
+        # ZIS4DTM.m; ``%ZOSVKR`` -> ZOSVKRO.m). The filename still resolves
+        # the routine within the family, so the mismatch is by design, not a
+        # dispatch error. Restricted to ``%``/``_``-sigiled labels — a plain
+        # label/file mismatch is still a real finding.
+        denorm = _normalize_routine_name(declared)
+        if declared[:1] in ("%", "_") and denorm and expected.startswith(denorm):
+            return
         # Site-configurable ignore patterns (regex, matched against the
         # uppercased declared name) for platform-variant routine
         # families, e.g. ``.*(VXD|IS2|ONT|DTM|MSM|GTM)$``.

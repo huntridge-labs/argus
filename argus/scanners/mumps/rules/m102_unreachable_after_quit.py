@@ -6,9 +6,13 @@ same block level is dead — it never executes. mHawk surfaces this as a
 diagnostic; we match the behaviour at INFO severity.
 
 Postconditionals (``Q:cond``, ``H:cond``) are *conditional* exits and
-do not make following code unreachable; this rule recognizes them
-syntactically and skips. Returning a value (``Q result``) is still an
-unconditional exit and *does* flag the next sibling.
+do not make following code unreachable. An *argument-bearing* break is
+also not a same-line dead-code signal: ``Q X`` returns the value of X
+(and the grammar splits that argument — itself the command letter
+``X`` = XECUTE — into a phantom sibling command), and ``H .05`` is HANG
+(a timed pause), NOT HALT. Only an argumentless ``Q``/``QUIT``/``H``/
+``HALT`` followed by a genuine sibling command (two-space separation) is
+flagged.
 """
 
 from __future__ import annotations
@@ -20,12 +24,15 @@ from argus.core.models import Finding, Severity
 from ..parser import ParsedSource, walk
 from ..rule import Rule
 
-# Match Q / QUIT / H / HALT at the start of the command text, requiring
-# whitespace or end-of-string immediately after — that rules out
-# postconditionals (``Q:cond ...``) which start with ``Q:`` and are
-# conditional.
+# Match an *argumentless* Q / QUIT / H / HALT — the command text must be
+# the bare keyword with no trailing argument. This rules out two things:
+# postconditionals (``Q:cond`` starts with ``Q:``), and argument-bearing
+# breaks that are NOT unconditional exits — ``Q X`` returns a value (the
+# grammar splits ``X`` off as a phantom sibling) and ``H .05`` is HANG, a
+# timed pause, not HALT. An argument-bearing break keeps its argument in
+# the command node (``H .05``) and so fails this anchored match.
 _UNCONDITIONAL_BREAK_RE = re.compile(
-    r"^\s*(?:Q(?:UIT)?|H(?:ALT)?)(?:\s|$)",
+    r"^\s*(?:Q(?:UIT)?|H(?:ALT)?)\s*$",
     re.IGNORECASE,
 )
 
@@ -84,6 +91,13 @@ class UnreachableAfterQuitRule(Rule):
                 if next_cmd.start_point[0] != cmd.start_point[0]:
                     continue
                 if _for_governs_line(parsed, command_children, cmd):
+                    continue
+                # A single space after the break introduces its ARGUMENT,
+                # not a new command. ``Q X`` (return value X) / ``Q expr``
+                # have the argument split into a phantom sibling by the
+                # grammar; two-or-more spaces separate genuine sibling
+                # commands. Only the latter is dead code.
+                if parsed.source_bytes[cmd.end_byte:next_cmd.start_byte] == b" ":
                     continue
                 break_text = parsed.node_text(cmd).strip()
                 next_text = parsed.node_text(next_cmd).strip()
