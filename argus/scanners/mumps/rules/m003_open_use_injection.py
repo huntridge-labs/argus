@@ -31,7 +31,7 @@ from typing import Iterable
 from argus.core.models import Finding, Severity
 from ..parser import ParsedSource, walk
 from ..rule import Rule
-from ..taint import resolve_tainted
+from ..taint import filter_charset_guarded, resolve_tainted
 from ._common import (
     argument_node,
     known_external_vars,
@@ -194,6 +194,7 @@ class OpenUseInjectionRule(Rule):
                 else _device_expression(args_for_taint)
             )
             hits = tainted_references(scope, tainted) - external
+            hits = filter_charset_guarded(parsed, config, hits, node.start_point[0])
             if not hits:
                 continue
             arg_text = scope.strip()

@@ -25,7 +25,7 @@ from typing import Iterable
 from argus.core.models import Finding, Severity
 from ..parser import ParsedSource, walk
 from ..rule import Rule
-from ..taint import resolve_tainted
+from ..taint import filter_charset_guarded, resolve_tainted
 from ._common import identifier_names
 
 
@@ -51,7 +51,9 @@ class TaintedDispatchRule(Rule):
                 continue
             for indirection in _indirection_descendants(node):
                 referenced = identifier_names(parsed, indirection)
-                hits = referenced & tainted
+                hits = filter_charset_guarded(
+                    parsed, config, referenced & tainted, node.start_point[0],
+                )
                 if not hits:
                     continue
                 command_text = parsed.node_text(node).strip()

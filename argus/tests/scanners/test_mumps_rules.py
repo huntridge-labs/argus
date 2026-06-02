@@ -287,6 +287,15 @@ class TestM201UnresolvedLabel:
         result = _scan_enabling(m_fixtures_dir / "m201_resolved.m", "M201")
         assert _findings_with_id(result, "M201") == []
 
+    def test_parameterized_entry_label_resolves(self, m_fixtures_dir):
+        # ``D WARNING("hi")`` resolves against the ``WARNING(MSG)`` entry even
+        # though the grammar does not emit a parameterized label as a label
+        # node; a genuinely undefined label (NOPE) still fires.
+        result = _scan_enabling(m_fixtures_dir / "m201_param_entry.m", "M201")
+        labels = {f.metadata.get("label") for f in _findings_with_id(result, "M201")}
+        assert "WARNING" not in labels, "parameterized entry label must resolve"
+        assert "NOPE" in labels, "genuinely undefined label still fires"
+
     def test_read_timeout_not_flagged(self, m_fixtures_dir):
         # ``R X:DTIME`` misparses into a spurious routine_call ``TIME``
         # next to an ERROR node; the guards must suppress it.
@@ -947,6 +956,16 @@ class TestPhaseAPrecision:
         hits = _findings_with_id(result, "M006")
         assert len(hits) == 1, "$&STRLEN (pure) suppressed; only $ZF(-1,...) shell fires"
         assert hits[0].severity == Severity.CRITICAL
+
+    def test_charset_guard_is_flow_sensitive_per_entry(self, m_fixtures_dir):
+        # SAVE validates RTN before its dispatch (suppressed); GETIT does not
+        # validate RTN, so its dispatch still fires — the guard must not reach
+        # across the label boundary. Exactly one M005 finding (GETIT).
+        result = _scan(m_fixtures_dir / "m_guard_cross_entry.m")
+        m005 = _findings_with_id(result, "M005")
+        assert len(m005) == 1, (
+            "the per-entry guard suppresses SAVE's dispatch but not GETIT's"
+        )
 
     def test_m003_device_taxonomy_grades_severity(self, m_fixtures_dir):
         result = _scan(m_fixtures_dir / "m003_socket_file.m")

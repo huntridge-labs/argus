@@ -29,7 +29,7 @@ from typing import Iterable
 from argus.core.models import Finding, Severity
 from ..parser import ParsedSource, walk
 from ..rule import Rule
-from ..taint import resolve_tainted
+from ..taint import filter_charset_guarded, resolve_tainted
 from ._common import tainted_references
 
 # GT.M / YottaDB ``$ZF(-n, ...)`` invokes a host OS function; ``$ZF(-1, cmd)``
@@ -123,6 +123,7 @@ class ExternalCallInjectionRule(Rule):
                 # $ZF string op — no injection surface, do not report.
                 continue
             hits = tainted_references(call_text, tainted)
+            hits = filter_charset_guarded(parsed, config, hits, node.start_point[0])
             if not hits:
                 continue
             yield self.make_finding(

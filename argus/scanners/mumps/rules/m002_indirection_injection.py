@@ -31,8 +31,54 @@ from typing import Iterable
 from argus.core.models import Finding, Severity
 from ..parser import ParsedSource, walk
 from ..rule import Rule
-from ..taint import resolve_tainted
+from ..taint import filter_charset_guarded, resolve_tainted
 from ._common import identifier_names
+
+# Commands whose indirection operand is a NAME / glvn target, not an
+# evaluated expression — ``K @(X)`` / ``L +@(X)`` / ``M @(X)=^G`` / ``N @(X)``
+# resolve a variable name, they do not execute code.
+_NAME_TARGET_MNEMONICS = frozenset({"K", "KILL", "L", "LOCK", "M", "MERGE", "N", "NEW"})
+# Dispatch / execute commands whose indirection IS executable but is already
+# owned by the dedicated sinks: XECUTE (M001) and DO/GOTO/JOB dispatch (M005).
+# Excluding them keeps M002 from double-reporting the same site.
+_DISPATCH_MNEMONICS = frozenset({"X", "XECUTE", "D", "DO", "G", "GOTO", "J", "JOB"})
+
+
+def _preceding_command_token(src: bytes, at: int) -> str:
+    """Uppercased alphabetic token immediately preceding byte offset ``at``
+    (spaces/tabs skipped) — the command letter governing the indirection."""
+    j = at - 1
+    while j >= 0 and src[j:j + 1] in (b" ", b"\t"):
+        j -= 1
+    k = j
+    while k >= 0 and chr(src[k]).isalpha():
+        k -= 1
+    return src[k + 1:j + 1].decode("ascii", errors="replace").upper()
+
+
+def _is_executable_expression_indirection(parsed: ParsedSource, node) -> bool:
+    """True only for the ``@(<expr>)`` paren / expression form in a value
+    position — indirection that evaluates a *computed string* as MUMPS
+    source (``I @("$T(+2^"_RTN_")...")``), the genuine code-injection
+    primitive. Decided from source text, which is robust to the grammar
+    mis-spanning the node, and suppresses:
+
+    * SET / assignment targets — a ``)=`` inside the node, or ``=`` right
+      after it (the grammar sometimes ends the node before the ``=``);
+    * KILL / LOCK / MERGE / NEW name targets and XECUTE / DO / GOTO / JOB
+      dispatch (the latter owned by M001 / M005), keyed off the command
+      token preceding the ``@``;
+    * simple ``@VAR`` / ``@VAR@(sub)`` forms (not the ``@(`` paren form).
+    """
+    src = parsed.source_bytes
+    start, end = node.start_byte, node.end_byte
+    if src[start:start + 2] != b"@(":
+        return False
+    node_bytes = src[start:end]
+    if b")=" in node_bytes or src[end:end + 1] == b"=":
+        return False  # SET / assignment target — a name, not an expression
+    prev = _preceding_command_token(src, start)
+    return prev not in _NAME_TARGET_MNEMONICS and prev not in _DISPATCH_MNEMONICS
 
 
 class IndirectionInjectionRule(Rule):
@@ -40,16 +86,12 @@ class IndirectionInjectionRule(Rule):
     severity = Severity.HIGH
     title = "Possible code-injection via indirection (@)"
     cwe = "CWE-94"
-    # Off by default: FP-dominant at scale. The rule fires on ANY indirection
-    # whose operand references a tainted name, with no check of syntactic
-    # POSITION — so non-executable name/glvn indirection (a SET target
-    # ``S @X=..``, a subscripted data ref ``@X@(sub)``, a LOCK name
-    # ``L +@X``) is reported as code injection alongside genuine executable
-    # indirection (``X @v`` / ``D @v`` / ``@(expr)`` eval). The executable
-    # cases are still covered by M001 (XECUTE) and M005 (D @dispatch).
-    # Re-enabling on by default awaits position-aware gating. Opt in via
-    # ``scanners.mumps.rules.M002.enabled: true``.
-    enabled_by_default = False
+    # Position-aware: fires HIGH only on the ``@(<expr>)`` paren / expression
+    # form in a value position — the indirection that evaluates a computed
+    # string as MUMPS source. Simple ``@VAR`` / ``@VAR@(sub)`` name & glvn
+    # references and SET/KILL/LOCK targets resolve a name (not code) and are
+    # suppressed; XECUTE / DO / GOTO dispatch is owned by M001 / M005. This
+    # gating is what makes the rule trustworthy on real code, so it ships on.
 
     def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
         tainted = resolve_tainted(parsed, config)
@@ -68,8 +110,8 @@ class IndirectionInjectionRule(Rule):
             if not names:
                 continue
             text = parsed.node_text(node).strip()
-            hits = names & tainted
-            if hits:
+            hits = filter_charset_guarded(parsed, config, names & tainted, node.start_point[0])
+            if hits and _is_executable_expression_indirection(parsed, node):
                 yield self.make_finding(
                     parsed,
                     node,

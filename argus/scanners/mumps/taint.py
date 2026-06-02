@@ -226,29 +226,84 @@ _PATTERN_TEST_RE = re.compile(
 _SAFE_CHARSET_PAT_RE = re.compile(r"^[0-9.,()]*(?:[ANUL][0-9.,()]*)+$", re.IGNORECASE)
 
 
-def _charset_guarded_variables(parsed: ParsedSource) -> set[str]:
-    """Variables constrained to a metacharacter-free charset by a MUMPS
-    pattern-match test (``I X?1A.7AN`` / ``I X'?1A.7AN Q``).
+def _charset_guard_lines(parsed: ParsedSource) -> dict[str, list[int]]:
+    """Map each variable constrained by a metacharacter-free pattern-match
+    guard (``I X?1A.7AN`` / ``I X'?1A.7AN Q``) to the 0-based source line(s)
+    of the guard.
 
-    A value that must match a pattern composed solely of the alpha/numeric
-    pattern codes (A, N, U, L) plus counts/groups cannot contain shell or
-    MUMPS metacharacters (``/ ; _ @`` space ``"`` ...), so it is safe to
-    reach an OPEN/USE/XECUTE sink — the canonical VistA input-validation
-    idiom the routine-name / path loaders use. SOUND and conservative:
-    patterns containing punctuation (P), control (C), or "everything" (E)
-    codes, or a string literal, are NOT treated as sanitizing — we would
-    rather keep a false positive than hide a real injection. Flow-insensitive
-    whole-name stand-in, consistent with the traversal/text-source sets.
+    A value that must match a pattern of only the alpha/numeric pattern codes
+    (A, N, U, L) plus counts/groups cannot contain shell or MUMPS
+    metacharacters, so it is safe at a sink — the canonical VistA
+    input-validation idiom. Used for FLOW-SENSITIVE sanitization
+    (:func:`filter_charset_guarded`): a guard cleans a value only for sinks
+    that follow it in the same straight-line label body. A flow-insensitive
+    whole-file sanitize would wrongly clear a variable validated on one entry
+    path but reaching a sink on a different, unvalidated entry — a false
+    negative that hides a real injection. SOUND and conservative: patterns
+    with punctuation (P) / control (C) / everything (E) codes, or a string
+    literal, are NOT treated as sanitizing.
     """
-    guarded: set[str] = set()
-    for line in parsed.source_text.splitlines():
+    guards: dict[str, list[int]] = {}
+    for i, line in enumerate(parsed.source_text.splitlines()):
         semi = line.find(";")
         if semi >= 0:
             line = line[:semi]
         for match in _PATTERN_TEST_RE.finditer(line):
             if _SAFE_CHARSET_PAT_RE.match(match.group(2)):
-                guarded.add(match.group(1).strip().upper())
-    return guarded
+                guards.setdefault(match.group(1).strip().upper(), []).append(i)
+    return guards
+
+
+def _label_lines(parsed: ParsedSource) -> list[int]:
+    """0-based line numbers of column-0 labels — the boundaries between
+    straight-line label bodies (a guard does not reach across one)."""
+    lines: list[int] = []
+    for i, raw in enumerate(parsed.source_bytes.split(b"\n")):
+        head = raw[:1]
+        if head and (head.isalpha() or head.isdigit() or head == b"%"):
+            lines.append(i)
+    return lines
+
+
+def filter_charset_guarded(
+    parsed: ParsedSource,
+    config: dict | None,
+    hits: set[str],
+    sink_line: int,
+) -> set[str]:
+    """Drop from ``hits`` any variable a charset pattern-match guard
+    constrains *before* this sink within the same label body (no label
+    boundary between the guard line and the sink line).
+
+    Flow-sensitive and sound: a guard on a different entry path does not
+    suppress the sink, so a validation gap on the sink's own path still
+    fires. Per-file maps are cached on ``config``."""
+    if not hits:
+        return hits
+    if config is not None:
+        gmap = config.get("_charset_guard_lines")
+        if gmap is None:
+            gmap = _charset_guard_lines(parsed)
+            config["_charset_guard_lines"] = gmap
+        labels = config.get("_label_lines")
+        if labels is None:
+            labels = _label_lines(parsed)
+            config["_label_lines"] = labels
+    else:
+        gmap = _charset_guard_lines(parsed)
+        labels = _label_lines(parsed)
+    if not gmap:
+        return hits
+    remaining: set[str] = set()
+    for var in hits:
+        guard_lines = gmap.get(var)
+        if guard_lines and any(
+            g <= sink_line and not any(g < label <= sink_line for label in labels)
+            for g in guard_lines
+        ):
+            continue  # constrained before this sink in the same label body
+        remaining.add(var)
+    return remaining
 
 
 def collect_tainted_variables(
@@ -319,8 +374,12 @@ def collect_tainted_variables(
     # config-supplied ones — all SOUND, i.e. they only ever remove taint.
     sanitizer_names = (config or {}).get("sanitizers") or []
     sanitized = _sanitized_variables(parsed, sanitizer_names) if sanitizer_names else set()
+    # Numeric coercion is a SOUND flow-insensitive sanitizer: ``S N=+X``
+    # creates a new value that is a number regardless of path. Charset
+    # pattern-match guards are flow-SENSITIVE (they constrain the same
+    # variable only on the path past the guard) and are applied per-sink via
+    # filter_charset_guarded, not subtracted globally here.
     sanitized |= numeric_sanitized
-    sanitized |= _charset_guarded_variables(parsed)
     tainted -= sanitized
     # A variable that is ever a $ORDER/$QUERY loop iterator holds subscript
     # keys from a structure walk, not an external value. Flow-insensitive

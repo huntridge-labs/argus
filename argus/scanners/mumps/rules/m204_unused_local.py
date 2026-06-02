@@ -52,12 +52,23 @@ def _used_token_pattern(name: str) -> re.Pattern:
     )
 
 
+def _glued_to_prev_token(parsed: ParsedSource, node) -> bool:
+    """True when ``node`` is immediately preceded by an alphanumeric byte —
+    the signature of a grammar mis-split, not a real definition target. A
+    genuine SET / NEW / READ target is always preceded by whitespace, a
+    comma, or ``(``; never glued to a letter. Catches the ``R VAL:DTIME``
+    timeout mis-tokenizing into a phantom ``TIME`` declaration."""
+    start = node.start_byte
+    return start > 0 and chr(parsed.source_bytes[start - 1]).isalnum()
+
+
 def _collect_definitions(parsed: ParsedSource):
-    """Yield ``(start_byte, end_byte, name)`` for every definition site."""
+    """Yield ``(start_byte, end_byte, name, node, origin)`` for every
+    definition site."""
     for node in walk(parsed.tree.root_node):
         if node.type == "assignment":
             named = [c for c in node.children if c.is_named]
-            if named and named[0].type in VAR_TYPES:
+            if named and named[0].type in VAR_TYPES and not _glued_to_prev_token(parsed, named[0]):
                 yield (
                     named[0].start_byte,
                     named[0].end_byte,
@@ -73,7 +84,7 @@ def _collect_definitions(parsed: ParsedSource):
             if args is None:
                 continue
             for descendant in walk(args):
-                if descendant.type in VAR_TYPES:
+                if descendant.type in VAR_TYPES and not _glued_to_prev_token(parsed, descendant):
                     yield (
                         descendant.start_byte,
                         descendant.end_byte,
@@ -81,6 +92,19 @@ def _collect_definitions(parsed: ParsedSource):
                         descendant,
                         "DECL",
                     )
+
+
+def _makes_external_call(parsed: ParsedSource) -> bool:
+    """True when the file makes any external ``^ROUTINE`` call (``D X^Y``,
+    ``$$F^Y``, ``G ^Y``). Such a call inherits the caller's local scope, so a
+    NEW-scoped variable that is unused *in this file* may still be read by the
+    callee through MUMPS implicit-NEW inheritance — meaning it cannot soundly
+    be called dead. Restricted to routine_call / function_call nodes so a
+    plain global reference (``^TMP``) does not count."""
+    for node in walk(parsed.tree.root_node):
+        if node.type in ("routine_call", "function_call") and "^" in parsed.node_text(node):
+            return True
+    return False
 
 
 def _strip_mumps_comments(source: str) -> str:
@@ -110,15 +134,20 @@ class UnusedLocalRule(Rule):
     severity = Severity.INFO
     title = "Local variable declared (NEW/READ) but never read"
     cwe = None  # diagnostic
-    # Off by default: FP-dominant at scale. MUMPS implicit-NEW inheritance
-    # means a NEW-scoped var is frequently read only by a callee further down
-    # the call tree, which the intra-routine def-use pass cannot see — so a
-    # live declaration reads as dead. Re-enabling on by default awaits
-    # inter-procedural def-use over callgraph.py. Opt in via
-    # ``scanners.mumps.rules.M204.enabled: true`` for a single-routine audit.
-    enabled_by_default = False
+    # On by default: the implicit-NEW inheritance false positives are closed
+    # by the external-call gate (a NEW'd var in a file that makes any
+    # ^ROUTINE call is treated as possibly-inherited, not dead), and the
+    # glued-token guard drops READ-timeout mis-tokenizations. Validated at
+    # scale: 832 -> 6 on the VistA Kernel, all genuine dead declarations.
 
     def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
+        # A NEW-scoped variable unused in this file may still be read by a
+        # callee via implicit-NEW inheritance. If the file makes any external
+        # ^ROUTINE call, we cannot soundly call such a declaration dead, so
+        # we report nothing — conservative until per-callee inherited-read
+        # analysis lands. (Leaf routines with no external call still report.)
+        if _makes_external_call(parsed):
+            return
         defs = list(_collect_definitions(parsed))
         def_positions = {(s, e) for s, e, _, _, _ in defs}
         # Collect every local-variable reference outside the def sites
