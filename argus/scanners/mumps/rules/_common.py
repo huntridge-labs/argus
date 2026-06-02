@@ -347,3 +347,56 @@ def preceded_by_error(node) -> bool:
         if prev is not None and prev.type == "ERROR":
             return True
     return False
+
+
+def _split_top_level(text: str, sep: str) -> list[str]:
+    """Split ``text`` on ``sep`` only at paren depth 0 and outside string
+    literals — so a ``,`` or ``:`` inside ``(...)`` or ``"..."`` is ignored."""
+    parts: list[str] = []
+    depth = 0
+    in_string = False
+    current: list[str] = []
+    for ch in text:
+        if ch == '"':
+            in_string = not in_string
+            current.append(ch)
+        elif in_string:
+            current.append(ch)
+        elif ch in "([":
+            depth += 1
+            current.append(ch)
+        elif ch in ")]":
+            depth -= 1
+            current.append(ch)
+        elif ch == sep and depth == 0:
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(ch)
+    parts.append("".join(current))
+    return parts
+
+
+_SELECT_DISPATCH_RE = re.compile(r"^@\s*\$S(?:ELECT)?\s*\((.*)\)$", re.IGNORECASE | re.DOTALL)
+
+
+def is_literal_target_dispatch(operand_text: str) -> bool:
+    """True when an indirection dispatches to a FIXED set of string-literal
+    targets — ``@$S(cond:"PRINT2",1:"PRINT")``.
+
+    The ``$SELECT`` returns one of several hardcoded routine names; a tainted
+    *selector* only chooses among them, it cannot inject an arbitrary target,
+    so this is a guarded dispatch to a fixed table, NOT code injection. Sound:
+    returns True only when EVERY value branch is a string literal (a single
+    non-literal target makes the dispatch injectable again)."""
+    match = _SELECT_DISPATCH_RE.match(operand_text.strip())
+    if match is None:
+        return False
+    branches = _split_top_level(match.group(1), ",")
+    if not branches:
+        return False
+    for branch in branches:
+        value = _split_top_level(branch, ":")[-1].strip()
+        if not value.startswith('"'):
+            return False
+    return True

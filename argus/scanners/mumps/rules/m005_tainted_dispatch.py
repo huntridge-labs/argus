@@ -26,7 +26,7 @@ from argus.core.models import Finding, Severity
 from ..parser import ParsedSource, walk
 from ..rule import Rule
 from ..taint import filter_charset_guarded, resolve_tainted
-from ._common import identifier_names
+from ._common import identifier_names, is_literal_target_dispatch
 
 
 def _indirection_descendants(do_node):
@@ -50,6 +50,11 @@ class TaintedDispatchRule(Rule):
             if node.type != "do_statement":
                 continue
             for indirection in _indirection_descendants(node):
+                # ``D @$S(cond:"A",1:"B")`` dispatches to fixed string-literal
+                # targets — a tainted selector only chooses among hardcoded
+                # routines, it cannot inject one, so this is not RCE.
+                if is_literal_target_dispatch(parsed.node_text(indirection)):
+                    continue
                 referenced = identifier_names(parsed, indirection)
                 hits = filter_charset_guarded(
                     parsed, config, referenced & tainted, node.start_point[0],

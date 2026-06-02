@@ -219,6 +219,12 @@ class TestM005TaintedDispatch:
         result = _scan(m_fixtures_dir / "m005_dispatch_clean.m")
         assert _findings_with_id(result, "M005") == []
 
+    def test_literal_target_dispatch_not_flagged(self, m_fixtures_dir):
+        # @$S(cond:"A",1:"B") dispatches to fixed hardcoded routines; a tainted
+        # selector only chooses among them, so it is not code injection.
+        result = _scan(m_fixtures_dir / "m005_literal_dispatch.m")
+        assert _findings_with_id(result, "M005") == []
+
 
 class TestM101DuplicateLabel:
     def test_fires_on_duplicate_label(self, m_fixtures_dir):
