@@ -10,7 +10,7 @@ description: |
   **Usage Example:**
   ```yaml
   - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-  - uses: huntridge-labs/argus/.github/actions/scanner-supply-chain@1.2.1
+  - uses: huntridge-labs/argus/.github/actions/scanner-supply-chain@1.3.0
     with:
       github_token: (secrets.GITHUB_TOKEN)
       scan_path: '.github/'
@@ -186,7 +186,7 @@ runs:
 
     - name: Comment PR with results
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@1.2.1
+      uses: huntridge-labs/argus/.github/actions/comment-pr@1.3.0
       with:
         summary_file: scanner-summaries/supply-chain.md
         comment_marker: supply-chain-scanner-comment-marker
