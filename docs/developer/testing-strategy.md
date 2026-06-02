@@ -35,7 +35,7 @@ All validation happens within the argus repo. No external repos required for PR 
 
 | Workflow | What It Tests | Trigger |
 |----------|--------------|---------|
-| `test-unit.yml` | pytest suite (403+ tests), Python 3.11/3.12/3.13, version ref coverage | PR, push to main |
+| `test-unit.yml` | pytest suite (403+ tests), Python 3.11/3.12/3.13/3.14, version ref coverage | PR, push to main |
 | `test-actions.yml` | Composite action E2E with real scanners against test fixtures | PR (path-filtered), push to main |
 | `build-containers.yml` | Build images → scan with Trivy+Grype → test argus CLI → validate audit trail | PR (path-filtered) |
 | `test-examples-functional.yml` | Example workflow YAML validation | PR (path-filtered) |
