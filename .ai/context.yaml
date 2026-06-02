@@ -1,108 +1,110 @@
-# .ai/context.yaml
-# Project metadata and high-level overview
-# AICaC Specification v1.0
-
-version: "1.0"
-schema: "https://aicac.dev/schema/v1"
-
+version: '2.0'
+schema: https://aicac.dev/schema/v1
 project:
   name: argus
   type: security-pipeline
-  purpose: "Automated security scanning via Python SDK and GitHub Actions"
-  primary_language: python  # SDK and scanner scripts
-  secondary_languages: [yaml]
-  version: "1.2.1"
-  license: "AGPL-3.0"
-  repository: "huntridge-labs/argus"
+  purpose: Automated security scanning via Python SDK and GitHub Actions
+  primary_language: python
+  secondary_languages:
+  - yaml
+  version: 1.2.1
+  license: AGPL-3.0
+  repository: huntridge-labs/argus
+  one_liner: 'Python SDK and CLI that orchestrate 18+ security scanners and linters
+    with a unified config, canonical argus-results.json output, MCP server integration,
+    and optional composite GitHub Actions wrappers for GHA consumers.
 
-  one_liner: >
-    Python SDK and CLI that orchestrate 18+ security scanners and linters
-    with a unified config, canonical argus-results.json output, MCP server
-    integration, and optional composite GitHub Actions wrappers for GHA
-    consumers.
-
+    '
   solves:
-    - Running multiple security scanners from a single CLI command, config file, or CI workflow
-    - Unified severity thresholds and canonical JSON output across heterogeneous scanner formats
-    - Platform-independent scanning (local laptop, GitHub Actions, GitLab CI, GHES, air-gapped)
-    - AI-assistant integration via the bundled MCP server (argus mcp)
-    - PR feedback with inline code annotations (via composite-action wrappers)
-
+  - Running multiple security scanners from a single CLI command, config file, or
+    CI workflow
+  - Unified severity thresholds and canonical JSON output across heterogeneous scanner
+    formats
+  - Platform-independent scanning (local laptop, GitHub Actions, GitLab CI, GHES,
+    air-gapped)
+  - AI-assistant integration via the bundled MCP server (argus mcp)
+  - PR feedback with inline code annotations (via composite-action wrappers)
   does_not_solve:
-    - Remediation of found vulnerabilities (reporting only)
-    - Custom scanner development (uses existing tools)
-    - Security policy enforcement (provides data, not gates)
-
+  - Remediation of found vulnerabilities (reporting only)
+  - Custom scanner development (uses existing tools)
+  - Security policy enforcement (provides data, not gates)
 entrypoints:
-  sdk: "argus/"
-  sdk_install: "pip install argus-security"
-  sdk_cli: "argus scan --config argus.yml"
-  sdk_cli_alt: "python -m argus scan --config argus.yml"
+  sdk: argus/
+  sdk_install: pip install argus-security
+  sdk_cli: argus scan --config argus.yml
+  sdk_cli_alt: python -m argus scan --config argus.yml
   cli_subcommands:
-    scan: "argus scan [scanner ...] — primary entry; supports source, container, lint flows"
-    init: "argus init — generate a tailored argus.yml from project auto-detection"
-    classify: "argus classify — classify findings by category"
-    collect: "argus collect — collect scanner outputs"
-    validate: "argus validate — typecheck argus.yml against the JSON Schema"
-    view: "argus view [terminal|browser] — interactive triage of argus-results.json"
-    report: "argus report <format> — re-emit results in another format without re-scanning"
-    completion: "argus completion {bash,zsh,fish} — shell completion (dynamic from registry)"
-    mcp: "argus mcp — start the MCP server over stdio for AI-assistant integration"
-    cache: "argus cache info|clean — manage per-scanner DB cache volumes"
+    scan: "argus scan [scanner ...] \u2014 primary entry; supports source, container,\
+      \ lint flows"
+    init: "argus init \u2014 generate a tailored argus.yml from project auto-detection"
+    classify: "argus classify \u2014 classify findings by category"
+    collect: "argus collect \u2014 collect scanner outputs"
+    validate: "argus validate \u2014 typecheck argus.yml against the JSON Schema"
+    view: "argus view [terminal|browser] \u2014 interactive triage of argus-results.json"
+    report: "argus report <format> \u2014 re-emit results in another format without\
+      \ re-scanning"
+    completion: "argus completion {bash,zsh,fish} \u2014 shell completion (dynamic\
+      \ from registry)"
+    mcp: "argus mcp \u2014 start the MCP server over stdio for AI-assistant integration"
+    cache: "argus cache info|clean \u2014 manage per-scanner DB cache volumes"
   cli_flags:
-    version: "argus --version (top-level flag, NOT a subcommand)"
-  mcp_server: "argus mcp"
-  mcp_install: "pip install argus-security[mcp]"
+    version: argus --version (top-level flag, NOT a subcommand)
+  mcp_server: argus mcp
+  mcp_install: pip install argus-security[mcp]
   viewer_extras:
-    terminal: "pip install 'argus-security[terminal]' (Textual TUI)"
-    browser: "pip install 'argus-security[browser]' (FastAPI + Jinja2, 127.0.0.1 only)"
-  actions: ".github/actions/"
-  examples: "examples/workflows/"
-  documentation: "docs/"
-  agent_skills: ".agents/skills/"
-  docsite: "scripts/docsite/"
-  docsite_config: "docsite.yml"
-  docsite_url: "https://huntridge-labs.github.io/argus/"
-
+    terminal: pip install 'argus-security[terminal]' (Textual TUI)
+    browser: pip install 'argus-security[browser]' (FastAPI + Jinja2, 127.0.0.1 only)
+  actions: .github/actions/
+  examples: examples/workflows/
+  documentation: docs/
+  agent_skills: .agents/skills/
+  docsite: scripts/docsite/
+  docsite_config: docsite.yml
+  docsite_url: https://huntridge-labs.github.io/argus/
 common_tasks:
-  run_all_scanners: "Run the full scanner suite via python -m argus scan --config argus.yml."
-  run_subset: "Run specific scanners via python -m argus scan <scanner1> <scanner2>."
-  recommend_scanners: "Use the argus-scanner-selection skill to map a target repository or local change set to the right Argus scanners."
-  view_reports: "Review terminal, markdown, SARIF, or JSON output from the SDK."
-  update_versions: "Bump scanner or action versions and validate outputs."
-  troubleshoot_failures: "Inspect CLI output or workflow logs to resolve errors."
-
+  run_all_scanners: Run the full scanner suite via python -m argus scan --config argus.yml.
+  run_subset: Run specific scanners via python -m argus scan <scanner1> <scanner2>.
+  recommend_scanners: Use the argus-scanner-selection skill to map a target repository
+    or local change set to the right Argus scanners.
+  view_reports: Review terminal, markdown, SARIF, or JSON output from the SDK.
+  update_versions: Bump scanner or action versions and validate outputs.
+  troubleshoot_failures: Inspect CLI output or workflow logs to resolve errors.
 primary_users:
-  - DevSecOps engineers setting up CI/CD pipelines
-  - Security teams wanting automated scanning
-  - Platform teams supporting multiple repositories
-
+- DevSecOps engineers setting up CI/CD pipelines
+- Security teams wanting automated scanning
+- Platform teams supporting multiple repositories
 platforms:
   supported:
-    - github-actions
-    - github-enterprise-server
+  - github-actions
+  - github-enterprise-server
   constraints:
-    - "Composite actions work on any GHES with github.com access"
-    - "Must support air-gapped environments"
-
+  - Composite actions work on any GHES with github.com access
+  - Must support air-gapped environments
 context_modules:
-  architecture: "architecture.yaml"
-  workflows: "workflows.yaml"
-  decisions: "decisions.yaml"
-  errors: "errors.yaml"
-
+  architecture: architecture.yaml
+  workflows: workflows.yaml
+  decisions: decisions.yaml
+  errors: errors.yaml
 glossary:
-  SARIF: "Static Analysis Results Interchange Format - JSON standard for findings"
-  SAST: "Static Application Security Testing - analyze code without running it"
-  DAST: "Dynamic Application Security Testing - test running application"
-  IaC: "Infrastructure as Code - Terraform, Kubernetes, CloudFormation"
-  SBOM: "Software Bill of Materials - inventory of dependencies"
-  GHES: "GitHub Enterprise Server - self-hosted GitHub"
-  Composite Action: "GitHub Action that runs steps directly (vs calling another workflow)"
-  Reusable Workflow: "GitHub workflow that can be called from other workflows"
-  Matrix: "GitHub Actions feature to run job with different parameter combinations"
-  Scanner Protocol: "Python protocol in argus/core/scanner.py — name, scan(path, config), is_available(), install_command(); the contract every scanner module implements"
-  SCANNER_REGISTRY: "argus/scanners/__init__.py registry mapping scanner-name → class. Auto-merges LINTER_REGISTRY at import time. Single source of truth consumed by CLI, MCP, viewers, reporters, and shell completions"
-  Reporter: "Output plugin in argus/reporters/ that converts ScanSummary → terminal/markdown/SARIF/JSON; argus-results.json is always written by JsonReporter as the canonical artifact"
-  ScanSummary: "Top-level result dataclass (argus/core/models.py) — list of ScanResult, each with scanner name, findings, and metadata; consumed by viewers, reporters, and the MCP layer"
-  MCP: "Model Context Protocol — stdio-transported tool/resource interface for AI assistants; argus mcp implements it (see ADR-015)"
+  SARIF: Static Analysis Results Interchange Format - JSON standard for findings
+  SAST: Static Application Security Testing - analyze code without running it
+  DAST: Dynamic Application Security Testing - test running application
+  IaC: Infrastructure as Code - Terraform, Kubernetes, CloudFormation
+  SBOM: Software Bill of Materials - inventory of dependencies
+  GHES: GitHub Enterprise Server - self-hosted GitHub
+  Composite Action: GitHub Action that runs steps directly (vs calling another workflow)
+  Reusable Workflow: GitHub workflow that can be called from other workflows
+  Matrix: GitHub Actions feature to run job with different parameter combinations
+  Scanner Protocol: "Python protocol in argus/core/scanner.py \u2014 name, scan(path,\
+    \ config), is_available(), install_command(); the contract every scanner module\
+    \ implements"
+  SCANNER_REGISTRY: "argus/scanners/__init__.py registry mapping scanner-name \u2192\
+    \ class. Auto-merges LINTER_REGISTRY at import time. Single source of truth consumed\
+    \ by CLI, MCP, viewers, reporters, and shell completions"
+  Reporter: "Output plugin in argus/reporters/ that converts ScanSummary \u2192 terminal/markdown/SARIF/JSON;\
+    \ argus-results.json is always written by JsonReporter as the canonical artifact"
+  ScanSummary: "Top-level result dataclass (argus/core/models.py) \u2014 list of ScanResult,\
+    \ each with scanner name, findings, and metadata; consumed by viewers, reporters,\
+    \ and the MCP layer"
+  MCP: "Model Context Protocol \u2014 stdio-transported tool/resource interface for\
+    \ AI assistants; argus mcp implements it (see ADR-015)"
