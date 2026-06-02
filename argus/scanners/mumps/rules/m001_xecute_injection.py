@@ -106,6 +106,23 @@ class XECUTEInjectionRule(Rule):
             if _argument_is_string_literal(parsed, args):
                 continue
             arg_text = parsed.node_text(args).strip() if args else ""
+            if not arg_text:
+                # The grammar can split a bare argument off (``X B`` ->
+                # [X, B]), leaving the XECUTE argument-less and a real
+                # injection unflagged. Recover it ONLY when the ``X`` sits at
+                # a command position — the line up to the node is whitespace /
+                # dot-block dots — so a *variable* X misparsed as a command
+                # (the X in ``I X=2`` / ``Q X`` / ``C X``) is never mistaken
+                # for an XECUTE. (A naive whole-line fallback FP'd on exactly
+                # those at scale.)
+                row, col = node.start_point
+                source_lines = parsed.source_bytes.split(b"\n")
+                if row < len(source_lines) and source_lines[row][:col].strip(b" \t.") == b"":
+                    line = source_lines[row].decode("utf-8", errors="replace")
+                    semi = line.find(";")
+                    if semi >= 0:
+                        line = line[:semi]
+                    arg_text = _XECUTE_KEYWORD_RE.sub("", line[col:], count=1).strip()
             hits = tainted_references(arg_text, tainted)
             hits = filter_charset_guarded(parsed, config, hits, node.start_point[0])
             if not hits:

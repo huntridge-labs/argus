@@ -64,6 +64,18 @@ class TestM001XECUTEInjection:
         assert all(f.severity == Severity.HIGH for f in hits)
         assert all(f.cwe == "CWE-95" for f in hits)
 
+    def test_split_bare_var_xecute_recovered_not_variable_misparse(self, m_fixtures_dir):
+        # The grammar can split ``X B`` into [X, B]; the command-position
+        # recovery still flags it. A tainted variable X used as an IF operand
+        # (``I X=2``) or QUIT value (``Q X``) is NOT an XECUTE and must not fire.
+        result = _scan(m_fixtures_dir / "m001_split_arg.m")
+        sources = {
+            s for f in _findings_with_id(result, "M001")
+            for s in f.metadata.get("taint_sources", [])
+        }
+        assert "B" in sources, "a split bare-variable XECUTE at command position must fire"
+        assert "X" not in sources, "a variable-X misparse (I X=2 / Q X) must not fire as XECUTE"
+
     def test_clean_xecute_does_not_fire(self, m_fixtures_dir):
         result = _scan(m_fixtures_dir / "m001_xecute_clean.m")
         assert _findings_with_id(result, "M001") == []
@@ -900,7 +912,7 @@ class TestRegressionGuards:
     # are excluded (e.g. M202's count is a fixture-naming artifact, not
     # behaviour under test). Update only with a deliberate, reviewed change.
     GOLDEN_SECURITY = {
-        "M001": 8, "M002": 1, "M003": 5, "M004": 2,
+        "M001": 9, "M002": 1, "M003": 5, "M004": 2,
         "M005": 4, "M006": 3, "M007": 2,
     }
 
