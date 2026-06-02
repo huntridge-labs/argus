@@ -208,7 +208,7 @@ runs:
         exit $CLASSIFY_EXIT
 
     - name: Upload SCN artifacts
-      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       with:
         name: scn-reports-${{ inputs.job_id }}
         path: scn-reports/
@@ -217,7 +217,7 @@ runs:
       continue-on-error: true
 
     - name: Upload SCN summary
-      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       with:
         name: scn-summary-${{ inputs.job_id }}
         path: scn-summaries/

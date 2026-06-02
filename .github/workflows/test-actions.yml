@@ -229,7 +229,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
-          python-version: '3.13'
+          python-version: '3.14'
 
       - name: Lint wrapper install lines
         # Patterns live in env so GitHub Actions' expression parser
@@ -830,7 +830,7 @@ jobs:
 
     services:
       podinfo:
-        image: stefanprodan/podinfo:latest@sha256:187803cdf611a19d4fffbdf6a4260a01be4c09ffe9924b28902424fc0639ceb8
+        image: stefanprodan/podinfo:latest@sha256:453e2238f70c00dfba6803ddb99a4bb86982ee549f7273f43f90ac58f0714a81
         ports:
           - 9898:9898
 
@@ -1152,7 +1152,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
-          python-version: '3.13'
+          python-version: '3.14'
 
       - name: Install Argus via setup-argus
         uses: ./.github/actions/setup-argus
@@ -1236,7 +1236,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ env.NODE_VERSION }}
 
