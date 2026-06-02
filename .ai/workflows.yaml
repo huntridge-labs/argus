@@ -1,491 +1,414 @@
-# .ai/workflows.yaml
-# Common tasks with exact commands and step-by-step instructions
-# AICaC Specification v1.0
-
-version: "1.0"
-
-# ==============================================================================
-# USER WORKFLOWS - For consumers of this project
-# ==============================================================================
-
-user_workflows:
-
+version: '2.0'
+workflows:
   basic_security_scan:
-    description: "Run all security scanners on a repository"
+    description: Run all security scanners on a repository
     category: scanning
-    sdk_command: "python -m argus scan --config argus.yml"
-    code: |
-      # argus.yml
-      scanners:
-        - gitleaks
-        - bandit
-        - opengrep
-        - osv
-        - trivy-iac
-        - checkov
-
-      scan_path: "."
-      severity_threshold: high
+    command: python -m argus scan --config argus.yml
+    code: "# argus.yml\nscanners:\n  - gitleaks\n  - bandit\n  - opengrep\n  - osv\n  - trivy-iac\n  -\
+      \ checkov\n\nscan_path: \".\"\nseverity_threshold: high\n"
     requirements:
-      - "Python 3.11+"
-      - "pyyaml package"
-
+    - Python 3.11+
+    - pyyaml package
   fast_sast_only:
-    description: "Quick SAST scan for rapid feedback"
+    description: Quick SAST scan for rapid feedback
     category: scanning
-    when_to_use: "Local development, rapid iteration"
-    sdk_command: "python -m argus scan gitleaks opengrep bandit --severity-threshold high"
-
+    when_to_use: Local development, rapid iteration
+    command: python -m argus scan gitleaks opengrep bandit --severity-threshold high
   container_scanning:
-    description: "Scan container images"
+    description: Scan container images
     category: scanning
-    sdk_command: "python -m argus scan container --severity-threshold high"
-
+    command: python -m argus scan container --severity-threshold high
   container_scanning_private_registry:
-    description: "Scan container images from a private registry (Iron Bank, GHCR-private, ECR, Artifactory, internal Harbor)"
+    description: Scan container images from a private registry (Iron Bank, GHCR-private, ECR, Artifactory,
+      internal Harbor)
     category: scanning
-    when_to_use: "Any target image whose registry requires authenticated pull"
-    sdk_command: "python -m argus scan container --config argus.yml"
-    code: |
-      # argus.yml — single-registry shortcut
-      containers:
-        registry_username_env: REGISTRY_USER       # env-var NAME (not the value)
-        registry_password_env: REGISTRY_TOKEN
-        images:
-          - image: registry.example.com/myorg/app@sha256:f1e2...
-
-      # argus.yml — multi-registry map (Iron Bank-style subscription
-      # tiers, ECR-per-IAM, Artifactory tenants, etc.). Longest path-
-      # component prefix wins. Entry fields use the prefix-less
-      # username/username_env/password/password_env shape.
-      containers:
-        registry_auth:
-          registry.example.com:                          # broad default
-            username_env: REGISTRY_DEFAULT_USER
-            password_env: REGISTRY_DEFAULT_TOKEN
-          registry.example.com/internal/restricted:      # more specific
-            username_env: REGISTRY_RESTRICTED_USER
-            password_env: REGISTRY_RESTRICTED_TOKEN
-          ghcr.io/myorg:
-            username_env: GHCR_USER
-            password_env: GHCR_TOKEN
-        images:
-          - image: registry.example.com/public/app@sha256:...
-          - image: registry.example.com/internal/restricted/app@sha256:...
-          - image: ghcr.io/myorg/worker@sha256:...
+    when_to_use: Any target image whose registry requires authenticated pull
+    command: python -m argus scan container --config argus.yml
+    code: "# argus.yml — single-registry shortcut\ncontainers:\n  registry_username_env: REGISTRY_USER\
+      \       # env-var NAME (not the value)\n  registry_password_env: REGISTRY_TOKEN\n  images:\n   \
+      \ - image: registry.example.com/myorg/app@sha256:f1e2...\n\n# argus.yml — multi-registry map (Iron\
+      \ Bank-style subscription\n# tiers, ECR-per-IAM, Artifactory tenants, etc.). Longest path-\n# component\
+      \ prefix wins. Entry fields use the prefix-less\n# username/username_env/password/password_env shape.\n\
+      containers:\n  registry_auth:\n    registry.example.com:                          # broad default\n\
+      \      username_env: REGISTRY_DEFAULT_USER\n      password_env: REGISTRY_DEFAULT_TOKEN\n    registry.example.com/internal/restricted:\
+      \      # more specific\n      username_env: REGISTRY_RESTRICTED_USER\n      password_env: REGISTRY_RESTRICTED_TOKEN\n\
+      \    ghcr.io/myorg:\n      username_env: GHCR_USER\n      password_env: GHCR_TOKEN\n  images:\n\
+      \    - image: registry.example.com/public/app@sha256:...\n    - image: registry.example.com/internal/restricted/app@sha256:...\n\
+      \    - image: ghcr.io/myorg/worker@sha256:...\n"
     prerequisites:
-      - "Export the credential env vars in the shell or CI step before invoking argus"
-      - "Verify docker login + docker pull work outside argus to isolate auth/access from scanner plumbing"
+    - Export the credential env vars in the shell or CI step before invoking argus
+    - Verify docker login + docker pull work outside argus to isolate auth/access from scanner plumbing
     notes:
-      - "Argus forwards resolved credentials to Trivy / Grype / Syft as their native env vars (TRIVY_USERNAME/PASSWORD, GRYPE_REGISTRY_AUTH_USERNAME/PASSWORD, SYFT_REGISTRY_AUTH_USERNAME/PASSWORD) on both the local-binary and container-fallback paths."
-      - "If a registry_auth entry matches but its env var is unset, argus logs a WARNING and refuses to fall back to a broader entry — no silent privilege broadening."
-      - "Run with --verbose to surface the redacted docker run argv argus constructs; useful for confirming -e flags reach the sub-scanner container."
-    reference: "docs/config-reference.md → containers.registry_auth, docs/troubleshooting/docker.md → 'target image fails to authenticate inside the sub-scanner container', .ai/decisions.yaml → ADR-028"
-
+    - Argus forwards resolved credentials to Trivy / Grype / Syft as their native env vars (TRIVY_USERNAME/PASSWORD,
+      GRYPE_REGISTRY_AUTH_USERNAME/PASSWORD, SYFT_REGISTRY_AUTH_USERNAME/PASSWORD) on both the local-binary
+      and container-fallback paths.
+    - If a registry_auth entry matches but its env var is unset, argus logs a WARNING and refuses to fall
+      back to a broader entry — no silent privilege broadening.
+    - Run with --verbose to surface the redacted docker run argv argus constructs; useful for confirming
+      -e flags reach the sub-scanner container.
+    reference: docs/config-reference.md → containers.registry_auth, docs/troubleshooting/docker.md → 'target
+      image fails to authenticate inside the sub-scanner container', .ai/decisions.yaml → ADR-028
   individual_scanner:
-    description: "Use a single scanner via SDK or composite action"
+    description: Use a single scanner via SDK or composite action
     category: scanning
-    sdk_command: "python -m argus scan bandit --severity-threshold high"
-    action_code: |
-      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.2.1
-        with:
-          path: src/
-          fail_on_severity: high
-          enable_sarif_upload: true
-
+    command: python -m argus scan bandit --severity-threshold high
+    action_code: "- uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.2.1\n  with:\n    path:\
+      \ src/\n    fail_on_severity: high\n    enable_sarif_upload: true\n"
   dependency_scanning:
-    description: "Scan dependencies for known vulnerabilities"
+    description: Scan dependencies for known vulnerabilities
     category: scanning
-    when_to_use: "Any environment"
-    sdk_command: "python -m argus scan osv --severity-threshold high"
-
+    when_to_use: Any environment
+    command: python -m argus scan osv --severity-threshold high
   infrastructure_scanning:
-    description: "Scan Terraform, Kubernetes, CloudFormation"
+    description: Scan Terraform, Kubernetes, CloudFormation
     category: scanning
-    sdk_command: "python -m argus scan trivy-iac checkov --severity-threshold high"
-
+    command: python -m argus scan trivy-iac checkov --severity-threshold high
   sbom_scanning:
-    description: "Scan a pre-built SBOM (CycloneDX / SPDX / Syft JSON) instead of a filesystem"
+    description: Scan a pre-built SBOM (CycloneDX / SPDX / Syft JSON) instead of a filesystem
     category: scanning
-    when_to_use: "Vendor-supplied SBOMs, scan results from another build system"
-    sdk_command: "python -m argus scan --sbom path/to/sbom.json"
-    notes: |
-      When --sbom is a directory, argus walks it recursively and scans every
+    when_to_use: Vendor-supplied SBOMs, scan results from another build system
+    command: python -m argus scan --sbom path/to/sbom.json
+    notes: 'When --sbom is a directory, argus walks it recursively and scans every
+
       recognized SBOM. Auto-enables osv, grype, and trivy (the three
+
       SBOM-capable scanners) regardless of argus.yml; filesystem-only
+
       scanners are skipped since they have nothing to scan.
 
+      '
   interactive_triage:
-    description: "Post-scan interactive findings browser (TUI)"
+    description: Post-scan interactive findings browser (TUI)
     category: triage
-    when_to_use: "Local triage after a scan; reviewing per-product findings; executive summary for owners/managers"
-    sdk_command: "argus view terminal ./argus-results"
-    one_liner: "argus scan --interface=terminal"
+    when_to_use: Local triage after a scan; reviewing per-product findings; executive summary for owners/managers
+    command: argus view terminal ./argus-results
+    one_liner: argus scan --interface=terminal
     requirements:
-      - "Python 3.11+"
-      - "argus-security[terminal] extra (installs Textual)"
-    notes: |
-      `argus scan --interface=terminal` scans and then launches the browser against
+    - Python 3.11+
+    - argus-security[terminal] extra (installs Textual)
+    notes: '`argus scan --interface=terminal` scans and then launches the browser against
+
       the just-written results directory. Inside the TUI: / to search,
+
       1/2/3/4 for severity filters, p for product, c for scanner, s to sort,
+
       e to export CSV, d for executive dashboard, ? for help, Ctrl+P for
+
       command palette. Full reference in docs/view-terminal.md.
 
+      '
   local_web_dashboard:
-    description: "Serve findings locally via a browser-based dashboard (argus view browser)"
+    description: Serve findings locally via a browser-based dashboard (argus view browser)
     category: triage
-    when_to_use: "Non-engineer stakeholders (owners, managers, execs) who want at-a-glance insight without a terminal"
-    sdk_command: "argus view browser ./argus-results"
-    one_liner: "argus view browser"
+    when_to_use: Non-engineer stakeholders (owners, managers, execs) who want at-a-glance insight without
+      a terminal
+    command: argus view browser ./argus-results
+    one_liner: argus view browser
     requirements:
-      - "Python 3.11+"
-      - "argus-security[browser] extra (installs FastAPI + uvicorn + jinja2)"
-    notes: |
-      Three routes: `/` executive dashboard, `/findings` filterable
+    - Python 3.11+
+    - argus-security[browser] extra (installs FastAPI + uvicorn + jinja2)
+    notes: 'Three routes: `/` executive dashboard, `/findings` filterable
+
       table (URL-shareable filters), `/picker` one-level file browser
+
       to switch scans. Bound to 127.0.0.1 only — no auth, no
+
       sessions, no mutations. For multi-user enterprise deployments
+
       see argus-portal (separate track). Full reference in
+
       docs/view-browser.md.
 
+      '
   fedramp_scn_detection:
-    description: "FedRAMP Significant Change Notification detection and tracking"
+    description: FedRAMP Significant Change Notification detection and tracking
     category: compliance
-    when_to_use: "FedRAMP-authorized systems, compliance-required IaC changes"
-    code: |
-      name: FedRAMP SCN Detection
-      on:
-        pull_request:
-          paths:
-            - 'terraform/**'
-            - 'kubernetes/**'
-            - 'cloudformation/**'
-
-      permissions:
-        contents: read
-        pull-requests: write
-        issues: write
-
-      jobs:
-        scn-detection:
-          runs-on: ubuntu-latest
-          steps:
-            - uses: actions/checkout@v6
-              with:
-                fetch-depth: 0  # Required for git diff
-
-            - uses: huntridge-labs/argus/.github/actions/scn-detector@1.2.1
-              env:
-                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-              with:
-                config_file: '.github/scn-config.yml'
-                create_issues: true
-                post_pr_comment: true
-                enable_ai_fallback: true
+    when_to_use: FedRAMP-authorized systems, compliance-required IaC changes
+    code: "name: FedRAMP SCN Detection\non:\n  pull_request:\n    paths:\n      - 'terraform/**'\n   \
+      \   - 'kubernetes/**'\n      - 'cloudformation/**'\n\npermissions:\n  contents: read\n  pull-requests:\
+      \ write\n  issues: write\n\njobs:\n  scn-detection:\n    runs-on: ubuntu-latest\n    steps:\n  \
+      \    - uses: actions/checkout@v6\n        with:\n          fetch-depth: 0  # Required for git diff\n\
+      \n      - uses: huntridge-labs/argus/.github/actions/scn-detector@1.2.1\n        env:\n        \
+      \  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY\
+      \ }}\n        with:\n          config_file: '.github/scn-config.yml'\n          create_issues: true\n\
+      \          post_pr_comment: true\n          enable_ai_fallback: true\n"
     requirements:
-      - ".github/scn-config.yml configuration file"
-      - "ANTHROPIC_API_KEY secret (optional, for AI fallback)"
+    - .github/scn-config.yml configuration file
+    - ANTHROPIC_API_KEY secret (optional, for AI fallback)
     outputs:
-      - "PR comment with SCN analysis"
-      - "GitHub Issues for Adaptive/Transformative/Impact changes"
-      - "JSON audit trail (90-day retention)"
-    config_example: |
-      # .github/scn-config.yml
-      version: "1.0"
-      rules:
-        routine:
-          - pattern: "tags.*"
-        adaptive:
-          - resource: "aws_ami.*"
-            operation: "modify"
-        transformative:
-          - resource: "aws_rds_.*\\.engine"
-            operation: "modify"
-        impact:
-          - attribute: ".*encryption.*"
-            operation: "delete|modify"
-
+    - PR comment with SCN analysis
+    - GitHub Issues for Adaptive/Transformative/Impact changes
+    - JSON audit trail (90-day retention)
+    config_example: "# .github/scn-config.yml\nversion: \"1.0\"\nrules:\n  routine:\n    - pattern: \"\
+      tags.*\"\n  adaptive:\n    - resource: \"aws_ami.*\"\n      operation: \"modify\"\n  transformative:\n\
+      \    - resource: \"aws_rds_.*\\\\.engine\"\n      operation: \"modify\"\n  impact:\n    - attribute:\
+      \ \".*encryption.*\"\n      operation: \"delete|modify\"\n"
+    command: Add the referenced action/workflow to a GitHub Actions workflow (see the code field).
   setup_mcp_server:
-    description: "Set up Argus MCP server for AI assistant integration"
+    description: Set up Argus MCP server for AI assistant integration
     category: integration
-    when_to_use: "Connecting AI tools (Claude, Copilot, Cursor) to Argus for automated scanning"
+    when_to_use: Connecting AI tools (Claude, Copilot, Cursor) to Argus for automated scanning
     steps:
-      - action: "Install Argus with MCP support"
-        command: "pip install argus-security[mcp]"
-
-      - action: "Add MCP server to AI tool configuration"
-        config: |
-          {
-            "mcpServers": {
-              "argus": {"command": "argus", "args": ["mcp"]}
-            }
-          }
-        note: "Add this to your AI tool's MCP configuration file (e.g., claude_desktop_config.json)"
-
-      - action: "Verify MCP server starts"
-        command: "argus mcp"
-        note: "The server communicates via stdio transport. Press Ctrl+C to stop."
+    - action: Install Argus with MCP support
+      command: pip install argus-security[mcp]
+    - action: Add MCP server to AI tool configuration
+      config: "{\n  \"mcpServers\": {\n    \"argus\": {\"command\": \"argus\", \"args\": [\"mcp\"]}\n\
+        \  }\n}\n"
+      note: Add this to your AI tool's MCP configuration file (e.g., claude_desktop_config.json)
+    - action: Verify MCP server starts
+      command: argus mcp
+      note: The server communicates via stdio transport. Press Ctrl+C to stop.
     available_tools:
-      - "argus_scan: Run security scans"
-      - "argus_list_scanners: List available scanners"
-      - "argus_validate: Validate argus.yml configuration"
-      - "argus_detect: Detect project characteristics and recommend scanners"
-      - "argus_init: Initialize a new argus.yml config"
+    - 'argus_scan: Run security scans'
+    - 'argus_list_scanners: List available scanners'
+    - 'argus_validate: Validate argus.yml configuration'
+    - 'argus_detect: Detect project characteristics and recommend scanners'
+    - 'argus_init: Initialize a new argus.yml config'
     available_resources:
-      - "argus://config: Current argus.yml configuration"
-      - "argus://results/latest: Most recent scan results"
-
+    - 'argus://config: Current argus.yml configuration'
+    - 'argus://results/latest: Most recent scan results'
   scheduled_full_scan:
-    description: "Nightly comprehensive security scan"
+    description: Nightly comprehensive security scan
     category: scanning
-    sdk_command: "python -m argus scan --config argus.yml --severity-threshold none"
-    note: "Schedule via cron, CI scheduler, or GitHub Actions workflow_dispatch"
-
+    command: python -m argus scan --config argus.yml --severity-threshold none
+    note: Schedule via cron, CI scheduler, or GitHub Actions workflow_dispatch
   argus_scanner_selection_skill:
-    description: "Use the bundled Agent Skills bundle to analyze a target repository or local change set and choose the right Argus scanners for pre-push checks and CI alignment"
+    description: Use the bundled Agent Skills bundle to analyze a target repository or local change set
+      and choose the right Argus scanners for pre-push checks and CI alignment
     category: planning
-    location: ".agents/skills/argus-scanner-selection/SKILL.md"
+    location: .agents/skills/argus-scanner-selection/SKILL.md
     outputs:
-      - "Recommended scanners and rationale"
-      - "Local development scan plan"
-      - "Platform-specific routing for github.com CI versus GHES"
-      - "Exact workflow or action snippet"
-      - "Concrete local act command when local execution is requested"
-      - "Required inputs, secrets, and permissions"
+    - Recommended scanners and rationale
+    - Local development scan plan
+    - Platform-specific routing for github.com CI versus GHES
+    - Exact workflow or action snippet
+    - Concrete local act command when local execution is requested
+    - Required inputs, secrets, and permissions
     steps:
-      - "Inspect the target repository or current change set for languages, manifests, Dockerfiles, IaC, web targets, compliance signals, and hosting environment"
-      - "Map findings to scanners using .agents/skills/argus-scanner-selection/references/REFERENCE.md"
-      - "Route users toward the argus SDK as primary interface, with composite actions for GitHub Actions integration"
-      - "Prefer the smallest effective pre-push scanner set locally, then keep CI workflow recommendations aligned"
-      - "Prefer an explicit scanners list over 'all' when generating onboarding workflows"
-
-# ==============================================================================
-# CONTRIBUTOR WORKFLOWS - For developers of this project
-# ==============================================================================
-
-contributor_workflows:
-
+    - action: Inspect the target repository or current change set for languages, manifests, Dockerfiles,
+        IaC, web targets, compliance signals, and hosting environment
+    - action: Map findings to scanners using .agents/skills/argus-scanner-selection/references/REFERENCE.md
+    - action: Route users toward the argus SDK as primary interface, with composite actions for GitHub
+        Actions integration
+    - action: Prefer the smallest effective pre-push scanner set locally, then keep CI workflow recommendations
+        aligned
+    - action: Prefer an explicit scanners list over 'all' when generating onboarding workflows
   run_tests:
-    description: "Execute the full test suite"
-    command: "pytest"
+    description: Execute the full test suite
+    command: pytest
     breakdown:
-      all: "pytest"
-      fast: "pytest --no-cov -q"
-      coverage: "pytest --cov"
+      all: pytest
+      fast: pytest --no-cov -q
+      coverage: pytest --cov
     coverage_targets:
-      overall: "80%"
-
+      overall: 80%
   local_development:
-    description: "Set up local development environment"
+    description: Set up local development environment
     steps:
-      - action: "Clone repository"
-        command: "git clone <repo-url> && cd argus"
+    - action: Clone repository
+      command: git clone <repo-url> && cd argus
+    - action: Create virtual environment
+      command: python3 -m venv .venv
+    - action: Activate virtual environment
+      command: source .venv/bin/activate
+    - action: Install Python dependencies
+      command: pip install -r requirements.txt
+    - action: Install Argus CLI in editable mode
+      command: pip install -e .
+    - action: Build local scanner images (when branch images are not published yet)
+      command: 'docker build -f docker/Dockerfile.bandit -t ghcr.io/huntridge-labs/argus/scanner-bandit:1.0.0
+        .
 
-      - action: "Create virtual environment"
-        command: "python3 -m venv .venv"
+        docker build -f docker/Dockerfile.opengrep -t ghcr.io/huntridge-labs/argus/scanner-opengrep:1.0.0
+        .
 
-      - action: "Activate virtual environment"
-        command: "source .venv/bin/activate"
+        docker build -f docker/Dockerfile.supply-chain -t ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.0.0
+        .
 
-      - action: "Install Python dependencies"
-        command: "pip install -r requirements.txt"
+        docker build -f docker/Dockerfile.cli -t ghcr.io/huntridge-labs/argus/cli:1.0.0 .
 
-      - action: "Install Argus CLI in editable mode"
-        command: "pip install -e ."
-
-      - action: "Build local scanner images (when branch images are not published yet)"
-        command: |
-          docker build -f docker/Dockerfile.bandit -t ghcr.io/huntridge-labs/argus/scanner-bandit:1.0.0 .
-          docker build -f docker/Dockerfile.opengrep -t ghcr.io/huntridge-labs/argus/scanner-opengrep:1.0.0 .
-          docker build -f docker/Dockerfile.supply-chain -t ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.0.0 .
-          docker build -f docker/Dockerfile.cli -t ghcr.io/huntridge-labs/argus/cli:1.0.0 .
-        note: "Only required if `argus scan` cannot pull custom ghcr.io/huntridge-labs/argus images."
-
-      - action: "Run tests to verify setup"
-        command: "pytest"
-    alternative: "Use Dev Container (recommended)"
+        '
+      note: Only required if `argus scan` cannot pull custom ghcr.io/huntridge-labs/argus images.
+    - action: Run tests to verify setup
+      command: pytest
+    alternative: Use Dev Container (recommended)
     devcontainer_steps:
-      - "Open in VS Code"
-      - "Command Palette → 'Reopen in Container'"
-      - "Wait for container build"
-      - "Run: pytest"
-
+    - Open in VS Code
+    - Command Palette → 'Reopen in Container'
+    - Wait for container build
+    - 'Run: pytest'
   add_new_scanner:
-    description: "Add support for a new security scanner (SDK-first)"
+    description: Add support for a new security scanner (SDK-first)
     steps:
-      - action: "Create scanner module"
-        location: "argus/scanners/{name}.py"
-        purpose: "Implement Scanner protocol — name, scan(), build_args(), is_available(), install_command(), tool_version(), parse_results()"
-        template: "argus/scanners/bandit.py"
-        helpers:
-          scan_template: "Use argus.core.scanner_template.run_subprocess_scan(self, path, config) — collapses the tempdir+subprocess+output-file+error-handling boilerplate into a one-line scan() body. Each scanner declares the WHAT (build_args, parse_results) instead of the HOW (subprocess plumbing). Skip when the tool runs multiple binaries or emits to stdout (see grype.py, clamav.py, supply_chain.py for the bypass shape)."
-          build_args: "Implement build_args(self, paths: ScanPaths, config: dict) — single source of truth for both local and container execution. Returns the FULL argv (binary name as args[0]). Engine drops args[0] when ``container_entrypoint`` is declared on the class (i.e. the image has ENTRYPOINT). Replaces the legacy _build_command + container_args pair, which used to drift."
-          tool_version: "Use argus.core.version.parse_tool_version(cmd, regex) — collapses the ~17-line subprocess+regex+exception boilerplate into one line. Only fall back to custom parsing when the tool emits structured output (JSON, etc.) — see grype.py"
-          secret_redaction: "If raw output ever contains source-code literals (passwords, code excerpts), use argus.core.redact helpers and add a regression test (see CLAUDE.md → secret leak audit)"
-
-      - action: "Register in SCANNER_REGISTRY"
-        location: "argus/scanners/__init__.py"
-        purpose: "Add one line: \"{name}\": {Name}Scanner — wires the scanner into CLI, MCP, and docs auto-generation"
-
-      - action: "Add Dockerfile (only if hermetic execution wanted)"
-        location: "docker/Dockerfile.{name}"
-        purpose: "Container image for the SDK's docker backend; skip if upstream tool publishes an official image (Argus prefers official images per ADR-014)"
-        also_update: "argus/containers.py CACHE_MOUNTS / image manifest if a custom image is added"
-
-      - action: "Add tests"
-        location: "argus/tests/scanners/test_{name}.py"
-        required_tests:
-          - "test_name (verify registry name)"
-          - "test_is_available_when_installed"
-          - "test_is_available_when_missing"
-          - "test_scan_parses_findings (against fixture output)"
-          - "test_install_command"
-          - "test_no_secret_leakage (if scanner output ever contains source-code excerpts — see CLAUDE.md → secret leak audit)"
-
-      - action: "Verify registration"
-        command: "argus scan {name} --path . --severity-threshold none"
-        note: "Works immediately after SCANNER_REGISTRY registration — reporters, viewers, MCP, and shell completions all consume the registry dynamically"
-
-      - action: "Update .ai/architecture.yaml"
-        purpose: "Add the scanner to the appropriate category under `scanners:` so AI agents see it"
-
-      - action: "(Optional) Add composite action wrapper"
-        location: ".github/actions/scanner-{name}/"
-        purpose: "Only needed for GHA-only consumers who can't `pip install argus-security`. Per ADR-013/ADR-016, modern composites are thin wrappers that pip-install argus-security and call `argus scan {name}` — they no longer ship parse-results.py or generate-summary.py logic of their own."
-        files:
-          - "action.yml (template: .github/actions/scanner-bandit/action.yml)"
-          - ".docsite.yml (declares docsite category)"
-          - "tests/ (smoke test for the action)"
-        validate: "cd scripts && python -m docsite --validate"
-
-    reference_implementation: "argus/scanners/bandit.py (SDK), .github/actions/scanner-bandit/ (composite wrapper)"
-    contributing_guide: "CONTRIBUTING.md → Adding a Scanner via the SDK"
+    - action: Create scanner module
+      location: argus/scanners/{name}.py
+      purpose: Implement Scanner protocol — name, scan(), build_args(), is_available(), install_command(),
+        tool_version(), parse_results()
+      template: argus/scanners/bandit.py
+      helpers:
+        scan_template: Use argus.core.scanner_template.run_subprocess_scan(self, path, config) — collapses
+          the tempdir+subprocess+output-file+error-handling boilerplate into a one-line scan() body. Each
+          scanner declares the WHAT (build_args, parse_results) instead of the HOW (subprocess plumbing).
+          Skip when the tool runs multiple binaries or emits to stdout (see grype.py, clamav.py, supply_chain.py
+          for the bypass shape).
+        build_args: 'Implement build_args(self, paths: ScanPaths, config: dict) — single source of truth
+          for both local and container execution. Returns the FULL argv (binary name as args[0]). Engine
+          drops args[0] when ``container_entrypoint`` is declared on the class (i.e. the image has ENTRYPOINT).
+          Replaces the legacy _build_command + container_args pair, which used to drift.'
+        tool_version: Use argus.core.version.parse_tool_version(cmd, regex) — collapses the ~17-line subprocess+regex+exception
+          boilerplate into one line. Only fall back to custom parsing when the tool emits structured output
+          (JSON, etc.) — see grype.py
+        secret_redaction: If raw output ever contains source-code literals (passwords, code excerpts),
+          use argus.core.redact helpers and add a regression test (see CLAUDE.md → secret leak audit)
+    - action: Register in SCANNER_REGISTRY
+      location: argus/scanners/__init__.py
+      purpose: 'Add one line: "{name}": {Name}Scanner — wires the scanner into CLI, MCP, and docs auto-generation'
+    - action: Add Dockerfile (only if hermetic execution wanted)
+      location: docker/Dockerfile.{name}
+      purpose: Container image for the SDK's docker backend; skip if upstream tool publishes an official
+        image (Argus prefers official images per ADR-014)
+      also_update: argus/containers.py CACHE_MOUNTS / image manifest if a custom image is added
+    - action: Add tests
+      location: argus/tests/scanners/test_{name}.py
+      required_tests:
+      - test_name (verify registry name)
+      - test_is_available_when_installed
+      - test_is_available_when_missing
+      - test_scan_parses_findings (against fixture output)
+      - test_install_command
+      - test_no_secret_leakage (if scanner output ever contains source-code excerpts — see CLAUDE.md →
+        secret leak audit)
+    - action: Verify registration
+      command: argus scan {name} --path . --severity-threshold none
+      note: Works immediately after SCANNER_REGISTRY registration — reporters, viewers, MCP, and shell
+        completions all consume the registry dynamically
+    - action: Update .ai/architecture.yaml
+      purpose: Add the scanner to the appropriate category under `scanners:` so AI agents see it
+    - action: (Optional) Add composite action wrapper
+      location: .github/actions/scanner-{name}/
+      purpose: Only needed for GHA-only consumers who can't `pip install argus-security`. Per ADR-013/ADR-016,
+        modern composites are thin wrappers that pip-install argus-security and call `argus scan {name}`
+        — they no longer ship parse-results.py or generate-summary.py logic of their own.
+      files:
+      - 'action.yml (template: .github/actions/scanner-bandit/action.yml)'
+      - .docsite.yml (declares docsite category)
+      - tests/ (smoke test for the action)
+      validate: cd scripts && python -m docsite --validate
+    reference_implementation: argus/scanners/bandit.py (SDK), .github/actions/scanner-bandit/ (composite
+      wrapper)
+    contributing_guide: CONTRIBUTING.md → Adding a Scanner via the SDK
     key_points:
-      - "The SDK module is the single source of truth — composite actions, viewers, MCP tools, and SARIF/JSON reporters all consume it through SCANNER_REGISTRY"
-      - "Replacing a scanner = swap the class internals, keep the registered name; no downstream changes needed"
-      - "If your scanner's raw output ever contains source-code literals (passwords, code excerpts), you MUST scrub them before building Finding objects — use argus.core.redact helpers and add a regression test"
-      - "Shell completions update automatically (argus completion zsh) — no manual sync"
-
+    - The SDK module is the single source of truth — composite actions, viewers, MCP tools, and SARIF/JSON
+      reporters all consume it through SCANNER_REGISTRY
+    - Replacing a scanner = swap the class internals, keep the registered name; no downstream changes
+      needed
+    - If your scanner's raw output ever contains source-code literals (passwords, code excerpts), you
+      MUST scrub them before building Finding objects — use argus.core.redact helpers and add a regression
+      test
+    - Shell completions update automatically (argus completion zsh) — no manual sync
   add_new_linter:
-    description: "Add a new linter module to the SDK"
+    description: Add a new linter module to the SDK
     steps:
-      - action: "Create linter module"
-        location: "argus/linters/{name}.py"
-        purpose: "Implement Scanner protocol with Severity.INFO findings"
-        template: "argus/linters/yamllint.py"
-
-      - action: "Register in LINTER_REGISTRY"
-        location: "argus/linters/__init__.py"
-        purpose: "Add to LINTER_REGISTRY (auto-merges into SCANNER_REGISTRY)"
-
-      - action: "Add tests"
-        location: "argus/tests/linters/test_{name}.py"
-        required_tests:
-          - "test_name (verify lint-<tool> prefix)"
-          - "test_is_available_when_installed"
-          - "test_is_available_when_missing"
-          - "test_findings_use_info_severity"
-          - "test_install_command"
-
-      - action: "Verify registration"
-        command: "argus scan lint-{name} --path . --severity-threshold none"
-        note: "Works immediately after LINTER_REGISTRY registration — no additional wiring needed"
-
-    reference_implementation: "argus/linters/yamllint.py"
-    contributing_guide: "CONTRIBUTING.md"
+    - action: Create linter module
+      location: argus/linters/{name}.py
+      purpose: Implement Scanner protocol with Severity.INFO findings
+      template: argus/linters/yamllint.py
+    - action: Register in LINTER_REGISTRY
+      location: argus/linters/__init__.py
+      purpose: Add to LINTER_REGISTRY (auto-merges into SCANNER_REGISTRY)
+    - action: Add tests
+      location: argus/tests/linters/test_{name}.py
+      required_tests:
+      - test_name (verify lint-<tool> prefix)
+      - test_is_available_when_installed
+      - test_is_available_when_missing
+      - test_findings_use_info_severity
+      - test_install_command
+    - action: Verify registration
+      command: argus scan lint-{name} --path . --severity-threshold none
+      note: Works immediately after LINTER_REGISTRY registration — no additional wiring needed
+    reference_implementation: argus/linters/yamllint.py
+    contributing_guide: CONTRIBUTING.md
     key_points:
-      - "Linters implement the same Scanner protocol as security scanners"
-      - "Findings use Severity.INFO (not security severity levels)"
-      - "LINTER_REGISTRY auto-merges into SCANNER_REGISTRY at import time"
-      - "Shell completions update automatically (dynamic from registry)"
-      - "Tab completion via `argus completion zsh` is always current"
-
+    - Linters implement the same Scanner protocol as security scanners
+    - Findings use Severity.INFO (not security severity levels)
+    - LINTER_REGISTRY auto-merges into SCANNER_REGISTRY at import time
+    - Shell completions update automatically (dynamic from registry)
+    - Tab completion via `argus completion zsh` is always current
   create_release:
-    description: "Release a new version (build-once-promote-everywhere; see ADR-027)"
-    command: "npm run release"
+    description: Release a new version (build-once-promote-everywhere; see ADR-027)
+    command: npm run release
     options:
-      patch: "npm run release -- patch"
-      minor: "npm run release -- minor"
-      major: "npm run release -- major"
-      prerelease_rc: "npm run release -- major --preRelease=rc  # for 1.0.0-rc.0"
-    ci_workflow: ".github/workflows/release.yml"
+      patch: npm run release -- patch
+      minor: npm run release -- minor
+      major: npm run release -- major
+      prerelease_rc: 'npm run release -- major --preRelease=rc  # for 1.0.0-rc.0'
+    ci_workflow: .github/workflows/release.yml
     prerequisites:
-      - "All tests passing"
-      - "On main branch"
-      - "Clean working directory"
+    - All tests passing
+    - On main branch
+    - Clean working directory
     what_happens:
-      - "Tests run inside the single `release` job"
-      - "4 multi-arch containers built and pushed to GHCR under :build-<sha>-<run>"
-      - "sha256: digests captured as ARGUS_DIGEST_* env vars"
-      - "release-it bumps version.yaml, package.json, argus/__init__.py, argus/containers.py"
-      - "after:bump hook (scripts/release_it/inject_image_digests.py) pins <version>@sha256:<digest>"
-      - "release-it generates CHANGELOG, commits chore(release): X.Y.Z, tags, pushes"
-      - "Container images re-tagged to :<VERSION> + :latest via docker buildx imagetools (no rebuild)"
-      - "Images cosign-signed by digest (Sigstore keyless, OIDC)"
-      - "Wheel built from the bumped tree and published to PyPI via OIDC trusted publishing"
-      - "Build-id (:build-<sha>) tags age out nightly via .github/workflows/ghcr-prune.yml"
-
+    - Tests run inside the single `release` job
+    - 4 multi-arch containers built and pushed to GHCR under :build-<sha>-<run>
+    - 'sha256: digests captured as ARGUS_DIGEST_* env vars'
+    - release-it bumps version.yaml, package.json, argus/__init__.py, argus/containers.py
+    - after:bump hook (scripts/release_it/inject_image_digests.py) pins <version>@sha256:<digest>
+    - 'release-it generates CHANGELOG, commits chore(release): X.Y.Z, tags, pushes'
+    - Container images re-tagged to :<VERSION> + :latest via docker buildx imagetools (no rebuild)
+    - Images cosign-signed by digest (Sigstore keyless, OIDC)
+    - Wheel built from the bumped tree and published to PyPI via OIDC trusted publishing
+    - Build-id (:build-<sha>) tags age out nightly via .github/workflows/ghcr-prune.yml
   run_single_action_test:
-    description: "Test a specific action locally"
-    command: "pytest .github/actions/scanner-{name}/tests/"
-
+    description: Test a specific action locally
+    command: pytest .github/actions/scanner-{name}/tests/
   validate_schemas:
-    description: "Validate config files against JSON schemas"
-    command: "npm run test:unit"
-
-# ==============================================================================
-# TESTING - Test execution patterns
-# ==============================================================================
-
+    description: Validate config files against JSON schemas
+    command: npm run test:unit
 testing:
-
   unit_tests:
-    command: "pytest"
-    coverage_requirement: "80%"
-    what_it_tests: "Parser and summary script behavior, JSON schema validation"
-
+    command: pytest
+    coverage_requirement: 80%
+    what_it_tests: Parser and summary script behavior, JSON schema validation
   integration_tests:
-    location: ".github/workflows/test-actions.yml"
-    trigger: "Push to PR branch"
-    what_it_tests: "Full action execution in GitHub Actions environment"
-
+    location: .github/workflows/test-actions.yml
+    trigger: Push to PR branch
+    what_it_tests: Full action execution in GitHub Actions environment
   local_scanner_test:
-    description: "Test a scanner locally via the SDK before pushing"
+    description: Test a scanner locally via the SDK before pushing
     steps:
-      - "Install Argus in editable mode: pip install -e ."
-      - "Install scanner tool locally OR ensure Docker is available (SDK falls back to container backend)"
-      - "Run via SDK: argus scan {name} --path tests/fixtures/test-apps/<lang>-app --severity-threshold none --format json"
-      - "Inspect argus-results.json for the expected Finding shape"
-    example: |
-      argus scan bandit --path tests/fixtures/test-apps/python-app --severity-threshold none --format json
-      # then jq '.results[] | select(.scanner=="bandit") | .findings[0]' argus-results.json
+    - 'Install Argus in editable mode: pip install -e .'
+    - Install scanner tool locally OR ensure Docker is available (SDK falls back to container backend)
+    - 'Run via SDK: argus scan {name} --path tests/fixtures/test-apps/<lang>-app --severity-threshold
+      none --format json'
+    - Inspect argus-results.json for the expected Finding shape
+    example: 'argus scan bandit --path tests/fixtures/test-apps/python-app --severity-threshold none --format
+      json
 
-# ==============================================================================
-# QUICK REFERENCE - Most common commands
-# ==============================================================================
+      # then jq ''.results[] | select(.scanner=="bandit") | .findings[0]'' argus-results.json
 
+      '
 quick_reference:
-  test_all: "pytest"
-  test_fast: "pytest --no-cov -q"
-  test_with_coverage: "pytest --cov"
-  scan_verbose: "argus scan --verbose --severity-threshold none"
-  scan_no_spinner: "argus scan --no-spinner --severity-threshold none"
-  scan_no_cache: "argus scan --no-cache --severity-threshold none"
-  cache_info: "argus cache info"
-  cache_clean: "argus cache clean"
-  lint: "npm run lint"
-  release: "npm run release"
-  format: "npm run format"
-  build_custom_images: "docker build -f docker/Dockerfile.bandit -t ghcr.io/huntridge-labs/argus/scanner-bandit:1.0.0 . && docker build -f docker/Dockerfile.opengrep -t ghcr.io/huntridge-labs/argus/scanner-opengrep:1.0.0 . && docker build -f docker/Dockerfile.supply-chain -t ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.0.0 . && docker build -f docker/Dockerfile.cli -t ghcr.io/huntridge-labs/argus/cli:1.0.0 ."
-  docsite_validate: "cd scripts && python -m docsite --validate"
-  docsite_build: "cd scripts && python -m docsite --output-dir /tmp/argus-docs"
-  docsite_preview: "cd scripts && python -m docsite --output-dir /tmp/argus-docs && cd /tmp/argus-docs && mkdocs serve"
-  # Architecture map (interactive SDK diagram — ADR-026).
-  # Regenerated from .ai/architecture.yaml + runtime SDK introspection;
-  # never hand-edit a JSON mirror. The page lives inside the docs site
-  # at /argus/architecture/ (MkDocs Material wraps the inline markup);
-  # ``argus view browser`` no longer ships the route.
-  architecture_regen: "python -m scripts.docsite  # writes site-build/docs/architecture.md + site-build/docs/assets/architecture.{css,js}"
-  architecture_view_local: "python -m scripts.docsite && cd site-build && mkdocs serve  # then open http://127.0.0.1:8000/argus/architecture/"
-  architecture_check: "python -m scripts.ci.check_architecture_sync  # registry / entry-points / CLI must match the YAML"
+  test_all: pytest
+  test_fast: pytest --no-cov -q
+  test_with_coverage: pytest --cov
+  scan_verbose: argus scan --verbose --severity-threshold none
+  scan_no_spinner: argus scan --no-spinner --severity-threshold none
+  scan_no_cache: argus scan --no-cache --severity-threshold none
+  cache_info: argus cache info
+  cache_clean: argus cache clean
+  lint: npm run lint
+  release: npm run release
+  format: npm run format
+  build_custom_images: docker build -f docker/Dockerfile.bandit -t ghcr.io/huntridge-labs/argus/scanner-bandit:1.0.0
+    . && docker build -f docker/Dockerfile.opengrep -t ghcr.io/huntridge-labs/argus/scanner-opengrep:1.0.0
+    . && docker build -f docker/Dockerfile.supply-chain -t ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.0.0
+    . && docker build -f docker/Dockerfile.cli -t ghcr.io/huntridge-labs/argus/cli:1.0.0 .
+  docsite_validate: cd scripts && python -m docsite --validate
+  docsite_build: cd scripts && python -m docsite --output-dir /tmp/argus-docs
+  docsite_preview: cd scripts && python -m docsite --output-dir /tmp/argus-docs && cd /tmp/argus-docs
+    && mkdocs serve
+  architecture_regen: 'python -m scripts.docsite  # writes site-build/docs/architecture.md + site-build/docs/assets/architecture.{css,js}'
+  architecture_view_local: 'python -m scripts.docsite && cd site-build && mkdocs serve  # then open http://127.0.0.1:8000/argus/architecture/'
+  architecture_check: 'python -m scripts.ci.check_architecture_sync  # registry / entry-points / CLI must
+    match the YAML'
