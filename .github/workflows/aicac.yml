@@ -36,16 +36,9 @@ jobs:
           fi
 
       - name: Run AICaC Action
-        uses: eFAILution/AICaC/.github/actions/aicac-adoption@f4aa30fbce55a1c6c120375ef5b029730a490141 # 0.6.0
+        uses: eFAILution/AICaC/.github/actions/aicac-adoption@a76d235ee2b26b0faa7c66124128acc837eb7c1d # 0.3.0
         with:
           mode: ${{ steps.check-aicac.outputs.mode }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           update-badge: 'true'
           suggest-toon: 'false'
-          # v0.6.0 added auto-migrate + regenerate-index, which create local
-          # (unsigned) commits and push them (aicac/migrate-v2 branch / index
-          # sync). This repo's ruleset requires verified signatures, so those
-          # pushes are rejected (GH013) and the action fails on main. Disable
-          # both; the v2 migration is still surfaced as an issue, not a push.
-          auto-migrate: 'false'
-          regenerate-index: 'false'
