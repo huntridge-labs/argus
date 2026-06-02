@@ -1,11 +1,12 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Renovate configuration for dependencies Dependabot can't track. Dependabot handles GitHub Actions SHAs, npm, pip, and Dockerfile FROM. Renovate handles image tags pinned in Python source plus tool versions in shell scripts and Dockerfiles. SUPPLY CHAIN POLICY: all updates wait 7 days after release (see Trivy supply chain attack GHSA-69fq-xp46-6x23, March 2026) so a compromised release has time to be caught before we propose it.",
+  "description": "Renovate configuration. Dependabot handles npm, pip, and Dockerfile FROM. Renovate handles GitHub Actions (workflows + composite actions), image tags pinned in Python source, and tool versions in Dockerfiles / composite actions. GitHub Actions moved here from Dependabot (see #196): Dependabot's per-directory updater timed out scanning the composite-action directories and, with a cooldown set, skipped frequently-released actions (dependabot-core #11645 / #13691); Renovate scans actions repo-wide in one pass. SUPPLY CHAIN POLICY: all updates wait 7 days after release (see Trivy supply chain attack GHSA-69fq-xp46-6x23, March 2026) so a compromised release has time to be caught before we propose it.",
   "extends": [
     "config:recommended"
   ],
   "enabledManagers": [
-    "custom.regex"
+    "custom.regex",
+    "github-actions"
   ],
   "dependencyDashboard": true,
   "labels": [
@@ -210,6 +211,43 @@
       ],
       "groupName": "tool-versions",
       "automerge": false
+    },
+    {
+      "description": "GitHub Actions: keep SHA-pinned (@sha + # vX comment), group minor/patch/digest bumps. Replaces the Dependabot github-actions ecosystem, which timed out scanning the composite-action directories (dependabot-core #11645) and skipped frequently-released actions under cooldown (dependabot-core #13691).",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest",
+        "pin"
+      ],
+      "groupName": "github-actions-minor-patch",
+      "pinDigests": true,
+      "automerge": false
+    },
+    {
+      "description": "GitHub Actions major bumps reviewed on their own PR",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "groupName": "github-actions-major",
+      "pinDigests": true,
+      "automerge": false
+    },
+    {
+      "description": "Never bump our own composite actions (comment-pr, setup-argus); release-it version-bumps those on tag.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchDepNames": [
+        "/^huntridge-labs\\/argus(\\/|$)/"
+      ],
+      "enabled": false
     }
   ]
 }
