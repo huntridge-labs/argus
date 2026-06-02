@@ -92,7 +92,7 @@ runs:
       if: steps.validate.outputs.has_iac == 'true'
       uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
       with:
-        python-version: '3.12'
+        python-version: '3.14'
 
     - name: Install Argus SDK
       if: steps.validate.outputs.has_iac == 'true'
@@ -168,7 +168,7 @@ runs:
 
     - name: Upload Trivy IaC artifacts
       if: steps.validate.outputs.has_iac == 'true' && always()
-      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       with:
         name: trivy-iac-scan-results
         path: trivy-iac-reports/
@@ -176,7 +176,7 @@ runs:
 
     - name: Upload Trivy SARIF results to GitHub Security
       if: inputs.enable_code_security == 'true' && steps.validate.outputs.has_iac == 'true' && always() && github.actor != 'nektos/act' && hashFiles('trivy-iac-reports/argus-results.sarif') != ''
-      uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
+      uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4
       with:
         sarif_file: trivy-iac-reports/argus-results.sarif
         category: trivy-iac
@@ -184,7 +184,7 @@ runs:
 
     - name: Upload scanner summary section
       if: always()
-      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       with:
         name: scanner-summary-trivy-iac
         path: scanner-summaries/trivy-iac.md

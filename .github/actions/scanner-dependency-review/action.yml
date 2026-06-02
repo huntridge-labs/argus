@@ -194,7 +194,7 @@ runs:
 
     - name: Upload reports
       if: always()
-      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       with:
         name: dependency-review-reports-${{ inputs.job_id }}
         path: dependency-review-reports/
@@ -251,7 +251,7 @@ runs:
 
     - name: Upload scanner summary
       if: always()
-      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       with:
         name: scanner-summary-dependency-review-${{ inputs.job_id }}
         path: scanner-summaries/dependency-review.md

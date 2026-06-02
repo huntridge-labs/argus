@@ -117,7 +117,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
-          python-version: '3.13'
+          python-version: '3.14'
 
       - name: Install Argus
         uses: huntridge-labs/argus/.github/actions/setup-argus@1.2.1
@@ -159,7 +159,7 @@ jobs:
 
       - name: Upload artifacts
         if: always()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: zap-reports-${{ matrix.name }}
           path: ./argus-results/
