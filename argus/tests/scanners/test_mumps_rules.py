@@ -226,6 +226,20 @@ class TestM102UnreachableAfterQuit:
         # the rule should produce no findings on this fixture.
         assert _findings_with_id(result, "M102") == []
 
+    def test_cross_line_and_conditional_quits_do_not_fire(self, m_fixtures_dir):
+        # The NOTDEAD label has a cross-line quit and an IF-guarded quit;
+        # both are reachable in practice (only same-line dead code fires),
+        # so none of the M102 findings should land on a "reachable" command.
+        result = _scan(m_fixtures_dir / "m102_unreachable.m")
+        unreachable = {
+            f.metadata.get("unreachable_command")
+            for f in _findings_with_id(result, "M102")
+        }
+        # The NOTDEAD-label commands are tagged "reachable:"; the genuine
+        # same-line dead code is tagged "(unreachable)". A regression would
+        # surface a "reachable:" command in the findings.
+        assert not any("reachable:" in (cmd or "") for cmd in unreachable)
+
 
 class TestM006ExternalCallInjection:
     def test_fires_on_tainted_external_call(self, m_fixtures_dir):

@@ -35,6 +35,27 @@ def _is_unconditional_break(parsed: ParsedSource, command_node) -> bool:
     return bool(_UNCONDITIONAL_BREAK_RE.match(text))
 
 
+_FOR_RE = re.compile(r"^\s*F(?:OR)?(?:\s|$)", re.IGNORECASE)
+
+
+def _for_governs_line(parsed: ParsedSource, command_children, brk) -> bool:
+    """True when a FOR command appears earlier on the break's physical line.
+
+    Inside a FOR, the rest of the line is the loop body; an argumentless
+    QUIT ends the *loop*, not the routine/block, so commands after it on the
+    same line still run in earlier iterations — not dead code.
+    """
+    row, col = brk.start_point
+    for c in command_children:
+        if (
+            c.start_point[0] == row
+            and c.start_point[1] < col
+            and _FOR_RE.match(parsed.node_text(c))
+        ):
+            return True
+    return False
+
+
 class UnreachableAfterQuitRule(Rule):
     id = "M102"
     severity = Severity.INFO
@@ -54,6 +75,16 @@ class UnreachableAfterQuitRule(Rule):
                 if not _is_unconditional_break(parsed, cmd):
                     continue
                 next_cmd = command_children[i + 1]
+                # Only flag dead code on the SAME physical line as the break.
+                # Across lines the grammar's flat command grouping cannot
+                # distinguish a reachable next statement / label / dot-block
+                # from true dead code, and the QUIT may be conditional
+                # (guarded by an IF earlier on its line) or a misparse — both
+                # reachable. Same-line is the unambiguous dead-code case.
+                if next_cmd.start_point[0] != cmd.start_point[0]:
+                    continue
+                if _for_governs_line(parsed, command_children, cmd):
+                    continue
                 break_text = parsed.node_text(cmd).strip()
                 next_text = parsed.node_text(next_cmd).strip()
                 yield self.make_finding(
