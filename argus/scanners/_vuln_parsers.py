@@ -19,6 +19,9 @@ def parse_trivy_vuln(vuln: dict, *, scanner_name: str = "trivy") -> Finding:
     pkg = vuln.get("PkgName", "")
     installed = vuln.get("InstalledVersion", "")
     fixed = vuln.get("FixedVersion", "")
+    # Package URL — Trivy 0.40+ carries it under PkgIdentifier.PURL. It is the
+    # canonical product key for VEX / SBOM correlation, so propagate it.
+    purl = (vuln.get("PkgIdentifier") or {}).get("PURL", "")
 
     cwe = None
     cwe_ids = vuln.get("CweIDs") or []
@@ -39,6 +42,7 @@ def parse_trivy_vuln(vuln: dict, *, scanner_name: str = "trivy") -> Finding:
             "package": pkg,
             "installed_version": installed,
             "fixed_version": fixed,
+            "purl": purl,
         },
     )
 
@@ -53,6 +57,8 @@ def parse_grype_match(match: dict, *, scanner_name: str = "grype") -> Finding:
 
     fix_versions = vuln.get("fix", {}).get("versions", [])
     fixed = ", ".join(fix_versions) if fix_versions else ""
+    # Grype reports the package URL directly on the artifact.
+    purl = artifact.get("purl", "")
 
     return Finding(
         id=vuln_id,
@@ -67,5 +73,6 @@ def parse_grype_match(match: dict, *, scanner_name: str = "grype") -> Finding:
             "package": pkg_name,
             "installed_version": pkg_version,
             "fixed_version": fixed,
+            "purl": purl,
         },
     )
