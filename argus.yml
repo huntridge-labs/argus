@@ -82,6 +82,9 @@ containers:
     - dockerfile: docker/Dockerfile.cli
       context: .
       name: cli
+    - dockerfile: docker/Dockerfile.mumps
+      context: .
+      name: scanner-mumps
   scanners: [trivy, grype, syft]
 
 reporting:

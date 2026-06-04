@@ -67,4 +67,5 @@ jobs:
             argus/scanner-bandit \
             argus/scanner-opengrep \
             argus/scanner-supply-chain \
-            argus/cli
+            argus/cli \
+            argus/scanner-mumps

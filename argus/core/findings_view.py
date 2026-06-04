@@ -151,27 +151,60 @@ class ViewState:
 # templates itself. No markup, no HTML.
 # ---------------------------------------------------------------------------
 
+# SAST / code-scanner metadata keys surfaced in the detail pane, in display
+# order. These carry the actionable detail for a code finding (which variable
+# is tainted, which sink, which command) — without them a MUMPS / bandit /
+# opengrep finding renders as a row of empty dependency fields.
+_CODE_DETAIL_KEYS: tuple[tuple[str, str], ...] = (
+    ("variable", "Variable"),
+    ("command", "Command"),
+    ("function", "Function"),
+    ("device_class", "Device"),
+    ("global", "Global"),
+    ("reference", "Reference"),
+    ("label", "Label"),
+    ("operand", "Operand"),
+    ("argument", "Argument"),
+)
+
+
 def finding_detail_rows(f: Finding) -> list[tuple[str, str]]:
     """Return a ``[(label, value), ...]`` list for the detail pane.
 
-    A stable, front-end-agnostic shape. The TUI renders each row as Textual
-    markup; a future web view would render them as ``<dl>`` / table rows.
-    Values are pre-formatted strings (package@version, etc.) so front-ends
-    don't replicate the formatting rules here.
+    A stable, front-end-agnostic shape that ADAPTS to the finding's scanner:
+    core identity rows (Scanner / CVE / CWE / Location) are always present;
+    dependency-scanner rows (Package / Fix / SBOM) appear only when a package
+    is attached; and code-scanner (SAST / taint) rows surface the actionable
+    detail so a MUMPS / bandit / opengrep finding doesn't render as empty
+    dependency fields. The TUI renders each row as Textual markup and the web
+    view as table rows; values are pre-formatted so front-ends don't replicate
+    the formatting here.
     """
-    pkg = f.metadata.get("package") or "—"
-    installed = f.metadata.get("installed_version") or "—"
-    fixed = f.metadata.get("fixed_version") or "—"
-    sbom_source = f.metadata.get("sbom_source") or "—"
-    return [
+    rows: list[tuple[str, str]] = [
         ("Scanner",  f.scanner or "—"),
         ("CVE",      f.cve or "—"),
         ("CWE",      f.cwe or "—"),
-        ("Package",  f"{pkg} @ {installed}"),
-        ("Fix",      fixed),
         ("Location", f.location or "—"),
-        ("SBOM",     sbom_source),
     ]
+    pkg = f.metadata.get("package")
+    if pkg:
+        installed = f.metadata.get("installed_version") or "—"
+        rows.append(("Package", f"{pkg} @ {installed}"))
+        rows.append(("Fix", f.metadata.get("fixed_version") or "—"))
+        sbom_source = f.metadata.get("sbom_source")
+        if sbom_source:
+            rows.append(("SBOM", sbom_source))
+    taint = f.metadata.get("taint_sources")
+    if taint:
+        rows.append((
+            "Taint sources",
+            ", ".join(taint) if isinstance(taint, (list, tuple)) else str(taint),
+        ))
+    for key, label in _CODE_DETAIL_KEYS:
+        value = f.metadata.get(key)
+        if value:
+            rows.append((label, str(value).strip()[:160]))
+    return rows
 
 
 # ---------------------------------------------------------------------------
