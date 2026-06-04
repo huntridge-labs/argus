@@ -343,7 +343,7 @@ class TestBuiltinFallback:
         # All eight built-ins recovered via _BUILTIN_FALLBACKS.
         assert names == {
             "terminal", "markdown", "container_markdown", "sarif",
-            "json", "github", "gitlab", "junit",
+            "json", "github", "gitlab", "junit", "openvex",
         }
 
     def test_builtin_fallbacks_match_builtin_names(self):

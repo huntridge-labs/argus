@@ -124,6 +124,7 @@ json = "argus.reporters.json_report:JsonReporter"
 github = "argus.reporters.github:GitHubReporter"
 gitlab = "argus.reporters.gitlab:GitLabReporter"
 junit = "argus.reporters.junit:JUnitReporter"
+openvex = "argus.reporters.openvex:OpenVexReporter"
 
 [project.urls]
 Homepage = "https://argus.huntridgelabs.com"
