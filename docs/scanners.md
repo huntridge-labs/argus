@@ -56,6 +56,7 @@ See [examples/github-enterprise/](../examples/github-enterprise/) for GHES templ
   - [Bandit](#bandit)
   - [gosec](#gosec)
   - [OpenGrep (Semgrep)](#opengrep-semgrep)
+  - [MUMPS / M language](#mumps--m-language-mumps)
 - [Container Scanners](#container-scanners)
   - [Trivy Container](#trivy-container)
   - [Grype](#grype)
@@ -241,6 +242,151 @@ with:
   enable_code_security: true
   fail_on_severity: medium
 ```
+
+</details>
+
+### MUMPS / M language (`mumps`)
+
+OSS SAST for the MUMPS / M language (VistA, YottaDB, GT.M, FileMan). Phase 1+ ships 28 rules (7 security M001-M007, 21 diagnostics M101-M102 and M201-M219) backed by [`janus-llm/tree-sitter-mumps`](https://github.com/janus-llm/tree-sitter-mumps) (Apache-2.0, MITRE Public Release 23-4084) pinned at `345f3fb2`. Target audience is federal / healthcare orgs whose procurement posture rules out closed-source MUMPS SAST.
+
+**Supported languages:** `mumps`
+
+**File extensions:** `.m` (Caché `.mac` / `.int` arrive in Phase 2 alongside ObjectScript dialect support)
+
+**Severity levels:** INFO, LOW, MEDIUM, HIGH, CRITICAL
+
+| Rule | Title | Severity | CWE |
+|------|-------|----------|-----|
+| `M001` | XECUTE of tainted expression | HIGH | CWE-95 |
+| `M002` | Expression indirection (`@(...)`) of a tainted value | HIGH | CWE-94 |
+| `M003` | OPEN / USE of tainted device (PIPE=CRITICAL, socket=HIGH, file/generic=MEDIUM) | CRITICAL–MEDIUM | CWE-78 |
+| `M004` | Hard-coded credential in MUMPS global | CRITICAL | CWE-798 |
+| `M005` | DO of READ-tainted indirection (dynamic routine dispatch) | CRITICAL | CWE-95 |
+| `M006` | Tainted argument to external (`$&` / `$ZF`) call (exec helper=CRITICAL) | CRITICAL/HIGH | CWE-78 |
+| `M007` | Tainted source loaded/compiled as code (ZLINK / ZINSERT / ZCOMPILE) | HIGH | CWE-95 |
+| `M101` | Duplicate label declared in routine | INFO | n/a |
+| `M102` | Unreachable code after unconditional QUIT / HALT | INFO | n/a |
+| `M201` | DO / GOTO to undeclared label | INFO | n/a |
+| `M202` | Routine name does not match filename | INFO | n/a |
+| `M203` | Local variable read before it was defined | INFO | n/a (off by default) |
+| `M204` | Local variable declared (NEW/READ) but never read | INFO | n/a |
+| `M205` | Label body falls through into the following label | INFO | n/a (off by default) |
+| `M206` | KILL of an entire global tree (no subscript) | INFO | n/a |
+| `M207` | Bare KILL command deletes every local variable | INFO | n/a |
+| `M208` | Bare NEW command stacks every local variable | INFO | n/a |
+| `M209` | Call passes more arguments than the entry declares | MEDIUM | n/a |
+| `M210` | Duplicate variable in a single NEW argument list | LOW | n/a |
+| `M211` | Scratch global (`^TMP`/`^UTILITY`) written without `$J` | INFO | CWE-362 |
+| `M212` | Argumentless FOR with no loop exit (infinite loop) | HIGH | CWE-835 |
+| `M213` | QUIT with an argument inside a FOR loop | MEDIUM | n/a |
+| `M214` | Naked global reference (`^(sub)`) | INFO | n/a (off by default) |
+| `M215` | Non-portable Z-command (`ZSYSTEM`/`ZGOTO`/…) | LOW | n/a |
+| `M216` | Non-portable `$Z` intrinsic function | INFO | n/a (off by default) |
+| `M217` | Non-portable `$Z` special variable | INFO | n/a (off by default) |
+| `M218` | Executable code on the routine label (first) line | LOW | n/a |
+| `M219` | Source line exceeds the SAC 245-char limit | LOW | n/a |
+
+The security rules above cover the MUMPS-specific code-injection sinks — XECUTE (M001), expression indirection (M002), OPEN/USE device arguments (M003), dynamic routine dispatch (M005), external `$&` / `$ZF` calls (M006), and source load/compile via ZLINK/ZINSERT (M007) — plus data-at-rest credential leaks (M004). Together they exceed the public mHawk taint-sink surface for intra-procedural detection. The diagnostic rules (M101–M102, M201–M219) cover structural, control-flow (infinite FOR, value-QUIT-in-FOR), def-use, call-arity, scratch-global concurrency, VistA SAC, and portability checks — 21 diagnostics toward mHawk's ~32. Rules marked *off by default* (M203, M205, M214, M216, M217) are opt-in via `rules.<id>.enabled: true` because they are idiomatic in legacy VistA (naked refs, fallthrough), portability-inventory only, or — for M203 (read-before-def) — too sensitive to the grammar's misparse of complex routines for an unattended default. (M002, M201, and M204 were previously off for being false-positive-dominant at scale; the precision work described below made them trustworthy enough to ship on.)
+
+**Default profile precision (validated at scale).** The default profile is tuned so a clean codebase stays quiet and a real one yields actionable signal rather than a wall of noise. It was validated against **six real MUMPS projects totalling 1,162 routines** — a utility library, a MUMPS web server, two YottaDB projects, and the VistA **Kernel** (signon, device handling, `$ZF` callouts, the XECUTE-driven menu system) and Programmer Environment — with every distinct finding class adjudicated against the real source. The default profile produces **234 findings across all 1,162 routines, down from 1,628 before precision tuning** (85 security findings — 34 CRITICAL, 18 HIGH), while the genuine security signal is preserved: real shell-injection sinks in the Kernel (`OPEN "lsof"/"kill"/"ps":(shell=…:command=<tainted>)`, `$ZF(-1,…)` with a tainted command) are caught by M003/M006, READ→XECUTE injection by M001, expression indirection by M002, and code-load injection by M007. Three rules previously off-by-default for being false-positive-dominant are now precise enough to ship on, each validated by a corpus re-run showing the false positives gone: **M002** is position-aware — it fires only on the `@(<expr>)` expression form in a value position (name/glvn indirection like `S @X=…` and `@X@(sub)`, and X/D/G dispatch owned by M001/M005, are suppressed; 52→0 FPs on the Kernel); **M201** uses a text-scanned column-0 label index plus call-graph cross-routine resolution (48→0); **M204** treats a NEW-scoped variable as live whenever the file makes any `^ROUTINE` call that could inherit it via implicit-`NEW` (832→6, all genuine dead declarations). Taint sanitization is **flow-sensitive**: a charset pattern-match guard (`I X?1A.7AN`) or numeric coercion (`S N=+X`) clears a value, but a charset guard cleans only sinks that follow it in the same label body — so a validation gap on a *different* entry path still fires (it surfaced a real cross-entry expression injection the earlier flow-insensitive version hid).
+
+**Known limitations on the on-by-default rules (refinements tracked).** A few rules that remain on are accurate enough to ship but still carry a residual false-positive fraction pending deeper work: **M003** does not yet distinguish socket/`|TCP|` and plain-file OPENs from shell `|PIPE|` command devices (only the latter is true command injection), **M005** still flags some by-design menu-driver dispatch beyond the `$TEXT`-table form already suppressed, **M202** suppresses `%`-routine platform-variant families but not every multi-platform naming convention, and **M211** treats only literal `$J` (not a job-id-bearing subscript such as `JOB`) as process-private. Tune per-finding severity or disable a specific rule via the config below if any is noisy on your codebase.
+
+**Known Phase-1 limitation (cross-file request dispatch).** Web-framework request routing where the handler is selected across files — `do @ROUTINE` driven by a URL map, or `X %WCALL` reached through `$$RPC^XWBPRS()` — needs inter-procedural array-flow that the one-hop `interprocedural.enabled` pass does not yet model, so those dispatch sinks are not flagged by default. The roadmap's multi-hop / return-value taint work closes this; until then, extend `taint_sources.patterns` with your framework's request global if you want the intra-file portion of those chains surfaced.
+
+<details>
+<summary><strong>Configuration & Examples</strong></summary>
+
+**SDK config (`argus.yml`):**
+
+```yaml
+scanners:
+  - mumps
+scan_path: ./routines
+fail_on_severity: high
+```
+
+Optional per-scanner keys:
+- `extensions` — file extensions to scan (defaults to `[".m"]`).
+- `taint_sources.patterns` — list of regex strings appended to the built-in taint-source set. Any assignment whose RHS matches one of these patterns taints its LHS. Use for site-specific intrinsics or HTTP globals beyond `READ` / `$ZARGV` / `^%CGI` / `^%REQUEST` / `^%session`.
+- `taint_sources.formals_untrusted` — **attack-surface audit mode** (default off). Seeds every entry-label formal parameter as an untrusted boundary input, so a sink fed by a parameter whose taint origin is in a *caller* (e.g. `DEL(FILE) … S RC=$ZF(-1,"rm "_FILE)`) still fires. Off by default because it widens the source surface to all API entry points and is far noisier (on the VistA Kernel it surfaces ~200 additional parameter-derived sinks vs. the precise default); turn it on for a deliberate boundary-input audit. This is the practical recall lever for the formal-argument / multi-hop sinks the default intra-file model does not chase.
+- `sanitizers` — list of function / intrinsic names that *remove* taint when applied. A variable assigned from an expression that calls one of these is treated as clean by every taint-aware rule. Pair with the existing source-patterns config to make the full taint flow tunable per codebase.
+- `rules.<id>.severity` — per-rule severity override. Replaces the rule's default baseline severity. Per-finding precision (M003's PIPE bump to CRITICAL) is preserved — only baseline severity is user-tunable. Accepts `critical` / `high` / `medium` / `low` / `info`.
+- `profile` — a rule preset selectable in config or via CLI: `security-only` (just the M00x security rules), `lint-only` (just the diagnostics), `strict` (every rule, including the off-by-default ones), or `default`. An explicit `rules.<id>.enabled` always overrides the profile.
+- `rules.<id>.enabled` — turn an individual rule on or off. Most rules are on by default; **M203, M205, M214, M216, and M217 ship off by default.** M203 (read-before-def) is the noisiest rule on real code — enable it for a deliberate implicit-declaration audit. M205 (label fallthrough) is off because top-to-bottom fallthrough between labels is the intended idiom in old-style linear VistA routines (it was ~69% false-positive on the VistA Kernel). M214/M216/M217 are portability-inventory checks, opt-in for migration audits. (M002, M201, and M204 are now on by default following the precision work above.)
+- **Inline suppression** — a `;argus:ignore` comment silences every finding on its line (and the line below it); `;argus:ignore[M002]` or `;argus:ignore[M002,M211]` silences only the listed rules. Suppressions are counted in `metadata.suppressed`, never dropped silently.
+- `known_external_vars` — list of variable names treated as externally defined / read (extends the built-in VistA / FileMan / Kernel allowlist used by M003 / M203 / M204).
+- `flag_generic_indirection` — when `true`, M002 also emits an INFO advisory for indirection of a *non-tainted* non-constant expression (default `false`). By default M002 fires HIGH only on indirection of a tainted variable; the generic stream is for audit / modernization sweeps and never counts toward a severity gate.
+- `scratch_globals` — list of shared scratch globals that must be `$J`-subscripted (M211); defaults to `["^TMP", "^UTILITY"]`.
+- `max_line_length` — SAC line-length limit for M219 (default 245).
+- `rules.M202.ignore_patterns` — regex list of routine-name families to exclude from the filename-mismatch check (M202).
+- `interprocedural.enabled` / `interprocedural.max_depth` — opt in to one-hop cross-routine taint propagation (default off; `max_depth` default 1). When on, a tainted actual argument passed to `LABEL^ROUTINE(...)` taints the callee's matching formal parameter, so the callee's sinks (XECUTE / OPEN-USE / dispatch / external call of that formal) fire. Yields on parameter-passing code; codebases using the classic shared-scratch-variable calling convention (much of legacy VistA) see little additional signal.
+
+```yaml
+scanners:
+  mumps:
+    taint_sources:
+      patterns:
+        - "\\$ZIO\\b"             # YottaDB pending input
+        - "\\^MyApp\\.input\\b"   # site-specific HTTP global
+    sanitizers:
+      - "$$ESCAPE^HTML"           # output-encoder
+      - "$$VALIDATE^INPUT"        # input-validator
+    rules:
+      M203:
+        enabled: true             # opt in to read-before-def audit (off by default)
+      M001:
+        severity: critical        # promote XECUTE in this codebase
+      M205:
+        enabled: true             # opt in (off by default)
+      M202:
+        enabled: false            # silence a rule entirely
+```
+
+**Installation paths:**
+
+The scanner needs a compiled `mumps.so` shared library. The `scanner-mumps` container image (built by `docker/Dockerfile.mumps`) bundles a prebuilt grammar at `/opt/argus/grammars/mumps.so`, so the container path needs no local toolchain. Three ways to run it:
+
+1. **Container, via the SDK (recommended).** With Docker available, the engine pulls and runs the image automatically - no grammar build:
+   ```bash
+   pip install 'argus-security[mumps]'
+   argus scan mumps --path ./routines
+   ```
+
+2. **Container, directly.** No Python or Argus install at all:
+   ```bash
+   docker run --rm -v "$PWD:/workspace:ro" \
+     ghcr.io/huntridge-labs/argus/scanner-mumps:mumps-preview \
+     scan mumps --path /workspace
+   ```
+
+3. **Local execution.** Run in-process; compile the grammar once (needs a C compiler + git):
+   ```bash
+   pip install 'argus-security[mumps]'
+   ./scripts/build-mumps-grammar.sh
+   # Drops mumps.so at ~/.cache/argus/grammars/
+   argus scan mumps --path ./routines   # backend: local, or no Docker present
+   ```
+
+The `ARGUS_MUMPS_GRAMMAR` environment variable overrides the grammar lookup path when a CI pipeline pins a custom build.
+
+> **Preview image:** `:mumps-preview` is a pre-merge build published from the `feat/scanner-m-mumps` branch (mutable tag, workstation-built - no cosign / SLSA attestations yet). On merge the release pipeline republishes it multi-arch with attestations under the versioned `scanner-mumps:<version>` tag, and `argus/containers.py` is repinned to that digest.
+
+**Example:**
+
+```yaml
+scanners:
+  - mumps
+scan_path: ./routines
+fail_on_severity: high
+reporters:
+  - terminal
+  - sarif
+```
+
+> **Secret redaction:** for the M004 (hard-coded credentials) rule, the matched literal value is replaced with the redaction placeholder before the finding is constructed. Defense-in-depth: `Finding.__post_init__` runs the pattern-based redactor as a second pass. The literal never reaches any reporter, export, or the MCP server. Integration test `test_literal_value_is_redacted` enforces this contract.
+
+> **Taint scope:** Phase 1 taint *detection* is intra-file. Recognized taint sources are `READ` (terminal input), `$ZARGV` (YottaDB / GT.M process arguments), and the HTTP context globals `^%CGI`, `^%REQUEST`, `^%session`. The collector is shared between M001 / M002 / M003 / M005 / M006 so every taint-sink rule sees the full source surface uniformly. The **inter-procedural call graph** is built on every multi-file scan (`argus/scanners/mumps/callgraph.py`); M001 findings carry an `inter_procedural_callers` metadata list naming the routines that reach the sink. **One-hop taint propagation** across that graph is available via `interprocedural.enabled` (opt-in): a tainted actual argument flows into the callee's formal parameter (recursion-safe monotone worklist, `max_depth`-capped). Deeper multi-hop propagation, return-value taint, and per-finding provenance remain on the roadmap.
 
 </details>
 

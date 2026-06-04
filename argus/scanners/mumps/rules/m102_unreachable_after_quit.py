@@ -1,0 +1,117 @@
+"""M102 — unreachable code after an unconditional QUIT / HALT (diagnostic).
+
+A ``Q`` (QUIT) or ``H`` (HALT) command without a postconditional ends
+the current scope immediately. Any sibling command that follows on the
+same block level is dead — it never executes. mHawk surfaces this as a
+diagnostic; we match the behaviour at INFO severity.
+
+Postconditionals (``Q:cond``, ``H:cond``) are *conditional* exits and
+do not make following code unreachable. An *argument-bearing* break is
+also not a same-line dead-code signal: ``Q X`` returns the value of X
+(and the grammar splits that argument — itself the command letter
+``X`` = XECUTE — into a phantom sibling command), and ``H .05`` is HANG
+(a timed pause), NOT HALT. Only an argumentless ``Q``/``QUIT``/``H``/
+``HALT`` followed by a genuine sibling command (two-space separation) is
+flagged.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Iterable
+
+from argus.core.models import Finding, Severity
+from ..parser import ParsedSource, walk
+from ..rule import Rule
+
+# Match an *argumentless* Q / QUIT / H / HALT — the command text must be
+# the bare keyword with no trailing argument. This rules out two things:
+# postconditionals (``Q:cond`` starts with ``Q:``), and argument-bearing
+# breaks that are NOT unconditional exits — ``Q X`` returns a value (the
+# grammar splits ``X`` off as a phantom sibling) and ``H .05`` is HANG, a
+# timed pause, not HALT. An argument-bearing break keeps its argument in
+# the command node (``H .05``) and so fails this anchored match.
+_UNCONDITIONAL_BREAK_RE = re.compile(
+    r"^\s*(?:Q(?:UIT)?|H(?:ALT)?)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _is_unconditional_break(parsed: ParsedSource, command_node) -> bool:
+    text = parsed.node_text(command_node)
+    return bool(_UNCONDITIONAL_BREAK_RE.match(text))
+
+
+_FOR_RE = re.compile(r"^\s*F(?:OR)?(?:\s|$)", re.IGNORECASE)
+
+
+def _for_governs_line(parsed: ParsedSource, command_children, brk) -> bool:
+    """True when a FOR command appears earlier on the break's physical line.
+
+    Inside a FOR, the rest of the line is the loop body; an argumentless
+    QUIT ends the *loop*, not the routine/block, so commands after it on the
+    same line still run in earlier iterations — not dead code.
+    """
+    row, col = brk.start_point
+    for c in command_children:
+        if (
+            c.start_point[0] == row
+            and c.start_point[1] < col
+            and _FOR_RE.match(parsed.node_text(c))
+        ):
+            return True
+    return False
+
+
+class UnreachableAfterQuitRule(Rule):
+    id = "M102"
+    severity = Severity.INFO
+    title = "Unreachable code after unconditional QUIT / HALT"
+    cwe = None  # diagnostic, not a CWE
+
+    def analyze(self, parsed: ParsedSource, config: dict | None = None) -> Iterable[Finding]:
+        for parent in walk(parsed.tree.root_node):
+            # Look for command siblings: consecutive ``command`` children
+            # under the same parent. After the first unconditional break
+            # we flag the next command sibling (one finding per break,
+            # not one per following command, to keep noise down).
+            command_children = [c for c in parent.children if c.type == "command"]
+            if len(command_children) < 2:
+                continue
+            for i, cmd in enumerate(command_children[:-1]):
+                if not _is_unconditional_break(parsed, cmd):
+                    continue
+                next_cmd = command_children[i + 1]
+                # Only flag dead code on the SAME physical line as the break.
+                # Across lines the grammar's flat command grouping cannot
+                # distinguish a reachable next statement / label / dot-block
+                # from true dead code, and the QUIT may be conditional
+                # (guarded by an IF earlier on its line) or a misparse — both
+                # reachable. Same-line is the unambiguous dead-code case.
+                if next_cmd.start_point[0] != cmd.start_point[0]:
+                    continue
+                if _for_governs_line(parsed, command_children, cmd):
+                    continue
+                # A single space after the break introduces its ARGUMENT,
+                # not a new command. ``Q X`` (return value X) / ``Q expr``
+                # have the argument split into a phantom sibling by the
+                # grammar; two-or-more spaces separate genuine sibling
+                # commands. Only the latter is dead code.
+                if parsed.source_bytes[cmd.end_byte:next_cmd.start_byte] == b" ":
+                    continue
+                break_text = parsed.node_text(cmd).strip()
+                next_text = parsed.node_text(next_cmd).strip()
+                yield self.make_finding(
+                    parsed,
+                    next_cmd,
+                    description=(
+                        f"Command '{next_text[:80]}' follows an unconditional "
+                        f"'{break_text}' in the same block; control never "
+                        "reaches it. Move the command before the break, or "
+                        "remove it."
+                    ),
+                    metadata={
+                        "break_command": break_text,
+                        "unreachable_command": next_text[:200],
+                    },
+                )

@@ -685,7 +685,12 @@ class ArgusEngine:
         same arguments. Argus works with any of them.
         """
         if self._container_runtime is not None:
-            return self._container_runtime
+            # Negative results are cached as "" (see end of method). Return
+            # None for that sentinel so callers using ``_detect_runtime() is
+            # not None`` (e.g. _is_docker_available) stay correct across the
+            # 2nd+ call — otherwise "" is not None evaluates True and the
+            # engine wrongly believes a runtime exists on a dockerless host.
+            return self._container_runtime or None
 
         # Explicit override
         override = os.environ.get("ARGUS_CONTAINER_RUNTIME")
@@ -1512,9 +1517,9 @@ class ArgusEngine:
                         f"and backend is 'docker'."
                     )
                 raise RuntimeError(
-                    f"Docker not available. "
-                    f"No container runtime available. "
-                    f"Install Docker, Podman, or nerdctl."
+                    "Docker not available. "
+                    "No container runtime available. "
+                    "Install Docker, Podman, or nerdctl."
                 )
 
             # auto fallback: use local tool

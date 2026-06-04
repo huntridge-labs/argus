@@ -362,6 +362,34 @@ class TestDockerExecutionBackend:
         assert len(summary.results) == 1
         assert summary.results[0].metadata.get("execution_failed") is True
 
+    def test_is_docker_available_stable_when_no_runtime(self, monkeypatch):
+        """Regression: ``_detect_runtime`` cached a negative result as ""
+        but the cache guard checked ``is not None`` - so the 2nd+ call to
+        ``_is_docker_available`` returned True on a dockerless host (since
+        ``"" is not None``), making the engine try ``docker`` and crash
+        with FileNotFoundError. This surfaced inside the scanner-mumps
+        image, which runs argus with no container runtime present and so
+        called the helper twice (prewarm, then per-scanner).
+        """
+        import shutil as _shutil
+
+        engine = self._make_engine(backend="auto")
+        real_which = _shutil.which
+        monkeypatch.setattr(
+            _shutil,
+            "which",
+            lambda cmd, *a, **k: (
+                None
+                if cmd in ("docker", "podman", "nerdctl")
+                else real_which(cmd, *a, **k)
+            ),
+        )
+        # Must stay False across repeated calls — the bug flipped the 2nd
+        # call to True off the cached "" sentinel.
+        assert engine._is_docker_available() is False
+        assert engine._is_docker_available() is False
+        assert engine._detect_runtime() is None
+
     def test_auto_backend_defers_to_scan_when_no_build_args(self, monkeypatch):
         """Scanners with a custom ``scan()`` flow but no ``build_args``/
         ``container_args`` (e.g. linters that walk the workspace and

@@ -98,20 +98,35 @@ class TestFindingDetailRows:
         )
         rows = finding_detail_rows(f)
         labels = [label for label, _ in rows]
-        # Order matters — the TUI renders rows in this sequence and a
-        # future web view must match so users get the same hierarchy.
-        assert labels == ["Scanner", "CVE", "CWE", "Package", "Fix", "Location", "SBOM"]
+        # Order matters — the TUI renders rows in this sequence and the web
+        # view must match. Core identity first, then the dependency context.
+        assert labels == ["Scanner", "CVE", "CWE", "Location", "Package", "Fix", "SBOM"]
 
-    def test_missing_fields_become_em_dashes(self):
-        f = _f()  # minimal finding
-        rows = dict(finding_detail_rows(f))
+    def test_minimal_finding_shows_only_core_rows(self):
+        # A finding with no package and no code metadata gets just the core
+        # identity rows — no empty Package / Fix / SBOM dependency fields.
+        rows = dict(finding_detail_rows(_f()))
         assert rows["CVE"] == "—"
-        assert rows["Fix"] == "—"
-        assert rows["SBOM"] == "—"
+        assert "Package" not in rows
+        assert "Fix" not in rows
+        assert "SBOM" not in rows
 
     def test_package_row_joins_name_and_version(self):
         rows = dict(finding_detail_rows(_f(pkg="lodash", installed="4.17.20")))
         assert rows["Package"] == "lodash @ 4.17.20"
+
+    def test_code_finding_surfaces_taint_and_sink_metadata(self):
+        # A SAST / taint finding must show the actionable detail (which
+        # variable is tainted, which sink) instead of empty dependency rows.
+        f = _f(scanner="mumps", location="x.m:5:2")
+        f.metadata.update({
+            "taint_sources": ["SAVEPATH"], "command": "OPEN", "device_class": "FILE",
+        })
+        rows = dict(finding_detail_rows(f))
+        assert rows["Taint sources"] == "SAVEPATH"
+        assert rows["Command"] == "OPEN"
+        assert rows["Device"] == "FILE"
+        assert "Package" not in rows  # no empty dependency fields
 
 
 class TestSortLabelsCoverage:

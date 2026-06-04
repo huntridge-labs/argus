@@ -86,6 +86,28 @@ error_patterns:
         - kotlin
       recommendation: "Use bandit (Python) or opengrep (multi-language) instead"
 
+  - pattern: "MUMPS finding counts differ between hosts / golden guard fails only in CI"
+    category: scanner
+    context: "argus/tests/scanners/test_mumps_rules.py golden guard passes locally but fails on the GitHub runner with different M005/M007 counts"
+
+    root_cause: |
+      The MUMPS scanner's per-file analysis cached its per-file line maps
+      (filter_charset_guarded's _charset_guard_lines / _label_lines) on the
+      shared per-scan rule_config dict without a per-file key. The first file
+      to hit a taint sink populated the cache, and every later file reused
+      that first file's guard/label lines — so guard-suppressed sinks were
+      wrongly kept (or dropped) depending on the order rglob() returned files,
+      which varies by filesystem/host. Findings became order-dependent.
+
+    solution:
+      steps:
+        - "Key any per-file cache on parsed.path (or recompute per file); never cache file-scoped state unkeyed on the per-scan config"
+        - "Sort file iteration (sorted(target.rglob('*'))) for stable output order"
+        - "Add an order-independence guard: scan forward vs reversed, assert identical finding set"
+      verification: "test_findings_independent_of_scan_order in test_mumps_rules.py"
+
+    reference: "argus/scanners/mumps/taint.py (filter_charset_guarded)"
+
   # ==============================================================================
   # SARIF ERRORS
   # ==============================================================================

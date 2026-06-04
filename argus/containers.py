@@ -73,6 +73,16 @@ CUSTOM_IMAGES = {
     "semgrep": "ghcr.io/huntridge-labs/argus/scanner-opengrep:1.3.1@sha256:3c9a29174ed8f8656d9e8f6a69840ba23a8ee196fd11662617dd2501b124a7fc",
     "supply-chain": "ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.3.1@sha256:9725ff4b8a64b970d8a798fe13a9eb7b1f5c126abdabfcec40ddb15ab1795372",
     "cli": "ghcr.io/huntridge-labs/argus/cli:1.3.1@sha256:04e1acc4de43d357c8156682cc1d9931483094234db9fb6bbdb2a5e3316739b7",
+    # PRE-MERGE PREVIEW. The MUMPS scanner image is published from the
+    # feat/scanner-m-mumps branch under the mutable ``mumps-preview`` tag
+    # so testers can run ``argus scan mumps`` with zero local toolchain
+    # ahead of the merge. Unlike the other entries this is a workstation
+    # build (no cosign / SLSA attestations yet); on merge the release
+    # pipeline rebuilds it multi-arch with attestations and release-it
+    # rewrites this line to the versioned ``scanner-mumps:<version>`` tag
+    # + release digest. The digest pin below is still the content-hash
+    # gate the manifest check verifies.
+    "mumps": "ghcr.io/huntridge-labs/argus/scanner-mumps:mumps-preview@sha256:2aecb34ae3db117cd940d69cf6f32fc638673c00c294ca3d4d9c167955e7557b",
 }
 
 
