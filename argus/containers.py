@@ -41,9 +41,10 @@ OFFICIAL_IMAGES = {
     "osv-scanner": "ghcr.io/google/osv-scanner:v2.3.6@sha256:2e07e642463100474fc5e214b66e6beccbd6bfa63dd3fbf047b3f755e78a6cfe",
     "zap": "ghcr.io/zaproxy/zaproxy:2.17.0@sha256:2ec1d5d5b44d55cfd02ba9b89cd26852f06d92b7fc0ce9f064b9463babc73074",
     # promptfoo LLM red-team / eval. Opt-in scanner; requires provider
-    # API keys + network at scan time. The publisher tags ``:latest``
-    # (mutable), so the digest pin below is the content-hash gate.
-    "promptfoo": "ghcr.io/promptfoo/promptfoo:latest@sha256:3993e7c105bcbc1c8f763309552728dd2bf30ff5c9c2e14ec69297b42d096f80",
+    # API keys + network at scan time. Pinned to an immutable version tag
+    # + digest (Renovate-managed), like every other image here — the
+    # publisher's ``:latest`` is mutable and silently drifts.
+    "promptfoo": "ghcr.io/promptfoo/promptfoo:0.121.14@sha256:4348f35b8382f2564f23746ddc3160637cfb9242ea8541304ac1ec6641597840",
     "hadolint": "hadolint/hadolint:v2.14.0@sha256:27086352fd5e1907ea2b934eb1023f217c5ae087992eb59fde121dce9c9ff21e",
     # lint-shell via shellcheck. The koalaman/shellcheck-alpine image is
     # the official multi-arch distribution (~3 MB). shellcheck is GPL-3.0
@@ -68,10 +69,10 @@ OFFICIAL_IMAGES = {
 # Custom images built and published by Argus to ghcr.io/huntridge-labs/argus/
 # Versions managed by release-it regex bumper
 CUSTOM_IMAGES = {
-    "bandit": "ghcr.io/huntridge-labs/argus/scanner-bandit:1.2.1@sha256:36e6c7bfa00cb9f828791c709976a42586a7344b5674a428711a5072525385d7",
-    "semgrep": "ghcr.io/huntridge-labs/argus/scanner-opengrep:1.2.1@sha256:d92b086f332e811c61a9bc85ca55e4a94a08999c6bff6425c73e31c39172463d",
-    "supply-chain": "ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.2.1@sha256:6b4b705494e269e0f5f309b643f87718fa8120a76d63800cc6299ee0e6c669b5",
-    "cli": "ghcr.io/huntridge-labs/argus/cli:1.2.1@sha256:c8df52c717afcf7e27d21b1c63ffac3df1c98757f4c727f557f224b38d23d164",
+    "bandit": "ghcr.io/huntridge-labs/argus/scanner-bandit:1.3.0@sha256:649cfdf1216e082692f6dfc7a777377f7b1a90a7f1b8ac797853508f65b81a4a",
+    "semgrep": "ghcr.io/huntridge-labs/argus/scanner-opengrep:1.3.0@sha256:1c69250fe7da83ff8f444098c8db580a6593423dc84974b26ae16a9dfa111b9f",
+    "supply-chain": "ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.3.0@sha256:30ef88a8d36f86e293cdbac0a4ac19628296bc9e8abb47bc50ea1aa74a39e10e",
+    "cli": "ghcr.io/huntridge-labs/argus/cli:1.3.0@sha256:26c3a0da2dc4fdace01b139e21c703b4f9303ef8bd554f1fd0efa434484478f9",
     # PRE-MERGE PREVIEW. The MUMPS scanner image is published from the
     # feat/scanner-m-mumps branch under the mutable ``mumps-preview`` tag
     # so testers can run ``argus scan mumps`` with zero local toolchain
