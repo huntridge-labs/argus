@@ -14,7 +14,7 @@ Scans project dependencies for known vulnerabilities using [Google OSV-Scanner](
 
 ```yaml
 - uses: actions/checkout@v6
-- uses: huntridge-labs/argus/.github/actions/scanner-osv@1.3.0
+- uses: huntridge-labs/argus/.github/actions/scanner-osv@1.3.1
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -69,7 +69,7 @@ ignore = true
 Then pass it to the action:
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/scanner-osv@1.3.0
+- uses: huntridge-labs/argus/.github/actions/scanner-osv@1.3.1
   with:
     config_file: 'osv-scanner.toml'
 ```
