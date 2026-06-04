@@ -350,6 +350,36 @@ reporting:
 
 No additional keys are permitted in the `reporting` block.
 
+### Output directory layout
+
+The canonical aggregate artifacts are written at the root of `output_dir` and are
+unchanged across versions, so existing consumers (the viewers, CI SARIF upload, the
+GitHub/GitLab reporters) keep working:
+
+```
+argus-results/
+├── argus-results.json          # full aggregate (all scanners) — canonical
+├── argus-summary.md            # executive markdown
+├── argus-results.sarif         # SARIF (when requested)
+├── argus-results.openvex.json  # OpenVEX (when requested)
+├── argus-audit.json · argus.log
+```
+
+Alongside them, Argus writes **scope-organized views** so each audience finds its
+slice co-located — additive, the root artifacts above are untouched:
+
+```
+├── security/        argus-results.json, argus-summary.md, argus-results.sarif
+├── lint/            argus-results.json, argus-summary.md
+└── supply-chain/    argus-results.json, argus-summary.md, argus-results.openvex.json
+```
+
+A finding's scope follows its scanner: linters → `lint`; SCA / container / supply-chain
+scanners → `supply-chain`; everything else (SAST, secrets, IaC, DAST, malware) →
+`security`. Only scopes with findings get a subdirectory. Per-scope SARIF/OpenVEX are
+written only when those formats are requested. `--keep-raw` still writes per-scanner raw
+output under `raw/<scanner>/`.
+
 ---
 
 ## `execution`

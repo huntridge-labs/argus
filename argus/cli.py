@@ -1949,6 +1949,12 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
             reporter = get_reporter(fmt)
             reporter.report(summary, output_dir)
             log.debug("Generated %s report", fmt)
+        # Scope-organized views (security/ lint/ supply-chain/) alongside the
+        # root aggregate. Additive — the root artifacts above are unchanged.
+        from argus.reporters.scope_views import write_scope_views
+        scope_paths = write_scope_views(summary, output_dir, config.reporting.formats)
+        if scope_paths:
+            log.debug("Wrote %d scope-view file(s)", len(scope_paths))
     except ImportError:
         if args.verbose:
             log.warning("argus.reporters module not found; skipping report generation")
