@@ -36,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.3.0
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.3.1
         with:
           enable_code_security: true
           fail_on_severity: high
@@ -706,7 +706,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: huntridge-labs/argus/.github/actions/scanner-zap@1.3.0
+      - uses: huntridge-labs/argus/.github/actions/scanner-zap@1.3.1
         with:
           zap_config_file: .github/zap-config.yml
 ```
@@ -1075,7 +1075,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: huntridge-labs/argus/.github/actions/scanner-zap@1.3.0
+      - uses: huntridge-labs/argus/.github/actions/scanner-zap@1.3.1
         with:
           zap_scan_mode: url
           zap_target_urls: https://example.com
