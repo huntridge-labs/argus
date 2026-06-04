@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.3.1](https://github.com/huntridge-labs/argus/compare/1.3.0...1.3.1) (2026-06-04)
+
+### Bug Fixes
+
+* **containers:** re-pin promptfoo to immutable version tag ([#232](https://github.com/huntridge-labs/argus/issues/232)) ([47285d3](https://github.com/huntridge-labs/argus/commit/47285d3535e8031c79a5e80e90193f8c4014d48f))
+
 ## [1.3.0](https://github.com/huntridge-labs/argus/compare/1.2.1...1.3.0) (2026-06-02)
 
 ### Features
