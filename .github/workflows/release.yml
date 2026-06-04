@@ -234,6 +234,7 @@ jobs:
             "scanner-opengrep:docker/Dockerfile.opengrep:SCANNER_OPENGREP"
             "scanner-supply-chain:docker/Dockerfile.supply-chain:SCANNER_SUPPLY_CHAIN"
             "cli:docker/Dockerfile.cli:CLI"
+            "scanner-mumps:docker/Dockerfile.mumps:SCANNER_MUMPS"
           )
           for entry in "${IMAGES[@]}"; do
             IFS=':' read -r IMAGE DOCKERFILE KEY <<< "$entry"
@@ -339,6 +340,7 @@ jobs:
           cosign sign --yes "${IMAGE_REGISTRY}/scanner-opengrep@${SCANNER_OPENGREP_DIGEST}"
           cosign sign --yes "${IMAGE_REGISTRY}/scanner-supply-chain@${SCANNER_SUPPLY_CHAIN_DIGEST}"
           cosign sign --yes "${IMAGE_REGISTRY}/cli@${CLI_DIGEST}"
+          cosign sign --yes "${IMAGE_REGISTRY}/scanner-mumps@${SCANNER_MUMPS_DIGEST}"
           echo "All images signed by digest"
 
       - name: Build wheel

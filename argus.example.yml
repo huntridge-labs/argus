@@ -35,6 +35,74 @@ scanners:
   supply-chain:
     enabled: true
 
+  # mumps:
+  #   # MUMPS / M language SAST. Opt-in: most repos don't have .m files.
+  #   # Detects XECUTE / indirection / OPEN/USE injection, hard-coded
+  #   # credentials in globals, dynamic dispatch with tainted input,
+  #   # external $& call injection, plus 21 structural, def-use,
+  #   # concurrency, control-flow, and portability diagnostics
+  #   # (M101-M102, M201-M219).
+  #   # Requires either ``pip install argus-security[mumps]`` +
+  #   # ``scripts/build-mumps-grammar.sh`` (local) or the scanner-mumps
+  #   # container image (no local toolchain needed).
+  #   enabled: true
+  #   path: "routines"
+  #   # extensions: [".m"]  # default
+  #   #
+  #   # Extend the built-in taint source set (READ, $ZARGV,
+  #   # ^%CGI / ^%REQUEST / ^%session) with custom patterns. Any
+  #   # variable assigned from an RHS matching these regexes joins
+  #   # the tainted set seen by M001 / M002 / M003 / M005 / M006.
+  #   # taint_sources:
+  #   #   patterns:
+  #   #     - "\\$ZIO\\b"             # YottaDB pending input
+  #   #     - "\\^MyApp\\.input\\b"   # site-specific HTTP global
+  #   #
+  #   # Shared scratch globals M211 requires to be $J-subscripted
+  #   # (default ^TMP, ^UTILITY), and the M219 line-length limit.
+  #   # scratch_globals: ["^TMP", "^UTILITY", "^XTMP"]
+  #   # max_line_length: 245
+  #   #
+  #   # Extra externally-defined vars (VistA / FileMan / Kernel) that
+  #   # union with the built-in defaults; affects M003 / M203 / M204.
+  #   # known_external_vars: ["DUZ", "DT", "DTIME"]
+  #   #
+  #   # M002 fires HIGH only on indirection of a TAINTED variable. Set
+  #   # this true to also surface indirection of non-tainted expressions
+  #   # as an INFO advisory (audit/modernization sweeps; never gates).
+  #   # flag_generic_indirection: false
+  #   #
+  #   # Functions / intrinsics that REMOVE taint when applied. A variable
+  #   # assigned from a sanitizer call is treated as clean by every
+  #   # taint-aware rule (M001 / M002 / M003 / M005 / M006).
+  #   # sanitizers:
+  #   #   - "$$ESCAPE^HTML"           # output encoder
+  #   #   - "$$VALIDATE^INPUT"        # input validator
+  #   #
+  #   # Per-rule controls. ``severity`` replaces a rule's baseline
+  #   # severity (per-finding precision like M003's PIPE CRITICAL bump
+  #   # is preserved). ``enabled`` turns a rule on/off. Most rules are
+  #   # on by default; M205 (label fallthrough) ships OFF because
+  #   # fallthrough is the intended idiom in linear VistA routines.
+  #   # rules:
+  #   #   M203:
+  #   #     severity: low             # demote noisy diagnostic
+  #   #   M001:
+  #   #     severity: critical        # promote XECUTE for this codebase
+  #   #   M205:
+  #   #     enabled: true             # opt in (off by default)
+  #   #   M202:
+  #   #     enabled: false            # silence a rule entirely
+  #   #
+  #   # One-hop inter-procedural taint (off by default). When on, a
+  #   # tainted argument passed to LABEL^ROUTINE(...) taints the
+  #   # callee's formal parameter so the callee's sinks fire. Yields
+  #   # on parameter-passing code; legacy VistA's shared-scratch-var
+  #   # calling style sees little additional signal.
+  #   # interprocedural:
+  #   #   enabled: true
+  #   #   max_depth: 1               # call hops a taint value may travel
+
   # container:
   #   enabled: false
   #   image_ref: "myapp:latest"

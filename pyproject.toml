@@ -94,8 +94,15 @@ browser = [
     "jinja2>=3.1.6",
     "python-multipart>=0.0.20",
 ]
+# MUMPS / M language SAST scanner. The grammar (janus-llm/tree-sitter-mumps,
+# Apache-2.0, MITRE PR 23-4084) is not on PyPI; installing this extra only
+# brings in py-tree-sitter. Users still need either
+# ``scripts/build-mumps-grammar.sh`` (local) or the scanner-mumps container image
+# (which ships a prebuilt grammar). Pinned below 0.22 because v0.22
+# reworked Language() to require a pre-loaded library pointer.
+mumps = ["tree-sitter>=0.20,<0.22"]
 # All optional features
-all = ["argus-security[ai,completion,mcp,terminal,browser]"]
+all = ["argus-security[ai,completion,mcp,terminal,browser,mumps]"]
 
 [project.scripts]
 argus = "argus.cli:main"
