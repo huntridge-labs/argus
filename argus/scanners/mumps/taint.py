@@ -277,18 +277,23 @@ def filter_charset_guarded(
 
     Flow-sensitive and sound: a guard on a different entry path does not
     suppress the sink, so a validation gap on the sink's own path still
-    fires. Per-file maps are cached on ``config``."""
+    fires.
+
+    The per-file line maps are cached on ``config`` so repeated calls for
+    the same file (one per sink, across the four taint-sink rules) don't
+    re-walk the tree. ``config`` is shared across every file within a scan,
+    so the cache is keyed on ``parsed.path`` and recomputed when the file
+    changes — caching unkeyed would leak the first file's guard/label lines
+    into every later file and make findings depend on scan order."""
     if not hits:
         return hits
     if config is not None:
-        gmap = config.get("_charset_guard_lines")
-        if gmap is None:
-            gmap = _charset_guard_lines(parsed)
-            config["_charset_guard_lines"] = gmap
-        labels = config.get("_label_lines")
-        if labels is None:
-            labels = _label_lines(parsed)
-            config["_label_lines"] = labels
+        if config.get("_charset_guard_path") != parsed.path:
+            config["_charset_guard_path"] = parsed.path
+            config["_charset_guard_lines"] = _charset_guard_lines(parsed)
+            config["_label_lines"] = _label_lines(parsed)
+        gmap = config["_charset_guard_lines"]
+        labels = config["_label_lines"]
     else:
         gmap = _charset_guard_lines(parsed)
         labels = _label_lines(parsed)

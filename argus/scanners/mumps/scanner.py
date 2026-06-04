@@ -304,7 +304,12 @@ class MumpsScanner:
             if target.suffix in extensions:
                 yield target
             return
-        for candidate in target.rglob("*"):
+        # Sorted so the scan visits files in a stable, platform-independent
+        # order — rglob() yields in filesystem order, which varies across
+        # hosts and would make finding *order* (and, before the per-file
+        # cache fix in taint.filter_charset_guarded, finding *counts*)
+        # depend on the environment.
+        for candidate in sorted(target.rglob("*")):
             if candidate.is_file() and candidate.suffix in extensions:
                 yield candidate
 

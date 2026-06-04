@@ -917,9 +917,17 @@ class TestRegressionGuards:
     # Locks the taint + sink behaviour against silent regression. Lint rules
     # are excluded (e.g. M202's count is a fixture-naming artifact, not
     # behaviour under test). Update only with a deliberate, reviewed change.
+    #
+    # These are the order-independent counts, matched by the single-file rule
+    # tests above. M005 was previously 4: a cache leak in
+    # filter_charset_guarded (per-file maps stored on the per-scan config and
+    # reused across files) let an earlier file's guard/label lines wrongly
+    # keep two guard-suppressed sinks (m_sanitizer.m, m_guard_cross_entry.m)
+    # in later files, so the count depended on filesystem scan order. See
+    # test_findings_independent_of_scan_order.
     GOLDEN_SECURITY = {
         "M001": 9, "M002": 1, "M003": 5, "M004": 2,
-        "M005": 4, "M006": 3, "M007": 2,
+        "M005": 2, "M006": 3, "M007": 2,
     }
 
     def test_security_findings_golden(self, m_fixtures_dir):
@@ -932,6 +940,29 @@ class TestRegressionGuards:
         assert counts == self.GOLDEN_SECURITY, (
             "security finding counts changed; if intentional, update GOLDEN_SECURITY"
         )
+
+    def test_findings_independent_of_scan_order(self, m_fixtures_dir, monkeypatch):
+        # Regression: filter_charset_guarded cached per-file line maps on the
+        # per-scan config dict, so the first file's guard/label lines leaked
+        # into every later file and made the finding set depend on filesystem
+        # scan order (the GitHub runner's order under-counted vs every other
+        # host). The finding set must be byte-identical regardless of the
+        # order files are visited in.
+        from pathlib import Path
+
+        files = sorted(p for p in Path(m_fixtures_dir).rglob("*") if p.is_file())
+
+        def scan_in(order):
+            seq = list(order)
+
+            def fake_iter(target, extensions):
+                yield from (p for p in seq if p.suffix in extensions)
+
+            monkeypatch.setattr(MumpsScanner, "_iter_sources", staticmethod(fake_iter))
+            result = MumpsScanner().scan(str(m_fixtures_dir), {})
+            return sorted((f.id, f.location) for f in result.findings)
+
+        assert scan_in(files) == scan_in(list(reversed(files)))
 
     def test_streaming_scan_holds_one_tree_at_a_time(self, tmp_path, monkeypatch):
         # The two-pass loop must keep at most one parse tree resident at a
