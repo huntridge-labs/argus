@@ -53,6 +53,33 @@ jobs:
         # the compile takes ~15s on ubuntu-latest.
         run: scripts/build-mumps-grammar.sh
 
+      - name: "TEMP diag: MUMPS grammar parse divergence (remove after fix)"
+        if: matrix.python-version == '3.13'
+        # Builds the grammar as-is and with the isspace(lookahead) UB fixed
+        # (cast to unsigned char + ctype.h), scans the fixtures with each, and
+        # dumps M005/M007 finding locations. Confirms the runner-only
+        # under-count and validates the fix. Temporary — delete with the
+        # build-hardening change.
+        run: |
+          set -euo pipefail
+          gcc --version | head -1
+          SHA=345f3fb29a6a281a9e28d244e901732bc68c51fc
+          W="$(mktemp -d)"
+          git clone --quiet https://github.com/janus-llm/tree-sitter-mumps.git "$W/s"
+          ( cd "$W/s" && git checkout --quiet "$SHA" )
+          ( cd "$W/s" && gcc -O2 -shared -fPIC -I src \
+              -Wno-error=implicit-function-declaration \
+              -o "$W/base.so" src/parser.c src/scanner.c )
+          sed -e '1i #include <ctype.h>' \
+              -e 's/isspace(lexer->lookahead)/isspace((unsigned char)lexer->lookahead)/g' \
+              "$W/s/src/scanner.c" > "$W/scanner_patched.c"
+          ( cd "$W/s" && gcc -O2 -shared -fPIC -I src \
+              -o "$W/patched.so" src/parser.c "$W/scanner_patched.c" )
+          echo "=== base (as built by build-mumps-grammar.sh) ==="
+          ARGUS_MUMPS_GRAMMAR="$W/base.so" python scripts/ci/_diag_mumps.py
+          echo "=== patched (isspace UB fixed) ==="
+          ARGUS_MUMPS_GRAMMAR="$W/patched.so" python scripts/ci/_diag_mumps.py
+
       - name: Run all tests
         # ARGUS_MUMPS_GRAMMAR is unset on purpose: parser.py probes
         # ~/.cache/argus/grammars/mumps.so by default and the build
