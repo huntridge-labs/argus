@@ -1955,6 +1955,16 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
         scope_paths = write_scope_views(summary, output_dir, config.reporting.formats)
         if scope_paths:
             log.debug("Wrote %d scope-view file(s)", len(scope_paths))
+        # Optional: sign the scan attestation (in-toto Statement wrapping the
+        # OpenVEX predicate) with cosign — opt-in via reporting.attest. Keyless
+        # (CI OIDC); still writes the unsigned statement when cosign/OIDC is
+        # absent. Needs an output dir to write the bundle into.
+        if config.reporting.attest and output_dir:
+            from argus.core.attest import attest_scan
+            att = attest_scan(summary, output_dir, enabled=True)
+            log.info("Attestation: %s", att.get("status"))
+            if att.get("reason"):
+                log.info("Attestation: %s", att["reason"])
     except ImportError:
         if args.verbose:
             log.warning("argus.reporters module not found; skipping report generation")

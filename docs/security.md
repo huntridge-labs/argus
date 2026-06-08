@@ -314,6 +314,52 @@ hostile runner. This is the "scanned *with what*" half of attestation —
 complementary to the scanned-image content digest ("scanned *what*"). See the
 [attestation epic](https://github.com/huntridge-labs/argus/issues/242).
 
+### Signing the attestation (cosign, opt-in)
+
+Recording provenance lets a *trusted-runner* verifier check a package; it does
+not stop a hostile runner from forging the JSON. Enabling
+`reporting.attest: true` makes the provenance **tamper-evident**: argus wraps
+the OpenVEX predicate in an [in-toto Statement][in-toto] — `subject` = the
+scanned image content digests (#237) + the repo commit — and signs it with
+**keyless cosign** (a short-lived Fulcio cert via ambient OIDC, the same
+mechanism the release workflow uses to sign images; no key to manage).
+
+Two artifacts are produced in the output dir:
+
+- `argus-attestation.intoto.json` — the unsigned statement (always written, so
+  it's inspectable even where cosign/OIDC is absent).
+- `argus-attestation.bundle` — the cosign `sign-blob` signature bundle for the
+  statement (**standalone** mode — works for locally-built images and repo
+  scans alike).
+
+And, for any scanned image that is a *pushed* registry ref, a
+**registry-attached** attestation via `cosign attest` (verifiable directly off
+the image).
+
+```bash
+# Standalone bundle — verify signature + Argus's signing identity:
+cosign verify-blob \
+  --bundle argus-attestation.bundle \
+  --certificate-identity-regexp '^https://github\.com/huntridge-labs/argus/' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  argus-attestation.intoto.json
+
+# Registry-attached — verify the attestation on the image:
+cosign verify-attestation --type 'https://openvex.dev/ns/v0.2.0' \
+  --certificate-identity-regexp '^https://github\.com/huntridge-labs/argus/' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  ghcr.io/org/app@sha256:…
+```
+
+A verifier then confirms the deployed image digest matches a `subject`, and
+that the scanner digests in the predicate's toolchain block match Argus's
+published pins — closing the loop against substituted images *and* tampered
+tooling. Keyless signing needs OIDC, so it runs in CI (`id-token: write`);
+**off by default** (network + registry side effects). With cosign absent or no
+OIDC, argus still writes the unsigned statement and logs that it wasn't signed.
+
+[in-toto]: https://in-toto.io/
+
 ---
 
 ## Alert routing — paging and escalation
