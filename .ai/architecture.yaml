@@ -401,6 +401,11 @@ data_flow:
             exposure-findings.json / services-findings.json to <output_dir>/raw/<image>/
             (the exposure / services helpers have no upstream JSON output, so the
             lifecycle path synthesizes one when they produce findings)
+        → Bind to content: scan_image resolves the image's digest (RepoDigest when
+          pulled/pushed, config Id for never-pushed local builds; best-effort, "" if
+          unknown) onto ContainerScanResult.digest and each finding's metadata
+          (image_digest + image_ref) — so results attest what was scanned, not just a
+          mutable tag (#237). Surfaced in per-image markdown and argus-results.json/SARIF.
         → Map ContainerScanResult → ScanResult(scanner="container/<name>", findings=combined)
         → Same JsonReporter / SARIF reporter pipeline as source scans —
           argus view consumes the canonical argus-results.json without

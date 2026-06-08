@@ -12,7 +12,7 @@ from argus.core.models import Finding, Severity
 from argus.scanners.container import ContainerScanner
 
 from .discovery import ContainerTarget
-from .resources import is_image_local
+from .resources import get_image_digest, is_image_local
 
 logger = logging.getLogger("argus.container")
 
@@ -597,9 +597,22 @@ def scan_image(
         extra=[*exposure_findings, *services_findings],
     )
 
+    # Bind the result to the scanned image's content digest (#237): a clean
+    # scan should attest *what* was scanned, not just a mutable tag. The
+    # findings carry it in metadata so it travels into argus-results.json /
+    # SARIF; the ContainerScanResult.digest field feeds the per-image
+    # markdown and audit manifest. Best-effort — an unknown digest is
+    # non-fatal and simply isn't recorded.
+    digest = get_image_digest(target.image_ref)
+    if digest:
+        for finding in combined:
+            finding.metadata.setdefault("image_ref", target.image_ref)
+            finding.metadata.setdefault("image_digest", digest)
+
     return ContainerScanResult(
         name=target.name,
         image_ref=target.image_ref,
+        digest=digest,
         dockerfile=str(target.dockerfile) if target.dockerfile else "",
         context=str(target.context) if target.context else "",
         trivy_findings=trivy_findings,
