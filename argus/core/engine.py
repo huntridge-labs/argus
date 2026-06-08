@@ -383,6 +383,12 @@ class ArgusEngine:
             from argus.core.image_verify import report_tag_pinned_summary
             report_tag_pinned_summary(self._verify_results)
 
+        # Toolchain provenance (#240): record which scanner images (+ digests)
+        # produced this scan and their verification status, so a consumer can
+        # distinguish genuine published tooling from a rebuilt/modified image.
+        from argus.core.toolchain import build_toolchain_provenance
+        toolchain = build_toolchain_provenance(self._verify_results)
+
         # TODO: Add total_duration_ms to ScanSummary for audit trail.
         # Requires a model change (new field on the ScanSummary dataclass).
         # Per-scanner duration_ms is already recorded in each ScanResult.metadata.
@@ -390,6 +396,7 @@ class ArgusEngine:
             results=results,
             severity_threshold=self.config.reporting.severity_threshold,
             scan_context=ScanContext.capture(),
+            toolchain=toolchain,
         )
 
     def _prepare_jobs(
