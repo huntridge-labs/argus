@@ -264,6 +264,31 @@ same creds proves whether your account has access. If `docker pull`
 fails too, the issue is creds or registry permissions, not the scan
 plumbing.
 
+**Fix — locally-built image scanned by reference resolves to Docker Hub.**
+A different shape again: you built the image in one CI step (e.g.
+`docker build -t hardening-test-opa:scan-<sha> .`) and scan it by ref in a
+later step with `argus scan container --image hardening-test-opa:scan-<sha>`.
+The image is never pushed anywhere, yet Grype tries to resolve it against
+Docker Hub:
+
+```
+failed to catalog: errors occurred attempting to resolve 'hardening-test-opa:scan-<sha>':
+  - oci-registry: ... GET https://index.docker.io/v2/library/hardening-test-opa/manifests/scan-<sha>: UNAUTHORIZED: authentication required
+```
+
+The scan then reports `0 findings` but exits non-zero
+(`1 scanner failure(s) — results are incomplete`, exit 2). Root cause: the
+target has no `dockerfile:` (Argus didn't build it), so it used to be
+classified as *remote* and the runners fell through to the `registry:`
+source — which defaults a bare name to `docker.io/library/<name>`.
+
+Argus now also probes the local Docker daemon (`docker image inspect`) for
+ref-only targets; if the image is already present, it scans via the
+`docker:` daemon source instead. **No config change is needed** — just make
+sure the image is built (present in the daemon) before the scan step runs.
+This is the SDK/CLI counterpart to the daemon-vs-registry source selection,
+and applies to Trivy (`--image-src remote` is dropped) and Syft as well.
+
 **Fix — air-gapped GHES (mirror images).** Pre-pull every Argus scanner
 image on a machine with internet, push them to your internal registry, and
 point Argus at the mirror via `execution.registry`:
