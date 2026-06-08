@@ -483,7 +483,22 @@ def scan_image(
     #
     # The daemon probe (``docker image inspect``) is skipped when we
     # already know we built the image, avoiding a redundant subprocess.
-    is_local = target.dockerfile is not None or is_image_local(target.image_ref)
+    built_here = target.dockerfile is not None
+    is_local = built_here or is_image_local(target.image_ref)
+
+    # Transparency breadcrumb: when a ref we did NOT build is found in the
+    # local daemon, we scan that local copy and skip the registry pull
+    # (and any configured registry auth). That's the intended fix for
+    # never-pushed build tags (#233), but for a fully-qualified registry
+    # ref it also means a *stale* local copy would be scanned instead of
+    # the current registry manifest. Log it so operators can see which
+    # source was used rather than silently diverging from the registry.
+    if is_local and not built_here:
+        logger.info(
+            "Image %s found in the local Docker daemon; scanning the local "
+            "copy via the docker-daemon source (not pulling from a registry)",
+            target.image_ref,
+        )
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
