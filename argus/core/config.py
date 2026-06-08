@@ -159,6 +159,13 @@ class ReportingConfig:
     # need raw output opt in with ``--keep-raw`` (CLI) or
     # ``reporting.keep_raw: true`` (argus.yml).
     keep_raw: bool = False
+    # When True, sign the scan attestation with cosign (issue #241): an
+    # in-toto Statement wrapping the OpenVEX predicate, subjects = scanned
+    # image digests + repo commit. Keyless — needs cosign on PATH and ambient
+    # OIDC (e.g. CI with ``id-token: write``); a no-op that still writes the
+    # unsigned statement otherwise. Default OFF (network + registry side
+    # effects). See docs/security.md.
+    attest: bool = False
 
 
 @dataclass
@@ -365,6 +372,7 @@ def _parse_reporting_config(raw: dict | None) -> ReportingConfig:
         severity_threshold=_parse_severity(raw.get("severity_threshold")),
         output_dir=raw.get("output_dir", "./argus-results"),
         keep_raw=bool(raw.get("keep_raw", False)),
+        attest=bool(raw.get("attest", False)),
     )
 
 
