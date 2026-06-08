@@ -1615,3 +1615,58 @@ class TestRunSyftUsesResolvedImage:
 
         assert len(intercepted) == 1
         assert "harbor.corp/dockerhub-cache/fake/syft:test" in " ".join(intercepted[0])
+
+
+class TestScanImageBindsContentDigest:
+    """scan_image records the scanned image's content digest (#237) so a
+    clean scan attests *what* was scanned, not just a mutable tag."""
+
+    def test_digest_populated_and_stamped_on_findings(self, monkeypatch):
+        from argus.container import scanner as scanner_mod
+        from argus.container.scanner import scan_image
+        from argus.container.discovery import ContainerTarget
+        from argus.core.models import Finding, Severity
+
+        finding = Finding(
+            id="CVE-2024-1", severity=Severity.HIGH, title="vuln",
+            scanner="container", cve="CVE-2024-1",
+            metadata={"package": "openssl"},
+        )
+        monkeypatch.setattr(scanner_mod, "_run_trivy", lambda *a, **kw: [finding])
+        monkeypatch.setattr(scanner_mod, "_run_grype", lambda *a, **kw: [])
+        monkeypatch.setattr(scanner_mod, "is_image_local", lambda ref: True)
+        monkeypatch.setattr(scanner_mod, "get_image_digest", lambda ref: "sha256:deadbeef")
+
+        target = ContainerTarget(name="app", image_ref="app:scan-6d7bd4a0")
+        result = scan_image(target, scanners=("trivy",), sbom=False)
+
+        # Result-level digest → per-image markdown + audit manifest.
+        assert result.digest == "sha256:deadbeef"
+        # Finding-level metadata → argus-results.json / SARIF.
+        f = result.combined_findings[0]
+        assert f.metadata["image_digest"] == "sha256:deadbeef"
+        assert f.metadata["image_ref"] == "app:scan-6d7bd4a0"
+        assert f.metadata["package"] == "openssl"  # existing metadata preserved
+
+    def test_unknown_digest_is_non_fatal(self, monkeypatch):
+        """docker absent / inspect failed → empty digest, no metadata stamp,
+        scan still succeeds (mirrors is_image_local's degrade-to-safe)."""
+        from argus.container import scanner as scanner_mod
+        from argus.container.scanner import scan_image
+        from argus.container.discovery import ContainerTarget
+        from argus.core.models import Finding, Severity
+
+        finding = Finding(
+            id="CVE-2024-2", severity=Severity.LOW, title="v",
+            scanner="container", metadata={},
+        )
+        monkeypatch.setattr(scanner_mod, "_run_trivy", lambda *a, **kw: [finding])
+        monkeypatch.setattr(scanner_mod, "_run_grype", lambda *a, **kw: [])
+        monkeypatch.setattr(scanner_mod, "is_image_local", lambda ref: False)
+        monkeypatch.setattr(scanner_mod, "get_image_digest", lambda ref: "")
+
+        target = ContainerTarget(name="app", image_ref="ghcr.io/org/app:1.0")
+        result = scan_image(target, scanners=("trivy",), sbom=False)
+
+        assert result.digest == ""
+        assert "image_digest" not in result.combined_findings[0].metadata

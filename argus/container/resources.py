@@ -7,6 +7,7 @@ No hard disk limits — we try the scan and handle failures gracefully
 rather than refusing to run based on arbitrary thresholds.
 """
 
+import json
 import logging
 import shutil
 import subprocess
@@ -124,6 +125,47 @@ def is_image_local(image_ref: str) -> bool:
         return result.returncode == 0
     except (subprocess.TimeoutExpired, Exception):
         return False
+
+
+def get_image_digest(image_ref: str) -> str:
+    """Return the content digest of a daemon-present image, best-effort.
+
+    Binds a scan result to *what was actually scanned* rather than the
+    mutable tag it was scanned by (issue #237). Prefers a registry
+    ``RepoDigest`` (``repo@sha256:...`` — the manifest digest, which a
+    deploy-time check can compare against the registry) and falls back to
+    the image **config ID** (``sha256:...``) for locally-built,
+    never-pushed images, which have no RepoDigest until they're pushed but
+    whose config ID is still a stable content hash of the build.
+
+    Returns ``""`` when docker is unavailable or the image can't be
+    inspected — an unknown digest is never fatal; callers treat it as
+    "not recorded", mirroring :func:`is_image_local`.
+    """
+    if shutil.which("docker") is None:
+        return ""
+
+    try:
+        result = subprocess.run(
+            ["docker", "image", "inspect", image_ref,
+             "--format", "{{json .RepoDigests}}|{{.Id}}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return ""
+        repo_part, _, id_part = result.stdout.strip().partition("|")
+        repo_digests = json.loads(repo_part) if repo_part else []
+        if repo_digests:
+            # ``repo@sha256:...`` — return the digest portion (the
+            # content identifier, registry-comparable).
+            _, _, digest = repo_digests[0].rpartition("@")
+            if digest:
+                return digest
+        return id_part.strip()  # config digest for never-pushed builds
+    except (subprocess.TimeoutExpired, Exception):
+        return ""
 
 
 def get_remote_image_size(image_ref: str) -> int:

@@ -404,6 +404,41 @@ updates:
 
 See [dependabot.example.yml](../examples/dependabot.example.yml) for a complete example.
 
+## Result provenance: the scanned content digest
+
+Every container scan records the **content digest** of the image it actually
+inspected, not just the tag it was asked to scan. This matters because a tag
+is mutable: a "clean" scan of `app:scan-<sha>` proves nothing about what later
+ships if different content can be published under the same tag.
+
+Argus resolves the digest best-effort from the local daemon:
+
+- **Pulled / pushed images** → the registry `RepoDigest`
+  (`repo@sha256:…`), which a deploy-time check can compare against the
+  registry manifest.
+- **Locally-built, never-pushed images** → the image **config ID**
+  (`sha256:…`). These have no `RepoDigest` until pushed, but the config ID is
+  a stable content hash of the build.
+
+The digest is surfaced two ways:
+
+- **Per-image markdown** shows a `**Digest:**` line under the image.
+- **Each finding** carries `image_digest` (and `image_ref`) in its
+  `metadata`, so it travels into `argus-results.json` and SARIF.
+
+This closes the scan-vs-deploy substitution gap **when you trust the runner**:
+a deploy gate (or admission controller) that compares the *deployed* image's
+digest against the digest Argus recorded will reject anything that was swapped
+after the scan. An unknown digest (docker unavailable, inspect failed) is
+non-fatal — it's simply left unrecorded.
+
+> **Scope.** This does not defend against a *hostile* runner — an attacker who
+> controls the environment Argus runs in controls its output. And note that a
+> ref-only image already present in the local daemon is scanned from that local
+> copy (see [#233](https://github.com/huntridge-labs/argus/pull/234)); the
+> recorded digest is exactly what makes that choice auditable. A signed
+> `cosign attest` of findings bound to the digest is tracked as a follow-up.
+
 ## Troubleshooting
 
 ### Authentication Failures
