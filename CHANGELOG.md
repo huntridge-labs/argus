@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.4.0](https://github.com/huntridge-labs/argus/compare/1.3.1...1.4.0) (2026-06-08)
+
+### Features
+
+* **attest:** sign the scan attestation with cosign (OpenVEX in-toto, opt-in) ([#244](https://github.com/huntridge-labs/argus/issues/244)) ([2109310](https://github.com/huntridge-labs/argus/commit/2109310c2d38c7cd36d02237a05a7195d21c7902)), closes [#242](https://github.com/huntridge-labs/argus/issues/242) [#237](https://github.com/huntridge-labs/argus/issues/237) [#240](https://github.com/huntridge-labs/argus/issues/240)
+* **container:** bind scan results to the resolved image content digest ([#239](https://github.com/huntridge-labs/argus/issues/239)) ([92668a5](https://github.com/huntridge-labs/argus/commit/92668a584bbec3e03ab051d7db24d25978f0e59e)), closes [#237](https://github.com/huntridge-labs/argus/issues/237)
+* **core:** record scanner toolchain provenance in scan results ([#243](https://github.com/huntridge-labs/argus/issues/243)) ([6b39a0f](https://github.com/huntridge-labs/argus/commit/6b39a0f99b472b6ddea9093dbd138aa8e9bce3a6)), closes [#237](https://github.com/huntridge-labs/argus/issues/237) [#241](https://github.com/huntridge-labs/argus/issues/241)
+* **reporters:** OpenVEX output for container/SCA scans (spike, [#229](https://github.com/huntridge-labs/argus/issues/229)) ([#230](https://github.com/huntridge-labs/argus/issues/230)) ([b7501e4](https://github.com/huntridge-labs/argus/commit/b7501e488e49074513e0bc9fe6dc3f4bc4bfdadc))
+* **reporters:** organize report output by scope (security/lint/supply-chain) ([#231](https://github.com/huntridge-labs/argus/issues/231)) ([988e29d](https://github.com/huntridge-labs/argus/commit/988e29db9a5f5ebdf9ae92b3b9a442a43fb6d09b)), closes [#229](https://github.com/huntridge-labs/argus/issues/229)
+* **scanner-mumps:** MUMPS / M language SAST scanner (16 rules, call-graph foundation) ([#213](https://github.com/huntridge-labs/argus/issues/213)) ([bc2e939](https://github.com/huntridge-labs/argus/commit/bc2e939b2cda92c8839feb842582bae3735420ed))
+
+### Bug Fixes
+
+* **container:** scan daemon-present images by ref via docker: source ([#233](https://github.com/huntridge-labs/argus/issues/233)) ([#234](https://github.com/huntridge-labs/argus/issues/234)) ([5305b7a](https://github.com/huntridge-labs/argus/commit/5305b7a0ec825395715a66f2f93406a721ba6911))
+
+### Dependencies
+
+* **deps:** bump node ([#246](https://github.com/huntridge-labs/argus/issues/246)) ([de16ef8](https://github.com/huntridge-labs/argus/commit/de16ef820990b5ed34ecbb2acd421e462b34f821))
+* **deps:** bump the npm-minor-patch group with 4 updates ([#245](https://github.com/huntridge-labs/argus/issues/245)) ([9b65035](https://github.com/huntridge-labs/argus/commit/9b65035cf13dff8a0bbdf450ebd726bf5be3ca19))
+* **deps:** Update container-images to v1.15.5 ([#236](https://github.com/huntridge-labs/argus/issues/236)) ([a16e887](https://github.com/huntridge-labs/argus/commit/a16e887d6b1be72ece1be16c43806a8cb23c7b6a))
+* **deps:** Update container-images to v3.2.531 ([#238](https://github.com/huntridge-labs/argus/issues/238)) ([d6d548f](https://github.com/huntridge-labs/argus/commit/d6d548fc933a7ff851616600fc0e3451de90ef76))
+
+
 ## [1.3.1](https://github.com/huntridge-labs/argus/compare/1.3.0...1.3.1) (2026-06-04)
 
 ### Bug Fixes
