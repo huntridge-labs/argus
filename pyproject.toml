@@ -100,7 +100,7 @@ browser = [
 # ``scripts/build-mumps-grammar.sh`` (local) or the scanner-mumps container image
 # (which ships a prebuilt grammar). Pinned below 0.22 because v0.22
 # reworked Language() to require a pre-loaded library pointer.
-mumps = ["tree-sitter>=0.20,<0.22"]
+mumps = ["tree-sitter>=0.20,<0.26"]
 # All optional features
 all = ["argus-security[ai,completion,mcp,terminal,browser,mumps]"]
 
