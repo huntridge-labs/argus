@@ -388,6 +388,13 @@ class ScanSummary:
     # suppress "pass --fail-on-scanner-error to fail the scan when
     # this happens" advice when the flag is already on (issue #168-D).
     fail_on_scanner_error_set: bool = False
+    # Scanner-toolchain provenance (issue #240): which scanner container
+    # images (+ digests) produced this scan and their supply-chain
+    # verification status, so a consumer can tell genuine published tooling
+    # from a rebuilt/modified local image. Populated by the engine from the
+    # per-image verify results; None when built outside the engine or when no
+    # container image was pulled (e.g. an all-local-binary run).
+    toolchain: Optional[dict] = None
 
     @property
     def critical_count(self) -> int:
@@ -443,6 +450,8 @@ class ScanSummary:
         }
         if self.scan_context is not None:
             out["scan_context"] = self.scan_context.to_dict()
+        if self.toolchain is not None:
+            out["toolchain"] = self.toolchain
         return out
 
     @classmethod
@@ -460,4 +469,5 @@ class ScanSummary:
             results=results,
             severity_threshold=threshold,
             scan_context=scan_context,
+            toolchain=data.get("toolchain"),
         )

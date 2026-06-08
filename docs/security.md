@@ -270,6 +270,50 @@ digest-pin verification (which is just Docker's pull-time content
 hash check) continues to work because it has no external network
 dependency.
 
+### Recorded in the results (toolchain provenance)
+
+Verification above happens at pull time and *gates the scan*. Argus also
+**records** the outcome in `argus-results.json` under a top-level `toolchain`
+block, so a consumer can confirm *which* scanner images produced the findings
+and whether they were genuine published tooling — defending against someone
+who clones the repo, modifies a `Dockerfile`, builds the scanner images
+locally, and scans (their images won't match our published digests):
+
+```json
+"toolchain": {
+  "images": [
+    {
+      "image": "ghcr.io/huntridge-labs/argus/scanner-bandit:1.3.1@sha256:…",
+      "digest": "sha256:…",
+      "verification": "verified_cosign",
+      "argus_owned": true,
+      "digest_matches_published_pin": true
+    }
+  ],
+  "argus_images_all_verified": true,
+  "warnings": []
+}
+```
+
+- `digest_matches_published_pin` compares the image's content digest against
+  the digests Argus publishes in `argus/containers.py` — by **content**, so a
+  same-content registry mirror still matches while a rebuilt/modified image
+  does not.
+- `argus_images_all_verified` is `true` only when every argus-owned image
+  pulled was signature/digest verified **and** matched a published pin;
+  `false` if any failed or mismatched (with a `warnings` entry); `null` when no
+  argus-owned image was involved (so verification is never *implied*).
+- The block reflects **container pulls only**. An all-local-binary run
+  (`execution.backend: local`, or a tool on `PATH`) pulls nothing, so no
+  `toolchain` block is emitted — its absence means "no container toolchain was
+  recorded," not "verified."
+
+Recording is the *precondition* for verifiable provenance; signing the whole
+package (`cosign attest`, planned) is what makes it tamper-evident against a
+hostile runner. This is the "scanned *with what*" half of attestation —
+complementary to the scanned-image content digest ("scanned *what*"). See the
+[attestation epic](https://github.com/huntridge-labs/argus/issues/242).
+
 ---
 
 ## Alert routing — paging and escalation
