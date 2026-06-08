@@ -637,3 +637,36 @@ scn_detector_errors:
         scan via docker.sock mount, not registry pull.
 
     reference: "argus/container/scanner.py::_registry_auth_env and docs/troubleshooting/docker.md → 'target image fails to authenticate inside the sub-scanner container'"
+
+  - pattern: "index.docker.io/v2/library/.*UNAUTHORIZED: authentication required|grype.*scan-<hash>.*UNAUTHORIZED"
+    category: container-scanning
+    context: |
+      A locally-built image is scanned by reference (e.g. CI builds
+      ``app:scan-<sha>`` in one step, then runs
+      ``argus scan container --image app:scan-<sha>`` in a later step).
+      Grype/Trivy try to resolve the never-pushed dev tag against Docker
+      Hub (``index.docker.io/v2/library/...``) and fail with UNAUTHORIZED.
+      The scan reports ``0 findings`` but exits non-zero
+      (``1 scanner failure(s) — results are incomplete``, exit 2).
+
+    root_cause: |
+      ``scan_image`` decided local-vs-remote purely from
+      ``target.dockerfile is not None``. A ref-only target (no Dockerfile,
+      because the image was built by a separate step) was therefore
+      classified as *remote*, so the runners used Grype's ``registry:``
+      source / Trivy's ``--image-src remote``. With no registry path on a
+      bare name, that defaults to ``docker.io/library/<name>`` — a repo the
+      runner has no rights to — and the pull is rejected.
+
+    solution:
+      steps:
+        - "Argus now also probes the local Docker daemon (``docker image inspect``) when the target has no Dockerfile."
+        - "If the image is already present locally, it scans via the ``docker:`` daemon source instead of falling through to the registry."
+        - "No config change required — building the image before the scan step is enough."
+      note: |
+        The daemon probe is skipped when Argus built the image itself
+        (``dockerfile:`` set) since localness is already known. A genuinely
+        remote image still routes through the ``registry:`` source and the
+        ``GRYPE_REGISTRY_AUTH_*`` / ``TRIVY_*`` credential env vars.
+
+    reference: "argus/container/scanner.py::scan_image (is_local = dockerfile or is_image_local) — issue #233"

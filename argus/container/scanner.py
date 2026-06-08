@@ -12,6 +12,7 @@ from argus.core.models import Finding, Severity
 from argus.scanners.container import ContainerScanner
 
 from .discovery import ContainerTarget
+from .resources import is_image_local
 
 logger = logging.getLogger("argus.container")
 
@@ -465,8 +466,39 @@ def scan_image(
     services_findings: list[Finding] = []
     scanner_errors: dict[str, str] = {}
 
-    # Determine if the image is local (built by us) or remote
-    is_local = target.dockerfile is not None
+    # Determine if the image is local (built by us) or remote.
+    #
+    # An image counts as local — and so must be scanned via the
+    # ``docker:`` daemon source rather than resolved against a registry —
+    # in two cases:
+    #   1. We built it from a Dockerfile this run (``target.dockerfile``).
+    #   2. It was built or loaded by an earlier step and handed to us by
+    #      ref. CI commonly builds a throwaway tag (``app:scan-<sha>``)
+    #      then calls ``argus scan container --image app:scan-<sha>``.
+    #      There's no Dockerfile on the target, but the image is sitting
+    #      in the local daemon. Without this check ``is_local`` is False,
+    #      grype/trivy fall through to the ``registry:`` source, and the
+    #      never-pushed dev tag resolves to ``docker.io/library/...`` →
+    #      ``UNAUTHORIZED: authentication required`` (issue #233).
+    #
+    # The daemon probe (``docker image inspect``) is skipped when we
+    # already know we built the image, avoiding a redundant subprocess.
+    built_here = target.dockerfile is not None
+    is_local = built_here or is_image_local(target.image_ref)
+
+    # Transparency breadcrumb: when a ref we did NOT build is found in the
+    # local daemon, we scan that local copy and skip the registry pull
+    # (and any configured registry auth). That's the intended fix for
+    # never-pushed build tags (#233), but for a fully-qualified registry
+    # ref it also means a *stale* local copy would be scanned instead of
+    # the current registry manifest. Log it so operators can see which
+    # source was used rather than silently diverging from the registry.
+    if is_local and not built_here:
+        logger.info(
+            "Image %s found in the local Docker daemon; scanning the local "
+            "copy via the docker-daemon source (not pulling from a registry)",
+            target.image_ref,
+        )
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)

@@ -383,6 +383,12 @@ class TestScanImageRawOutputPersistence:
         monkeypatch.setattr(scanner_mod, "_run_trivy", fake_trivy)
         monkeypatch.setattr(scanner_mod, "_run_grype", fake_grype)
         monkeypatch.setattr(scanner_mod, "_run_syft", fake_syft)
+        # These tests pass ref-only targets, which would otherwise make
+        # scan_image shell out to a real ``docker image inspect`` (#233
+        # daemon probe). Pin it so the suite stays hermetic and fast —
+        # the local/remote flag is irrelevant to the persistence layer
+        # under test here.
+        monkeypatch.setattr(scanner_mod, "is_image_local", lambda ref: False)
 
     def test_raw_outputs_copied_when_dir_supplied(self, tmp_path, monkeypatch):
         from argus.container.scanner import scan_image
@@ -456,6 +462,7 @@ class TestScanImageRawOutputPersistence:
         monkeypatch.setattr(scanner_mod, "_run_trivy", fake_trivy)
         monkeypatch.setattr(scanner_mod, "_run_grype", lambda *a, **kw: [])
         monkeypatch.setattr(scanner_mod, "_run_syft", lambda *a, **kw: None)
+        monkeypatch.setattr(scanner_mod, "is_image_local", lambda ref: False)
 
         raw_dir = tmp_path / "raw" / "app"
         scan_image(
@@ -697,10 +704,136 @@ class TestScanImageThreadsDockerfile:
             "argus.container.scanner._run_grype",
             lambda *a, **kw: [],
         )
+        # Genuine remote pull — pin the daemon probe (#233) to "absent"
+        # so the test asserts the remote-pull shape deterministically
+        # regardless of what's cached on the host running the suite.
+        monkeypatch.setattr(
+            "argus.container.scanner.is_image_local", lambda ref: False,
+        )
 
         result = scan_image(target, scanners=("trivy", "grype"))
         assert result.dockerfile == ""
         assert result.context == ""
+
+
+# ───────────────────────────────────────────────
+# Local-daemon detection for ref-only targets (#233)
+# ───────────────────────────────────────────────
+#
+# CI commonly builds a throwaway image in one step (``app:scan-<sha>``),
+# then scans it by ref in a later step via
+# ``argus scan container --image app:scan-<sha>``. The target carries no
+# Dockerfile, so the old ``is_local = target.dockerfile is not None`` test
+# classified it as a *remote* image — grype/trivy fell through to the
+# ``registry:`` source and resolved the never-pushed dev tag against
+# Docker Hub (``docker.io/library/...``), failing with
+# ``UNAUTHORIZED: authentication required``. The fix also probes the local
+# Docker daemon, so an image already present there scans via ``docker:``.
+
+
+class TestScanImageLocalDaemonDetection:
+    """``is_local`` must reflect daemon presence, not just Dockerfile origin."""
+
+    def _capture_local_flag(self, monkeypatch):
+        """Stub the runners to record the ``local`` flag they receive.
+
+        Returns a dict the assertions read after ``scan_image`` runs.
+        """
+        from argus.container import scanner as scanner_mod
+
+        captured: dict = {}
+
+        def fake_grype(image_ref, tmp_path, local=False, **_kwargs):
+            captured["grype_local"] = local
+            return []
+
+        def fake_trivy(image_ref, tmp_path, local=False, **_kwargs):
+            captured["trivy_local"] = local
+            return []
+
+        monkeypatch.setattr(scanner_mod, "_run_grype", fake_grype)
+        monkeypatch.setattr(scanner_mod, "_run_trivy", fake_trivy)
+        return captured
+
+    def test_ref_only_target_present_in_daemon_is_local(self, monkeypatch, caplog):
+        """No Dockerfile, but the image sits in the local daemon →
+        ``local=True`` so grype/trivy use the ``docker:`` source. The
+        choice is logged (transparency breadcrumb) since we did not
+        build the image ourselves."""
+        from argus.container import scanner as scanner_mod
+        from argus.container.scanner import scan_image
+        from argus.container.discovery import ContainerTarget
+
+        captured = self._capture_local_flag(monkeypatch)
+        # Pretend ``docker image inspect`` succeeds for this ref.
+        monkeypatch.setattr(scanner_mod, "is_image_local", lambda ref: True)
+
+        target = ContainerTarget(
+            name="opa", image_ref="hardening-test-opa:scan-6d7bd4a0",
+        )
+        with caplog.at_level("INFO", logger="argus.container"):
+            scan_image(target, scanners=("trivy", "grype"), sbom=False)
+
+        assert captured["grype_local"] is True
+        assert captured["trivy_local"] is True
+        # Operators get a breadcrumb that the local copy was scanned
+        # (not pulled from a registry) — the ref appears in the log.
+        joined = " ".join(r.message for r in caplog.records)
+        assert "local Docker daemon" in joined
+        assert "hardening-test-opa:scan-6d7bd4a0" in joined
+
+    def test_ref_only_target_absent_from_daemon_is_remote(self, monkeypatch):
+        """No Dockerfile and not in the daemon → genuine remote pull,
+        ``local=False`` so the ``registry:`` source + auth env apply."""
+        from argus.container import scanner as scanner_mod
+        from argus.container.scanner import scan_image
+        from argus.container.discovery import ContainerTarget
+
+        captured = self._capture_local_flag(monkeypatch)
+        monkeypatch.setattr(scanner_mod, "is_image_local", lambda ref: False)
+
+        target = ContainerTarget(name="webapp", image_ref="ghcr.io/org/web:1.0")
+        scan_image(target, scanners=("trivy", "grype"), sbom=False)
+
+        assert captured["grype_local"] is False
+        assert captured["trivy_local"] is False
+
+    def test_dockerfile_target_skips_daemon_probe(self, tmp_path, monkeypatch, caplog):
+        """When we built the image this run, ``local`` is already known —
+        the daemon probe is short-circuited (no redundant subprocess) and
+        the not-built-by-us breadcrumb does not fire."""
+        from argus.container import scanner as scanner_mod
+        from argus.container.scanner import scan_image
+        from argus.container.discovery import ContainerTarget
+
+        captured = self._capture_local_flag(monkeypatch)
+
+        probed = {"called": False}
+
+        def boom(ref):
+            probed["called"] = True
+            return False
+
+        monkeypatch.setattr(scanner_mod, "is_image_local", boom)
+
+        target = ContainerTarget(
+            name="myapp",
+            image_ref="myapp:argus-scan",
+            dockerfile=tmp_path / "Dockerfile",
+            context=tmp_path,
+        )
+        with caplog.at_level("INFO", logger="argus.container"):
+            scan_image(target, scanners=("trivy", "grype"), sbom=False)
+
+        # Short-circuit: ``dockerfile is not None`` makes ``is_local`` True
+        # without ever consulting the daemon.
+        assert captured["grype_local"] is True
+        assert probed["called"] is False
+        # We built it, so the "found in local daemon" breadcrumb (meant
+        # for refs we did NOT build) must not appear.
+        assert "local Docker daemon" not in " ".join(
+            r.message for r in caplog.records
+        )
 
 
 # ───────────────────────────────────────────────
