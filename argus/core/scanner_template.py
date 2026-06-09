@@ -91,6 +91,7 @@ def run_subprocess_scan(
     *,
     output_filename: str = "results.json",
     timeout: float | None = None,
+    cwd: str | None = None,
 ) -> ScanResult:
     """Run *scanner*'s CLI in a tempdir and return a :class:`ScanResult`.
 
@@ -115,6 +116,15 @@ def run_subprocess_scan(
             (e.g. ``"results.sarif"``).
         timeout: Optional subprocess timeout in seconds. Default: no
             timeout (most scanners self-cap).
+        cwd: Optional working directory for the subprocess. Default
+            ``None`` runs in argus's own CWD (correct for tools that take
+            an explicit path argument, like bandit/gosec). Tools that
+            analyse *the current module/package* and resolve relative
+            patterns against the working directory (e.g. ``govulncheck
+            ./...``) must set this to the scan target so the relative
+            pattern resolves there rather than against argus's CWD. The
+            container path achieves the same effect via the image's
+            ``WORKDIR /workspace``.
 
     Returns:
         A :class:`ScanResult` with ``findings`` populated on success or
@@ -149,6 +159,7 @@ def run_subprocess_scan(
                 timeout=timeout,
                 encoding="utf-8",
                 errors="replace",
+                cwd=cwd,
             )
         except FileNotFoundError as exc:
             return ScanResult(

@@ -83,6 +83,16 @@ CUSTOM_IMAGES = {
     # + release digest. The digest pin below is still the content-hash
     # gate the manifest check verifies.
     "mumps": "ghcr.io/huntridge-labs/argus/scanner-mumps:1.9.1@sha256:00be506f7617cc1dbc98f4190d682bdd10f3d347daf2cfac5ee0c9cc2f84bd3f",
+    # govulncheck — reachability-aware Go vuln scanner. There is no
+    # official govulncheck image (upstream ships it via
+    # ``go install golang.org/x/vuln/cmd/govulncheck``), so argus builds
+    # and publishes its own from docker/Dockerfile.govulncheck (golang
+    # base + pinned govulncheck). PRE-PUBLISH PLACEHOLDER: the digest
+    # below is a zero placeholder; the release pipeline builds the image,
+    # then release-it rewrites this line to the real release digest. Until
+    # that first publish, run the scanner with a locally-installed
+    # govulncheck — the SDK prefers the local binary when present.
+    "govulncheck": "ghcr.io/huntridge-labs/argus/scanner-govulncheck:1.9.1@sha256:0000000000000000000000000000000000000000000000000000000000000000",
 }
 
 

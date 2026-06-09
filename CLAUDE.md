@@ -449,7 +449,7 @@ See `CONTRIBUTING.md` for the complete composite actions development guide. Key 
 |----------|---------|---------------|
 | **SAST** | scanner-codeql<br>scanner-bandit<br>scanner-gosec<br>scanner-opengrep<br>scanner-mumps | Multi-language<br>Python<br>Go<br>Pattern-based<br>MUMPS / M (28 rules: M001-M007 security, M101-M102 + M201-M219 diagnostics — mHawk taint-sink parity + 21 diagnostics) |
 | **Secrets** | scanner-gitleaks | Git history & files |
-| **Dependencies** | scanner-osv<br>scanner-dependency-review | OSV database<br>PR diff analysis & license compliance |
+| **Dependencies** | scanner-osv<br>scanner-govulncheck<br>scanner-dependency-review | OSV database<br>Go reachability-aware (govulncheck — only reports vulns whose symbol is actually called)<br>PR diff analysis & license compliance |
 | **Infrastructure** | scanner-trivy-iac<br>scanner-checkov | Terraform, K8s, etc.<br>Multi-framework |
 | **Container** | scanner-container | Trivy + Grype + Syft |
 | **Malware** | scanner-clamav | File scanning |

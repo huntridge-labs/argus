@@ -484,6 +484,11 @@ scanners:
     purpose: Dependency vulnerability scanning via OSV database
     output: JSON/SARIF
     note: Any trigger, uses official google/osv-scanner-action Docker image
+  - name: govulncheck
+    purpose: "Reachability-aware Go vulnerability scanning — reports vulns only when the affected symbol is actually called (call graph built from source), cutting the presence-based false positives that grype/trivy/osv surface on Go binaries/modules"
+    languages: [go]
+    output: JSON/SARIF
+    note: "Go-only, source mode (govulncheck ./...). Two finding tiers: reachable (real OSV severity, gates) and imported-but-not-called (INFO, never gates, metadata.reachable=false). Go advisories frequently lack CVSS → reachable findings may be UNKNOWN severity (documented limitation, not a parse bug). Custom image docker/Dockerfile.govulncheck (WORKDIR /workspace, since the engine sets no -w on the container). Local execution runs with cwd=scan path so the ./... pattern resolves against the target module. Streamed-JSON parser (govulncheck emits concatenated objects, not one document)."
   - name: dependency-review
     purpose: PR dependency diff analysis and license compliance
     output: JSON

@@ -57,6 +57,8 @@ See [examples/github-enterprise/](../examples/github-enterprise/) for GHES templ
   - [gosec](#gosec)
   - [OpenGrep (Semgrep)](#opengrep-semgrep)
   - [MUMPS / M language](#mumps--m-language-mumps)
+- [Dependency Scanners](#dependency-scanners)
+  - [govulncheck (Go)](#govulncheck-go)
 - [Container Scanners](#container-scanners)
   - [Trivy Container](#trivy-container)
   - [Grype](#grype)
@@ -387,6 +389,56 @@ reporters:
 > **Secret redaction:** for the M004 (hard-coded credentials) rule, the matched literal value is replaced with the redaction placeholder before the finding is constructed. Defense-in-depth: `Finding.__post_init__` runs the pattern-based redactor as a second pass. The literal never reaches any reporter, export, or the MCP server. Integration test `test_literal_value_is_redacted` enforces this contract.
 
 > **Taint scope:** Phase 1 taint *detection* is intra-file. Recognized taint sources are `READ` (terminal input), `$ZARGV` (YottaDB / GT.M process arguments), and the HTTP context globals `^%CGI`, `^%REQUEST`, `^%session`. The collector is shared between M001 / M002 / M003 / M005 / M006 so every taint-sink rule sees the full source surface uniformly. The **inter-procedural call graph** is built on every multi-file scan (`argus/scanners/mumps/callgraph.py`); M001 findings carry an `inter_procedural_callers` metadata list naming the routines that reach the sink. **One-hop taint propagation** across that graph is available via `interprocedural.enabled` (opt-in): a tainted actual argument flows into the callee's formal parameter (recursion-safe monotone worklist, `max_depth`-capped). Deeper multi-hop propagation, return-value taint, and per-finding provenance remain on the roadmap.
+
+</details>
+
+## Dependency Scanners
+
+### govulncheck (Go)
+
+**Reachability-aware** Go vulnerability scanner. Where presence-based scanners (Grype, Trivy, OSV) flag every known vulnerability in every dependency in a module's graph, govulncheck builds the program **call graph from source** and reports a vulnerability only when the affected symbol is actually **reachable** from your code. This removes the large class of "the vulnerable package is in `go.mod` but the affected function is never called" false positives.
+
+**Supported languages:** `go` (requires a `go.mod` module and the Go toolchain)
+
+**Severity levels:** CRITICAL, HIGH, MEDIUM, LOW, INFO, UNKNOWN
+
+**Finding tiers:**
+
+| Tier | Meaning | Severity |
+|------|---------|----------|
+| Called / reachable | govulncheck found a call path to the vulnerable symbol | Real (OSV-derived) severity — gates on `fail_on_severity` |
+| Imported, not called | The vulnerable module/package is present but the affected symbol isn't called | `INFO` — visible for audit, never gates |
+
+Each finding carries `metadata.reachable` (`true`/`false`); reachable findings also carry `metadata.call_stack` (entry point → vulnerable symbol) and `metadata.vulnerable_symbol`.
+
+<details>
+<summary><strong>Configuration & Examples</strong></summary>
+
+**Configuration (composite action):**
+
+| Input | Description | Default | Required |
+|-------|-------------|---------|----------|
+| `scan_path` | Path to the Go module (directory with `go.mod`) | `.` | No |
+| `go_version` | Go version to set up | `stable` | No |
+| `govulncheck_version` | govulncheck version to install | `latest` | No |
+| `enable_code_security` | Upload SARIF to GitHub Security tab | `false` | No |
+| `post_pr_comment` | Post findings as PR comments | `false` | No |
+| `fail_on_severity` | Fail at/above this severity | `none` | No |
+
+**SDK config (`argus.yml`):**
+
+```yaml
+scanners:
+  - govulncheck
+scan_path: "."
+fail_on_severity: high
+```
+
+Optional per-scanner key: `scan_target` (a Go package pattern relative to the module root, default `./...`) to narrow the scan to a sub-package.
+
+> **Severity note:** Go advisories (`GO-YYYY-NNNN`) frequently carry no machine-readable severity. A reachable finding without one is reported as `UNKNOWN` (not guessed), so it won't trip `fail_on_severity: high`. Pair govulncheck with `osv` if you need CVSS-derived gating, and rely on govulncheck for the reachability signal.
+
+> **Relationship to other scanners:** `gosec` is Go SAST (code anti-patterns), not dependency CVEs. `osv` is presence-based dependency CVEs across many ecosystems (broad, no reachability). `govulncheck` is the lowest-false-positive Go dependency signal because it filters on reachability.
 
 </details>
 

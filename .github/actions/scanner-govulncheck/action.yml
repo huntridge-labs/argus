@@ -1,0 +1,196 @@
+name: 'govulncheck Go Vulnerability Scanner'
+description: |
+  Run govulncheck for reachability-aware Go vulnerability scanning via the
+  Argus SDK.
+
+  Unlike presence-based scanners (grype/trivy/osv), govulncheck builds the
+  program call graph from source and reports a vulnerability only when the
+  affected symbol is actually reachable — cutting the "vulnerable package
+  is in go.mod but never called" false positives. Imported-but-not-called
+  vulnerabilities are still surfaced, but as INFO so they never gate.
+
+  Requires Go source (a module with go.mod). This action sets up Go and
+  installs govulncheck, then runs it through the SDK so results integrate
+  with security-summary like every other scanner.
+
+  **Usage Example:**
+  ```yaml
+  - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+  - uses: huntridge-labs/argus/.github/actions/scanner-govulncheck@1.4.0
+    with:
+      scan_path: '.'
+      fail_on_severity: 'high'
+  ```
+
+author: 'Argus'
+
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  scan_path:
+    description: 'Path to the Go module to scan (directory containing go.mod)'
+    required: false
+    default: '.'
+  go_version:
+    description: 'Go version to set up (govulncheck source mode needs a Go toolchain)'
+    required: false
+    default: 'stable'
+  govulncheck_version:
+    description: 'govulncheck version to install'
+    required: false
+    default: 'latest'
+  enable_code_security:
+    description: 'Whether GitHub Code Security is enabled (uploads SARIF to the Security tab)'
+    required: false
+    default: 'false'
+  post_pr_comment:
+    description: 'Whether to post PR comments'
+    required: false
+    default: 'false'
+  fail_on_severity:
+    description: 'Fail if findings at or above this severity. Options: none, low, medium, high, critical.'
+    required: false
+    default: 'none'
+  job_id:
+    description: 'Job ID for artifact naming'
+    required: false
+    default: ${{ github.job }}
+
+outputs:
+  critical_count:
+    description: 'Number of critical severity findings'
+    value: ${{ steps.scan.outputs.critical_count }}
+  high_count:
+    description: 'Number of high severity findings'
+    value: ${{ steps.scan.outputs.high_count }}
+  medium_count:
+    description: 'Number of medium severity findings'
+    value: ${{ steps.scan.outputs.medium_count }}
+  low_count:
+    description: 'Number of low severity findings'
+    value: ${{ steps.scan.outputs.low_count }}
+  total_count:
+    description: 'Total number of vulnerability findings (reachable + imported-not-called)'
+    value: ${{ steps.scan.outputs.total_count }}
+  scan_status:
+    description: 'Overall scan status (clean or vulnerable)'
+    value: ${{ steps.scan.outputs.scan_status }}
+
+runs:
+  using: 'composite'
+  steps:
+    # IMPORTANT: Caller must checkout the repository before calling this action
+    # Example:
+    #   - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+    #   - uses: ./.github/actions/scanner-govulncheck
+
+    - name: Set up Go
+      uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+      with:
+        go-version: ${{ inputs.go_version }}
+
+    - name: Install govulncheck
+      shell: bash
+      env:
+        GOVULNCHECK_VERSION: ${{ inputs.govulncheck_version }}
+      # govulncheck has no official binary release / image; upstream
+      # distributes it via `go install`. Install it onto PATH so the SDK's
+      # local-binary path (preferred over the container fallback) finds it.
+      run: |
+        go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
+        echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+    - name: Set up Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      with:
+        python-version: '3.14'
+
+    - name: Install Argus SDK
+      shell: bash
+      # Install the SDK from the checked-out composite source. This matches
+      # the consumer-scoped intent of composite actions (``uses: .../<wrapper>@tag``
+      # implicitly pins the SDK version to the same tag) and sidesteps the
+      # PyPI-release lag that would break ``pip install argus-security>=X``
+      # for consumers until after the release ships. See
+      # scanner-container/action.yml for the original rationale.
+      run: pip install "${{ github.action_path }}/../../.."
+
+    - name: Run govulncheck via Argus SDK
+      id: scan
+      shell: bash
+      env:
+        SCAN_PATH: ${{ inputs.scan_path }}
+        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
+      run: |
+        mkdir -p govulncheck-reports scanner-summaries
+
+        # --path points govulncheck at the module root (its cwd), so the
+        # default ``./...`` pattern resolves there. To narrow the scan to a
+        # sub-package, set scanners.govulncheck.scan_target in argus.yml.
+        SCAN_EXIT=0
+        python -m argus scan govulncheck \
+          --path "${SCAN_PATH}" \
+          --severity-threshold "${FAIL_ON_SEVERITY:-none}" \
+          --format sarif --format json --format markdown \
+          --output-dir ./govulncheck-reports \
+          --output-vars ./govulncheck-reports/counts.env \
+          --no-timestamp \
+          || SCAN_EXIT=$?
+
+        # Forward counts to GitHub Actions outputs
+        [ -f govulncheck-reports/counts.env ] && cat govulncheck-reports/counts.env >> "$GITHUB_OUTPUT"
+
+        # Derive scan_status from passed flag
+        if [ -f govulncheck-reports/counts.env ]; then
+          PASSED=$(grep '^passed=' govulncheck-reports/counts.env | cut -d= -f2)
+          if [ "$PASSED" = "true" ]; then
+            echo "scan_status=clean" >> "$GITHUB_OUTPUT"
+          else
+            echo "scan_status=vulnerable" >> "$GITHUB_OUTPUT"
+          fi
+        fi
+
+        # Copy markdown summary for PR comment artifact
+        if [ -f "govulncheck-reports/argus-summary.md" ]; then
+          cp govulncheck-reports/argus-summary.md scanner-summaries/govulncheck.md
+          cat govulncheck-reports/argus-summary.md >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+        exit $SCAN_EXIT
+
+    - name: Upload SARIF to GitHub Security
+      if: inputs.enable_code_security == 'true' && always() && github.actor != 'nektos/act' && hashFiles('govulncheck-reports/argus-results.sarif') != ''
+      uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4
+      with:
+        sarif_file: govulncheck-reports/argus-results.sarif
+        category: govulncheck
+      continue-on-error: true
+
+    - name: Upload govulncheck reports
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: govulncheck-reports-${{ inputs.job_id }}
+        path: govulncheck-reports/
+        retention-days: 30
+      continue-on-error: true
+
+    - name: Upload scanner summary
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: scanner-summary-govulncheck-${{ inputs.job_id }}
+        path: scanner-summaries/govulncheck.md
+        retention-days: 7
+      continue-on-error: true
+
+    - name: Comment PR with govulncheck results
+      if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
+      uses: huntridge-labs/argus/.github/actions/comment-pr@1.4.0
+      with:
+        summary_file: scanner-summaries/govulncheck.md
+        comment_marker: govulncheck-scanner-comment-marker
+        title: '🐹 govulncheck Go Vulnerability Results'
+        fallback_message: 'No govulncheck results available'

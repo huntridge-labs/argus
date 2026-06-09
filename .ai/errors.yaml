@@ -291,13 +291,42 @@ errors:
       - "Tab-complete via `argus completion zsh` (or bash/fish) \u2014 completions\
         \ are generated from the live registry"
       examples:
-        security_scanners: bandit, gitleaks, opengrep, osv, trivy-iac, checkov, clamav,
-          supply-chain, zap, container
+        security_scanners: bandit, gosec, govulncheck, gitleaks, opengrep, osv, trivy-iac,
+          checkov, clamav, supply-chain, zap, container
         linters: lint-yaml, lint-json, lint-python, lint-javascript, lint-dockerfile,
           lint-terraform
         composite_only: codeql, dependency-review, scn-detector (composite-action-only;
           not registered as SDK scanners)
     symptom: Scanner X not found in matrix
+  GO_CVE_FALSE_POSITIVE:
+    category: scanner
+    context: |
+      A Go project's container/binary scan (grype, trivy) or its OSV
+      dependency scan flags a CVE, you open a fix PR, and the upstream
+      maintainer responds that it's a false positive because the vulnerable
+      code path is never used. Presence-based scanners flag a CVE whenever
+      the vulnerable *package* is in the dependency graph, regardless of
+      whether the vulnerable *symbol* is ever called.
+    root_cause: |
+      grype/trivy/osv are presence-based: they enumerate packages (from the
+      image, the binary's embedded module list, or go.mod) and match them
+      against a CVE database. They have no call-graph / reachability
+      analysis, so "library X has CVE-Y" is reported even when your code
+      never reaches the affected function. For Go specifically this is a
+      large, well-known false-positive class.
+    solution:
+      steps:
+      - "Verify Go findings with the reachability-aware scanner before filing upstream fixes: `argus scan govulncheck --path <go-module>`."
+      - "govulncheck builds the call graph from source and reports a vuln only when the affected symbol is actually reachable. Findings carry metadata.reachable: a 'reachable: false' finding (severity INFO, titled '[imported, not called]') is present-but-unreachable, i.e. the false-positive case."
+      - "Treat reachable findings as actionable; treat imported-but-not-called as informational (they never gate on fail_on_severity)."
+      - "Keep osv/grype/trivy for breadth and non-Go ecosystems; use govulncheck as the Go reachability filter."
+      note: |
+        Go advisories often lack a CVSS, so a reachable govulncheck finding
+        may be severity UNKNOWN. That's a Go vuln-DB limitation, not a parse
+        bug; combine with osv if you need CVSS-derived severity for gating.
+    reference: argus/scanners/govulncheck.py; docs/scanners.md Dependency Scanners
+      govulncheck (Go)
+    symptom: Go CVE false positive|vulnerability reported but code isn't used|UNAFFECTED.*govulncheck
   CODEQL__UNSUPPORTED_LANGUAGE:
     category: scanner
     context: CodeQL fails to analyze repository
