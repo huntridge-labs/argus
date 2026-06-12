@@ -301,6 +301,40 @@ error_patterns:
       note: "Do NOT remove persist-credentials: false — fix the remote URL instead"
       reference: "PR #86"
 
+  - pattern: "manifest unknown|<scanner>:<version> failed manifest check|pinned image tag does not resolve after release"
+    category: release
+    context: |
+      A scanner image is pinned in argus/containers.py as
+      ``<image>:<version>@sha256:<digest>`` but the ``:<version>`` /
+      ``:latest`` tag does not exist on GHCR — ``docker manifest
+      inspect`` returns "manifest unknown". The image *content* (the
+      digest) exists, often only under the transient ``build-<sha>-<run>``
+      tag. Surfaces as the Unit Tests manifest check failing (it runs on
+      a single Python matrix leg), frequently first noticed on an
+      unrelated PR rather than at release time.
+
+    root_cause: |
+      The Release workflow builds once with a ``build-<sha>`` tag, then
+      re-tags to ``:<VERSION>`` + ``:latest``. The build, promote, cosign,
+      and release-notes steps each carried their OWN hardcoded image list.
+      When scanner-mumps was added it was put in the build + cosign lists
+      but missed from the promote loop, so it was built and signed but
+      never tagged ``:<VERSION>``. The release-it after:bump hook still
+      pinned containers.py to the (valid) digest, so the pin pointed at a
+      tag that was never pushed. The ``chore(release):`` commit skips the
+      Unit Tests workflow, so the manifest check never ran post-release.
+
+    solution:
+      steps:
+        - "Single-source the image set: build IMAGE_NAMES once from the IMAGES array and export via $GITHUB_ENV; promote/cosign/notes all iterate IMAGE_NAMES (no parallel hardcoded lists)."
+        - "Add a 'Verify pinned image manifests resolve' step to release.yml (runs python -m scripts.ci.check_container_images after promotion, before publish) so a missing promotion fails the release immediately."
+        - "Immediate remediation for an already-shipped miss: re-tag the existing digest with oras (manifest-only, no rebuild): oras tag <repo>@sha256:<digest> <version> latest — the digest is already cosign-signed, so signatures stay valid."
+      note: |
+        cosign signs by digest, so a missing :<VERSION> tag does NOT fail
+        the signing step — the manifest check is what catches it. Keep the
+        single IMAGE_NAMES source so adding a scanner can't drift again.
+      reference: "argus/containers.py + .github/workflows/release.yml (promote/cosign/notes loops) + scripts/ci/check_container_images.py"
+
   # ==============================================================================
   # WORKFLOW ERRORS
   # ==============================================================================
