@@ -42,3 +42,12 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           update-badge: 'true'
           suggest-toon: 'false'
+          # v0.6.0's auto-migrate + regenerate-index create local (unsigned)
+          # commits and push them (migrate branch / index sync). main's ruleset
+          # requires verified signatures, so those pushes are rejected (GH013)
+          # and the job fails on push to main. Keep both off — the migration
+          # suggestion surfaces as an issue, not a push. This is the #225 guard,
+          # retained on the 0.6.0 bump now that .ai/ is v2 (so the validation
+          # itself passes). A PR run won't hit this; push-to-main would.
+          auto-migrate: 'false'
+          regenerate-index: 'false'
