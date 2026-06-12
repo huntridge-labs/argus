@@ -108,6 +108,32 @@ error_patterns:
 
     reference: "argus/scanners/mumps/taint.py (filter_charset_guarded)"
 
+  - pattern: "TypeError: Language.__init__.*argument|Parser.*set_language|tree-sitter bump fails all mumps unit-test legs"
+    category: scanner
+    context: |
+      A tree-sitter / py-tree-sitter upgrade (e.g. Dependabot proposing
+      >=0.22, surfaced by #247) breaks the MUMPS parser and fails every
+      mumps unit-test leg. py-tree-sitter 0.22 removed the two-arg
+      ``Language(path, name)`` constructor and ``Parser.set_language``.
+
+    root_cause: |
+      ``MumpsParser`` used the pre-0.22 API
+      (``Language(str(grammar), "mumps")`` + ``Parser()`` +
+      ``parser.set_language(...)``). 0.22+ requires a pre-loaded language
+      pointer wrapped in a PyCapsule and takes the language in the
+      ``Parser(language)`` constructor. The compiled ``mumps.so`` (language
+      ABI 14) itself is compatible with both lines — only the Python loader
+      changed.
+
+    solution:
+      steps:
+        - "The grammar loader is version-gated (_tree_sitter_minor): ≤0.21 keeps the two-arg Language + set_language; ≥0.22 wraps the grammar's tree_sitter_mumps() pointer with ctypes + PyCapsule_New(... b'tree_sitter.Language') via _grammar_capsule, then Language(capsule) + Parser(language). Both branches live in _load_grammar."
+        - "The [mumps] extra floats across the tested range (tree-sitter>=0.20,<0.26); the <0.26 ceiling bounds it to versions CI has exercised. No grammar rebuild — the same mumps.so loads on both lines."
+        - "docker/Dockerfile.mumps bumps its build-time TREE_SITTER_VERSION to the current line (0.25.2) so the scanner-mumps image ships the new binding."
+        - "No Dependabot ignore is needed — the dual path absorbs the API break."
+      verification: "TestTreeSitterVersionGating in test_mumps_scanner.py pins the branch selection; the full mumps suite passes on both 0.21.3 and 0.25.2"
+    reference: "argus/scanners/mumps/parser.py (_tree_sitter_minor / _grammar_capsule / _load_grammar) — issue #248, PR #249"
+
   # ==============================================================================
   # SARIF ERRORS
   # ==============================================================================

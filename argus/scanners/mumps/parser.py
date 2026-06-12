@@ -92,6 +92,50 @@ class ParsedSource:
         return f"{self.path}:{line}:{col}"
 
 
+def _tree_sitter_minor() -> tuple[int, int]:
+    """(major, minor) of the installed py-tree-sitter binding."""
+    from importlib.metadata import version
+    parts = version("tree-sitter").split(".")
+    return int(parts[0]), int(parts[1])
+
+
+def _grammar_capsule(grammar: Path):
+    """Return a ``tree_sitter.Language`` PyCapsule for the compiled grammar.
+
+    The grammar shared library exports ``tree_sitter_mumps()`` returning a
+    ``const TSLanguage *``; py-tree-sitter >= 0.22 wants that pointer wrapped
+    in a PyCapsule named ``tree_sitter.Language`` rather than a path + name.
+    """
+    import ctypes
+    lib = ctypes.cdll.LoadLibrary(str(grammar))
+    lib.tree_sitter_mumps.restype = ctypes.c_void_p
+    new_capsule = ctypes.pythonapi.PyCapsule_New
+    new_capsule.restype = ctypes.py_object
+    new_capsule.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p]
+    return new_capsule(lib.tree_sitter_mumps(), b"tree_sitter.Language", None)
+
+
+def _load_grammar(grammar: Path):
+    """Load the compiled MUMPS grammar; return ``(Language, Parser)``.
+
+    py-tree-sitter changed its API at 0.22: the two-argument
+    ``Language(path, name)`` was replaced by ``Language(<pointer>)`` and the
+    language now goes to the ``Parser`` constructor instead of
+    ``set_language``. We support both so the ``[mumps]`` extra works across
+    the 0.20–0.25 range without forcing a binding version (#248). The
+    compiled grammar (ABI 14) is accepted by both.
+    """
+    from tree_sitter import Language, Parser
+    if _tree_sitter_minor() >= (0, 22):
+        language = Language(_grammar_capsule(grammar))
+        return language, Parser(language)
+    # Pre-0.22 two-argument API.
+    language = Language(str(grammar), "mumps")
+    parser = Parser()
+    parser.set_language(language)
+    return language, parser
+
+
 class MumpsParser:
     """Lazy-initialized parser for MUMPS source files.
 
@@ -109,7 +153,7 @@ class MumpsParser:
         if cls._parser is not None:
             return
         try:
-            from tree_sitter import Language, Parser
+            import tree_sitter  # noqa: F401  (availability check only)
         except ImportError as exc:
             raise GrammarUnavailable(
                 "py-tree-sitter not installed. Install via "
@@ -122,10 +166,7 @@ class MumpsParser:
                 f"MUMPS grammar shared library not found. Searched: {paths}. "
                 "Run scripts/build-mumps-grammar.sh or use the scanner-mumps container image.",
             )
-        cls._language = Language(str(grammar), "mumps")
-        parser = Parser()
-        parser.set_language(cls._language)
-        cls._parser = parser
+        cls._language, cls._parser = _load_grammar(grammar)
 
     @classmethod
     def parse(cls, path: Path, source_bytes: bytes) -> ParsedSource:

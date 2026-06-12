@@ -36,14 +36,15 @@ LABEL org.opencontainers.image.source="https://github.com/huntridge-labs/argus"
 LABEL org.opencontainers.image.description="Argus MUMPS / M language SAST scanner"
 LABEL org.opencontainers.image.licenses="AGPL-3.0"
 
-ARG TREE_SITTER_VERSION=0.21.3
+ARG TREE_SITTER_VERSION=0.25.2
 
 # libstdc++ for the dlopened grammar .so. apk upgrade picks up OS CVEs.
 RUN apk upgrade --no-cache && \
     apk add --no-cache libstdc++
 
-# Python deps: py-tree-sitter v0.21 (we use the Language(path, name)
-# constructor that v0.22 dropped), plus the minimum Argus core needs
+# Python deps: py-tree-sitter (MumpsParser supports both the pre-0.22
+# Language(path, name) API and the >=0.22 Language(<pointer>) + Parser(lang)
+# API, so this floats with the [mumps] extra — #248), plus the minimum Argus core needs
 # to import and run a scan. ``--virtual .ts-build-deps`` lets us drop
 # gcc / python-dev after the install layer so the runtime image stays
 # small (the grammar is already compiled in the previous stage).

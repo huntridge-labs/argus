@@ -98,9 +98,11 @@ browser = [
 # Apache-2.0, MITRE PR 23-4084) is not on PyPI; installing this extra only
 # brings in py-tree-sitter. Users still need either
 # ``scripts/build-mumps-grammar.sh`` (local) or the scanner-mumps container image
-# (which ships a prebuilt grammar). Pinned below 0.22 because v0.22
-# reworked Language() to require a pre-loaded library pointer.
-mumps = ["tree-sitter>=0.20,<0.22"]
+# (which ships a prebuilt grammar). MumpsParser supports both the pre-0.22
+# Language(path, name) API and the >=0.22 Language(<pointer>) + Parser(lang)
+# API (#248), so the binding floats across the tested 0.20–0.25 range; the
+# <0.26 ceiling just bounds it to versions CI has exercised.
+mumps = ["tree-sitter>=0.20,<0.26"]
 # All optional features
 all = ["argus-security[ai,completion,mcp,terminal,browser,mumps]"]
 
