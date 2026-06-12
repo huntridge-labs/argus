@@ -92,6 +92,61 @@ class ParsedSource:
         return f"{self.path}:{line}:{col}"
 
 
+def _tree_sitter_version() -> tuple[int, int]:
+    """Return the installed ``tree-sitter`` (major, minor), or ``(0, 22)``.
+
+    Selects the grammar-loading path: py-tree-sitter 0.22 dropped the
+    two-arg ``Language(path, name)`` constructor and ``Parser.set_language``
+    in favor of a pre-loaded language pointer + ``Parser(language)``.
+    Unknown / unparsable versions default to the modern path — the ≥0.22
+    line is the current release and the install floor going forward.
+    See issue #248.
+    """
+    try:
+        import importlib.metadata as _md
+
+        major, minor = _md.version("tree-sitter").split(".")[:2]
+        return (int(major), int(minor))
+    except Exception:
+        return (0, 22)
+
+
+def _load_mumps_language(language_cls, grammar_path: str):
+    """Load the compiled MUMPS grammar into a tree-sitter ``Language``.
+
+    ≤0.21 takes ``Language(path, name)``. ≥0.22 takes a single PyCapsule
+    wrapping the pointer returned by the grammar's ``tree_sitter_mumps``
+    symbol. The compiled ``mumps.so`` (language ABI 14) is compatible with
+    both lines, so the upgrade needs no grammar rebuild.
+    """
+    if _tree_sitter_version() < (0, 22):
+        return language_cls(grammar_path, "mumps")
+
+    import ctypes
+
+    capsule_new = ctypes.pythonapi.PyCapsule_New
+    capsule_new.restype = ctypes.py_object
+    capsule_new.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p]
+
+    lib = ctypes.cdll.LoadLibrary(grammar_path)
+    lib.tree_sitter_mumps.restype = ctypes.c_void_p
+    capsule = capsule_new(lib.tree_sitter_mumps(), b"tree_sitter.Language", None)
+    return language_cls(capsule)
+
+
+def _build_parser(parser_cls, language):
+    """Build a ``Parser`` bound to *language* across tree-sitter versions.
+
+    ≥0.22 takes the language in the constructor (``set_language`` was
+    removed); ≤0.21 uses the no-arg constructor + ``set_language``.
+    """
+    if _tree_sitter_version() < (0, 22):
+        parser = parser_cls()
+        parser.set_language(language)
+        return parser
+    return parser_cls(language)
+
+
 class MumpsParser:
     """Lazy-initialized parser for MUMPS source files.
 
@@ -122,10 +177,8 @@ class MumpsParser:
                 f"MUMPS grammar shared library not found. Searched: {paths}. "
                 "Run scripts/build-mumps-grammar.sh or use the scanner-mumps container image.",
             )
-        cls._language = Language(str(grammar), "mumps")
-        parser = Parser()
-        parser.set_language(cls._language)
-        cls._parser = parser
+        cls._language = _load_mumps_language(Language, str(grammar))
+        cls._parser = _build_parser(Parser, cls._language)
 
     @classmethod
     def parse(cls, path: Path, source_bytes: bytes) -> ParsedSource:

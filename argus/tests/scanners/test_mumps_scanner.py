@@ -144,6 +144,65 @@ class TestGrammarLoading:
             MumpsParser.parse(Path("x.m"), b" ; empty\n")
 
 
+class TestTreeSitterVersionGating:
+    """Dual-path grammar loading across the py-tree-sitter 0.22 API break (#248).
+
+    py-tree-sitter 0.22 dropped the two-arg ``Language(path, name)``
+    constructor and ``Parser.set_language``. The parser selects the path by
+    version; CI installs only one tree-sitter, so these tests pin the branch
+    *selection* directly. The ≥0.22 grammar loader (ctypes/PyCapsule) is
+    exercised end-to-end by the real-grammar tests in test_mumps_rules.py.
+    """
+
+    def test_version_parses_major_minor(self, monkeypatch):
+        from argus.scanners.mumps import parser as pm
+        monkeypatch.setattr("importlib.metadata.version", lambda _n: "0.25.2")
+        assert pm._tree_sitter_version() == (0, 25)
+
+    def test_version_falls_back_to_modern_when_unknown(self, monkeypatch):
+        from argus.scanners.mumps import parser as pm
+
+        def _boom(_n):
+            raise RuntimeError("tree-sitter not installed")
+
+        monkeypatch.setattr("importlib.metadata.version", _boom)
+        assert pm._tree_sitter_version() == (0, 22)
+
+    def test_legacy_path_uses_two_arg_language_and_set_language(self, monkeypatch):
+        from argus.scanners.mumps import parser as pm
+        monkeypatch.setattr(pm, "_tree_sitter_version", lambda: (0, 21))
+
+        class _Lang:
+            def __init__(self, *args):
+                self.args = args
+
+        class _Parser:
+            def __init__(self, *args):
+                self.ctor_args = args
+                self.language = None
+
+            def set_language(self, lang):
+                self.language = lang
+
+        lang = pm._load_mumps_language(_Lang, "/x/mumps.so")
+        assert lang.args == ("/x/mumps.so", "mumps")
+        parser = pm._build_parser(_Parser, lang)
+        assert parser.ctor_args == ()
+        assert parser.language is lang
+
+    def test_modern_path_passes_language_to_parser_ctor(self, monkeypatch):
+        from argus.scanners.mumps import parser as pm
+        monkeypatch.setattr(pm, "_tree_sitter_version", lambda: (0, 25))
+
+        class _Parser:
+            def __init__(self, language):
+                self.language = language
+
+        sentinel = object()
+        parser = pm._build_parser(_Parser, sentinel)
+        assert parser.language is sentinel
+
+
 class _StubNode:
     """Empty AST node — has no children so walk() yields only itself
     and the call-graph builder finds zero labels / edges."""

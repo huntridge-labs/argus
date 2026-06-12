@@ -108,6 +108,31 @@ error_patterns:
 
     reference: "argus/scanners/mumps/taint.py (filter_charset_guarded)"
 
+  - pattern: "TypeError: Language.__init__.*argument|Parser.*set_language|tree-sitter.*bump fails all mumps unit-test legs"
+    category: scanner
+    context: |
+      A tree-sitter / py-tree-sitter upgrade (e.g. Dependabot proposing
+      >=0.22, surfaced by #247) breaks the MUMPS parser and fails every
+      mumps unit-test leg. py-tree-sitter 0.22 removed the two-arg
+      ``Language(path, name)`` constructor and ``Parser.set_language``.
+
+    root_cause: |
+      ``MumpsParser._load`` used the pre-0.22 API
+      (``Language(str(grammar), "mumps")`` + ``Parser()`` +
+      ``parser.set_language(...)``). 0.22+ requires a pre-loaded language
+      pointer wrapped in a PyCapsule and takes the language in the
+      ``Parser(language)`` constructor. The compiled ``mumps.so`` (language
+      ABI 14) itself is compatible with both lines — only the Python loader
+      changed.
+
+    solution:
+      steps:
+        - "MumpsParser now version-gates the loader (_tree_sitter_version): ≤0.21 keeps the two-arg Language + set_language; ≥0.22 loads via ctypes.cdll + PyCapsule_New(... b'tree_sitter.Language') + Parser(language)."
+        - "The [mumps] extra cap is an unpinned floor (tree-sitter>=0.20); no rebuild of the grammar .so is needed."
+        - "No Dependabot ignore is required — the dual path absorbs the API break."
+      verification: "TestTreeSitterVersionGating in test_mumps_scanner.py; full mumps suite passes on both 0.21.3 and 0.25.2"
+    reference: "argus/scanners/mumps/parser.py (_tree_sitter_version / _load_mumps_language / _build_parser) — issue #248"
+
   # ==============================================================================
   # SARIF ERRORS
   # ==============================================================================
