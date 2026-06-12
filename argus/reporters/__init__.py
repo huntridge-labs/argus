@@ -55,6 +55,7 @@ _BUILTIN_NAMES: set[str] = {
     "gitlab",
     "junit",
     "openvex",
+    "oscal",
 }
 
 # Direct ``module:attr`` paths for the built-in reporters. Used as a
@@ -79,6 +80,7 @@ _BUILTIN_FALLBACKS: dict[str, str] = {
     "gitlab": "argus.reporters.gitlab:GitLabReporter",
     "junit": "argus.reporters.junit:JUnitReporter",
     "openvex": "argus.reporters.openvex:OpenVexReporter",
+    "oscal": "argus.reporters.oscal:OscalReporter",
 }
 
 

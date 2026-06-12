@@ -1,0 +1,125 @@
+# CWE → NIST SP 800-53 Rev 5 control mapping.
+#
+# Used by argus.core.control_mapping as the fallback tier — consulted only
+# when a finding's scanner has no rule-level mapping for its specific id.
+# Keyed by canonical CWE form (``CWE-<digits>``); the lookup normalizes
+# scanner-reported variants ("78", "cwe-78", "CWE-78") to that form.
+#
+# Coverage scope: high-volume CWEs the scanners in this project actually
+# emit. Curated, not exhaustive — the goal is to anchor common findings to
+# defensible controls without claiming to be a substitute for an
+# assessor's own crosswalk. Compliance reviewers: please audit and extend
+# in PRs that touch only this file.
+
+# Improper Neutralization of Special Elements ("Injection")
+CWE-20: [si-10]                  # Improper Input Validation
+CWE-22: [ac-3, si-10]            # Path Traversal
+CWE-77: [si-10, si-3]            # Command Injection
+CWE-78: [si-10, si-3]            # OS Command Injection
+CWE-79: [si-10]                  # XSS
+CWE-89: [si-10]                  # SQL Injection
+CWE-90: [si-10]                  # LDAP Injection
+CWE-91: [si-10]                  # XML Injection
+CWE-94: [si-10, si-3]            # Code Injection
+CWE-95: [si-10, si-3]            # Eval Injection
+CWE-98: [si-10]                  # PHP Remote File Inclusion
+CWE-113: [si-10]                 # HTTP Response Splitting
+CWE-117: [au-9, si-10]           # Log Injection
+CWE-352: [si-10, ac-4]           # CSRF
+CWE-601: [si-10]                 # Open Redirect
+CWE-611: [si-10]                 # XXE
+CWE-643: [si-10]                 # XPath Injection
+CWE-915: [si-10]                 # Dynamically-determined Object Attributes
+
+# Authentication / credential handling
+CWE-256: [ia-5, sc-28]           # Plaintext storage of password
+CWE-259: [ia-5, sc-28]           # Hardcoded password
+CWE-287: [ia-2]                  # Improper Authentication
+CWE-306: [ia-2, ac-3]            # Missing Authentication
+CWE-307: [ac-7]                  # Improper Restriction of Excessive Auth Attempts
+CWE-319: [sc-8, ia-5]            # Cleartext Transmission of Sensitive Info
+CWE-321: [ia-5, sc-12]            # Use of hardcoded cryptographic key
+CWE-326: [sc-13]                 # Inadequate Encryption Strength
+CWE-327: [sc-13]                 # Broken / Risky Crypto Algorithm
+CWE-328: [sc-13]                 # Use of Weak Hash
+CWE-329: [sc-13]                 # Generation of Predictable IV
+CWE-330: [sc-13]                 # Use of Insufficiently Random Values
+CWE-331: [sc-13]                 # Insufficient Entropy
+CWE-338: [sc-13]                 # Use of Cryptographically Weak PRNG
+CWE-347: [sc-13, si-7]           # Improper Verification of Cryptographic Signature
+CWE-352: [si-10, ac-4]           # CSRF (also above; lookup is idempotent)
+CWE-521: [ia-5]                  # Weak Password Requirements
+CWE-522: [ia-5, sc-8]            # Insufficiently Protected Credentials
+CWE-547: [ia-5, sc-28]           # Hardcoded sensitive info
+CWE-798: [ia-5, sc-28]           # Use of Hard-coded Credentials
+
+# Authorization / access control
+CWE-200: [ac-3, sc-8]            # Information Exposure
+CWE-201: [ac-3]                  # Insertion of Sensitive Info Into Sent Data
+CWE-264: [ac-3]                  # Permissions/Privileges/Access Control (parent)
+CWE-269: [ac-6]                  # Improper Privilege Management
+CWE-276: [ac-3]                  # Incorrect Default Permissions
+CWE-285: [ac-3]                  # Improper Authorization
+CWE-732: [ac-3, ac-6]            # Incorrect Permission Assignment
+
+# Cryptography (additional)
+CWE-310: [sc-13]                 # Cryptographic Issues (parent)
+CWE-311: [sc-8, sc-28]           # Missing Encryption of Sensitive Data
+CWE-312: [sc-28]                 # Cleartext Storage of Sensitive Info
+CWE-313: [sc-28]                 # Cleartext Storage in File or DB
+CWE-315: [sc-28]                 # Cleartext Storage in Cookie
+CWE-316: [sc-28]                 # Cleartext Storage in Memory
+CWE-320: [sc-12]                 # Key Management Errors (parent)
+CWE-322: [sc-12]                 # Key Exchange without Auth
+CWE-323: [sc-13]                 # Reusing Nonce / Key Pair in Encryption
+CWE-325: [sc-13]                 # Missing Cryptographic Step
+CWE-336: [sc-13]                 # Same Seed in PRNG
+CWE-337: [sc-13]                 # Predictable Seed in PRNG
+CWE-916: [sc-13, ia-5]           # Use of Password Hash With Insufficient Computational Effort
+
+# Memory safety / resource handling
+CWE-119: [si-16]                 # Improper Restriction of Operations within Bounds
+CWE-120: [si-16]                 # Classic Buffer Overflow
+CWE-121: [si-16]                 # Stack Buffer Overflow
+CWE-122: [si-16]                 # Heap Buffer Overflow
+CWE-125: [si-16]                 # Out-of-bounds Read
+CWE-190: [si-10]                 # Integer Overflow
+CWE-401: [sa-15]                 # Missing Release of Memory
+CWE-415: [si-16]                 # Double Free
+CWE-416: [si-16]                 # Use After Free
+CWE-476: [sa-15]                 # NULL Pointer Dereference
+CWE-787: [si-16]                 # Out-of-bounds Write
+
+# Configuration / hardening
+CWE-2: [cm-6, cm-7]              # Environmental config error (parent)
+CWE-15: [cm-6]                   # External Control of System or Config
+CWE-16: [cm-6]                   # Configuration (parent)
+CWE-209: [si-11]                 # Information Exposure Through Error Message
+CWE-215: [si-11]                 # Information Exposure Through Debug Info
+CWE-489: [cm-7]                  # Active Debug Code
+CWE-798: [ia-5, sc-28]           # Hardcoded creds (also above)
+CWE-1004: [sc-8]                 # Sensitive Cookie Without HttpOnly Flag
+CWE-1275: [sc-8]                 # Sensitive Cookie with Improper SameSite
+
+# Dependency / supply chain (used by OSV / dependency scanners that emit CWE)
+CWE-937: [sa-22, ra-5, sr-3]     # Using Components with Known Vulns
+CWE-1035: [sa-22, ra-5]          # Using Components with Known Vulns (alt)
+CWE-1357: [sr-3, sr-4]           # Reliance on Insufficiently Trustworthy Component
+
+# Race conditions / temp file abuse
+CWE-362: [si-10]                 # Concurrent Execution / Race
+CWE-367: [si-10]                 # TOCTOU
+CWE-377: [sc-4]                  # Insecure Temporary File
+CWE-378: [sc-4]                  # Creation of Temp File With Insecure Permissions
+
+# Resource exhaustion / DoS surface
+CWE-400: [sc-5]                  # Uncontrolled Resource Consumption
+CWE-770: [sc-5]                  # Allocation of Resources without Limits
+CWE-835: [sc-5]                  # Loop with Unreachable Exit Condition
+
+# Logging / audit
+CWE-117: [au-9, si-10]           # Log injection (also above)
+CWE-532: [au-9, ac-3]            # Insertion of Sensitive Info into Log
+
+# Deserialization
+CWE-502: [si-10]                 # Deserialization of Untrusted Data

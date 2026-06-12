@@ -1,6 +1,6 @@
 # Argus CLI Reference (v1.4.0)
 
-> Auto-generated from argparse definitions on 2026-06-08.
+> Auto-generated from argparse definitions on 2026-06-12.
 > Do not edit manually — run `python -m scripts.ci.gen_cli_docs` to regenerate.
 
 Argus Security Scanner — comprehensive security scanning for your codebase
@@ -71,7 +71,7 @@ For container image scanning:
 argus scan [-h] [--no-update-check] [--path PATH] [--config CONFIG]
                   [--output-dir OUTPUT_DIR]
                   [--severity-threshold {critical,high,medium,low,none}]
-                  [--format {terminal,markdown,sarif,json,github,gitlab,junit,openvex}]
+                  [--format {terminal,markdown,sarif,json,github,gitlab,junit,openvex,oscal}]
                   [--list] [--verbose] [--debug] [--quiet] [--no-spinner]
                   [--no-timestamp] [--output-vars FILE] [--exclude PATTERNS]
                   [--no-default-excludes] [--dry-run] [--sbom PATH]
@@ -100,7 +100,7 @@ argus scan [-h] [--no-update-check] [--path PATH] [--config CONFIG]
 | `--config`, `-c` | Path to argus.yml config file |  |
 | `--output-dir`, `-o` | Output directory for results (default: ./argus-results) |  |
 | `--severity-threshold`, `-s` | Fail threshold severity level (default: from config) (critical, high, medium, low, none) |  |
-| `--format`, `-f` | Output format (can be repeated; default: terminal) (terminal, markdown, sarif, json, github, gitlab, junit, openvex) |  |
+| `--format`, `-f` | Output format (can be repeated; default: terminal) (terminal, markdown, sarif, json, github, gitlab, junit, openvex, oscal) |  |
 | `--list` | List available scanners and exit | `false` |
 | `--verbose` | Alias for --debug. Full firehose: subprocess output, vulnerability-DB updates, every engine log line. | `false` |
 | `--debug` | Full firehose: subprocess output, vulnerability-DB updates, every engine log line. Use when troubleshooting; the default phase-aware progress is enough for normal scans. | `false` |
@@ -211,12 +211,12 @@ Generate formatted reports from previously captured scan results.
 ```
 argus report [-h] [--no-update-check] [--results-dir RESULTS_DIR]
                     [--output-dir OUTPUT_DIR] [--verbose]
-                    {terminal,markdown,sarif,json,github,gitlab,junit,openvex}
+                    {terminal,markdown,sarif,json,github,gitlab,junit,openvex,oscal}
 ```
 
 **Arguments:**
 
-- `format` — Output format for the report (choices: terminal, markdown, sarif, json, github, gitlab, junit, openvex)
+- `format` — Output format for the report (choices: terminal, markdown, sarif, json, github, gitlab, junit, openvex, oscal)
 
 **Options:**
 

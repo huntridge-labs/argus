@@ -10,6 +10,12 @@ python-slugify>=8.0.4
 # SCN Detector dependencies (closes CVE-2024-35195)
 requests>=2.32.3
 
+# OSCAL reporter tests validate emitted documents against the vendored
+# NIST OSCAL 1.1.2 JSON Schema. Test-only — runtime emission needs no
+# validator (CI guarantees the reporter ships well-formed OSCAL, so user
+# environments pay no validation cost).
+jsonschema>=4.21
+
 # MCP server (optional at runtime, required for full test coverage)
 mcp>=1.10
 
