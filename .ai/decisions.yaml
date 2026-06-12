@@ -2465,3 +2465,80 @@ decisions:
       - ADR-014  # Third-party images stay SHA-pinned via Renovate (same pinDigests philosophy for actions)
     pr_references:
       - "(moves github-actions updates from Dependabot to Renovate; closes #196; supersedes the #218 ignore-self-refs attempt)"
+
+  - id: ADR-030
+    title: "Deprecate scanner-container-summary in favor of security-summary"
+    date: "2026-06-12"
+    status: accepted
+
+    context: |
+      The Phase 3 thin-wrapper migration rewrote scanner-container to call
+      the Argus SDK (``argus scan container``) directly and emit a
+      per-container markdown summary artifact (``scanner-summary-container-*``).
+      The bespoke parse/summary scripts (parse_trivy_results.py,
+      parse_grype_results.py, generate_container_summary.py) were removed as
+      dead code in that cleanup. But scanner-container-summary — the action
+      that combines parallel/matrix container results — still shelled out to
+      those deleted scripts, and still downloaded the obsolete
+      ``container-scan-results-*`` artifact name. It therefore crashed with
+      "No such file or directory" at 1.4.0 and 1.4.1 (issue #251). Meanwhile
+      security-summary already does exactly this job the SDK way: it
+      downloads ``scanner-summary-*`` artifacts (which include
+      ``scanner-summary-container-*``), stitches them via its own
+      generate_summary.py, renders a status table, and posts a PR comment.
+      Two aggregators, one broken and redundant.
+
+    decision: |
+      Deprecate scanner-container-summary and converge on security-summary as
+      the single combined-summary aggregator. scanner-container-summary
+      becomes a thin compatibility shim that emits a deprecation warning and
+      forwards to security-summary scoped to ``scanner-summary-container-*``
+      (preserving the container-specific title and PR comment marker), so
+      existing ``@<version>`` pins keep working. Internal consumers
+      (container-scan.yml, container-scan-from-config.yml) and the published
+      example migrate directly to security-summary. The shim is slated for
+      removal in a future major release.
+
+    alternatives:
+      - option: "Resurrect the deleted parse/summary scripts"
+        rejected_because: |
+          They parsed raw trivy/grype JSON in the pre-SDK format; the SDK now
+          emits canonical results + markdown, so the old scripts no longer
+          match the artifact contract. Re-adding them would reintroduce a
+          parallel, drift-prone implementation of what the SDK already does.
+      - option: "Repair scanner-container-summary as a standalone aggregator"
+        rejected_because: |
+          Keeps two near-identical aggregators to maintain. security-summary
+          already covers the container case via its scanner-summary-* pattern.
+
+    consequences:
+      positive:
+        - "The combined container summary works again (forwards to the maintained security-summary path)."
+        - "One aggregator to maintain; no duplicated stitching logic."
+        - "External consumers pinned to scanner-container-summary keep working via the shim (no hard break)."
+      negative:
+        - "scanner-container-summary's declared outputs (total_vulnerabilities, etc.) are dropped — they never functioned (the action crashed) and security-summary does not expose per-severity counts."
+        - "A future major release must remove the shim; consumers must migrate to security-summary before then."
+
+    implementation: |
+      - .github/actions/scanner-container-summary/action.yml — replaced the
+        deleted-script invocation with a deprecation warning + a forward to
+        security-summary (summary_pattern: scanner-summary-container-*).
+      - .github/workflows/container-scan.yml,
+        .github/workflows/container-scan-from-config.yml,
+        examples/workflows/actions-container-scan-matrix.yml — migrated the
+        summary step to security-summary.
+      - The two workflows that invoke ``argus scan`` inline
+        (container-scan.yml, container-scan-from-config.yml) now write to a
+        fixed --output-dir --no-timestamp and publish the per-container
+        markdown as a ``scanner-summary-container-<name>`` artifact before
+        the summary job, so security-summary has something to stitch instead
+        of silently producing an empty report. (Consumers that use the
+        scanner-container composite action already upload these.)
+      - READMEs (.github/actions/README.md catalog +
+        scanner-container-summary/README.md) marked deprecated.
+
+    related:
+      - ADR-027  # Build-once-promote release pipeline (where 1.4.x was cut)
+    pr_references:
+      - "(deprecates scanner-container-summary; fixes the dangling deleted-script refs; closes #251)"

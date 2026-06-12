@@ -95,7 +95,7 @@ jobs:
           declare -A exceptions=(
             ["comment-pr"]="Utility action - tested indirectly by all scanner and linter actions"
             ["get-job-id"]="Utility action - tested indirectly by other jobs"
-            ["scanner-container-summary"]="Tested as part of scanner-container"
+            ["scanner-container-summary"]="Deprecated shim - forwards to security-summary (tested in test-summary job)"
             ["scanner-zap-summary"]="Tested as part of scanner-zap"
             ["security-summary"]="Tested in test-summary job"
             ["ai-summary"]="Manual-only action - triggered via dedicated ai-summary.yml workflow with user-supplied PR number"
