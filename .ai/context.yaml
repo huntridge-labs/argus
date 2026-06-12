@@ -11,7 +11,7 @@ project:
   purpose: "Automated security scanning via Python SDK and GitHub Actions"
   primary_language: python  # SDK and scanner scripts
   secondary_languages: [yaml]
-  version: "1.4.0"
+  version: "1.4.1"
   license: "AGPL-3.0"
   repository: "huntridge-labs/argus"
 

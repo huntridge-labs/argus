@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/huntridge-labs/argus/1.4.0/.github/actions/parse-container-config/schemas/container-config.schema.json",
+  "$schema": "https://raw.githubusercontent.com/huntridge-labs/argus/1.4.1/.github/actions/parse-container-config/schemas/container-config.schema.json",
   "_recommendation": "Pin every image to an immutable digest (@sha256:...). Tag-only references like 'busybox:latest' or 'alpine:3' are mutable \u2014 same name, different bytes over time, drifting CVE attribution. Pin form (1) below is the most ergonomic: simple-string + digest pin in one line, Dependabot-updatable.",
   "_comment": "For Dependabot automated updates, use simple string format for 'image' field. Dependabot cannot parse structured object format. See examples/dependabot.example.yml",
   "containers": [

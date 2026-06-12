@@ -19,7 +19,7 @@ description: |
     needs: [bandit-scan, gitleaks-scan, trivy-iac-scan, clamav-scan]
     if: always()
     steps:
-      - uses: huntridge-labs/argus/.github/actions/security-summary@1.4.0
+      - uses: huntridge-labs/argus/.github/actions/security-summary@1.4.1
   ```
 
   **With status gating (recommended):**
@@ -35,7 +35,7 @@ description: |
     needs: [bandit-scan, gitleaks-scan, container-scan, zap-scan]
     if: always()
     steps:
-      - uses: huntridge-labs/argus/.github/actions/security-summary@1.4.0
+      - uses: huntridge-labs/argus/.github/actions/security-summary@1.4.1
         with:
           scan_statuses: |
             {
@@ -144,7 +144,7 @@ runs:
 
     - name: Comment PR with security summary
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@1.4.0
+      uses: huntridge-labs/argus/.github/actions/comment-pr@1.4.1
       with:
         summary_file: combined-summaries/security.md
         comment_marker: ${{ inputs.comment_marker }}

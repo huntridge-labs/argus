@@ -70,7 +70,7 @@ jobs:
           python-version: '3.14'
 
       - name: Install Argus
-        uses: huntridge-labs/argus/.github/actions/setup-argus@1.4.0
+        uses: huntridge-labs/argus/.github/actions/setup-argus@1.4.1
 
       - name: Run Trivy IaC Scanner via argus CLI
         env:
@@ -103,7 +103,7 @@ jobs:
           python-version: '3.14'
 
       - name: Install Argus
-        uses: huntridge-labs/argus/.github/actions/setup-argus@1.4.0
+        uses: huntridge-labs/argus/.github/actions/setup-argus@1.4.1
 
       - name: Run Checkov Scanner via argus CLI
         env:

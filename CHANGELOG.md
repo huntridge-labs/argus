@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.4.1](https://github.com/huntridge-labs/argus/compare/1.4.0...1.4.1) (2026-06-12)
+
+### Bug Fixes
+
+* **container:** fail fast on unresolved registry_auth credentials ([#255](https://github.com/huntridge-labs/argus/issues/255)) ([e986418](https://github.com/huntridge-labs/argus/commit/e986418b21411a5f7657143550780e602ea581fa)), closes [#253](https://github.com/huntridge-labs/argus/issues/253)
+* **release:** single-source promoted image list so all scanners get tagged ([#256](https://github.com/huntridge-labs/argus/issues/256)) ([babd83b](https://github.com/huntridge-labs/argus/commit/babd83b6784fd0f5df4e1085d458c7191f8e7149)), closes [#255](https://github.com/huntridge-labs/argus/issues/255)
+
+### Dependencies
+
+* **deps:** Update github-actions-minor-patch ([#235](https://github.com/huntridge-labs/argus/issues/235)) ([554a53b](https://github.com/huntridge-labs/argus/commit/554a53b8dbc45e449b4fac8033d1914de35ff72f))
+
+
 ## [1.4.0](https://github.com/huntridge-labs/argus/compare/1.3.1...1.4.0) (2026-06-08)
 
 ### Features

@@ -103,7 +103,7 @@ jobs:
           python-version: '3.14'
 
       - name: Install Argus
-        uses: huntridge-labs/argus/.github/actions/setup-argus@1.4.0
+        uses: huntridge-labs/argus/.github/actions/setup-argus@1.4.1
 
       - name: Run OSV Scanner via argus CLI
         env:
@@ -135,7 +135,7 @@ jobs:
           persist-credentials: false
 
       - name: Run Dependency Review Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-dependency-review@1.4.0
+        uses: huntridge-labs/argus/.github/actions/scanner-dependency-review@1.4.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
