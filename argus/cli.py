@@ -2292,7 +2292,7 @@ def _cmd_container_scan(
     that path is kept for backward compatibility with any caller that
     still bypasses ``cmd_scan``.
     """
-    from argus.container import ContainerEngine
+    from argus.container import ContainerEngine, RegistryAuthError
     from argus.reporters.container_markdown import ContainerMarkdownReporter
 
     # Configure the ``argus`` logger at the user's chosen level —
@@ -2396,6 +2396,13 @@ def _cmd_container_scan(
                 progress_callback=_make_progress_emitter(args, spinner),
             )
             summary = engine.run()
+    except RegistryAuthError as exc:
+        # Misconfigured registry credentials: surface the two-line
+        # actionable message verbatim (it already names the registry
+        # and the unset env var) rather than wrapping it. (#253)
+        print(f"Error: {exc}", file=sys.stderr)
+        finalize_manifest(manifest, exit_code=EXIT_ERROR, output_dir=output_dir)
+        return EXIT_ERROR
     except Exception as exc:
         print(f"Error: container scan failed: {exc}", file=sys.stderr)
         finalize_manifest(manifest, exit_code=EXIT_ERROR, output_dir=output_dir)

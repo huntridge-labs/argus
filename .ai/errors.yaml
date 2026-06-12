@@ -242,6 +242,40 @@ error_patterns:
         glpat-, etc.) at config-load time so the leak is caught
         before the scan runs.
 
+  - pattern: "registry_auth\\[.*\\]: (username|password) unresolved|UNAUTHORIZED.*~90s into the scan"
+    category: container-scanning
+    context: |
+      A ``registry_auth`` entry (or the top-level
+      ``registry_username``/``registry_password`` shortcut) references a
+      credential via ``password_env``/``username_env`` whose environment
+      variable is unset or empty. Previously argus logged a WARNING to
+      ``argus.log`` only, then proceeded — the sub-scanner container ran
+      for 60–90s and failed with an opaque ``UNAUTHORIZED: authentication
+      required`` from grype/trivy, with nothing on stderr to explain why.
+
+    root_cause: |
+      ``_resolve_registry_auth`` resolves credentials and warns on an
+      unresolved one, but the warning went to the file logger and the
+      scan was never gated on it. The real failure surfaced much later,
+      one layer down, as an upstream-tool auth error unrelated to the
+      actual cause (the missing env var).
+
+    solution:
+      steps:
+        - "``scan_image`` now calls ``validate_registry_auth(config, image_ref)`` for remote pulls *before* any sub-scanner container starts."
+        - "A configured-but-unresolved credential raises ``RegistryAuthError`` naming the registry scope and the unset env var."
+        - "``ContainerEngine._process_target`` re-raises ``RegistryAuthError`` (it is NOT recorded as a per-target scan_error) so the run aborts fast."
+        - "The CLI surfaces the two-line message on stderr and exits non-zero."
+      note: |
+        Local images (built this run, or already present in the docker
+        daemon) skip the gate — they are scanned from the daemon source
+        and never touch a registry. Anonymous pulls (nothing configured)
+        and token-only auth (username intentionally omitted) are not
+        gated. The matched ``registry_auth`` entry is selected by the
+        same longest-path-prefix rule as resolution.
+
+    reference: "argus/container/scanner.py::validate_registry_auth / RegistryAuthError — issue #253"
+
   # ==============================================================================
   # PR COMMENT ERRORS
   # ==============================================================================
