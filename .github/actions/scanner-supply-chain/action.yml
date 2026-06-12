@@ -9,8 +9,8 @@ description: |
 
   **Usage Example:**
   ```yaml
-  - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-  - uses: huntridge-labs/argus/.github/actions/scanner-supply-chain@1.2.1
+  - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+  - uses: huntridge-labs/argus/.github/actions/scanner-supply-chain@1.4.1
     with:
       github_token: (secrets.GITHUB_TOKEN)
       scan_path: '.github/'
@@ -160,7 +160,7 @@ runs:
 
     - name: Upload SARIF to GitHub Security
       if: inputs.enable_code_security == 'true' && always() && github.actor != 'nektos/act' && hashFiles('supply-chain-reports/argus-results.sarif') != ''
-      uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4
+      uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
       with:
         sarif_file: supply-chain-reports/argus-results.sarif
         category: zizmor
@@ -186,7 +186,7 @@ runs:
 
     - name: Comment PR with results
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@1.2.1
+      uses: huntridge-labs/argus/.github/actions/comment-pr@1.4.1
       with:
         summary_file: scanner-summaries/supply-chain.md
         comment_marker: supply-chain-scanner-comment-marker

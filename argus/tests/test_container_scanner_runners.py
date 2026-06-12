@@ -18,6 +18,7 @@ from unittest.mock import patch
 import pytest
 
 from argus.container.scanner import (
+    RegistryAuthError,
     _docker_env_flags,
     _is_path_component_prefix,
     _normalize_image_ref,
@@ -29,6 +30,7 @@ from argus.container.scanner import (
     _run_trivy,
     _subprocess_env,
     _validate_scanner_output,
+    validate_registry_auth,
 )
 
 
@@ -383,6 +385,12 @@ class TestScanImageRawOutputPersistence:
         monkeypatch.setattr(scanner_mod, "_run_trivy", fake_trivy)
         monkeypatch.setattr(scanner_mod, "_run_grype", fake_grype)
         monkeypatch.setattr(scanner_mod, "_run_syft", fake_syft)
+        # These tests pass ref-only targets, which would otherwise make
+        # scan_image shell out to a real ``docker image inspect`` (#233
+        # daemon probe). Pin it so the suite stays hermetic and fast —
+        # the local/remote flag is irrelevant to the persistence layer
+        # under test here.
+        monkeypatch.setattr(scanner_mod, "is_image_local", lambda ref: False)
 
     def test_raw_outputs_copied_when_dir_supplied(self, tmp_path, monkeypatch):
         from argus.container.scanner import scan_image
@@ -456,6 +464,7 @@ class TestScanImageRawOutputPersistence:
         monkeypatch.setattr(scanner_mod, "_run_trivy", fake_trivy)
         monkeypatch.setattr(scanner_mod, "_run_grype", lambda *a, **kw: [])
         monkeypatch.setattr(scanner_mod, "_run_syft", lambda *a, **kw: None)
+        monkeypatch.setattr(scanner_mod, "is_image_local", lambda ref: False)
 
         raw_dir = tmp_path / "raw" / "app"
         scan_image(
@@ -697,10 +706,136 @@ class TestScanImageThreadsDockerfile:
             "argus.container.scanner._run_grype",
             lambda *a, **kw: [],
         )
+        # Genuine remote pull — pin the daemon probe (#233) to "absent"
+        # so the test asserts the remote-pull shape deterministically
+        # regardless of what's cached on the host running the suite.
+        monkeypatch.setattr(
+            "argus.container.scanner.is_image_local", lambda ref: False,
+        )
 
         result = scan_image(target, scanners=("trivy", "grype"))
         assert result.dockerfile == ""
         assert result.context == ""
+
+
+# ───────────────────────────────────────────────
+# Local-daemon detection for ref-only targets (#233)
+# ───────────────────────────────────────────────
+#
+# CI commonly builds a throwaway image in one step (``app:scan-<sha>``),
+# then scans it by ref in a later step via
+# ``argus scan container --image app:scan-<sha>``. The target carries no
+# Dockerfile, so the old ``is_local = target.dockerfile is not None`` test
+# classified it as a *remote* image — grype/trivy fell through to the
+# ``registry:`` source and resolved the never-pushed dev tag against
+# Docker Hub (``docker.io/library/...``), failing with
+# ``UNAUTHORIZED: authentication required``. The fix also probes the local
+# Docker daemon, so an image already present there scans via ``docker:``.
+
+
+class TestScanImageLocalDaemonDetection:
+    """``is_local`` must reflect daemon presence, not just Dockerfile origin."""
+
+    def _capture_local_flag(self, monkeypatch):
+        """Stub the runners to record the ``local`` flag they receive.
+
+        Returns a dict the assertions read after ``scan_image`` runs.
+        """
+        from argus.container import scanner as scanner_mod
+
+        captured: dict = {}
+
+        def fake_grype(image_ref, tmp_path, local=False, **_kwargs):
+            captured["grype_local"] = local
+            return []
+
+        def fake_trivy(image_ref, tmp_path, local=False, **_kwargs):
+            captured["trivy_local"] = local
+            return []
+
+        monkeypatch.setattr(scanner_mod, "_run_grype", fake_grype)
+        monkeypatch.setattr(scanner_mod, "_run_trivy", fake_trivy)
+        return captured
+
+    def test_ref_only_target_present_in_daemon_is_local(self, monkeypatch, caplog):
+        """No Dockerfile, but the image sits in the local daemon →
+        ``local=True`` so grype/trivy use the ``docker:`` source. The
+        choice is logged (transparency breadcrumb) since we did not
+        build the image ourselves."""
+        from argus.container import scanner as scanner_mod
+        from argus.container.scanner import scan_image
+        from argus.container.discovery import ContainerTarget
+
+        captured = self._capture_local_flag(monkeypatch)
+        # Pretend ``docker image inspect`` succeeds for this ref.
+        monkeypatch.setattr(scanner_mod, "is_image_local", lambda ref: True)
+
+        target = ContainerTarget(
+            name="opa", image_ref="hardening-test-opa:scan-6d7bd4a0",
+        )
+        with caplog.at_level("INFO", logger="argus.container"):
+            scan_image(target, scanners=("trivy", "grype"), sbom=False)
+
+        assert captured["grype_local"] is True
+        assert captured["trivy_local"] is True
+        # Operators get a breadcrumb that the local copy was scanned
+        # (not pulled from a registry) — the ref appears in the log.
+        joined = " ".join(r.message for r in caplog.records)
+        assert "local Docker daemon" in joined
+        assert "hardening-test-opa:scan-6d7bd4a0" in joined
+
+    def test_ref_only_target_absent_from_daemon_is_remote(self, monkeypatch):
+        """No Dockerfile and not in the daemon → genuine remote pull,
+        ``local=False`` so the ``registry:`` source + auth env apply."""
+        from argus.container import scanner as scanner_mod
+        from argus.container.scanner import scan_image
+        from argus.container.discovery import ContainerTarget
+
+        captured = self._capture_local_flag(monkeypatch)
+        monkeypatch.setattr(scanner_mod, "is_image_local", lambda ref: False)
+
+        target = ContainerTarget(name="webapp", image_ref="ghcr.io/org/web:1.0")
+        scan_image(target, scanners=("trivy", "grype"), sbom=False)
+
+        assert captured["grype_local"] is False
+        assert captured["trivy_local"] is False
+
+    def test_dockerfile_target_skips_daemon_probe(self, tmp_path, monkeypatch, caplog):
+        """When we built the image this run, ``local`` is already known —
+        the daemon probe is short-circuited (no redundant subprocess) and
+        the not-built-by-us breadcrumb does not fire."""
+        from argus.container import scanner as scanner_mod
+        from argus.container.scanner import scan_image
+        from argus.container.discovery import ContainerTarget
+
+        captured = self._capture_local_flag(monkeypatch)
+
+        probed = {"called": False}
+
+        def boom(ref):
+            probed["called"] = True
+            return False
+
+        monkeypatch.setattr(scanner_mod, "is_image_local", boom)
+
+        target = ContainerTarget(
+            name="myapp",
+            image_ref="myapp:argus-scan",
+            dockerfile=tmp_path / "Dockerfile",
+            context=tmp_path,
+        )
+        with caplog.at_level("INFO", logger="argus.container"):
+            scan_image(target, scanners=("trivy", "grype"), sbom=False)
+
+        # Short-circuit: ``dockerfile is not None`` makes ``is_local`` True
+        # without ever consulting the daemon.
+        assert captured["grype_local"] is True
+        assert probed["called"] is False
+        # We built it, so the "found in local daemon" breadcrumb (meant
+        # for refs we did NOT build) must not appear.
+        assert "local Docker daemon" not in " ".join(
+            r.message for r in caplog.records
+        )
 
 
 # ───────────────────────────────────────────────
@@ -1482,3 +1617,318 @@ class TestRunSyftUsesResolvedImage:
 
         assert len(intercepted) == 1
         assert "harbor.corp/dockerhub-cache/fake/syft:test" in " ".join(intercepted[0])
+
+
+class TestScanImageBindsContentDigest:
+    """scan_image records the scanned image's content digest (#237) so a
+    clean scan attests *what* was scanned, not just a mutable tag."""
+
+    def test_digest_populated_and_stamped_on_findings(self, monkeypatch):
+        from argus.container import scanner as scanner_mod
+        from argus.container.scanner import scan_image
+        from argus.container.discovery import ContainerTarget
+        from argus.core.models import Finding, Severity
+
+        finding = Finding(
+            id="CVE-2024-1", severity=Severity.HIGH, title="vuln",
+            scanner="container", cve="CVE-2024-1",
+            metadata={"package": "openssl"},
+        )
+        monkeypatch.setattr(scanner_mod, "_run_trivy", lambda *a, **kw: [finding])
+        monkeypatch.setattr(scanner_mod, "_run_grype", lambda *a, **kw: [])
+        monkeypatch.setattr(scanner_mod, "is_image_local", lambda ref: True)
+        monkeypatch.setattr(scanner_mod, "get_image_digest", lambda ref: "sha256:deadbeef")
+
+        target = ContainerTarget(name="app", image_ref="app:scan-6d7bd4a0")
+        result = scan_image(target, scanners=("trivy",), sbom=False)
+
+        # Result-level digest → per-image markdown + audit manifest.
+        assert result.digest == "sha256:deadbeef"
+        # Finding-level metadata → argus-results.json / SARIF.
+        f = result.combined_findings[0]
+        assert f.metadata["image_digest"] == "sha256:deadbeef"
+        assert f.metadata["image_ref"] == "app:scan-6d7bd4a0"
+        assert f.metadata["package"] == "openssl"  # existing metadata preserved
+
+    def test_unknown_digest_is_non_fatal(self, monkeypatch):
+        """docker absent / inspect failed → empty digest, no metadata stamp,
+        scan still succeeds (mirrors is_image_local's degrade-to-safe)."""
+        from argus.container import scanner as scanner_mod
+        from argus.container.scanner import scan_image
+        from argus.container.discovery import ContainerTarget
+        from argus.core.models import Finding, Severity
+
+        finding = Finding(
+            id="CVE-2024-2", severity=Severity.LOW, title="v",
+            scanner="container", metadata={},
+        )
+        monkeypatch.setattr(scanner_mod, "_run_trivy", lambda *a, **kw: [finding])
+        monkeypatch.setattr(scanner_mod, "_run_grype", lambda *a, **kw: [])
+        monkeypatch.setattr(scanner_mod, "is_image_local", lambda ref: False)
+        monkeypatch.setattr(scanner_mod, "get_image_digest", lambda ref: "")
+
+        target = ContainerTarget(name="app", image_ref="ghcr.io/org/app:1.0")
+        result = scan_image(target, scanners=("trivy",), sbom=False)
+
+        assert result.digest == ""
+        assert "image_digest" not in result.combined_findings[0].metadata
+
+
+# ───────────────────────────────────────────────
+# Registry auth fast-fail (#253)
+# ───────────────────────────────────────────────
+#
+# Before this gate a registry_auth entry whose ``*_env`` named an unset
+# variable only produced a WARNING in argus.log; the scan proceeded and
+# the sub-scanner container failed ~90s later with an opaque
+# ``UNAUTHORIZED: authentication required``. ``validate_registry_auth``
+# now fails fast — on stderr, before any container starts — naming the
+# registry scope and the unset variable.
+
+
+class TestValidateRegistryAuth:
+    """Pure-function checks for ``validate_registry_auth``."""
+
+    def test_raises_on_map_entry_unresolved_password_env(self, monkeypatch):
+        # Mirrors the issue example exactly: username resolves, password
+        # env var is unset → fail fast naming the registry + the var.
+        monkeypatch.setenv("ARGUS_REGISTRY_USER", "svc-account")
+        monkeypatch.delenv("ARGUS_REGISTRY_PASSWORD", raising=False)
+        config = {
+            "registry_auth": {
+                "containers.va.ghe.com": {
+                    "username_env": "ARGUS_REGISTRY_USER",
+                    "password_env": "ARGUS_REGISTRY_PASSWORD",
+                },
+            },
+        }
+        with pytest.raises(RegistryAuthError) as excinfo:
+            validate_registry_auth(
+                config, "containers.va.ghe.com/org/repo:1.0",
+            )
+        msg = str(excinfo.value)
+        assert "registry_auth[containers.va.ghe.com]" in msg
+        assert "password unresolved" in msg
+        assert "ARGUS_REGISTRY_PASSWORD" in msg
+        # Second line is the actionable remediation.
+        assert "argus.yml" in msg
+
+    def test_raises_on_map_entry_unresolved_username_env(self, monkeypatch):
+        monkeypatch.delenv("IB_USER", raising=False)
+        monkeypatch.setenv("IB_TOKEN", "tok")
+        config = {
+            "registry_auth": {
+                "registry1.dso.mil": {
+                    "username_env": "IB_USER",
+                    "password_env": "IB_TOKEN",
+                },
+            },
+        }
+        with pytest.raises(RegistryAuthError) as excinfo:
+            validate_registry_auth(config, "registry1.dso.mil/org/repo:1.0")
+        msg = str(excinfo.value)
+        assert "username unresolved" in msg
+        assert "IB_USER" in msg
+
+    def test_raises_on_empty_env_var(self, monkeypatch):
+        # Set-but-empty counts as unresolved (the upstream pull would
+        # still fail). ``not username`` covers "" the same as None.
+        monkeypatch.setenv("IB_USER", "")
+        config = {
+            "registry_auth": {
+                "registry1.dso.mil": {"username_env": "IB_USER"},
+            },
+        }
+        with pytest.raises(RegistryAuthError):
+            validate_registry_auth(config, "registry1.dso.mil/org/repo:1.0")
+
+    def test_raises_on_top_level_unresolved(self, monkeypatch):
+        # No map match → top-level single-default shortcut is gated too.
+        monkeypatch.delenv("REG_PASS", raising=False)
+        config = {"registry_password_env": "REG_PASS"}
+        with pytest.raises(RegistryAuthError) as excinfo:
+            validate_registry_auth(config, "ghcr.io/org/app:1.0")
+        assert "REG_PASS" in str(excinfo.value)
+
+    def test_top_level_gated_when_image_ref_none(self, monkeypatch):
+        # Helper-level callers may pass image_ref=None; the top-level
+        # shortcut still needs gating.
+        monkeypatch.delenv("REG_PASS", raising=False)
+        config = {"registry_password_env": "REG_PASS"}
+        with pytest.raises(RegistryAuthError):
+            validate_registry_auth(config, None)
+
+    def test_no_raise_when_creds_resolve(self, monkeypatch):
+        monkeypatch.setenv("IB_USER", "u")
+        monkeypatch.setenv("IB_TOKEN", "p")
+        config = {
+            "registry_auth": {
+                "registry1.dso.mil": {
+                    "username_env": "IB_USER",
+                    "password_env": "IB_TOKEN",
+                },
+            },
+        }
+        # No exception.
+        validate_registry_auth(config, "registry1.dso.mil/org/repo:1.0")
+
+    def test_no_raise_for_anonymous_pull(self):
+        # Nothing configured → anonymous is a valid mode, not an error.
+        validate_registry_auth({}, "docker.io/library/nginx:latest")
+        validate_registry_auth(None, "docker.io/library/nginx:latest")
+
+    def test_no_raise_when_unconfigured_field_omitted(self, monkeypatch):
+        # Token-only auth: only password is configured (and resolves);
+        # the absent username must NOT be gated.
+        monkeypatch.setenv("IB_TOKEN", "p")
+        monkeypatch.delenv("IB_USER", raising=False)
+        config = {
+            "registry_auth": {
+                "registry1.dso.mil": {"password_env": "IB_TOKEN"},
+            },
+        }
+        validate_registry_auth(config, "registry1.dso.mil/org/repo:1.0")
+
+    def test_no_raise_when_no_entry_matches_image(self, monkeypatch):
+        # A configured-but-unresolved entry for a *different* registry
+        # must not gate a pull from an unrelated registry.
+        monkeypatch.delenv("IB_TOKEN", raising=False)
+        config = {
+            "registry_auth": {
+                "registry1.dso.mil": {"password_env": "IB_TOKEN"},
+            },
+        }
+        validate_registry_auth(config, "ghcr.io/org/app:1.0")
+
+    def test_malformed_entry_is_not_gated(self, monkeypatch):
+        # Non-mapping entry is a config-shape problem handled (warned)
+        # elsewhere — not an unresolved-credential failure.
+        config = {"registry_auth": {"registry1.dso.mil": "not-a-mapping"}}
+        validate_registry_auth(config, "registry1.dso.mil/org/repo:1.0")
+
+    def test_longest_prefix_entry_is_the_one_gated(self, monkeypatch):
+        # The more-specific entry wins; its unresolved cred is what
+        # fails, even though the broader entry resolves fine.
+        monkeypatch.setenv("BROAD_USER", "u")
+        monkeypatch.setenv("BROAD_PASS", "p")
+        monkeypatch.delenv("RESTRICTED_PASS", raising=False)
+        config = {
+            "registry_auth": {
+                "registry1.dso.mil": {
+                    "username_env": "BROAD_USER",
+                    "password_env": "BROAD_PASS",
+                },
+                "registry1.dso.mil/ironbank/restricted": {
+                    "username_env": "BROAD_USER",
+                    "password_env": "RESTRICTED_PASS",
+                },
+            },
+        }
+        with pytest.raises(RegistryAuthError) as excinfo:
+            validate_registry_auth(
+                config, "registry1.dso.mil/ironbank/restricted/repo:1.0",
+            )
+        assert "ironbank/restricted" in str(excinfo.value)
+        assert "RESTRICTED_PASS" in str(excinfo.value)
+
+
+class TestScanImageFailsFastOnRegistryAuth:
+    """``scan_image`` gates remote pulls before any sub-scanner runs."""
+
+    def _stub_runners(self, monkeypatch):
+        """Record whether the sub-scanner runners are ever reached."""
+        from argus.container import scanner as scanner_mod
+
+        called: dict = {"trivy": False, "grype": False}
+
+        def fake_trivy(*_a, **_kw):
+            called["trivy"] = True
+            return []
+
+        def fake_grype(*_a, **_kw):
+            called["grype"] = True
+            return []
+
+        monkeypatch.setattr(scanner_mod, "_run_trivy", fake_trivy)
+        monkeypatch.setattr(scanner_mod, "_run_grype", fake_grype)
+        return called
+
+    def test_remote_unresolved_raises_before_subscanners(
+        self, monkeypatch,
+    ):
+        from argus.container import scanner as scanner_mod
+        from argus.container.scanner import scan_image
+        from argus.container.discovery import ContainerTarget
+
+        called = self._stub_runners(monkeypatch)
+        monkeypatch.setattr(scanner_mod, "is_image_local", lambda ref: False)
+        monkeypatch.delenv("ARGUS_REGISTRY_PASSWORD", raising=False)
+
+        config = {
+            "registry_auth": {
+                "ghcr.io": {"password_env": "ARGUS_REGISTRY_PASSWORD"},
+            },
+        }
+        target = ContainerTarget(name="web", image_ref="ghcr.io/org/web:1.0")
+
+        with pytest.raises(RegistryAuthError):
+            scan_image(target, scanners=("trivy", "grype"), sbom=False, config=config)
+
+        # The whole point: we never spent 60–90s in a doomed pull.
+        assert called["trivy"] is False
+        assert called["grype"] is False
+
+    def test_local_image_skips_registry_auth_gate(self, monkeypatch):
+        # Image present in the daemon → scanned from docker source, no
+        # registry pull, so a missing registry cred must NOT block it.
+        from argus.container import scanner as scanner_mod
+        from argus.container.scanner import scan_image
+        from argus.container.discovery import ContainerTarget
+
+        called = self._stub_runners(monkeypatch)
+        monkeypatch.setattr(scanner_mod, "is_image_local", lambda ref: True)
+        monkeypatch.delenv("ARGUS_REGISTRY_PASSWORD", raising=False)
+
+        config = {
+            "registry_auth": {
+                "ghcr.io": {"password_env": "ARGUS_REGISTRY_PASSWORD"},
+            },
+        }
+        target = ContainerTarget(name="web", image_ref="ghcr.io/org/web:1.0")
+
+        # No raise; sub-scanners run against the local copy.
+        scan_image(target, scanners=("trivy", "grype"), sbom=False, config=config)
+        assert called["trivy"] is True
+        assert called["grype"] is True
+
+
+class TestEngineDoesNotSwallowRegistryAuthError:
+    """``_process_target`` re-raises the fast-fail instead of recording it."""
+
+    def _engine(self):
+        from argus.container.engine import ContainerEngine
+        return ContainerEngine({})
+
+    def _remote_target(self):
+        from argus.container.discovery import ContainerTarget
+        return ContainerTarget(name="web", image_ref="ghcr.io/org/web:1.0")
+
+    def test_registry_auth_error_propagates(self, monkeypatch):
+        monkeypatch.setattr(
+            "argus.container.engine.scan_image",
+            lambda *a, **kw: (_ for _ in ()).throw(
+                RegistryAuthError("registry_auth[ghcr.io]: password unresolved"),
+            ),
+        )
+        with pytest.raises(RegistryAuthError):
+            self._engine()._process_target(self._remote_target())
+
+    def test_generic_error_still_recorded(self, monkeypatch):
+        # Contrast: ordinary scan failures are still caught and turned
+        # into a per-target scan_error (existing behavior preserved).
+        monkeypatch.setattr(
+            "argus.container.engine.scan_image",
+            lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("boom")),
+        )
+        result = self._engine()._process_target(self._remote_target())
+        assert "Scan failed" in result.scan_error

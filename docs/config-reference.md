@@ -34,7 +34,7 @@ If no config file is found, Argus uses default settings.
 Add the JSON Schema directive at the top of your config file for autocompletion and inline validation:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argus/1.2.1/argus-config.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argus/1.4.1/argus-config.schema.json
 version: "1.0"
 ```
 
@@ -326,6 +326,7 @@ Controls how scan results are formatted and where they are written.
 | `severity_threshold` | [severity](#severity-levels) | `none` | Global severity threshold. Findings at or above this level cause a non-zero exit code. |
 | `output_dir` | string | `"./argus-results"` | Directory for report files (SARIF, JSON, Markdown). |
 | `keep_raw` | boolean | `false` | Persist each scanner's raw output (results.json / *.sarif / stdout.txt) under `<output_dir>/raw/<scanner>/`. Default OFF because scanners like `gitleaks` write literal matched secret bytes into raw output — the canonical `argus-results.json` is always written and is pattern-redacted. Forensic / triage workflows that need unredacted per-scanner artifacts opt in. CLI `--keep-raw` / `--no-keep-raw` overrides this setting. |
+| `attest` | boolean | `false` | Sign the scan attestation with [cosign](https://docs.sigstore.dev/cosign/): an in-toto Statement wrapping the OpenVEX predicate (`subject` = scanned image digests + repo commit), written as `argus-attestation.intoto.json` + a `sign-blob` `.bundle`, plus a registry-attached attestation for any pushed image. **Keyless** — needs cosign on PATH and ambient OIDC (e.g. CI with `id-token: write`); a no-op that still writes the unsigned statement otherwise. Default OFF (network + registry side effects). See [Security → Signing the attestation](security.md#signing-the-attestation-cosign-opt-in). |
 
 ### Report Formats
 
@@ -349,6 +350,36 @@ reporting:
 ```
 
 No additional keys are permitted in the `reporting` block.
+
+### Output directory layout
+
+The canonical aggregate artifacts are written at the root of `output_dir` and are
+unchanged across versions, so existing consumers (the viewers, CI SARIF upload, the
+GitHub/GitLab reporters) keep working:
+
+```
+argus-results/
+├── argus-results.json          # full aggregate (all scanners) — canonical
+├── argus-summary.md            # executive markdown
+├── argus-results.sarif         # SARIF (when requested)
+├── argus-results.openvex.json  # OpenVEX (when requested)
+├── argus-audit.json · argus.log
+```
+
+Alongside them, Argus writes **scope-organized views** so each audience finds its
+slice co-located — additive, the root artifacts above are untouched:
+
+```
+├── security/        argus-results.json, argus-summary.md, argus-results.sarif
+├── lint/            argus-results.json, argus-summary.md
+└── supply-chain/    argus-results.json, argus-summary.md, argus-results.openvex.json
+```
+
+A finding's scope follows its scanner: linters → `lint`; SCA / container / supply-chain
+scanners → `supply-chain`; everything else (SAST, secrets, IaC, DAST, malware) →
+`security`. Only scopes with findings get a subdirectory. Per-scope SARIF/OpenVEX are
+written only when those formats are requested. `--keep-raw` still writes per-scanner raw
+output under `raw/<scanner>/`.
 
 ---
 
@@ -567,7 +598,7 @@ Errors are fatal and abort the scan. Warnings are logged but the scan proceeds.
 ## Complete Example
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argus/1.2.1/argus-config.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argus/1.4.1/argus-config.schema.json
 version: "1.0"
 
 scanners:

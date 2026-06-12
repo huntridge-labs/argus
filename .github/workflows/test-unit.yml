@@ -21,7 +21,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
 
@@ -45,7 +45,20 @@ jobs:
           pip install -e '.[all]'
           pip install pytest-deadfixtures
 
+      - name: Build MUMPS tree-sitter grammar
+        # Compiles janus-llm/tree-sitter-mumps at the pinned SHA into
+        # ~/.cache/argus/grammars/mumps.so so the M scanner's per-rule
+        # integration tests in argus/tests/scanners/test_mumps_rules.py can
+        # actually run instead of skip. The script is idempotent and
+        # the compile takes ~15s on ubuntu-latest.
+        run: scripts/build-mumps-grammar.sh
+
       - name: Run all tests
+        # ARGUS_MUMPS_GRAMMAR is unset on purpose: parser.py probes
+        # ~/.cache/argus/grammars/mumps.so by default and the build
+        # step writes there. Setting an explicit path here would
+        # diverge from the default lookup, which is the path users
+        # without an env var actually take.
         run: pytest
 
       - name: Run E2E tests (slow, Docker-dependent)
@@ -114,7 +127,7 @@ jobs:
 
       - name: Upload coverage to Codecov
         if: always()
-        uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v6
         with:
           files: ./coverage/python.xml
           flags: unittests

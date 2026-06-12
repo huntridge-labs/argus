@@ -7,6 +7,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.4.1](https://github.com/huntridge-labs/argus/compare/1.4.0...1.4.1) (2026-06-12)
+
+### Bug Fixes
+
+* **container:** fail fast on unresolved registry_auth credentials ([#255](https://github.com/huntridge-labs/argus/issues/255)) ([e986418](https://github.com/huntridge-labs/argus/commit/e986418b21411a5f7657143550780e602ea581fa)), closes [#253](https://github.com/huntridge-labs/argus/issues/253)
+* **release:** single-source promoted image list so all scanners get tagged ([#256](https://github.com/huntridge-labs/argus/issues/256)) ([babd83b](https://github.com/huntridge-labs/argus/commit/babd83b6784fd0f5df4e1085d458c7191f8e7149)), closes [#255](https://github.com/huntridge-labs/argus/issues/255)
+
+### Dependencies
+
+* **deps:** Update github-actions-minor-patch ([#235](https://github.com/huntridge-labs/argus/issues/235)) ([554a53b](https://github.com/huntridge-labs/argus/commit/554a53b8dbc45e449b4fac8033d1914de35ff72f))
+
+
+## [1.4.0](https://github.com/huntridge-labs/argus/compare/1.3.1...1.4.0) (2026-06-08)
+
+### Features
+
+* **attest:** sign the scan attestation with cosign (OpenVEX in-toto, opt-in) ([#244](https://github.com/huntridge-labs/argus/issues/244)) ([2109310](https://github.com/huntridge-labs/argus/commit/2109310c2d38c7cd36d02237a05a7195d21c7902)), closes [#242](https://github.com/huntridge-labs/argus/issues/242) [#237](https://github.com/huntridge-labs/argus/issues/237) [#240](https://github.com/huntridge-labs/argus/issues/240)
+* **container:** bind scan results to the resolved image content digest ([#239](https://github.com/huntridge-labs/argus/issues/239)) ([92668a5](https://github.com/huntridge-labs/argus/commit/92668a584bbec3e03ab051d7db24d25978f0e59e)), closes [#237](https://github.com/huntridge-labs/argus/issues/237)
+* **core:** record scanner toolchain provenance in scan results ([#243](https://github.com/huntridge-labs/argus/issues/243)) ([6b39a0f](https://github.com/huntridge-labs/argus/commit/6b39a0f99b472b6ddea9093dbd138aa8e9bce3a6)), closes [#237](https://github.com/huntridge-labs/argus/issues/237) [#241](https://github.com/huntridge-labs/argus/issues/241)
+* **reporters:** OpenVEX output for container/SCA scans (spike, [#229](https://github.com/huntridge-labs/argus/issues/229)) ([#230](https://github.com/huntridge-labs/argus/issues/230)) ([b7501e4](https://github.com/huntridge-labs/argus/commit/b7501e488e49074513e0bc9fe6dc3f4bc4bfdadc))
+* **reporters:** organize report output by scope (security/lint/supply-chain) ([#231](https://github.com/huntridge-labs/argus/issues/231)) ([988e29d](https://github.com/huntridge-labs/argus/commit/988e29db9a5f5ebdf9ae92b3b9a442a43fb6d09b)), closes [#229](https://github.com/huntridge-labs/argus/issues/229)
+* **scanner-mumps:** MUMPS / M language SAST scanner (16 rules, call-graph foundation) ([#213](https://github.com/huntridge-labs/argus/issues/213)) ([bc2e939](https://github.com/huntridge-labs/argus/commit/bc2e939b2cda92c8839feb842582bae3735420ed))
+
+### Bug Fixes
+
+* **container:** scan daemon-present images by ref via docker: source ([#233](https://github.com/huntridge-labs/argus/issues/233)) ([#234](https://github.com/huntridge-labs/argus/issues/234)) ([5305b7a](https://github.com/huntridge-labs/argus/commit/5305b7a0ec825395715a66f2f93406a721ba6911))
+
+### Dependencies
+
+* **deps:** bump node ([#246](https://github.com/huntridge-labs/argus/issues/246)) ([de16ef8](https://github.com/huntridge-labs/argus/commit/de16ef820990b5ed34ecbb2acd421e462b34f821))
+* **deps:** bump the npm-minor-patch group with 4 updates ([#245](https://github.com/huntridge-labs/argus/issues/245)) ([9b65035](https://github.com/huntridge-labs/argus/commit/9b65035cf13dff8a0bbdf450ebd726bf5be3ca19))
+* **deps:** Update container-images to v1.15.5 ([#236](https://github.com/huntridge-labs/argus/issues/236)) ([a16e887](https://github.com/huntridge-labs/argus/commit/a16e887d6b1be72ece1be16c43806a8cb23c7b6a))
+* **deps:** Update container-images to v3.2.531 ([#238](https://github.com/huntridge-labs/argus/issues/238)) ([d6d548f](https://github.com/huntridge-labs/argus/commit/d6d548fc933a7ff851616600fc0e3451de90ef76))
+
+
+## [1.3.1](https://github.com/huntridge-labs/argus/compare/1.3.0...1.3.1) (2026-06-04)
+
+### Bug Fixes
+
+* **containers:** re-pin promptfoo to immutable version tag ([#232](https://github.com/huntridge-labs/argus/issues/232)) ([47285d3](https://github.com/huntridge-labs/argus/commit/47285d3535e8031c79a5e80e90193f8c4014d48f))
+
+## [1.3.0](https://github.com/huntridge-labs/argus/compare/1.2.1...1.3.0) (2026-06-02)
+
+### Features
+
+* **lint-shell:** add shellcheck linter (closes [#191](https://github.com/huntridge-labs/argus/issues/191)) ([#206](https://github.com/huntridge-labs/argus/issues/206)) ([ca60c2b](https://github.com/huntridge-labs/argus/commit/ca60c2ba80dde85e8fe0f24e1a44be27ed37fba6))
+* **scanner-gosec:** add gosec Go SAST scanner ([#207](https://github.com/huntridge-labs/argus/issues/207)) ([17d6f2d](https://github.com/huntridge-labs/argus/commit/17d6f2d192eb0483a0f0ccd091b924976f55a778)), closes [#189](https://github.com/huntridge-labs/argus/issues/189)
+* **scanner-kics:** add KICS IaC scanner (closes [#188](https://github.com/huntridge-labs/argus/issues/188)) ([#205](https://github.com/huntridge-labs/argus/issues/205)) ([0d021a0](https://github.com/huntridge-labs/argus/commit/0d021a0e7be5bba080856e6e586a91ea834a7eba))
+* **scanner-promptfoo:** add promptfoo LLM-security scanner ([#208](https://github.com/huntridge-labs/argus/issues/208)) ([4185c38](https://github.com/huntridge-labs/argus/commit/4185c385cf553a67298f127e08b6eace31cc4741)), closes [#89](https://github.com/huntridge-labs/argus/issues/89)
+* **validate:** add --deep flag for live config validation ([#204](https://github.com/huntridge-labs/argus/issues/204)) ([a23e07e](https://github.com/huntridge-labs/argus/commit/a23e07e31c93fdbac0c3b26d28495a886bb136f3)), closes [186/#187](https://github.com/186/argus/issues/187) [#198](https://github.com/huntridge-labs/argus/issues/198)
+
+### Bug Fixes
+
+* **actions:** v1.2.x reusable-workflow regressions — install argus + invalid needs context ([#211](https://github.com/huntridge-labs/argus/issues/211), [#212](https://github.com/huntridge-labs/argus/issues/212)) ([#214](https://github.com/huntridge-labs/argus/issues/214)) ([09d1771](https://github.com/huntridge-labs/argus/commit/09d177125b26a50256c540727dcba2f0bc30da09))
+* **ci:** disable AICaC auto-migrate/regenerate-index unsigned pushes ([#225](https://github.com/huntridge-labs/argus/issues/225)) ([5d95416](https://github.com/huntridge-labs/argus/commit/5d95416d40ecd3f57529609dc1b0d16e61969c36)), closes [#222](https://github.com/huntridge-labs/argus/issues/222)
+* **ci:** pin AICaC action back to 0.3.0 (0.6.0 hard-requires .ai/ v2) ([#228](https://github.com/huntridge-labs/argus/issues/228)) ([021c028](https://github.com/huntridge-labs/argus/commit/021c028d951639cd9d407101ce1866e660d61a5d)), closes [#227](https://github.com/huntridge-labs/argus/issues/227) [#222](https://github.com/huntridge-labs/argus/issues/222) [#227](https://github.com/huntridge-labs/argus/issues/227)
+* **container:** make smoke fixture world-readable for non-root scanner containers ([#210](https://github.com/huntridge-labs/argus/issues/210)) ([2b57be6](https://github.com/huntridge-labs/argus/commit/2b57be695ec2eeec2d3c3ab18f8ec338361acc23))
+
+### Security Tools
+
+* **deps:** Update dependency opengrep to v1.22.0 ([#216](https://github.com/huntridge-labs/argus/issues/216)) ([5da035c](https://github.com/huntridge-labs/argus/commit/5da035ca61cec634c2d76abcc47012e498cc5109))
+
+### Dependencies
+
+* **deps:** bump node ([#221](https://github.com/huntridge-labs/argus/issues/221)) ([9cbe4ed](https://github.com/huntridge-labs/argus/commit/9cbe4ed0c3eb60ee7d351657e03501eee16fc036))
+* **deps:** Update github-actions-major ([#223](https://github.com/huntridge-labs/argus/issues/223)) ([9cab1dd](https://github.com/huntridge-labs/argus/commit/9cab1dd91f62dd39359692c87cfb5224cbc0953c))
+* **deps:** Update github-actions-minor-patch ([#222](https://github.com/huntridge-labs/argus/issues/222)) ([0c2fed7](https://github.com/huntridge-labs/argus/commit/0c2fed7fdb28d9113a9738e02668d08feb5c4e73))
+* **deps:** Update hashicorp/terraform Docker tag to v1.15.4 ([#215](https://github.com/huntridge-labs/argus/issues/215)) ([171fa0e](https://github.com/huntridge-labs/argus/commit/171fa0ef3ef88fea95a4367ef6a2ab77d84ce682))
+
+
+### Tests
+
+* **container:** registry-parametrized container-invocation smoke harness + PR gate ([#209](https://github.com/huntridge-labs/argus/issues/209)) ([4a8a9e3](https://github.com/huntridge-labs/argus/commit/4a8a9e30f6fadf9819b3fc6f2049633bd6c74917))
+
+### Continuous Integration
+
+* add Python 3.14 to the test/publish matrix and trove classifiers ([#224](https://github.com/huntridge-labs/argus/issues/224)) ([9085cd6](https://github.com/huntridge-labs/argus/commit/9085cd6fa5292561d7a02a1bbd9ea3d117b0f1bb)), closes [#222](https://github.com/huntridge-labs/argus/issues/222)
+* **deps:** move github-actions updates from Dependabot to Renovate ([#220](https://github.com/huntridge-labs/argus/issues/220)) ([1d34ef9](https://github.com/huntridge-labs/argus/commit/1d34ef913eeea7d3ec55d5f4804feb3b346767a1)), closes [#196](https://github.com/huntridge-labs/argus/issues/196) [#11645](https://github.com/huntridge-labs/argus/issues/11645) [#13691](https://github.com/huntridge-labs/argus/issues/13691) [#196](https://github.com/huntridge-labs/argus/issues/196)
+* **release:** make the publishing release manual-only (workflow_dispatch) ([#219](https://github.com/huntridge-labs/argus/issues/219)) ([63b875e](https://github.com/huntridge-labs/argus/commit/63b875ea8a1af940158d5aab6345eadcfc03f21a))
+* remove obsolete update-pinned-tools workflow + unblock Dependabot github-actions ([#217](https://github.com/huntridge-labs/argus/issues/217), [#196](https://github.com/huntridge-labs/argus/issues/196)) ([#218](https://github.com/huntridge-labs/argus/issues/218)) ([c295dc4](https://github.com/huntridge-labs/argus/commit/c295dc43e76e5eca5815a1334950a75c9153e971)), closes [#216](https://github.com/huntridge-labs/argus/issues/216)
+
 ## [1.2.1](https://github.com/huntridge-labs/argus/compare/1.2.0...1.2.1) (2026-05-26)
 
 ### Bug Fixes

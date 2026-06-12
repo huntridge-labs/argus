@@ -73,7 +73,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -163,7 +163,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -234,7 +234,23 @@ jobs:
             "scanner-opengrep:docker/Dockerfile.opengrep:SCANNER_OPENGREP"
             "scanner-supply-chain:docker/Dockerfile.supply-chain:SCANNER_SUPPLY_CHAIN"
             "cli:docker/Dockerfile.cli:CLI"
+            "scanner-mumps:docker/Dockerfile.mumps:SCANNER_MUMPS"
           )
+
+          # Single source of truth: export the bare image names so the
+          # promote / cosign / release-notes steps below all iterate the
+          # SAME set as the build. Adding a scanner to IMAGES now
+          # propagates everywhere — previously those steps carried their
+          # own hardcoded lists, and a missing entry shipped a release
+          # with an unpromoted image (scanner-mumps had no :VERSION tag,
+          # breaking its pin in argus/containers.py).
+          IMAGE_NAMES=""
+          for entry in "${IMAGES[@]}"; do
+            IFS=':' read -r NAME _ _ <<< "$entry"
+            IMAGE_NAMES="${IMAGE_NAMES:+${IMAGE_NAMES} }${NAME}"
+          done
+          echo "IMAGE_NAMES=${IMAGE_NAMES}" >> "$GITHUB_ENV"
+
           for entry in "${IMAGES[@]}"; do
             IFS=':' read -r IMAGE DOCKERFILE KEY <<< "$entry"
             FULL_REF="${IMAGE_REGISTRY}/${IMAGE}:${BUILD_TAG}"
@@ -314,7 +330,7 @@ jobs:
         if: env.RELEASED == 'true'
         run: |
           set -euo pipefail
-          for IMAGE in scanner-bandit scanner-opengrep scanner-supply-chain cli; do
+          for IMAGE in ${IMAGE_NAMES}; do
             SRC="${IMAGE_REGISTRY}/${IMAGE}:${BUILD_TAG}"
             docker buildx imagetools create \
               --tag "${IMAGE_REGISTRY}/${IMAGE}:${VERSION}" \
@@ -335,11 +351,38 @@ jobs:
         if: env.RELEASED == 'true'
         run: |
           set -euo pipefail
-          cosign sign --yes "${IMAGE_REGISTRY}/scanner-bandit@${SCANNER_BANDIT_DIGEST}"
-          cosign sign --yes "${IMAGE_REGISTRY}/scanner-opengrep@${SCANNER_OPENGREP_DIGEST}"
-          cosign sign --yes "${IMAGE_REGISTRY}/scanner-supply-chain@${SCANNER_SUPPLY_CHAIN_DIGEST}"
-          cosign sign --yes "${IMAGE_REGISTRY}/cli@${CLI_DIGEST}"
+          # Same source as build/promote. The per-image digest captured at
+          # build time lives in env var <KEY>_DIGEST, where KEY is the
+          # image name upper-cased with '-' → '_' (scanner-mumps →
+          # SCANNER_MUMPS), matching the IMAGES array keys above.
+          for IMAGE in ${IMAGE_NAMES}; do
+            KEY=$(echo "${IMAGE}" | tr 'a-z-' 'A-Z_')
+            DIGEST_VAR="${KEY}_DIGEST"
+            cosign sign --yes "${IMAGE_REGISTRY}/${IMAGE}@${!DIGEST_VAR}"
+            echo "Signed ${IMAGE} @ ${!DIGEST_VAR}"
+          done
           echo "All images signed by digest"
+
+      - name: Verify pinned image manifests resolve
+        # The chore(release): commit skips the Unit Tests workflow (and the
+        # manifest check it runs), so a promotion miss used to ship
+        # undetected and only surface later on an unrelated PR. release-it
+        # has already rewritten argus/containers.py with the new version +
+        # digests; verify every pinned tag@digest actually resolves on
+        # GHCR before we build the wheel and publish to PyPI.
+        if: env.RELEASED == 'true'
+        run: |
+          set +e
+          python -m scripts.ci.check_container_images
+          rc=$?
+          set -e
+          if [ "$rc" -eq 1 ]; then
+            echo "::error::One or more pinned images failed manifest check — a release tag was likely not promoted. Aborting before publish."
+            exit 1
+          fi
+          if [ "$rc" -eq 2 ]; then
+            echo "::warning::docker unavailable — image manifest check skipped"
+          fi
 
       - name: Build wheel
         # release-it has already bumped argus/__init__.py and rewritten
@@ -386,7 +429,7 @@ jobs:
             echo "### Container Images"
             echo "| Image | Tags |"
             echo "|-------|------|"
-            for IMAGE in scanner-bandit scanner-opengrep scanner-supply-chain cli; do
+            for IMAGE in ${IMAGE_NAMES}; do
               echo "| ${IMAGE_REGISTRY}/${IMAGE} | ${VERSION}, latest |"
             done
             echo ""

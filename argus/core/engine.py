@@ -383,6 +383,12 @@ class ArgusEngine:
             from argus.core.image_verify import report_tag_pinned_summary
             report_tag_pinned_summary(self._verify_results)
 
+        # Toolchain provenance (#240): record which scanner images (+ digests)
+        # produced this scan and their verification status, so a consumer can
+        # distinguish genuine published tooling from a rebuilt/modified image.
+        from argus.core.toolchain import build_toolchain_provenance
+        toolchain = build_toolchain_provenance(self._verify_results)
+
         # TODO: Add total_duration_ms to ScanSummary for audit trail.
         # Requires a model change (new field on the ScanSummary dataclass).
         # Per-scanner duration_ms is already recorded in each ScanResult.metadata.
@@ -390,6 +396,7 @@ class ArgusEngine:
             results=results,
             severity_threshold=self.config.reporting.severity_threshold,
             scan_context=ScanContext.capture(),
+            toolchain=toolchain,
         )
 
     def _prepare_jobs(
@@ -685,7 +692,12 @@ class ArgusEngine:
         same arguments. Argus works with any of them.
         """
         if self._container_runtime is not None:
-            return self._container_runtime
+            # Negative results are cached as "" (see end of method). Return
+            # None for that sentinel so callers using ``_detect_runtime() is
+            # not None`` (e.g. _is_docker_available) stay correct across the
+            # 2nd+ call — otherwise "" is not None evaluates True and the
+            # engine wrongly believes a runtime exists on a dockerless host.
+            return self._container_runtime or None
 
         # Explicit override
         override = os.environ.get("ARGUS_CONTAINER_RUNTIME")
@@ -1512,9 +1524,9 @@ class ArgusEngine:
                         f"and backend is 'docker'."
                     )
                 raise RuntimeError(
-                    f"Docker not available. "
-                    f"No container runtime available. "
-                    f"Install Docker, Podman, or nerdctl."
+                    "Docker not available. "
+                    "No container runtime available. "
+                    "Install Docker, Podman, or nerdctl."
                 )
 
             # auto fallback: use local tool

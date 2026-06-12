@@ -209,7 +209,7 @@ the Rekor transparency log.
 At pull time, argus runs:
 
 ```
-cosign verify ghcr.io/huntridge-labs/argus/scanner-bandit:1.2.1 \
+cosign verify ghcr.io/huntridge-labs/argus/scanner-bandit:1.4.1 \
   --certificate-identity-regexp '^https://github\.com/huntridge-labs/argus/\.github/workflows/release\.yml@' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
 ```
@@ -270,6 +270,96 @@ digest-pin verification (which is just Docker's pull-time content
 hash check) continues to work because it has no external network
 dependency.
 
+### Recorded in the results (toolchain provenance)
+
+Verification above happens at pull time and *gates the scan*. Argus also
+**records** the outcome in `argus-results.json` under a top-level `toolchain`
+block, so a consumer can confirm *which* scanner images produced the findings
+and whether they were genuine published tooling — defending against someone
+who clones the repo, modifies a `Dockerfile`, builds the scanner images
+locally, and scans (their images won't match our published digests):
+
+```json
+"toolchain": {
+  "images": [
+    {
+      "image": "ghcr.io/huntridge-labs/argus/scanner-bandit:1.4.1@sha256:…",
+      "digest": "sha256:…",
+      "verification": "verified_cosign",
+      "argus_owned": true,
+      "digest_matches_published_pin": true
+    }
+  ],
+  "argus_images_all_verified": true,
+  "warnings": []
+}
+```
+
+- `digest_matches_published_pin` compares the image's content digest against
+  the digests Argus publishes in `argus/containers.py` — by **content**, so a
+  same-content registry mirror still matches while a rebuilt/modified image
+  does not.
+- `argus_images_all_verified` is `true` only when every argus-owned image
+  pulled was signature/digest verified **and** matched a published pin;
+  `false` if any failed or mismatched (with a `warnings` entry); `null` when no
+  argus-owned image was involved (so verification is never *implied*).
+- The block reflects **container pulls only**. An all-local-binary run
+  (`execution.backend: local`, or a tool on `PATH`) pulls nothing, so no
+  `toolchain` block is emitted — its absence means "no container toolchain was
+  recorded," not "verified."
+
+Recording is the *precondition* for verifiable provenance; signing the whole
+package (`cosign attest`, planned) is what makes it tamper-evident against a
+hostile runner. This is the "scanned *with what*" half of attestation —
+complementary to the scanned-image content digest ("scanned *what*"). See the
+[attestation epic](https://github.com/huntridge-labs/argus/issues/242).
+
+### Signing the attestation (cosign, opt-in)
+
+Recording provenance lets a *trusted-runner* verifier check a package; it does
+not stop a hostile runner from forging the JSON. Enabling
+`reporting.attest: true` makes the provenance **tamper-evident**: argus wraps
+the OpenVEX predicate in an [in-toto Statement][in-toto] — `subject` = the
+scanned image content digests (#237) + the repo commit — and signs it with
+**keyless cosign** (a short-lived Fulcio cert via ambient OIDC, the same
+mechanism the release workflow uses to sign images; no key to manage).
+
+Two artifacts are produced in the output dir:
+
+- `argus-attestation.intoto.json` — the unsigned statement (always written, so
+  it's inspectable even where cosign/OIDC is absent).
+- `argus-attestation.bundle` — the cosign `sign-blob` signature bundle for the
+  statement (**standalone** mode — works for locally-built images and repo
+  scans alike).
+
+And, for any scanned image that is a *pushed* registry ref, a
+**registry-attached** attestation via `cosign attest` (verifiable directly off
+the image).
+
+```bash
+# Standalone bundle — verify signature + Argus's signing identity:
+cosign verify-blob \
+  --bundle argus-attestation.bundle \
+  --certificate-identity-regexp '^https://github\.com/huntridge-labs/argus/' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  argus-attestation.intoto.json
+
+# Registry-attached — verify the attestation on the image:
+cosign verify-attestation --type 'https://openvex.dev/ns/v0.2.0' \
+  --certificate-identity-regexp '^https://github\.com/huntridge-labs/argus/' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  ghcr.io/org/app@sha256:…
+```
+
+A verifier then confirms the deployed image digest matches a `subject`, and
+that the scanner digests in the predicate's toolchain block match Argus's
+published pins — closing the loop against substituted images *and* tampered
+tooling. Keyless signing needs OIDC, so it runs in CI (`id-token: write`);
+**off by default** (network + registry side effects). With cosign absent or no
+OIDC, argus still writes the unsigned statement and logs that it wasn't signed.
+
+[in-toto]: https://in-toto.io/
+
 ---
 
 ## Alert routing — paging and escalation
@@ -299,7 +389,7 @@ step is usually enough:
 
 ```yaml
 - name: Run argus
-  uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.2.1
+  uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.4.1
   id: scan
   with:
     enable_code_security: true

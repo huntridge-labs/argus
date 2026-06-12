@@ -8,8 +8,8 @@ description: |
 
   **Usage Example:**
   ```yaml
-  - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-  - uses: huntridge-labs/argus/.github/actions/linter-json@1.2.1
+  - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+  - uses: huntridge-labs/argus/.github/actions/linter-json@1.4.1
     with:
       fail_on_issues: false
   ```
@@ -118,7 +118,7 @@ runs:
 
     - name: Comment PR with JSON lint results
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@1.2.1
+      uses: huntridge-labs/argus/.github/actions/comment-pr@1.4.1
       with:
         summary_file: scanner-summaries/json-lint.md
         comment_marker: json-linter-comment-marker

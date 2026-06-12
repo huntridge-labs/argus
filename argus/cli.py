@@ -1949,6 +1949,22 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
             reporter = get_reporter(fmt)
             reporter.report(summary, output_dir)
             log.debug("Generated %s report", fmt)
+        # Scope-organized views (security/ lint/ supply-chain/) alongside the
+        # root aggregate. Additive — the root artifacts above are unchanged.
+        from argus.reporters.scope_views import write_scope_views
+        scope_paths = write_scope_views(summary, output_dir, config.reporting.formats)
+        if scope_paths:
+            log.debug("Wrote %d scope-view file(s)", len(scope_paths))
+        # Optional: sign the scan attestation (in-toto Statement wrapping the
+        # OpenVEX predicate) with cosign — opt-in via reporting.attest. Keyless
+        # (CI OIDC); still writes the unsigned statement when cosign/OIDC is
+        # absent. Needs an output dir to write the bundle into.
+        if config.reporting.attest and output_dir:
+            from argus.core.attest import attest_scan
+            att = attest_scan(summary, output_dir, enabled=True)
+            log.info("Attestation: %s", att.get("status"))
+            if att.get("reason"):
+                log.info("Attestation: %s", att["reason"])
     except ImportError:
         if args.verbose:
             log.warning("argus.reporters module not found; skipping report generation")
@@ -2276,7 +2292,7 @@ def _cmd_container_scan(
     that path is kept for backward compatibility with any caller that
     still bypasses ``cmd_scan``.
     """
-    from argus.container import ContainerEngine
+    from argus.container import ContainerEngine, RegistryAuthError
     from argus.reporters.container_markdown import ContainerMarkdownReporter
 
     # Configure the ``argus`` logger at the user's chosen level —
@@ -2380,6 +2396,13 @@ def _cmd_container_scan(
                 progress_callback=_make_progress_emitter(args, spinner),
             )
             summary = engine.run()
+    except RegistryAuthError as exc:
+        # Misconfigured registry credentials: surface the two-line
+        # actionable message verbatim (it already names the registry
+        # and the unset env var) rather than wrapping it. (#253)
+        print(f"Error: {exc}", file=sys.stderr)
+        finalize_manifest(manifest, exit_code=EXIT_ERROR, output_dir=output_dir)
+        return EXIT_ERROR
     except Exception as exc:
         print(f"Error: container scan failed: {exc}", file=sys.stderr)
         finalize_manifest(manifest, exit_code=EXIT_ERROR, output_dir=output_dir)

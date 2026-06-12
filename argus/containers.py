@@ -31,7 +31,7 @@ OFFICIAL_IMAGES = {
     "syft": "anchore/syft:v1.44.0@sha256:86fde6445b483d902fe011dd9f68c4987dd94e07da1e9edc004e3c2422650de6",
     "gitleaks": "zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f",
     "clamav": "clamav/clamav:1.5.2-35@sha256:898c176d1cfec61d4585f71d1e2e8515b3cc8d5f83cd9fc2f6748e8b20de82a2",
-    "checkov": "bridgecrew/checkov:3.2.527@sha256:f4c7c5bde21df03432ca8d9d1305ffe21b7205ea752c3d4e65559abae67ead4a",
+    "checkov": "bridgecrew/checkov:3.2.531@sha256:79e06cc1207eb75566f422ba3cd9eeef8f53dc45cafc1b3f7d1876a976237be6",
     # KICS (Checkmarx) multi-format IaC scanner. The upstream
     # ``checkmarx/kics`` repo tags ``:latest`` mutably (no semver release
     # tag per build), so the digest pin below is the content-hash gate
@@ -39,11 +39,12 @@ OFFICIAL_IMAGES = {
     # the eslint entry.
     "kics": "checkmarx/kics:latest@sha256:3e5a268eb8adda2e5a483c9359ddfc4cd520ab856a7076dc0b1d8784a37e2602",
     "osv-scanner": "ghcr.io/google/osv-scanner:v2.3.6@sha256:2e07e642463100474fc5e214b66e6beccbd6bfa63dd3fbf047b3f755e78a6cfe",
-    "zap": "ghcr.io/zaproxy/zaproxy:2.17.0@sha256:2ec1d5d5b44d55cfd02ba9b89cd26852f06d92b7fc0ce9f064b9463babc73074",
+    "zap": "ghcr.io/zaproxy/zaproxy:2.17.0@sha256:7c2f8afc893e4e4000be8ad3fd22013fc36e5cce59359349f5a2d45626e2ccb9",
     # promptfoo LLM red-team / eval. Opt-in scanner; requires provider
-    # API keys + network at scan time. The publisher tags ``:latest``
-    # (mutable), so the digest pin below is the content-hash gate.
-    "promptfoo": "ghcr.io/promptfoo/promptfoo:latest@sha256:3993e7c105bcbc1c8f763309552728dd2bf30ff5c9c2e14ec69297b42d096f80",
+    # API keys + network at scan time. Pinned to an immutable version tag
+    # + digest (Renovate-managed), like every other image here — the
+    # publisher's ``:latest`` is mutable and silently drifts.
+    "promptfoo": "ghcr.io/promptfoo/promptfoo:0.121.14@sha256:4348f35b8382f2564f23746ddc3160637cfb9242ea8541304ac1ec6641597840",
     "hadolint": "hadolint/hadolint:v2.14.0@sha256:27086352fd5e1907ea2b934eb1023f217c5ae087992eb59fde121dce9c9ff21e",
     # lint-shell via shellcheck. The koalaman/shellcheck-alpine image is
     # the official multi-arch distribution (~3 MB). shellcheck is GPL-3.0
@@ -55,7 +56,7 @@ OFFICIAL_IMAGES = {
     "gosec": "securego/gosec:latest@sha256:2cf71ea78210c496c65e3a987576a9c8317b68e20f2960520b3f6f8f9f539be5",
     # lint-terraform docker fallbacks. terraform fmt/validate run via
     # the official Hashicorp image; tflint via its official image.
-    "terraform": "hashicorp/terraform:1.15.4@sha256:bf33ffa0dc4777e911f6ab96feafd79be58036b2f74a9772d649818a780c3a13",
+    "terraform": "hashicorp/terraform:1.15.5@sha256:15bf5a08b1fb9c9747c8ff01098aeeefb4aec9a6c24eb13e7661bdf9447e4aee",
     "tflint": "ghcr.io/terraform-linters/tflint:v0.55.1@sha256:4136a6ec3d6659551f2b8f63be8bd413c8c1d842506a5597a26bf4e8bc1eac16",
     # lint-javascript via eslint. pipelinecomponents/eslint is the most
     # widely-used multi-arch eslint image. The upstream tags by commit
@@ -68,10 +69,20 @@ OFFICIAL_IMAGES = {
 # Custom images built and published by Argus to ghcr.io/huntridge-labs/argus/
 # Versions managed by release-it regex bumper
 CUSTOM_IMAGES = {
-    "bandit": "ghcr.io/huntridge-labs/argus/scanner-bandit:1.2.1@sha256:36e6c7bfa00cb9f828791c709976a42586a7344b5674a428711a5072525385d7",
-    "semgrep": "ghcr.io/huntridge-labs/argus/scanner-opengrep:1.2.1@sha256:d92b086f332e811c61a9bc85ca55e4a94a08999c6bff6425c73e31c39172463d",
-    "supply-chain": "ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.2.1@sha256:6b4b705494e269e0f5f309b643f87718fa8120a76d63800cc6299ee0e6c669b5",
-    "cli": "ghcr.io/huntridge-labs/argus/cli:1.2.1@sha256:c8df52c717afcf7e27d21b1c63ffac3df1c98757f4c727f557f224b38d23d164",
+    "bandit": "ghcr.io/huntridge-labs/argus/scanner-bandit:1.4.1@sha256:b9a389fb69fa4d2cc8f4a2b5cc09c05ddb2980a42fc26e5b7ae2a9c7eab82b81",
+    "semgrep": "ghcr.io/huntridge-labs/argus/scanner-opengrep:1.4.1@sha256:dcc8ab984d5992bb2b78b5aa854cd67edb33ef20c87697b57fd0878bec7626a0",
+    "supply-chain": "ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.4.1@sha256:ad2e4387900deac7087c6bcb12d21af0fb90ea65960dc10ffcac24f17073ff7e",
+    "cli": "ghcr.io/huntridge-labs/argus/cli:1.4.1@sha256:ac0d578e43936c5741b4db7446e3001bd5e9803487a67f617f62d74653fe90f7",
+    # PRE-MERGE PREVIEW. The MUMPS scanner image is published from the
+    # feat/scanner-m-mumps branch under the mutable ``mumps-preview`` tag
+    # so testers can run ``argus scan mumps`` with zero local toolchain
+    # ahead of the merge. Unlike the other entries this is a workstation
+    # build (no cosign / SLSA attestations yet); on merge the release
+    # pipeline rebuilds it multi-arch with attestations and release-it
+    # rewrites this line to the versioned ``scanner-mumps:<version>`` tag
+    # + release digest. The digest pin below is still the content-hash
+    # gate the manifest check verifies.
+    "mumps": "ghcr.io/huntridge-labs/argus/scanner-mumps:1.4.1@sha256:8ef284ad41869284b2faed645918a1b48f96385acfe9d68288ae8da67389fcba",
 }
 
 

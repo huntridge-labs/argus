@@ -447,7 +447,7 @@ See `CONTRIBUTING.md` for the complete composite actions development guide. Key 
 
 | Category | Actions | Documentation |
 |----------|---------|---------------|
-| **SAST** | scanner-codeql<br>scanner-bandit<br>scanner-opengrep | Multi-language<br>Python<br>Pattern-based |
+| **SAST** | scanner-codeql<br>scanner-bandit<br>scanner-gosec<br>scanner-opengrep<br>scanner-mumps | Multi-language<br>Python<br>Go<br>Pattern-based<br>MUMPS / M (28 rules: M001-M007 security, M101-M102 + M201-M219 diagnostics — mHawk taint-sink parity + 21 diagnostics) |
 | **Secrets** | scanner-gitleaks | Git history & files |
 | **Dependencies** | scanner-osv<br>scanner-dependency-review | OSV database<br>PR diff analysis & license compliance |
 | **Infrastructure** | scanner-trivy-iac<br>scanner-checkov | Terraform, K8s, etc.<br>Multi-framework |
@@ -522,7 +522,7 @@ See `argus.example.yml` for a quick-start template, or [Configuration Reference]
 #### Individual Scanner
 ```yaml
 - name: Run Bandit Python Scanner
-  uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.2.1
+  uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.4.1
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -540,12 +540,12 @@ See `examples/composite-actions-example.yml` for a full example with:
 
 #### Config-Driven Container Scanning
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/parse-container-config@1.2.1
+- uses: huntridge-labs/argus/.github/actions/parse-container-config@1.4.1
   id: parse
   with:
     config_file: 'container-config.yml'
 
-- uses: huntridge-labs/argus/.github/actions/scanner-container@1.2.1
+- uses: huntridge-labs/argus/.github/actions/scanner-container@1.4.1
   strategy:
     matrix: ${{ fromJson(steps.parse.outputs.matrix) }}
   with:

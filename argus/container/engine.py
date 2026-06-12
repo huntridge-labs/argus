@@ -22,7 +22,12 @@ from .resources import (
     prune_docker_build_cache,
     remove_docker_image,
 )
-from .scanner import ContainerScanResult, ContainerScanSummary, scan_image
+from .scanner import (
+    ContainerScanResult,
+    ContainerScanSummary,
+    RegistryAuthError,
+    scan_image,
+)
 
 logger = logging.getLogger("argus.container")
 
@@ -201,6 +206,12 @@ class ContainerEngine:
                 raw_output_dir=target_raw_dir,
                 config=self.config,
             )
+        except RegistryAuthError:
+            # Misconfigured registry credentials are a fast-fail config
+            # error, not a per-target scan failure to record and skip
+            # past. Propagate so the CLI surfaces it on stderr and the
+            # whole run aborts before more time is wasted. (#253)
+            raise
         except OSError as exc:
             # Disk full, permission denied, etc.
             logger.error(

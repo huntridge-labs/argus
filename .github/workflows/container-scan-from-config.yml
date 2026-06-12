@@ -13,7 +13,7 @@ name: Container Scan from Config
 #     packages: read
 #   jobs:
 #     scan:
-#       uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@1.2.1
+#       uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@1.4.1
 #       with:
 #         config_file: 'containers.yml'
 #       secrets: inherit  # Required for dynamic secret resolution
@@ -71,7 +71,7 @@ permissions:
 
 env:
   # Use current branch/PR when testing in argus repo, otherwise use release tag
-  HRL_REF: ${{ github.repository == 'huntridge-labs/argus' && (github.head_ref || github.ref_name) || '1.2.1' }}
+  HRL_REF: ${{ github.repository == 'huntridge-labs/argus' && (github.head_ref || github.ref_name) || '1.4.1' }}
 
 jobs:
   parse-config:
@@ -82,13 +82,13 @@ jobs:
       has_containers: ${{ steps.parse.outputs.has_containers }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
 
       - name: Parse container config
         id: parse
-        uses: huntridge-labs/argus/.github/actions/parse-container-config@1.2.1
+        uses: huntridge-labs/argus/.github/actions/parse-container-config@1.4.1
         with:
           config_file: ${{ inputs.config_file }}
 
@@ -103,7 +103,7 @@ jobs:
       matrix: ${{ fromJson(needs.parse-config.outputs.matrix) }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
 
@@ -113,7 +113,7 @@ jobs:
           python-version: '3.14'
 
       - name: Install Argus
-        uses: huntridge-labs/argus/.github/actions/setup-argus@1.2.1
+        uses: huntridge-labs/argus/.github/actions/setup-argus@1.4.1
 
       - name: Authenticate to container registry
         if: matrix.registry_username != ''
@@ -135,17 +135,47 @@ jobs:
           echo "$REGISTRY_PASSWORD" | docker login "$REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
 
       - name: Run container security scanners via argus CLI
+        id: scan
         env:
           ARGUS_IMAGE_REF: ${{ matrix.image }}
           ARGUS_SCANNERS: ${{ matrix.scanners }}
           ARGUS_FAIL_ON_SEVERITY: ${{ matrix.fail_on_severity }}
           ARGUS_ENABLE_CODE_SECURITY: ${{ matrix.enable_code_security }}
+          CONTAINER_NAME: ${{ matrix.name || matrix.image }}
         run: |
+          # Write reports to a fixed dir (no timestamp) and publish the
+          # per-container markdown as a scanner-summary-container-* artifact so
+          # the scan-summary job (security-summary) can stitch it. Capture the
+          # scan exit code so the markdown is copied even when findings fail
+          # the severity gate, then re-exit with it.
+          SCAN_EXIT=0
           python -m argus scan container \
             --image "$ARGUS_IMAGE_REF" \
             --scanners "$ARGUS_SCANNERS" \
             --severity-threshold "$ARGUS_FAIL_ON_SEVERITY" \
-            --format markdown --format sarif
+            --output-dir ./container-reports \
+            --no-timestamp \
+            --format markdown --format sarif || SCAN_EXIT=$?
+
+          SAFE_NAME=$(printf '%s' "$CONTAINER_NAME" | tr '/' '-' | tr -cd '[:alnum:]._-')
+          echo "safe_name=$SAFE_NAME" >> "$GITHUB_OUTPUT"
+
+          mkdir -p scanner-summaries
+          if [ -f container-reports/container-scan.md ]; then
+            cp container-reports/container-scan.md "scanner-summaries/container-${SAFE_NAME}.md"
+          fi
+
+          exit $SCAN_EXIT
+
+      - name: Upload container summary section
+        if: always() && steps.scan.outputs.safe_name != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: scanner-summary-container-${{ steps.scan.outputs.safe_name }}
+          path: scanner-summaries/container-${{ steps.scan.outputs.safe_name }}.md
+          if-no-files-found: warn
+          retention-days: 7
+        continue-on-error: true
 
   scan-summary:
     name: Container Scan Summary
@@ -154,6 +184,9 @@ jobs:
     if: always()
     steps:
       - name: Generate container scan summary
-        uses: huntridge-labs/argus/.github/actions/scanner-container-summary@1.2.1
+        uses: huntridge-labs/argus/.github/actions/security-summary@1.4.1
         with:
+          summary_pattern: 'scanner-summary-container-*'
+          title: '🐳 Container Security Scan Results'
+          comment_marker: 'container-scan-parallel-comment'
           post_pr_comment: ${{ github.event_name == 'pull_request' && 'true' || 'false' }}

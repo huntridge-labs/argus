@@ -105,7 +105,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
 
@@ -115,7 +115,7 @@ jobs:
           python-version: '3.14'
 
       - name: Install Argus
-        uses: huntridge-labs/argus/.github/actions/setup-argus@1.2.1
+        uses: huntridge-labs/argus/.github/actions/setup-argus@1.4.1
 
       - name: Discover Dockerfiles in repository
         id: discover
@@ -183,7 +183,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
 
@@ -193,7 +193,7 @@ jobs:
           python-version: '3.14'
 
       - name: Install Argus
-        uses: huntridge-labs/argus/.github/actions/setup-argus@1.2.1
+        uses: huntridge-labs/argus/.github/actions/setup-argus@1.4.1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
@@ -230,6 +230,7 @@ jobs:
           fi
 
       - name: Run security scanners via argus CLI
+        id: scan
         if: steps.build.outputs.build_success == 'true'
         env:
           ARGUS_IMAGE_REF: ${{ steps.build.outputs.full_image }}
@@ -237,12 +238,41 @@ jobs:
           ARGUS_FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
           ARGUS_ENABLE_CODE_SECURITY: ${{ inputs.enable_code_security }}
           ARGUS_ALLOW_FAILURE: ${{ inputs.allow_failure }}
+          CONTAINER_NAME: ${{ matrix.container.name }}
         run: |
+          # Write reports to a fixed dir (no timestamp) so the per-container
+          # markdown can be published as a scanner-summary-container-* artifact
+          # for the downstream security-summary job to stitch. Capture the scan
+          # exit code so the markdown is still copied when findings fail the
+          # gate, then re-exit with it to preserve the severity-threshold result.
+          SCAN_EXIT=0
           python -m argus scan container \
             --image "$ARGUS_IMAGE_REF" \
             --scanners "$ARGUS_SCANNERS" \
             --severity-threshold "$ARGUS_FAIL_ON_SEVERITY" \
-            --format markdown --format sarif
+            --output-dir ./container-reports \
+            --no-timestamp \
+            --format markdown --format sarif || SCAN_EXIT=$?
+
+          SAFE_NAME=$(printf '%s' "$CONTAINER_NAME" | tr '/' '-' | tr -cd '[:alnum:]._-')
+          echo "safe_name=$SAFE_NAME" >> "$GITHUB_OUTPUT"
+
+          mkdir -p scanner-summaries
+          if [ -f container-reports/container-scan.md ]; then
+            cp container-reports/container-scan.md "scanner-summaries/container-${SAFE_NAME}.md"
+          fi
+
+          exit $SCAN_EXIT
+
+      - name: Upload container summary section
+        if: always() && steps.scan.outputs.safe_name != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: scanner-summary-container-${{ steps.scan.outputs.safe_name }}
+          path: scanner-summaries/container-${{ steps.scan.outputs.safe_name }}.md
+          if-no-files-found: warn
+          retention-days: 7
+        continue-on-error: true
 
   scan-remote-image:
     name: Scan Remote Image
@@ -253,7 +283,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
 
@@ -263,7 +293,7 @@ jobs:
           python-version: '3.14'
 
       - name: Install Argus
-        uses: huntridge-labs/argus/.github/actions/setup-argus@1.2.1
+        uses: huntridge-labs/argus/.github/actions/setup-argus@1.4.1
 
       - name: Authenticate to container registry
         if: inputs.registry_username != ''
@@ -285,18 +315,45 @@ jobs:
           REGISTRY_USERNAME: ${{ inputs.registry_username }}
 
       - name: Run security scanners via argus CLI
+        id: scan
         env:
           ARGUS_IMAGE_REF: ${{ inputs.image_ref }}
           ARGUS_SCANNERS: ${{ inputs.scanners || 'trivy,grype,syft' }}
           ARGUS_FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
           ARGUS_ENABLE_CODE_SECURITY: ${{ inputs.enable_code_security }}
           ARGUS_ALLOW_FAILURE: ${{ inputs.allow_failure }}
+          CONTAINER_NAME: ${{ inputs.container_name != '' && inputs.container_name || inputs.image_ref }}
         run: |
+          # See build-and-scan: write to a fixed dir, capture exit, publish the
+          # per-container markdown as a scanner-summary-container-* artifact.
+          SCAN_EXIT=0
           python -m argus scan container \
             --image "$ARGUS_IMAGE_REF" \
             --scanners "$ARGUS_SCANNERS" \
             --severity-threshold "$ARGUS_FAIL_ON_SEVERITY" \
-            --format markdown --format sarif
+            --output-dir ./container-reports \
+            --no-timestamp \
+            --format markdown --format sarif || SCAN_EXIT=$?
+
+          SAFE_NAME=$(printf '%s' "$CONTAINER_NAME" | tr '/' '-' | tr -cd '[:alnum:]._-')
+          echo "safe_name=$SAFE_NAME" >> "$GITHUB_OUTPUT"
+
+          mkdir -p scanner-summaries
+          if [ -f container-reports/container-scan.md ]; then
+            cp container-reports/container-scan.md "scanner-summaries/container-${SAFE_NAME}.md"
+          fi
+
+          exit $SCAN_EXIT
+
+      - name: Upload container summary section
+        if: always() && steps.scan.outputs.safe_name != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: scanner-summary-container-${{ steps.scan.outputs.safe_name }}
+          path: scanner-summaries/container-${{ steps.scan.outputs.safe_name }}.md
+          if-no-files-found: warn
+          retention-days: 7
+        continue-on-error: true
 
   container-scan-summary:
     name: Container Scan Summary
@@ -306,20 +363,18 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
 
-      - name: Download all scan artifacts
-        if: needs.discover-containers.outputs.has_containers == 'true' || inputs.scan_mode == 'remote'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        continue-on-error: true
-        with:
-          pattern: ${{ inputs.scan_mode == 'remote' && inputs.container_name != '' && format('container-scan-results-{0}*', inputs.container_name) || 'container-scan-results-*' }}
-
+      # security-summary self-downloads the per-container summary artifacts
+      # (scanner-summary-container-*), so no separate download step is needed.
       - name: Generate container summary
-        uses: huntridge-labs/argus/.github/actions/scanner-container-summary@1.2.1
+        uses: huntridge-labs/argus/.github/actions/security-summary@1.4.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          summary_pattern: 'scanner-summary-container-*'
+          title: '🐳 Container Security Scan Results'
+          comment_marker: 'container-scan-parallel-comment'
           post_pr_comment: ${{ inputs.post_pr_comment }}

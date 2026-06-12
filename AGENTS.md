@@ -8,7 +8,7 @@
 
 - **What it does**: Orchestrates 14 security scanners (SAST, secrets, containers, IaC, DAST) via the argus Python SDK or GitHub Actions composite actions
 - **Primary interface**: `python -m argus scan --config argus.yml`
-- **Current version**: 1.2.1
+- **Current version**: 1.4.1
 - **License**: AGPL-3.0
 
 ### One-Liner
@@ -70,7 +70,7 @@ python -m argus scan --config argus.yml
 **GitHub Actions (composite actions):**
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.2.1
+- uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.4.1
   with:
     enable_code_security: true
     fail_on_severity: high
@@ -394,14 +394,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.2.1
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.4.1
         with:
           fail_on_severity: high
           enable_code_security: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.2.1
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.4.1
         with:
           fail_on_severity: high
           enable_code_security: true
@@ -428,7 +428,7 @@ python -m argus scan container --severity-threshold high
 ```yaml
 - name: Post PR Comment
   if: github.event_name == 'pull_request'
-  uses: huntridge-labs/argus/.github/actions/comment-pr@1.2.1
+  uses: huntridge-labs/argus/.github/actions/comment-pr@1.4.1
   with:
     comment_file: summary.md
 ```

@@ -79,12 +79,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
 
       - name: Run Syft SBOM Generator
-        uses: huntridge-labs/argus/.github/actions/scanner-syft@1.2.1
+        uses: huntridge-labs/argus/.github/actions/scanner-syft@1.4.1
         with:
           scan_path: ${{ inputs.scan_path }}
           scan_image: ${{ inputs.scan_image }}

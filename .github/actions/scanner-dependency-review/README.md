@@ -15,7 +15,7 @@ Scans pull request dependency changes for vulnerabilities and license compliance
 
 ```yaml
 - uses: actions/checkout@v6
-- uses: huntridge-labs/argus/.github/actions/scanner-dependency-review@1.2.1
+- uses: huntridge-labs/argus/.github/actions/scanner-dependency-review@1.4.1
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:

@@ -248,6 +248,16 @@
         "/^huntridge-labs\\/argus(\\/|$)/"
       ],
       "enabled": false
+    },
+    {
+      "description": "Hold eFAILution/AICaC (aicac-adoption) at 0.3.0. v0.6.0+ hard-enforces the AICaC v2 .ai/ schema, but the repo's .ai/ consumers (check_architecture_sync, scripts/docsite/architecture.py, argus/architecture_map.py) still read the v1 shape. Re-enable once the v2 migration lands (#227).",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchDepNames": [
+        "/^eFAILution\\/AICaC(\\/|$)/"
+      ],
+      "enabled": false
     }
   ]
 }

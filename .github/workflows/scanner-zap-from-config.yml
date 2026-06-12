@@ -13,7 +13,7 @@ name: ZAP DAST from Config
 #     packages: read
 #   jobs:
 #     zap-scan:
-#       uses: huntridge-labs/argus/.github/workflows/scanner-zap-from-config.yml@1.2.1
+#       uses: huntridge-labs/argus/.github/workflows/scanner-zap-from-config.yml@1.4.1
 #       with:
 #         config_file: '.zap/config.yml'
 #       secrets: inherit  # Required for dynamic secret resolution
@@ -72,7 +72,7 @@ permissions:
 
 env:
   # Use current branch/PR when testing in argus repo, otherwise use release tag
-  HRL_REF: ${{ github.repository == 'huntridge-labs/argus' && (github.head_ref || github.ref_name) || '1.2.1' }}
+  HRL_REF: ${{ github.repository == 'huntridge-labs/argus' && (github.head_ref || github.ref_name) || '1.4.1' }}
 
 jobs:
   parse-config:
@@ -85,13 +85,13 @@ jobs:
       post_pr_comment: ${{ steps.parse.outputs.post_pr_comment }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
 
       - name: Parse ZAP config
         id: parse
-        uses: huntridge-labs/argus/.github/actions/parse-zap-config@1.2.1
+        uses: huntridge-labs/argus/.github/actions/parse-zap-config@1.4.1
         with:
           config_file: ${{ inputs.config_file }}
 
@@ -110,7 +110,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
 
@@ -120,7 +120,7 @@ jobs:
           python-version: '3.14'
 
       - name: Install Argus
-        uses: huntridge-labs/argus/.github/actions/setup-argus@1.2.1
+        uses: huntridge-labs/argus/.github/actions/setup-argus@1.4.1
 
       - name: Run scan
         run: |
@@ -172,6 +172,6 @@ jobs:
     if: always()
     steps:
       - name: Generate ZAP summary
-        uses: huntridge-labs/argus/.github/actions/scanner-zap-summary@1.2.1
+        uses: huntridge-labs/argus/.github/actions/scanner-zap-summary@1.4.1
         with:
           post_pr_comment: ${{ needs.parse-config.outputs.post_pr_comment }}

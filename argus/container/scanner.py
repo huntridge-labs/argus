@@ -12,8 +12,22 @@ from argus.core.models import Finding, Severity
 from argus.scanners.container import ContainerScanner
 
 from .discovery import ContainerTarget
+from .resources import get_image_digest, is_image_local
 
 logger = logging.getLogger("argus.container")
+
+
+class RegistryAuthError(Exception):
+    """A configured registry credential could not be resolved at scan time.
+
+    Raised *before* any scanner container starts so the user gets a
+    fast, actionable diagnostic — naming the unset env var and the
+    registry it belongs to — instead of an opaque ``UNAUTHORIZED:
+    authentication required`` from the upstream tool 60–90 s into the
+    scan. The message is two lines (what's wrong + how to fix) and is
+    surfaced on stderr by the CLI, not buried in ``argus.log``. See
+    issue #253.
+    """
 
 
 def _normalize_image_ref(ref: str) -> str:
@@ -148,6 +162,96 @@ def _resolve_registry_auth(
         )
 
     return username, password
+
+
+def _gate_credential(
+    scope: str, label: str, source: dict, field: str, value: str | None,
+) -> None:
+    """Raise ``RegistryAuthError`` if ``field`` is configured but unresolved.
+
+    A credential counts as *configured* when the source dict carries
+    either ``<field>_env`` (env-var indirection) or a literal
+    ``<field>``. If it resolved to a falsy value (env var unset or
+    empty, or an empty literal), the pull would fail later with an
+    opaque auth error — so we fail fast here instead.
+
+    A field that is not configured at all is left alone: anonymous
+    pulls, and token-only auth where the username is intentionally
+    omitted, are both valid and must not be gated.
+    """
+    if value:
+        return
+
+    env_field = f"{field}_env"
+    if env_field in source:
+        env_name = source.get(env_field)
+        raise RegistryAuthError(
+            f"{scope}: {label} unresolved — env var {env_name} is not set.\n"
+            f"Set it before running argus or update registry_auth in "
+            f"argus.yml to reference a variable that is exported."
+        )
+    if field in source:
+        raise RegistryAuthError(
+            f"{scope}: {label} unresolved — the configured value is empty.\n"
+            f"Set a non-empty {label} or remove it to pull anonymously."
+        )
+
+
+def validate_registry_auth(
+    config: dict | None, image_ref: str | None,
+) -> None:
+    """Fail fast when a configured registry credential cannot be resolved.
+
+    Intended to run once per target *before* any scanner container is
+    invoked. Mirrors the matching logic of :func:`_resolve_registry_auth`
+    — the longest ``registry_auth`` path-prefix wins, falling back to the
+    top-level ``registry_username`` / ``registry_password`` shortcut when
+    no map entry matches — then gates each credential the matched scope
+    actually declares.
+
+    Raises :class:`RegistryAuthError` naming the registry scope and the
+    unset env var. Returns ``None`` (no exception) for anonymous pulls,
+    where nothing is configured. See issue #253.
+    """
+    if not config:
+        return
+
+    auth_map = config.get("registry_auth") or {}
+
+    best_key: str | None = None
+    if image_ref is not None:
+        normalized = _normalize_image_ref(image_ref)
+        for key in auth_map:
+            if not isinstance(key, str):
+                continue
+            if _is_path_component_prefix(key, normalized):
+                if best_key is None or len(key) > len(best_key):
+                    best_key = key
+
+    if best_key is not None:
+        entry = auth_map[best_key]
+        if not isinstance(entry, dict):
+            # Malformed entry — _resolve_registry_auth already warns and
+            # skips it. That's a config-shape problem, not an unresolved
+            # credential, so it isn't this gate's concern.
+            return
+        username, password = _resolve_user_pass(
+            entry, user_field="username", pass_field="password",
+        )
+        scope = f"registry_auth[{best_key}]"
+        _gate_credential(scope, "username", entry, "username", username)
+        _gate_credential(scope, "password", entry, "password", password)
+        return
+
+    # No map entry matched → top-level single-default shortcut.
+    username, password = _resolve_user_pass(config)
+    scope = "registry credentials"
+    _gate_credential(
+        scope, "username", config, "registry_username", username,
+    )
+    _gate_credential(
+        scope, "password", config, "registry_password", password,
+    )
 
 
 def _registry_auth_env(
@@ -465,8 +569,48 @@ def scan_image(
     services_findings: list[Finding] = []
     scanner_errors: dict[str, str] = {}
 
-    # Determine if the image is local (built by us) or remote
-    is_local = target.dockerfile is not None
+    # Determine if the image is local (built by us) or remote.
+    #
+    # An image counts as local — and so must be scanned via the
+    # ``docker:`` daemon source rather than resolved against a registry —
+    # in two cases:
+    #   1. We built it from a Dockerfile this run (``target.dockerfile``).
+    #   2. It was built or loaded by an earlier step and handed to us by
+    #      ref. CI commonly builds a throwaway tag (``app:scan-<sha>``)
+    #      then calls ``argus scan container --image app:scan-<sha>``.
+    #      There's no Dockerfile on the target, but the image is sitting
+    #      in the local daemon. Without this check ``is_local`` is False,
+    #      grype/trivy fall through to the ``registry:`` source, and the
+    #      never-pushed dev tag resolves to ``docker.io/library/...`` →
+    #      ``UNAUTHORIZED: authentication required`` (issue #233).
+    #
+    # The daemon probe (``docker image inspect``) is skipped when we
+    # already know we built the image, avoiding a redundant subprocess.
+    built_here = target.dockerfile is not None
+    is_local = built_here or is_image_local(target.image_ref)
+
+    # Transparency breadcrumb: when a ref we did NOT build is found in the
+    # local daemon, we scan that local copy and skip the registry pull
+    # (and any configured registry auth). That's the intended fix for
+    # never-pushed build tags (#233), but for a fully-qualified registry
+    # ref it also means a *stale* local copy would be scanned instead of
+    # the current registry manifest. Log it so operators can see which
+    # source was used rather than silently diverging from the registry.
+    if is_local and not built_here:
+        logger.info(
+            "Image %s found in the local Docker daemon; scanning the local "
+            "copy via the docker-daemon source (not pulling from a registry)",
+            target.image_ref,
+        )
+
+    # Fail fast on misconfigured registry credentials *before* spinning
+    # up any scanner container. A configured-but-unresolved credential
+    # (e.g. ``password_env`` naming an unset variable) otherwise surfaces
+    # 60–90 s later as an opaque ``UNAUTHORIZED`` from trivy/grype.
+    # Skipped for local images — they're scanned from the docker daemon
+    # and never touch a registry, so registry auth is irrelevant. (#253)
+    if not is_local:
+        validate_registry_auth(cfg, target.image_ref)
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
@@ -565,9 +709,22 @@ def scan_image(
         extra=[*exposure_findings, *services_findings],
     )
 
+    # Bind the result to the scanned image's content digest (#237): a clean
+    # scan should attest *what* was scanned, not just a mutable tag. The
+    # findings carry it in metadata so it travels into argus-results.json /
+    # SARIF; the ContainerScanResult.digest field feeds the per-image
+    # markdown and audit manifest. Best-effort — an unknown digest is
+    # non-fatal and simply isn't recorded.
+    digest = get_image_digest(target.image_ref)
+    if digest:
+        for finding in combined:
+            finding.metadata.setdefault("image_ref", target.image_ref)
+            finding.metadata.setdefault("image_digest", digest)
+
     return ContainerScanResult(
         name=target.name,
         image_ref=target.image_ref,
+        digest=digest,
         dockerfile=str(target.dockerfile) if target.dockerfile else "",
         context=str(target.context) if target.context else "",
         trivy_findings=trivy_findings,
