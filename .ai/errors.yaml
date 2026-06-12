@@ -1,766 +1,650 @@
-# .ai/errors.yaml
-# Error patterns mapped to solutions
-# AICaC Specification v1.0
-
-version: "1.0"
-
-error_patterns:
-
-  # ==============================================================================
-  # PERMISSIONS ERRORS
-  # ==============================================================================
-
-  - pattern: "Resource not accessible by integration"
-    category: permissions
-    context: "SARIF upload or PR comment fails"
-
-    root_cause: |
-      The GITHUB_TOKEN doesn't have sufficient permissions for the
-      requested operation (security-events: write or pull-requests: write).
-
-    solution:
-      steps:
-        - "Ensure github_token is passed to the workflow"
-        - "Add permissions block to workflow or job"
-      code: |
-        permissions:
-          security-events: write   # For SARIF upload
-          pull-requests: write     # For PR comments
-          contents: read           # For checkout
-      verification: "Check Actions log for successful SARIF upload step"
-
-    reference: "docs/failure-control.md"
-
-  - pattern: "token doesn't have packages:write"
-    category: permissions
-    context: "Dependabot on GitHub Enterprise Server"
-
-    root_cause: |
-      GITHUB_TOKEN has different scopes than Personal Access Token.
-      Dependabot on GHES requires packages:write for private registries.
-
-    solution:
-      steps:
-        - "Create PAT with packages:write scope"
-        - "Add to repository secrets as PACKAGES_TOKEN"
-        - "Update workflow to use PACKAGES_TOKEN"
-
-    reference: "docs/ghes-setup.md#dependabot"
-
-  # ==============================================================================
-  # SCANNER ERRORS
-  # ==============================================================================
-
-  - pattern: "Scanner X not found in matrix"
-    category: configuration
-    context: "Workflow or `argus scan` fails with unknown scanner"
-
-    root_cause: "Typo in scanner name or scanner not implemented"
-
-    solution:
-      verification:
-        - "Run `argus list` to see every registered scanner and linter (single source of truth — SCANNER_REGISTRY auto-merges LINTER_REGISTRY at import)"
-        - "Tab-complete via `argus completion zsh` (or bash/fish) — completions are generated from the live registry"
-      examples:
-        security_scanners: "bandit, gitleaks, opengrep, osv, trivy-iac, checkov, clamav, supply-chain, zap, container"
-        linters: "lint-yaml, lint-json, lint-python, lint-javascript, lint-dockerfile, lint-terraform"
-        composite_only: "codeql, dependency-review, scn-detector (composite-action-only; not registered as SDK scanners)"
-
-  - pattern: "CodeQL.*unsupported language"
-    category: scanner
-    context: "CodeQL fails to analyze repository"
-
-    root_cause: "Repository contains no supported languages for CodeQL"
-
-    solution:
-      supported_languages:
-        - python
-        - javascript
-        - typescript
-        - go
-        - java
-        - cpp
-        - csharp
-        - ruby
-        - swift
-        - kotlin
-      recommendation: "Use bandit (Python) or opengrep (multi-language) instead"
-
-  - pattern: "MUMPS finding counts differ between hosts / golden guard fails only in CI"
-    category: scanner
-    context: "argus/tests/scanners/test_mumps_rules.py golden guard passes locally but fails on the GitHub runner with different M005/M007 counts"
-
-    root_cause: |
-      The MUMPS scanner's per-file analysis cached its per-file line maps
-      (filter_charset_guarded's _charset_guard_lines / _label_lines) on the
-      shared per-scan rule_config dict without a per-file key. The first file
-      to hit a taint sink populated the cache, and every later file reused
-      that first file's guard/label lines — so guard-suppressed sinks were
-      wrongly kept (or dropped) depending on the order rglob() returned files,
-      which varies by filesystem/host. Findings became order-dependent.
-
-    solution:
-      steps:
-        - "Key any per-file cache on parsed.path (or recompute per file); never cache file-scoped state unkeyed on the per-scan config"
-        - "Sort file iteration (sorted(target.rglob('*'))) for stable output order"
-        - "Add an order-independence guard: scan forward vs reversed, assert identical finding set"
-      verification: "test_findings_independent_of_scan_order in test_mumps_rules.py"
-
-    reference: "argus/scanners/mumps/taint.py (filter_charset_guarded)"
-
-  - pattern: "TypeError: Language.__init__.*argument|Parser.*set_language|tree-sitter bump fails all mumps unit-test legs"
-    category: scanner
-    context: |
-      A tree-sitter / py-tree-sitter upgrade (e.g. Dependabot proposing
-      >=0.22, surfaced by #247) breaks the MUMPS parser and fails every
-      mumps unit-test leg. py-tree-sitter 0.22 removed the two-arg
-      ``Language(path, name)`` constructor and ``Parser.set_language``.
-
-    root_cause: |
-      ``MumpsParser`` used the pre-0.22 API
-      (``Language(str(grammar), "mumps")`` + ``Parser()`` +
-      ``parser.set_language(...)``). 0.22+ requires a pre-loaded language
-      pointer wrapped in a PyCapsule and takes the language in the
-      ``Parser(language)`` constructor. The compiled ``mumps.so`` (language
-      ABI 14) itself is compatible with both lines — only the Python loader
-      changed.
-
-    solution:
-      steps:
-        - "The grammar loader is version-gated (_tree_sitter_minor): ≤0.21 keeps the two-arg Language + set_language; ≥0.22 wraps the grammar's tree_sitter_mumps() pointer with ctypes + PyCapsule_New(... b'tree_sitter.Language') via _grammar_capsule, then Language(capsule) + Parser(language). Both branches live in _load_grammar."
-        - "The [mumps] extra floats across the tested range (tree-sitter>=0.20,<0.26); the <0.26 ceiling bounds it to versions CI has exercised. No grammar rebuild — the same mumps.so loads on both lines."
-        - "docker/Dockerfile.mumps bumps its build-time TREE_SITTER_VERSION to the current line (0.25.2) so the scanner-mumps image ships the new binding."
-        - "No Dependabot ignore is needed — the dual path absorbs the API break."
-      verification: "TestTreeSitterVersionGating in test_mumps_scanner.py pins the branch selection; the full mumps suite passes on both 0.21.3 and 0.25.2"
-    reference: "argus/scanners/mumps/parser.py (_tree_sitter_minor / _grammar_capsule / _load_grammar) — issue #248, PR #249"
-
-  # ==============================================================================
-  # SARIF ERRORS
-  # ==============================================================================
-
-  - pattern: "SARIF upload failed"
-    category: sarif
-    context: "enable_code_security: true but upload fails"
-
-    root_cause: "GitHub Advanced Security not enabled on repository"
-
-    solution:
-      steps:
-        - "Go to repo Settings → Security → Code security and analysis"
-        - "Enable 'GitHub Advanced Security'"
-        - "For private repos, requires GitHub Enterprise license"
-      alternative: "Set enable_code_security: false to skip SARIF upload"
-
-  - pattern: "SARIF.*exceeds.*size limit"
-    category: sarif
-    context: "SARIF file too large for GitHub"
-
-    root_cause: "SARIF files must be < 10MB for GitHub upload"
-
-    solution:
-      options:
-        - description: "Reduce scan scope"
-          how: "Use 'path' input to scan only changed directories"
-        - description: "Split into multiple workflows"
-          how: "Run different scanners in separate jobs"
-        - description: "Increase severity threshold"
-          how: "fail_on_severity: critical reduces findings count"
-
-  # ==============================================================================
-  # CONFIGURATION ERRORS
-  # ==============================================================================
-
-  - pattern: "Invalid YAML.*found duplicate key"
-    category: configuration
-    context: |
-      argus.yml has the same mapping key defined twice (e.g. two
-      ``execution:`` blocks, or ``enabled`` listed twice under one
-      scanner). PyYAML's default loader silently keeps the last
-      value; argus's strict loader rejects the file at load time
-      so the user's earlier settings can't be silently dropped.
-
-    root_cause: |
-      A YAML mapping can only legally have each key once. When the
-      same key appears twice at the same nesting level — at the
-      top of argus.yml, inside ``scanners.<name>``, anywhere — the
-      second occurrence overrides the first. Pre-fix behavior:
-      validation passed, scan silently used only the second
-      definition. Post-fix behavior: argus.core.config's
-      StrictSafeLoader raises a YAMLError naming the duplicated
-      key and the line of the second occurrence.
-
-    solution:
-      steps:
-        - "Open the file at the line named in the error message"
-        - "Merge the two blocks into one — choose which value should win, write it once"
-        - "Re-run ``argus validate`` to confirm"
-      example: |
-        # WRONG — silently drops the registry setting
-        execution:
-          registry: registry.internal.corp/argus
-          backend: docker
-        execution:
-          backend: docker
-
-        # RIGHT — single block
-        execution:
-          registry: registry.internal.corp/argus
-          backend: docker
-
-    reference: "argus/core/config.py::StrictSafeLoader"
-
-  # ==============================================================================
-  # CONTAINER SCANNING ERRORS
-  # ==============================================================================
-
-  - pattern: "Container scan found no images"
-    category: configuration
-    context: "container-scan-from-config returns empty matrix"
-
-    root_cause: "Config file path wrong or YAML syntax error"
-
-    solution:
-      steps:
-        - "Verify config file path is relative to repo root"
-        - "Validate against schema: .github/actions/parse-container-config/schemas/container-config.schema.json"
-        - "Use examples/configs/container-config.example.yml as reference"
-      common_issues:
-        - "Path starts with / (should be relative)"
-        - "YAML indentation incorrect"
-        - "Missing 'containers' key"
-
-  - pattern: "registry.*authentication.*failed"
-    category: container
-    context: "Cannot pull container image for scanning"
-
-    root_cause: "Registry credentials not provided or invalid"
-
-    solution:
-      steps:
-        - "Store credentials as environment variables (CI runner env, .envrc, etc.) — never as YAML literals."
-        - "Reference the env-var *name* from argus.yml using the <field>_env shape; argus.core.secrets.resolve_secret reads os.environ at scan time."
-        - "For composite-action consumers on GitHub Actions, the runner-side env can still be wired from `${{ secrets.X }}`."
-      code: |
-        # Preferred — argus.yml
-        scanners:
-          container:
-            registry_username_env: REGISTRY_USER     # name of env var
-            registry_password_env: REGISTRY_TOKEN    # name of env var
-      ci_example: |
-        # GitHub Actions: export the secret into the runner env
-        - name: Run argus scan
-          env:
-            REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
-            REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
-          run: argus scan --config argus.yml
-      legacy_supported: |
-        # Still works (warned at config-load if the value matches
-        # a known vendor secret prefix):
-        scanners:
-          container:
-            registry_username: "user"
-            registry_password: "literal"
-      warning: |
-        Never commit literal credentials to argus.yml. The
-        <field>_env shape keeps secret values out of VCS entirely;
-        argus.core.secrets emits a warning if a literal value
-        matches a known vendor-secret prefix (gh*, AKIA, AIza,
-        glpat-, etc.) at config-load time so the leak is caught
-        before the scan runs.
-
-  - pattern: "registry_auth\\[.*\\]: (username|password) unresolved|UNAUTHORIZED.*~90s into the scan"
-    category: container-scanning
-    context: |
-      A ``registry_auth`` entry (or the top-level
-      ``registry_username``/``registry_password`` shortcut) references a
-      credential via ``password_env``/``username_env`` whose environment
-      variable is unset or empty. Previously argus logged a WARNING to
-      ``argus.log`` only, then proceeded — the sub-scanner container ran
-      for 60–90s and failed with an opaque ``UNAUTHORIZED: authentication
-      required`` from grype/trivy, with nothing on stderr to explain why.
-
-    root_cause: |
-      ``_resolve_registry_auth`` resolves credentials and warns on an
-      unresolved one, but the warning went to the file logger and the
-      scan was never gated on it. The real failure surfaced much later,
-      one layer down, as an upstream-tool auth error unrelated to the
-      actual cause (the missing env var).
-
-    solution:
-      steps:
-        - "``scan_image`` now calls ``validate_registry_auth(config, image_ref)`` for remote pulls *before* any sub-scanner container starts."
-        - "A configured-but-unresolved credential raises ``RegistryAuthError`` naming the registry scope and the unset env var."
-        - "``ContainerEngine._process_target`` re-raises ``RegistryAuthError`` (it is NOT recorded as a per-target scan_error) so the run aborts fast."
-        - "The CLI surfaces the two-line message on stderr and exits non-zero."
-      note: |
-        Local images (built this run, or already present in the docker
-        daemon) skip the gate — they are scanned from the daemon source
-        and never touch a registry. Anonymous pulls (nothing configured)
-        and token-only auth (username intentionally omitted) are not
-        gated. The matched ``registry_auth`` entry is selected by the
-        same longest-path-prefix rule as resolution.
-
-    reference: "argus/container/scanner.py::validate_registry_auth / RegistryAuthError — issue #253"
-
-  # ==============================================================================
-  # PR COMMENT ERRORS
-  # ==============================================================================
-
-  - pattern: "PR comment not appearing"
-    category: pr
-    context: "enable_pr_comment: true but no comment"
-
-    root_cause: "Token lacks PR write permission or not a PR event"
-
-    solution:
-      checklist:
-        - "Add permission: pull-requests: write"
-        - "Ensure workflow runs on pull_request event (not push)"
-        - "Check Actions log for 'PR comment' step output"
-        - "Verify github_token is passed to workflow"
-
-  - pattern: "Could not create comment.*Not Found"
-    category: pr
-    context: "PR comment step fails with 404"
-
-    root_cause: "Workflow running on push event, not pull_request"
-
-    solution:
-      explanation: "PR comments can only be created from pull_request events"
-      fix: |
-        on:
-          pull_request:
-            types: [opened, synchronize, reopened]
-
-  # ==============================================================================
-  # RELEASE ERRORS
-  # ==============================================================================
-
-  - pattern: "could not read Username for 'https://github.com'"
-    category: release
-    context: "release-it git push fails during release workflow"
-
-    root_cause: |
-      The checkout step uses persist-credentials: false (supply chain
-      hardening best practice), which removes the token from the git
-      credential store. When release-it runs git push, there are no
-      credentials available for HTTPS authentication.
-
-    solution:
-      steps:
-        - "Add git remote set-url to the Configure Git step"
-        - "Inject the token via env var, not inline ${{ }}"
-      code: |
-        - name: Configure Git
-          run: |
-            git config --global user.name "github-actions[bot]"
-            git config --global user.email "github-actions[bot]@users.noreply.github.com"
-            git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          env:
-            GITHUB_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
-      note: "Do NOT remove persist-credentials: false — fix the remote URL instead"
-      reference: "PR #86"
-
-  - pattern: "manifest unknown|<scanner>:<version> failed manifest check|pinned image tag does not resolve after release"
-    category: release
-    context: |
-      A scanner image is pinned in argus/containers.py as
-      ``<image>:<version>@sha256:<digest>`` but the ``:<version>`` /
-      ``:latest`` tag does not exist on GHCR — ``docker manifest
-      inspect`` returns "manifest unknown". The image *content* (the
-      digest) exists, often only under the transient ``build-<sha>-<run>``
-      tag. Surfaces as the Unit Tests manifest check failing (it runs on
-      a single Python matrix leg), frequently first noticed on an
-      unrelated PR rather than at release time.
-
-    root_cause: |
-      The Release workflow builds once with a ``build-<sha>`` tag, then
-      re-tags to ``:<VERSION>`` + ``:latest``. The build, promote, cosign,
-      and release-notes steps each carried their OWN hardcoded image list.
-      When scanner-mumps was added it was put in the build + cosign lists
-      but missed from the promote loop, so it was built and signed but
-      never tagged ``:<VERSION>``. The release-it after:bump hook still
-      pinned containers.py to the (valid) digest, so the pin pointed at a
-      tag that was never pushed. The ``chore(release):`` commit skips the
-      Unit Tests workflow, so the manifest check never ran post-release.
-
-    solution:
-      steps:
-        - "Single-source the image set: build IMAGE_NAMES once from the IMAGES array and export via $GITHUB_ENV; promote/cosign/notes all iterate IMAGE_NAMES (no parallel hardcoded lists)."
-        - "Add a 'Verify pinned image manifests resolve' step to release.yml (runs python -m scripts.ci.check_container_images after promotion, before publish) so a missing promotion fails the release immediately."
-        - "Immediate remediation for an already-shipped miss: re-tag the existing digest with oras (manifest-only, no rebuild): oras tag <repo>@sha256:<digest> <version> latest — the digest is already cosign-signed, so signatures stay valid."
-      note: |
-        cosign signs by digest, so a missing :<VERSION> tag does NOT fail
-        the signing step — the manifest check is what catches it. Keep the
-        single IMAGE_NAMES source so adding a scanner can't drift again.
-      reference: "argus/containers.py + .github/workflows/release.yml (promote/cosign/notes loops) + scripts/ci/check_container_images.py"
-
-  # ==============================================================================
-  # WORKFLOW ERRORS
-  # ==============================================================================
-
-  - pattern: "action.*not found"
-    category: workflow
-    context: "Cannot find composite action"
-
-    root_cause: "Version tag doesn't exist or typo in action path"
-
-    solution:
-      verification:
-        - "Check tag exists: git ls-remote --tags origin"
-        - "Verify action path matches exactly"
-      example: |
-        # Correct
-        uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.4.1
-
-        # Wrong - missing .github prefix
-        uses: huntridge-labs/argus/actions/scanner-bandit@0.7.0
-
-  # ==============================================================================
-  # LOCAL DEVELOPMENT ERRORS
-  # ==============================================================================
-
-  - pattern: "pytest.*command not found"
-    category: development
-    context: "Running tests locally"
-
-    root_cause: "pytest not installed or Python not in PATH"
-
-    solution:
-      steps:
-        - "Install Python 3.11+: https://python.org/ or 'brew install python'"
-        - "Install dependencies: pip install -r requirements.txt"
-        - "Run tests: pytest"
-      alternative: "Use Dev Container (recommended)"
-
-  - pattern: "ModuleNotFoundError.*pytest"
-    category: development
-    context: "pytest import fails"
-
-    root_cause: "pytest or dependencies not installed"
-
-    solution:
-      steps:
-        - "Install: pip install -r requirements.txt"
-        - "Or: pip install pytest pytest-cov pyyaml jsonschema"
-
-  # ==============================================================================
-  # GHES-SPECIFIC ERRORS
-  # ==============================================================================
-
-  - pattern: "workflow_call.*not supported"
-    category: ghes
-    context: "Running workflows on GHES"
-
-    root_cause: "GHES version doesn't support cross-repository workflow_call"
-
-    solution:
-      explanation: "Use the argus SDK (primary) or composite actions"
-      alternatives:
-        - description: "Use the argus SDK"
-          how: "pip install argus-security && argus scan --config argus.yml"
-        - description: "Use composite actions directly"
-          how: "Switch to .github/actions/ based implementation"
-      reference: "See ADR-013 (SDK primary) and ADR-001 in .ai/decisions.yaml"
-
-# ==============================================================================
-# DEBUGGING GUIDE
-# ==============================================================================
-
+version: '2.0'
 debugging:
   enable_debug_logging:
-    description: "Get verbose output from GitHub Actions"
+    description: Get verbose output from GitHub Actions
     steps:
-      - "Go to repo Settings → Secrets and variables → Actions"
-      - "Add secret: ACTIONS_STEP_DEBUG = true"
-      - "Re-run workflow"
-    note: "Remember to remove after debugging (verbose logs are noisy)"
-
+    - "Go to repo Settings \u2192 Secrets and variables \u2192 Actions"
+    - 'Add secret: ACTIONS_STEP_DEBUG = true'
+    - Re-run workflow
+    note: Remember to remove after debugging (verbose logs are noisy)
   common_debug_steps:
-    - "Check Actions log for error step"
-    - "Look for parse-results.py output (shows JSON conversion)"
-    - "Verify SARIF file size in artifacts"
-    - "Check permissions block in workflow"
-
+  - Check Actions log for error step
+  - Look for parse-results.py output (shows JSON conversion)
+  - Verify SARIF file size in artifacts
+  - Check permissions block in workflow
   local_testing:
-    description: "Test scripts locally before pushing"
+    description: Test scripts locally before pushing
     steps:
-      - "Run scanner manually on test fixtures"
-      - "Pipe output through parse script"
-      - "Verify JSON structure"
-    example: |
-      bandit -r tests/fixtures/test-apps/python-app -f json | \
-        python .github/actions/scanner-bandit/scripts/parse-results.py counts - | \
-        python -m json.tool
-
-# ==============================================================================
-# SCN DETECTOR ERRORS
-# ==============================================================================
-
+    - Run scanner manually on test fixtures
+    - Pipe output through parse script
+    - Verify JSON structure
+    example: "bandit -r tests/fixtures/test-apps/python-app -f json | \\\n  python\
+      \ .github/actions/scanner-bandit/scripts/parse-results.py counts - | \\\n  python\
+      \ -m json.tool\n"
 scn_detector_errors:
+- pattern: AI fallback requested but ANTHROPIC_API_KEY not set
+  category: scn-detector
+  context: 'SCN detector with enable_ai_fallback: true'
+  root_cause: ANTHROPIC_API_KEY secret not configured in repository
+  solution:
+    steps:
+    - 'If AI fallback is desired: add ANTHROPIC_API_KEY to repository secrets'
+    - 'If air-gapped: set enable_ai_fallback: false (rule-based only)'
+    note: Rule-based classification works without any API keys
+- pattern: No IaC changes detected
+  category: scn-detector
+  context: SCN detector reports no changes on PR with IaC files
+  root_cause: fetch-depth not set or base_ref incorrect
+  solution:
+    steps:
+    - 'Ensure actions/checkout has fetch-depth: 0'
+    - Verify base_ref points to correct comparison branch
+    code: "- uses: actions/checkout@v6\n  with:\n    fetch-depth: 0  # Required for\
+      \ git diff\n"
+- pattern: 'conftest: failed to import.*scn-detector'
+  category: scn-detector
+  context: pytest coverage measurement fails for SCN scripts
+  root_cause: 'SCN detector scripts have runtime dependencies (requests, PyYAML)
 
-  - pattern: "AI fallback requested but ANTHROPIC_API_KEY not set"
-    category: scn-detector
-    context: "SCN detector with enable_ai_fallback: true"
+    that may not be installed in the test environment.
 
-    root_cause: "ANTHROPIC_API_KEY secret not configured in repository"
+    '
+  solution:
+    steps:
+    - 'Install dependencies: pip install -r requirements.txt'
+    - The conftest.py import warnings are informational only
+    note: Scripts with import errors appear at 0% coverage but are still measured
+- pattern: Classification failed.*MANUAL_REVIEW
+  category: scn-detector
+  context: Changes classified as MANUAL_REVIEW
+  root_cause: 'No rule matched and AI fallback either disabled, unavailable,
 
+    or returned low confidence.
+
+    '
+  solution:
+    options:
+    - description: Add specific rules to scn-config.yml
+      how: Define pattern/resource/attribute rules for the resource type
+    - description: Enable AI fallback
+      how: 'Set enable_ai_fallback: true and provide ANTHROPIC_API_KEY'
+    - description: Review manually
+      how: MANUAL_REVIEW is the expected safe default for unrecognized changes
+- pattern: exit 127|exec.*not found
+  category: scanner-execution
+  context: Container scanner exits 127 immediately (e.g. osv-scanner)
+  root_cause: 'Docker''s --entrypoint override does NOT consult the image''s $PATH
+
+    when given a bare binary name. Some images declare an absolute
+
+    entrypoint (e.g. ghcr.io/google/osv-scanner uses
+
+    ENTRYPOINT ["/osv-scanner"]) and require the absolute path on
+
+    the override. A bare ``osv-scanner`` resolves nowhere and exits
+
+    127.
+
+    '
+  solution:
+    steps:
+    - Run ``docker image inspect <image>`` and read ``Config.Entrypoint``
+    - Set ``container_entrypoint`` on the scanner class to the absolute path from
+      that field
+    verification: Engine strips argv[0] for ENTRYPOINT-based images, so build_args
+      may keep the bare name
+  reference: "argus/scanners/osv.py \u2014 see container_entrypoint = '/osv-scanner'"
+- pattern: yamllint.*PASS.*0 findings|lint-yaml.*passes despite errors
+  category: scanner-execution
+  context: 'Linter exits non-zero but reports zero findings and Status: PASS'
+  root_cause: "Tools like yamllint use exit codes to differentiate happy-path\nlint\
+    \ failures (exit 1, with parseable findings on stdout) from\nruntime errors (exit\
+    \ \u2265 2, empty stdout). Naive callers that map\nempty stdout to ``[]`` lose\
+    \ the runtime-error signal entirely\nand surface ``Status: PASS`` even when the\
+    \ tool failed to run.\n"
+  solution:
+    steps:
+    - "Distinguish exit codes: 0 = clean, 1 = findings, \u22652 = real failure"
+    - "When exit \u2265 2 with empty findings, set metadata['execution_failed']=True\
+      \ and metadata['execution_failure_reason']=<stderr summary>"
+    - "Use the same shape the engine container path emits \u2014 the terminal reporter\
+      \ and --fail-on-scanner-error key off these exact field names"
+  reference: "argus/linters/yamllint.py \u2014 scan() exit-code branching"
+- pattern: scanner produced no output|execution_failed
+  category: scanner-execution
+  context: 'Reporter shows Warning row but Status: PASS contradicts it'
+  root_cause: "Threshold compliance (``ScanSummary.passed``) and execution\nsuccess\
+    \ are independent signals. A scanner that fails to run\nproduces zero findings,\
+    \ which alone passes any threshold. The\nreporter must label PASS as ``PASS (degraded\
+    \ \u2014 some scanners\ndid not run)`` whenever any scanner has\nmetadata['execution_failed']=True,\
+    \ otherwise the Warning above\nand the Status below contradict each other.\n"
+  solution:
+    steps:
+    - Reporter checks for any result.metadata.get('execution_failed')
+    - "If passed and any failed: print 'Status: PASS (degraded \u2014 N did not run,\
+      \ M unparsable)'"
+    - Add --fail-on-scanner-error in CI for hard-fail behavior
+  reference: argus/reporters/terminal.py::_print_status
+- pattern: 0 findings.*known to be vulnerable|JSONDecodeError.*results.json
+  category: scanner-execution
+  context: Scanner produced output but parser couldn't interpret it (third state)
+  root_cause: "Distinct from execution-failure: the scanner ran, exited, and\nwrote\
+    \ a results file \u2014 we just couldn't parse what came out\n(schema drift, truncated\
+    \ JSON, mixed text+JSON). Previously\nthis surfaced as a stack trace from the\
+    \ engine's exception\nhandler and got rolled up as a generic \"scanner failed\"\
+    .\nReporters and CI gates now have a fourth state for it:\n``parse_failed`` +\
+    \ ``parse_failure_reason`` (carries the\nexception type and a clipped output head).\n"
+  solution:
+    steps:
+    - Engine's container path wraps scanner.parse_results in try/except
+    - On any Exception, set metadata['parse_failed']=True and metadata['parse_failure_reason']
+    - scanner_template.run_subprocess_scan does the same for local execution
+    - TerminalReporter renders parse_failed in its own warning block
+    - --fail-on-scanner-error fires on parse_failed too
+  reference: "argus/core/engine.py::_run_in_container \u2014 try/except around parse_results"
+- pattern: PermissionError.*WinError 5.*Access is denied|yamllint.*Access is denied
+  category: scanner-execution
+  context: yamllint launches with PermissionError on Windows hosts with AppLocker
+    / SRP
+  root_cause: 'AppLocker or Software Restriction Policy on Windows blocks
+
+    executable launches from user AppData paths (where pip --user
+
+    and virtualenv typically install scripts). The python
+
+    interpreter itself is whitelisted, so loading the same
+
+    package via ``python -m yamllint`` works on the same
+
+    machine.
+
+    '
+  solution:
+    steps:
+    - YamllintLinter._run_with_windows_fallback wraps subprocess.run
+    - On sys.platform == 'win32', PermissionError/OSError triggers a retry with [sys.executable,
+      '-m', 'yamllint'] + cmd[1:]
+    - FileNotFoundError still propagates so 'yamllint not installed' renders cleanly
+    - "Linux/macOS bypass the fallback \u2014 Linux PermissionError is a genuine bug,\
+      \ not a policy case"
+  reference: argus/linters/yamllint.py::_run_with_windows_fallback
+- pattern: UnicodeDecodeError.*charmap codec.*can't decode byte
+  category: scanner-execution
+  context: Scanner result decode fails on Windows with cp1252 default encoding
+  root_cause: "Docker container output (and most CLI tool output) is UTF-8.\n``subprocess.run(text=True)``\
+    \ and ``Path.read_text()`` fall\nback to the platform default encoding when ``encoding=``\
+    \ is\nomitted \u2014 cp1252 on Windows. Any non-ASCII byte (CVE\ndescriptions,\
+    \ accented file paths, scanner banners) raises\nUnicodeDecodeError mid-scan.\n"
+  solution:
+    steps:
+    - 'Engine docker subprocess: encoding=''utf-8'', errors=''replace'''
+    - 'scanner_template subprocess: same'
+    - 'All scanner.parse_results read_text() calls: same'
+    - 'Yamllint subprocess + Windows fallback: same'
+    note: "errors='replace' is preferred over 'strict' \u2014 a security tool showing\
+      \ \uFFFD is better than crashing on otherwise-usable output"
+  reference: argus/core/engine.py and every argus/scanners/*.py read_text()
+- pattern: unable to initialize a scan service|failed to catalog.*docker not available
+  category: container-scanning
+  context: "Trivy or Grype, running inside their sub-scanner container against a\n\
+    private-registry image, fail almost immediately with a vague error.\nThe 1-second\
+    \ total runtime is a tell \u2014 the failure is at image\nresolution, before any\
+    \ vulnerability scan begins.\n"
+  root_cause: "Two distinct gaps both surface the same way:\n\n1. **Credentials never\
+    \ reach the sub-scanner container.** When\n   the container backend is in use\
+    \ (Trivy / Grype run inside\n   ``aquasec/trivy`` / ``anchore/grype``), Argus\
+    \ must forward\n   the resolved auth as ``-e VAR=value`` flags on the\n   ``docker\
+    \ run`` argv. Without those flags the container\n   attempts anonymous pulls;\
+    \ private registries reject them.\n2. **Grype's CLI source-scheme defaults to\
+    \ docker-daemon\n   resolution.** From inside the ``anchore/grype`` container\n\
+    \   there is no docker.sock, no podman, no snap, so Grype's\n   normal source-resolution\
+    \ chain fails. The ``registry:``\n   source \u2014 which honors ``GRYPE_REGISTRY_AUTH_*``\
+    \ env vars \u2014\n   is only tried when the target ref is explicitly prefixed\n\
+    \   ``registry:<ref>``.\n"
+  solution:
+    steps:
+    - Configure containers.registry_username_env / registry_password_env (or the containers.registry_auth
+      map for multi-registry setups) in argus.yml.
+    - 'Verify the underlying credentials work outside Argus: ``echo $TOKEN | docker
+      login <host> -u <user> --password-stdin && docker pull <ref>``.'
+    - 'Run with --verbose to surface the redacted docker run argv argus constructs;
+      the line shows which credential env vars were forwarded and confirms Grype''s
+      ref carries the registry: prefix on remote scans.'
+    note: "Argus auto-prefixes Grype remote refs with ``registry:`` and\nforwards\
+      \ all three sub-scanner credential env-var families\n(TRIVY_*, GRYPE_REGISTRY_AUTH_*,\
+      \ SYFT_REGISTRY_AUTH_*).\nLocally-built images (containers.images entries with\n\
+      ``dockerfile:``) skip auth forwarding intentionally \u2014 they\nscan via docker.sock\
+      \ mount, not registry pull.\n"
+  reference: "argus/container/scanner.py::_registry_auth_env and docs/troubleshooting/docker.md\
+    \ \u2192 'target image fails to authenticate inside the sub-scanner container'"
+errors:
+  RESOURCE_NOT_ACCESSIBLE_BY_INTEGRATION:
+    category: permissions
+    context: SARIF upload or PR comment fails
+    root_cause: 'The GITHUB_TOKEN doesn''t have sufficient permissions for the
+
+      requested operation (security-events: write or pull-requests: write).
+
+      '
     solution:
       steps:
-        - "If AI fallback is desired: add ANTHROPIC_API_KEY to repository secrets"
-        - "If air-gapped: set enable_ai_fallback: false (rule-based only)"
-      note: "Rule-based classification works without any API keys"
+      - Ensure github_token is passed to the workflow
+      - Add permissions block to workflow or job
+      code: "permissions:\n  security-events: write   # For SARIF upload\n  pull-requests:\
+        \ write     # For PR comments\n  contents: read           # For checkout\n"
+      verification: Check Actions log for successful SARIF upload step
+    reference: docs/failure-control.md
+    symptom: Resource not accessible by integration
+  TOKEN_DOESN_T_HAVE_PACKAGES_WRITE:
+    category: permissions
+    context: Dependabot on GitHub Enterprise Server
+    root_cause: 'GITHUB_TOKEN has different scopes than Personal Access Token.
 
-  - pattern: "No IaC changes detected"
-    category: scn-detector
-    context: "SCN detector reports no changes on PR with IaC files"
+      Dependabot on GHES requires packages:write for private registries.
 
-    root_cause: "fetch-depth not set or base_ref incorrect"
-
+      '
     solution:
       steps:
-        - "Ensure actions/checkout has fetch-depth: 0"
-        - "Verify base_ref points to correct comparison branch"
-      code: |
-        - uses: actions/checkout@v6
-          with:
-            fetch-depth: 0  # Required for git diff
-
-  - pattern: "conftest: failed to import.*scn-detector"
-    category: scn-detector
-    context: "pytest coverage measurement fails for SCN scripts"
-
-    root_cause: |
-      SCN detector scripts have runtime dependencies (requests, PyYAML)
-      that may not be installed in the test environment.
-
+      - Create PAT with packages:write scope
+      - Add to repository secrets as PACKAGES_TOKEN
+      - Update workflow to use PACKAGES_TOKEN
+    reference: docs/ghes-setup.md#dependabot
+    symptom: token doesn't have packages:write
+  SCANNER_X_NOT_FOUND_IN_MATRIX:
+    category: configuration
+    context: Workflow or `argus scan` fails with unknown scanner
+    root_cause: Typo in scanner name or scanner not implemented
+    solution:
+      verification:
+      - "Run `argus list` to see every registered scanner and linter (single source\
+        \ of truth \u2014 SCANNER_REGISTRY auto-merges LINTER_REGISTRY at import)"
+      - "Tab-complete via `argus completion zsh` (or bash/fish) \u2014 completions\
+        \ are generated from the live registry"
+      examples:
+        security_scanners: bandit, gitleaks, opengrep, osv, trivy-iac, checkov, clamav,
+          supply-chain, zap, container
+        linters: lint-yaml, lint-json, lint-python, lint-javascript, lint-dockerfile,
+          lint-terraform
+        composite_only: codeql, dependency-review, scn-detector (composite-action-only;
+          not registered as SDK scanners)
+    symptom: Scanner X not found in matrix
+  CODEQL__UNSUPPORTED_LANGUAGE:
+    category: scanner
+    context: CodeQL fails to analyze repository
+    root_cause: Repository contains no supported languages for CodeQL
+    solution:
+      supported_languages:
+      - python
+      - javascript
+      - typescript
+      - go
+      - java
+      - cpp
+      - csharp
+      - ruby
+      - swift
+      - kotlin
+      recommendation: Use bandit (Python) or opengrep (multi-language) instead
+    symptom: CodeQL.*unsupported language
+  SARIF_UPLOAD_FAILED:
+    category: sarif
+    context: 'enable_code_security: true but upload fails'
+    root_cause: GitHub Advanced Security not enabled on repository
     solution:
       steps:
-        - "Install dependencies: pip install -r requirements.txt"
-        - "The conftest.py import warnings are informational only"
-      note: "Scripts with import errors appear at 0% coverage but are still measured"
-
-  - pattern: "Classification failed.*MANUAL_REVIEW"
-    category: scn-detector
-    context: "Changes classified as MANUAL_REVIEW"
-
-    root_cause: |
-      No rule matched and AI fallback either disabled, unavailable,
-      or returned low confidence.
-
+      - "Go to repo Settings \u2192 Security \u2192 Code security and analysis"
+      - Enable 'GitHub Advanced Security'
+      - For private repos, requires GitHub Enterprise license
+      alternative: 'Set enable_code_security: false to skip SARIF upload'
+    symptom: SARIF upload failed
+  SARIF__EXCEEDS__SIZE_LIMIT:
+    category: sarif
+    context: SARIF file too large for GitHub
+    root_cause: SARIF files must be < 10MB for GitHub upload
     solution:
       options:
-        - description: "Add specific rules to scn-config.yml"
-          how: "Define pattern/resource/attribute rules for the resource type"
-        - description: "Enable AI fallback"
-          how: "Set enable_ai_fallback: true and provide ANTHROPIC_API_KEY"
-        - description: "Review manually"
-          how: "MANUAL_REVIEW is the expected safe default for unrecognized changes"
+      - description: Reduce scan scope
+        how: Use 'path' input to scan only changed directories
+      - description: Split into multiple workflows
+        how: Run different scanners in separate jobs
+      - description: Increase severity threshold
+        how: 'fail_on_severity: critical reduces findings count'
+    symptom: SARIF.*exceeds.*size limit
+  INVALID_YAML__FOUND_DUPLICATE_KEY:
+    category: configuration
+    context: 'argus.yml has the same mapping key defined twice (e.g. two
 
-  # ==============================================================================
-  # SCANNER EXECUTION FAILURES
-  # ==============================================================================
+      ``execution:`` blocks, or ``enabled`` listed twice under one
 
-  - pattern: "exit 127|exec.*not found"
-    category: scanner-execution
-    context: "Container scanner exits 127 immediately (e.g. osv-scanner)"
+      scanner). PyYAML''s default loader silently keeps the last
 
-    root_cause: |
-      Docker's --entrypoint override does NOT consult the image's $PATH
-      when given a bare binary name. Some images declare an absolute
-      entrypoint (e.g. ghcr.io/google/osv-scanner uses
-      ENTRYPOINT ["/osv-scanner"]) and require the absolute path on
-      the override. A bare ``osv-scanner`` resolves nowhere and exits
-      127.
+      value; argus''s strict loader rejects the file at load time
 
+      so the user''s earlier settings can''t be silently dropped.
+
+      '
+    root_cause: "A YAML mapping can only legally have each key once. When the\nsame\
+      \ key appears twice at the same nesting level \u2014 at the\ntop of argus.yml,\
+      \ inside ``scanners.<name>``, anywhere \u2014 the\nsecond occurrence overrides\
+      \ the first. Pre-fix behavior:\nvalidation passed, scan silently used only the\
+      \ second\ndefinition. Post-fix behavior: argus.core.config's\nStrictSafeLoader\
+      \ raises a YAMLError naming the duplicated\nkey and the line of the second occurrence.\n"
     solution:
       steps:
-        - "Run ``docker image inspect <image>`` and read ``Config.Entrypoint``"
-        - "Set ``container_entrypoint`` on the scanner class to the absolute path from that field"
-      verification: "Engine strips argv[0] for ENTRYPOINT-based images, so build_args may keep the bare name"
-
-    reference: "argus/scanners/osv.py — see container_entrypoint = '/osv-scanner'"
-
-  - pattern: "yamllint.*PASS.*0 findings|lint-yaml.*passes despite errors"
-    category: scanner-execution
-    context: "Linter exits non-zero but reports zero findings and Status: PASS"
-
-    root_cause: |
-      Tools like yamllint use exit codes to differentiate happy-path
-      lint failures (exit 1, with parseable findings on stdout) from
-      runtime errors (exit ≥ 2, empty stdout). Naive callers that map
-      empty stdout to ``[]`` lose the runtime-error signal entirely
-      and surface ``Status: PASS`` even when the tool failed to run.
-
+      - Open the file at the line named in the error message
+      - "Merge the two blocks into one \u2014 choose which value should win, write\
+        \ it once"
+      - Re-run ``argus validate`` to confirm
+      example: "# WRONG \u2014 silently drops the registry setting\nexecution:\n \
+        \ registry: registry.internal.corp/argus\n  backend: docker\nexecution:\n\
+        \  backend: docker\n\n# RIGHT \u2014 single block\nexecution:\n  registry:\
+        \ registry.internal.corp/argus\n  backend: docker\n"
+    reference: argus/core/config.py::StrictSafeLoader
+    symptom: Invalid YAML.*found duplicate key
+  CONTAINER_SCAN_FOUND_NO_IMAGES:
+    category: configuration
+    context: container-scan-from-config returns empty matrix
+    root_cause: Config file path wrong or YAML syntax error
     solution:
       steps:
-        - "Distinguish exit codes: 0 = clean, 1 = findings, ≥2 = real failure"
-        - "When exit ≥ 2 with empty findings, set metadata['execution_failed']=True and metadata['execution_failure_reason']=<stderr summary>"
-        - "Use the same shape the engine container path emits — the terminal reporter and --fail-on-scanner-error key off these exact field names"
-
-    reference: "argus/linters/yamllint.py — scan() exit-code branching"
-
-  - pattern: "scanner produced no output|execution_failed"
-    category: scanner-execution
-    context: "Reporter shows Warning row but Status: PASS contradicts it"
-
-    root_cause: |
-      Threshold compliance (``ScanSummary.passed``) and execution
-      success are independent signals. A scanner that fails to run
-      produces zero findings, which alone passes any threshold. The
-      reporter must label PASS as ``PASS (degraded — some scanners
-      did not run)`` whenever any scanner has
-      metadata['execution_failed']=True, otherwise the Warning above
-      and the Status below contradict each other.
-
+      - Verify config file path is relative to repo root
+      - 'Validate against schema: .github/actions/parse-container-config/schemas/container-config.schema.json'
+      - Use examples/configs/container-config.example.yml as reference
+      common_issues:
+      - Path starts with / (should be relative)
+      - YAML indentation incorrect
+      - Missing 'containers' key
+    symptom: Container scan found no images
+  REGISTRY__AUTHENTICATION__FAILED:
+    category: container
+    context: Cannot pull container image for scanning
+    root_cause: Registry credentials not provided or invalid
     solution:
       steps:
-        - "Reporter checks for any result.metadata.get('execution_failed')"
-        - "If passed and any failed: print 'Status: PASS (degraded — N did not run, M unparsable)'"
-        - "Add --fail-on-scanner-error in CI for hard-fail behavior"
+      - "Store credentials as environment variables (CI runner env, .envrc, etc.)\
+        \ \u2014 never as YAML literals."
+      - Reference the env-var *name* from argus.yml using the <field>_env shape; argus.core.secrets.resolve_secret
+        reads os.environ at scan time.
+      - For composite-action consumers on GitHub Actions, the runner-side env can
+        still be wired from `${{ secrets.X }}`.
+      code: "# Preferred \u2014 argus.yml\nscanners:\n  container:\n    registry_username_env:\
+        \ REGISTRY_USER     # name of env var\n    registry_password_env: REGISTRY_TOKEN\
+        \    # name of env var\n"
+      ci_example: "# GitHub Actions: export the secret into the runner env\n- name:\
+        \ Run argus scan\n  env:\n    REGISTRY_USER: ${{ secrets.REGISTRY_USER }}\n\
+        \    REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}\n  run: argus scan --config\
+        \ argus.yml\n"
+      legacy_supported: "# Still works (warned at config-load if the value matches\n\
+        # a known vendor secret prefix):\nscanners:\n  container:\n    registry_username:\
+        \ \"user\"\n    registry_password: \"literal\"\n"
+      warning: 'Never commit literal credentials to argus.yml. The
 
-    reference: "argus/reporters/terminal.py::_print_status"
+        <field>_env shape keeps secret values out of VCS entirely;
 
-  - pattern: "0 findings.*known to be vulnerable|JSONDecodeError.*results.json"
-    category: scanner-execution
-    context: "Scanner produced output but parser couldn't interpret it (third state)"
+        argus.core.secrets emits a warning if a literal value
 
-    root_cause: |
-      Distinct from execution-failure: the scanner ran, exited, and
-      wrote a results file — we just couldn't parse what came out
-      (schema drift, truncated JSON, mixed text+JSON). Previously
-      this surfaced as a stack trace from the engine's exception
-      handler and got rolled up as a generic "scanner failed".
-      Reporters and CI gates now have a fourth state for it:
-      ``parse_failed`` + ``parse_failure_reason`` (carries the
-      exception type and a clipped output head).
+        matches a known vendor-secret prefix (gh*, AKIA, AIza,
 
+        glpat-, etc.) at config-load time so the leak is caught
+
+        before the scan runs.
+
+        '
+    symptom: registry.*authentication.*failed
+  PR_COMMENT_NOT_APPEARING:
+    category: pr
+    context: 'enable_pr_comment: true but no comment'
+    root_cause: Token lacks PR write permission or not a PR event
+    solution:
+      checklist:
+      - 'Add permission: pull-requests: write'
+      - Ensure workflow runs on pull_request event (not push)
+      - Check Actions log for 'PR comment' step output
+      - Verify github_token is passed to workflow
+    symptom: PR comment not appearing
+  COULD_NOT_CREATE_COMMENT__NOT_FOUND:
+    category: pr
+    context: PR comment step fails with 404
+    root_cause: Workflow running on push event, not pull_request
+    solution:
+      explanation: PR comments can only be created from pull_request events
+      fix: "on:\n  pull_request:\n    types: [opened, synchronize, reopened]\n"
+    symptom: Could not create comment.*Not Found
+  COULD_NOT_READ_USERNAME_FOR__HTTPS___GITHUB_COM:
+    category: release
+    context: release-it git push fails during release workflow
+    root_cause: 'The checkout step uses persist-credentials: false (supply chain
+
+      hardening best practice), which removes the token from the git
+
+      credential store. When release-it runs git push, there are no
+
+      credentials available for HTTPS authentication.
+
+      '
     solution:
       steps:
-        - "Engine's container path wraps scanner.parse_results in try/except"
-        - "On any Exception, set metadata['parse_failed']=True and metadata['parse_failure_reason']"
-        - "scanner_template.run_subprocess_scan does the same for local execution"
-        - "TerminalReporter renders parse_failed in its own warning block"
-        - "--fail-on-scanner-error fires on parse_failed too"
+      - Add git remote set-url to the Configure Git step
+      - Inject the token via env var, not inline ${{ }}
+      code: "- name: Configure Git\n  run: |\n    git config --global user.name \"\
+        github-actions[bot]\"\n    git config --global user.email \"github-actions[bot]@users.noreply.github.com\"\
+        \n    git remote set-url origin \"https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git\"\
+        \n  env:\n    GITHUB_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN\
+        \ }}\n"
+      note: "Do NOT remove persist-credentials: false \u2014 fix the remote URL instead"
+      reference: 'PR #86'
+    symptom: could not read Username for 'https://github.com'
+  ACTION__NOT_FOUND:
+    category: workflow
+    context: Cannot find composite action
+    root_cause: Version tag doesn't exist or typo in action path
+    solution:
+      verification:
+      - 'Check tag exists: git ls-remote --tags origin'
+      - Verify action path matches exactly
+      example: '# Correct
 
-    reference: "argus/core/engine.py::_run_in_container — try/except around parse_results"
+        uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.4.1
 
-  # ==============================================================================
-  # WINDOWS-SPECIFIC SCANNER ERRORS
-  # ==============================================================================
 
-  - pattern: "PermissionError.*WinError 5.*Access is denied|yamllint.*Access is denied"
-    category: scanner-execution
-    context: "yamllint launches with PermissionError on Windows hosts with AppLocker / SRP"
+        # Wrong - missing .github prefix
 
-    root_cause: |
-      AppLocker or Software Restriction Policy on Windows blocks
-      executable launches from user AppData paths (where pip --user
-      and virtualenv typically install scripts). The python
-      interpreter itself is whitelisted, so loading the same
-      package via ``python -m yamllint`` works on the same
-      machine.
+        uses: huntridge-labs/argus/actions/scanner-bandit@0.7.0
 
+        '
+    symptom: action.*not found
+  PYTEST__COMMAND_NOT_FOUND:
+    category: development
+    context: Running tests locally
+    root_cause: pytest not installed or Python not in PATH
     solution:
       steps:
-        - "YamllintLinter._run_with_windows_fallback wraps subprocess.run"
-        - "On sys.platform == 'win32', PermissionError/OSError triggers a retry with [sys.executable, '-m', 'yamllint'] + cmd[1:]"
-        - "FileNotFoundError still propagates so 'yamllint not installed' renders cleanly"
-        - "Linux/macOS bypass the fallback — Linux PermissionError is a genuine bug, not a policy case"
-
-    reference: "argus/linters/yamllint.py::_run_with_windows_fallback"
-
-  - pattern: "UnicodeDecodeError.*charmap codec.*can't decode byte"
-    category: scanner-execution
-    context: "Scanner result decode fails on Windows with cp1252 default encoding"
-
-    root_cause: |
-      Docker container output (and most CLI tool output) is UTF-8.
-      ``subprocess.run(text=True)`` and ``Path.read_text()`` fall
-      back to the platform default encoding when ``encoding=`` is
-      omitted — cp1252 on Windows. Any non-ASCII byte (CVE
-      descriptions, accented file paths, scanner banners) raises
-      UnicodeDecodeError mid-scan.
-
+      - 'Install Python 3.11+: https://python.org/ or ''brew install python'''
+      - 'Install dependencies: pip install -r requirements.txt'
+      - 'Run tests: pytest'
+      alternative: Use Dev Container (recommended)
+    symptom: pytest.*command not found
+  MODULENOTFOUNDERROR__PYTEST:
+    category: development
+    context: pytest import fails
+    root_cause: pytest or dependencies not installed
     solution:
       steps:
-        - "Engine docker subprocess: encoding='utf-8', errors='replace'"
-        - "scanner_template subprocess: same"
-        - "All scanner.parse_results read_text() calls: same"
-        - "Yamllint subprocess + Windows fallback: same"
-      note: "errors='replace' is preferred over 'strict' — a security tool showing � is better than crashing on otherwise-usable output"
+      - 'Install: pip install -r requirements.txt'
+      - 'Or: pip install pytest pytest-cov pyyaml jsonschema'
+    symptom: ModuleNotFoundError.*pytest
+  WORKFLOW_CALL__NOT_SUPPORTED:
+    category: ghes
+    context: Running workflows on GHES
+    root_cause: GHES version doesn't support cross-repository workflow_call
+    solution:
+      explanation: Use the argus SDK (primary) or composite actions
+      alternatives:
+      - description: Use the argus SDK
+        how: pip install argus-security && argus scan --config argus.yml
+      - description: Use composite actions directly
+        how: Switch to .github/actions/ based implementation
+      reference: See ADR-013 (SDK primary) and ADR-001 in .ai/decisions.yaml
+    symptom: workflow_call.*not supported
+  MUMPS_FINDING_COUNTS_DIFFER_BETWEEN_HOSTS___GOLDEN_GUARD_FAILS_ONLY_IN_CI:
+    category: scanner
+    context: argus/tests/scanners/test_mumps_rules.py golden guard passes locally but fails on the GitHub runner with different M005/M007 counts
+    root_cause: 'The MUMPS scanner''s per-file analysis cached its per-file line maps
 
-    reference: "argus/core/engine.py and every argus/scanners/*.py read_text()"
+      (filter_charset_guarded''s _charset_guard_lines / _label_lines) on the
 
-  - pattern: "unable to initialize a scan service|failed to catalog.*docker not available"
+      shared per-scan rule_config dict without a per-file key. The first file
+
+      to hit a taint sink populated the cache, and every later file reused
+
+      that first file''s guard/label lines — so guard-suppressed sinks were
+
+      wrongly kept (or dropped) depending on the order rglob() returned files,
+
+      which varies by filesystem/host. Findings became order-dependent.
+
+      '
+    solution:
+      steps:
+      - Key any per-file cache on parsed.path (or recompute per file); never cache file-scoped state unkeyed on the per-scan config
+      - Sort file iteration (sorted(target.rglob('*'))) for stable output order
+      - 'Add an order-independence guard: scan forward vs reversed, assert identical finding set'
+      verification: test_findings_independent_of_scan_order in test_mumps_rules.py
+    reference: argus/scanners/mumps/taint.py (filter_charset_guarded)
+    symptom: MUMPS finding counts differ between hosts / golden guard fails only in CI
+  TYPEERROR__LANGUAGE___INIT____ARGUMENT_PARSER__SET_LANGUAGE_TREE_SITTER_BUMP_FAILS_ALL_MUMPS_UNIT_TEST_LEGS:
+    category: scanner
+    context: 'A tree-sitter / py-tree-sitter upgrade (e.g. Dependabot proposing
+
+      >=0.22, surfaced by #247) breaks the MUMPS parser and fails every
+
+      mumps unit-test leg. py-tree-sitter 0.22 removed the two-arg
+
+      ``Language(path, name)`` constructor and ``Parser.set_language``.
+
+      '
+    root_cause: '``MumpsParser`` used the pre-0.22 API
+
+      (``Language(str(grammar), "mumps")`` + ``Parser()`` +
+
+      ``parser.set_language(...)``). 0.22+ requires a pre-loaded language
+
+      pointer wrapped in a PyCapsule and takes the language in the
+
+      ``Parser(language)`` constructor. The compiled ``mumps.so`` (language
+
+      ABI 14) itself is compatible with both lines — only the Python loader
+
+      changed.
+
+      '
+    solution:
+      steps:
+      - 'The grammar loader is version-gated (_tree_sitter_minor): ≤0.21 keeps the two-arg Language + set_language; ≥0.22 wraps the grammar''s tree_sitter_mumps() pointer with ctypes + PyCapsule_New(... b''tree_sitter.Language'') via _grammar_capsule, then Language(capsule) + Parser(language). Both branches live in _load_grammar.'
+      - The [mumps] extra floats across the tested range (tree-sitter>=0.20,<0.26); the <0.26 ceiling bounds it to versions CI has exercised. No grammar rebuild — the same mumps.so loads on both lines.
+      - docker/Dockerfile.mumps bumps its build-time TREE_SITTER_VERSION to the current line (0.25.2) so the scanner-mumps image ships the new binding.
+      - No Dependabot ignore is needed — the dual path absorbs the API break.
+      verification: TestTreeSitterVersionGating in test_mumps_scanner.py pins the branch selection; the full mumps suite passes on both 0.21.3 and 0.25.2
+    reference: 'argus/scanners/mumps/parser.py (_tree_sitter_minor / _grammar_capsule / _load_grammar) — issue #248, PR #249'
+    symptom: 'TypeError: Language.__init__.*argument|Parser.*set_language|tree-sitter bump fails all mumps unit-test legs'
+  REGISTRY_AUTH_________USERNAME_PASSWORD__UNRESOLVED_UNAUTHORIZED___90S_INTO_THE_SCAN:
     category: container-scanning
-    context: |
-      Trivy or Grype, running inside their sub-scanner container against a
-      private-registry image, fail almost immediately with a vague error.
-      The 1-second total runtime is a tell — the failure is at image
-      resolution, before any vulnerability scan begins.
+    context: 'A ``registry_auth`` entry (or the top-level
 
-    root_cause: |
-      Two distinct gaps both surface the same way:
+      ``registry_username``/``registry_password`` shortcut) references a
 
-      1. **Credentials never reach the sub-scanner container.** When
-         the container backend is in use (Trivy / Grype run inside
-         ``aquasec/trivy`` / ``anchore/grype``), Argus must forward
-         the resolved auth as ``-e VAR=value`` flags on the
-         ``docker run`` argv. Without those flags the container
-         attempts anonymous pulls; private registries reject them.
-      2. **Grype's CLI source-scheme defaults to docker-daemon
-         resolution.** From inside the ``anchore/grype`` container
-         there is no docker.sock, no podman, no snap, so Grype's
-         normal source-resolution chain fails. The ``registry:``
-         source — which honors ``GRYPE_REGISTRY_AUTH_*`` env vars —
-         is only tried when the target ref is explicitly prefixed
-         ``registry:<ref>``.
+      credential via ``password_env``/``username_env`` whose environment
 
+      variable is unset or empty. Previously argus logged a WARNING to
+
+      ``argus.log`` only, then proceeded — the sub-scanner container ran
+
+      for 60–90s and failed with an opaque ``UNAUTHORIZED: authentication
+
+      required`` from grype/trivy, with nothing on stderr to explain why.
+
+      '
+    root_cause: '``_resolve_registry_auth`` resolves credentials and warns on an
+
+      unresolved one, but the warning went to the file logger and the
+
+      scan was never gated on it. The real failure surfaced much later,
+
+      one layer down, as an upstream-tool auth error unrelated to the
+
+      actual cause (the missing env var).
+
+      '
     solution:
       steps:
-        - "Configure containers.registry_username_env / registry_password_env (or the containers.registry_auth map for multi-registry setups) in argus.yml."
-        - "Verify the underlying credentials work outside Argus: ``echo $TOKEN | docker login <host> -u <user> --password-stdin && docker pull <ref>``."
-        - "Run with --verbose to surface the redacted docker run argv argus constructs; the line shows which credential env vars were forwarded and confirms Grype's ref carries the registry: prefix on remote scans."
-      note: |
-        Argus auto-prefixes Grype remote refs with ``registry:`` and
-        forwards all three sub-scanner credential env-var families
-        (TRIVY_*, GRYPE_REGISTRY_AUTH_*, SYFT_REGISTRY_AUTH_*).
-        Locally-built images (containers.images entries with
-        ``dockerfile:``) skip auth forwarding intentionally — they
-        scan via docker.sock mount, not registry pull.
+      - '``scan_image`` now calls ``validate_registry_auth(config, image_ref)`` for remote pulls *before* any sub-scanner container starts.'
+      - A configured-but-unresolved credential raises ``RegistryAuthError`` naming the registry scope and the unset env var.
+      - '``ContainerEngine._process_target`` re-raises ``RegistryAuthError`` (it is NOT recorded as a per-target scan_error) so the run aborts fast.'
+      - The CLI surfaces the two-line message on stderr and exits non-zero.
+      note: 'Local images (built this run, or already present in the docker
 
-    reference: "argus/container/scanner.py::_registry_auth_env and docs/troubleshooting/docker.md → 'target image fails to authenticate inside the sub-scanner container'"
+        daemon) skip the gate — they are scanned from the daemon source
 
-  - pattern: "index.docker.io/v2/library/.*UNAUTHORIZED: authentication required|grype.*scan-<hash>.*UNAUTHORIZED"
-    category: container-scanning
-    context: |
-      A locally-built image is scanned by reference (e.g. CI builds
-      ``app:scan-<sha>`` in one step, then runs
-      ``argus scan container --image app:scan-<sha>`` in a later step).
-      Grype/Trivy try to resolve the never-pushed dev tag against Docker
-      Hub (``index.docker.io/v2/library/...``) and fail with UNAUTHORIZED.
-      The scan reports ``0 findings`` but exits non-zero
-      (``1 scanner failure(s) — results are incomplete``, exit 2).
+        and never touch a registry. Anonymous pulls (nothing configured)
 
-    root_cause: |
-      ``scan_image`` decided local-vs-remote purely from
-      ``target.dockerfile is not None``. A ref-only target (no Dockerfile,
-      because the image was built by a separate step) was therefore
-      classified as *remote*, so the runners used Grype's ``registry:``
-      source / Trivy's ``--image-src remote``. With no registry path on a
-      bare name, that defaults to ``docker.io/library/<name>`` — a repo the
-      runner has no rights to — and the pull is rejected.
+        and token-only auth (username intentionally omitted) are not
 
+        gated. The matched ``registry_auth`` entry is selected by the
+
+        same longest-path-prefix rule as resolution.
+
+        '
+    reference: 'argus/container/scanner.py::validate_registry_auth / RegistryAuthError — issue #253'
+    symptom: 'registry_auth\[.*\]: (username|password) unresolved|UNAUTHORIZED.*~90s into the scan'
+  MANIFEST_UNKNOWN__SCANNER___VERSION__FAILED_MANIFEST_CHECK_PINNED_IMAGE_TAG_DOES_NOT_RESOLVE_AFTER_RELEASE:
+    category: release
+    context: 'A scanner image is pinned in argus/containers.py as
+
+      ``<image>:<version>@sha256:<digest>`` but the ``:<version>`` /
+
+      ``:latest`` tag does not exist on GHCR — ``docker manifest
+
+      inspect`` returns "manifest unknown". The image *content* (the
+
+      digest) exists, often only under the transient ``build-<sha>-<run>``
+
+      tag. Surfaces as the Unit Tests manifest check failing (it runs on
+
+      a single Python matrix leg), frequently first noticed on an
+
+      unrelated PR rather than at release time.
+
+      '
+    root_cause: 'The Release workflow builds once with a ``build-<sha>`` tag, then
+
+      re-tags to ``:<VERSION>`` + ``:latest``. The build, promote, cosign,
+
+      and release-notes steps each carried their OWN hardcoded image list.
+
+      When scanner-mumps was added it was put in the build + cosign lists
+
+      but missed from the promote loop, so it was built and signed but
+
+      never tagged ``:<VERSION>``. The release-it after:bump hook still
+
+      pinned containers.py to the (valid) digest, so the pin pointed at a
+
+      tag that was never pushed. The ``chore(release):`` commit skips the
+
+      Unit Tests workflow, so the manifest check never ran post-release.
+
+      '
     solution:
       steps:
-        - "Argus now also probes the local Docker daemon (``docker image inspect``) when the target has no Dockerfile."
-        - "If the image is already present locally, it scans via the ``docker:`` daemon source instead of falling through to the registry."
-        - "No config change required — building the image before the scan step is enough."
-      note: |
-        The daemon probe is skipped when Argus built the image itself
-        (``dockerfile:`` set) since localness is already known. A genuinely
-        remote image still routes through the ``registry:`` source and the
-        ``GRYPE_REGISTRY_AUTH_*`` / ``TRIVY_*`` credential env vars.
+      - 'Single-source the image set: build IMAGE_NAMES once from the IMAGES array and export via $GITHUB_ENV; promote/cosign/notes all iterate IMAGE_NAMES (no parallel hardcoded lists).'
+      - Add a 'Verify pinned image manifests resolve' step to release.yml (runs python -m scripts.ci.check_container_images after promotion, before publish) so a missing promotion fails the release immediately.
+      - 'Immediate remediation for an already-shipped miss: re-tag the existing digest with oras (manifest-only, no rebuild): oras tag <repo>@sha256:<digest> <version> latest — the digest is already cosign-signed, so signatures stay valid.'
+      note: 'cosign signs by digest, so a missing :<VERSION> tag does NOT fail
 
-    reference: "argus/container/scanner.py::scan_image (is_local = dockerfile or is_image_local) — issue #233"
+        the signing step — the manifest check is what catches it. Keep the
+
+        single IMAGE_NAMES source so adding a scanner can''t drift again.
+
+        '
+      reference: argus/containers.py + .github/workflows/release.yml (promote/cosign/notes loops) + scripts/ci/check_container_images.py
+    symptom: manifest unknown|<scanner>:<version> failed manifest check|pinned image tag does not resolve after release

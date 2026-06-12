@@ -47,7 +47,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any
@@ -609,8 +609,17 @@ def _build_surface_nodes(
 
 
 def _cli_subcommand_purpose(context: dict[str, Any], name: str) -> str:
-    descs = (context.get("entrypoints", {}) or {}).get("cli_subcommands", {}) or {}
-    return str(descs.get(name, f"argus {name} subcommand"))
+    entrypoints = context.get("entrypoints", {}) or {}
+    # v1: entrypoints.cli_subcommands is a {name: description} map.
+    # AICaC v2.0 flattens entrypoints to a string→string map with each
+    # subcommand keyed as ``cli_<name>``. Try both before the generic
+    # fallback so the architecture map keeps the rich CLI descriptions.
+    descs = entrypoints.get("cli_subcommands", {}) or {}
+    return str(
+        descs.get(name)
+        or entrypoints.get(f"cli_{name}")
+        or f"argus {name} subcommand"
+    )
 
 
 def _build_core_nodes(
@@ -1282,8 +1291,18 @@ def _build_adr_index(
 def _find_component(
     architecture: dict[str, Any], name: str,
 ) -> dict[str, Any] | None:
-    """Locate a component by ``name`` under the top-level ``components:`` list."""
-    for entry in architecture.get("components", []) or []:
+    """Locate a component by ``name`` under the top-level ``components``.
+
+    AICaC v1 stores ``components`` as a list of ``{name: ..., ...}`` dicts;
+    v2.0 stores it as a dict keyed by component name. Handle both so the
+    SDK-core node purposes resolve from the component ``structure`` map
+    instead of falling back to generic placeholders.
+    """
+    components = architecture.get("components")
+    if isinstance(components, dict):  # v2: keyed by name
+        entry = components.get(name)
+        return entry if isinstance(entry, dict) else None
+    for entry in components or []:    # v1: list of {name: ...}
         if isinstance(entry, dict) and entry.get("name") == name:
             return entry
     return None

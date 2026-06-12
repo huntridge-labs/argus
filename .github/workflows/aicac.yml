@@ -36,9 +36,18 @@ jobs:
           fi
 
       - name: Run AICaC Action
-        uses: eFAILution/AICaC/.github/actions/aicac-adoption@a76d235ee2b26b0faa7c66124128acc837eb7c1d # 0.3.0
+        uses: eFAILution/AICaC/.github/actions/aicac-adoption@f4aa30fbce55a1c6c120375ef5b029730a490141 # 0.6.0
         with:
           mode: ${{ steps.check-aicac.outputs.mode }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           update-badge: 'true'
           suggest-toon: 'false'
+          # v0.6.0's auto-migrate + regenerate-index create local (unsigned)
+          # commits and push them (migrate branch / index sync). main's ruleset
+          # requires verified signatures, so those pushes are rejected (GH013)
+          # and the job fails on push to main. Keep both off — the migration
+          # suggestion surfaces as an issue, not a push. This is the #225 guard,
+          # retained on the 0.6.0 bump now that .ai/ is v2 (so the validation
+          # itself passes). A PR run won't hit this; push-to-main would.
+          auto-migrate: 'false'
+          regenerate-index: 'false'
