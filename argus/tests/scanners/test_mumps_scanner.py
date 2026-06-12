@@ -144,6 +144,70 @@ class TestGrammarLoading:
             MumpsParser.parse(Path("x.m"), b" ; empty\n")
 
 
+class TestTreeSitterVersionGating:
+    """Dual-path grammar loading across the py-tree-sitter 0.22 API break (#248).
+
+    py-tree-sitter 0.22 dropped the two-arg ``Language(path, name)``
+    constructor and ``Parser.set_language``. ``_load_grammar`` selects the
+    path by version; CI installs only one tree-sitter, so these tests pin the
+    branch *selection* directly. The ≥0.22 ctypes/PyCapsule loader
+    (``_grammar_capsule``) is exercised end-to-end against the real grammar
+    in test_mumps_rules.py.
+    """
+
+    @staticmethod
+    def _install_fake_tree_sitter(monkeypatch, calls):
+        import sys
+        import types
+
+        class _Lang:
+            def __init__(self, *args):
+                calls["language_args"] = args
+
+        class _Parser:
+            def __init__(self, *args):
+                calls["parser_args"] = args
+
+            def set_language(self, language):
+                calls["set_language"] = language
+
+        module = types.ModuleType("tree_sitter")
+        module.Language = _Lang
+        module.Parser = _Parser
+        monkeypatch.setitem(sys.modules, "tree_sitter", module)
+
+    def test_minor_parses_major_minor(self, monkeypatch):
+        from argus.scanners.mumps import parser as pm
+        monkeypatch.setattr("importlib.metadata.version", lambda _n: "0.25.2")
+        assert pm._tree_sitter_minor() == (0, 25)
+
+    def test_modern_path_uses_capsule_and_parser_ctor(self, monkeypatch):
+        from argus.scanners.mumps import parser as pm
+        calls: dict = {}
+        self._install_fake_tree_sitter(monkeypatch, calls)
+        monkeypatch.setattr(pm, "_tree_sitter_minor", lambda: (0, 25))
+        capsule = object()
+        monkeypatch.setattr(pm, "_grammar_capsule", lambda _g: capsule)
+
+        language, _parser = pm._load_grammar(Path("/x/mumps.so"))
+
+        assert calls["language_args"] == (capsule,)   # Language(<capsule>)
+        assert calls["parser_args"] == (language,)    # Parser(language)
+        assert "set_language" not in calls            # set_language is gone in ≥0.22
+
+    def test_legacy_path_uses_two_arg_language_and_set_language(self, monkeypatch):
+        from argus.scanners.mumps import parser as pm
+        calls: dict = {}
+        self._install_fake_tree_sitter(monkeypatch, calls)
+        monkeypatch.setattr(pm, "_tree_sitter_minor", lambda: (0, 21))
+
+        language, _parser = pm._load_grammar(Path("/x/mumps.so"))
+
+        assert calls["language_args"] == ("/x/mumps.so", "mumps")  # 2-arg form
+        assert calls["parser_args"] == ()                          # no-arg ctor
+        assert calls["set_language"] is language                   # bound via set_language
+
+
 class _StubNode:
     """Empty AST node — has no children so walk() yields only itself
     and the call-graph builder finds zero labels / edges."""
