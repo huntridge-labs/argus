@@ -36,7 +36,7 @@ jobs:
           fi
 
       - name: Run AICaC Action
-        uses: eFAILution/AICaC/.github/actions/aicac-adoption@a76d235ee2b26b0faa7c66124128acc837eb7c1d # 0.3.0
+        uses: eFAILution/AICaC/.github/actions/aicac-adoption@f4aa30fbce55a1c6c120375ef5b029730a490141 # 0.6.0
         with:
           mode: ${{ steps.check-aicac.outputs.mode }}
           github-token: ${{ secrets.GITHUB_TOKEN }}

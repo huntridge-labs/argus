@@ -232,9 +232,9 @@ decisions:
       \   - name: Comment PR with security summary\n        uses: actions/github-script@v8  # Only job\
       \ that posts PR comment\n"
     usage_examples:
-      standalone: "# Individual scanner posts its own PR comment\n- uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.2.1\n\
+      standalone: "# Individual scanner posts its own PR comment\n- uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.4.1\n\
         \  with:\n    post_pr_comment: true\n"
-      reusable: "# Only security-summary posts comprehensive comment\nuses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@1.2.1\n\
+      reusable: "# Only security-summary posts comprehensive comment\nuses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@1.4.1\n\
         with:\n  scanners: all\n  post_pr_comment: true  # Controls security-summary, not individual scanners\n"
   ADR-009:
     title: Consolidate scripts and tests to Python
@@ -667,7 +667,7 @@ decisions:
       \ outcomes.\n- `<details>` wrapping: container-scan summaries ship pre-wrapped in\n  a disclosure;\
       \ the rollup wrapped them again, forcing reviewers to\n  click twice to see findings.\n- Composites\
       \ installed only `pip install pyyaml`, assuming argus-security\n  was on PYTHONPATH via side effects.\
-      \ A consumer pulling the composite\n  via `uses: huntridge-labs/argus/.github/actions/scanner-*@1.2.1\
+      \ A consumer pulling the composite\n  via `uses: huntridge-labs/argus/.github/actions/scanner-*@1.4.1\
       \ had no\n  reliable way to get the SDK installed.\n"
     decision: "The security-summary composite is now the single aggregation surface.\nIts contract:\n\
       \  1. Accepts an optional `scan_statuses` JSON input mapping scanner\n     name -> job result (success|failure|cancelled|skipped).\n\
@@ -732,13 +732,13 @@ decisions:
       silent_failure_guard: "# In a reusable pipeline, every scanner's needs.*.result becomes a\n# row\
         \ in the aggregator's status table. A crashed scanner with no\n# summary shows up as ❌ and the\
         \ job exits non-zero.\nsecurity-summary:\n  needs: [scanner-codeql, scanner-opengrep, scanner-container,\
-        \ scanner-zap]\n  if: always()\n  steps:\n    - uses: huntridge-labs/argus/.github/actions/security-summary@1.2.1\n\
+        \ scanner-zap]\n  if: always()\n  steps:\n    - uses: huntridge-labs/argus/.github/actions/security-summary@1.4.1\n\
         \      with:\n        scan_statuses: |\n          {\n            \"codeql\":    \"${{ needs.scanner-codeql.result\
         \ }}\",\n            \"opengrep\":  \"${{ needs.scanner-opengrep.result }}\",\n            \"\
         container\": \"${{ needs.scanner-container.result }}\",\n            \"zap\":       \"${{ needs.scanner-zap.result\
         \ }}\"\n          }\n"
       informational_mode: "# Opt-out of blocking on scanner failures (e.g., for a canary report):\nsecurity-summary:\n\
-        \  steps:\n    - uses: huntridge-labs/argus/.github/actions/security-summary@1.2.1\n      with:\n\
+        \  steps:\n    - uses: huntridge-labs/argus/.github/actions/security-summary@1.4.1\n      with:\n\
         \        fail_on_scanner_failure: 'false'\n        scan_statuses: '{\"...\": \"...\"}'\n"
   ADR-017:
     title: argus view browser — localhost-only SDK-bundled web UI, separate from argus-portal
@@ -2370,3 +2370,87 @@ decisions:
     pr_references:
     - '(moves github-actions updates from Dependabot to Renovate; closes #196; supersedes the #218 ignore-self-refs
       attempt)'
+  ADR-030:
+    title: Deprecate scanner-container-summary in favor of security-summary
+    date: '2026-06-12'
+    status: accepted
+    context: 'The Phase 3 thin-wrapper migration rewrote scanner-container to call
+
+      the Argus SDK (``argus scan container``) directly and emit a
+
+      per-container markdown summary artifact (``scanner-summary-container-*``).
+
+      The bespoke parse/summary scripts (parse_trivy_results.py,
+
+      parse_grype_results.py, generate_container_summary.py) were removed as
+
+      dead code in that cleanup. But scanner-container-summary — the action
+
+      that combines parallel/matrix container results — still shelled out to
+
+      those deleted scripts, and still downloaded the obsolete
+
+      ``container-scan-results-*`` artifact name. It therefore crashed with
+
+      "No such file or directory" at 1.4.0 and 1.4.1 (issue #251). Meanwhile
+
+      security-summary already does exactly this job the SDK way: it
+
+      downloads ``scanner-summary-*`` artifacts (which include
+
+      ``scanner-summary-container-*``), stitches them via its own
+
+      generate_summary.py, renders a status table, and posts a PR comment.
+
+      Two aggregators, one broken and redundant.
+
+      '
+    decision: 'Deprecate scanner-container-summary and converge on security-summary as
+
+      the single combined-summary aggregator. scanner-container-summary
+
+      becomes a thin compatibility shim that emits a deprecation warning and
+
+      forwards to security-summary scoped to ``scanner-summary-container-*``
+
+      (preserving the container-specific title and PR comment marker), so
+
+      existing ``@<version>`` pins keep working. Internal consumers
+
+      (container-scan.yml, container-scan-from-config.yml) and the published
+
+      example migrate directly to security-summary. The shim is slated for
+
+      removal in a future major release.
+
+      '
+    consequences:
+      positive:
+      - The combined container summary works again (forwards to the maintained security-summary path).
+      - One aggregator to maintain; no duplicated stitching logic.
+      - External consumers pinned to scanner-container-summary keep working via the shim (no hard break).
+      negative:
+      - scanner-container-summary's declared outputs (total_vulnerabilities, etc.) are dropped — they never functioned (the action crashed) and security-summary does not expose per-severity counts.
+      - A future major release must remove the shim; consumers must migrate to security-summary before then.
+    implementation: "- .github/actions/scanner-container-summary/action.yml — replaced the\n  deleted-script invocation with a deprecation warning + a forward to\n  security-summary (summary_pattern: scanner-summary-container-*).\n- .github/workflows/container-scan.yml,\n  .github/workflows/container-scan-from-config.yml,\n  examples/workflows/actions-container-scan-matrix.yml — migrated the\n  summary step to security-summary.\n- The two workflows that invoke ``argus scan`` inline\n  (container-scan.yml, container-scan-from-config.yml) now write to a\n  fixed --output-dir --no-timestamp and publish the per-container\n  markdown as a ``scanner-summary-container-<name>`` artifact before\n  the summary job, so security-summary has something to stitch instead\n  of silently producing an empty report. (Consumers that use the\n  scanner-container composite action already upload these.)\n- READMEs (.github/actions/README.md catalog +\n  scanner-container-summary/README.md) marked deprecated.\n"
+    related:
+    - ADR-027
+    pr_references:
+    - '(deprecates scanner-container-summary; fixes the dangling deleted-script refs; closes #251)'
+    alternatives_considered:
+    - name: Resurrect the deleted parse/summary scripts
+      rejected_because: 'They parsed raw trivy/grype JSON in the pre-SDK format; the SDK now
+
+        emits canonical results + markdown, so the old scripts no longer
+
+        match the artifact contract. Re-adding them would reintroduce a
+
+        parallel, drift-prone implementation of what the SDK already does.
+
+        '
+    - name: Repair scanner-container-summary as a standalone aggregator
+      rejected_because: 'Keeps two near-identical aggregators to maintain. security-summary
+
+        already covers the container case via its scanner-summary-* pattern.
+
+        '

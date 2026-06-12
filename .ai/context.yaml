@@ -10,7 +10,7 @@ project:
   primary_language: python
   secondary_languages:
   - yaml
-  version: 1.2.1
+  version: 1.4.1
   license: AGPL-3.0
   repository: huntridge-labs/argus
   one_liner: 'Python SDK and CLI that orchestrate 18+ security scanners and linters with a unified config,

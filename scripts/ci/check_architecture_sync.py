@@ -181,15 +181,23 @@ def _check_cli_subcommands(context: dict) -> list[str]:
     except Exception as exc:
         return [f"could not introspect argus.cli subcommands: {exc}"]
 
-    declared = set(
-        (context.get("entrypoints", {}) or {})
-        .get("cli_subcommands", {}) or {}
-    )
+    entrypoints = context.get("entrypoints", {}) or {}
+    # v1 (AICaC 1.x) stored these under ``entrypoints.cli_subcommands`` —
+    # a {name: description} map. AICaC 2.0 flattens ``entrypoints`` to a
+    # string→string map with each subcommand keyed as ``cli_<name>``
+    # (cli_scan, cli_init, …). Accept both so the check survives the
+    # v1→v2 migration regardless of which schema the file is on.
+    declared = set(entrypoints.get("cli_subcommands", {}) or {})
+    declared |= {
+        key[len("cli_"):]
+        for key in entrypoints
+        if key.startswith("cli_") and key != "cli_subcommands"
+    }
     missing = cli_names - declared
     return [
         f"CLI subcommand ``argus {name}`` exists on the argparse tree "
-        f"but is not in .ai/context.yaml under "
-        f"entrypoints.cli_subcommands:"
+        f"but is not in .ai/context.yaml entrypoints "
+        f"(as a cli_subcommands entry or a cli_{name} key)"
         for name in sorted(missing)
     ]
 
