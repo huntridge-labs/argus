@@ -340,10 +340,10 @@ class TestBuiltinFallback:
             names = set(reporters_pkg.available_reporters())
         finally:
             reporters_pkg._reset_registry_cache_for_tests()
-        # All eight built-ins recovered via _BUILTIN_FALLBACKS.
+        # All built-ins recovered via _BUILTIN_FALLBACKS.
         assert names == {
             "terminal", "markdown", "container_markdown", "sarif",
-            "json", "github", "gitlab", "junit", "openvex",
+            "json", "github", "gitlab", "junit", "openvex", "oscal",
         }
 
     def test_builtin_fallbacks_match_builtin_names(self):

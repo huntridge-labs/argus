@@ -125,6 +125,7 @@ github = "argus.reporters.github:GitHubReporter"
 gitlab = "argus.reporters.gitlab:GitLabReporter"
 junit = "argus.reporters.junit:JUnitReporter"
 openvex = "argus.reporters.openvex:OpenVexReporter"
+oscal = "argus.reporters.oscal:OscalReporter"
 
 [project.urls]
 Homepage = "https://argus.huntridgelabs.com"
@@ -155,6 +156,11 @@ argus = ["../argus-config.schema.json", "../img/argus_logo.txt"]
 # aren't .py files; setuptools won't pick them up automatically. Listing
 # them here ships them inside the built wheel.
 "argus.viewers.browser" = ["templates/*.j2", "static/*"]
+# OSCAL reporter data — control mappings and the vendored NIST schema.
+# Required at runtime by argus.core.control_mapping and
+# argus.reporters.oscal; ship inside the wheel so a clean pip install
+# doesn't need a follow-up download step.
+"argus.compliance" = ["mappings/*.yaml", "schemas/*.json"]
 
 # ── Tool configuration ────────────────────────────────────────────
 

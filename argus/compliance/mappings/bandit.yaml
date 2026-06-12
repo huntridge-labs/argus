@@ -1,0 +1,158 @@
+# Bandit (Python SAST) rule → NIST SP 800-53 Rev 5 control mapping.
+#
+# Used by argus.core.control_mapping to populate OSCAL Assessment Results
+# with the controls implicated by each finding. Keys are Bandit test IDs
+# (the "B###" identifier emitted in Bandit JSON output). Values are lists
+# of 800-53 control IDs — write them in canonical OSCAL token form
+# (lowercase, hyphenated) so they pass the schema's TokenDatatype check
+# without further normalization.
+#
+# Control selection rationale (compliance reviewers — please audit):
+#
+# * SI-10 "Information Input Validation" — applies to anything that
+#   processes attacker-controlled input without validation (injection,
+#   deserialization, XML/SSRF).
+# * SI-3 "Malicious Code Protection" — anti-malware and dangerous-call
+#   detection.
+# * IA-5 "Authenticator Management" — hardcoded credentials, weak
+#   secrets handling.
+# * SC-8 "Transmission Confidentiality and Integrity" — TLS verification
+#   disabled, insecure protocols.
+# * SC-13 "Cryptographic Protection" — weak / broken crypto, weak
+#   hashing, weak random for security purposes.
+# * SC-28 "Protection of Information at Rest" — hardcoded secrets in
+#   source (overlaps IA-5; both apply because the secret is both an
+#   authenticator and stored data).
+# * SA-15 "Development Process, Standards, and Tools" — broad SAST
+#   findings that don't fit a more specific control; captures the
+#   "secure coding tools were applied" attestation FedRAMP assessors
+#   look for.
+# * CM-7 "Least Functionality" — debug interfaces left enabled, etc.
+#
+# A scanner-wide ``.default`` is provided as a safety net: any Bandit
+# finding whose rule isn't enumerated here still gets mapped to SA-15
+# so the OSCAL output stays anchored to *some* control rather than
+# falling out as unmapped. Replace with a specific entry when adding
+# new Bandit rules to this file.
+
+# Assert statement removed during compilation when running with -O.
+# Argus / Bandit emit B101 as Severity.LOW so it doesn't materially
+# affect the security posture; we still map it to SA-15 (secure coding
+# tools applied) for traceability.
+B101: [sa-15]
+
+# B102: exec_used. Running attacker-influenced code paths.
+B102: [si-10, si-3]
+
+# B103: set_bad_file_permissions
+B103: [ac-3, ac-6]
+
+# B104: hardcoded_bind_all_interfaces
+B104: [ac-4, sc-7]
+
+# B105 / B106 / B107: hardcoded password (string, funcarg, default).
+# Both IA-5 (the value is an authenticator) and SC-28 (the source
+# file is data-at-rest that now contains a secret).
+B105: [ia-5, sc-28]
+B106: [ia-5, sc-28]
+B107: [ia-5, sc-28]
+
+# B108: hardcoded_tmp_directory — predictable temp paths invite TOCTOU.
+B108: [sc-4, si-10]
+
+# B110 / B112: try/except/pass and try/except/continue — silent failure
+# defeats audit logging.
+B110: [au-2, au-12]
+B112: [au-2, au-12]
+
+# B201: flask_debug_true
+B201: [cm-7, ac-3]
+
+# B301-B303: pickle, marshal, weak hashlib (md5/sha1) — deserialization
+# and weak crypto.
+B301: [si-10, sc-13]
+B302: [si-10, sc-13]
+B303: [sc-13]
+
+# B304-B305: insecure ciphers / cipher modes.
+B304: [sc-13]
+B305: [sc-13]
+
+# B306: mktemp_q — predictable temp file.
+B306: [sc-4, si-10]
+
+# B307: eval — arbitrary code execution.
+B307: [si-10, si-3]
+
+# B311: random module used for security purposes.
+B311: [sc-13]
+
+# B312: telnetlib — cleartext credentials in transit.
+B312: [sc-8, ia-5]
+
+# B321: ftplib — cleartext credentials in transit.
+B321: [sc-8, ia-5]
+
+# B324: hashlib.new used with weak hash (md5, sha1).
+B324: [sc-13]
+
+# B401-B412: import-flagged dangerous modules (telnetlib, ftplib,
+# pickle, marshal, xml.* with external entities, etc.).
+B401: [sc-8]
+B402: [sc-8, ia-5]
+B403: [si-10]
+B404: [si-10]
+B405: [si-10]
+B406: [si-10]
+B407: [si-10]
+B408: [si-10]
+B409: [si-10]
+B410: [si-10]
+B411: [si-10]
+B412: [sc-8]
+
+# B501: request_with_no_cert_validation — TLS verification disabled.
+B501: [sc-8, sc-23]
+
+# B502-B504: ssl with bad version / bad defaults.
+B502: [sc-8, sc-13]
+B503: [sc-8, sc-13]
+B504: [sc-8, sc-13]
+
+# B505: weak crypto key (small RSA, small EC).
+B505: [sc-13]
+
+# B506: yaml.load (unsafe deserialization).
+B506: [si-10]
+
+# B507: ssh_no_host_key_verification.
+B507: [sc-8, ia-5]
+
+# B601-B610: shell-injection family.
+B601: [si-10, si-3]
+B602: [si-10, si-3]
+B603: [si-10]
+B604: [si-10, si-3]
+B605: [si-10, si-3]
+B606: [si-10]
+B607: [si-10]
+B608: [si-10]
+B609: [si-10]
+B610: [si-10]
+
+# B611: Django RawSQL.
+B611: [si-10]
+
+# B701: jinja2_autoescape_false — XSS exposure.
+B701: [si-10]
+
+# B702: use_of_mako_templates — same XSS concern.
+B702: [si-10]
+
+# B703: django_mark_safe.
+B703: [si-10]
+
+# Scanner-wide fallback. Bandit findings whose rule isn't listed
+# above still anchor to SA-15 (secure coding tools applied) so OSCAL
+# output never silently drops a finding.
+.default: [sa-15]
