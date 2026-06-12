@@ -154,6 +154,9 @@ jobs:
     if: always()
     steps:
       - name: Generate container scan summary
-        uses: huntridge-labs/argus/.github/actions/scanner-container-summary@1.4.1
+        uses: huntridge-labs/argus/.github/actions/security-summary@1.4.1
         with:
+          summary_pattern: 'scanner-summary-container-*'
+          title: '🐳 Container Security Scan Results'
+          comment_marker: 'container-scan-parallel-comment'
           post_pr_comment: ${{ github.event_name == 'pull_request' && 'true' || 'false' }}

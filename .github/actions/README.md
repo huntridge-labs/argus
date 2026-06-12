@@ -30,7 +30,7 @@ This directory contains reusable composite actions for security scanning. Each a
 | Action | Description | Language/Type | Documentation |
 |--------|-------------|---------------|---------------|
 | [scanner-container](scanner-container/) | Multi-scanner container security | Container images | [README](scanner-container/README.md) |
-| [scanner-container-summary](scanner-container-summary/) | Aggregate parallel container scan results | Container images | [README](scanner-container-summary/README.md) |
+| [scanner-container-summary](scanner-container-summary/) | **Deprecated** — forwards to [security-summary](security-summary/); use that instead | Container images | [README](scanner-container-summary/README.md) |
 
 ### Web Application Security
 

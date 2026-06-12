@@ -1,5 +1,24 @@
 # Container Scanner Summary Composite Action
 
+> [!WARNING]
+> **Deprecated.** This action is now a thin compatibility shim that forwards to
+> [`security-summary`](../security-summary/), scoped to the per-container scan
+> summaries that `scanner-container` emits (`scanner-summary-container-*`). It
+> remains only so existing `@<version>` pins keep working and will be removed in
+> a future major release. Migrate to:
+>
+> ```yaml
+> - uses: huntridge-labs/argus/.github/actions/security-summary@1.4.1
+>   with:
+>     summary_pattern: 'scanner-summary-container-*'
+>     title: '🐳 Container Security Scan Results'
+> ```
+>
+> Why: the parse/summary scripts this action depended on were removed during the
+> Phase 3 thin-wrapper migration (the SDK-backed `scanner-container` now produces
+> the per-container summary directly), which broke the combined summary at
+> 1.4.0 / 1.4.1 (issue #251). `security-summary` is the canonical aggregator.
+
 Aggregate and deduplicate results from parallel container scans into a unified summary.
 
 ## Overview

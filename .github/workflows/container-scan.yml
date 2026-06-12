@@ -310,16 +310,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Download all scan artifacts
-        if: needs.discover-containers.outputs.has_containers == 'true' || inputs.scan_mode == 'remote'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        continue-on-error: true
-        with:
-          pattern: ${{ inputs.scan_mode == 'remote' && inputs.container_name != '' && format('container-scan-results-{0}*', inputs.container_name) || 'container-scan-results-*' }}
-
+      # security-summary self-downloads the per-container summary artifacts
+      # (scanner-summary-container-*), so no separate download step is needed.
       - name: Generate container summary
-        uses: huntridge-labs/argus/.github/actions/scanner-container-summary@1.4.1
+        uses: huntridge-labs/argus/.github/actions/security-summary@1.4.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          summary_pattern: 'scanner-summary-container-*'
+          title: '🐳 Container Security Scan Results'
+          comment_marker: 'container-scan-parallel-comment'
           post_pr_comment: ${{ inputs.post_pr_comment }}
