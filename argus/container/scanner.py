@@ -17,6 +17,19 @@ from .resources import get_image_digest, is_image_local
 logger = logging.getLogger("argus.container")
 
 
+class RegistryAuthError(Exception):
+    """A configured registry credential could not be resolved at scan time.
+
+    Raised *before* any scanner container starts so the user gets a
+    fast, actionable diagnostic — naming the unset env var and the
+    registry it belongs to — instead of an opaque ``UNAUTHORIZED:
+    authentication required`` from the upstream tool 60–90 s into the
+    scan. The message is two lines (what's wrong + how to fix) and is
+    surfaced on stderr by the CLI, not buried in ``argus.log``. See
+    issue #253.
+    """
+
+
 def _normalize_image_ref(ref: str) -> str:
     """Return the ``host/path`` portion of an image ref, stripping tag + digest.
 
@@ -149,6 +162,96 @@ def _resolve_registry_auth(
         )
 
     return username, password
+
+
+def _gate_credential(
+    scope: str, label: str, source: dict, field: str, value: str | None,
+) -> None:
+    """Raise ``RegistryAuthError`` if ``field`` is configured but unresolved.
+
+    A credential counts as *configured* when the source dict carries
+    either ``<field>_env`` (env-var indirection) or a literal
+    ``<field>``. If it resolved to a falsy value (env var unset or
+    empty, or an empty literal), the pull would fail later with an
+    opaque auth error — so we fail fast here instead.
+
+    A field that is not configured at all is left alone: anonymous
+    pulls, and token-only auth where the username is intentionally
+    omitted, are both valid and must not be gated.
+    """
+    if value:
+        return
+
+    env_field = f"{field}_env"
+    if env_field in source:
+        env_name = source.get(env_field)
+        raise RegistryAuthError(
+            f"{scope}: {label} unresolved — env var {env_name} is not set.\n"
+            f"Set it before running argus or update registry_auth in "
+            f"argus.yml to reference a variable that is exported."
+        )
+    if field in source:
+        raise RegistryAuthError(
+            f"{scope}: {label} unresolved — the configured value is empty.\n"
+            f"Set a non-empty {label} or remove it to pull anonymously."
+        )
+
+
+def validate_registry_auth(
+    config: dict | None, image_ref: str | None,
+) -> None:
+    """Fail fast when a configured registry credential cannot be resolved.
+
+    Intended to run once per target *before* any scanner container is
+    invoked. Mirrors the matching logic of :func:`_resolve_registry_auth`
+    — the longest ``registry_auth`` path-prefix wins, falling back to the
+    top-level ``registry_username`` / ``registry_password`` shortcut when
+    no map entry matches — then gates each credential the matched scope
+    actually declares.
+
+    Raises :class:`RegistryAuthError` naming the registry scope and the
+    unset env var. Returns ``None`` (no exception) for anonymous pulls,
+    where nothing is configured. See issue #253.
+    """
+    if not config:
+        return
+
+    auth_map = config.get("registry_auth") or {}
+
+    best_key: str | None = None
+    if image_ref is not None:
+        normalized = _normalize_image_ref(image_ref)
+        for key in auth_map:
+            if not isinstance(key, str):
+                continue
+            if _is_path_component_prefix(key, normalized):
+                if best_key is None or len(key) > len(best_key):
+                    best_key = key
+
+    if best_key is not None:
+        entry = auth_map[best_key]
+        if not isinstance(entry, dict):
+            # Malformed entry — _resolve_registry_auth already warns and
+            # skips it. That's a config-shape problem, not an unresolved
+            # credential, so it isn't this gate's concern.
+            return
+        username, password = _resolve_user_pass(
+            entry, user_field="username", pass_field="password",
+        )
+        scope = f"registry_auth[{best_key}]"
+        _gate_credential(scope, "username", entry, "username", username)
+        _gate_credential(scope, "password", entry, "password", password)
+        return
+
+    # No map entry matched → top-level single-default shortcut.
+    username, password = _resolve_user_pass(config)
+    scope = "registry credentials"
+    _gate_credential(
+        scope, "username", config, "registry_username", username,
+    )
+    _gate_credential(
+        scope, "password", config, "registry_password", password,
+    )
 
 
 def _registry_auth_env(
@@ -499,6 +602,15 @@ def scan_image(
             "copy via the docker-daemon source (not pulling from a registry)",
             target.image_ref,
         )
+
+    # Fail fast on misconfigured registry credentials *before* spinning
+    # up any scanner container. A configured-but-unresolved credential
+    # (e.g. ``password_env`` naming an unset variable) otherwise surfaces
+    # 60–90 s later as an opaque ``UNAUTHORIZED`` from trivy/grype.
+    # Skipped for local images — they're scanned from the docker daemon
+    # and never touch a registry, so registry auth is irrelevant. (#253)
+    if not is_local:
+        validate_registry_auth(cfg, target.image_ref)
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)

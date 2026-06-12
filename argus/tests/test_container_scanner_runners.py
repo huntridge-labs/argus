@@ -18,6 +18,7 @@ from unittest.mock import patch
 import pytest
 
 from argus.container.scanner import (
+    RegistryAuthError,
     _docker_env_flags,
     _is_path_component_prefix,
     _normalize_image_ref,
@@ -29,6 +30,7 @@ from argus.container.scanner import (
     _run_trivy,
     _subprocess_env,
     _validate_scanner_output,
+    validate_registry_auth,
 )
 
 
@@ -1670,3 +1672,263 @@ class TestScanImageBindsContentDigest:
 
         assert result.digest == ""
         assert "image_digest" not in result.combined_findings[0].metadata
+
+
+# ───────────────────────────────────────────────
+# Registry auth fast-fail (#253)
+# ───────────────────────────────────────────────
+#
+# Before this gate a registry_auth entry whose ``*_env`` named an unset
+# variable only produced a WARNING in argus.log; the scan proceeded and
+# the sub-scanner container failed ~90s later with an opaque
+# ``UNAUTHORIZED: authentication required``. ``validate_registry_auth``
+# now fails fast — on stderr, before any container starts — naming the
+# registry scope and the unset variable.
+
+
+class TestValidateRegistryAuth:
+    """Pure-function checks for ``validate_registry_auth``."""
+
+    def test_raises_on_map_entry_unresolved_password_env(self, monkeypatch):
+        # Mirrors the issue example exactly: username resolves, password
+        # env var is unset → fail fast naming the registry + the var.
+        monkeypatch.setenv("ARGUS_REGISTRY_USER", "svc-account")
+        monkeypatch.delenv("ARGUS_REGISTRY_PASSWORD", raising=False)
+        config = {
+            "registry_auth": {
+                "containers.va.ghe.com": {
+                    "username_env": "ARGUS_REGISTRY_USER",
+                    "password_env": "ARGUS_REGISTRY_PASSWORD",
+                },
+            },
+        }
+        with pytest.raises(RegistryAuthError) as excinfo:
+            validate_registry_auth(
+                config, "containers.va.ghe.com/org/repo:1.0",
+            )
+        msg = str(excinfo.value)
+        assert "registry_auth[containers.va.ghe.com]" in msg
+        assert "password unresolved" in msg
+        assert "ARGUS_REGISTRY_PASSWORD" in msg
+        # Second line is the actionable remediation.
+        assert "argus.yml" in msg
+
+    def test_raises_on_map_entry_unresolved_username_env(self, monkeypatch):
+        monkeypatch.delenv("IB_USER", raising=False)
+        monkeypatch.setenv("IB_TOKEN", "tok")
+        config = {
+            "registry_auth": {
+                "registry1.dso.mil": {
+                    "username_env": "IB_USER",
+                    "password_env": "IB_TOKEN",
+                },
+            },
+        }
+        with pytest.raises(RegistryAuthError) as excinfo:
+            validate_registry_auth(config, "registry1.dso.mil/org/repo:1.0")
+        msg = str(excinfo.value)
+        assert "username unresolved" in msg
+        assert "IB_USER" in msg
+
+    def test_raises_on_empty_env_var(self, monkeypatch):
+        # Set-but-empty counts as unresolved (the upstream pull would
+        # still fail). ``not username`` covers "" the same as None.
+        monkeypatch.setenv("IB_USER", "")
+        config = {
+            "registry_auth": {
+                "registry1.dso.mil": {"username_env": "IB_USER"},
+            },
+        }
+        with pytest.raises(RegistryAuthError):
+            validate_registry_auth(config, "registry1.dso.mil/org/repo:1.0")
+
+    def test_raises_on_top_level_unresolved(self, monkeypatch):
+        # No map match → top-level single-default shortcut is gated too.
+        monkeypatch.delenv("REG_PASS", raising=False)
+        config = {"registry_password_env": "REG_PASS"}
+        with pytest.raises(RegistryAuthError) as excinfo:
+            validate_registry_auth(config, "ghcr.io/org/app:1.0")
+        assert "REG_PASS" in str(excinfo.value)
+
+    def test_top_level_gated_when_image_ref_none(self, monkeypatch):
+        # Helper-level callers may pass image_ref=None; the top-level
+        # shortcut still needs gating.
+        monkeypatch.delenv("REG_PASS", raising=False)
+        config = {"registry_password_env": "REG_PASS"}
+        with pytest.raises(RegistryAuthError):
+            validate_registry_auth(config, None)
+
+    def test_no_raise_when_creds_resolve(self, monkeypatch):
+        monkeypatch.setenv("IB_USER", "u")
+        monkeypatch.setenv("IB_TOKEN", "p")
+        config = {
+            "registry_auth": {
+                "registry1.dso.mil": {
+                    "username_env": "IB_USER",
+                    "password_env": "IB_TOKEN",
+                },
+            },
+        }
+        # No exception.
+        validate_registry_auth(config, "registry1.dso.mil/org/repo:1.0")
+
+    def test_no_raise_for_anonymous_pull(self):
+        # Nothing configured → anonymous is a valid mode, not an error.
+        validate_registry_auth({}, "docker.io/library/nginx:latest")
+        validate_registry_auth(None, "docker.io/library/nginx:latest")
+
+    def test_no_raise_when_unconfigured_field_omitted(self, monkeypatch):
+        # Token-only auth: only password is configured (and resolves);
+        # the absent username must NOT be gated.
+        monkeypatch.setenv("IB_TOKEN", "p")
+        monkeypatch.delenv("IB_USER", raising=False)
+        config = {
+            "registry_auth": {
+                "registry1.dso.mil": {"password_env": "IB_TOKEN"},
+            },
+        }
+        validate_registry_auth(config, "registry1.dso.mil/org/repo:1.0")
+
+    def test_no_raise_when_no_entry_matches_image(self, monkeypatch):
+        # A configured-but-unresolved entry for a *different* registry
+        # must not gate a pull from an unrelated registry.
+        monkeypatch.delenv("IB_TOKEN", raising=False)
+        config = {
+            "registry_auth": {
+                "registry1.dso.mil": {"password_env": "IB_TOKEN"},
+            },
+        }
+        validate_registry_auth(config, "ghcr.io/org/app:1.0")
+
+    def test_malformed_entry_is_not_gated(self, monkeypatch):
+        # Non-mapping entry is a config-shape problem handled (warned)
+        # elsewhere — not an unresolved-credential failure.
+        config = {"registry_auth": {"registry1.dso.mil": "not-a-mapping"}}
+        validate_registry_auth(config, "registry1.dso.mil/org/repo:1.0")
+
+    def test_longest_prefix_entry_is_the_one_gated(self, monkeypatch):
+        # The more-specific entry wins; its unresolved cred is what
+        # fails, even though the broader entry resolves fine.
+        monkeypatch.setenv("BROAD_USER", "u")
+        monkeypatch.setenv("BROAD_PASS", "p")
+        monkeypatch.delenv("RESTRICTED_PASS", raising=False)
+        config = {
+            "registry_auth": {
+                "registry1.dso.mil": {
+                    "username_env": "BROAD_USER",
+                    "password_env": "BROAD_PASS",
+                },
+                "registry1.dso.mil/ironbank/restricted": {
+                    "username_env": "BROAD_USER",
+                    "password_env": "RESTRICTED_PASS",
+                },
+            },
+        }
+        with pytest.raises(RegistryAuthError) as excinfo:
+            validate_registry_auth(
+                config, "registry1.dso.mil/ironbank/restricted/repo:1.0",
+            )
+        assert "ironbank/restricted" in str(excinfo.value)
+        assert "RESTRICTED_PASS" in str(excinfo.value)
+
+
+class TestScanImageFailsFastOnRegistryAuth:
+    """``scan_image`` gates remote pulls before any sub-scanner runs."""
+
+    def _stub_runners(self, monkeypatch):
+        """Record whether the sub-scanner runners are ever reached."""
+        from argus.container import scanner as scanner_mod
+
+        called: dict = {"trivy": False, "grype": False}
+
+        def fake_trivy(*_a, **_kw):
+            called["trivy"] = True
+            return []
+
+        def fake_grype(*_a, **_kw):
+            called["grype"] = True
+            return []
+
+        monkeypatch.setattr(scanner_mod, "_run_trivy", fake_trivy)
+        monkeypatch.setattr(scanner_mod, "_run_grype", fake_grype)
+        return called
+
+    def test_remote_unresolved_raises_before_subscanners(
+        self, monkeypatch,
+    ):
+        from argus.container import scanner as scanner_mod
+        from argus.container.scanner import scan_image
+        from argus.container.discovery import ContainerTarget
+
+        called = self._stub_runners(monkeypatch)
+        monkeypatch.setattr(scanner_mod, "is_image_local", lambda ref: False)
+        monkeypatch.delenv("ARGUS_REGISTRY_PASSWORD", raising=False)
+
+        config = {
+            "registry_auth": {
+                "ghcr.io": {"password_env": "ARGUS_REGISTRY_PASSWORD"},
+            },
+        }
+        target = ContainerTarget(name="web", image_ref="ghcr.io/org/web:1.0")
+
+        with pytest.raises(RegistryAuthError):
+            scan_image(target, scanners=("trivy", "grype"), sbom=False, config=config)
+
+        # The whole point: we never spent 60–90s in a doomed pull.
+        assert called["trivy"] is False
+        assert called["grype"] is False
+
+    def test_local_image_skips_registry_auth_gate(self, monkeypatch):
+        # Image present in the daemon → scanned from docker source, no
+        # registry pull, so a missing registry cred must NOT block it.
+        from argus.container import scanner as scanner_mod
+        from argus.container.scanner import scan_image
+        from argus.container.discovery import ContainerTarget
+
+        called = self._stub_runners(monkeypatch)
+        monkeypatch.setattr(scanner_mod, "is_image_local", lambda ref: True)
+        monkeypatch.delenv("ARGUS_REGISTRY_PASSWORD", raising=False)
+
+        config = {
+            "registry_auth": {
+                "ghcr.io": {"password_env": "ARGUS_REGISTRY_PASSWORD"},
+            },
+        }
+        target = ContainerTarget(name="web", image_ref="ghcr.io/org/web:1.0")
+
+        # No raise; sub-scanners run against the local copy.
+        scan_image(target, scanners=("trivy", "grype"), sbom=False, config=config)
+        assert called["trivy"] is True
+        assert called["grype"] is True
+
+
+class TestEngineDoesNotSwallowRegistryAuthError:
+    """``_process_target`` re-raises the fast-fail instead of recording it."""
+
+    def _engine(self):
+        from argus.container.engine import ContainerEngine
+        return ContainerEngine({})
+
+    def _remote_target(self):
+        from argus.container.discovery import ContainerTarget
+        return ContainerTarget(name="web", image_ref="ghcr.io/org/web:1.0")
+
+    def test_registry_auth_error_propagates(self, monkeypatch):
+        monkeypatch.setattr(
+            "argus.container.engine.scan_image",
+            lambda *a, **kw: (_ for _ in ()).throw(
+                RegistryAuthError("registry_auth[ghcr.io]: password unresolved"),
+            ),
+        )
+        with pytest.raises(RegistryAuthError):
+            self._engine()._process_target(self._remote_target())
+
+    def test_generic_error_still_recorded(self, monkeypatch):
+        # Contrast: ordinary scan failures are still caught and turned
+        # into a per-target scan_error (existing behavior preserved).
+        monkeypatch.setattr(
+            "argus.container.engine.scan_image",
+            lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("boom")),
+        )
+        result = self._engine()._process_target(self._remote_target())
+        assert "Scan failed" in result.scan_error
