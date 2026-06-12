@@ -135,17 +135,47 @@ jobs:
           echo "$REGISTRY_PASSWORD" | docker login "$REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
 
       - name: Run container security scanners via argus CLI
+        id: scan
         env:
           ARGUS_IMAGE_REF: ${{ matrix.image }}
           ARGUS_SCANNERS: ${{ matrix.scanners }}
           ARGUS_FAIL_ON_SEVERITY: ${{ matrix.fail_on_severity }}
           ARGUS_ENABLE_CODE_SECURITY: ${{ matrix.enable_code_security }}
+          CONTAINER_NAME: ${{ matrix.name || matrix.image }}
         run: |
+          # Write reports to a fixed dir (no timestamp) and publish the
+          # per-container markdown as a scanner-summary-container-* artifact so
+          # the scan-summary job (security-summary) can stitch it. Capture the
+          # scan exit code so the markdown is copied even when findings fail
+          # the severity gate, then re-exit with it.
+          SCAN_EXIT=0
           python -m argus scan container \
             --image "$ARGUS_IMAGE_REF" \
             --scanners "$ARGUS_SCANNERS" \
             --severity-threshold "$ARGUS_FAIL_ON_SEVERITY" \
-            --format markdown --format sarif
+            --output-dir ./container-reports \
+            --no-timestamp \
+            --format markdown --format sarif || SCAN_EXIT=$?
+
+          SAFE_NAME=$(printf '%s' "$CONTAINER_NAME" | tr '/' '-' | tr -cd '[:alnum:]._-')
+          echo "safe_name=$SAFE_NAME" >> "$GITHUB_OUTPUT"
+
+          mkdir -p scanner-summaries
+          if [ -f container-reports/container-scan.md ]; then
+            cp container-reports/container-scan.md "scanner-summaries/container-${SAFE_NAME}.md"
+          fi
+
+          exit $SCAN_EXIT
+
+      - name: Upload container summary section
+        if: always() && steps.scan.outputs.safe_name != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: scanner-summary-container-${{ steps.scan.outputs.safe_name }}
+          path: scanner-summaries/container-${{ steps.scan.outputs.safe_name }}.md
+          if-no-files-found: warn
+          retention-days: 7
+        continue-on-error: true
 
   scan-summary:
     name: Container Scan Summary

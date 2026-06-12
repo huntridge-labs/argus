@@ -2528,6 +2528,13 @@ decisions:
         .github/workflows/container-scan-from-config.yml,
         examples/workflows/actions-container-scan-matrix.yml — migrated the
         summary step to security-summary.
+      - The two workflows that invoke ``argus scan`` inline
+        (container-scan.yml, container-scan-from-config.yml) now write to a
+        fixed --output-dir --no-timestamp and publish the per-container
+        markdown as a ``scanner-summary-container-<name>`` artifact before
+        the summary job, so security-summary has something to stitch instead
+        of silently producing an empty report. (Consumers that use the
+        scanner-container composite action already upload these.)
       - READMEs (.github/actions/README.md catalog +
         scanner-container-summary/README.md) marked deprecated.
 
