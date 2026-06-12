@@ -5,8 +5,10 @@ from .builder import build_image
 from .scanner import (
     ContainerScanResult,
     ContainerScanSummary,
+    RegistryAuthError,
     scan_image,
     deduplicate_findings,
+    validate_registry_auth,
 )
 from .engine import ContainerEngine
 
@@ -17,7 +19,9 @@ __all__ = [
     "build_image",
     "ContainerScanResult",
     "ContainerScanSummary",
+    "RegistryAuthError",
     "scan_image",
     "deduplicate_findings",
+    "validate_registry_auth",
     "ContainerEngine",
 ]
