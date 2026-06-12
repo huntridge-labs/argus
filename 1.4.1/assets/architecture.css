@@ -1,0 +1,1355 @@
+/*
+ * architecture.css — page-specific styles for the SDK architecture map.
+ *
+ * Inherits the Argus brand palette from argus.css; every color in this
+ * file is a CSS custom property defined there. No CDN fonts, no
+ * external assets — strict CSP compatible.
+ *
+ * Layout: top legend, main grid of seven columns, right-rail flow
+ * list with sticky scroll, optional bottom external-tools row, and
+ * a slide-in side panel for node details.
+ */
+
+/* ─── Page chrome ───────────────────────────────────────────────────── */
+
+.arch-page {
+  position: relative;
+  width: 100%;
+}
+
+.arch-page__main {
+  width: 100%;
+  /* Override the global ``main { max-width: 72rem; padding: 1rem 1.5rem; }``
+     rule that also matches this inner <main>. Without this the
+     diagram is double-constrained and ends up far too narrow. */
+  max-width: none;
+  margin: 0;
+  /* Reserve room for both fixed sidebars (flows left, steps right)
+     with a 1rem breathing gap on each side. Sidebars are 18rem wide
+     and sit 1rem from each viewport edge, so a 20rem padding leaves
+     a clean 1rem gap between sidebar and the diagram viewport. */
+  padding: 0 20rem;
+  box-sizing: border-box;
+}
+
+.arch-page__sidebar {
+  position: fixed;
+  top: 5rem;
+  bottom: 1rem;
+  width: 18rem;
+  overflow-y: auto;
+  z-index: 20;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+}
+
+.arch-page__sidebar--flows {
+  left: 1rem;
+  transition: transform 0.25s ease;
+}
+
+.arch-page__sidebar--steps {
+  right: 1rem;
+  transition: transform 0.25s ease;
+}
+
+/* Backdrop shown only when a drawer is open on narrow viewports. */
+.arch-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 15;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.arch-page[data-drawer-open] .arch-drawer-backdrop {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Edge-handle pills that toggle the slide-out drawers on narrow
+   viewports. Pinned to the viewport edge when the drawer is closed
+   and slid inward (to the drawer's inner edge) when it's open. The
+   chevron flips on state. Hidden on wide screens where both sidebars
+   are always visible. */
+.arch-drawer-handle {
+  position: fixed;
+  top: 50%;
+  z-index: 25;
+  width: 1.5rem;
+  height: 3.25rem;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  transform: translateY(-50%);
+  transition: left 0.25s ease, right 0.25s ease,
+              background 0.12s ease, color 0.12s ease;
+}
+
+.arch-drawer-handle:hover {
+  background: var(--surface-alt);
+  color: var(--fg);
+  border-color: var(--accent-dim);
+}
+
+.arch-drawer-handle--flows {
+  left: 0;
+  border-left: 0;
+  border-radius: 0 6px 6px 0;
+}
+
+.arch-drawer-handle--steps {
+  right: 0;
+  border-right: 0;
+  border-radius: 6px 0 0 6px;
+}
+
+.arch-drawer-handle svg {
+  display: block;
+  transition: transform 0.2s ease;
+}
+
+/* Flip chevrons when their drawer is open. */
+.arch-page[data-drawer-open="flows"] .arch-drawer-handle--flows svg,
+.arch-page[data-drawer-open="steps"] .arch-drawer-handle--steps svg {
+  transform: rotate(180deg);
+}
+
+/* ─── Responsive: slide-out drawers below 1100px ──────────────────── */
+
+@media (max-width: 1099.99px) {
+  .arch-page__main {
+    /* Drop the sidebar padding so the diagram uses the full width. */
+    padding: 0 1rem;
+  }
+
+  .arch-drawer-handle {
+    display: flex;
+  }
+
+  /* In narrow mode, anchor each drawer at the same top:5rem /
+     max-height: calc(100vh - 6rem) as the wide layout so it fills
+     all available space between the header and the viewport bottom
+     before showing a scrollbar. The edge-handle pill follows the
+     drawer's vertical centre below. */
+  .arch-page__sidebar--flows {
+    transform: translateX(calc(-100% - 2rem));
+  }
+
+  .arch-page__sidebar--steps {
+    transform: translateX(calc(100% + 2rem));
+  }
+
+  .arch-page__sidebar[data-open="true"] {
+    transform: translateX(0);
+  }
+
+  /* The drawer occupies the space from ``top: 5rem`` down to
+     ``bottom: 1rem`` (max-height ``100vh - 6rem``), so its vertical
+     midpoint is ``50vh + 2rem``. Sit the pill handle there so it
+     visually aligns with the drawer body. */
+  .arch-drawer-handle {
+    top: calc(50% + 2rem);
+  }
+
+  /* When a drawer is open, slide its handle to sit at the drawer's
+     inner edge so it stays attached to (and visually part of) the
+     drawer instead of getting hidden behind it. */
+  .arch-page[data-drawer-open="flows"] .arch-drawer-handle--flows {
+    left: 19rem;
+  }
+
+  .arch-page[data-drawer-open="steps"] .arch-drawer-handle--steps {
+    right: 19rem;
+  }
+}
+
+/* ─── Legend (column-color reference, top of the page) ───────────── */
+
+.arch-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 0.85rem;
+}
+
+.arch-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--fg-muted);
+}
+
+.arch-legend__swatch {
+  display: inline-block;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+}
+
+.arch-legend__swatch--muted    { background: var(--fg-muted); }
+.arch-legend__swatch--primary  { background: var(--argus-primary-green); }
+.arch-legend__swatch--subtle   { background: var(--surface-alt); }
+.arch-legend__swatch--accent   { background: var(--accent); }
+.arch-legend__swatch--info     { background: var(--severity-info, #4a8fb8); }
+
+/* ─── Column grid ─────────────────────────────────────────────────── */
+
+/* ─── Zoom / pan viewport ─────────────────────────────────────────── */
+
+.arch-columns-viewport {
+  overflow: hidden;
+  cursor: grab;
+  width: 100%;
+  height: calc(100vh - 14rem);
+  min-height: 24rem;
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  user-select: none;
+}
+
+.arch-columns-viewport:active {
+  cursor: grabbing;
+}
+
+/* Info button — small floating affordance at the top-left of the
+   diagram viewport that toggles a description popover. Replaces the
+   always-visible intro paragraph so the diagram itself gets the most
+   real estate. */
+.arch-info-toggle {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--fg-muted);
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  z-index: 4;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.arch-info-toggle:hover,
+.arch-info-toggle[aria-expanded="true"] {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.arch-info-toggle svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+.arch-info-popover {
+  position: absolute;
+  top: 3rem;
+  left: 0.75rem;
+  width: min(28rem, calc(100% - 1.5rem));
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 0.85rem 1rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--fg);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  z-index: 4;
+}
+
+.arch-info-popover[hidden] { display: none; }
+
+.arch-info-popover code {
+  background: var(--surface-alt);
+  padding: 0.05em 0.35em;
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.85em;
+}
+
+/* ─── Hover tooltips (data-tooltip) ──────────────────────────────── */
+
+/* A single shared tooltip element is appended to ``<body>`` at boot
+   so it sits in the same stacking layer as the page header and the
+   tour overlay (and beats their z-index easily). JS reads
+   ``data-tooltip`` from the hovered element and positions the bubble
+   over the trigger. Using one floating element instead of per-
+   element pseudo-elements also avoids the per-element CSS being
+   trapped inside lower stacking contexts. */
+.arch-tooltip {
+  position: fixed;
+  width: max-content;
+  max-width: 20rem;
+  padding: 0.45rem 0.7rem;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--fg);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  text-align: left;
+  pointer-events: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 900;
+}
+
+.arch-tooltip[data-visible="true"] {
+  opacity: 1;
+}
+
+/* ─── Help button (replays the guided tour) ──────────────────────── */
+
+.arch-help-toggle {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--fg-muted);
+  cursor: grab;
+  padding: 0;
+  font-family: inherit;
+  z-index: 4;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.arch-help-toggle:active { cursor: grabbing; }
+
+.arch-info-toggle { cursor: grab; }
+
+.arch-info-toggle:active { cursor: grabbing; }
+
+.arch-help-toggle:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.arch-help-toggle svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+/* ─── Guided tour overlay ────────────────────────────────────────── */
+
+/* Wrapper that contains the dim backdrop and the floating bubble.
+   ``hidden`` keeps the whole thing out of the layout when inactive. */
+.arch-tour[hidden] { display: none; }
+
+.arch-tour {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+
+/* Four dim rectangles, positioned at run-time to surround the
+   focused element. The gap between them is the cutout where the
+   target shows through un-dimmed. */
+.arch-tour__dim {
+  position: fixed;
+  background: rgba(0, 0, 0, 0.62);
+}
+
+/* When a step targets a specific element, that element is given
+   ``data-tour-target="true"`` and gets a glowing accent ring so it
+   reads as the focal point. The dim layer's cutout is what actually
+   makes it stand out from the dimmed page; the ring just frames it. */
+[data-tour-target="true"] {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+
+.arch-tour__bubble {
+  position: absolute;
+  width: min(22rem, calc(100vw - 2rem));
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 1rem 1.1rem 0.85rem;
+  color: var(--fg);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+  z-index: 1002;
+}
+
+/* Arrow tip on the bubble — points toward the targeted element.
+   ``data-placement`` controls which side the arrow sits on. */
+.arch-tour__bubble::before {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: var(--surface);
+  border-top: 1px solid var(--accent);
+  border-left: 1px solid var(--accent);
+}
+
+.arch-tour__bubble[data-placement="top"]::before {
+  bottom: -7px;
+  left: 50%;
+  transform: translateX(-50%) rotate(225deg);
+}
+.arch-tour__bubble[data-placement="bottom"]::before {
+  top: -7px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+}
+.arch-tour__bubble[data-placement="left"]::before {
+  right: -7px;
+  top: 50%;
+  transform: translateY(-50%) rotate(135deg);
+}
+.arch-tour__bubble[data-placement="right"]::before {
+  left: -7px;
+  top: 50%;
+  transform: translateY(-50%) rotate(-45deg);
+}
+.arch-tour__bubble[data-placement="center"]::before {
+  display: none;
+}
+
+.arch-tour__close {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  width: 1.6rem;
+  height: 1.6rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.arch-tour__close:hover {
+  color: var(--fg);
+  background: var(--surface-alt);
+  border-color: var(--border);
+}
+
+.arch-tour__close svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+}
+
+.arch-tour__step-count {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+  margin: 0 2rem 0.25rem 0;
+}
+
+.arch-tour__title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0 0 0.4rem;
+  color: var(--fg);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.arch-tour__body {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--fg);
+  margin-bottom: 0.85rem;
+}
+
+.arch-tour__body code {
+  background: var(--surface-alt);
+  padding: 0.05em 0.35em;
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.85em;
+}
+
+.arch-tour__controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.arch-tour__dontshow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.arch-tour__nav {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.arch-tour__btn {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--fg);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.arch-tour__btn:hover {
+  border-color: var(--accent);
+}
+
+.arch-tour__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.arch-tour__btn--primary {
+  background: var(--accent);
+  color: var(--argus-on-accent);
+  border-color: var(--accent);
+}
+
+.arch-tour__btn--primary:hover {
+  filter: brightness(1.08);
+}
+
+/* Overlay zoom controls — floating bottom-right inside the viewport,
+   GitHub-workflow-style pill cluster with subtle backdrop. */
+.arch-zoom-controls {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  display: flex;
+  gap: 0.15rem;
+  align-items: stretch;
+  padding: 0.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 4;
+}
+
+.arch-zoom-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding: 0 0.45rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.arch-zoom-btn:hover {
+  background: var(--surface-alt);
+  border-color: var(--border);
+}
+
+.arch-zoom-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.arch-zoom-reset {
+  font-variant-numeric: tabular-nums;
+  min-width: 3rem;
+  font-size: 0.78rem;
+  color: var(--fg-muted);
+}
+
+.arch-zoom-fit svg {
+  display: block;
+}
+
+.arch-columns {
+  display: grid;
+  /* Fixed-width columns — the diagram keeps a consistent shape and
+     text never wraps awkwardly when the viewport narrows. If the
+     diagram is wider than the viewport, the user pans or zooms out
+     via the controls (or wheel + drag) to navigate. */
+  grid-template-columns: repeat(7, 12rem);
+  width: max-content;
+  gap: 0.75rem;
+  align-items: start;
+  transform-origin: 0 0;
+  will-change: transform;
+  padding: 0.75rem;
+}
+
+.arch-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.arch-column__title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+  margin: 0 0 0.25rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ─── Node boxes ──────────────────────────────────────────────────── */
+
+.arch-node {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  font-family: inherit;
+  color: var(--fg);
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
+  transition: background 0.12s ease, border-color 0.12s ease,
+              opacity 0.18s ease, min-width 0.25s ease, box-shadow 0.2s ease;
+}
+
+/* On-path nodes during a flow expand vertically only — no horizontal
+   overflow so multiple highlighted nodes never overlap each other. */
+.arch-page[data-flow-active] .arch-node[data-on-path="true"] {
+  z-index: 2;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* The currently-selected node (its detail panel is open) gets accent
+   emphasis but stays inside its column — the floating panel carries
+   the full content, so no horizontal growth is needed. */
+.arch-node[data-open="true"] {
+  z-index: 3;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(219, 230, 76, 0.25),
+              0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.arch-node:hover {
+  background: var(--surface-alt);
+  border-color: var(--accent-dim);
+}
+
+.arch-node:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.arch-node[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--surface-alt);
+}
+
+.arch-node__label {
+  display: block;
+  font-weight: 500;
+  line-height: 1.2;
+  overflow-wrap: break-word;
+}
+
+.arch-node__sub {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--fg-muted);
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  margin-top: 0;
+  transition: max-height 0.25s ease, opacity 0.2s ease, margin-top 0.2s ease;
+}
+
+.arch-node[data-open="true"] .arch-node__sub,
+.arch-page[data-flow-active] .arch-node[data-on-path="true"] .arch-node__sub {
+  max-height: 5rem;
+  opacity: 1;
+  margin-top: 0.2rem;
+}
+
+.arch-node__badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0 0.35rem;
+  border-radius: 2px;
+  background: var(--accent);
+  color: var(--argus-on-accent);
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+/* Column-tinted left border so the swatch reads instantly. */
+.arch-node[data-column="actors"]    { border-left: 3px solid var(--fg-muted); }
+.arch-node[data-column="surfaces"]  { border-left: 3px solid var(--argus-primary-green); }
+.arch-node[data-column="core"]      { border-left: 3px solid var(--surface-alt); }
+.arch-node[data-column="scanners"]  { border-left: 3px solid var(--accent); }
+.arch-node[data-column="reporters"] { border-left: 3px solid var(--argus-primary-green); }
+.arch-node[data-column="artifacts"] { border-left: 3px solid var(--severity-info, #4a8fb8); }
+.arch-node[data-column="consumers"] { border-left: 3px solid var(--fg-muted); }
+
+/* ─── Flow-highlight state ────────────────────────────────────────── */
+
+/* When a flow is active, the page gets ``data-flow-active``.
+ * Non-path nodes dim; on-path nodes stay full opacity and gain an
+ * accent border. The numeric step badge appears next to the label. */
+
+.arch-page[data-flow-active] .arch-node {
+  opacity: 0.28;
+}
+
+.arch-page[data-flow-active] .arch-node[data-on-path="true"] {
+  opacity: 1;
+  border-color: var(--accent);
+}
+
+.arch-node[data-on-path="true"] .arch-node__step-index {
+  display: inline-block;
+  width: 1.25rem;
+  height: 1.25rem;
+  line-height: 1.25rem;
+  text-align: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--argus-on-accent);
+  font-size: 0.7rem;
+  font-weight: 600;
+  margin-right: 0.4rem;
+}
+
+/* ─── Right rail: flow list ───────────────────────────────────────── */
+
+.arch-flows__title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+  margin: 0 0 0.5rem;
+}
+
+.arch-flows__list {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.arch-flow {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  color: var(--fg);
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.arch-flow:hover {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.arch-flow[aria-pressed="true"] {
+  background: var(--surface);
+  border-color: var(--accent);
+}
+
+.arch-flow__label {
+  display: block;
+  font-weight: 500;
+}
+
+.arch-flow__summary {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--fg-muted);
+  margin-top: 0.2rem;
+  line-height: 1.35;
+}
+
+.arch-flow--overlay .arch-flow__label::before {
+  content: "▣ ";
+  color: var(--accent-dim);
+}
+
+.arch-flows__clear {
+  display: block;
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--fg-muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.35rem 0.65rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.arch-flows__clear:hover {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
+/* ─── Steps panel (below flows when a flow is active) ─────────────── */
+
+.arch-steps__title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+  margin: 0 0 0.5rem;
+}
+
+/* Empty-state placeholder shown until a flow is selected. */
+.arch-steps__empty {
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--fg-muted);
+  margin: 0;
+}
+
+/* Hide the empty placeholder once a flow activates; hide the list
+   until then so the empty state shows by default. */
+.arch-page[data-flow-active] .arch-steps__empty { display: none; }
+.arch-page:not([data-flow-active]) .arch-steps__list { display: none; }
+
+.arch-steps__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.arch-step {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: var(--fg-muted);
+}
+
+.arch-step__number {
+  flex: 0 0 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--argus-on-accent);
+  font-weight: 600;
+  font-size: 0.7rem;
+  text-align: center;
+  line-height: 1.25rem;
+}
+
+.arch-step__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.arch-step__name {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+/* ─── Side panel (clicking a node opens this) ─────────────────────── */
+
+.arch-panel {
+  position: fixed;
+  top: 5rem;
+  /* `left` is set by JS on open so the panel can be dragged freely.
+     The default anchor is the right side of the viewport. */
+  width: 26rem;
+  min-width: 18rem;
+  max-width: calc(100vw - 2rem);
+  height: auto;
+  min-height: 10rem;
+  max-height: calc(100vh - 6rem);
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  padding: 0;
+  z-index: 30;
+  display: none;
+  resize: both;
+  overflow: hidden;
+}
+
+.arch-panel[data-open="true"] {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Reset the global ``header { display: flex; ... }`` styling so the
+   title and kind stack vertically inside the panel header. */
+.arch-panel__header {
+  display: block;
+  padding: 0.75rem 2.5rem 0.6rem 1.25rem;
+  margin: 0;
+  max-width: none;
+  cursor: move;
+  user-select: none;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+
+.arch-panel__body-wrap {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 0.75rem 1.25rem 1.25rem 1.25rem;
+}
+
+.arch-panel__close {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-family: inherit;
+  z-index: 2;
+}
+
+.arch-panel__close:hover {
+  color: var(--fg);
+  background: var(--surface-alt);
+  border-color: var(--border);
+}
+
+.arch-panel__close svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+}
+
+.arch-panel__label {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--fg);
+  text-transform: none;
+  letter-spacing: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arch-panel__kind {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+  margin: 0.15rem 0 0;
+}
+
+.arch-panel__purpose {
+  margin: 0.5rem 0 1rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--fg);
+}
+
+.arch-panel__section-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+  margin: 1rem 0 0.4rem;
+}
+
+.arch-panel__files {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-family: var(--mono, ui-monospace, "SF Mono", Menlo, monospace);
+  font-size: 0.78rem;
+}
+
+.arch-panel__files li {
+  padding: 0.15rem 0;
+  color: var(--fg-muted);
+}
+
+.arch-panel__used-by {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+}
+
+.arch-panel__used-by-link {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.6rem;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--fg);
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+
+.arch-panel__used-by-link:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.arch-panel__used-by-link:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.arch-panel__adrs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+}
+
+.arch-panel__adr {
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-alt);
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.arch-panel__adr--missing {
+  border-color: var(--severity-medium, #d4a04a);
+  color: var(--severity-medium, #d4a04a);
+}
+
+.arch-panel__code {
+  display: block;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.6rem 0.75rem;
+  font-family: var(--mono, ui-monospace, "SF Mono", Menlo, monospace);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--fg);
+  white-space: pre;
+  overflow-x: auto;
+  margin: 0.25rem 0 0.75rem;
+}
+
+/* Inset copy button: a small icon button pinned to the top-right
+   corner of the code wrap so the affordance sits inside the code
+   surface instead of below it. */
+.arch-panel__code-wrap {
+  position: relative;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.arch-panel__code-wrap .arch-panel__code {
+  margin: 0;
+}
+
+.arch-panel__copy {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  width: 1.6rem;
+  height: 1.6rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-family: inherit;
+  opacity: 0.7;
+  transition: opacity 0.15s ease, color 0.15s ease,
+              border-color 0.15s ease, background 0.15s ease;
+}
+
+.arch-panel__code-wrap:hover .arch-panel__copy,
+.arch-panel__copy:focus-visible {
+  opacity: 1;
+}
+
+.arch-panel__copy:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+  background: var(--surface-alt);
+}
+
+.arch-panel__copy svg {
+  display: block;
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
+
+/* Brief confirmation state — set by JS when the click handler
+   successfully writes to the clipboard. */
+.arch-panel__copy[data-copied="true"] {
+  opacity: 1;
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ─── External tools side rail ────────────────────────────────────── */
+
+.arch-tools {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--border);
+}
+
+/* Bumped specificity so the margin survives both Material's own
+   ``.md-typeset h3`` rule AND the typeset reset in the docsite
+   wrapper (``.md-typeset .arch-page h3 { margin: 0 }``). The
+   ``.md-typeset`` prefix here is harmless in the standalone viewer
+   context — the selector still matches whenever the host page
+   carries that class. */
+.md-typeset .arch-page .arch-tools__title,
+.arch-page .arch-tools__title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+  margin: 0 0 0.9rem;
+}
+
+/* Specificity bump so this wins against MkDocs Material's
+   ``.md-typeset ul:not([hidden]) { display: flow-root }`` rule
+   (specificity (0,2,1)) — without the ``.arch-page`` prefix and
+   the matching ``:not([hidden])`` attribute filter, the external-
+   tools row stacks vertically inside the docs site instead of
+   wrapping as inline pills. */
+.arch-page .arch-tools__list:not([hidden]) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.arch-tool {
+  font-size: 0.78rem;
+  padding: 0.3rem 0.65rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.12s ease, border-color 0.12s ease,
+              background 0.12s ease;
+}
+
+.arch-tool:hover,
+.arch-tool:focus-visible {
+  color: var(--fg);
+  border-color: var(--accent);
+  background: var(--surface-alt);
+}
+
+.arch-tool--critical {
+  border-color: var(--accent-dim);
+  color: var(--fg);
+}
+
+.arch-tool--critical:hover,
+.arch-tool--critical:focus-visible {
+  border-color: var(--accent);
+}
+
+/* ─── Configure mode (picker) ─────────────────────────────────────── */
+
+.arch-toolbar {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.arch-toolbar__title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
+  flex: 1 1 auto;
+}
+
+.arch-toolbar__btn {
+  font-size: 0.85rem;
+  padding: 0.4rem 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--fg);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.arch-toolbar__btn:hover {
+  border-color: var(--accent);
+}
+
+.arch-toolbar__btn[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--argus-on-accent);
+  border-color: var(--accent);
+}
+
+.arch-page[data-mode="configure"] .arch-node {
+  cursor: pointer;
+}
+
+.arch-page[data-mode="configure"] .arch-node[data-selected="true"] {
+  background: var(--surface-alt);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(219, 230, 76, 0.18);
+}
+
+/* Picker output panel that slides up when Configure mode is active. */
+.arch-picker {
+  margin-top: 1rem;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--surface);
+  padding: 0.75rem 1rem;
+}
+
+.arch-picker__tabs {
+  display: flex;
+  gap: 0.4rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.75rem;
+}
+
+.arch-picker__tab {
+  font-size: 0.82rem;
+  padding: 0.35rem 0.85rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.arch-picker__tab[aria-selected="true"] {
+  background: var(--surface-alt);
+  border-color: var(--border);
+  color: var(--fg);
+}
+
+.arch-picker__pane {
+  display: none;
+}
+
+.arch-picker__pane[data-active="true"] {
+  display: block;
+}
+
+.arch-picker__controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  font-size: 0.82rem;
+}
+
+.arch-picker__controls label {
+  color: var(--fg-muted);
+}
+
+.arch-picker__controls select {
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--fg);
+  padding: 0.2rem 0.45rem;
+  font-family: inherit;
+  font-size: 0.82rem;
+}
+
+.arch-picker__empty {
+  font-size: 0.85rem;
+  color: var(--fg-muted);
+  padding: 0.5rem 0;
+}
