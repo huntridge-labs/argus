@@ -47,7 +47,7 @@ class MenuItem:
 MENU: tuple[MenuItem, ...] = (
     MenuItem("scan", "Run a scan", "Run argus scan and watch it live", "⚡"),
     MenuItem("findings", "View findings", "Browse and triage the latest results", "🔎"),
-    MenuItem("configure", "Configure", "Edit argus.yml in your editor", "⚙"),
+    MenuItem("configure", "Configure", "Toggle scanners + settings in argus.yml", "⚙"),
     MenuItem("init", "Initialize", "Detect the project and generate argus.yml", "✨"),
     MenuItem("settings", "Settings", "Theme, colours, animations, notifications", "🎛"),
     MenuItem("docs", "Help & docs", "Keybindings and where to learn more", "📖"),

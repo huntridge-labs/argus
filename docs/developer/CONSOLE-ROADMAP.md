@@ -132,24 +132,41 @@ Let users resolve findings, not just read them.
 produces a passing run *is* the auto-merge story. It complements the
 already-foundational Dependabot/Renovate flow as its interactive sibling.
 
-## Phase 2 — Config editor screen (planned)
+## Phase 2 — Config editor screen (shipped, into PR #261)
 
 Edit `argus.yml` by form, not by hand.
 
-**Architecture**
-- A Config screen using Textual `Input` / `Select` / `Switch` / `RadioSet`,
-  populated from and validated against the existing config schema
-  (`argus/core/config.py` + `argus/core/schema.py`). Live validation; invalid
-  states block save.
-- **Surfaced focused docs:** render the relevant slice of
-  [`config-reference.md`](../config-reference.md) per field so the answer to
-  "what does this do?" is on screen.
-- **Safe write-back:** form-generated YAML must not clobber a user's comments
-  / ordering. Decide up front: a round-trip-preserving writer (`ruamel.yaml`)
-  vs. regenerate-from-template. This is a prerequisite, not a detail.
-- Scanner selection reuses the logic already behind the docsite Configure
-  mode (`scripts/docsite/architecture.py`), keeping one source of truth for
-  "which scanners, what config they emit."
+**Shipped**
+- **Config screen** (`ConfigScreen` in `argus/viewers/terminal/console.py`)
+  reachable from the home menu's *Configure* entry. Lists the editable
+  settings as an `OptionList`; `enter` cycles a value, `s` validates + writes,
+  `esc` discards. Opens the form when an `argus.yml` exists; with none, it
+  nudges toward Initialize and falls back to `$EDITOR`/`$VISUAL` so a file can
+  still be created by hand.
+- **UI-free edit core** (`argus/viewers/terminal/config_editor.py`,
+  textual-free → CI-covered): `editable_rows` parses the file into
+  toggle/enum rows (scanner `enabled` flags + bounded section scalars —
+  `severity_threshold`, `backend`, `pull_policy`, `cve_source`,
+  `open_location`); `apply_row` cycles a row's value; `validate` re-parses and
+  runs `argus/core/schema.py::validate_config`, blocking save on any
+  `error`-level issue.
+- **Surfaced focused docs:** each row carries a one-line `doc` string
+  (`_DOCS`) rendered beside it, so "what does this do?" is on screen.
+- **Safe write-back — decision resolved.** Rather than re-serialising the
+  whole file (which clobbers comments/ordering), edits are *comment-preserving
+  targeted line rewrites*: `set_value` walks the file indentation-aware to the
+  exact `key: value` line and rewrites only its value, keeping key,
+  indentation, and any trailing inline comment. The editable set is
+  deliberately bounded to plain scalars so every edit is a single,
+  unambiguous line — sidestepping the `ruamel.yaml` round-trip dependency
+  entirely. Free-text fields (e.g. `output_dir`) stay editable via `$EDITOR`.
+
+**Deferred to a follow-up**
+- Free-text `Input` fields (paths, URLs, custom args) and scanner *addition*
+  (the form edits settings that already exist in the file; adding a brand-new
+  scanner block still goes through Init or `$EDITOR`). The docsite Configure
+  logic (`scripts/docsite/architecture.py`) is the source of truth to reuse
+  when that lands.
 
 ## Phase 3 — Init wizard screen (planned)
 
@@ -183,9 +200,9 @@ findings viewer in as a true in-app screen (it's a hand-off today).
   back to `--help` (the backward-compat contract). `argus view` still
   deep-links to findings.
 - **Configure / Init** reach the real CLI capabilities now: Configure opens
-  `argus.yml` in `$EDITOR`/`$VISUAL` (via `App.suspend`), Init streams
-  `argus init`. The form-based config editor (Phase 2) and init wizard
-  (Phase 3) replace these interim flows.
+  the Phase-2 form editor (falling back to `$EDITOR`/`$VISUAL` via
+  `App.suspend` when no `argus.yml` exists yet), Init streams `argus init`.
+  The init wizard (Phase 3) replaces the streaming hand-off.
 
 **Remaining**
 - Findings + Init are hand-offs (the console exits with a sentinel; the
@@ -220,8 +237,11 @@ findings viewer in as a true in-app screen (it's a hand-off today).
 
 ## Open decisions (product calls before the relevant phase)
 
-- **YAML write-back strategy** (Phase 2): `ruamel.yaml` round-trip vs.
-  template regeneration. Affects whether we can preserve user comments.
+- **YAML write-back strategy** (Phase 2): ✅ decided — comment-preserving
+  *targeted line rewrites* (`config_editor.set_value`) over the bounded set of
+  toggle/enum scalars, not a `ruamel.yaml` round-trip or template
+  regeneration. Preserves comments/ordering with no new dependency; the trade
+  is that only settings already present in the file are form-editable.
 - **Bare-`argus` default change** (Phase 4): ✅ decided — bare `argus`
   opens the Console, gated on stdout+stdin both being a TTY so headless /
   CI / piped use is untouched (no deprecation window needed). Still worth a

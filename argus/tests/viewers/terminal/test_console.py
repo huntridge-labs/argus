@@ -123,10 +123,21 @@ class TestDispatch:
         app.dispatch_menu("init")
         assert calls["exit"] and calls["exit"][0] == "init"
 
-    def test_configure_edits(self, console):
+    def test_configure_opens_config_screen_when_present(self, console, tmp_path, monkeypatch):
         _module, app, calls = console
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "argus.yml").write_text("scanners:\n  bandit:\n    enabled: true\n")
+        app.dispatch_menu("configure")
+        assert "ConfigScreen" in calls["push"]
+        assert calls["edit"] == 0
+
+    def test_configure_falls_back_to_editor_when_absent(self, console, tmp_path, monkeypatch):
+        _module, app, calls = console
+        monkeypatch.chdir(tmp_path)
+        app.settings = ConsoleSettings(notifications=False)  # silence the nudge toast
         app.dispatch_menu("configure")
         assert calls["edit"] == 1
+        assert "ConfigScreen" not in calls["push"]
 
 
 class TestNotifyGating:
@@ -135,3 +146,21 @@ class TestNotifyGating:
         app.settings = ConsoleSettings(notifications=False)
         # Should return without calling super().notify (which the stub lacks).
         assert app.notify("hello") is None
+
+
+class TestConfigScreen:
+    def test_reads_file_into_working_copy(self, console, tmp_path):
+        module, _app, _calls = console
+        cfg = tmp_path / "argus.yml"
+        body = "scanners:\n  bandit:\n    enabled: true\n"
+        cfg.write_text(body)
+        screen = module.ConfigScreen(cfg)
+        assert screen._text == body
+        assert screen._original == body
+        assert screen._path == cfg
+
+    def test_missing_file_is_empty_working_copy(self, console, tmp_path):
+        module, _app, _calls = console
+        screen = module.ConfigScreen(tmp_path / "absent.yml")
+        assert screen._text == ""
+        assert screen._original == ""
