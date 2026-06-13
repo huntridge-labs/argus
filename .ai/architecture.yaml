@@ -123,6 +123,11 @@ components:
         ARGUS_AI_LOCAL/OLLAMA_HOST gives a keyless local Ollama endpoint, ARGUS_AI_PROVIDER + key gives cloud,
         else off. Drives the terminal viewer's ``x`` Explain overlay; model output is advisory (fixes still gate
         through the Phase-1 diff preview, never auto-applied).
+      core/reachability.py: UI-free reachability heuristic (Phase 12 first cut). is_imported(package, ecosystem,
+        root) + reachability_of(finding) answer "is the vulnerable dependency even imported in source?" via a
+        bounded, dependency-free pip/npm import scan (build/vendor dirs skipped, early-exit, cached). Returns
+        imported / not-imported / unknown; labelled "imported in source" (NOT "reachable" — true call-graph
+        reachability stays roadmap research). Shows a Reachability row in the terminal viewer's detail pane.
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes
@@ -755,6 +760,11 @@ docsite:
         ARGUS_AI_LOCAL/OLLAMA_HOST gives a keyless local Ollama endpoint, ARGUS_AI_PROVIDER + key gives cloud,
         else off. Drives the terminal viewer's ``x`` Explain overlay; model output is advisory (fixes still gate
         through the Phase-1 diff preview, never auto-applied).
+      core/reachability.py: UI-free reachability heuristic (Phase 12 first cut). is_imported(package, ecosystem,
+        root) + reachability_of(finding) answer "is the vulnerable dependency even imported in source?" via a
+        bounded, dependency-free pip/npm import scan (build/vendor dirs skipped, early-exit, cached). Returns
+        imported / not-imported / unknown; labelled "imported in source" (NOT "reachable" — true call-graph
+        reachability stays roadmap research). Shows a Reachability row in the terminal viewer's detail pane.
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes

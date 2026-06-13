@@ -160,6 +160,18 @@ only public CVE ids — never your source or secrets. With no network (or
 `ARGUS_NO_NETWORK=1`) the viewer behaves exactly as before, just without the
 badges.
 
+### Reachability
+
+For dependency findings, the detail pane also shows a **Reachability** row —
+a first-cut heuristic answering *is the vulnerable package even imported in
+this project's source?* A declared-but-never-imported dependency
+(`not imported (likely unused)`) is a strong "lower real risk" signal; one
+that's `imported in source` is clearly in play. It's a bounded, dependency-
+free source scan (pip / npm import patterns, build & vendor dirs skipped),
+cached per package. Deliberately labelled "imported in source," **not**
+"reachable" — true call-graph reachability is a harder, ecosystem-specific
+problem tracked as research in the roadmap, not claimed here.
+
 ## Triage & suppression (`S`)
 
 Triage at scale, the way security teams actually do it — but with a durable
