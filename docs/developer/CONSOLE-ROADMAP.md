@@ -168,13 +168,29 @@ Edit `argus.yml` by form, not by hand.
   logic (`scripts/docsite/architecture.py`) is the source of truth to reuse
   when that lands.
 
-## Phase 3 — Init wizard screen (planned)
+## Phase 3 — Init wizard screen (shipped, into PR #261)
 
-Guided first-run. Wraps the existing detection (`argus init` —
-language / framework / linter detection) in an interactive screen: detect →
-review the proposed scanner set → tweak → write `argus.yml` → offer to run
-the first scan (hand off to the Phase-0 runner). No new detection logic;
-it's a frontend over `argus init`.
+Guided first-run, all in-app — the `argus init` subprocess hand-off is gone.
+
+**Shipped**
+- **`InitScreen`** (`argus/viewers/terminal/console.py`), reached from the
+  home menu's *Initialize* entry: detect → show what was found + a
+  tool-readiness line → list the proposed scanners as toggles → write
+  `argus.yml`. `w` writes; `r` writes **and** hands off to the Phase-0 scan
+  runner for the first scan; `esc` cancels. An existing `argus.yml` requires
+  a confirming second keypress before it's overwritten (mirrors
+  `argus init`'s `--force` guard) — never a silent clobber.
+- **UI-free core** (`argus/viewers/terminal/init_wizard.py`, textual-free →
+  CI-covered): `build_plan(root)` calls the *pure* `argus.init` functions
+  (`detect_project`, `generate_config`, `_extract_enabled_scanners`,
+  `_check_local_readiness`) and returns an `InitPlan` (detected categories,
+  proposed scanners, the generated YAML, readiness). `write_config` enforces
+  the overwrite guard. **No detection logic is reimplemented** — the wizard
+  is strictly a frontend over `argus init`. The signal→label map was
+  promoted to `argus.init.SIGNAL_LABELS` so the CLI summary and the wizard
+  render identical names.
+- Scanner toggles reuse the Phase-2 `config_editor` over the generated YAML,
+  so toggling and the comment-preserving write share one implementation.
 
 ## Phase 4 — Console home, settings, and bare-`argus` entry (shipped: shell)
 
@@ -199,17 +215,17 @@ findings viewer in as a true in-app screen (it's a hand-off today).
   when stdout *and* stdin are a TTY; piped / CI / no-`[terminal]` falls
   back to `--help` (the backward-compat contract). `argus view` still
   deep-links to findings.
-- **Configure / Init** reach the real CLI capabilities now: Configure opens
-  the Phase-2 form editor (falling back to `$EDITOR`/`$VISUAL` via
-  `App.suspend` when no `argus.yml` exists yet), Init streams `argus init`.
-  The init wizard (Phase 3) replaces the streaming hand-off.
+- **Configure / Init** are both in-app screens now: Configure opens the
+  Phase-2 form editor (falling back to `$EDITOR`/`$VISUAL` via `App.suspend`
+  when no `argus.yml` exists yet), Init opens the Phase-3 wizard. The
+  `argus init` subprocess hand-off has been removed.
 
 **Remaining**
-- Findings + Init are hand-offs (the console exits with a sentinel; the
-  viewer / `argus init` run, then the console reopens). The seamless
-  single-app version folds the findings viewer in as a `FindingsScreen`
-  mounted by both the Console and `argus view` — the "Console module
-  layout" decision below.
+- Findings is still a hand-off (the console exits with a sentinel; the
+  viewer runs, then the console reopens). The seamless single-app version
+  folds the findings viewer in as a `FindingsScreen` mounted by both the
+  Console and `argus view` — the "Console module layout" decision below.
+  (Configure and Init are now in-app screens; only findings remains.)
 - Deeper terminal-compat / accessibility (`NO_COLOR`, low-color, SSH/tmux
   fallbacks, screen-reader plain mode) beyond reduced-motion + the
   animation kill-switch.

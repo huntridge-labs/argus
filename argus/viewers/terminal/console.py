@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 from textual.app import App, ComposeResult
@@ -32,13 +31,12 @@ from textual.widgets.option_list import Option
 
 from argus.core import console_config
 from argus.core.console_config import ConsoleSettings
-from argus.viewers.terminal import config_editor, console_model
+from argus.viewers.terminal import config_editor, console_model, init_wizard
 
-# Sentinels the app exits with so ``launch`` can hand off to another
-# full-screen surface (the findings viewer / the init CLI) and then return
-# to the console.
+# Sentinel the app exits with so ``launch`` can hand off to the findings
+# viewer (its own full-screen surface) and then return to the console.
+# Init and Configure are now in-app screens (no hand-off needed).
 _HANDOFF_FINDINGS = "findings"
-_HANDOFF_INIT = "init"
 
 
 def _argus_theme(accent: str) -> Theme:
@@ -304,6 +302,130 @@ class ConfigScreen(Screen):
         self.dismiss()
 
 
+class InitScreen(Screen):
+    """Guided first-run wizard — a frontend over ``argus init``.
+
+    Shows what detection found (``init_wizard.build_plan``), lists the
+    proposed scanners as toggles (reusing ``config_editor`` over the
+    generated argus.yml held in a working copy), and writes the file. No
+    detection logic lives here — it's all in ``argus.init`` / ``init_wizard``.
+
+    ``w`` writes argus.yml, ``r`` writes then offers to run the first scan.
+    Dismisses with ``"scan"`` / ``"written"`` / ``None`` so the app can
+    refresh the home status and optionally launch the scan runner.
+    """
+
+    CSS = """
+    InitScreen { align: center middle; }
+    #init-body {
+        background: $surface; border: thick $accent;
+        width: 84%; max-width: 96; height: auto; max-height: 92%; padding: 1 2;
+    }
+    #init-title { text-style: bold; padding: 0 0 1 0; }
+    #init-summary { color: $text-muted; padding: 0 0 1 0; }
+    #init-detected { height: auto; padding: 0 0 1 0;
+                     border-bottom: dashed $panel; }
+    #init-list { height: auto; max-height: 16; border: none; background: transparent; }
+    #init-hint { color: $text-muted; padding: 1 0 0 0; }
+    """
+    BINDINGS = [
+        Binding("w", "write", "Write", show=True),
+        Binding("r", "write_scan", "Write & scan", show=True),
+        Binding("escape", "cancel", "Cancel", show=True),
+        Binding("q", "cancel", show=False),
+    ]
+
+    def __init__(self, plan: "init_wizard.InitPlan"):
+        super().__init__()
+        self._plan = plan
+        self._text = plan.yaml
+        self._highlight = 0
+        self._overwrite_armed = False
+
+    def compose(self) -> ComposeResult:  # pragma: no cover — UI
+        with Vertical(id="init-body"):
+            yield Static("✨  Initialize · argus.yml", id="init-title")
+            yield Static(init_wizard.summary_line(self._plan), id="init-summary")
+            if self._plan.categories:
+                detected = "\n".join(
+                    f"  ✓ {c.label}  [dim]{c.example}[/dim]"
+                    for c in self._plan.categories
+                )
+            else:
+                detected = "  [dim]no project signals detected — safe defaults proposed[/dim]"
+            readiness = init_wizard.readiness_line(self._plan.readiness)
+            if readiness:
+                detected += f"\n  [dim]tools: {readiness}[/dim]"
+            yield Static(detected, id="init-detected")
+            opts = [
+                Option(f"{r.label:<26}{r.value}", id=r.key)
+                for r in config_editor.editable_rows(self._text)
+            ]
+            yield OptionList(*opts, id="init-list")
+            exists = (
+                "   [yellow]argus.yml exists — write overwrites[/yellow]"
+                if self._plan.config_exists else ""
+            )
+            yield Static(
+                f"enter toggle   ·   w write   ·   r write & scan   ·   esc cancel{exists}",
+                id="init-hint",
+            )
+        yield Footer()
+
+    def on_mount(self) -> None:  # pragma: no cover — UI
+        self._restore_cursor()
+        self.query_one("#init-list", OptionList).focus()
+
+    def _restore_cursor(self) -> None:  # pragma: no cover — UI
+        option_list = self.query_one("#init-list", OptionList)
+        if option_list.option_count:
+            option_list.highlighted = min(self._highlight, option_list.option_count - 1)
+
+    def on_option_list_option_selected(  # pragma: no cover — UI
+        self, event: OptionList.OptionSelected,
+    ) -> None:
+        rows = {r.key: r for r in config_editor.editable_rows(self._text)}
+        row = rows.get(event.option.id)
+        if row is None:
+            return
+        self._highlight = event.option_index
+        result = config_editor.apply_row(self._text, row)
+        if result is not None:
+            self._text, _ = result
+        self.refresh(recompose=True)
+        self.call_after_refresh(self._restore_cursor)
+
+    def _write(self, *, then_scan: bool) -> None:  # pragma: no cover — UI
+        target = self._plan.config_path
+        if target.exists() and not self._overwrite_armed:
+            self._overwrite_armed = True
+            self.app.notify(
+                f"{target.name} already exists — press the same key again to overwrite.",
+                severity="warning", timeout=6,
+            )
+            return
+        error = config_editor.validate(self._text)
+        if error:
+            self.app.notify(f"Not written — {error}", severity="error", timeout=8)
+            return
+        try:
+            init_wizard.write_config(target, self._text, force=True)
+        except OSError as exc:
+            self.app.notify(f"Couldn't write {target.name}: {exc}", severity="error", timeout=6)
+            return
+        self.app.notify(f"Created {target.name}.", severity="information", timeout=3)
+        self.dismiss("scan" if then_scan else "written")
+
+    def action_write(self) -> None:  # pragma: no cover — UI
+        self._write(then_scan=False)
+
+    def action_write_scan(self) -> None:  # pragma: no cover — UI
+        self._write(then_scan=True)
+
+    def action_cancel(self) -> None:  # pragma: no cover — UI
+        self.dismiss()
+
+
 class HomeScreen(Screen):
     """The launcher: wordmark banner, project status, and the menu."""
 
@@ -436,7 +558,7 @@ class ConsoleApp(App):
         elif key == "findings":
             self.exit(_HANDOFF_FINDINGS)
         elif key == "init":
-            self.exit(_HANDOFF_INIT)
+            self._open_init()
         elif key == "configure":
             self._open_config()
 
@@ -473,6 +595,25 @@ class ConsoleApp(App):
         )
         self._edit_config()
 
+    def _open_init(self) -> None:  # pragma: no cover — UI
+        """Open the init wizard over the project at the current directory.
+
+        Detects the project, lets the user review/toggle the proposed
+        scanners, and writes argus.yml in-app. On "write & scan" it hands
+        straight to the scan runner; either way it refreshes home status.
+        """
+        plan = init_wizard.build_plan(Path("."))
+
+        def _after(result: object) -> None:
+            self.config_path = self._detect_config_path()
+            screen = self.screen
+            if isinstance(screen, HomeScreen):
+                screen.refresh_status()
+            if result == "scan":
+                self._open_scan()
+
+        self.push_screen(InitScreen(plan), _after)
+
     def _edit_config(self) -> None:  # pragma: no cover — UI
         editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
         if not editor:
@@ -486,12 +627,12 @@ class ConsoleApp(App):
 
 
 def launch(results_dir: str | None = None) -> int:
-    """Run the Console, handling findings / init hand-offs in a loop.
+    """Run the Console, handling the findings hand-off in a loop.
 
-    The console exits with a sentinel for the two surfaces that need their
-    own full screen (the findings viewer and ``argus init``); we run that
-    surface, then re-open the console. Quitting the console returns its
-    exit code.
+    The console exits with a sentinel for the findings viewer (the one
+    surface that needs its own full screen); we run it, then re-open the
+    console. Configure and Init are handled in-app. Quitting the console
+    returns its exit code.
     """
     while True:
         app = ConsoleApp(results_dir=results_dir)
@@ -500,8 +641,5 @@ def launch(results_dir: str | None = None) -> int:
         if result == _HANDOFF_FINDINGS:
             from argus.viewers.terminal.app import run_app
             run_app(results_dir)
-            continue
-        if result == _HANDOFF_INIT:
-            subprocess.run([sys.executable, "-m", "argus", "init"])
             continue
         return app.return_code or 0

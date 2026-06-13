@@ -33,7 +33,7 @@ argus scan ...   # every subcommand is unchanged
   | Run a scan | Runs `argus scan` and streams it live, then reloads. |
   | View findings | Opens the full triage viewer (same as `argus view`). |
   | Configure | Opens the form editor for `argus.yml` (see below). |
-  | Initialize | Runs `argus init` to detect the project + write config. |
+  | Initialize | Guided first-run wizard — detect the project, review, write `argus.yml` (see below). |
   | Settings | Theme, accent colour, animations, notifications. |
   | Help & docs | Keybindings and where to learn more. |
   | Quit | Leave the console. |
@@ -56,6 +56,20 @@ Settings that aren't toggle/choice fields (paths, URLs, custom args) and
 adding a brand-new scanner block still go through Initialize or your
 `$EDITOR`. If no `argus.yml` exists yet, Configure points you to Initialize
 and falls back to `$EDITOR` / `$VISUAL` so you can create one by hand.
+
+## Initialize
+
+A guided first-run wizard, all in-app — no shelling out to the CLI. It runs
+the same detection as `argus init`, shows what it found (languages,
+dependency manifests, CI, infrastructure) and a one-line tool-readiness
+summary, then lists the **proposed scanners** as toggles so you can turn any
+off before writing. Press `w` to write `argus.yml`, or `r` to write **and**
+jump straight into your first scan; `esc` cancels.
+
+If an `argus.yml` already exists, the wizard says so and asks you to press
+the write key a second time to confirm the overwrite — it never clobbers a
+config silently. The detection and config generation are the exact pure
+functions behind `argus init`; the wizard is just a frontend over them.
 
 ## Settings
 
@@ -82,6 +96,6 @@ Settings are user preferences, kept separate from your project's
 The Console and `argus view terminal` share the same findings viewer —
 "View findings" opens it, and `argus view` is the direct deep-link. See
 [`view-terminal.md`](view-terminal.md) for the full triage reference. The
-broader plan for the Console (the init wizard and deeper vulnerability
-mitigation are next) lives in
+broader plan for the Console (deeper vulnerability mitigation and folding
+the findings viewer in as a true in-app screen are next) lives in
 [`developer/CONSOLE-ROADMAP.md`](developer/CONSOLE-ROADMAP.md).
