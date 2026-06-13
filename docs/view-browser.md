@@ -104,6 +104,23 @@ JS-enhanced sessions get live filter updates without a page reload; non-JS
 clients see the same content via a plain form submit (Apply button is the
 fallback).
 
+#### Risk column (EPSS + CISA KEV) — opt-in
+
+Set `ARGUS_VIEW_ENRICH=1` (or pass `enrich=True` to `create_app`) to add a
+**Risk** column: for each CVE, the live **EPSS** exploit-probability and a
+**🔥KEV** flag (CISA Known-Exploited), blended into a 0–100 risk score that
+re-ranks by *real-world* urgency — an actively-exploited CVE rises above a
+nominally-higher-severity one that isn't.
+
+![Argus browser findings with the opt-in Risk column — EPSS % + 🔥KEV badge + a 0–100 score; the KEV-flagged CRITICAL scores highest](images/browser/findings-risk.png)
+
+> **Off by default — the read-only / no-egress boundary holds.** Enrichment
+> only reaches the EPSS/KEV endpoints when you opt in; results cache on disk;
+> only public CVE ids leave the host. **Reachability** ("is the package
+> imported in source?") is deliberately *not* offered here — it scans source
+> files, which belongs in the trusted-shell terminal viewer (`argus view
+> terminal`, the `i` action), not the read-only browser.
+
 ### `/picker` — Switch scan
 
 A one-level file browser. Click into subdirectories; any directory containing

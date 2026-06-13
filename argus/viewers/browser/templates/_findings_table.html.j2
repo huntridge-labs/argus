@@ -74,6 +74,7 @@
     <thead>
       <tr>
         {{ sort_header('Severity', 'severity', view, scan_param, view.min_severity, view.product, view.scanner, view.query) }}
+        {% if enrich_on %}<th>Risk</th>{% endif %}
         {{ sort_header('ID',       'id',       view, scan_param, view.min_severity, view.product, view.scanner, view.query) }}
         {% if show_columns.package %}<th>Package</th>{% endif %}
         {% if show_columns.fix %}<th>Fix</th>{% endif %}
@@ -87,6 +88,15 @@
       {% for f in visible %}
         <tr>
           <td><span class="sev sev-{{ f.severity.value }}">{{ f.severity.value }}</span></td>
+          {% if enrich_on %}
+            {% set c = risk_cells[loop.index0] %}
+            <td class="risk-cell">
+              {% if c %}
+                {% if c.badge %}<span class="risk-badge">{{ c.badge }}</span>{% endif %}
+                <span class="risk-score" title="Risk {{ c.score }}/100">{{ c.score }}</span>
+              {% else %}<span class="muted-small">—</span>{% endif %}
+            </td>
+          {% endif %}
           <td>
             {% if f.cve %}<strong>{{ f.cve }}</strong>{% else %}{{ f.id }}{% endif %}
           </td>
