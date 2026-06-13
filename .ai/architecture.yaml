@@ -128,6 +128,11 @@ components:
         bounded, dependency-free pip/npm import scan (build/vendor dirs skipped, early-exit, cached). Returns
         imported / not-imported / unknown; labelled "imported in source" (NOT "reachable" — true call-graph
         reachability stays roadmap research). Shows a Reachability row in the terminal viewer's detail pane.
+      core/svg_charts.py: UI-free dependency-free inline-SVG charts (Phase B1). donut / severity_donut (center
+        override), trend_line (pathLength=1 for CSS draw-on), bar_chart — labels XML-escaped. Lives in core so
+        the browser dashboard and the future PDF report share one renderer. Drives the browser dashboard's
+        severity donut + findings-over-time trend + by-scanner bars, with count-up.js + a prefers-reduced-motion
+        gated motion layer (View Transitions API, staggered reveal, draw-on) in viewers/browser/static.
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes
@@ -765,6 +770,11 @@ docsite:
         bounded, dependency-free pip/npm import scan (build/vendor dirs skipped, early-exit, cached). Returns
         imported / not-imported / unknown; labelled "imported in source" (NOT "reachable" — true call-graph
         reachability stays roadmap research). Shows a Reachability row in the terminal viewer's detail pane.
+      core/svg_charts.py: UI-free dependency-free inline-SVG charts (Phase B1). donut / severity_donut (center
+        override), trend_line (pathLength=1 for CSS draw-on), bar_chart — labels XML-escaped. Lives in core so
+        the browser dashboard and the future PDF report share one renderer. Drives the browser dashboard's
+        severity donut + findings-over-time trend + by-scanner bars, with count-up.js + a prefers-reduced-motion
+        gated motion layer (View Transitions API, staggered reveal, draw-on) in viewers/browser/static.
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes

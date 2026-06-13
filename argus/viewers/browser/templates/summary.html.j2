@@ -38,7 +38,7 @@
   <div class="cards">
     <a class="card" href="/findings{% if scan_param %}?scan={{ scan_param | urlencode }}{% endif %}">
       <div class="label">Total findings</div>
-      <div class="value">{{ summary.total }}</div>
+      <div class="value" data-count="{{ summary.total }}">{{ summary.total }}</div>
     </a>
     {% for sev, icon in [
         ("critical", "🚨"),
@@ -52,11 +52,35 @@
       {% if count %}
         <a class="card {{ sev }}" href="{{ findings_link('min_severity', sev) | trim }}">
           <div class="label">{{ icon }} {{ sev.capitalize() }}</div>
-          <div class="value">{{ count }}</div>
+          <div class="value" data-count="{{ count }}">{{ count }}</div>
         </a>
       {% endif %}
     {% endfor %}
   </div>
+
+  {#- Visual analytics (Phase B1): inline SVG charts — severity donut,
+      findings-over-time trend, and a by-scanner bar chart. Dependency-free
+      (argus.core.svg_charts over argus.core.trends); the SVG is built
+      server-side with labels XML-escaped, so ``| safe`` is safe here. Draw-on
+      animation + reveal come from argus.css, gated on prefers-reduced-motion. -#}
+  {% if charts %}
+    <section class="charts" aria-label="Visual analytics">
+      <div class="chart-card">
+        <h3>Severity</h3>
+        <div class="chart">{{ charts.severity | safe }}</div>
+      </div>
+      {% if charts.trend %}
+        <div class="chart-card">
+          <h3>Findings over time</h3>
+          <div class="chart">{{ charts.trend | safe }}</div>
+        </div>
+      {% endif %}
+      <div class="chart-card">
+        <h3>By scanner</h3>
+        <div class="chart">{{ charts.scanners | safe }}</div>
+      </div>
+    </section>
+  {% endif %}
 
   {#- Quality warnings — SPDX-2.1 detected, low-purl-coverage,
       grype unknown-subject. Loud banner so empty scans aren't
@@ -210,6 +234,11 @@
       {% endfor %}
     </section>
   {% endif %}
+
+  {#- Animated count-up for the stat cards + chart draw-on trigger.
+      Vanilla, external (strict CSP blocks inline JS); no-ops and leaves the
+      SSR numbers intact under prefers-reduced-motion or no-JS. -#}
+  <script src="/static/count-up.js" defer></script>
 
 {% endif %}
 
