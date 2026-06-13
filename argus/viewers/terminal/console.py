@@ -32,7 +32,7 @@ from textual.widgets.option_list import Option
 
 from argus.core import console_config
 from argus.core.console_config import ConsoleSettings
-from argus.viewers.terminal import console_model
+from argus.viewers.terminal import config_editor, console_model
 
 # Sentinels the app exits with so ``launch`` can hand off to another
 # full-screen surface (the findings viewer / the init CLI) and then return
@@ -200,11 +200,107 @@ class SettingsScreen(Screen):
         self.app.settings = self.app.settings.advance(key)
         self.app.apply_theme()       # live preview for theme / accent
         # Rebuild the list cleanly with the new values, then restore cursor.
-        self.recompose()
+        self.refresh(recompose=True)
         self.call_after_refresh(self._restore_cursor)
 
     def action_close(self) -> None:  # pragma: no cover — UI
         self.app.persist_settings()
+        self.dismiss()
+
+
+class ConfigScreen(Screen):
+    """Form editor for argus.yml — scanner toggles + key settings.
+
+    Comment-preserving: edits go through ``config_editor`` which rewrites
+    only the matched line. Changes accumulate in a working copy; ``s``
+    validates and writes, ``esc`` discards. The richer free-text fields
+    (output_dir, etc.) stay editable via ``$EDITOR`` for now — this v1
+    covers the toggle/enum settings that are the common edits.
+    """
+
+    CSS = """
+    ConfigScreen { align: center middle; }
+    #config-body {
+        background: $surface; border: thick $accent;
+        width: 80%; max-width: 92; height: auto; max-height: 90%; padding: 1 2;
+    }
+    #config-title { text-style: bold; padding: 0 0 1 0; }
+    #config-list { height: auto; max-height: 22; border: none; background: transparent; }
+    #config-hint { color: $text-muted; padding: 1 0 0 0; }
+    """
+    BINDINGS = [
+        Binding("s", "save", "Save", show=True),
+        Binding("escape", "cancel", "Cancel", show=True),
+        Binding("q", "cancel", show=False),
+    ]
+
+    def __init__(self, config_path: Path):
+        super().__init__()
+        self._path = config_path
+        try:
+            self._text = config_path.read_text(encoding="utf-8")
+        except OSError:
+            self._text = ""
+        self._original = self._text
+        self._highlight = 0
+
+    def compose(self) -> ComposeResult:  # pragma: no cover — UI
+        rows = config_editor.editable_rows(self._text)
+        dirty = "  [yellow](unsaved)[/yellow]" if self._text != self._original else ""
+        with Vertical(id="config-body"):
+            yield Static(f"⚙  Configure · {self._path.name}{dirty}", id="config-title")
+            opts = [
+                Option(f"{r.label:<26}{r.value:<14}[dim]{r.doc}[/dim]", id=r.key)
+                for r in rows
+            ]
+            yield OptionList(*opts, id="config-list")
+            yield Static(
+                "↑↓ move   ·   enter change   ·   s save   ·   esc cancel",
+                id="config-hint",
+            )
+
+    def on_mount(self) -> None:  # pragma: no cover — UI
+        self._restore_cursor()
+        self.query_one("#config-list", OptionList).focus()
+
+    def _restore_cursor(self) -> None:  # pragma: no cover — UI
+        option_list = self.query_one("#config-list", OptionList)
+        if option_list.option_count:
+            option_list.highlighted = min(self._highlight, option_list.option_count - 1)
+
+    def on_option_list_option_selected(  # pragma: no cover — UI
+        self, event: OptionList.OptionSelected,
+    ) -> None:
+        key = event.option.id
+        rows = {r.key: r for r in config_editor.editable_rows(self._text)}
+        row = rows.get(key)
+        if row is None:
+            return
+        self._highlight = event.option_index
+        result = config_editor.apply_row(self._text, row)
+        if result is not None:
+            self._text, _ = result
+        self.refresh(recompose=True)
+        self.call_after_refresh(self._restore_cursor)
+
+    def action_save(self) -> None:  # pragma: no cover — UI
+        if self._text == self._original:
+            self.app.notify("No changes to save.", severity="information", timeout=3)
+            self.dismiss()
+            return
+        error = config_editor.validate(self._text)
+        if error:
+            self.app.notify(f"Not saved — {error}", severity="error", timeout=8)
+            return
+        try:
+            self._path.write_text(self._text, encoding="utf-8")
+        except OSError as exc:
+            self.app.notify(f"Couldn't write {self._path.name}: {exc}", severity="error", timeout=6)
+            return
+        self.app.notify(f"Saved {self._path.name}.", severity="information", timeout=3)
+        self.dismiss()
+
+    def action_cancel(self) -> None:  # pragma: no cover — UI
         self.dismiss()
 
 
@@ -342,7 +438,7 @@ class ConsoleApp(App):
         elif key == "init":
             self.exit(_HANDOFF_INIT)
         elif key == "configure":
-            self._edit_config()
+            self._open_config()
 
     def _open_scan(self) -> None:  # pragma: no cover — UI
         from argus.viewers.terminal import scan_runner
@@ -359,14 +455,27 @@ class ConsoleApp(App):
 
         self.push_screen(RunScanScreen(argv, launch_root=self.launch_root), _after)
 
+    def _open_config(self) -> None:  # pragma: no cover — UI
+        """Open the form editor when an argus.yml exists, else fall back to
+        $EDITOR (to create one) or nudge toward Initialize."""
+        self.config_path = self._detect_config_path()
+        if self.config_path.is_file():
+            def _after(_result: object) -> None:
+                screen = self.screen
+                if isinstance(screen, HomeScreen):
+                    screen.refresh_status()
+            self.push_screen(ConfigScreen(self.config_path), _after)
+            return
+        self.notify(
+            "No argus.yml yet — pick Initialize to generate one, "
+            "or set $EDITOR to create it by hand.",
+            severity="warning", timeout=6,
+        )
+        self._edit_config()
+
     def _edit_config(self) -> None:  # pragma: no cover — UI
         editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
         if not editor:
-            self.notify(
-                "Set $EDITOR or $VISUAL to edit argus.yml here "
-                "(the form-based editor lands in a later release).",
-                severity="warning", timeout=6,
-            )
             return
         with self.suspend():
             subprocess.run([editor, str(self.config_path)])

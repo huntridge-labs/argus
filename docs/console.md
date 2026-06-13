@@ -32,11 +32,30 @@ argus scan ...   # every subcommand is unchanged
   |---|---|
   | Run a scan | Runs `argus scan` and streams it live, then reloads. |
   | View findings | Opens the full triage viewer (same as `argus view`). |
-  | Configure | Opens `argus.yml` in your `$EDITOR` / `$VISUAL`. |
+  | Configure | Opens the form editor for `argus.yml` (see below). |
   | Initialize | Runs `argus init` to detect the project + write config. |
   | Settings | Theme, accent colour, animations, notifications. |
   | Help & docs | Keybindings and where to learn more. |
   | Quit | Leave the console. |
+
+## Configure
+
+Edit `argus.yml` by form instead of by hand. Move with the arrows, press
+Enter to cycle the focused setting, `s` to save, `esc` to discard. Each row
+shows the current value and a one-line description of what it controls.
+
+The form covers the common edits — scanner on/off toggles and the bounded
+choice settings (`severity_threshold`, execution `backend` / `pull_policy`,
+and the viewer's `cve_source` / `open_location`). Edits are
+**comment-preserving**: only the matched line's value is rewritten, so your
+comments, ordering, and indentation survive. Before saving, the edited file
+is re-validated against the config schema — an invalid edit is refused with
+the reason rather than written.
+
+Settings that aren't toggle/choice fields (paths, URLs, custom args) and
+adding a brand-new scanner block still go through Initialize or your
+`$EDITOR`. If no `argus.yml` exists yet, Configure points you to Initialize
+and falls back to `$EDITOR` / `$VISUAL` so you can create one by hand.
 
 ## Settings
 
@@ -63,6 +82,6 @@ Settings are user preferences, kept separate from your project's
 The Console and `argus view terminal` share the same findings viewer —
 "View findings" opens it, and `argus view` is the direct deep-link. See
 [`view-terminal.md`](view-terminal.md) for the full triage reference. The
-broader plan for the Console (config editor, init wizard, vulnerability
-mitigation) lives in
+broader plan for the Console (the init wizard and deeper vulnerability
+mitigation are next) lives in
 [`developer/CONSOLE-ROADMAP.md`](developer/CONSOLE-ROADMAP.md).
