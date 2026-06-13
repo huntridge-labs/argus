@@ -197,6 +197,17 @@ class TestDashboardRoute:
         assert 'data-count="1"' in resp.text        # count-up hook on the total card
         assert "count-up.js" in resp.text
 
+    def test_command_palette_wired(self, tmp_path):
+        # Phase B0: the command palette (Cmd/Ctrl-K) is loaded on every page,
+        # with the ⌘K hint affordance and data-cmd jump targets on the cards.
+        _write_results(tmp_path, _sample_payload())
+        app = create_app(root=str(tmp_path))
+        resp = TestClient(app).get("/")
+        assert resp.status_code == 200
+        assert "command-palette.js" in resp.text
+        assert "cmdk-hint" in resp.text and "data-cmdk-open" in resp.text
+        assert 'data-cmd="Critical findings"' in resp.text
+
     def test_scan_query_param_overrides_launch_root_within_scope(self, tmp_path):
         # ``?scan=`` can point at any directory or file *inside* the
         # launch root. Launch at the parent; load a specific run below.

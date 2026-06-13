@@ -132,7 +132,8 @@ components:
         override), trend_line (pathLength=1 for CSS draw-on), bar_chart — labels XML-escaped. Lives in core so
         the browser dashboard and the future PDF report share one renderer. Drives the browser dashboard's
         severity donut + findings-over-time trend + by-scanner bars, with count-up.js + a prefers-reduced-motion
-        gated motion layer (View Transitions API, staggered reveal, draw-on) in viewers/browser/static.
+        gated motion layer (View Transitions API, staggered reveal, draw-on) and a Cmd/Ctrl-K command palette
+        (command-palette.js — vanilla, CSP-safe, indexes page nav links) in viewers/browser/static.
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes
@@ -774,7 +775,8 @@ docsite:
         override), trend_line (pathLength=1 for CSS draw-on), bar_chart — labels XML-escaped. Lives in core so
         the browser dashboard and the future PDF report share one renderer. Drives the browser dashboard's
         severity donut + findings-over-time trend + by-scanner bars, with count-up.js + a prefers-reduced-motion
-        gated motion layer (View Transitions API, staggered reveal, draw-on) in viewers/browser/static.
+        gated motion layer (View Transitions API, staggered reveal, draw-on) and a Cmd/Ctrl-K command palette
+        (command-palette.js — vanilla, CSP-safe, indexes page nav links) in viewers/browser/static.
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes

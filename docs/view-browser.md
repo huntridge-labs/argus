@@ -68,6 +68,25 @@ Shows:
 > degrades to a fully static, accessible page (the screenshots above are
 > captured in exactly that reduced-motion state).
 
+**Light & dark themes.** Everything — charts, cards, the command palette —
+is built on theme tokens (the chart SVGs reference CSS custom properties, not
+hardcoded colours), so it flips cleanly with the theme toggle / your OS
+`prefers-color-scheme`:
+
+![Argus browser dashboard in light theme — same charts and cards, light surfaces with dark text](images/browser/dashboard-light.png)
+
+### Command palette (`Cmd`/`Ctrl` + `K`)
+
+Browser parity with the TUI's `Ctrl+P`: a fuzzy launcher over the page's own
+navigation — jump to any view, severity filter, product/scanner, or recent
+run without the mouse. Press `Cmd`/`Ctrl`+`K` (or click the `⌘K` chip in the
+header), type to filter, `↑↓` + `Enter` to go.
+
+![Argus browser command palette — fuzzy launcher listing views, severity filters, and recent runs over a dimmed dashboard](images/browser/command-palette.png)
+
+Vanilla JS, CSP-safe (it builds its overlay in the DOM and indexes existing
+links — no inline script, no data blob), and a no-op when JavaScript is off.
+
 ### `/findings` — Filterable table
 
 ![Argus browser findings table — severity-badged rows with filter bar, count, and export](images/browser/findings.png)

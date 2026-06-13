@@ -36,7 +36,7 @@
       severity-neutral CSS rules ("card") set layout and the
       severity-specific modifier sets the border accent. -#}
   <div class="cards">
-    <a class="card" href="/findings{% if scan_param %}?scan={{ scan_param | urlencode }}{% endif %}">
+    <a class="card" href="/findings{% if scan_param %}?scan={{ scan_param | urlencode }}{% endif %}" data-cmd="View all findings">
       <div class="label">Total findings</div>
       <div class="value" data-count="{{ summary.total }}">{{ summary.total }}</div>
     </a>
@@ -50,7 +50,7 @@
     %}
       {% set count = summary.by_severity.get(sev, 0) %}
       {% if count %}
-        <a class="card {{ sev }}" href="{{ findings_link('min_severity', sev) | trim }}">
+        <a class="card {{ sev }}" href="{{ findings_link('min_severity', sev) | trim }}" data-cmd="{{ sev.capitalize() }} findings">
           <div class="label">{{ icon }} {{ sev.capitalize() }}</div>
           <div class="value" data-count="{{ count }}">{{ count }}</div>
         </a>

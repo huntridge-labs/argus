@@ -1115,3 +1115,88 @@ summary:focus-visible {
     scroll-behavior: auto !important;
   }
 }
+
+/* ===========================================================================
+   Phase B0 — command palette (Cmd/Ctrl-K). Overlay built by
+   command-palette.js; styled here. CSP-safe (no inline styles).
+   =========================================================================== */
+
+/* The discoverable ⌘K chip in the header nav. */
+.cmdk-hint {
+  display: inline-flex;
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.15rem 0.45rem;
+  color: var(--argus-muted-text);
+  cursor: pointer;
+  transition: border-color 0.15s var(--argus-ease, ease), color 0.15s var(--argus-ease, ease);
+}
+.cmdk-hint:hover { border-color: var(--argus-primary-green); color: var(--argus-light-text); }
+.cmdk-hint kbd {
+  font: inherit;
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+}
+
+.cmdk-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12vh;
+  background: rgba(4, 7, 6, 0.6);
+  backdrop-filter: blur(2px);
+}
+.cmdk-overlay[hidden] { display: none; }
+
+.cmdk-box {
+  width: min(560px, 92vw);
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--argus-primary-green);
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cmdk-overlay:not([data-reduce]) .cmdk-box {
+    animation: cmdk-pop 0.16s var(--argus-ease) both;
+  }
+  @keyframes cmdk-pop {
+    from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+    to   { opacity: 1; transform: none; }
+  }
+}
+
+.cmdk-input {
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--argus-light-text);
+  font-size: 1.05rem;
+  padding: 0.9rem 1.1rem;
+  outline: none;
+}
+.cmdk-input::placeholder { color: var(--argus-muted-text); }
+
+.cmdk-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem;
+  overflow-y: auto;
+}
+.cmdk-item {
+  padding: 0.55rem 0.8rem;
+  border-radius: 8px;
+  color: var(--argus-light-text);
+  cursor: pointer;
+}
+.cmdk-item.is-selected {
+  background: color-mix(in srgb, var(--argus-primary-green) 22%, transparent);
+}
