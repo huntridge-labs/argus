@@ -98,6 +98,8 @@ browser interface uses for its picker and "recent runs" dropdown, so both
 agree on what counts as a run (including collapsing the `latest/` symlink
 into the timestamped run it points at).
 
+![Runs sidebar revealed on the left — two runs newest-first, the current run marked, alongside the findings list and detail pane](images/view-terminal/11-runs-sidebar.svg)
+
 **Run a scan (`R`).** Press `R` (shift+r) to launch `argus scan` without
 leaving the TUI. A prompt collects an optional scanner (blank runs all
 enabled scanners from your `argus.yml`) and a path; the scan then streams
@@ -106,6 +108,10 @@ loaded automatically and appears at the top of the runs sidebar. The scan
 runs the same interpreter the TUI is running under (`sys.executable -m
 argus`), so a viewer launched from a virtualenv scans with that venv's
 argus and scanners.
+
+![Run-a-scan prompt asking for an optional scanner and a path](images/view-terminal/12-scan-runner-prompt.svg)
+
+![Scan output streaming into an overlay with a per-scanner progress list and a "Scan complete — Enter to load results" status](images/view-terminal/13-scan-runner-output.svg)
 
 ## Mouse interactions
 
@@ -146,6 +152,10 @@ location, etc.):
 - **Export current selection / view** — same path as the `e` key
 
 ![Context menu modal showing every menu item for a finding with both a CVE and a file:line location](images/view-terminal/09-context-menu.svg)
+
+The menu opens at the click position rather than screen-centre (clamped so it never spills off an edge):
+
+![Context menu opening anchored to the right of the findings list, at the cursor, scoped to the right-clicked finding](images/view-terminal/14-context-menu-anchored.svg)
 
 When `view.open_location: ask` (the default), clicking a `file:line`
 value pops a tiny "local or remote?" prompt so you can pick per click
