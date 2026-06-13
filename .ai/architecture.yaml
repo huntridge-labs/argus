@@ -102,6 +102,12 @@ components:
         and injectable HTTP/clock; risk_score(severity, enrichment) blends severity x EPSS x KEV (KEV floors at
         0.9) for re-ranking; risk_badge / enrichment_detail_rows render it. Opt-in, offline-degrading, sends only
         public CVE ids. Drives the terminal viewer's ``i`` Intel action (EPSS/KEV/Risk in the detail pane).
+      core/suppressions.py: UI-free bulk-triage → OpenVEX + scanner ignore files (Phase 7). decision_for(action,
+        ...) maps a triage action (false_positive/not_exploitable/accept_risk/investigating) to a TriageDecision;
+        build_vex_document / merge_vex_documents emit + merge an OpenVEX v0.2.0 doc (audit trail = status,
+        justification, reason, author, timestamp; keyed by CVE+product, idempotent @id); trivyignore_entries /
+        gitleaksignore_entries + write_suppressions append to .trivyignore/.gitleaksignore (never clobber). Reuses
+        the OpenVEX vocabulary of the reporters/attest layer; drives the terminal viewer's ``S`` Suppress action.
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes
@@ -713,6 +719,12 @@ docsite:
         and injectable HTTP/clock; risk_score(severity, enrichment) blends severity x EPSS x KEV (KEV floors at
         0.9) for re-ranking; risk_badge / enrichment_detail_rows render it. Opt-in, offline-degrading, sends only
         public CVE ids. Drives the terminal viewer's ``i`` Intel action (EPSS/KEV/Risk in the detail pane).
+      core/suppressions.py: UI-free bulk-triage → OpenVEX + scanner ignore files (Phase 7). decision_for(action,
+        ...) maps a triage action (false_positive/not_exploitable/accept_risk/investigating) to a TriageDecision;
+        build_vex_document / merge_vex_documents emit + merge an OpenVEX v0.2.0 doc (audit trail = status,
+        justification, reason, author, timestamp; keyed by CVE+product, idempotent @id); trivyignore_entries /
+        gitleaksignore_entries + write_suppressions append to .trivyignore/.gitleaksignore (never clobber). Reuses
+        the OpenVEX vocabulary of the reporters/attest layer; drives the terminal viewer's ``S`` Suppress action.
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes
