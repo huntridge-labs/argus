@@ -18,6 +18,12 @@ Usage::
 ``RESULTS_DIR`` defaults to ``argus-results`` (a specific run dir, or a
 parent containing timestamped runs — the newest is used). Requires the
 ``[browser]`` extra installed and Google Chrome / Chromium present.
+
+NOTE: the dashboard/findings header shows the *resolved* scan path, so
+capture from a **neutral location** (e.g. copy a run under
+``/Users/Shared/argus-demo`` or ``/srv/argus``) — never straight from a
+personal home directory — or the committed docs screenshots will embed your
+username. The shipped images are captured this way.
 """
 
 from __future__ import annotations
