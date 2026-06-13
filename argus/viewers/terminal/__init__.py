@@ -44,4 +44,17 @@ def launch(results_dir: str | None = None) -> int:
     return run_app(results_dir)
 
 
-__all__ = ["ViewerUnavailable", "launch"]
+def launch_console(results_dir: str | None = None) -> int:
+    """Launch the Argus Console (the bare-``argus`` home TUI).
+
+    Returns a process-style exit code. Like :func:`launch`, the import of
+    the console module is deferred so importing this package doesn't crash
+    when ``textual`` isn't installed; the CLI catches
+    :class:`ViewerUnavailable` and falls back to ``--help``.
+    """
+    _require_textual()
+    from argus.viewers.terminal.console import launch as _console_launch
+    return _console_launch(results_dir)
+
+
+__all__ = ["ViewerUnavailable", "launch", "launch_console"]

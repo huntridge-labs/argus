@@ -151,21 +151,43 @@ review the proposed scanner set → tweak → write `argus.yml` → offer to run
 the first scan (hand off to the Phase-0 runner). No new detection logic;
 it's a frontend over `argus init`.
 
-## Phase 4 — Console home + bare-`argus` entry (planned; needs ADR)
+## Phase 4 — Console home, settings, and bare-`argus` entry (shipped: shell)
 
-Tie the screens together and flip the entry point.
+The launcher + customization centerpiece. The home, settings, theming, and
+the bare-`argus` entry shipped here; the remaining item is folding the
+findings viewer in as a true in-app screen (it's a hand-off today).
 
-**Architecture**
-- A Home screen: ASCII splash + a launcher for Scan / Findings / Config /
-  Init / Docs, plus at-a-glance state (last run, worst severity, config
-  health).
-- Bare `argus` (TTY only, per the compat contract) mounts Home; `argus view`
-  becomes a deep-link alias to the Findings screen.
-- **Polish that degrades gracefully:** tasteful, *toggleable* animation
-  (`--no-animation` + `prefers-reduced-motion`-style respect), `NO_COLOR`
-  honoured, low-color / SSH / tmux fallbacks, and a plain accessible mode.
-  The polish is opt-out-able so it never becomes an accessibility or
-  maintenance liability.
+**Shipped**
+- **Home screen** (`argus/viewers/terminal/console.py`, model in
+  `console_model.py`): ASCII wordmark + tagline, a status line (config
+  presence + latest run label / count / worst severity via
+  `run_discovery`), and the launcher menu (Scan / View findings /
+  Configure / Init / Settings / Docs / Quit). Banner fade honours the
+  motion settings + `ARGUS_NO_ANIMATION`.
+- **Settings** (full `Screen`, herdr-style): theme, accent colour,
+  animations, reduced-motion, notifications — theme/accent preview live,
+  persisted to `~/.config/argus/console.yml` (`console_config.py`, UI-free).
+  A bespoke `argus-dark` theme is registered alongside the built-in Textual
+  themes. (Full `Screen`, not `ModalScreen`: live re-theming while a modal
+  is mounted hits a Textual 8.x NoneType-visual render bug.)
+- **Bare-`argus` entry** (`cli._run_bare_argus`): opens the Console only
+  when stdout *and* stdin are a TTY; piped / CI / no-`[terminal]` falls
+  back to `--help` (the backward-compat contract). `argus view` still
+  deep-links to findings.
+- **Configure / Init** reach the real CLI capabilities now: Configure opens
+  `argus.yml` in `$EDITOR`/`$VISUAL` (via `App.suspend`), Init streams
+  `argus init`. The form-based config editor (Phase 2) and init wizard
+  (Phase 3) replace these interim flows.
+
+**Remaining**
+- Findings + Init are hand-offs (the console exits with a sentinel; the
+  viewer / `argus init` run, then the console reopens). The seamless
+  single-app version folds the findings viewer in as a `FindingsScreen`
+  mounted by both the Console and `argus view` — the "Console module
+  layout" decision below.
+- Deeper terminal-compat / accessibility (`NO_COLOR`, low-color, SSH/tmux
+  fallbacks, screen-reader plain mode) beyond reduced-motion + the
+  animation kill-switch.
 
 ---
 
@@ -192,9 +214,11 @@ Tie the screens together and flip the entry point.
 
 - **YAML write-back strategy** (Phase 2): `ruamel.yaml` round-trip vs.
   template regeneration. Affects whether we can preserve user comments.
-- **Bare-`argus` default change** (Phase 4): file an ADR; decide whether a
-  deprecation window / opt-in flag (`ARGUS_NO_TUI`, `--no-tui`) is warranted
-  for users who script against bare `argus`.
+- **Bare-`argus` default change** (Phase 4): ✅ decided — bare `argus`
+  opens the Console, gated on stdout+stdin both being a TTY so headless /
+  CI / piped use is untouched (no deprecation window needed). Still worth a
+  formal ADR entry in `.ai/decisions.yaml`, and an opt-out env var
+  (`ARGUS_NO_TUI`) could be added if a user wants help even interactively.
 - **Local-model support depth** (Phase 1 Tier 2): how far to validate Ollama
   / OpenAI-compatible local endpoints so a cloud API key is never *required*.
 - **Console module layout** (Phase 4): keep screens under
