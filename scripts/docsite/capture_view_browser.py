@@ -41,10 +41,14 @@ PORT = 8799
 WINDOW = "1440,1180"
 VIRTUAL_TIME_MS = 5000
 
-# Pages to capture: (filename stem, path).
+# Pages to capture: (filename stem, path, extra Chrome args).
+# preferredColorScheme=1 forces light mode (=2 would force dark); `#command`
+# auto-opens the command palette.
 PAGES = [
-    ("dashboard", "/"),
-    ("findings", "/findings"),
+    ("dashboard", "/", []),
+    ("findings", "/findings", []),
+    ("dashboard-light", "/", ["--blink-settings=preferredColorScheme=1"]),
+    ("command-palette", "/#command", []),
 ]
 
 _CHROME_CANDIDATES = [
@@ -87,12 +91,13 @@ def main() -> int:
     )
     try:
         _wait_for_server(f"http://127.0.0.1:{PORT}/healthz")
-        for stem, path in PAGES:
+        for stem, path, extra in PAGES:
             profile = REPO_ROOT / ".cache" / f"chrome-{stem}"
             shutil.rmtree(profile, ignore_errors=True)
             subprocess.run(
                 [chrome, "--headless=new", "--disable-gpu", "--hide-scrollbars",
                  "--force-color-profile=srgb", "--force-prefers-reduced-motion",
+                 *extra,
                  f"--user-data-dir={profile}", f"--window-size={WINDOW}",
                  f"--virtual-time-budget={VIRTUAL_TIME_MS}",
                  f"--screenshot={OUT_DIR / (stem + '.png')}",

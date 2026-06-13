@@ -59,7 +59,7 @@ def donut(
         f'<svg viewBox="0 0 {size} {size}" width="{size}" height="{size}" '
         f'role="img" aria-label="{_esc(title or "severity breakdown")}">',
         f'<circle cx="{cx}" cy="{cy}" r="{radius:.2f}" fill="none" '
-        f'stroke="#16211c" stroke-width="{thickness}"/>',
+        f'stroke="var(--surface-alt, #16211c)" stroke-width="{thickness}"/>',
     ]
     offset = 0.0
     if total > 0:
@@ -78,7 +78,7 @@ def donut(
             offset += seg_len
     parts.append(
         f'<text x="{cx}" y="{cy}" text-anchor="middle" dominant-baseline="central" '
-        f'font-size="{size // 6}" fill="#eaf2ea">{center_value}</text>'
+        f'font-size="{size // 6}" fill="var(--fg, #eaf2ea)">{center_value}</text>'
     )
     parts.append("</svg>")
     return "".join(parts)
@@ -156,11 +156,12 @@ def bar_chart(
         bar_w = max(1, track_w * value / largest) if value else 0
         text_y = y + bar_height * 0.72
         parts.append(
-            f'<text x="0" y="{text_y:.1f}" font-size="12" fill="#9fb09f">{_esc(name)}</text>'
+            f'<text x="0" y="{text_y:.1f}" font-size="12" '
+            f'fill="var(--fg-muted, #9fb09f)">{_esc(name)}</text>'
             f'<rect x="{label_w}" y="{y}" width="{bar_w:.1f}" height="{bar_height}" '
             f'rx="2" fill="{_esc(fill)}"><title>{_esc(name)}: {value}</title></rect>'
             f'<text x="{label_w + bar_w + 6:.1f}" y="{text_y:.1f}" font-size="12" '
-            f'fill="#eaf2ea">{value}</text>'
+            f'fill="var(--fg, #eaf2ea)">{value}</text>'
         )
         y += bar_height + gap
     parts.append("</svg>")

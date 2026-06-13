@@ -75,6 +75,22 @@ class TestBarChart:
         assert "&amp;" in bar_chart([("a&b", 1)])
 
 
+class TestThemeAware:
+    # Light-mode guard: structural colors must reference theme tokens (which
+    # flip light/dark) rather than hardcoded dark hexes, so inline SVG renders
+    # correctly under [data-theme="light"]. Severity hues stay fixed.
+    def test_donut_uses_theme_tokens(self):
+        svg = donut([("a", 3, "#e74c3c")])
+        assert "var(--fg" in svg            # centre total text
+        assert "var(--surface-alt" in svg   # track ring
+        assert "#e74c3c" in svg             # severity hue stays fixed
+
+    def test_bar_chart_uses_theme_tokens(self):
+        svg = bar_chart([("bandit", 5)])
+        assert "var(--fg-muted" in svg      # label
+        assert "var(--fg," in svg           # value
+
+
 class TestSeverityDonut:
     def test_maps_severity_to_brand_colors(self):
         svg = severity_donut([(Severity.CRITICAL, 2), (Severity.LOW, 1)])

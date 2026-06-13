@@ -60,6 +60,15 @@
       <a href="/picker"
          {% if _active_nav == "/picker" %}aria-current="page"{% endif %}>Switch scan</a>
 
+      {#- Command palette hint (Cmd/Ctrl-K). The keybinding works without
+          this button; it's a discoverable affordance + a click target.
+          command-palette.js wires the click and the keydown; with no JS
+          it's a harmless inert chip. -#}
+      <button type="button" class="cmdk-hint" data-cmdk-open
+              aria-label="Open command palette (Control or Command + K)">
+        <kbd>⌘K</kbd>
+      </button>
+
       {#- Theme toggle — flips between dark and light via a
           data-theme attribute on <html>. Defaults to the user's
           prefers-color-scheme until they click it, after which the
@@ -95,5 +104,9 @@
       prefers-color-scheme rule in argus.css has already done the
       right thing. -#}
   <script src="/static/theme-toggle.js" defer></script>
+  {#- Command palette (Cmd/Ctrl-K): a fuzzy launcher over the page's nav.
+      Vanilla, external (strict CSP), builds its overlay in the DOM and
+      indexes existing links — no-ops cleanly with no JS. -#}
+  <script src="/static/command-palette.js" defer></script>
 </body>
 </html>
