@@ -5,7 +5,7 @@ the **Argus Console** — a home base for the whole local workflow: run a
 scan, browse findings, edit config, initialize a project, and tune your
 preferences, all without leaving the terminal.
 
-![Argus Console home — wordmark, project status line, and the launcher menu](images/console/console-home.svg)
+![Argus Console home — wordmark, project status line, and the launcher menu](images/console/console-home.png)
 
 ```bash
 argus            # opens the Console (interactive terminals only)
@@ -45,7 +45,7 @@ Enter to change the focused setting; theme and accent **preview live**,
 and everything persists to `~/.config/argus/console.yml`
 (XDG-aware — honours `$XDG_CONFIG_HOME`).
 
-![Argus Console settings — theme, accent, animations, reduced motion, notifications](images/console/console-settings.svg)
+![Argus Console settings — theme, accent, animations, reduced motion, notifications](images/console/console-settings.png)
 
 | Setting | Effect |
 |---|---|
