@@ -92,6 +92,11 @@ components:
         reduced_motion, notifications). load/save to $XDG_CONFIG_HOME/argus/console.yml (pyyaml only),
         defaults-on-garbage, plus advance()/display_rows() driving the Settings screen. Distinct from
         argus.yml (project scan config).
+      core/remediation.py: UI-free Tier-1 fix engine (deterministic, OSS, no AI). propose(finding,
+        repo_root)/apply()/is_fixable() turn a dependency finding (package + fixed_version + purl) into a
+        unified-diff bump of requirements*.txt (pip) or package.json (npm), preserving the version-spec style,
+        with an ecosystem-command fallback. Drives the terminal viewer's ``F`` Fix overlay; AI tier (scn/ai.py)
+        and action SHA-pinning / opengrep autofix are later phases (docs/developer/CONSOLE-ROADMAP.md).
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes
@@ -688,6 +693,11 @@ docsite:
         reduced_motion, notifications). load/save to $XDG_CONFIG_HOME/argus/console.yml (pyyaml only),
         defaults-on-garbage, plus advance()/display_rows() driving the Settings screen. Distinct from
         argus.yml (project scan config).
+      core/remediation.py: UI-free Tier-1 fix engine (deterministic, OSS, no AI). propose(finding,
+        repo_root)/apply()/is_fixable() turn a dependency finding (package + fixed_version + purl) into a
+        unified-diff bump of requirements*.txt (pip) or package.json (npm), preserving the version-spec style,
+        with an ecosystem-command fallback. Drives the terminal viewer's ``F`` Fix overlay; AI tier (scn/ai.py)
+        and action SHA-pinning / opengrep autofix are later phases (docs/developer/CONSOLE-ROADMAP.md).
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes

@@ -71,6 +71,7 @@ Press `?` inside the TUI for the same reference, grouped by purpose.
 | **Runs & scanning** | |
 | `b` | toggle the runs sidebar — switch between scan runs without relaunching |
 | `R` (shift+r) | run `argus scan` in-app, stream output, and reload results when done |
+| `F` (shift+f) | fix — propose a dependency bump for the finding (or selection), preview the diff, apply |
 | **Other** | |
 | `d` | executive dashboard overlay |
 | `D` (shift+d) | scan-over-scan diff — pick another `argus-results.json` and bucket changes |
@@ -112,6 +113,25 @@ argus and scanners.
 ![Run-a-scan prompt asking for an optional scanner and a path](images/view-terminal/12-scan-runner-prompt.svg)
 
 ![Scan output streaming into an overlay with a per-scanner progress list and a "Scan complete — Enter to load results" status](images/view-terminal/13-scan-runner-output.svg)
+
+## Fixing findings (`F`)
+
+Press `F` (shift+f) to apply a **deterministic, OSS, no-AI** fix to the
+focused finding — or to every fixable row in the multi-select set. This
+first tier covers the highest-volume case: **dependency version bumps**.
+For a dependency finding with a known fixed version, Argus locates the
+package in your manifest (`requirements*.txt` for pip, `package.json` for
+npm) and proposes a unified diff that bumps it to the fixed version,
+preserving your existing version-spec style (a pinned `==` stays pinned; a
+`>=` range keeps its operator). When no manifest line matches, it falls
+back to showing the ecosystem's upgrade command instead.
+
+It's **diff-first**: the proposed change is previewed and nothing touches
+your working tree until you press `a` / Enter to apply. After applying,
+re-run the scan (`R`) to confirm the finding is resolved. Findings that
+can be fixed also get an `⚒ Apply fix` entry in the right-click context
+menu. Findings with no known fixed version (or in an ecosystem Tier 1
+doesn't cover yet) report that no automatic fix is available.
 
 ## Mouse interactions
 
