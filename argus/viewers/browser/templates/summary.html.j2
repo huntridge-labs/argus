@@ -172,10 +172,9 @@
         {% endif %}
       </div>
     </details>
-    {#- Tiny script to turn the epoch mtime into a human-readable
-        local time. Doesn't run on SSR (mtime renders as a raw int
-        first) so pages stay readable under strict CSP / no-JS. -#}
-    <script src="/static/scan-mtime.js" defer></script>
+    {#- The epoch→human-readable conversion for this panel's mtime is
+        handled by scan-mtime.js, loaded once in base.html.j2 (it also
+        powers the sticky scan-context bar). -#}
   {% endif %}
 
   {#- Per-product: total + crit + high counts + top-3 findings. Each

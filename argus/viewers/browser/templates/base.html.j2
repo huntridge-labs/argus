@@ -85,6 +85,29 @@
     </nav>
   </header>
 
+  {#- Persistent scan-context bar (B0 IA). A slim sticky strip carrying the
+      identity of the scan in scope — project · commit · when it ran · finding
+      count — so context follows the user down every primary view. Rendered
+      only when a scan is loaded (scan_context_bar set by the route); omitted on
+      the picker / diff / error states. The time upgrades from a raw epoch to a
+      humanized string via scan-mtime.js (no-JS sees the integer, which is
+      harmless and rare). -#}
+  {% if scan_context_bar %}
+    <div class="scan-context-bar" role="status" aria-label="Active scan context">
+      <span class="scb-project">{{ scan_context_bar.project }}</span>
+      {% if scan_context_bar.commit %}
+        <span class="scb-sep" aria-hidden="true">·</span>
+        <span class="scb-commit">commit <code>{{ scan_context_bar.commit }}</code></span>
+      {% endif %}
+      {% if scan_context_bar.mtime %}
+        <span class="scb-sep" aria-hidden="true">·</span>
+        <time class="scan-mtime scb-time" data-epoch="{{ scan_context_bar.mtime }}">{{ scan_context_bar.mtime | int }}</time>
+      {% endif %}
+      <span class="scb-sep" aria-hidden="true">·</span>
+      <span class="scb-count">{{ scan_context_bar.total }} finding{{ scan_context_bar.total != 1 and 's' or '' }}</span>
+    </div>
+  {% endif %}
+
   <main>
     {% if scan_label %}
       <p class="crumbs scan-crumbs">
@@ -110,5 +133,9 @@
       Vanilla, external (strict CSP), builds its overlay in the DOM and
       indexes existing links — no-ops cleanly with no JS. -#}
   <script src="/static/command-palette.js" defer></script>
+  {#- Humanizes any .scan-mtime[data-epoch] (the sticky context bar's time +
+      the dashboard's scan-metadata panel) from raw epoch to a locale string.
+      No-op under no-JS — the integer stays, which is harmless. -#}
+  <script src="/static/scan-mtime.js" defer></script>
 </body>
 </html>

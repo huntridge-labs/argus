@@ -39,11 +39,19 @@ For multi-user enterprise deployments, see the separate
 
 ## Views
 
+**Persistent scan context.** Every primary view (dashboard, findings, log)
+carries a slim **sticky context bar** under the header — project · source
+commit · when the scan ran · finding count — so you always know which scan
+you're looking at as you scroll and move between views. It's built on theme
+tokens, so it flips cleanly between light and dark, and degrades gracefully
+without JavaScript (the timestamp just stays in epoch form). On the picker and
+diff views, where there's no single scan in scope, it's omitted.
+
 ### `/` — Executive summary dashboard
 
 Opens here by default.
 
-![Argus browser dashboard — severity-accented stat cards, a severity donut, a findings-over-time trend, and a by-scanner bar chart](images/browser/dashboard.png)
+![Argus browser dashboard — a sticky scan-context bar (project, commit, scan time, finding count), then severity-accented stat cards, a severity donut, a findings-over-time trend, and a by-scanner bar chart](images/browser/dashboard.png)
 
 Shows:
 

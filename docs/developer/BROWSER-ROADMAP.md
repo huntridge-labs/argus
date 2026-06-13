@@ -48,6 +48,15 @@ scanned and what we found."
 
 ## Phase B0 — Design system & motion foundation (lands first)
 
+**Status — ✅ shipped.** Design tokens, the command palette, the motion layer
+(View Transitions, count-up, draw-on), and the crafted theme toggle landed with
+B1. The IA piece shipped last: **top nav + a persistent sticky scan-context
+bar** (project · commit · scan time · finding count) on the primary views —
+chosen over a full left sidebar, which reads sparse and over-engineered for a
+five-destination localhost tool (the lower-risk choice that keeps the clean top
+nav while still delivering the persistent-context signal). `_context_bar` builds
+it; `_base_context` threads it through.
+
 The investment that makes the difference between "internal tool" and
 "product built by a large, mature company" — and the base the charts (B1)
 and report (B4) sit on. All dependency-light: CSS custom properties, the
@@ -61,11 +70,11 @@ Tailwind.
   identically across badge, row accent, donut, chart), a type scale, an 8px
   spacing scale, radii, an elevation/shadow system, and `:focus-visible`
   rings. The quiet craft that signals intention (Linear / Vercel / Stripe).
-- **Information architecture**: a persistent left sidebar (Overview ·
-  Findings · Diff · Report) + a sticky top bar carrying scan context
-  (project · commit · timestamp); overview→drilldown so every dashboard tile
-  links into a pre-filtered findings view (Snyk / GitHub Security / Wiz
-  pattern).
+- **Information architecture**: top nav + a **persistent sticky scan-context
+  bar** carrying scan context (project · commit · scan time · finding count)
+  on every primary view — *shipped in favour of a left sidebar* (see Status
+  above); overview→drilldown so every dashboard tile links into a pre-filtered
+  findings view (Snyk / GitHub Security / Wiz pattern).
 - **Command palette** (Cmd/Ctrl-K, vanilla JS) — browser parity with the
   TUI's `Ctrl+P`; jump to any view / filter.
 - **Motion primitives**, each gated behind
