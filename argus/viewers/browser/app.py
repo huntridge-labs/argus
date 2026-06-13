@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -40,6 +41,7 @@ from argus.core.findings_view import (
 )
 from argus.core.models import Severity
 from argus.core import svg_charts, trends
+from argus.core.enrichment import EnrichmentService, is_cve, risk_badge, risk_score
 
 
 logger = logging.getLogger("argus.viewers.browser")
@@ -203,8 +205,20 @@ def _scan_metadata(scan_summary, resolved: Path | None) -> dict | None:
     }
 
 
-def create_app(root: str | None = None) -> FastAPI:
-    """Build the FastAPI app, wire templates / static, register routes."""
+def create_app(
+    root: str | None = None,
+    *,
+    enrich: bool | None = None,
+    enrichment_service: object | None = None,
+) -> FastAPI:
+    """Build the FastAPI app, wire templates / static, register routes.
+
+    ``enrich`` opts into the risk (EPSS / CISA KEV) + reachability columns
+    (Phase B2). It is **off by default**, preserving the read-only /
+    no-egress posture: only when enabled does the server reach the EPSS/KEV
+    APIs or scan local source. ``None`` reads ``ARGUS_VIEW_ENRICH`` from the
+    environment. ``enrichment_service`` is injectable for tests.
+    """
     app = FastAPI(
         title="Argus",
         description="Local read-only view of argus scan findings.",
@@ -213,6 +227,11 @@ def create_app(root: str | None = None) -> FastAPI:
         redoc_url=None,
     )
     app.state.root = Path(root).resolve() if root else Path.cwd()
+    app.state.enrich = (
+        os.environ.get("ARGUS_VIEW_ENRICH", "").strip().lower() in ("1", "true", "yes")
+        if enrich is None else bool(enrich)
+    )
+    app.state.enrichment_service = enrichment_service
 
     import time as _time
     templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
@@ -402,6 +421,32 @@ def create_app(root: str | None = None) -> FastAPI:
         matched.sort(key=view_state.sort_key_fn(), reverse=view_state.sort_reverse)
         return matched
 
+    def _build_risk_cells(findings: list) -> list:
+        """Per-row risk (EPSS / CISA KEV) cells, aligned with ``findings``.
+
+        Opt-in path only (``app.state.enrich``): fetches EPSS/CISA KEV for the
+        CVEs in view (cached, offline-degrading). Returns a list the same
+        length as ``findings`` (``None`` where a row has no CVE signal).
+
+        Reachability is deliberately *not* surfaced here: it scans source
+        files, which belongs in the trusted-shell terminal viewer (Phase 12),
+        not the read-only browser. The browser stays read-only / no-source-scan.
+        """
+        cves = sorted({f.cve.upper() for f in findings if f.cve and is_cve(f.cve)})
+        service = app.state.enrichment_service or EnrichmentService()
+        risk_map = service.enrich(cves) if cves else {}
+        cells: list = []
+        for f in findings:
+            enr = risk_map.get(f.cve.upper()) if f.cve else None
+            if enr is None:
+                cells.append(None)
+                continue
+            cells.append({
+                "badge": risk_badge(enr),
+                "score": round(risk_score(f.severity, enr) * 100),
+            })
+        return cells
+
     @app.get("/findings", response_class=HTMLResponse)
     async def findings(
         request: Request,
@@ -484,11 +529,18 @@ def create_app(root: str | None = None) -> FastAPI:
                 "fix": any(f.metadata.get("fixed_version") for f in matched),
                 "sbom": any(f.metadata.get("sbom_source") for f in matched),
             }
+            # Risk (EPSS/KEV) + reachability columns — opt-in (Phase B2).
+            context["enrich_on"] = app.state.enrich
+            context["risk_cells"] = (
+                _build_risk_cells(matched) if app.state.enrich else []
+            )
         else:
             # No scan loaded → template paths that check show_columns
             # still need the dict keys to exist; default to True so
             # no branch throws on access during error-state rendering.
             context["show_columns"] = {"package": True, "fix": True, "sbom": True}
+            context["enrich_on"] = False
+            context["risk_cells"] = []
 
         # ?partial=1 returns just the table fragment for auto-filter.js
         # to swap in, skipping the layout. Non-JS clients never set it

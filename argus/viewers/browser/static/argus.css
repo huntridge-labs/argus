@@ -1200,3 +1200,29 @@ summary:focus-visible {
 .cmdk-item.is-selected {
   background: color-mix(in srgb, var(--argus-primary-green) 22%, transparent);
 }
+
+/* ===========================================================================
+   Phase B2 — risk (EPSS/KEV) + reachability column (opt-in).
+   =========================================================================== */
+.risk-cell { white-space: nowrap; line-height: 1.5; }
+.risk-badge {
+  display: inline-block;
+  font-size: 0.8rem;
+  color: var(--fg);
+}
+.risk-score {
+  display: inline-block;
+  min-width: 1.8em;
+  margin-left: 0.35em;
+  padding: 0.05rem 0.4rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-alt);
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.risk-reach {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+}
