@@ -213,12 +213,13 @@ class HomeScreen(Screen):
 
     CSS = """
     HomeScreen { align: center top; }
-    /* Fixed-width centred column: padding 2 each side leaves a 72-col inner
-       area that the banner / tagline / status span (text-align centres
-       their content) and the menu exactly fills — so the wordmark lines up
-       dead-centre over the menu, and the whole column is centred on screen. */
+    /* Fixed-width centred column (padding 2 each side → 72-col inner area).
+       align-horizontal:center centres each child as a block. The banner is
+       width:auto so it shrinks to the wordmark's own width and is centred as
+       a single block — NOT text-align:center, which would centre each ASCII
+       row independently and shift the shorter (rstripped) rows sideways. */
     #home { width: 76; height: auto; padding: 1 2; align-horizontal: center; }
-    #banner { width: 100%; text-align: center; color: $primary; text-style: bold; }
+    #banner { width: auto; color: $primary; text-style: bold; }
     #tagline { width: 100%; text-align: center; color: $text-muted; padding: 0 0 1 0; }
     #status { width: 100%; text-align: center; color: $text-muted; padding: 0 0 1 0;
               border-top: dashed $panel; border-bottom: dashed $panel; }
@@ -233,7 +234,11 @@ class HomeScreen(Screen):
     def compose(self) -> ComposeResult:  # pragma: no cover — UI
         with Center():
             with Vertical(id="home"):
-                yield Static(console_model.ARGUS_BANNER, id="banner")
+                # Center the width:auto banner as a block (preserves the
+                # ASCII rows' alignment); a Center wrapper does this reliably
+                # where align-horizontal on the column doesn't.
+                with Center():
+                    yield Static(console_model.ARGUS_BANNER, id="banner")
                 yield Static(console_model.TAGLINE, id="tagline")
                 yield Static("", id="status")
                 yield OptionList(
