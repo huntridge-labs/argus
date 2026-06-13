@@ -74,6 +74,7 @@ Press `?` inside the TUI for the same reference, grouped by purpose.
 | `F` (shift+f) | fix — propose a dependency bump for the finding (or selection), preview the diff, apply |
 | `i` | enrich — fetch EPSS + CISA KEV intelligence for the CVEs in view (see below) |
 | `S` (shift+s) | triage — suppress / accept-risk the finding (or selection), writing OpenVEX + ignore files (see below) |
+| `x` | explain — ask a local (Ollama) or cloud model to explain the focused finding (see below) |
 | **Other** | |
 | `d` | executive dashboard overlay |
 | `D` (shift+d) | scan-over-scan diff — pick another `argus-results.json` and bucket changes |
@@ -186,6 +187,29 @@ Argus writes the decision to two places:
 
 This reuses the same OpenVEX vocabulary as Argus's signed scan attestations,
 so a TUI triage decision and a CI-generated VEX speak the same language.
+
+## AI explanation (`x`)
+
+Press `x` to ask a model to explain the focused finding — what it is, why it
+matters *here*, and the likely real-world impact, with the Phase-6 exploit
+intelligence (EPSS / KEV) folded into the prompt when present.
+
+**Local-first and opt-in — no API key required to use Argus.** AI is off by
+default. Two ways to turn it on:
+
+- **Local model (recommended):** `export ARGUS_AI_LOCAL=1` to use a local
+  [Ollama](https://ollama.com) endpoint (or set `OLLAMA_HOST`). Nothing
+  leaves your machine.
+- **Cloud model:** `export ARGUS_AI_PROVIDER=anthropic` (or `openai`) plus
+  the provider's API key (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`). Override
+  the model with `ARGUS_AI_MODEL`.
+
+With neither configured, `x` shows a hint and does nothing else — no silent
+network calls. Model output is **advisory**: it's there to speed up triage,
+not to be trusted blindly, and any AI-suggested *fix* would still go through
+the same diff-preview gate as the deterministic `F` fix (never auto-applied).
+This reuses the provider abstraction already behind `argus classify`, so
+there's one AI integration across the tool.
 
 ## Mouse interactions
 
