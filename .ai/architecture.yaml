@@ -108,6 +108,11 @@ components:
         justification, reason, author, timestamp; keyed by CVE+product, idempotent @id); trivyignore_entries /
         gitleaksignore_entries + write_suppressions append to .trivyignore/.gitleaksignore (never clobber). Reuses
         the OpenVEX vocabulary of the reporters/attest layer; drives the terminal viewer's ``S`` Suppress action.
+      core/trends.py: UI-free dependency-free visual analytics (Phase 8). sparkline (Unicode ▁-█) +
+        bar_chart (Unicode █ bars), severity_breakdown / scanner_breakdown over findings, run_count_series /
+        trend_summary over discover_runs history (findings-over-time + are-we-improving delta). No chart
+        library — renders in any terminal, keeping the dependency surface minimal. Drives the terminal
+        dashboard's (``d``) charts.
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes
@@ -725,6 +730,11 @@ docsite:
         justification, reason, author, timestamp; keyed by CVE+product, idempotent @id); trivyignore_entries /
         gitleaksignore_entries + write_suppressions append to .trivyignore/.gitleaksignore (never clobber). Reuses
         the OpenVEX vocabulary of the reporters/attest layer; drives the terminal viewer's ``S`` Suppress action.
+      core/trends.py: UI-free dependency-free visual analytics (Phase 8). sparkline (Unicode ▁-█) +
+        bar_chart (Unicode █ bars), severity_breakdown / scanner_breakdown over findings, run_count_series /
+        trend_summary over discover_runs history (findings-over-time + are-we-improving delta). No chart
+        library — renders in any terminal, keeping the dependency surface minimal. Drives the terminal
+        dashboard's (``d``) charts.
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes

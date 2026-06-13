@@ -291,6 +291,11 @@ answer to "what's the state of our security posture?":
 - Quality warnings — SPDX-2.1 SBOMs Trivy can't read, SBOMs missing purl
   refs, Grype's "couldn't identify scan subject" warnings — surfaced loudly
   so an empty scan isn't misread as "we're clean"
+- **Visual analytics** — a *findings-over-time* sparkline with a "↑/↓ vs
+  previous run" delta (drawn from the same run history the runs sidebar
+  uses), plus **by-severity** and **by-scanner** bar charts. Rendered with
+  Unicode block characters, so they need no extra dependency and work in any
+  terminal — fitting for a supply-chain tool that minimises its own surface.
 - Per-product breakdown — every SBOM source with total + crit + high counts
   and the top-3 findings
 - Per-scanner contribution counts
