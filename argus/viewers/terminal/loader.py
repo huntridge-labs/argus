@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 
 from argus.core.models import ScanSummary
-from argus.core.run_discovery import RESULTS_FILENAME
+from argus.core.run_discovery import RESULTS_FILENAME, discover_runs
 
 # Re-exported from argus.core.run_discovery (its canonical home) so existing
 # ``from argus.viewers.terminal.loader import RESULTS_FILENAME`` call sites
@@ -24,25 +24,58 @@ __all__ = ["RESULTS_FILENAME", "flatten_findings", "load_summary", "locate_resul
 def locate_results(path: str | Path | None) -> Path:
     """Resolve ``path`` to an ``argus-results.json`` file.
 
-    - ``None`` → ``./argus-results/argus-results.json``
-    - a directory → ``{dir}/argus-results.json``
-    - a file      → use as-is (must exist and parse as JSON)
+    Mirrors ``argus scan``'s actual output layout — and the browser viewer's
+    resolution — so the terminal viewer opens a scan from a *directory* the
+    same way, in order:
+
+    - a file → use as-is.
+    - ``{dir}/argus-results.json`` (a direct drop) → use it.
+    - ``{dir}/latest/argus-results.json`` → use it. ``argus scan`` writes to a
+      timestamped subdir (``argus-results/2026-…Z/``) and maintains a
+      ``latest`` symlink; this is the common shape, and the reason a bare
+      ``argus`` → "View findings" used to flicker straight back to the home
+      screen (the old code only looked for the non-existent
+      ``argus-results/argus-results.json``).
+    - the newest timestamped run under ``{dir}`` (via ``discover_runs``) →
+      use it, for layouts without a ``latest`` symlink.
+
+    ``None`` resolves against the conventional ``./argus-results`` home.
     """
-    if path is None:
-        candidate = Path("argus-results") / RESULTS_FILENAME
-    else:
+    if path is not None:
         p = Path(path)
-        candidate = p / RESULTS_FILENAME if p.is_dir() else p
-    if not candidate.is_file():
-        # Defer to the shared diagnoser so the message identifies the
-        # likely root cause (most often: ``reporting.formats`` in
-        # argus.yml omits ``json``) rather than just reporting the
-        # missing file. Both viewers raise this exception and surface
-        # the message verbatim, so users get the same actionable
-        # remediation regardless of which interface they invoked.
-        from argus.viewers.diagnose import diagnose_missing_results
-        raise FileNotFoundError(diagnose_missing_results(candidate))
-    return candidate
+        if p.is_file():
+            return p
+        if not p.is_dir():
+            # A specific path the user named that's neither file nor dir —
+            # diagnose against it directly rather than appending a filename.
+            from argus.viewers.diagnose import diagnose_missing_results
+            raise FileNotFoundError(diagnose_missing_results(p))
+        base = p
+    else:
+        base = Path("argus-results")
+
+    direct = base / RESULTS_FILENAME
+    if direct.is_file():
+        return direct
+
+    latest = base / "latest" / RESULTS_FILENAME
+    if latest.is_file():
+        return latest.resolve()
+
+    if base.is_dir():
+        runs = discover_runs(base.resolve())
+        if runs:
+            newest = Path(runs[0]["path"]) / RESULTS_FILENAME
+            if newest.is_file():
+                return newest
+
+    # Defer to the shared diagnoser so the message identifies the likely
+    # root cause (most often: ``reporting.formats`` in argus.yml omits
+    # ``json``) rather than just reporting the missing file. Both viewers
+    # raise this and surface it verbatim, so the remediation is identical
+    # regardless of which interface was invoked.
+    from argus.viewers.diagnose import diagnose_missing_results
+    raise FileNotFoundError(diagnose_missing_results(direct))
 
 
 def load_summary(path: str | Path | None) -> tuple[ScanSummary, Path]:

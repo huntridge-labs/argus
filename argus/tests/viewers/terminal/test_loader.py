@@ -76,6 +76,58 @@ class TestLocateResults:
             locate_results(tmp_path / "nope")
 
 
+class TestRunLayoutResolution:
+    """``argus scan`` writes ``argus-results/<timestamp>/`` + a ``latest``
+    symlink. locate_results must find the run from the *parent* dir.
+
+    Regression: bare ``argus`` → "View findings" flickered straight back to
+    the home screen because the loader only checked the non-existent
+    ``argus-results/argus-results.json`` and raised, so the findings app
+    exited on mount.
+    """
+
+    def test_resolves_latest_symlink(self, tmp_path):
+        base = tmp_path / "argus-results"
+        run = base / "2026-06-13T23-33-33Z"
+        run.mkdir(parents=True)
+        (run / RESULTS_FILENAME).write_text(json.dumps(_sample_payload()))
+        (base / "latest").symlink_to(run)
+        resolved = locate_results(base)
+        assert resolved.resolve() == (run / RESULTS_FILENAME).resolve()
+
+    def test_none_resolves_latest_under_cwd(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        run = tmp_path / "argus-results" / "2026-06-13T23-33-33Z"
+        run.mkdir(parents=True)
+        (run / RESULTS_FILENAME).write_text(json.dumps(_sample_payload()))
+        (tmp_path / "argus-results" / "latest").symlink_to(run)
+        from pathlib import Path
+        assert Path(locate_results(None)).resolve() == (run / RESULTS_FILENAME).resolve()
+
+    def test_resolves_newest_run_without_symlink(self, tmp_path):
+        import os
+        base = tmp_path / "results"
+        old = base / "2026-01-01T00-00-00Z"
+        new = base / "2026-06-01T00-00-00Z"
+        old.mkdir(parents=True)
+        new.mkdir(parents=True)
+        (old / RESULTS_FILENAME).write_text(json.dumps(_sample_payload(("low",))))
+        (new / RESULTS_FILENAME).write_text(json.dumps(_sample_payload(("critical", "high"))))
+        os.utime(old / RESULTS_FILENAME, (1_000_000, 1_000_000))
+        os.utime(new / RESULTS_FILENAME, (2_000_000, 2_000_000))
+        assert locate_results(base) == new / RESULTS_FILENAME
+
+    def test_direct_drop_still_wins_over_latest(self, tmp_path):
+        base = tmp_path / "argus-results"
+        base.mkdir()
+        (base / RESULTS_FILENAME).write_text("{}")
+        run = base / "2026-01-01T00-00-00Z"
+        run.mkdir()
+        (run / RESULTS_FILENAME).write_text(json.dumps(_sample_payload()))
+        (base / "latest").symlink_to(run)
+        assert locate_results(base) == base / RESULTS_FILENAME
+
+
 class TestLoadSummary:
     def test_loads_valid_summary(self, tmp_path):
         f = tmp_path / RESULTS_FILENAME

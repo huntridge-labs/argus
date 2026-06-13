@@ -35,8 +35,11 @@
          {% if _active_nav == "/findings" %}aria-current="page"{% endif %}>Findings</a>
       <a href="/log{% if scan_param %}?scan={{ scan_param | urlencode }}{% endif %}"
          {% if _active_nav == "/log" %}aria-current="page"{% endif %}>Log</a>
+      {#- The report is a standalone print document (no app chrome), so open
+          it in a new tab: the user keeps their triage view instead of having
+          to hit Back to return. ``↗`` hints the new-tab behaviour. -#}
       <a href="/report{% if scan_param %}?scan={{ scan_param | urlencode }}{% endif %}"
-         {% if _active_nav == "/report" %}aria-current="page"{% endif %}>Report</a>
+         target="_blank" rel="noopener">Report&#8239;<span aria-hidden="true">↗</span></a>
 
       {#- Recent runs dropdown — only rendered when there are at
           least two scan-ready dirs under the launch root. Single-scan
