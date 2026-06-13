@@ -361,17 +361,29 @@ SDK-or-HTTP, OpenAI-compatible base URL) — no new AI layer.
 **Effort/Risk** — high; ships as a tested foundation (provider wiring +
 streaming panel + explain flow), with fix-suggestion polish iterative.
 
-## Phase 11 — Console on the web (`textual serve`)
+## Phase 11 — Console on the web (`textual serve`) — NOT PURSUED
 
-**Build** — one codebase, three surfaces: `argus console --web` runs the
-*same* Console in a browser via `textual-serve`, yielding a shareable URL
-for read-only triage. **Security-gated hard:** bind `127.0.0.1` by default,
-require an auth token, and reuse the browser viewer's read-only boundary —
-mutating actions (scan/fix/config/suppress) are disabled in web mode unless
-explicitly, separately authorized. This is an ADR (it widens the
-attack surface the browser-viewer ADR deliberately fenced off).
-**Effort/Risk** — moderate to wire, high to get the security story right;
-the gating is the feature.
+Considered and **dropped** after weighing it against the existing browser
+viewer. The idea was `argus console --web` serving the Console over
+`textual-serve`. The problem: it's squeezed from both sides.
+
+- A **read-only** web Console is essentially the browser viewer we already
+  ship (`argus view --interface=browser`: FastAPI, localhost, read-only) —
+  serving the *Console* over it adds a "same TUI in a browser" demo and
+  little real capability.
+- A **mutating** web Console (run scans / write config / apply fixes from a
+  browser) is clunky *and* crosses the boundary the browser-viewer ADR
+  deliberately fenced off — and the genuine multi-user / auth / RBAC /
+  orchestration value that would justify it belongs in a hosted **SaaS**
+  product, not a localhost `textual-serve` process.
+
+The real need this was reaching for — a shareable, stakeholder-facing view
+and an authoritative report — is served far better by investing in the
+**browser viewer** instead. That work is tracked in
+[`BROWSER-ROADMAP.md`](BROWSER-ROADMAP.md) (charts, risk/reachability
+columns, URL-addressable views, dependency drilldown, and a formal
+PDF vulnerability report). The speculative `web_serve.py` gating core built
+in anticipation was removed.
 
 ## Phase 12 — Reachability-aware prioritization (research + first cut)
 
