@@ -106,8 +106,10 @@ components:
         RunScanPromptScreen + RunScanScreen stream it) and reloads results when it finishes. Right-click context
         menus anchor at the cursor via mouse_actions.clamp_menu_offset. console.py + console_model.py provide the
         Argus Console — the home launcher (scan / findings / configure / init / settings / docs) with a
-        live-themed Settings screen backed by argus.core.console_config and a Configure form editor (ConfigScreen)
-        for argus.yml backed by config_editor.py (UI-free, comment-preserving targeted line edits + schema validation);
+        live-themed Settings screen backed by argus.core.console_config, a Configure form editor (ConfigScreen)
+        for argus.yml backed by config_editor.py (UI-free, comment-preserving targeted line edits + schema validation),
+        and an Init wizard (InitScreen) backed by init_wizard.py (UI-free frontend over argus.init detect_project +
+        generate_config — detect, toggle proposed scanners, write argus.yml, optionally hand off to the scan runner);
         bare ``argus`` opens it in an interactive
         TTY (cli._run_bare_argus), falling back to --help when non-interactive, and ``argus view`` deep-links to
         the findings viewer.'
@@ -709,8 +711,10 @@ docsite:
         RunScanPromptScreen + RunScanScreen stream it) and reloads results when it finishes. Right-click context
         menus anchor at the cursor via mouse_actions.clamp_menu_offset. console.py + console_model.py provide the
         Argus Console — the home launcher (scan / findings / configure / init / settings / docs) with a
-        live-themed Settings screen backed by argus.core.console_config and a Configure form editor (ConfigScreen)
-        for argus.yml backed by config_editor.py (UI-free, comment-preserving targeted line edits + schema validation);
+        live-themed Settings screen backed by argus.core.console_config, a Configure form editor (ConfigScreen)
+        for argus.yml backed by config_editor.py (UI-free, comment-preserving targeted line edits + schema validation),
+        and an Init wizard (InitScreen) backed by init_wizard.py (UI-free frontend over argus.init detect_project +
+        generate_config — detect, toggle proposed scanners, write argus.yml, optionally hand off to the scan runner);
         bare ``argus`` opens it in an interactive
         TTY (cli._run_bare_argus), falling back to --help when non-interactive, and ``argus view`` deep-links to
         the findings viewer.'

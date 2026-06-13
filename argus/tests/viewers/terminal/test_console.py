@@ -118,10 +118,12 @@ class TestDispatch:
         app.dispatch_menu("findings")
         assert calls["exit"] and calls["exit"][0] == "findings"
 
-    def test_init_exits_with_handoff_sentinel(self, console):
+    def test_init_opens_wizard(self, console, tmp_path, monkeypatch):
         _module, app, calls = console
+        monkeypatch.chdir(tmp_path)  # detect against an empty dir, fast + deterministic
         app.dispatch_menu("init")
-        assert calls["exit"] and calls["exit"][0] == "init"
+        assert "InitScreen" in calls["push"]
+        assert calls["exit"] == []  # no hand-off any more
 
     def test_configure_opens_config_screen_when_present(self, console, tmp_path, monkeypatch):
         _module, app, calls = console
@@ -164,3 +166,14 @@ class TestConfigScreen:
         screen = module.ConfigScreen(tmp_path / "absent.yml")
         assert screen._text == ""
         assert screen._original == ""
+
+
+class TestInitScreen:
+    def test_constructs_from_plan(self, console, tmp_path):
+        module, _app, _calls = console
+        from argus.viewers.terminal import init_wizard
+        plan = init_wizard.build_plan(tmp_path)
+        screen = module.InitScreen(plan)
+        assert screen._text == plan.yaml
+        assert screen._plan is plan
+        assert screen._overwrite_armed is False
