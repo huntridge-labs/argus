@@ -117,6 +117,12 @@ components:
         (kitty/iterm/sixel/none from env), supports_graphics / supports_hyperlinks / supports_truecolor,
         capability_summary. Env-only (no escape probing), dependency-free; the foundation richer inline-image
         rendering (textual-image, capability-gated, ASCII fallback) would build on. Surfaced in the Console help.
+      core/ai_triage.py: UI-free AI-assisted triage (Phase 10 foundation). Reuses scn/ai.py providers
+        (create_provider / resolve_api_key, provider.call(prompt)). explain_prompt / fix_prompt + triage_explain /
+        triage_fix run against an injected provider (mocked in tests). provider_from_env is local-first —
+        ARGUS_AI_LOCAL/OLLAMA_HOST gives a keyless local Ollama endpoint, ARGUS_AI_PROVIDER + key gives cloud,
+        else off. Drives the terminal viewer's ``x`` Explain overlay; model output is advisory (fixes still gate
+        through the Phase-1 diff preview, never auto-applied).
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes
@@ -743,6 +749,12 @@ docsite:
         (kitty/iterm/sixel/none from env), supports_graphics / supports_hyperlinks / supports_truecolor,
         capability_summary. Env-only (no escape probing), dependency-free; the foundation richer inline-image
         rendering (textual-image, capability-gated, ASCII fallback) would build on. Surfaced in the Console help.
+      core/ai_triage.py: UI-free AI-assisted triage (Phase 10 foundation). Reuses scn/ai.py providers
+        (create_provider / resolve_api_key, provider.call(prompt)). explain_prompt / fix_prompt + triage_explain /
+        triage_fix run against an injected provider (mocked in tests). provider_from_env is local-first —
+        ARGUS_AI_LOCAL/OLLAMA_HOST gives a keyless local Ollama endpoint, ARGUS_AI_PROVIDER + key gives cloud,
+        else off. Drives the terminal viewer's ``x`` Explain overlay; model output is advisory (fixes still gate
+        through the Phase-1 diff preview, never auto-applied).
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes

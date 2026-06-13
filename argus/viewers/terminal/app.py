@@ -59,7 +59,7 @@ from argus.core.enrichment import (
     is_cve,
     risk_badge,
 )
-from argus.core import suppressions, trends
+from argus.core import ai_triage, suppressions, trends
 from argus.core.models import Finding, Severity
 
 
@@ -915,6 +915,67 @@ class SpanContextMenuScreen(_BackgroundDismissMixin, ModalScreen[str | None]):
         self.dismiss(event.option.id or None)
 
 
+_EXPLAIN_CSS = """
+ExplainScreen { align: center middle; }
+ExplainScreen > Vertical {
+    width: 88%; max-width: 110; height: 70%;
+    border: thick $accent; background: $surface; padding: 1 2;
+}
+ExplainScreen #explain-title { text-style: bold; padding: 0 0 1 0; }
+ExplainScreen #explain-scroll { height: 1fr; border: solid $accent; padding: 0 1; }
+ExplainScreen #explain-hint { color: $text-muted; padding: 1 0 0 0; }
+"""
+
+
+class ExplainScreen(_BackgroundDismissMixin, ModalScreen):
+    """AI explanation overlay for a finding (Phase 10).
+
+    Runs the model call in a thread so the UI never blocks, then shows the
+    text. The runner is injectable for tests; model output is advisory only
+    (a suggested fix would still go through the Phase-1 diff gate).
+    """
+
+    CSS = _EXPLAIN_CSS
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close", show=True),
+        Binding("q", "dismiss", show=False),
+    ]
+
+    def __init__(self, finding, provider, *, enrichment_summary="", runner=None, label=""):
+        super().__init__()
+        self._finding = finding
+        self._provider = provider
+        self._enrichment_summary = enrichment_summary
+        self._runner = runner or ai_triage.triage_explain
+        self._label = label
+
+    def compose(self) -> ComposeResult:  # pragma: no cover — UI
+        with Vertical():
+            title = f"🤖 Explain · {self._finding.id}"
+            if self._label:
+                title += f"   [dim]{self._label}[/dim]"
+            yield Static(title, id="explain-title")
+            with VerticalScroll(id="explain-scroll"):
+                yield Static("[dim]Thinking…[/dim]", id="explain-text")
+            yield Static("esc to close  ·  AI output is advisory — verify before acting", id="explain-hint")
+
+    def on_mount(self) -> None:  # pragma: no cover — UI/worker
+        self.run_worker(self._work, thread=True, exclusive=True)
+
+    def _work(self) -> None:  # pragma: no cover — worker thread
+        try:
+            text = self._runner(
+                self._finding, provider=self._provider,
+                enrichment_summary=self._enrichment_summary,
+            )
+        except Exception as exc:  # model/network failure → show, don't crash
+            text = f"[red]AI request failed:[/red] {exc}"
+        self.call_from_thread(self._show, text or "[dim](no response)[/dim]")
+
+    def _show(self, text: str) -> None:  # pragma: no cover — UI
+        self.query_one("#explain-text", Static).update(text)
+
+
 _SUPPRESS_CSS = """
 SuppressScreen { align: center middle; }
 SuppressScreen > Vertical {
@@ -1254,6 +1315,7 @@ class ArgusBrowseCommands(Provider):
             ("Fix: Apply a Tier-1 dependency bump", "Propose + preview + apply a deterministic fix for the focused finding or selection (shift+f)", app.action_fix),
             ("Intel: Enrich with EPSS + CISA KEV", "Fetch exploit-probability + known-exploited intelligence for the CVEs in view (i)", app.action_enrich),
             ("Triage: Suppress / accept-risk (VEX)", "Record a triage decision to OpenVEX + .trivyignore/.gitleaksignore for the focused finding or selection (shift+s)", app.action_suppress),
+            ("AI: Explain this finding", "Ask a local (Ollama) or cloud model to explain the focused finding (x)", app.action_explain),
             ("Search findings",          "Focus the search box", app.action_focus_search),
             ("Filter: Critical only",    "Show only CRITICAL findings", app.action_filter_critical),
             ("Filter: High severity and above", "Show HIGH + CRITICAL findings", app.action_filter_high),
@@ -1502,6 +1564,10 @@ class BrowseApp(App):
         # whole selection, writing an OpenVEX audit trail + scanner ignore
         # entries so the next scan honours it.
         Binding("S", "suppress", "Suppress", show=True),
+        # AI-assisted triage: ask a local (Ollama) or cloud model to explain
+        # the focused finding. Opt-in, local-first, no key required to use
+        # Argus — stays off with a hint when nothing is configured.
+        Binding("x", "explain", "Explain", show=True),
         # Multi-select — drives the bulk-action workflows (export N rows,
         # paste a CVE list into a bug tracker). ``space``/``a``/``A``
         # manage the selection set; ``c`` copies CVEs from it. ``e``
@@ -1545,6 +1611,9 @@ class BrowseApp(App):
         # Injectable for tests; None ⇒ a default service (env-driven offline
         # detection, on-disk cache) is built on first ``action_enrich``.
         self._enrichment_service: EnrichmentService | None = None
+        # AI triage (Phase 10): a (provider, label) override for tests; None ⇒
+        # resolved from the environment (local Ollama / cloud key) on demand.
+        self._ai_provider_override: tuple[object | None, str] | None = None
         # Load ``view:`` config (cve_source / open_location / editor)
         # from any argus.yml the user has in cwd or beside results_dir.
         # ArgusConfig.load() auto-detects and falls back to defaults if
@@ -2073,6 +2142,31 @@ class BrowseApp(App):
     def _suppress_product(finding: Finding) -> str:  # pragma: no cover — UI
         meta = finding.metadata or {}
         return (meta.get("purl") or meta.get("fingerprint") or "").strip()
+
+    def action_explain(self) -> None:  # pragma: no cover — UI
+        """Ask a local/cloud model to explain the focused finding (``x``).
+
+        Local-first and opt-in: uses a local Ollama endpoint when enabled,
+        a cloud provider when a key is set, and otherwise stays off with a
+        hint (no silent egress, no key required to use Argus).
+        """
+        row = self.query_one(DataTable).cursor_row
+        if not (0 <= row < len(self._visible)):
+            self.notify("Select a finding to explain.", severity="information")
+            return
+        finding = self._visible[row]
+        provider, label = self._ai_provider_override or ai_triage.provider_from_env()
+        if provider is None:
+            self.notify(
+                "AI is off — set ARGUS_AI_LOCAL=1 for a local Ollama model, "
+                "or ARGUS_AI_PROVIDER + an API key for a cloud model.",
+                severity="warning", timeout=8,
+            )
+            return
+        enr = self._enrichment.get(finding.cve.upper()) if finding.cve else None
+        self.push_screen(ExplainScreen(
+            finding, provider, enrichment_summary=risk_badge(enr), label=label,
+        ))
 
     def _source_context_block(self, finding: Finding) -> str | None:
         """Render the ``[bold]Source[/bold]`` block for the detail pane.
