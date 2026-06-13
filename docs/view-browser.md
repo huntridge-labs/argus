@@ -121,6 +121,51 @@ nominally-higher-severity one that isn't.
 > files, which belongs in the trusted-shell terminal viewer (`argus view
 > terminal`, the `i` action), not the read-only browser.
 
+### `/report` — Formal vulnerability report
+
+The authoritative artifact. Where the dashboard is collapsible, filterable, and
+built for triage, the report is a single linear document built to be **printed,
+archived, and handed to an auditor** — the kind of evidence a compliance officer
+or a government body can act on.
+
+![Argus formal security report — cover, provenance & attestation block with commit SHA and cosign-verified scanner image digests, a PASS/FAIL verdict, severity counts and charts, and the full findings inventory grouped by severity](images/browser/report.png)
+
+What makes it *authoritative* is the **provenance & attestation** block up top.
+Every finding can be tied back to the exact scan that produced it:
+
+- **Argus version** that ran the scan, and the **generation timestamp**
+- **Source commit SHA** and **repository root** the scan actually saw (from the
+  scan's `scan_context`, not whatever HEAD is now)
+- **Scanner toolchain** — each scanner container image, its `sha256` **digest**,
+  and its **verification status** (cosign-verified / digest-pinned against
+  Argus's published, signed releases), so a reader can tell genuine published
+  tooling from a rebuilt or modified image
+- **Attestation status** — whether a tamper-evident, cosign-signed in-toto
+  attestation accompanies the scan (detected from the artifacts written
+  alongside `argus-results.json`)
+
+Below the provenance: a **PASS/FAIL verdict** against the configured severity
+threshold, the severity count strip, the same dependency-free charts as the
+dashboard, per-product / per-scanner breakdowns, and the **full findings
+inventory grouped by severity**. Counts and severities use the same shared
+logic as every other Argus view — the report can't disagree with the dashboard.
+
+#### One-click PDF (`/report.pdf`)
+
+```bash
+pip install 'argus-security[report]'
+```
+
+With the `[report]` extra installed, the **Download PDF report** button renders
+the document **server-side** to PDF (WeasyPrint — OSS, no headless browser) with
+proper paged layout and page numbers. Same scan in → same bytes out, every time.
+
+The extra is opt-in because WeasyPrint pulls heavy native libraries (Pango,
+cairo, …). **Without it, nothing breaks**: the `/report` HTML view is always
+served, and your browser's own Print → *Save as PDF* produces a perfectly good
+document from the same page. The PDF route degrades to a one-line install hint
+rather than erroring.
+
 ### `/picker` — Switch scan
 
 A one-level file browser. Click into subdirectories; any directory containing

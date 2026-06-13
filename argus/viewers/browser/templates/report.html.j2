@@ -1,0 +1,283 @@
+{#-
+  Formal vulnerability report (Phase B4) — a standalone, print-ready
+  document. Deliberately does NOT extend base.html.j2: no nav, no command
+  palette, no theme toggle. It is the artifact you hand to an auditor or a
+  government body, so it leads with provenance (what produced these numbers
+  and can they be trusted) before the findings themselves.
+
+  Rendered two ways from one source:
+    - /report      → pdf=False, links /static/report.css (strict CSP safe)
+    - /report.pdf  → pdf=True, stylesheet omitted; WeasyPrint is handed the
+                     CSS file directly so it never attempts an HTTP fetch.
+
+  Context:
+    report : argus.core.report.ReportModel (fully precomputed)
+    charts : {severity, trend, scanners} inline-SVG strings (Phase B1)
+    pdf    : bool — render mode (see above)
+-#}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  {%- if not pdf %}
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self'; script-src 'none'" />
+  <link rel="stylesheet" href="/static/report.css?v={{ static_v }}" />
+  {%- endif %}
+  <title>{{ report.title }} — Project Argus</title>
+</head>
+<body class="report">
+
+  {#- ---- Cover ------------------------------------------------------- -#}
+  <header class="report-cover">
+    <p class="report-wordmark">PROJECT ARGUS</p>
+    <h1 class="report-title">{{ report.title }}</h1>
+    <p class="report-subtitle">
+      Supply-chain &amp; application security assessment
+    </p>
+    <p class="report-generated">
+      Generated <time>{{ report.provenance.generated_at }}</time>
+      · Argus v{{ report.provenance.argus_version }}
+    </p>
+    {%- if not pdf %}
+    <p class="report-actions">
+      <a class="report-pdf-btn" href="/report.pdf">⬇ Download PDF report</a>
+      <span class="report-print-hint">or print this page (Save&nbsp;as&nbsp;PDF)</span>
+    </p>
+    {%- endif %}
+  </header>
+
+  {#- ---- Provenance: the "trust this artifact" block ----------------- -#}
+  <section class="report-section report-provenance">
+    <h2>Provenance &amp; attestation</h2>
+    <p class="report-lead">
+      This report is bound to a specific scan. The values below let a reader
+      tie every finding back to the exact tooling, source revision, and
+      verification status that produced it.
+    </p>
+    <dl class="report-facts">
+      <dt>Generated</dt><dd>{{ report.provenance.generated_at }}</dd>
+      <dt>Argus version</dt><dd>{{ report.provenance.argus_version }}</dd>
+      <dt>Source commit</dt>
+      <dd>
+        {%- if report.provenance.commit_sha -%}
+          <code>{{ report.provenance.commit_sha }}</code>
+        {%- else -%}
+          <span class="report-muted">not recorded (scan outside a git tree)</span>
+        {%- endif -%}
+      </dd>
+      <dt>Repository root</dt>
+      <dd>
+        {%- if report.provenance.repo_root -%}
+          <code>{{ report.provenance.repo_root }}</code>
+        {%- else -%}
+          <span class="report-muted">not recorded</span>
+        {%- endif -%}
+      </dd>
+      <dt>Scan results file</dt>
+      <dd>
+        {%- if report.provenance.scan_file -%}
+          <code>{{ report.provenance.scan_file }}</code>
+        {%- else -%}
+          <span class="report-muted">in-memory scan</span>
+        {%- endif -%}
+      </dd>
+      <dt>Attestation</dt>
+      <dd>
+        {%- if report.provenance.attestation == "signed" -%}
+          <span class="report-attest report-attest-signed">✔ Signed (cosign)</span>
+          — a tamper-evident in-toto attestation accompanies this scan.
+        {%- elif report.provenance.attestation == "unsigned" -%}
+          <span class="report-attest report-attest-unsigned">● Unsigned statement</span>
+          — an in-toto statement was written but not cryptographically signed.
+        {%- else -%}
+          <span class="report-muted">none recorded</span>
+        {%- endif -%}
+      </dd>
+    </dl>
+
+    {#- Scanner-toolchain provenance (#240): which images produced the scan
+        and whether they verify against Argus's published, signed releases. -#}
+    {% if report.provenance.toolchain_images %}
+      <h3>Scanner toolchain</h3>
+      <p class="report-lead">
+        {%- if report.provenance.toolchain_all_verified -%}
+          All Argus-owned scanner images verified against published, signed
+          release digests.
+        {%- elif report.provenance.toolchain_all_verified is none -%}
+          No Argus-owned container toolchain was recorded for this scan
+          (tools ran as local binaries).
+        {%- else -%}
+          One or more scanner images could not be verified against a published
+          release digest — see warnings below.
+        {%- endif -%}
+      </p>
+      <table class="report-table">
+        <thead>
+          <tr><th>Image</th><th>Digest</th><th>Verification</th></tr>
+        </thead>
+        <tbody>
+          {% for img in report.provenance.toolchain_images %}
+            <tr>
+              <td><code>{{ img.image.split('@')[0] }}</code></td>
+              <td><code class="report-digest">{{ img.digest or '—' }}</code></td>
+              <td>{{ img.verification or '—' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if report.provenance.toolchain_warnings %}
+        <ul class="report-warnings">
+          {% for w in report.provenance.toolchain_warnings %}
+            <li>{{ w }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endif %}
+  </section>
+
+  {#- ---- Executive summary ------------------------------------------- -#}
+  <section class="report-section report-summary">
+    <h2>Executive summary</h2>
+
+    <div class="report-verdict report-verdict-{{ 'pass' if report.passed else 'fail' }}">
+      {%- if report.severity_threshold -%}
+        {%- if report.passed -%}
+          ✔ PASS — no findings at or above the <strong>{{ report.severity_threshold }}</strong> threshold.
+        {%- else -%}
+          ✖ FAIL — findings at or above the <strong>{{ report.severity_threshold }}</strong> threshold are present.
+        {%- endif -%}
+      {%- else -%}
+        Informational — no severity gate was configured for this scan.
+      {%- endif -%}
+    </div>
+
+    <div class="report-counts">
+      <div class="report-count report-count-total">
+        <span class="n">{{ report.total }}</span>
+        <span class="l">Total findings</span>
+      </div>
+      {% for sev in ["critical", "high", "medium", "low", "info"] %}
+        {% set n = report.by_severity.get(sev, 0) %}
+        <div class="report-count report-count-{{ sev }}">
+          <span class="n">{{ n }}</span>
+          <span class="l">{{ sev.capitalize() }}</span>
+        </div>
+      {% endfor %}
+    </div>
+
+    {% if charts %}
+      <div class="report-charts">
+        <figure>
+          <figcaption>Findings by severity</figcaption>
+          <div class="report-chart">{{ charts.severity | safe }}</div>
+        </figure>
+        {% if charts.trend %}
+          <figure>
+            <figcaption>Findings over time</figcaption>
+            <div class="report-chart">{{ charts.trend | safe }}</div>
+          </figure>
+        {% endif %}
+        <figure>
+          <figcaption>By scanner</figcaption>
+          <div class="report-chart">{{ charts.scanners | safe }}</div>
+        </figure>
+      </div>
+    {% endif %}
+
+    {% if report.quality_warnings %}
+      <div class="report-quality">
+        <h3>Scan quality warnings</h3>
+        <ul>
+          {% for w in report.quality_warnings %}<li>{{ w }}</li>{% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+  </section>
+
+  {#- ---- Per product ------------------------------------------------- -#}
+  {% if report.per_product and not (report.per_product | length == 1 and report.per_product[0].product == "(no product)") %}
+    <section class="report-section">
+      <h2>Findings by product</h2>
+      <table class="report-table">
+        <thead>
+          <tr><th>Product</th><th>Total</th><th>Critical</th><th>High</th></tr>
+        </thead>
+        <tbody>
+          {% for p in report.per_product %}
+            <tr>
+              <td>{{ p.product }}</td>
+              <td>{{ p.total }}</td>
+              <td>{{ p.by_severity.critical or 0 }}</td>
+              <td>{{ p.by_severity.high or 0 }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  {% endif %}
+
+  {#- ---- Per scanner ------------------------------------------------- -#}
+  {% if report.per_scanner %}
+    <section class="report-section">
+      <h2>Findings by scanner</h2>
+      <table class="report-table">
+        <thead><tr><th>Scanner</th><th>Findings</th></tr></thead>
+        <tbody>
+          {% for s in report.per_scanner %}
+            <tr><td>{{ s.scanner }}</td><td>{{ s.total }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  {% endif %}
+
+  {#- ---- Full findings inventory, grouped by severity ---------------- -#}
+  <section class="report-section report-inventory">
+    <h2>Detailed findings</h2>
+    {% if not report.severity_groups %}
+      <p class="report-clean">No findings recorded for this scan.</p>
+    {% endif %}
+    {% for group in report.severity_groups %}
+      <h3 class="report-group-heading report-group-{{ group.value }}">
+        {{ group.label }} <span class="report-group-count">({{ group.count }})</span>
+      </h3>
+      <table class="report-table report-findings-table">
+        <thead>
+          <tr>
+            <th>ID</th><th>Package / Location</th><th>Scanner</th><th>Title</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in group.findings %}
+            <tr>
+              <td>
+                {% if f.cve %}<strong>{{ f.cve }}</strong>{% else %}{{ f.id }}{% endif %}
+              </td>
+              <td>
+                {%- if f.metadata.package -%}
+                  <code>{{ f.metadata.package }}@{{ f.metadata.installed_version or '?' }}</code>
+                {%- elif f.location -%}
+                  <code>{{ f.location }}</code>
+                {%- else -%}—{%- endif -%}
+              </td>
+              <td>{{ f.scanner or '—' }}</td>
+              <td>{{ f.title }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endfor %}
+  </section>
+
+  <footer class="report-footer">
+    <p>
+      Produced by Project Argus v{{ report.provenance.argus_version }} on
+      {{ report.provenance.generated_at }}. This document reflects the scan
+      identified above; counts and severities use the same logic as the
+      interactive Argus viewers.
+    </p>
+  </footer>
+
+</body>
+</html>

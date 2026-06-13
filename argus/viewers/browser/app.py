@@ -42,6 +42,7 @@ from argus.core.findings_view import (
 from argus.core.models import Severity
 from argus.core import svg_charts, trends
 from argus.core.enrichment import EnrichmentService, is_cve, risk_badge, risk_score
+from argus.core.report import build_report
 
 
 logger = logging.getLogger("argus.viewers.browser")
@@ -628,6 +629,93 @@ def create_app(
             content=body,
             media_type=CONTENT_TYPES[format],
             headers=headers,
+        )
+
+    def _render_report_html(scan_summary, resolved, *, pdf: bool) -> str:
+        """Render the formal-report template to an HTML string.
+
+        Shared by ``/report`` (preview, ``pdf=False`` so the page links the
+        external stylesheet under the strict CSP) and ``/report.pdf``
+        (``pdf=True`` so the stylesheet is omitted and WeasyPrint receives the
+        CSS explicitly — never attempting an HTTP fetch). The report is a
+        standalone document: it does *not* extend the app chrome (no nav, no
+        command palette), so it prints cleanly.
+        """
+        findings = flatten_findings(scan_summary)
+        model = build_report(scan_summary, findings, scan_file=resolved)
+        charts = _dashboard_charts(
+            findings, _collect_recent_scans(app.state.root, resolved),
+            total=model.total,
+        )
+        return templates.env.get_template("report.html.j2").render({
+            "report": model,
+            "charts": charts,
+            "pdf": pdf,
+        })
+
+    @app.get("/report", response_class=HTMLResponse)
+    async def report(request: Request, scan: str | None = None) -> Response:
+        """Formal, print-ready security report (HTML preview).
+
+        The authoritative artifact: provenance (Argus version, commit, scanner
+        image digests + verification, attestation status) followed by the
+        executive summary and the full findings inventory grouped by severity.
+        Always available — printable to PDF via the browser even without the
+        ``[report]`` extra (the page offers a one-click server-side PDF when
+        the extra is installed).
+        """
+        scan_summary, resolved, error = _load_scan(scan)
+        if scan_summary is None:
+            return templates.TemplateResponse(
+                request=request,
+                name="summary.html.j2",
+                context={**_base_context(None), "summary": None, "error": error},
+            )
+        html = _render_report_html(scan_summary, resolved, pdf=False)
+        return HTMLResponse(content=html)
+
+    @app.get("/report.pdf")
+    async def report_pdf(request: Request, scan: str | None = None) -> Response:
+        """Server-side PDF of the formal report (needs the ``[report]`` extra).
+
+        One click from the preview. Degrades to a friendly install hint when
+        WeasyPrint isn't installed, pointing at the always-available HTML
+        ``/report`` view (which the browser can itself print to PDF).
+        """
+        scan_summary, resolved, error = _load_scan(scan)
+        if scan_summary is None:
+            return Response(
+                content=f"No scan loaded: {error or 'unknown error'}",
+                status_code=404,
+                media_type="text/plain; charset=utf-8",
+            )
+
+        from argus.viewers import ViewerUnavailable
+        from argus.viewers.browser import report_pdf as _pdf
+
+        html = _render_report_html(scan_summary, resolved, pdf=True)
+        try:
+            pdf_bytes = _pdf.render_pdf(
+                html,
+                stylesheet=_STATIC_DIR / "report.css",
+                base_url=str(_SERVE_DIR),
+            )
+        except ViewerUnavailable as exc:
+            # Not an error the operator caused — surface the install path and
+            # the no-extra fallback, 200 so a fetch() reads the body cleanly.
+            return Response(
+                content=str(exc),
+                status_code=200,
+                media_type="text/plain; charset=utf-8",
+            )
+
+        model = build_report(scan_summary, flatten_findings(scan_summary), scan_file=resolved)
+        stamp = model.provenance.commit_short or model.provenance.generated_at[:10]
+        filename = f"argus-security-report-{stamp}.pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
         )
 
     @app.get("/diff", response_class=HTMLResponse)

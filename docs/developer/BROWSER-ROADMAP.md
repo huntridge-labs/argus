@@ -118,6 +118,13 @@ does nesting + expand/collapse far better than a TUI.
 
 ## Phase B4 — Formal PDF vulnerability report (the centrepiece)
 
+**Status — ✅ shipped.** `argus/core/report.py` (UI-free model + provenance
+assembly), `argus/viewers/browser/report_pdf.py` (guarded WeasyPrint edge),
+the standalone `report.html.j2` + `report.css`, and the `/report` (HTML) +
+`/report.pdf` (server-side PDF) routes. WeasyPrint sits behind the opt-in
+`[report]` extra; `/report` is always served and the browser's own Print →
+Save-as-PDF is the no-extra fallback.
+
 A comprehensive, **authoritative** PDF — the artifact you hand to an auditor
 or government body to make formal policy decisions about scanned software.
 
