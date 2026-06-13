@@ -1019,3 +1019,99 @@ footer a { color: var(--accent-dim); }
   font-style: italic;
   margin: 1rem 0;
 }
+
+/* ===========================================================================
+   Phase B0/B1 — design-system motion + dashboard charts.
+
+   All motion is additive and gated behind ``prefers-reduced-motion:
+   no-preference`` (with a hard reduce override at the end), so the UI stays
+   fully usable and static for users who ask for less motion. No new
+   dependency — pure CSS + the native View Transitions API.
+   =========================================================================== */
+
+:root {
+  /* Premium easing curve used for the motion below (Material/Linear-style). */
+  --argus-ease: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Cross-document page transitions: navigating Dashboard → Findings → Diff
+   cross-fades like an SPA, with zero JavaScript. Supported browsers opt in
+   via this at-rule; others simply navigate normally. */
+@view-transition { navigation: auto; }
+
+/* Dashboard charts (Phase B1): a responsive grid of chart cards. */
+.charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--gap);
+  margin: 1rem 0 1.5rem;
+}
+.chart-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.1rem 1.2rem;
+}
+.chart-card h3 {
+  margin: 0 0 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--argus-muted-text);
+}
+.chart-card .chart { display: flex; justify-content: center; }
+.chart-card svg { max-width: 100%; height: auto; }
+
+/* Keyboard focus ring — consistent, visible, brand-coloured. */
+a:focus-visible,
+button:focus-visible,
+.card:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--argus-accent-lime);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Staggered rise-in for the stat cards + chart cards on load. */
+  @keyframes argus-rise {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: none; }
+  }
+  .cards .card,
+  .charts .chart-card {
+    animation: argus-rise 0.45s var(--argus-ease) both;
+  }
+  .cards .card:nth-child(2) { animation-delay: 0.04s; }
+  .cards .card:nth-child(3) { animation-delay: 0.08s; }
+  .cards .card:nth-child(4) { animation-delay: 0.12s; }
+  .cards .card:nth-child(5) { animation-delay: 0.16s; }
+  .cards .card:nth-child(6) { animation-delay: 0.20s; }
+  .charts .chart-card:nth-child(2) { animation-delay: 0.08s; }
+  .charts .chart-card:nth-child(3) { animation-delay: 0.16s; }
+
+  /* Subtle hover lift on the interactive cards (they already transition
+     transform), signalling clickability. */
+  .card:hover { transform: translateY(-2px); }
+
+  /* Draw-on for the trend line: the polyline declares pathLength="1", so a
+     normalised dash sweep animates it in. Scoped here so reduced-motion
+     users get the line fully drawn (no dash) rather than an empty box. */
+  .chart polyline {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: argus-draw 1s var(--argus-ease) 0.25s forwards;
+  }
+  @keyframes argus-draw { to { stroke-dashoffset: 0; } }
+}
+
+/* Respect a reduced-motion request: kill animations + collapse transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

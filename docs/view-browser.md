@@ -41,9 +41,18 @@ For multi-user enterprise deployments, see the separate
 
 ### `/` — Executive summary dashboard
 
-Opens here by default. Shows:
+Opens here by default.
 
-- **Total findings** + per-severity breakdown (cards at the top)
+![Argus browser dashboard — severity-accented stat cards, a severity donut, a findings-over-time trend, and a by-scanner bar chart](images/browser/dashboard.png)
+
+Shows:
+
+- **Total findings** + per-severity breakdown (cards at the top, each a
+  deep-link into the matching `/findings` filter)
+- **Visual analytics** — a **severity donut**, a **findings-over-time** trend
+  line (from the run history), and a **by-scanner** bar chart. Rendered as
+  inline SVG with no chart-library dependency; the line draws on and the
+  cards count up on load (motion is gated on `prefers-reduced-motion`)
 - **Scan quality warnings** — SPDX-2.1 SBOMs Trivy can't read, low-purl
   coverage, Grype "couldn't identify scan subject" — surfaced loudly so
   empty scans aren't misread as clean
@@ -52,7 +61,16 @@ Opens here by default. Shows:
 - **Per scanner** — contribution counts (useful for spotting when one
   scanner did 90% of the work, which often signals an input format issue)
 
+> **Motion & polish.** The viewer uses a dependency-free motion layer — the
+> CSS [View Transitions API](https://developer.mozilla.org/docs/Web/API/View_Transitions_API)
+> cross-fades page navigations, cards/charts rise in on load, and the trend
+> line draws on. All of it is wrapped in `prefers-reduced-motion`, so the UI
+> degrades to a fully static, accessible page (the screenshots above are
+> captured in exactly that reduced-motion state).
+
 ### `/findings` — Filterable table
+
+![Argus browser findings table — severity-badged rows with filter bar, count, and export](images/browser/findings.png)
 
 The spreadsheet view. Dropdown filters for severity, product, and scanner;
 a search box that matches id, title, location, CVE, and scanner name. Filters

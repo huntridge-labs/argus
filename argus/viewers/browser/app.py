@@ -39,6 +39,7 @@ from argus.core.findings_view import (
     unique_scanners,
 )
 from argus.core.models import Severity
+from argus.core import svg_charts, trends
 
 
 logger = logging.getLogger("argus.viewers.browser")
@@ -286,6 +287,27 @@ def create_app(root: str | None = None) -> FastAPI:
         except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
             return None, None, str(exc)
 
+    def _dashboard_charts(
+        findings: list, recent_scans: list[dict], *, total: int | None = None,
+    ) -> dict:
+        """Inline SVG charts for the dashboard (Phase B1).
+
+        Dependency-free (``argus.core.svg_charts`` over ``argus.core.trends``
+        data): a severity donut, a findings-over-time trend (from the run
+        history that powers the header dropdown), and a by-scanner bar chart.
+        ``total`` is the summary's authoritative finding count, shown in the
+        donut centre so it always matches the "Total findings" card. The
+        trend is omitted with fewer than two runs.
+        """
+        series = trends.run_count_series(recent_scans)
+        return {
+            "severity": svg_charts.severity_donut(
+                trends.severity_breakdown(findings), size=180, center=total,
+            ),
+            "trend": svg_charts.trend_line(series, width=300, height=90) if len(series) >= 2 else "",
+            "scanners": svg_charts.bar_chart(trends.scanner_breakdown(findings)[:6], width=340),
+        }
+
     @app.get("/", response_class=HTMLResponse)
     async def dashboard(request: Request, scan: str | None = None) -> Response:
         """Executive-summary dashboard for the active scan context.
@@ -295,17 +317,24 @@ def create_app(root: str | None = None) -> FastAPI:
         scan by pointing back at ``/?scan=...``.
         """
         scan_summary, resolved, error = _load_scan(scan)
+        base = _base_context(resolved)
         summary = None
+        charts = None
         if scan_summary is not None:
-            summary = compute_summary(flatten_findings(scan_summary), top_n=3)
+            findings = flatten_findings(scan_summary)
+            summary = compute_summary(findings, top_n=3)
+            charts = _dashboard_charts(
+                findings, base.get("recent_scans") or [], total=summary.get("total"),
+            )
         return templates.TemplateResponse(
             request=request,
             name="summary.html.j2",
             context={
-                **_base_context(resolved),
+                **base,
                 "scan_param": scan,
                 "scan_label": str(resolved) if resolved else None,
                 "summary": summary,
+                "charts": charts,
                 "metadata": _scan_metadata(scan_summary, resolved),
                 "error": error,
             },
