@@ -107,6 +107,32 @@ def editable_rows(text: str) -> list[EditRow]:
     return rows
 
 
+def row_display(rows: list[EditRow]) -> list[tuple[str, str]]:
+    """Return ``(id, display-markup)`` per row with aligned columns.
+
+    Sizes the label and value columns to the *widest* entry rather than a
+    fixed width, so a long key (e.g. ``reporting · severity_threshold``, 30
+    chars) can never run into its value. Enum rows carry a ``▾`` affordance
+    marking them as pick-from-a-list (Enter opens a chooser) versus toggles
+    that flip in place. The doc is dimmed and trails the value column.
+
+    UI-free so the alignment is unit-tested without the ``[terminal]`` extra;
+    ``ConfigScreen`` just wraps each tuple in a Textual ``Option``.
+    """
+    if not rows:
+        return []
+
+    def shown_value(row: EditRow) -> str:
+        return f"{row.value} ▾" if row.kind == "enum" else row.value
+
+    label_w = max(len(r.label) for r in rows) + 2
+    value_w = max(len(shown_value(r)) for r in rows) + 2
+    return [
+        (r.key, f"{r.label:<{label_w}}{shown_value(r):<{value_w}}[dim]{r.doc}[/dim]")
+        for r in rows
+    ]
+
+
 def set_value(text: str, path: list[str], value: str) -> str | None:
     """Set the YAML scalar at ``path`` to ``value``, preserving formatting.
 
