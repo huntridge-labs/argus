@@ -59,7 +59,7 @@ from argus.core.enrichment import (
     is_cve,
     risk_badge,
 )
-from argus.core import suppressions
+from argus.core import suppressions, trends
 from argus.core.models import Finding, Severity
 
 
@@ -282,10 +282,16 @@ class DashboardScreen(_BackgroundDismissMixin, ModalScreen):
     }
     """
 
-    def __init__(self, all_findings: list[Finding], source_label: str):
+    def __init__(
+        self,
+        all_findings: list[Finding],
+        source_label: str,
+        runs: list[dict] | None = None,
+    ):
         super().__init__()
         self._findings = all_findings
         self._source_label = source_label
+        self._runs = runs or []
 
     def compose(self) -> ComposeResult:
         summary = compute_summary(self._findings, top_n=3)
@@ -309,6 +315,10 @@ class DashboardScreen(_BackgroundDismissMixin, ModalScreen):
         if sev_parts:
             lines.append("  " + "   ".join(sev_parts))
         lines.append("")
+
+        # Trend + charts (Phase 8) — dependency-free Unicode visuals.
+        for chart_line in self._chart_lines():
+            lines.append(chart_line)
 
         # Quality warnings (SPDX-2.1, purl coverage, "unknown scan
         # subject" from grype, ...) — loud so execs don't misread an
@@ -358,6 +368,32 @@ class DashboardScreen(_BackgroundDismissMixin, ModalScreen):
 
         with Container(id="dashboard-body"):
             yield Static("\n".join(lines))
+
+    def _chart_lines(self) -> list[str]:
+        """Dependency-free Unicode charts for the dashboard (Phase 8)."""
+        out: list[str] = []
+        series = trends.run_count_series(self._runs)
+        if len(series) >= 2:
+            out.append("[b]Findings over time[/b]")
+            out.append(
+                f"  {trends.sparkline(series)}   "
+                f"[dim]{trends.trend_summary(self._runs)}[/dim]"
+            )
+            out.append("")
+        sev_items = [
+            (f"{_SEVERITY_GLYPH.get(sev, '?')} {sev.value.capitalize()}", count)
+            for sev, count in trends.severity_breakdown(self._findings)
+        ]
+        if sev_items:
+            out.append("[b]By severity[/b]")
+            out.extend(f"  {row}" for row in trends.bar_chart(sev_items))
+            out.append("")
+        scanner_items = trends.scanner_breakdown(self._findings)[:8]
+        if scanner_items:
+            out.append("[b]By scanner[/b]")
+            out.extend(f"  {row}" for row in trends.bar_chart(scanner_items))
+            out.append("")
+        return out
 
 
 class ProductPickerScreen(_BackgroundDismissMixin, ModalScreen[str | None]):
@@ -2307,7 +2343,9 @@ class BrowseApp(App):
 
     def action_show_dashboard(self) -> None:
         self.push_screen(
-            DashboardScreen(self.all_findings, source_label=self.sub_title or ""),
+            DashboardScreen(
+                self.all_findings, source_label=self.sub_title or "", runs=self._runs,
+            ),
         )
 
     def action_diff_against(self) -> None:
