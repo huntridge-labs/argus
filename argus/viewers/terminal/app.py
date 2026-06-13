@@ -18,6 +18,7 @@ the footer automatically):
   C (shift+c)   — copy CVE IDs of selected findings to the clipboard
   b             — toggle the runs sidebar (switch between discovered scan runs)
   R (shift+r)   — run ``argus scan`` in-app and reload results when it finishes
+  F (shift+f)   — apply a deterministic Tier-1 fix (dependency bump) with diff preview
   q             — quit
 """
 
@@ -39,6 +40,7 @@ from argus.viewers.terminal import mouse_actions, runs_sidebar, scan_runner
 from argus.viewers.terminal.loader import flatten_findings, load_summary
 from argus.core.config import ArgusConfig, ViewConfig
 from argus.core.run_discovery import discover_runs
+from argus.core import remediation
 from argus.core.findings_view import (
     SEVERITY_GLYPH,
     SEVERITY_ORDER,
@@ -137,6 +139,9 @@ _HELP_TEXT = """\
   [b]R[/b]                run a scan (shift+r) — launches argus scan, streams
                    its output in an overlay, and reloads results when it
                    finishes. Blank scanner = all enabled scanners.
+  [b]F[/b]                fix (shift+f) — propose a deterministic dependency
+                   bump for the focused finding (or every fixable row in the
+                   selection), preview the diff, and apply it. Re-scan to confirm.
 
 [b]Other[/b]
   [b]d[/b]                executive summary dashboard
@@ -717,6 +722,10 @@ class ContextMenuScreen(_BackgroundDismissMixin, ModalScreen[str | None]):
             and not mouse_actions.parse_file_line(finding.location)
         ):
             self._items.append(("Open package on registry", "open_package"))
+        if remediation.is_fixable(finding):
+            pkg = finding.metadata.get("package")
+            fixed = finding.metadata.get("fixed_version")
+            self._items.append((f"⚒ Apply fix: {pkg} → {fixed}", "fix"))
         self._items.append(("Export current selection / view", "export"))
 
     def on_mount(self) -> None:  # pragma: no cover — UI geometry
@@ -1022,6 +1031,84 @@ class RunScanScreen(ModalScreen[str | None]):
             self.dismiss(self._result_path)
 
 
+_FIX_CSS = """
+FixScreen { align: center middle; }
+FixScreen > Vertical {
+    width: 90%; max-width: 110; height: auto; max-height: 90%;
+    border: thick $accent; background: $surface; padding: 1 2;
+}
+FixScreen #fix-title { text-style: bold; padding: 0 0 1 0; }
+FixScreen #fix-body { height: auto; max-height: 1fr; }
+FixScreen #fix-hint { color: $text-muted; padding: 1 0 0 0; }
+"""
+
+
+def render_fix_preview(remediations: list) -> str:
+    """Build the Fix overlay's markup body from proposed remediations.
+
+    Pure (no Textual) so it's unit-testable: shows each fix's title, the
+    unified diff (escaped) for file edits, or the command for fallbacks.
+    """
+    def _esc(s: str) -> str:
+        return s.replace("[", r"\[").replace("]", r"\]")
+
+    lines: list[str] = []
+    for rem in remediations:
+        marker = "[green]✓[/green]" if rem.confidence == "high" else "[yellow]~[/yellow]"
+        lines.append(f"{marker} [b]{_esc(rem.title)}[/b]")
+        if rem.diff:
+            for dl in rem.diff.splitlines():
+                if dl.startswith("+") and not dl.startswith("+++"):
+                    lines.append(f"[green]{_esc(dl)}[/green]")
+                elif dl.startswith("-") and not dl.startswith("---"):
+                    lines.append(f"[red]{_esc(dl)}[/red]")
+                else:
+                    lines.append(f"[dim]{_esc(dl)}[/dim]")
+        elif rem.command:
+            lines.append(f"  [dim]run:[/dim] {_esc(' '.join(rem.command))}")
+        if rem.note:
+            lines.append(f"  [dim]{_esc(rem.note)}[/dim]")
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
+class FixScreen(_BackgroundDismissMixin, ModalScreen[bool]):
+    """Preview proposed Tier-1 fixes and apply them on confirm.
+
+    Diff-first: nothing touches the working tree until the user presses
+    Enter / a. ``apply`` is delegated to ``argus.core.remediation`` by the
+    parent on a ``True`` dismissal; this screen is the reviewer.
+    """
+
+    CSS = _FIX_CSS
+    BINDINGS = [
+        Binding("escape", "dismiss(False)", "Cancel", show=True),
+        Binding("a", "dismiss(True)", "Apply", show=True),
+        Binding("enter", "dismiss(True)", "Apply", show=False),
+    ]
+
+    def __init__(self, remediations: list):
+        super().__init__()
+        self._remediations = remediations
+
+    def compose(self) -> ComposeResult:  # pragma: no cover — UI
+        applicable = sum(1 for r in self._remediations if r.is_applicable)
+        with Vertical():
+            yield Static(
+                f"⚒  Apply {len(self._remediations)} fix(es)  "
+                f"[dim]({applicable} edit file(s) directly)[/dim]",
+                id="fix-title",
+            )
+            with VerticalScroll(id="fix-body"):
+                yield Static(render_fix_preview(self._remediations))
+            yield Static(
+                "enter / a apply   ·   esc cancel", id="fix-hint",
+            )
+
+    def on_mount(self) -> None:  # pragma: no cover — UI
+        self.query_one("#fix-body", VerticalScroll).focus()
+
+
 def _one_line(f: Finding) -> str:
     """One-line summary of a finding for the diff bucket lists.
 
@@ -1056,6 +1143,7 @@ class ArgusBrowseCommands(Provider):
             ("Diff: Compare against another scan", "Pick another argus-results.json and bucket changes (new / fixed / severity-changed / still-open)", app.action_diff_against),
             ("Runs: Toggle the runs sidebar", "Show / hide the list of discovered scan runs and switch between them (b)", app.action_toggle_runs),
             ("Scan: Run argus scan", "Launch argus scan from the TUI, stream output, and reload results when done (shift+r)", app.action_run_scan),
+            ("Fix: Apply a Tier-1 dependency bump", "Propose + preview + apply a deterministic fix for the focused finding or selection (shift+f)", app.action_fix),
             ("Search findings",          "Focus the search box", app.action_focus_search),
             ("Filter: Critical only",    "Show only CRITICAL findings", app.action_filter_critical),
             ("Filter: High severity and above", "Show HIGH + CRITICAL findings", app.action_filter_high),
@@ -1285,6 +1373,10 @@ class BrowseApp(App):
         # it finishes. Lowercase ``r`` stays the reveal-export action.
         Binding("b", "toggle_runs", "Runs", show=True),
         Binding("R", "run_scan", "Run scan", show=True),
+        # Deterministic Tier-1 fix (dependency bump) for the focused finding
+        # — or every fixable row in the multi-select set. Diff-first: shows
+        # the proposed change before touching anything.
+        Binding("F", "fix", "Fix", show=True),
         # Multi-select — drives the bulk-action workflows (export N rows,
         # paste a CVE list into a bug tracker). ``space``/``a``/``A``
         # manage the selection set; ``c`` copies CVEs from it. ``e``
@@ -1592,6 +1684,62 @@ class BrowseApp(App):
             )
 
         self.push_screen(RunScanPromptScreen(), _on_params)
+
+    def action_fix(self) -> None:  # pragma: no cover — UI event
+        """Apply a Tier-1 fix to the selection (or the focused finding) (``F``).
+
+        Targets the multi-select set when one is active, else the focused
+        row. Proposes a deterministic remediation per finding, previews the
+        diffs in a FixScreen, and applies on confirm.
+        """
+        if self._selected:
+            targets = [f for f in self.all_findings if id(f) in self._selected]
+        else:
+            row = self._focused_row_index()
+            targets = [self._visible[row]] if row is not None else []
+        self._fix_findings(targets)
+
+    def _fix_findings(self, findings: list[Finding]) -> None:  # pragma: no cover — UI
+        """Propose + preview + apply Tier-1 fixes for ``findings``."""
+        if not findings:
+            return
+        repo_root = self._resolve_repo_root() or Path.cwd()
+        proposals = [
+            rem for rem in (
+                remediation.propose(f, repo_root=repo_root) for f in findings
+            ) if rem is not None
+        ]
+        if not proposals:
+            self.notify(
+                "No automatic fix available for the selected finding(s). "
+                "Tier-1 fixes cover dependency bumps with a known fixed version.",
+                severity="warning", timeout=5,
+            )
+            return
+
+        def _on_confirm(apply_it: bool | None) -> None:
+            if not apply_it:
+                return
+            applied, failed = 0, 0
+            messages: list[str] = []
+            for rem in proposals:
+                result = remediation.apply(rem, repo_root=repo_root)
+                if result.ok:
+                    applied += 1
+                else:
+                    failed += 1
+                    messages.append(result.message)
+            summary = f"Applied {applied} fix(es)."
+            if failed:
+                summary += f" {failed} need manual steps: " + " | ".join(messages[:3])
+            summary += " Re-run the scan ([b]R[/b]) to confirm."
+            self.notify(
+                summary,
+                severity="information" if applied else "warning",
+                timeout=10,
+            )
+
+        self.push_screen(FixScreen(proposals), _on_confirm)
 
     # ------------------------------------------------------------------
     # Filter / sort / search
@@ -2436,6 +2584,8 @@ class BrowseApp(App):
                 self.action_open_remote_file(finding.location or "")
             elif choice == "open_package":
                 self.action_open_package(finding.location or "")
+            elif choice == "fix":
+                self._fix_findings([finding])
             elif choice == "export":
                 self.action_export_csv()
 

@@ -94,34 +94,42 @@ The first bricks. Establishes the patterns the rest of the Console builds on.
 CI without the `[terminal]` extra), Textual screens exercised via the
 stubbed-textual loader, overlays that are diff-/review-first.
 
-## Phase 1 — Vulnerability mitigation ("Fix") (next)
+## Phase 1 — Vulnerability mitigation ("Fix") (Tier-1 dependency bumps shipped)
 
-Let users resolve findings, not just read them. Full design is the
-mitigation plan; summary here.
+Let users resolve findings, not just read them.
 
-**Architecture**
-- New UI-free `argus/core/remediation.py`: `Remediation` dataclass +
-  `propose(finding, *, repo_root)` / `apply(remediation, *, repo_root)`.
-  Computed on the fly from existing finding data (no `Finding` schema /
-  `argus-results.json` / redaction change).
-- **Tier 1 — deterministic, OSS, no key:** dependency bumps (from
-  `metadata.fixed_version`, populated in `argus/scanners/_vuln_parsers.py`),
-  GitHub Actions SHA-pinning (`scanner-supply-chain` findings), opengrep
-  rule autofix (`fix:` keys). Native manifest rewrite preferred over adding
-  fixer-tool deps; major-version bumps surfaced as a distinct higher-risk
-  class, never silent.
+**Shipped (PR 1 — deterministic dependency bumps, no AI)**
+- UI-free `argus/core/remediation.py`: `Remediation` dataclass +
+  `propose(finding, *, repo_root)` / `apply(...)` / `is_fixable(...)`.
+  Computed on the fly from existing finding data — no `Finding` schema /
+  `argus-results.json` / redaction change.
+- Tier-1 **dependency bumps** for pip (`requirements*.txt`) and npm
+  (`package.json`): locate the package, produce a unified diff bumping it to
+  `metadata.fixed_version`, preserving the existing spec style (`==` stays
+  pinned, `>=` keeps its operator, bare name → `>=`). PEP 503 name
+  normalization for pip; caret/tilde preserved for npm. Falls back to the
+  ecosystem upgrade *command* (shown, never auto-run) when no manifest line
+  matches.
+- **TUI:** `F` → Fix overlay (`FixScreen`) — diff-first preview, Apply
+  (`a`/Enter) / Cancel; batch over the multi-select set; an `⚒ Apply fix`
+  context-menu item on fixable rows. Apply writes the edit; the user re-runs
+  the scan (`R`) to confirm.
+
+**Remaining (later PRs)**
+- More Tier-1 sources: **GitHub Actions SHA-pinning** (`scanner-supply-chain`
+  findings → tag→SHA rewrite) and **opengrep rule autofix** (`fix:` keys).
+- Surface **major-version bumps** as a distinct higher-risk class (currently
+  the bump preserves the operator but doesn't flag a major jump).
 - **Tier 2 — AI-assisted, opt-in (`[ai]` + `--enable-ai`):** SAST logic
   rewrites via the `scn/ai.py` providers (or a local model through the
   OpenAI-compatible base URL). Output is a unified diff, always reviewed,
   never auto-applied, always gated by the test pipeline.
-- **TUI:** `F` → Fix overlay (reuses the Phase-0 `RunScanScreen` pattern):
-  show the proposed diff, Apply / Cancel, optionally chain into a re-scan to
-  confirm the finding is gone. Batch-fix over the existing multi-select set.
-  A `⚒` table marker flags fixable rows.
+- A persistent `⚒` table-column marker (today fixable rows are flagged in the
+  context menu; a column needs the sort-indicator offsets reworked).
 
-**Why first:** Tier 1 is fully OSS and slots straight into the
+**Why this first:** Tier 1 is fully OSS and slots straight into the
 "trust → green tests → auto-merge" end-state — a deterministic fix that
-produces a passing run *is* the auto-merge story. It also complements the
+produces a passing run *is* the auto-merge story. It complements the
 already-foundational Dependabot/Renovate flow as its interactive sibling.
 
 ## Phase 2 — Config editor screen (planned)
