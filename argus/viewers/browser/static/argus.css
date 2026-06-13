@@ -318,6 +318,43 @@ header nav a[aria-current="page"] {
   background: var(--argus-deep-bg);
 }
 
+/* ── Sticky scan-context bar (B0 IA) ──────────────────────────────
+ * A slim strip under the header carrying the active scan's identity
+ * (project · commit · scan time · finding count) so context follows
+ * the user down every primary view. Sticks to the top on scroll.
+ *
+ * z-index stays at 50 — below the header's stacking context (100) —
+ * so the Recent-runs dropdown still paints over the bar rather than
+ * being clipped by it. Theme-aware via tokens (flips with light/dark);
+ * a frosted translucent background where color-mix + backdrop-filter
+ * are supported, with a solid var(--surface) fallback first. */
+.scan-context-bar {
+  position: sticky; top: 0; z-index: 50;
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 0.5rem;
+  max-width: var(--max-width); margin: 0 auto 1.5rem;
+  padding: 0.55rem 1.5rem;
+  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  font-size: 0.85rem; color: var(--fg-muted);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.scb-project {
+  font-weight: 600; color: var(--fg);
+  font-family: var(--font-heading);
+  letter-spacing: 0.02em;
+}
+.scb-commit code {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.85em; color: var(--accent-dim);
+}
+.scb-sep { opacity: 0.45; }
+.scb-count, .scb-time { color: var(--fg-muted); }
+
 /* ── Scan metadata panel ─────────────────────────────────────────
  * Collapsed <details> on the dashboard showing per-scanner info
  * the user might need for audit questions: tool versions,

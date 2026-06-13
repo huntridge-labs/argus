@@ -169,7 +169,10 @@ components:
         ViewerUnavailable with an install hint when absent — /report HTML + the browser''s own Print→Save-as-PDF
         is the no-extra fallback). The opt-in Risk column (ARGUS_VIEW_ENRICH=1 / enrich=True) adds EPSS + CISA KEV
         scoring to /findings via argus.core.enrichment; reachability stays terminal-only by design (read-only/no
-        source scan). See ADR-031.'
+        source scan). A persistent sticky scan-context bar (project / commit / scan time / finding count, built by
+        _context_bar + threaded through _base_context) sits under the header on the dashboard / findings / log
+        views; omitted on the picker / diff where no single scan is in scope (B0 IA — top-nav + context bar chosen
+        over a left sidebar). See ADR-031.'
       scanners/: 'Scanner modules implementing Scanner protocol (SCANNER_REGISTRY includes linters via
         auto-merge). The container scanner orchestrates five sub-scanners on every run: trivy (CVE scan),
         grype (CVE scan, deduplicated against trivy), syft (SBOM), exposure (declared-port surface from
@@ -828,7 +831,10 @@ docsite:
         ViewerUnavailable with an install hint when absent — /report HTML + the browser''s own Print→Save-as-PDF
         is the no-extra fallback). The opt-in Risk column (ARGUS_VIEW_ENRICH=1 / enrich=True) adds EPSS + CISA KEV
         scoring to /findings via argus.core.enrichment; reachability stays terminal-only by design (read-only/no
-        source scan). See ADR-031.'
+        source scan). A persistent sticky scan-context bar (project / commit / scan time / finding count, built by
+        _context_bar + threaded through _base_context) sits under the header on the dashboard / findings / log
+        views; omitted on the picker / diff where no single scan is in scope (B0 IA — top-nav + context bar chosen
+        over a left sidebar). See ADR-031.'
       scanners/: 'Scanner modules implementing Scanner protocol (SCANNER_REGISTRY includes linters via
         auto-merge). The container scanner orchestrates five sub-scanners on every run: trivy (CVE scan),
         grype (CVE scan, deduplicated against trivy), syft (SBOM), exposure (declared-port surface from

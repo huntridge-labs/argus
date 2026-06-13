@@ -206,6 +206,37 @@ def _scan_metadata(scan_summary, resolved: Path | None) -> dict | None:
     }
 
 
+def _context_bar(scan_summary, resolved: Path | None) -> dict | None:
+    """Persistent scan-context strip for the sticky bar under the header (B0 IA).
+
+    Surfaces the identity of the scan currently in scope — project, source
+    commit, when it ran, and the finding count — so that context follows the
+    user down every primary view rather than living only on the dashboard.
+
+    Returns ``None`` when no scan is loaded (picker, diff, error states) so the
+    bar is simply omitted rather than rendering an empty shell. ``project`` is
+    the repo-root (or cwd) basename when the scan recorded one, falling back to
+    the results directory name.
+    """
+    if scan_summary is None:
+        return None
+    ctx = getattr(scan_summary, "scan_context", None)
+    repo_root = (ctx.repo_root or ctx.cwd) if ctx else ""
+    project = Path(repo_root).name if repo_root else (resolved.parent.name if resolved else "")
+    mtime = None
+    if resolved is not None:
+        try:
+            mtime = resolved.stat().st_mtime
+        except OSError:
+            mtime = None
+    return {
+        "project": project or "scan",
+        "commit": (ctx.commit_sha[:7] if ctx and ctx.commit_sha else ""),
+        "mtime": mtime,
+        "total": scan_summary.total_count,
+    }
+
+
 def create_app(
     root: str | None = None,
     *,
@@ -277,7 +308,7 @@ def create_app(
         # even though the path ends in .ico.
         return FileResponse(_STATIC_DIR / "favicon.png", media_type="image/png")
 
-    def _base_context(resolved: Path | None = None) -> dict:
+    def _base_context(resolved: Path | None = None, scan_summary=None) -> dict:
         """Shared context keys threaded into every HTML render.
 
         Recent scans power the header dropdown — always visible so
@@ -286,9 +317,15 @@ def create_app(
         that don't have a single "current" scan (the picker, the diff
         view) pass ``None``; nothing is highlighted but the list still
         renders.
+
+        ``scan_summary`` (when the route has already loaded one) feeds the
+        sticky scan-context bar under the header — project / commit / scan
+        time / finding count. Routes without a single loaded scan leave it
+        ``None`` and the bar is omitted.
         """
         return {
             "recent_scans": _collect_recent_scans(app.state.root, resolved),
+            "scan_context_bar": _context_bar(scan_summary, resolved),
         }
 
     def _load_scan(scan: str | None) -> tuple[object, Path | None, str | None]:
@@ -337,7 +374,7 @@ def create_app(
         scan by pointing back at ``/?scan=...``.
         """
         scan_summary, resolved, error = _load_scan(scan)
-        base = _base_context(resolved)
+        base = _base_context(resolved, scan_summary)
         summary = None
         charts = None
         if scan_summary is not None:
@@ -472,7 +509,7 @@ def create_app(
         # typo in the URL doesn't bubble into KeyError territory.
         active_sort = sort if sort in _ALLOWED_SORTS else "severity_desc"
         context = {
-            **_base_context(resolved),
+            **_base_context(resolved, scan_summary),
             "scan_param": scan,
             "scan_label": str(resolved) if resolved else None,
             "summary": scan_summary,
@@ -834,7 +871,7 @@ def create_app(
             request=request,
             name="log.html.j2",
             context={
-                **_base_context(resolved),
+                **_base_context(resolved, scan_summary),
                 "scan_param": scan,
                 "scan_label": str(resolved) if resolved else None,
                 "log_available": log_data is not None,
