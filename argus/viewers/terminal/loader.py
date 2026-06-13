@@ -13,9 +13,12 @@ import json
 from pathlib import Path
 
 from argus.core.models import ScanSummary
+from argus.core.run_discovery import RESULTS_FILENAME
 
-
-RESULTS_FILENAME = "argus-results.json"
+# Re-exported from argus.core.run_discovery (its canonical home) so existing
+# ``from argus.viewers.terminal.loader import RESULTS_FILENAME`` call sites
+# keep working without reaching into core directly.
+__all__ = ["RESULTS_FILENAME", "flatten_findings", "load_summary", "locate_results"]
 
 
 def locate_results(path: str | Path | None) -> Path:

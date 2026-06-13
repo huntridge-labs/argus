@@ -543,3 +543,30 @@ def strip_scan_prefix(path: Path, scan_context) -> Path:
         except ValueError:
             continue
     return path
+
+
+def clamp_menu_offset(
+    click_x: int,
+    click_y: int,
+    menu_w: int,
+    menu_h: int,
+    screen_w: int,
+    screen_h: int,
+) -> tuple[int, int]:
+    """Position a context menu at the click, nudged to stay on screen.
+
+    A right-click menu should open *where the cursor is*, not in the
+    middle of the screen. The only adjustment is to slide the menu back
+    inside the viewport when the click was near the right or bottom edge
+    so the box never spills off — the chosen corner is the click point,
+    clamped to ``[0, screen - menu]`` on each axis.
+
+    Pure integer math (no Textual) so the placement is unit-testable.
+    Degenerate inputs (menu at least as large as the screen) clamp to
+    ``0`` on that axis rather than going negative.
+    """
+    max_x = max(0, screen_w - menu_w)
+    max_y = max(0, screen_h - menu_h)
+    x = min(max(click_x, 0), max_x)
+    y = min(max(click_y, 0), max_y)
+    return x, y

@@ -84,10 +84,18 @@ components:
         compute_summary, diff_scans (scan-over-scan bucketing keyed off (scanner, id, location)). Consumed
         by argus view terminal (TUI ``D`` keybind, DiffScreen) and argus view browser (web UI ``/diff``
         route).
+      core/run_discovery.py: Shared UI-free scan-run discovery — discover_runs (sibling runs newest-first with
+        finding count + worst severity), list_directory (one-level picker listing), peek_run_stats, is_within,
+        and the canonical RESULTS_FILENAME. Consumed by the terminal runs sidebar (run switching) and the
+        browser picker + recent-runs dropdown, so both viewers agree on what counts as a run.
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes
-        DiffPickerScreen + DiffScreen for scan-over-scan diff (``D`` keybind), reusing argus.core.findings_view.diff_scans.'
+        DiffPickerScreen + DiffScreen for scan-over-scan diff (``D`` keybind), reusing argus.core.findings_view.diff_scans.
+        A runs sidebar (``b``) lists discovered runs via argus.core.run_discovery and switches between them in place;
+        ``R`` runs argus scan in-app (runs_sidebar.py formats rows, scan_runner.py builds the argv,
+        RunScanPromptScreen + RunScanScreen stream it) and reloads results when it finishes. Right-click context
+        menus anchor at the cursor via mouse_actions.clamp_menu_offset.'
       viewers/browser/: '`argus view --interface=browser` — FastAPI + Jinja2 web UI, 127.0.0.1 only ([browser]
         extra). Routes include ``/diff?a=<path>&b=<path>`` powered by argus.core.findings_view.diff_scans,
         sharing the bucketing logic with the TUI''s ``D`` keybind.'
@@ -664,10 +672,18 @@ docsite:
         compute_summary, diff_scans (scan-over-scan bucketing keyed off (scanner, id, location)). Consumed
         by argus view terminal (TUI ``D`` keybind, DiffScreen) and argus view browser (web UI ``/diff``
         route).
+      core/run_discovery.py: Shared UI-free scan-run discovery — discover_runs (sibling runs newest-first with
+        finding count + worst severity), list_directory (one-level picker listing), peek_run_stats, is_within,
+        and the canonical RESULTS_FILENAME. Consumed by the terminal runs sidebar (run switching) and the
+        browser picker + recent-runs dropdown, so both viewers agree on what counts as a run.
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes
-        DiffPickerScreen + DiffScreen for scan-over-scan diff (``D`` keybind), reusing argus.core.findings_view.diff_scans.'
+        DiffPickerScreen + DiffScreen for scan-over-scan diff (``D`` keybind), reusing argus.core.findings_view.diff_scans.
+        A runs sidebar (``b``) lists discovered runs via argus.core.run_discovery and switches between them in place;
+        ``R`` runs argus scan in-app (runs_sidebar.py formats rows, scan_runner.py builds the argv,
+        RunScanPromptScreen + RunScanScreen stream it) and reloads results when it finishes. Right-click context
+        menus anchor at the cursor via mouse_actions.clamp_menu_offset.'
       viewers/browser/: '`argus view --interface=browser` — FastAPI + Jinja2 web UI, 127.0.0.1 only ([browser]
         extra). Routes include ``/diff?a=<path>&b=<path>`` powered by argus.core.findings_view.diff_scans,
         sharing the bucketing logic with the TUI''s ``D`` keybind.'

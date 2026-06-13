@@ -25,6 +25,11 @@ from fastapi.templating import Jinja2Templates
 from argus.viewers.browser.log_view import filter_entries, load_log
 from argus.viewers.terminal.export import CONTENT_TYPES, RENDERERS
 from argus.viewers.terminal.loader import RESULTS_FILENAME, flatten_findings, load_summary
+from argus.core.run_discovery import (
+    discover_runs as _collect_recent_scans,
+    is_within as _is_within,
+    list_directory as _list_directory,
+)
 from argus.core.findings_view import (
     ViewState,
     compute_summary,
@@ -49,20 +54,6 @@ _STATIC_DIR = _SERVE_DIR / "static"
 # template edit that re-introduces an inline style= will fail loudly
 # in devtools rather than silently loosen the policy.
 _CSP = "default-src 'self'; style-src 'self'; script-src 'self'"
-
-
-def _is_within(child: Path, root: Path) -> bool:
-    """Return True if ``child`` is ``root`` itself or a descendant of it.
-
-    Both paths must already be resolved (symlinks followed, absolute).
-    Uses ``relative_to`` rather than string-prefix matching so we don't
-    false-positive on ``/foo-bar`` when the root is ``/foo``.
-    """
-    try:
-        child.relative_to(root)
-    except ValueError:
-        return False
-    return True
 
 
 def _resolve_scan(
@@ -209,118 +200,6 @@ def _scan_metadata(scan_summary, resolved: Path | None) -> dict | None:
         "scanners": scanners,
         "total_duration_ms": total_duration_ms if has_any_duration else None,
     }
-
-
-def _collect_recent_scans(
-    launch_root: Path, current: Path | None = None, *, limit: int = 12,
-) -> list[dict]:
-    """Return scan-ready directories under ``launch_root``, newest first.
-
-    Used to populate the header's "Recent runs" dropdown so a user can
-    switch between runs without visiting the picker. Each dict carries::
-
-        {
-            "path":       absolute path to the scan dir (or .json),
-            "label":      short display name (dir basename),
-            "is_current": True if path matches ``current`` (resolved),
-            "count":      finding count peeked from the JSON,
-            "mtime":      file mtime as epoch seconds (sort key),
-        }
-
-    Scope rules:
-    - If ``launch_root`` itself contains ``argus-results.json``, we
-      treat it as a single scan and look at its parent for siblings.
-      This is the common "argus view browser <one-run-dir>" case.
-    - Otherwise we iterate ``launch_root``'s immediate subdirs and
-      keep those that are scan-ready. This is the "argus view browser
-      <runs parent>" case.
-
-    Both cases apply a symlink de-dup: ``latest/`` resolves to a
-    timestamped sibling, so we won't render both rows for what is
-    effectively the same run.
-
-    ``limit`` caps the list length. 12 is a soft cap that covers
-    ~a fortnight of daily runs without drowning the nav.
-    """
-    launch_root = launch_root.resolve()
-
-    # Where do we look for scan-ready dirs?
-    if (launch_root / RESULTS_FILENAME).is_file():
-        parent = launch_root.parent
-    else:
-        parent = launch_root
-
-    try:
-        candidates = list(parent.iterdir())
-    except (PermissionError, FileNotFoundError):
-        return []
-
-    # Include the parent itself if it's scan-ready (direct drop case).
-    if (parent / RESULTS_FILENAME).is_file():
-        candidates.insert(0, parent)
-
-    seen_resolved: set[Path] = set()
-    scans: list[dict] = []
-    # Normalize ``current`` to the directory. Callers pass either the
-    # scan directory or the ``argus-results.json`` inside it (that's
-    # what _load_scan returns); collapse to the dir so comparisons
-    # match resolved candidate dirs below.
-    current_resolved: Path | None = None
-    if current is not None:
-        resolved_current = current.resolve()
-        current_resolved = (
-            resolved_current.parent if resolved_current.is_file()
-            else resolved_current
-        )
-
-    for c in candidates:
-        try:
-            if not c.is_dir():
-                continue
-            results_file = c / RESULTS_FILENAME
-            if not results_file.is_file():
-                continue
-            # Dedup via the symlink-resolved directory so ``latest/``
-            # collapses into the timestamped dir it points at.
-            resolved = c.resolve()
-            if resolved in seen_resolved:
-                continue
-            seen_resolved.add(resolved)
-
-            # Cheap finding-count peek — the same pattern ``_list_directory``
-            # uses when flagging scan-ready picker rows. Doesn't load the
-            # whole scan; just counts the "findings" arrays. Every access
-            # is type-guarded so a malformed results file (a stray list,
-            # a nested non-dict result block, string under ``findings``)
-            # degrades to count=0 instead of crashing the dropdown.
-            count = 0
-            try:
-                with results_file.open() as fh:
-                    data = json.load(fh)
-                if isinstance(data, dict):
-                    for r in data.get("results", []) or []:
-                        if isinstance(r, dict):
-                            findings = r.get("findings") or []
-                            if isinstance(findings, list):
-                                count += len(findings)
-            except (OSError, json.JSONDecodeError):
-                count = 0
-
-            is_current = current_resolved is not None and resolved == current_resolved
-            scans.append({
-                "path": str(c),
-                "label": c.name,
-                "is_current": is_current,
-                "count": count,
-                "mtime": results_file.stat().st_mtime,
-            })
-        except (PermissionError, OSError):
-            # Unreadable scan dir — skip without failing the whole
-            # dropdown. Better a short list than no dropdown at all.
-            continue
-
-    scans.sort(key=lambda s: s["mtime"], reverse=True)
-    return scans[:limit]
 
 
 def create_app(root: str | None = None) -> FastAPI:
@@ -933,89 +812,6 @@ def create_app(root: str | None = None) -> FastAPI:
         )
 
     return app
-
-
-# Common noise in argus workflows; hidden from the default picker listing
-# but surfaced via ``?show_hidden=1`` when the user actually needs to dig.
-_HIDDEN_BY_DEFAULT = {
-    "node_modules", ".git", ".venv", "venv", "__pycache__",
-    ".tox", ".pytest_cache", ".mypy_cache",
-}
-
-
-def _list_directory(
-    base: Path,
-    *,
-    show_hidden: bool,
-) -> tuple[list[dict], str | None]:
-    """Return ``(entries, error)`` for picker consumption.
-
-    Each entry dict carries:
-      - ``name``    : bare filename
-      - ``path``    : absolute path (string, ready for URL encoding)
-      - ``is_dir``  : True if it's a directory
-      - ``is_results_file`` : True if it's named argus-results.json
-      - ``has_results``    : True if it's a directory that contains
-                             argus-results.json directly inside
-      - ``finding_count``  : total findings if has_results (cheap
-                             read — one open+json.load) else None
-
-    Directories first, then files, alphabetical within each group.
-    Readability trumps performance here: picker content is interactive
-    and users wait at the rendering boundary, so we do the small I/O
-    that makes the status column useful.
-    """
-    import json as _json
-    try:
-        raw = sorted(base.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
-    except PermissionError as exc:
-        return [], f"Permission denied: {exc}"
-    except OSError as exc:
-        return [], f"Could not list directory: {exc}"
-
-    entries: list[dict] = []
-    for item in raw:
-        name = item.name
-        # Filter rules: hide dotfiles and the well-known build/cache
-        # directories unless the user explicitly opted in.
-        if not show_hidden and (
-            name.startswith(".") or name in _HIDDEN_BY_DEFAULT
-        ):
-            continue
-
-        is_dir = item.is_dir()
-        is_results_file = not is_dir and name == RESULTS_FILENAME
-
-        has_results = False
-        finding_count = None
-        if is_dir:
-            candidate = item / RESULTS_FILENAME
-            if candidate.is_file():
-                has_results = True
-                # Peek at the finding count so the picker row can
-                # advertise scan size — users picking among dated
-                # scan dirs can see which one had activity worth
-                # looking at. Best-effort only; a parse failure
-                # reduces to "no count shown" rather than erroring.
-                try:
-                    data = _json.loads(candidate.read_text(encoding="utf-8"))
-                    finding_count = sum(
-                        len(r.get("findings", []))
-                        for r in data.get("results", [])
-                    )
-                except (OSError, _json.JSONDecodeError, TypeError):
-                    finding_count = None
-
-        entries.append({
-            "name": name,
-            "path": str(item),
-            "is_dir": is_dir,
-            "is_results_file": is_results_file,
-            "has_results": has_results,
-            "finding_count": finding_count,
-        })
-
-    return entries, None
 
 
 def run_app(

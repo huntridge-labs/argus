@@ -16,27 +16,29 @@ the footer automatically):
   A (shift+a)   — clear all selections
   e             — export the currently filtered view (or the selection) to CSV
   C (shift+c)   — copy CVE IDs of selected findings to the clipboard
+  b             — toggle the runs sidebar (switch between discovered scan runs)
+  R (shift+r)   — run ``argus scan`` in-app and reload results when it finishes
   q             — quit
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.command import Hit, Hits, Provider
-from textual.containers import Container, Horizontal, Vertical, VerticalScroll
+from textual.containers import Container, Vertical, VerticalScroll
 from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widgets import DataTable, Footer, Header, Input, OptionList, Static
 from textual.widgets.option_list import Option
 
-from argus.viewers.terminal import mouse_actions
+from argus.viewers.terminal import mouse_actions, runs_sidebar, scan_runner
 from argus.viewers.terminal.loader import flatten_findings, load_summary
 from argus.core.config import ArgusConfig, ViewConfig
+from argus.core.run_discovery import discover_runs
 from argus.core.findings_view import (
     SEVERITY_GLYPH,
     SEVERITY_ORDER,
@@ -127,6 +129,14 @@ _HELP_TEXT = """\
   [b]r[/b]                reveal the last export in your file manager
                    (Finder on macOS, Explorer on Windows, parent dir on Linux)
   [dim](JSON, Markdown, SARIF formats available via ctrl+p → "Export: …")[/dim]
+
+[b]Runs & scanning[/b]
+  [b]b[/b]                toggle the runs sidebar — switch between the scan
+                   runs discovered next to the current one (newest first,
+                   worst-severity glyph per run). Click or Enter to load one.
+  [b]R[/b]                run a scan (shift+r) — launches argus scan, streams
+                   its output in an overlay, and reloads results when it
+                   finishes. Blank scanner = all enabled scanners.
 
 [b]Other[/b]
   [b]d[/b]                executive summary dashboard
@@ -623,6 +633,35 @@ ContextMenuScreen #hint { color: $text-muted; padding: 1 0 0 0; content-align: l
 """
 
 
+def _anchor_menu(
+    screen, anchor: tuple[int, int] | None, *, menu_width: int, item_count: int,
+) -> None:  # pragma: no cover — UI geometry
+    """Position a context-menu screen's box at the right-click point.
+
+    A right-click menu belongs at the cursor, not the screen centre.
+    Leaves the CSS-centred placement untouched when ``anchor`` is None
+    (keyboard / row-select invocation) or the menu body can't be found.
+    The box height is derived from the item count plus fixed chrome
+    (title + hint + padding + border) so we can clamp before a measured
+    layout pass; ``clamp_menu_offset`` slides it back on-screen near an
+    edge.
+    """
+    if anchor is None:
+        return
+    try:
+        menu = screen.query_one(Vertical)
+    except Exception:
+        return
+    menu_height = item_count + 6
+    x, y = mouse_actions.clamp_menu_offset(
+        anchor[0], anchor[1], menu_width, menu_height,
+        screen.size.width, screen.size.height,
+    )
+    screen.styles.align_horizontal = "left"
+    screen.styles.align_vertical = "top"
+    menu.styles.offset = (x, y)
+
+
 class ContextMenuScreen(_BackgroundDismissMixin, ModalScreen[str | None]):
     """Right-click / row-click context menu for a finding.
 
@@ -648,10 +687,20 @@ class ContextMenuScreen(_BackgroundDismissMixin, ModalScreen[str | None]):
         Binding("q", "dismiss(None)", "Quit"),
     ]
 
-    def __init__(self, finding: Finding, view_config: ViewConfig):
+    # Matches the ``width: 60`` in _MENU_CSS — used to clamp the anchored
+    # position so the box never spills off the right edge.
+    _MENU_WIDTH = 60
+
+    def __init__(
+        self,
+        finding: Finding,
+        view_config: ViewConfig,
+        anchor: tuple[int, int] | None = None,
+    ):
         super().__init__()
         self._finding = finding
         self._view_config = view_config
+        self._anchor = anchor
         # Decide which menu items apply to this finding.
         self._items: list[tuple[str, str]] = []
         if finding.cve or self._looks_like_advisory(finding.id):
@@ -669,6 +718,12 @@ class ContextMenuScreen(_BackgroundDismissMixin, ModalScreen[str | None]):
         ):
             self._items.append(("Open package on registry", "open_package"))
         self._items.append(("Export current selection / view", "export"))
+
+    def on_mount(self) -> None:  # pragma: no cover — UI geometry
+        _anchor_menu(
+            self, self._anchor,
+            menu_width=self._MENU_WIDTH, item_count=len(self._items),
+        )
 
     @staticmethod
     def _looks_like_advisory(value: str | None) -> bool:
@@ -772,10 +827,19 @@ class SpanContextMenuScreen(_BackgroundDismissMixin, ModalScreen[str | None]):
         Binding("q", "dismiss(None)", "Quit"),
     ]
 
-    def __init__(self, title: str, items: list[tuple[str, str]]):
+    # Matches the ``width: 70`` in _SPAN_MENU_CSS.
+    _MENU_WIDTH = 70
+
+    def __init__(
+        self,
+        title: str,
+        items: list[tuple[str, str]],
+        anchor: tuple[int, int] | None = None,
+    ):
         super().__init__()
         self._title = title
         self._items = items
+        self._anchor = anchor
 
     def compose(self) -> ComposeResult:
         with Vertical():
@@ -786,10 +850,176 @@ class SpanContextMenuScreen(_BackgroundDismissMixin, ModalScreen[str | None]):
             )
             yield Static("↑↓ Enter to select  ·  Esc to cancel", id="hint")
 
+    def on_mount(self) -> None:  # pragma: no cover — UI geometry
+        _anchor_menu(
+            self, self._anchor,
+            menu_width=self._MENU_WIDTH, item_count=len(self._items),
+        )
+
     def on_option_list_option_selected(  # pragma: no cover — UI event
         self, event: OptionList.OptionSelected,
     ) -> None:
         self.dismiss(event.option.id or None)
+
+
+_RUN_PROMPT_CSS = """
+RunScanPromptScreen { align: center middle; }
+RunScanPromptScreen > Vertical {
+    width: 72; height: auto; padding: 1 2;
+    border: solid $accent; background: $surface; overflow: hidden;
+}
+RunScanPromptScreen #title { text-style: bold; padding: 0 0 1 0; }
+RunScanPromptScreen Input { margin: 0 0 1 0; }
+RunScanPromptScreen .label { color: $text-muted; }
+RunScanPromptScreen #hint { color: $text-muted; padding: 1 0 0 0; }
+"""
+
+
+class RunScanPromptScreen(_BackgroundDismissMixin, ModalScreen[dict | None]):
+    """Collect scan parameters before launching ``argus scan``.
+
+    Returns ``{"scanner": str | None, "path": str}`` on submit (Enter in
+    either field), or ``None`` on cancel. A blank scanner means "all
+    enabled scanners from the config" — the same default as a bare
+    ``argus scan``.
+    """
+
+    CSS = _RUN_PROMPT_CSS
+    BINDINGS = [
+        Binding("escape", "dismiss(None)", "Cancel", show=True),
+    ]
+
+    def __init__(self, default_path: str = "."):
+        super().__init__()
+        self._default_path = default_path
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Static("▶ Run a scan", id="title")
+            yield Static("Scanner (blank = all enabled):", classes="label")
+            yield Input(placeholder="e.g. bandit, gitleaks, osv", id="scan-scanner")
+            yield Static("Path to scan:", classes="label")
+            yield Input(value=self._default_path, id="scan-path")
+            yield Static("Enter to run  ·  Esc to cancel", id="hint")
+
+    def on_mount(self) -> None:  # pragma: no cover — UI event
+        self.query_one("#scan-scanner", Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:  # pragma: no cover — UI event
+        scanner = self.query_one("#scan-scanner", Input).value.strip() or None
+        path = self.query_one("#scan-path", Input).value.strip() or "."
+        self.dismiss({"scanner": scanner, "path": path})
+
+
+_RUN_OUTPUT_CSS = """
+RunScanScreen { align: center middle; }
+RunScanScreen > Vertical {
+    width: 90%; max-width: 130; height: 80%;
+    border: thick $accent; background: $surface; padding: 1 2;
+}
+RunScanScreen #run-cmd { text-style: bold; padding: 0 0 1 0; }
+RunScanScreen #run-output { height: 1fr; border: solid $accent; padding: 0 1; }
+RunScanScreen #run-status { padding: 1 0 0 0; color: $text-muted; }
+"""
+
+# Cap the in-memory output buffer so a chatty scan can't grow the pane
+# unbounded; we keep the tail (where the summary + exit live).
+_RUN_LOG_MAX_LINES = 2000
+_RUN_LOG_VISIBLE_LINES = 500
+
+
+class RunScanScreen(ModalScreen[str | None]):
+    """Run ``argus scan`` as a subprocess, streaming its output live.
+
+    Dismisses with the path of the freshly-written run on success (so
+    the caller can load it), or ``None`` if the scan failed or was
+    cancelled. Output streams into a scrolling pane; the subprocess is
+    terminated if the user cancels before it finishes.
+
+    The streaming + subprocess machinery is UI glue (``# pragma: no
+    cover``); the testable pieces — argv construction and the post-run
+    "which run do I load?" decision — live in
+    ``argus.viewers.terminal.scan_runner`` and ``discover_runs``.
+    """
+
+    CSS = _RUN_OUTPUT_CSS
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel / Close", show=True),
+    ]
+
+    def __init__(self, argv: list[str], *, launch_root: Path):
+        super().__init__()
+        self._argv = argv
+        self._launch_root = launch_root
+        self._lines: list[str] = []
+        self._proc = None
+        self._finished = False
+        self._result_path: str | None = None
+
+    def compose(self) -> ComposeResult:  # pragma: no cover — UI
+        with Vertical():
+            yield Static(scan_runner.format_command(self._argv), id="run-cmd")
+            with VerticalScroll(id="run-output"):
+                yield Static("", id="run-log")
+            yield Static("Running…  ·  Esc to cancel", id="run-status")
+
+    def on_mount(self) -> None:  # pragma: no cover — UI/worker
+        self.run_worker(self._stream(), exclusive=True)
+
+    async def _stream(self) -> None:  # pragma: no cover — subprocess streaming
+        import asyncio
+        try:
+            self._proc = await asyncio.create_subprocess_exec(
+                *self._argv,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+        except OSError as exc:
+            self._append(f"Failed to launch scan: {exc}")
+            self._mark_done(success=False)
+            return
+        if self._proc.stdout is not None:
+            async for raw in self._proc.stdout:
+                self._append(raw.decode(errors="replace").rstrip("\n"))
+        code = await self._proc.wait()
+        self._mark_done(success=(code == 0), code=code)
+
+    def _append(self, line: str) -> None:  # pragma: no cover — UI
+        self._lines.append(line)
+        if len(self._lines) > _RUN_LOG_MAX_LINES:
+            self._lines = self._lines[-_RUN_LOG_MAX_LINES:]
+        try:
+            self.query_one("#run-log", Static).update(
+                "\n".join(self._lines[-_RUN_LOG_VISIBLE_LINES:])
+            )
+            self.query_one("#run-output", VerticalScroll).scroll_end(animate=False)
+        except Exception:
+            pass
+
+    def _mark_done(self, *, success: bool, code: int | None = None) -> None:  # pragma: no cover — UI
+        self._finished = True
+        if success:
+            runs = discover_runs(self._launch_root)
+            self._result_path = runs[0]["path"] if runs else None
+            msg = "✓ Scan complete  ·  Enter to load results  ·  Esc to close"
+        else:
+            msg = f"✗ Scan failed (exit {code})  ·  Esc to close"
+        try:
+            self.query_one("#run-status", Static).update(msg)
+        except Exception:
+            pass
+
+    def action_cancel(self) -> None:  # pragma: no cover — UI
+        if self._proc is not None and not self._finished:
+            try:
+                self._proc.terminate()
+            except (ProcessLookupError, OSError):
+                pass
+        self.dismiss(self._result_path if self._finished else None)
+
+    def on_key(self, event) -> None:  # pragma: no cover — UI
+        if getattr(event, "key", None) == "enter" and self._finished:
+            self.dismiss(self._result_path)
 
 
 def _one_line(f: Finding) -> str:
@@ -824,6 +1054,8 @@ class ArgusBrowseCommands(Provider):
             ("Help: Show keyboard shortcuts", "Open the full help overlay", app.action_show_help),
             ("Dashboard: Executive summary", "Open the exec-summary overlay (totals, per-product, per-scanner)", app.action_show_dashboard),
             ("Diff: Compare against another scan", "Pick another argus-results.json and bucket changes (new / fixed / severity-changed / still-open)", app.action_diff_against),
+            ("Runs: Toggle the runs sidebar", "Show / hide the list of discovered scan runs and switch between them (b)", app.action_toggle_runs),
+            ("Scan: Run argus scan", "Launch argus scan from the TUI, stream output, and reload results when done (shift+r)", app.action_run_scan),
             ("Search findings",          "Focus the search box", app.action_focus_search),
             ("Filter: Critical only",    "Show only CRITICAL findings", app.action_filter_critical),
             ("Filter: High severity and above", "Show HIGH + CRITICAL findings", app.action_filter_high),
@@ -994,8 +1226,15 @@ class BrowseApp(App):
     Screen { layout: vertical; }
     #search { height: 3; }
     #body { layout: horizontal; }
-    #list-pane { width: 55%; }
-    #detail-pane { width: 45%; padding: 0 2; }
+    /* Runs sidebar — hidden until toggled with ``b``. Fixed width so the
+       findings list keeps the lion's share of the row; the findings list
+       flexes (1fr) to fill whatever the sidebar + detail pane leave. */
+    #runs-pane { width: 30; display: none; }
+    #runs-pane.-visible { display: block; }
+    #runs-title { text-style: bold; padding: 0 1; }
+    #runs-list { height: 1fr; }
+    #list-pane { width: 1fr; }
+    #detail-pane { width: 46%; padding: 0 2; }
     DataTable { height: 1fr; }
     /* Mouse hover: row gets a subtle accent background so the
        click target the user is about to land on is obvious.
@@ -1040,6 +1279,12 @@ class BrowseApp(App):
         # capital form (shift+d) drives the diff picker. Keeps both
         # overlays one keystroke away from the findings list.
         Binding("D", "diff_against", "Diff", show=True),
+        # Runs sidebar + in-app scan runner. ``b`` toggles the list of
+        # discovered scan runs (switch between them without relaunching);
+        # ``R`` (shift+r) launches ``argus scan`` and reloads results when
+        # it finishes. Lowercase ``r`` stays the reveal-export action.
+        Binding("b", "toggle_runs", "Runs", show=True),
+        Binding("R", "run_scan", "Run scan", show=True),
         # Multi-select — drives the bulk-action workflows (export N rows,
         # paste a CVE list into a bug tracker). ``space``/``a``/``A``
         # manage the selection set; ``c`` copies CVEs from it. ``e``
@@ -1100,6 +1345,17 @@ class BrowseApp(App):
         # Used to dedup tooltip updates — mouse_move fires per pixel
         # of movement, so we skip work when the meta hasn't changed.
         self._last_hover_key: tuple[int | None, str | None] = (None, None)
+        # Runs sidebar state. ``_launch_root`` is the directory we scan
+        # for sibling runs (resolved in on_mount); ``_current_results_path``
+        # is the run currently loaded (for the "● you are here" marker);
+        # ``_runs`` is the last discover_runs() result, indexed by the
+        # OptionList selection handler. ``_anchor`` carries the last
+        # right-click screen coordinate so context menus open at the
+        # cursor rather than screen-centre.
+        self._launch_root: Path = self._compute_launch_root()
+        self._current_results_path: Path | None = None
+        self._runs: list[dict] = []
+        self._menu_anchor: tuple[int, int] | None = None
 
     @staticmethod
     def _load_view_config() -> ViewConfig:
@@ -1110,6 +1366,20 @@ class BrowseApp(App):
         except Exception:  # pragma: no cover — defensive
             return ViewConfig()
 
+    def _compute_launch_root(self) -> Path:
+        """Directory the runs sidebar searches for sibling scan runs.
+
+        Falls back to ``argus-results`` (argus scan's default output
+        home) when launched without an explicit path, matching the
+        loader's own default. ``discover_runs`` handles the "this is
+        itself a single run" case by walking up to the parent, so we
+        don't need to second-guess the shape here.
+        """
+        return (
+            Path(self._results_dir).resolve()
+            if self._results_dir else Path("argus-results").resolve()
+        )
+
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
         yield SearchInput(
@@ -1118,6 +1388,9 @@ class BrowseApp(App):
             id="search",
         )
         with Container(id="body"):
+            with Vertical(id="runs-pane"):
+                yield Static("Runs", id="runs-title")
+                yield OptionList(id="runs-list")
             with Vertical(id="list-pane"):
                 yield DataTable(
                     id="findings",
@@ -1141,6 +1414,7 @@ class BrowseApp(App):
             self.exit(message=f"\n{exc}\n", return_code=1)
             return
         self.sub_title = str(resolved)
+        self._current_results_path = resolved
         self.all_findings = flatten_findings(summary)
         # Read scan-time context (cwd / repo_root / commit_sha) off the
         # loaded summary. Older argus-results.json files predate the
@@ -1172,11 +1446,152 @@ class BrowseApp(App):
         )
         self._refresh_list()
         self._update_sort_indicator()
+        # Discover sibling runs and fill the (initially hidden) sidebar.
+        self._populate_runs()
         # Open into the findings list, not the search box. The search
         # input is the first focusable child by yield order, so without
         # this users land in the search field and find that ↑/↓ edit
         # the query rather than navigating findings.
         table.focus()
+
+    # ------------------------------------------------------------------
+    # Runs sidebar + run switching
+    # ------------------------------------------------------------------
+
+    def _populate_runs(self) -> None:
+        """Discover sibling runs and (re)fill the runs sidebar OptionList.
+
+        Auto-reveals the sidebar the first time more than one run is
+        found, so the switch-runs affordance is discoverable without
+        the user knowing the ``b`` keybind; once revealed it stays put.
+        Defensive against a missing widget (mid-recompose / stubbed
+        tests) — a failed lookup just skips the refresh.
+        """
+        from textual.widgets.option_list import Option
+        self._runs = discover_runs(
+            self._launch_root, current=self._current_results_path,
+        )
+        try:
+            option_list = self.query_one("#runs-list", OptionList)
+        except Exception:
+            return
+        option_list.clear_options()
+        current = (
+            str(self._current_results_path) if self._current_results_path else None
+        )
+        for run in self._runs:
+            is_current = run.get("path") == current
+            option_list.add_option(
+                Option(
+                    runs_sidebar.format_run_row(run, current=is_current),
+                    id=runs_sidebar.run_option_id(run),
+                )
+            )
+        # Reveal automatically once there's more than one run to choose
+        # between; below that the sidebar would just be visual noise.
+        if len(self._runs) > 1:
+            self._set_runs_visible(True)
+
+    def _set_runs_visible(self, visible: bool) -> None:
+        """Show or hide the runs pane. No-op if the pane isn't mounted."""
+        try:
+            pane = self.query_one("#runs-pane")
+        except Exception:
+            return
+        pane.display = visible
+
+    def action_toggle_runs(self) -> None:
+        """Toggle the runs sidebar (``b``) and focus it when revealed."""
+        try:
+            pane = self.query_one("#runs-pane")
+        except Exception:
+            return
+        now_visible = not bool(pane.display)
+        pane.display = now_visible
+        if now_visible:
+            try:
+                self.query_one("#runs-list", OptionList).focus()
+            except Exception:
+                pass
+        else:
+            try:
+                self.query_one(DataTable).focus()
+            except Exception:
+                pass
+
+    def on_option_list_option_selected(  # pragma: no cover — UI event
+        self, event,
+    ) -> None:
+        """Switch to the run the user picked in the sidebar.
+
+        Only the main-screen runs list reaches this handler — picker
+        modals are separate screens that consume their own selections —
+        but we still guard on the widget id so an unrelated future
+        OptionList can't accidentally trigger a run switch.
+        """
+        option_list = getattr(event, "option_list", None)
+        if option_list is None or getattr(option_list, "id", None) != "runs-list":
+            return
+        path = getattr(event.option, "id", None)
+        if path:
+            self._switch_run(path)
+
+    def _switch_run(self, path: str) -> None:
+        """Load the run at ``path`` in place, keeping filters/sort.
+
+        Resets the multi-select set (it keyed off the previous run's
+        finding objects) but preserves the active severity/product/
+        scanner/search filters — switching runs to compare the same
+        slice across scans is the common motivation. Surfaces load
+        failures as a toast rather than crashing the session.
+        """
+        try:
+            summary, resolved = load_summary(path)
+        except (FileNotFoundError, ValueError, OSError) as exc:
+            self.notify(
+                f"Couldn't load run: {exc}", severity="error", timeout=6,
+            )
+            return
+        self.all_findings = flatten_findings(summary)
+        self._current_results_path = resolved
+        self.sub_title = str(resolved)
+        self._scan_context = getattr(summary, "scan_context", None)
+        if self._scan_context is not None and self._scan_context.commit_sha:
+            self._scan_ref = self._scan_context.commit_sha
+        # New run → the old selection's object identities are stale.
+        self._selected.clear()
+        self._refresh_list()
+        self._populate_runs()
+
+    def action_run_scan(self) -> None:  # pragma: no cover — UI event
+        """Launch ``argus scan`` from inside the TUI (``R``).
+
+        Prompts for scanner + path, streams the scan in an overlay, and
+        reloads the freshly-written run when it finishes successfully.
+        """
+        def _on_params(params: dict | None) -> None:
+            if not params:
+                return
+            output_base = scan_runner.resolve_output_base(self._results_dir)
+            argv = scan_runner.build_scan_argv(
+                scanner=params.get("scanner"),
+                path=params.get("path") or ".",
+                output_dir=output_base,
+            )
+
+            def _on_done(new_path: str | None) -> None:
+                if new_path:
+                    self._switch_run(new_path)
+                    self.notify(
+                        "Loaded the new scan results.",
+                        severity="information", timeout=3,
+                    )
+
+            self.push_screen(
+                RunScanScreen(argv, launch_root=self._launch_root), _on_done,
+            )
+
+        self.push_screen(RunScanPromptScreen(), _on_params)
 
     # ------------------------------------------------------------------
     # Filter / sort / search
@@ -1385,16 +1800,30 @@ class BrowseApp(App):
         if getattr(event, "button", 0) != 3:
             return
         meta = self._event_meta(event)
+        anchor = self._event_anchor(event)
 
         click_action = meta.get("@click", "")
         if click_action:
-            self._push_span_context_menu(click_action)
+            self._push_span_context_menu(click_action, anchor=anchor)
             return
 
         if "row" in meta:
             row = meta["row"]
             if isinstance(row, int) and 0 <= row < len(self._visible):
-                self._push_context_menu(self._visible[row])
+                self._push_context_menu(self._visible[row], anchor=anchor)
+
+    @staticmethod
+    def _event_anchor(event) -> tuple[int, int] | None:  # pragma: no cover — UI
+        """Screen-cell coordinate of a mouse event, for anchoring menus.
+
+        Returns ``None`` when the event doesn't carry screen coords so
+        the menu falls back to its centred placement.
+        """
+        x = getattr(event, "screen_x", None)
+        y = getattr(event, "screen_y", None)
+        if isinstance(x, int) and isinstance(y, int):
+            return x, y
+        return None
 
     def on_mouse_move(self, event) -> None:  # pragma: no cover
         """Update tooltips contextually as the cursor moves.
@@ -1991,7 +2420,9 @@ class BrowseApp(App):
     # mouse_actions so they stay easy to unit-test without Textual.
     # ------------------------------------------------------------------
 
-    def _push_context_menu(self, finding: Finding) -> None:  # pragma: no cover
+    def _push_context_menu(  # pragma: no cover
+        self, finding: Finding, anchor: tuple[int, int] | None = None,
+    ) -> None:
         """Push the right-click / row-click menu for ``finding``."""
 
         def _on_choice(choice: str | None) -> None:
@@ -2009,11 +2440,13 @@ class BrowseApp(App):
                 self.action_export_csv()
 
         self.push_screen(
-            ContextMenuScreen(finding, self._view_config),
+            ContextMenuScreen(finding, self._view_config, anchor=anchor),
             _on_choice,
         )
 
-    def _push_span_context_menu(self, click_action: str) -> None:  # pragma: no cover
+    def _push_span_context_menu(  # pragma: no cover
+        self, click_action: str, anchor: tuple[int, int] | None = None,
+    ) -> None:
         """Push a narrow context menu for the right-clicked span.
 
         Unlike ``_push_context_menu`` (which lists every action that
@@ -2065,7 +2498,7 @@ class BrowseApp(App):
         else:
             return
 
-        self.push_screen(SpanContextMenuScreen(title, items), _on_choice)
+        self.push_screen(SpanContextMenuScreen(title, items, anchor=anchor), _on_choice)
 
     def action_open_advisory(self, advisory_id: str) -> None:  # pragma: no cover
         """Open a CVE / GHSA advisory page in the default browser.
@@ -2350,7 +2783,7 @@ class BrowseApp(App):
             )
             return
         if mouse_actions.open_in_browser(url):
-            self.notify(f"Opened registry page", severity="information", timeout=2)
+            self.notify("Opened registry page", severity="information", timeout=2)
         else:
             self.notify(
                 f"Couldn't open browser for {url}",

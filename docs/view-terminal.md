@@ -68,6 +68,9 @@ Press `?` inside the TUI for the same reference, grouped by purpose.
 | `e` | export visible findings (or selection) as CSV |
 | `o` | open last export with your default app |
 | `r` | reveal last export in file manager |
+| **Runs & scanning** | |
+| `b` | toggle the runs sidebar — switch between scan runs without relaunching |
+| `R` (shift+r) | run `argus scan` in-app, stream output, and reload results when done |
 | **Other** | |
 | `d` | executive dashboard overlay |
 | `D` (shift+d) | scan-over-scan diff — pick another `argus-results.json` and bucket changes |
@@ -79,6 +82,30 @@ JSON, Markdown, and SARIF exports are available via `Ctrl+P` → type
 `Export: JSON` / `Export: Markdown` / `Export: SARIF`. The filename
 convention is `argus-findings-YYYYMMDD-HHMMSS-<severity>.<ext>` so repeated
 exports at different filters never clobber each other.
+
+## Runs sidebar & in-app scanning
+
+The terminal viewer isn't limited to the single run you launched it on.
+
+**Switch between runs (`b`).** Press `b` to reveal the runs sidebar — a
+list of every scan run found next to the current one, newest first, each
+row tagged with the glyph of its worst finding and its finding count. It
+auto-reveals when more than one run is present. Click a run (or select it
+with the arrow keys and `Enter`) to load it in place; your active
+severity / product / scanner / search filters carry over so you can watch
+the same slice move across scans. Run discovery is the same logic the
+browser interface uses for its picker and "recent runs" dropdown, so both
+agree on what counts as a run (including collapsing the `latest/` symlink
+into the timestamped run it points at).
+
+**Run a scan (`R`).** Press `R` (shift+r) to launch `argus scan` without
+leaving the TUI. A prompt collects an optional scanner (blank runs all
+enabled scanners from your `argus.yml`) and a path; the scan then streams
+its output into an overlay. When it finishes successfully the new run is
+loaded automatically and appears at the top of the runs sidebar. The scan
+runs the same interpreter the TUI is running under (`sys.executable -m
+argus`), so a viewer launched from a virtualenv scans with that venv's
+argus and scanners.
 
 ## Mouse interactions
 
@@ -102,9 +129,10 @@ replacement.
 
 ### Context menu actions
 
-The right-click / second-click menu lists only the actions that apply
-to the focused finding (no "open file" entry for a Bandit finding that
-has no location, etc.):
+The right-click / second-click menu opens at the cursor (clamped to stay
+on screen near an edge) and lists only the actions that apply to the
+focused finding (no "open file" entry for a Bandit finding that has no
+location, etc.):
 
 - **Open advisory** — opens the CVE or GHSA in your browser
 - **Open file in local editor** — shells out to `$VISUAL` / `$EDITOR`
