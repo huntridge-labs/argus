@@ -46,10 +46,50 @@ scanned and what we found."
 
 ---
 
+## Phase B0 — Design system & motion foundation (lands first)
+
+The investment that makes the difference between "internal tool" and
+"product built by a large, mature company" — and the base the charts (B1)
+and report (B4) sit on. All dependency-light: CSS custom properties, the
+native View Transitions API, SVG, and small vanilla JS. No React / GSAP /
+Tailwind.
+
+**Build**
+- **Design tokens** (`argus.css` custom properties): a disciplined colour
+  system (brand dark base + a consistent **severity scale** — crit
+  `#e74c3c`, high `#e67e22`, med `#f1c40f`, low `#3498db`, info muted — used
+  identically across badge, row accent, donut, chart), a type scale, an 8px
+  spacing scale, radii, an elevation/shadow system, and `:focus-visible`
+  rings. The quiet craft that signals intention (Linear / Vercel / Stripe).
+- **Information architecture**: a persistent left sidebar (Overview ·
+  Findings · Diff · Report) + a sticky top bar carrying scan context
+  (project · commit · timestamp); overview→drilldown so every dashboard tile
+  links into a pre-filtered findings view (Snyk / GitHub Security / Wiz
+  pattern).
+- **Command palette** (Cmd/Ctrl-K, vanilla JS) — browser parity with the
+  TUI's `Ctrl+P`; jump to any view / filter.
+- **Motion primitives**, each gated behind
+  `@media (prefers-reduced-motion: no-preference)`:
+  - **View Transitions API** (`@view-transition { navigation: auto; }`) —
+    cross-document page transitions that make a server-rendered MPA feel
+    SPA-smooth with zero JS framework. The headline; almost no security tool
+    does this.
+  - Animated **count-up** for exec numbers (tiny JS), **staggered reveal**
+    of finding rows/cards (CSS `animation-delay` by index), **skeleton
+    shimmer** loading states (CSS), premium easing on hover/focus/select
+    (`cubic-bezier(0.4, 0, 0.2, 1)`, 150–250ms).
+- **Crafted empty states** (not blank pages) + a theme toggle that animates.
+
+**Effort/Risk** — moderate; pure front-end, no new dependency, fully
+reduced-motion-accessible. The reusable bits (tokens, transition rules,
+count-up/stagger helpers) make every later phase faster.
+
 ## Phase B1 — Real charts on the dashboard
 
 The dashboard has no visualisations today. The browser is where charts
-belong (the terminal only got Unicode bars out of necessity).
+belong (the terminal only got Unicode bars out of necessity). Charts also
+get **draw-on animation** (animating SVG `stroke-dashoffset` for the donut
+ring + trend line) on the B0 motion foundation — reduced-motion-gated.
 
 **Build** — inline **SVG** charts (hand-rolled, **no** `d3`/`plotly`/chart
 library — matches the viewer's vanilla `argus.css` + JS): a severity donut,
@@ -119,10 +159,11 @@ tablet / projector for the non-technical / exec audience the browser serves.
 
 ## Build order
 
-Merge-train into `feat/tui-explorer-and-scan-runner`, value-first:
-**B1 → B2 → B3 → B4 → B5**. B1's SVG charts are reused by B4's report, so
-they come first; B4 (the formal report) is the centrepiece everything builds
-toward; B5 polishes the surface once the content is there.
+Merge-train into `feat/tui-explorer-and-scan-runner`, foundation-first:
+**B0 → B1 → B2 → B3 → B4 → B5**. B0 (design system + motion) lands first
+because the charts and report sit on it; B1's SVG charts are reused by B4's
+report; B4 (the formal report) is the centrepiece everything builds toward;
+B5 finishes the accessibility/responsive pass once the content is there.
 
 ## Decisions
 
@@ -134,3 +175,9 @@ toward; B5 polishes the surface once the content is there.
   zero-new-dep posture for everything except the isolated PDF extra.
 - **Enrichment in the browser is opt-in** (server-side egress of public CVE
   ids) — same posture as the terminal's `i` action.
+- **Motion stack = native web only** (decided, B0): CSS custom properties +
+  the View Transitions API + CSS animations + small vanilla JS. No
+  React / GSAP / framer-motion / Tailwind. Every animation is gated behind
+  `prefers-reduced-motion` so it degrades to a static, fully-accessible UI.
+  This keeps the "feels like a mature product" polish at zero new runtime
+  dependency — the same discipline the Console epic held.
