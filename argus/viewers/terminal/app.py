@@ -59,7 +59,7 @@ from argus.core.enrichment import (
     is_cve,
     risk_badge,
 )
-from argus.core import ai_triage, suppressions, trends
+from argus.core import ai_triage, reachability, suppressions, trends
 from argus.core.models import Finding, Severity
 
 
@@ -1406,6 +1406,7 @@ class FindingDetail(Static):
         f: Finding | None,
         source_block: str | None = None,
         enrichment: "Enrichment | None" = None,
+        reachability: str | None = None,
     ) -> None:
         if f is None:
             self.update("[dim]Select a finding to see details.[/dim]")
@@ -1425,6 +1426,8 @@ class FindingDetail(Static):
         # Enrichment rows (EPSS / KEV / Risk) append after the core rows when
         # the finding's CVE has been enriched; empty otherwise.
         rows = finding_detail_rows(f) + enrichment_detail_rows(f.severity, enrichment)
+        if reachability:
+            rows = rows + [("Reachability", reachability)]
         for label, value in rows:
             rendered = self._linkify_value(label, value)
             lines.append(f"[b]{label}:[/b]".ljust(13) + f" {rendered}")
@@ -1614,6 +1617,10 @@ class BrowseApp(App):
         # AI triage (Phase 10): a (provider, label) override for tests; None ⇒
         # resolved from the environment (local Ollama / cloud key) on demand.
         self._ai_provider_override: tuple[object | None, str] | None = None
+        # Reachability (Phase 12): cache the "imported in source?" heuristic
+        # per ecosystem:package so the bounded source scan runs at most once
+        # per dependency, not on every detail-pane refresh.
+        self._reachability_cache: dict[str, str] = {}
         # Load ``view:`` config (cve_source / open_location / editor)
         # from any argus.yml the user has in cwd or beside results_dir.
         # ArgusConfig.load() auto-detects and falls back to defaults if
@@ -2041,7 +2048,26 @@ class BrowseApp(App):
         enrichment = self._enrichment.get(finding.cve.upper()) if finding.cve else None
         self.query_one("#detail", FindingDetail).update_finding(
             finding, source_block=block, enrichment=enrichment,
+            reachability=self._reachability_label(finding),
         )
+
+    def _reachability_label(self, finding: Finding) -> str | None:
+        """The "imported in source?" label for a dependency finding (Phase 12).
+
+        Returns ``None`` for non-dependency / unsupported-ecosystem findings.
+        Cached per ecosystem:package so the bounded source scan runs once.
+        """
+        package = reachability.package_of(finding)
+        ecosystem = reachability.ecosystem_of(finding)
+        if not package or ecosystem is None:
+            return None
+        key = f"{ecosystem}:{package}"
+        if key not in self._reachability_cache:
+            root = self._resolve_repo_root() or Path.cwd()
+            self._reachability_cache[key] = reachability.is_imported(
+                package, ecosystem, root=root, max_files=1500,
+            )
+        return reachability.reachability_label(self._reachability_cache[key])
 
     def action_enrich(self) -> None:  # pragma: no cover — UI/worker
         """Fetch EPSS + CISA KEV intelligence for the CVEs in view (``i``).
