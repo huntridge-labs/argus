@@ -59,6 +59,7 @@ from argus.core.enrichment import (
     is_cve,
     risk_badge,
 )
+from argus.core import suppressions
 from argus.core.models import Finding, Severity
 
 
@@ -878,6 +879,70 @@ class SpanContextMenuScreen(_BackgroundDismissMixin, ModalScreen[str | None]):
         self.dismiss(event.option.id or None)
 
 
+_SUPPRESS_CSS = """
+SuppressScreen { align: center middle; }
+SuppressScreen > Vertical {
+    width: 78; height: auto; padding: 1 2;
+    border: thick $accent; background: $surface; overflow: hidden;
+}
+SuppressScreen #suppress-title { text-style: bold; padding: 0 0 1 0; }
+SuppressScreen .label { color: $text-muted; }
+SuppressScreen Input { margin: 0 0 1 0; }
+SuppressScreen #suppress-actions { height: auto; border: none; background: transparent; }
+SuppressScreen #suppress-hint { color: $text-muted; padding: 1 0 0 0; }
+"""
+
+
+class SuppressScreen(_BackgroundDismissMixin, ModalScreen[dict | None]):
+    """Capture a triage decision for the focused finding / selection.
+
+    Dismisses with ``{"action": <key>, "reason": <text>}`` when a status is
+    picked, or ``None`` on cancel. ``action`` is a key of
+    ``suppressions.ACTIONS``; the caller turns it into an OpenVEX statement +
+    ignore-file entries via ``argus.core.suppressions``.
+    """
+
+    CSS = _SUPPRESS_CSS
+    BINDINGS = [Binding("escape", "dismiss(None)", "Cancel", show=True)]
+
+    def __init__(self, count: int):
+        super().__init__()
+        self._count = count
+
+    def compose(self) -> ComposeResult:  # pragma: no cover — UI
+        with Vertical():
+            yield Static(f"⊘ Triage {self._count} finding(s)", id="suppress-title")
+            yield Static("Reason (recorded in the VEX audit trail):", classes="label")
+            yield Input(
+                placeholder="e.g. vendored dep · not reachable · mitigated at WAF",
+                id="suppress-reason",
+            )
+            yield Static("Status:", classes="label")
+            yield OptionList(
+                *(
+                    Option(suppressions.ACTION_LABELS[key], id=key)
+                    for key in suppressions.ACTIONS
+                ),
+                id="suppress-actions",
+            )
+            yield Static(
+                "type a reason  ·  enter → status list  ·  ↑↓ + enter pick  ·  esc cancel",
+                id="suppress-hint",
+            )
+
+    def on_mount(self) -> None:  # pragma: no cover — UI
+        self.query_one("#suppress-reason", Input).focus()
+
+    def on_input_submitted(self, event: "Input.Submitted") -> None:  # pragma: no cover — UI
+        self.query_one("#suppress-actions", OptionList).focus()
+
+    def on_option_list_option_selected(  # pragma: no cover — UI
+        self, event: OptionList.OptionSelected,
+    ) -> None:
+        reason = self.query_one("#suppress-reason", Input).value.strip()
+        self.dismiss({"action": event.option.id, "reason": reason})
+
+
 _RUN_PROMPT_CSS = """
 RunScanPromptScreen { align: center middle; }
 RunScanPromptScreen > Vertical {
@@ -1152,6 +1217,7 @@ class ArgusBrowseCommands(Provider):
             ("Scan: Run argus scan", "Launch argus scan from the TUI, stream output, and reload results when done (shift+r)", app.action_run_scan),
             ("Fix: Apply a Tier-1 dependency bump", "Propose + preview + apply a deterministic fix for the focused finding or selection (shift+f)", app.action_fix),
             ("Intel: Enrich with EPSS + CISA KEV", "Fetch exploit-probability + known-exploited intelligence for the CVEs in view (i)", app.action_enrich),
+            ("Triage: Suppress / accept-risk (VEX)", "Record a triage decision to OpenVEX + .trivyignore/.gitleaksignore for the focused finding or selection (shift+s)", app.action_suppress),
             ("Search findings",          "Focus the search box", app.action_focus_search),
             ("Filter: Critical only",    "Show only CRITICAL findings", app.action_filter_critical),
             ("Filter: High severity and above", "Show HIGH + CRITICAL findings", app.action_filter_high),
@@ -1395,6 +1461,11 @@ class BrowseApp(App):
         # by real-world risk. Opt-in / offline-degrading — only reaches out
         # when pressed.
         Binding("i", "enrich", "Intel", show=True),
+        # Bulk triage: record a decision (false-positive / not-exploitable /
+        # accept-risk / under-investigation) for the focused finding or the
+        # whole selection, writing an OpenVEX audit trail + scanner ignore
+        # entries so the next scan honours it.
+        Binding("S", "suppress", "Suppress", show=True),
         # Multi-select — drives the bulk-action workflows (export N rows,
         # paste a CVE list into a bug tracker). ``space``/``a``/``A``
         # manage the selection set; ``c`` copies CVEs from it. ``e``
@@ -1910,6 +1981,62 @@ class BrowseApp(App):
             severity="information",
         )
         self._update_detail(self.query_one(DataTable).cursor_row)
+
+    def action_suppress(self) -> None:  # pragma: no cover — UI
+        """Triage the focused finding / selection → OpenVEX + ignore files (``S``).
+
+        Prompts for a status + reason, then writes an OpenVEX statement (the
+        audit trail) and the matching ``.trivyignore`` / ``.gitleaksignore``
+        entries so the next scan honours the decision.
+        """
+        targets = self._suppress_targets()
+        if not targets:
+            self.notify("No findings to triage.", severity="information")
+            return
+
+        def _after(result: dict | None) -> None:
+            if result:
+                self._apply_suppression(targets, result["action"], result["reason"])
+
+        self.push_screen(SuppressScreen(len(targets)), _after)
+
+    def _suppress_targets(self) -> list[Finding]:  # pragma: no cover — UI
+        if self._selected:
+            return [f for f in self.all_findings if id(f) in self._selected]
+        row = self.query_one(DataTable).cursor_row
+        return [self._visible[row]] if 0 <= row < len(self._visible) else []
+
+    def _apply_suppression(  # pragma: no cover — UI
+        self, targets: list[Finding], action: str, reason: str,
+    ) -> None:
+        decisions = [
+            suppressions.decision_for(
+                action,
+                cve=f.cve or "",
+                product=self._suppress_product(f),
+                reason=reason,
+                scanner=f.scanner,
+            )
+            for f in targets
+        ]
+        repo_root = self._resolve_repo_root() or Path.cwd()
+        written = suppressions.write_suppressions(repo_root, decisions)
+        if written:
+            artifacts = ", ".join(sorted(written))
+            self.notify(
+                f"Triaged {len(targets)} finding(s) → {artifacts}",
+                severity="information",
+            )
+        else:
+            self.notify(
+                "Nothing written — findings need a CVE or fingerprint to record.",
+                severity="warning",
+            )
+
+    @staticmethod
+    def _suppress_product(finding: Finding) -> str:  # pragma: no cover — UI
+        meta = finding.metadata or {}
+        return (meta.get("purl") or meta.get("fingerprint") or "").strip()
 
     def _source_context_block(self, finding: Finding) -> str | None:
         """Render the ``[bold]Source[/bold]`` block for the detail pane.

@@ -73,6 +73,7 @@ Press `?` inside the TUI for the same reference, grouped by purpose.
 | `R` (shift+r) | run `argus scan` in-app, stream output, and reload results when done |
 | `F` (shift+f) | fix — propose a dependency bump for the finding (or selection), preview the diff, apply |
 | `i` | enrich — fetch EPSS + CISA KEV intelligence for the CVEs in view (see below) |
+| `S` (shift+s) | triage — suppress / accept-risk the finding (or selection), writing OpenVEX + ignore files (see below) |
 | **Other** | |
 | `d` | executive dashboard overlay |
 | `D` (shift+d) | scan-over-scan diff — pick another `argus-results.json` and bucket changes |
@@ -157,6 +158,34 @@ on disk (`$XDG_CACHE_HOME/argus/`) so repeat triage is offline, and sends
 only public CVE ids — never your source or secrets. With no network (or
 `ARGUS_NO_NETWORK=1`) the viewer behaves exactly as before, just without the
 badges.
+
+## Triage & suppression (`S`)
+
+Triage at scale, the way security teams actually do it — but with a durable
+audit trail instead of a spreadsheet. Multi-select findings (`space` / `a`)
+or focus a single one, press `S` (shift+s), pick a **status**, and type a
+**reason**:
+
+| Status | OpenVEX mapping |
+|---|---|
+| False positive | `not_affected` · justification `vulnerable_code_not_present` |
+| Not exploitable | `not_affected` · justification `vulnerable_code_not_in_execute_path` |
+| Accept risk | `affected` · your reason recorded as the `action_statement` |
+| Under investigation | `under_investigation` |
+
+Argus writes the decision to two places:
+
+- **`argus-results.openvex.json`** — an OpenVEX document (the audit trail:
+  per-CVE status, justification, your reason, author, timestamp). Re-triaging
+  the same finding *updates* its statement and bumps the document version
+  rather than duplicating it; an existing VEX file is merged, not clobbered.
+- **`.trivyignore` / `.gitleaksignore`** — so the *next scan* honours the
+  decision. CVE findings append to `.trivyignore` (with your reason as a
+  comment); secret findings append their fingerprint to `.gitleaksignore`.
+  `Under investigation` records a VEX statement but writes no ignore entry.
+
+This reuses the same OpenVEX vocabulary as Argus's signed scan attestations,
+so a TUI triage decision and a CI-generated VEX speak the same language.
 
 ## Mouse interactions
 
