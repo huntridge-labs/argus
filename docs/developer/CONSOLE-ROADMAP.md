@@ -232,6 +232,176 @@ findings viewer in as a true in-app screen (it's a hand-off today).
 
 ---
 
+# Part II — Modernization program (Phases 5–12)
+
+Phases 0–4 made the Console *exist*. Part II makes it the best TUI in
+security tooling — most security scanners are non-interactive (`trivy` has a
+thin client/server mode; `grype` / `semgrep` / `snyk` / `osv-scanner` /
+`gitleaks` print SARIF/JSON and exit), so "feature-rich interactive triage"
+is itself the differentiator. Each phase is an independent PR, merged into
+the integration branch as it goes green, exactly like Part I.
+
+The guiding split is unchanged: **logic in UI-free `argus/core/` modules
+(unit-tested in CI without the `[terminal]` extra), screens stay thin.**
+Every network / AI feature is **opt-in and offline-degrading** so the
+default `argus` experience needs no key, no daemon, and no egress.
+
+## Phase 5 — Modern navigation essentials (table stakes)
+
+The patterns every modern TUI (k9s, lazygit, atuin, yazi) has and the
+Console doesn't yet. Small, cohesive, high polish-per-line.
+
+**Build**
+- **Command palette** — Textual's built-in `App.COMMANDS` + a custom
+  `Provider`. Fuzzy "jump to any finding / scanner / action / screen" on
+  `Ctrl+P`. Commands are generated from the registries we already have
+  (scanners, reporters, menu items), so it's a thin projection.
+- **Fuzzy filter everywhere** — a UI-free `argus/core/fuzzy.py` (subsequence
+  match + score, no dependency) backing incremental filter inputs in the
+  findings list, pickers, and the palette.
+- **OSC 8 hyperlinks** — CVE/GHSA IDs and `file:line` locations render as
+  real terminal hyperlinks (Rich supports them). UI-free helper builds the
+  advisory URL (honours the existing `view.cve_source` setting) and the
+  editor/remote URL (reuses `open_location`). Degrades to plain text.
+- **OSC 52 clipboard** — yank the focused finding id / remediation command /
+  SARIF snippet to the system clipboard, even over SSH. UI-free escape-seq
+  encoder; one keybind.
+
+**Effort/Risk** — low. No new runtime deps. The palette + links are the
+visible wins; fuzzy + clipboard are quiet quality.
+
+## Phase 6 — Live vulnerability intelligence (the headline)
+
+Turn a finding from "a CVE id + severity" into "*should I care, right
+now?*" — the single biggest differentiator, and free data no OSS scanner
+TUI surfaces.
+
+**Build**
+- **`argus/core/enrichment.py`** (UI-free): given a CVE/GHSA id, fetch and
+  merge:
+  - **EPSS** — exploit-probability percentile (FIRST.org,
+    `api.first.org/data/v1/epss`, no auth).
+  - **CISA KEV** — known-exploited-in-the-wild flag (the published
+    `known_exploited_vulnerabilities.json`, no auth).
+  - **Advisory text / fixed versions** — OSV (`api.osv.dev/v1/query`, no
+    auth) and optionally the GitHub Advisory GraphQL (token-gated).
+- **On-disk cache** with TTL under `$XDG_CACHE_HOME/argus/` (KEV catalog
+  daily; per-CVE EPSS/advisory for hours). Fully offline-degrading — no
+  network ⇒ findings render exactly as today, just without the badges.
+- **Risk re-ranking** — a pure scoring function combining
+  `severity × EPSS × KEV (× reachability once Phase 12 lands)`. New
+  "sort by risk" + a KEV 🔥 / EPSS% badge column in the findings viewer.
+- **Privacy posture (ADR-worthy):** queries send only public CVE ids /
+  package coords, never source or secrets; opt-in via config
+  (`enrichment.enabled`) and a one-time first-run consent prompt; no
+  telemetry. Honour `NO_NETWORK` / offline.
+
+**Deps** — prefer stdlib `urllib`; add `httpx` only if we want async/timeout
+ergonomics (pinned, in a `[enrich]` extra). **Effort/Risk** — moderate;
+HTTP + cache are testable with mocked transports.
+
+## Phase 7 — Triage at scale (bulk suppression + VEX)
+
+lazygit's staged-action model applied to findings — the workflow security
+teams do by hand in spreadsheets today.
+
+**Build**
+- Multi-select (already present) → bulk **suppress-with-reason** /
+  **accept-risk** / **mark false-positive**, accumulating into a reviewable
+  changeset before write (lazygit-style staging).
+- **`argus/core/suppressions.py`** (UI-free): write back to the right
+  artifact — `.trivyignore` / `.gitleaksignore` / inline comment
+  suppressions — and emit/merge an **OpenVEX** document (the project already
+  signs OpenVEX attestations — reuse that path) with status + justification
+  + timestamp + author = an audit trail.
+- A "suppressed" filter view so hidden findings remain reviewable, never
+  silently dropped (honours the silent-failure rule).
+
+**Effort/Risk** — moderate; the writeback formats are well-specified and the
+VEX emitter is unit-testable.
+
+## Phase 8 — Visual analytics (charts in the terminal)
+
+**Build** — `textual-plotext` (pinned, `[terminal]` extra) on the dashboard:
+a **severity-trend sparkline** over the last N runs ("are we getting more or
+less secure?"), a **findings-by-scanner** bar, a **severity donut**. The
+series math is a UI-free `argus/core/trends.py` over `run_discovery` history
+(unit-tested); the chart widgets are thin. **Effort/Risk** — low/moderate;
+one new `[terminal]` dependency.
+
+## Phase 9 — Inline graphics (Kitty / iTerm2 / Sixel)
+
+**Build** — `textual-image` renders real pixels on Kitty/Ghostty/iTerm2/
+WezTerm (graphics protocol) with a Sixel path and a clean ASCII fallback
+elsewhere (capability-detected). Concretely: a crisp logo on the splash, a
+rendered **dependency graph** image for "why is this package here?", a
+severity donut as an actual image, and a **QR code** linking to the full
+report/attestation. **Effort/Risk** — moderate; gated entirely on
+capability detection so non-graphics terminals are unaffected.
+
+## Phase 10 — AI triage assistant (foundation, opt-in)
+
+The roadmap's deferred Tier-2 — but as an interactive assistant, not just
+batch fixes. **Reuses the existing provider abstraction** in
+`argus/scn/ai.py` (`AnthropicProvider` / `OpenAIProvider`, env-var keys,
+SDK-or-HTTP, OpenAI-compatible base URL) — no new AI layer.
+
+**Build**
+- A Findings-screen side panel: "explain this CVE in this repo's context",
+  "is this reachable?", "draft a fix" — **streaming** tokens live.
+- **No key required:** default to a local **Ollama** / OpenAI-compatible
+  endpoint; cloud providers are opt-in via the same env-var pattern. Absent
+  any provider, the panel shows deterministic context (Phase-6 enrichment +
+  Phase-1 Fix) and says AI is off.
+- UI-free `argus/core/ai_triage.py`: prompt builders + a streaming generator
+  over the provider protocol, with provider/transport **mocked in tests**
+  (exactly as the `scn` AI tests do). Treat model output as untrusted; any
+  suggested fix flows through the Phase-1 diff-preview gate, never auto-applied.
+
+**Effort/Risk** — high; ships as a tested foundation (provider wiring +
+streaming panel + explain flow), with fix-suggestion polish iterative.
+
+## Phase 11 — Console on the web (`textual serve`)
+
+**Build** — one codebase, three surfaces: `argus console --web` runs the
+*same* Console in a browser via `textual-serve`, yielding a shareable URL
+for read-only triage. **Security-gated hard:** bind `127.0.0.1` by default,
+require an auth token, and reuse the browser viewer's read-only boundary —
+mutating actions (scan/fix/config/suppress) are disabled in web mode unless
+explicitly, separately authorized. This is an ADR (it widens the
+attack surface the browser-viewer ADR deliberately fenced off).
+**Effort/Risk** — moderate to wire, high to get the security story right;
+the gating is the feature.
+
+## Phase 12 — Reachability-aware prioritization (research + first cut)
+
+The holy grail of noise reduction: is the vulnerable code actually *called*?
+The hardest item — honest staging:
+
+- **First cut (buildable now):** a heuristic signal — does the vulnerable
+  symbol / import appear anywhere in the scanned source? Cheap, imperfect,
+  clearly labelled "present in source," and fed as one input to the Phase-6
+  risk score.
+- **Research (roadmap-only until proven):** true call-graph reachability via
+  the SAST we already run (opengrep/semgrep dataflow), per-ecosystem. Scoped
+  as its own investigation; not promised in this epic.
+
+**Effort/Risk** — first cut: moderate. Real reachability: high / open
+research — explicitly *not* claimed as shipped by this program.
+
+---
+
+## Build order & sequencing
+
+Merge-train into `feat/tui-explorer-and-scan-runner`, highest
+impact-vs-effort first: **5 → 6 → 7 → 8 → 9 → 10 → 11 → 12**. 5 (table
+stakes) and 6 (the headline) front-load the visible wins; 6 unblocks the
+risk score that 7 and 12 feed into. Charts (8) and graphics (9) are
+independent visual upgrades. AI (10), web (11), and reachability (12) are
+the deep/risky tail and ship as foundations.
+
+---
+
 ## Cross-cutting concerns
 
 - **Testing.** Pure core (`run_discovery`, `remediation`, config round-trip)
