@@ -10,6 +10,7 @@ from argus.viewers.terminal.config_editor import (
     EditRow,
     apply_row,
     editable_rows,
+    row_display,
     set_value,
     validate,
 )
@@ -64,6 +65,38 @@ class TestEditableRows:
 
     def test_non_mapping_returns_empty(self):
         assert editable_rows("- a\n- b\n") == []
+
+
+class TestRowDisplay:
+    def test_long_label_does_not_run_into_value(self):
+        # Regression: `reporting · severity_threshold` (30 chars) overflowed
+        # the old fixed :<26 label column and rendered as
+        # "severity_thresholdhigh". The value column must be padded clear.
+        displays = dict(row_display(editable_rows(SAMPLE)))
+        txt = displays["reporting.severity_threshold"]
+        assert "severity_thresholdhigh" not in txt
+        after_label = txt.split("reporting · severity_threshold", 1)[1]
+        assert after_label.startswith("  ")  # >= 2-space gap before the value
+
+    def test_value_column_is_aligned_across_rows(self):
+        rows = editable_rows(SAMPLE)
+        displays = dict(row_display(rows))
+        label_w = max(len(r.label) for r in rows) + 2
+        # Every row's value begins at the same column (labels left-padded to
+        # label_w); the two chars before it are the gap.
+        for r in rows:
+            txt = displays[r.key]
+            assert txt[label_w - 2:label_w] == "  "
+            assert txt[label_w] != " "
+
+    def test_enum_rows_get_dropdown_affordance(self):
+        displays = dict(row_display(editable_rows(SAMPLE)))
+        # Enum (pick-from-list) rows carry a ▾; toggles do not.
+        assert "high ▾" in displays["reporting.severity_threshold"]
+        assert "▾" not in displays["scanner:bandit"]
+
+    def test_empty_rows(self):
+        assert row_display([]) == []
 
 
 class TestSetValue:

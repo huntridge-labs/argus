@@ -171,6 +171,22 @@ class TestConfigScreen:
         assert screen._original == ""
 
 
+class TestChoiceScreen:
+    def test_construction_stores_options(self, console):
+        # The enum dropdown picker — built when Enter is pressed on a
+        # bounded-choice setting so the user selects directly instead of
+        # cycling. Construction stores the title, options, and current value.
+        module, _app, _calls = console
+        screen = module._ChoiceScreen(
+            "reporting · severity_threshold",
+            ["none", "low", "medium", "high", "critical"],
+            "high",
+        )
+        assert screen._title == "reporting · severity_threshold"
+        assert screen._options[-1] == "critical"
+        assert screen._current == "high"
+
+
 class TestCommandPalette:
     def test_provider_registered_on_app(self, console):
         module, _app, _calls = console

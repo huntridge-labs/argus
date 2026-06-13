@@ -189,9 +189,13 @@ class SettingsScreen(Screen):
         self.query_one("#settings-list", OptionList).focus()
 
     def _restore_cursor(self) -> None:  # pragma: no cover — UI
+        # Re-focus the rebuilt list after a recompose so the keyboard keeps
+        # working without a mouse click (the list is composed fresh on every
+        # change).
         option_list = self.query_one("#settings-list", OptionList)
         if option_list.option_count:
             option_list.highlighted = min(self._highlight, option_list.option_count - 1)
+        option_list.focus()
 
     def on_option_list_option_selected(  # pragma: no cover — UI
         self, event: OptionList.OptionSelected,
@@ -209,6 +213,68 @@ class SettingsScreen(Screen):
     def action_close(self) -> None:  # pragma: no cover — UI
         self.app.persist_settings()
         self.dismiss()
+
+
+class _ChoiceScreen(ModalScreen[str | None]):
+    """A dropdown-style picker for a bounded-choice (enum) config value.
+
+    Lists the allowed options and dismisses with the chosen value (or
+    ``None`` on cancel), so ``ConfigScreen`` can set an enum setting in one
+    step instead of cycling through it with repeated Enter presses. A plain
+    modal that never changes the theme or mutates its list while mounted —
+    safe under the Textual 8.x modal constraints the Console works around.
+    """
+
+    CSS = """
+    _ChoiceScreen { align: center middle; }
+    #choice-body {
+        background: $surface; border: thick $accent;
+        width: auto; min-width: 32; max-width: 64; height: auto; padding: 1 2;
+    }
+    #choice-title { text-style: bold; padding: 0 0 1 0; }
+    #choice-list { height: auto; max-height: 14; border: none; background: transparent; }
+    #choice-hint { color: $text-muted; padding: 1 0 0 0; }
+    """
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel", show=True),
+        Binding("q", "cancel", show=False),
+    ]
+
+    def __init__(self, title: str, options: list[str], current: str) -> None:
+        super().__init__()
+        self._title = title
+        self._options = options
+        self._current = current
+
+    def compose(self) -> ComposeResult:  # pragma: no cover — UI
+        with Vertical(id="choice-body"):
+            yield Static(f"Choose · {self._title}", id="choice-title")
+            yield OptionList(
+                *(
+                    Option(
+                        f"{'● ' if opt == self._current else '  '}{opt}", id=opt,
+                    )
+                    for opt in self._options
+                ),
+                id="choice-list",
+            )
+            yield Static(
+                "↑↓ move   ·   enter select   ·   esc cancel", id="choice-hint",
+            )
+
+    def on_mount(self) -> None:  # pragma: no cover — UI
+        option_list = self.query_one("#choice-list", OptionList)
+        if self._current in self._options:
+            option_list.highlighted = self._options.index(self._current)
+        option_list.focus()
+
+    def on_option_list_option_selected(  # pragma: no cover — UI
+        self, event: OptionList.OptionSelected,
+    ) -> None:
+        self.dismiss(event.option.id)
+
+    def action_cancel(self) -> None:  # pragma: no cover — UI
+        self.dismiss(None)
 
 
 class ConfigScreen(Screen):
@@ -253,8 +319,8 @@ class ConfigScreen(Screen):
         with Vertical(id="config-body"):
             yield Static(f"⚙  Configure · {self._path.name}{dirty}", id="config-title")
             opts = [
-                Option(f"{r.label:<26}{r.value:<14}[dim]{r.doc}[/dim]", id=r.key)
-                for r in rows
+                Option(text, id=key)
+                for key, text in config_editor.row_display(rows)
             ]
             yield OptionList(*opts, id="config-list")
             yield Static(
@@ -264,12 +330,15 @@ class ConfigScreen(Screen):
 
     def on_mount(self) -> None:  # pragma: no cover — UI
         self._restore_cursor()
-        self.query_one("#config-list", OptionList).focus()
 
     def _restore_cursor(self) -> None:  # pragma: no cover — UI
+        # Re-focus after a recompose: the OptionList is rebuilt on every
+        # change, so without re-focusing the new widget the arrow keys and
+        # Enter silently stop working until the user clicks back in.
         option_list = self.query_one("#config-list", OptionList)
         if option_list.option_count:
             option_list.highlighted = min(self._highlight, option_list.option_count - 1)
+        option_list.focus()
 
     def on_option_list_option_selected(  # pragma: no cover — UI
         self, event: OptionList.OptionSelected,
@@ -280,11 +349,30 @@ class ConfigScreen(Screen):
         if row is None:
             return
         self._highlight = event.option_index
+        # Enum settings (bounded choices) open a chooser so the user picks
+        # directly instead of pressing Enter to cycle through every option.
+        # Toggles (on/off) just flip in place.
+        if row.kind == "enum" and row.options:
+            self._pick_enum(row)
+            return
         result = config_editor.apply_row(self._text, row)
         if result is not None:
             self._text, _ = result
         self.refresh(recompose=True)
         self.call_after_refresh(self._restore_cursor)
+
+    def _pick_enum(self, row: "config_editor.EditRow") -> None:  # pragma: no cover — UI
+        def _chosen(value: str | None) -> None:
+            if value is not None and value != row.value:
+                new_text = config_editor.set_value(self._text, row.path, value)
+                if new_text is not None:
+                    self._text = new_text
+            self.refresh(recompose=True)
+            self.call_after_refresh(self._restore_cursor)
+
+        self.app.push_screen(
+            _ChoiceScreen(row.label, list(row.options), row.value), _chosen,
+        )
 
     def action_save(self) -> None:  # pragma: no cover — UI
         if self._text == self._original:
@@ -382,9 +470,12 @@ class InitScreen(Screen):
         self.query_one("#init-list", OptionList).focus()
 
     def _restore_cursor(self) -> None:  # pragma: no cover — UI
+        # Re-focus the rebuilt list after a recompose so the keyboard keeps
+        # working without a mouse click.
         option_list = self.query_one("#init-list", OptionList)
         if option_list.option_count:
             option_list.highlighted = min(self._highlight, option_list.option_count - 1)
+        option_list.focus()
 
     def on_option_list_option_selected(  # pragma: no cover — UI
         self, event: OptionList.OptionSelected,
