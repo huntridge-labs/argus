@@ -42,14 +42,22 @@ _HANDOFF_INIT = "init"
 
 
 def _argus_theme(accent: str) -> Theme:
-    """Build the bespoke ``argus-dark`` theme with the chosen accent."""
+    """Build the bespoke ``argus-dark`` theme (Argus brand colours).
+
+    At the default accent it's the website's green-primary / lime-accent
+    duotone; choosing a different accent recolours the primary + accent to
+    that hue while keeping the deep green-black base.
+    """
     pal = console_model.ARGUS_DARK_PALETTE
-    accent_hex = console_model.accent_hex(accent)
+    if accent == console_config.DEFAULT_ACCENT:
+        primary, accent_color = pal["primary"], pal["accent"]
+    else:
+        primary = accent_color = console_model.accent_hex(accent)
     return Theme(
         name="argus-dark",
-        primary=accent_hex,
+        primary=primary,
         secondary=pal["secondary"],
-        accent=accent_hex,
+        accent=accent_color,
         foreground=pal["foreground"],
         background=pal["background"],
         surface=pal["surface"],
@@ -63,12 +71,12 @@ def _argus_theme(accent: str) -> Theme:
         # cursor, Footer keys) without a resolved colour, which surfaces as
         # a NoneType-visual render crash when switching away from the theme.
         variables={
-            "block-cursor-background": accent_hex,
+            "block-cursor-background": primary,
             "block-cursor-foreground": pal["background"],
             "block-cursor-text-style": "none",
-            "block-cursor-blurred-background": f"{accent_hex} 30%",
-            "footer-key-foreground": accent_hex,
-            "input-selection-background": f"{accent_hex} 35%",
+            "block-cursor-blurred-background": f"{primary} 30%",
+            "footer-key-foreground": primary,
+            "input-selection-background": f"{primary} 35%",
         },
     )
 
@@ -205,10 +213,14 @@ class HomeScreen(Screen):
 
     CSS = """
     HomeScreen { align: center top; }
-    #home { width: auto; max-width: 96; height: auto; padding: 1 2; align-horizontal: center; }
-    #banner { color: $primary; text-style: bold; content-align: center middle; width: auto; }
-    #tagline { color: $text-muted; content-align: center middle; padding: 0 0 1 0; width: 100%; }
-    #status { color: $text-muted; content-align: center middle; padding: 0 0 1 0; width: 100%;
+    /* Fixed-width centred column: padding 2 each side leaves a 72-col inner
+       area that the banner / tagline / status span (text-align centres
+       their content) and the menu exactly fills — so the wordmark lines up
+       dead-centre over the menu, and the whole column is centred on screen. */
+    #home { width: 76; height: auto; padding: 1 2; align-horizontal: center; }
+    #banner { width: 100%; text-align: center; color: $primary; text-style: bold; }
+    #tagline { width: 100%; text-align: center; color: $text-muted; padding: 0 0 1 0; }
+    #status { width: 100%; text-align: center; color: $text-muted; padding: 0 0 1 0;
               border-top: dashed $panel; border-bottom: dashed $panel; }
     #menu { height: auto; width: 72; border: round $accent; padding: 0 1; }
     """

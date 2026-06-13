@@ -50,9 +50,9 @@ DEFAULT_THEME = "argus-dark"
 # terminal and serialise cleanly; the app maps the choice onto the theme's
 # accent token.
 ACCENTS: tuple[str, ...] = (
-    "cyan", "green", "magenta", "blue", "yellow", "red", "orange", "purple",
+    "green", "lime", "cyan", "blue", "magenta", "yellow", "orange", "purple",
 )
-DEFAULT_ACCENT = "cyan"
+DEFAULT_ACCENT = "green"
 
 
 # Settings-screen rows: (field key, human label, kind). ``cycle`` fields

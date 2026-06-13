@@ -43,8 +43,8 @@ class TestAccent:
     def test_known_accent_maps_to_hex(self):
         assert cm.accent_hex("green") == cm.ACCENT_HEX["green"]
 
-    def test_unknown_accent_defaults_to_cyan(self):
-        assert cm.accent_hex("chartreuse") == cm.ACCENT_HEX["cyan"]
+    def test_unknown_accent_defaults_to_brand_green(self):
+        assert cm.accent_hex("chartreuse") == cm.ACCENT_HEX["green"]
 
 
 class TestHomeStatus:

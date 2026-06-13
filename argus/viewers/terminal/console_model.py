@@ -19,15 +19,14 @@ from argus.core.run_discovery import discover_runs
 # Block-letter wordmark shown on the home screen. Kept deliberately compact
 # so it fits an 80-column terminal with room for the tagline beside it.
 ARGUS_BANNER = r"""
- █████╗ ██████╗  ██████╗ ██╗   ██╗███████╗
-██╔══██╗██╔══██╗██╔════╝ ██║   ██║██╔════╝
-███████║██████╔╝██║  ███╗██║   ██║███████╗
-██╔══██║██╔══██╗██║   ██║██║   ██║╚════██║
-██║  ██║██║  ██║╚██████╔╝╚██████╔╝███████║
-╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚══════╝
+ █████  ██████   ██████  ██    ██ ███████
+██   ██ ██   ██ ██       ██    ██ ██
+███████ ██████  ██   ███ ██    ██ ███████
+██   ██ ██   ██ ██    ██ ██    ██      ██
+██   ██ ██   ██  ██████   ██████  ███████
 """
 
-TAGLINE = "supply-chain security scanning, in your terminal"
+TAGLINE = "perception is protection"
 
 
 @dataclass(frozen=True)
@@ -56,39 +55,42 @@ MENU: tuple[MenuItem, ...] = (
 )
 
 
-# Custom "argus-dark" theme palette — a deep slate base with a cyan accent,
-# registered against Textual's Theme at app start. Plain hex so this stays
-# textual-free; ``console.py`` maps it onto a ``textual.theme.Theme``.
+# Custom "argus-dark" theme palette — mirrors the Argus website / browser
+# viewer brand (argus/viewers/browser/static/argus.css): a deep green-black
+# base, primary green, lime accent. Plain hex so this stays textual-free;
+# ``console.py`` maps it onto a ``textual.theme.Theme``.
 ARGUS_DARK_PALETTE: dict[str, str] = {
-    "primary": "#38bdf8",      # sky/cyan — the Argus accent
-    "secondary": "#7dd3fc",
-    "accent": "#38bdf8",
-    "background": "#0b1220",   # near-black slate
-    "surface": "#111a2b",
-    "panel": "#16233b",
-    "success": "#4ade80",
-    "warning": "#fbbf24",
-    "error": "#f87171",
-    "foreground": "#e2e8f0",
+    "primary": "#84b852",      # argus primary green (brand)
+    "secondary": "#dbe64c",    # argus lime accent
+    "accent": "#dbe64c",       # lime pop, as on the site
+    "background": "#0b0f0d",   # deep green-black
+    "surface": "#111916",
+    "panel": "#16211c",
+    "success": "#84b852",
+    "warning": "#f1c40f",      # matches the browser severity "med"
+    "error": "#e74c3c",        # matches the browser severity "crit"
+    "foreground": "#eaf2ea",
+    "muted": "#9fb09f",
 }
 
-# Accent-name → hex, for the Settings accent picker. Names match
+# Accent-name → hex, for the Settings accent picker. ``green`` is the brand
+# primary (the default); ``lime`` is the brand pop. Names match
 # ``console_config.ACCENTS``.
 ACCENT_HEX: dict[str, str] = {
+    "green": "#84b852",
+    "lime": "#dbe64c",
     "cyan": "#38bdf8",
-    "green": "#4ade80",
-    "magenta": "#e879f9",
     "blue": "#60a5fa",
+    "magenta": "#e879f9",
     "yellow": "#fbbf24",
-    "red": "#f87171",
     "orange": "#fb923c",
     "purple": "#a78bfa",
 }
 
 
 def accent_hex(name: str) -> str:
-    """Return the hex for an accent name, defaulting to cyan."""
-    return ACCENT_HEX.get(name, ACCENT_HEX["cyan"])
+    """Return the hex for an accent name, defaulting to the brand green."""
+    return ACCENT_HEX.get(name, ACCENT_HEX["green"])
 
 
 def home_status(launch_root: Path, *, config_path: Path | None = None) -> dict:
