@@ -628,6 +628,33 @@ def _launch_view(
     return EXIT_ERROR
 
 
+def _run_bare_argus(parser: argparse.ArgumentParser) -> int:
+    """Handle bare ``argus`` (no subcommand).
+
+    In an interactive terminal, launch the Argus Console (the home TUI).
+    Non-interactive contexts (piped, redirected, CI — no TTY on stdout or
+    stdin) keep the previous behaviour and print ``--help`` so scripts and
+    pipelines that invoke a bare ``argus`` are unaffected. When the
+    ``[terminal]`` extra isn't installed, print a one-line install hint and
+    fall back to help rather than erroring.
+    """
+    interactive = sys.stdout.isatty() and sys.stdin.isatty()
+    if interactive:
+        try:
+            from argus.viewers.terminal import ViewerUnavailable, launch_console
+            return launch_console()
+        except ImportError:
+            pass  # terminal package itself unimportable — fall back to help
+        except ViewerUnavailable:
+            print(
+                "Tip: install the interactive console with "
+                "`pip install 'argus-security[terminal]'`, then run `argus`.\n",
+                file=sys.stderr,
+            )
+    parser.print_help()
+    return EXIT_SUCCESS
+
+
 def _build_init_parser(subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser) -> None:
     """Add the 'init' subcommand for project initialization."""
     init_parser = subparsers.add_parser(
@@ -3802,8 +3829,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(raw_args)
 
     if args.command is None:
-        parser.print_help()
-        sys.exit(EXIT_SUCCESS)
+        sys.exit(_run_bare_argus(parser))
 
     handlers = {
         "init": cmd_init,

@@ -88,6 +88,10 @@ components:
         finding count + worst severity), list_directory (one-level picker listing), peek_run_stats, is_within,
         and the canonical RESULTS_FILENAME. Consumed by the terminal runs sidebar (run switching) and the
         browser picker + recent-runs dropdown, so both viewers agree on what counts as a run.
+      core/console_config.py: UI-free user preferences for the Argus Console (theme, accent, animations,
+        reduced_motion, notifications). load/save to $XDG_CONFIG_HOME/argus/console.yml (pyyaml only),
+        defaults-on-garbage, plus advance()/display_rows() driving the Settings screen. Distinct from
+        argus.yml (project scan config).
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes
@@ -95,7 +99,11 @@ components:
         A runs sidebar (``b``) lists discovered runs via argus.core.run_discovery and switches between them in place;
         ``R`` runs argus scan in-app (runs_sidebar.py formats rows, scan_runner.py builds the argv,
         RunScanPromptScreen + RunScanScreen stream it) and reloads results when it finishes. Right-click context
-        menus anchor at the cursor via mouse_actions.clamp_menu_offset.'
+        menus anchor at the cursor via mouse_actions.clamp_menu_offset. console.py + console_model.py provide the
+        Argus Console — the home launcher (scan / findings / configure / init / settings / docs) with a
+        live-themed Settings screen backed by argus.core.console_config; bare ``argus`` opens it in an interactive
+        TTY (cli._run_bare_argus), falling back to --help when non-interactive, and ``argus view`` deep-links to
+        the findings viewer.'
       viewers/browser/: '`argus view --interface=browser` — FastAPI + Jinja2 web UI, 127.0.0.1 only ([browser]
         extra). Routes include ``/diff?a=<path>&b=<path>`` powered by argus.core.findings_view.diff_scans,
         sharing the bucketing logic with the TUI''s ``D`` keybind.'
@@ -676,6 +684,10 @@ docsite:
         finding count + worst severity), list_directory (one-level picker listing), peek_run_stats, is_within,
         and the canonical RESULTS_FILENAME. Consumed by the terminal runs sidebar (run switching) and the
         browser picker + recent-runs dropdown, so both viewers agree on what counts as a run.
+      core/console_config.py: UI-free user preferences for the Argus Console (theme, accent, animations,
+        reduced_motion, notifications). load/save to $XDG_CONFIG_HOME/argus/console.yml (pyyaml only),
+        defaults-on-garbage, plus advance()/display_rows() driving the Settings screen. Distinct from
+        argus.yml (project scan config).
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes
@@ -683,7 +695,11 @@ docsite:
         A runs sidebar (``b``) lists discovered runs via argus.core.run_discovery and switches between them in place;
         ``R`` runs argus scan in-app (runs_sidebar.py formats rows, scan_runner.py builds the argv,
         RunScanPromptScreen + RunScanScreen stream it) and reloads results when it finishes. Right-click context
-        menus anchor at the cursor via mouse_actions.clamp_menu_offset.'
+        menus anchor at the cursor via mouse_actions.clamp_menu_offset. console.py + console_model.py provide the
+        Argus Console — the home launcher (scan / findings / configure / init / settings / docs) with a
+        live-themed Settings screen backed by argus.core.console_config; bare ``argus`` opens it in an interactive
+        TTY (cli._run_bare_argus), falling back to --help when non-interactive, and ``argus view`` deep-links to
+        the findings viewer.'
       viewers/browser/: '`argus view --interface=browser` — FastAPI + Jinja2 web UI, 127.0.0.1 only ([browser]
         extra). Routes include ``/diff?a=<path>&b=<path>`` powered by argus.core.findings_view.diff_scans,
         sharing the bucketing logic with the TUI''s ``D`` keybind.'
