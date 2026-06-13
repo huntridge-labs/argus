@@ -113,6 +113,10 @@ components:
         trend_summary over discover_runs history (findings-over-time + are-we-improving delta). No chart
         library — renders in any terminal, keeping the dependency surface minimal. Drives the terminal
         dashboard's (``d``) charts.
+      core/terminal_caps.py: UI-free terminal capability detection (Phase 9 graphics foundation). detect_graphics
+        (kitty/iterm/sixel/none from env), supports_graphics / supports_hyperlinks / supports_truecolor,
+        capability_summary. Env-only (no escape probing), dependency-free; the foundation richer inline-image
+        rendering (textual-image, capability-gated, ASCII fallback) would build on. Surfaced in the Console help.
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes
@@ -735,6 +739,10 @@ docsite:
         trend_summary over discover_runs history (findings-over-time + are-we-improving delta). No chart
         library — renders in any terminal, keeping the dependency surface minimal. Drives the terminal
         dashboard's (``d``) charts.
+      core/terminal_caps.py: UI-free terminal capability detection (Phase 9 graphics foundation). detect_graphics
+        (kitty/iterm/sixel/none from env), supports_graphics / supports_hyperlinks / supports_truecolor,
+        capability_summary. Env-only (no escape probing), dependency-free; the foundation richer inline-image
+        rendering (textual-image, capability-gated, ASCII fallback) would build on. Surfaced in the Console help.
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes

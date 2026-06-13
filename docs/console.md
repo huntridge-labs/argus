@@ -35,7 +35,7 @@ argus scan ...   # every subcommand is unchanged
   | Configure | Opens the form editor for `argus.yml` (see below). |
   | Initialize | Guided first-run wizard — detect the project, review, write `argus.yml` (see below). |
   | Settings | Theme, accent colour, animations, notifications. |
-  | Help & docs | Keybindings and where to learn more. |
+  | Help & docs | Keybindings, where to learn more, and your terminal's detected graphics / hyperlink / truecolor support. |
   | Quit | Leave the console. |
 
 - **Command palette** (`Ctrl+P`) — fuzzy-search and run any menu action
