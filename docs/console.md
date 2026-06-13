@@ -38,6 +38,10 @@ argus scan ...   # every subcommand is unchanged
   | Help & docs | Keybindings and where to learn more. |
   | Quit | Leave the console. |
 
+- **Command palette** (`Ctrl+P`) — fuzzy-search and run any menu action
+  without reaching for the mouse or memorising a key. Same palette the
+  findings viewer offers, now on the home screen too.
+
 ## Configure
 
 Edit `argus.yml` by form instead of by hand. Move with the arrows, press

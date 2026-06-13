@@ -19,10 +19,12 @@ from __future__ import annotations
 
 import os
 import subprocess
+from functools import partial
 from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.command import Hit, Hits, Provider
 from textual.containers import Center, Vertical, VerticalScroll
 from textual.screen import ModalScreen, Screen
 from textual.theme import Theme
@@ -492,10 +494,37 @@ class HomeScreen(Screen):
             self.app.dispatch_menu(event.option.id)
 
 
+class ArgusConsoleCommands(Provider):
+    """Command-palette provider for the Console (Ctrl+P).
+
+    Brings the findings viewer's jump-to-action palette to the Console
+    home: fuzzy-search every menu action (Scan / Findings / Configure /
+    Init / Settings / Docs / Quit) and run it. Matching uses Textual's
+    built-in palette matcher; each hit dispatches through the same
+    ``dispatch_menu`` the menu and keybindings use, so there's one code
+    path per action.
+    """
+
+    async def search(self, query: str) -> Hits:  # pragma: no cover — UI
+        matcher = self.matcher(query)
+        app = self.app
+        for item in console_model.MENU:
+            display = f"{item.icon}  {item.label}"
+            score = matcher.match(display)
+            if score > 0:
+                yield Hit(
+                    score,
+                    matcher.highlight(display),
+                    partial(app.dispatch_menu, item.key),
+                    help=item.hint,
+                )
+
+
 class ConsoleApp(App):
     """Top-level Console app — owns settings, theme, and menu dispatch."""
 
     TITLE = "argus"
+    COMMANDS = App.COMMANDS | {ArgusConsoleCommands}
 
     def __init__(self, results_dir: str | None = None):
         super().__init__()

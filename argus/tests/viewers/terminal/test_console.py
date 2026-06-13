@@ -25,20 +25,23 @@ def _load_console_module():
     """Load console.py with textual stubbed."""
 
     class _Permissive:
+        COMMANDS = set()  # App.COMMANDS | {...} needs a real set at class-def
         def __init__(self, *args, **kwargs): ...
         def __call__(self, *args, **kwargs): return self
         def __class_getitem__(cls, item): return cls
 
     modules = {
-        "textual", "textual.app", "textual.binding", "textual.containers",
-        "textual.screen", "textual.theme", "textual.widgets",
-        "textual.widgets.option_list",
+        "textual", "textual.app", "textual.binding", "textual.command",
+        "textual.containers", "textual.screen", "textual.theme",
+        "textual.widgets", "textual.widgets.option_list",
     }
     for name in modules:
         sys.modules.setdefault(name, types.ModuleType(name))
     for attr, mod in (
         ("App", "textual.app"), ("ComposeResult", "textual.app"),
         ("Binding", "textual.binding"),
+        ("Hit", "textual.command"), ("Hits", "textual.command"),
+        ("Provider", "textual.command"),
         ("Center", "textual.containers"), ("Vertical", "textual.containers"),
         ("VerticalScroll", "textual.containers"),
         ("ModalScreen", "textual.screen"), ("Screen", "textual.screen"),
@@ -166,6 +169,19 @@ class TestConfigScreen:
         screen = module.ConfigScreen(tmp_path / "absent.yml")
         assert screen._text == ""
         assert screen._original == ""
+
+
+class TestCommandPalette:
+    def test_provider_registered_on_app(self, console):
+        module, _app, _calls = console
+        assert module.ArgusConsoleCommands in module.ConsoleApp.COMMANDS
+
+    def test_provider_covers_every_menu_action(self, console):
+        # The palette must be able to reach all menu actions, so its
+        # command source is the same MENU the home screen renders.
+        from argus.viewers.terminal import console_model
+        keys = {item.key for item in console_model.MENU}
+        assert keys == {"scan", "findings", "configure", "init", "settings", "docs", "quit"}
 
 
 class TestInitScreen:
