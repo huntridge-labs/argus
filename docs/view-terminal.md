@@ -72,6 +72,7 @@ Press `?` inside the TUI for the same reference, grouped by purpose.
 | `b` | toggle the runs sidebar — switch between scan runs without relaunching |
 | `R` (shift+r) | run `argus scan` in-app, stream output, and reload results when done |
 | `F` (shift+f) | fix — propose a dependency bump for the finding (or selection), preview the diff, apply |
+| `i` | enrich — fetch EPSS + CISA KEV intelligence for the CVEs in view (see below) |
 | **Other** | |
 | `d` | executive dashboard overlay |
 | `D` (shift+d) | scan-over-scan diff — pick another `argus-results.json` and bucket changes |
@@ -132,6 +133,30 @@ re-run the scan (`R`) to confirm the finding is resolved. Findings that
 can be fixed also get an `⚒ Apply fix` entry in the right-click context
 menu. Findings with no known fixed version (or in an ecosystem Tier 1
 doesn't cover yet) report that no automatic fix is available.
+
+## Live vulnerability intelligence (`i`)
+
+A CVE id and a severity label don't answer the question that actually
+matters: *should I care about this one, right now?* Press `i` to enrich the
+CVEs in view with two free, no-auth signals that do:
+
+- **EPSS** (FIRST.org) — the **exploit-probability** score: how likely the
+  CVE is to be exploited in the next 30 days.
+- **CISA KEV** — whether the CVE is in the **Known-Exploited-Vulnerabilities**
+  catalog, i.e. *actively* exploited in the wild.
+
+The selected finding's detail pane then shows an **EPSS** percentage, a
+**KEV** flag, and a blended **Risk** score (severity-weighted, EPSS-modulated,
+floored high for KEV entries) — so a HIGH that's actively exploited rises
+above a CRITICAL that isn't. A toast summarises the batch (how many CVEs, how
+many in KEV, the top EPSS), and the header gains a `🔥KEV` / `EPSS n%` badge.
+
+Enrichment is **opt-in and offline-degrading**: it only reaches the network
+when you press `i`, runs off the UI thread so nothing blocks, caches results
+on disk (`$XDG_CACHE_HOME/argus/`) so repeat triage is offline, and sends
+only public CVE ids — never your source or secrets. With no network (or
+`ARGUS_NO_NETWORK=1`) the viewer behaves exactly as before, just without the
+badges.
 
 ## Mouse interactions
 

@@ -52,6 +52,13 @@ from argus.core.findings_view import (
     unique_products,
     unique_scanners,
 )
+from argus.core.enrichment import (
+    Enrichment,
+    EnrichmentService,
+    enrichment_detail_rows,
+    is_cve,
+    risk_badge,
+)
 from argus.core.models import Finding, Severity
 
 
@@ -1144,6 +1151,7 @@ class ArgusBrowseCommands(Provider):
             ("Runs: Toggle the runs sidebar", "Show / hide the list of discovered scan runs and switch between them (b)", app.action_toggle_runs),
             ("Scan: Run argus scan", "Launch argus scan from the TUI, stream output, and reload results when done (shift+r)", app.action_run_scan),
             ("Fix: Apply a Tier-1 dependency bump", "Propose + preview + apply a deterministic fix for the focused finding or selection (shift+f)", app.action_fix),
+            ("Intel: Enrich with EPSS + CISA KEV", "Fetch exploit-probability + known-exploited intelligence for the CVEs in view (i)", app.action_enrich),
             ("Search findings",          "Focus the search box", app.action_focus_search),
             ("Filter: Critical only",    "Show only CRITICAL findings", app.action_filter_critical),
             ("Filter: High severity and above", "Show HIGH + CRITICAL findings", app.action_filter_high),
@@ -1233,6 +1241,7 @@ class FindingDetail(Static):
         self,
         f: Finding | None,
         source_block: str | None = None,
+        enrichment: "Enrichment | None" = None,
     ) -> None:
         if f is None:
             self.update("[dim]Select a finding to see details.[/dim]")
@@ -1245,9 +1254,13 @@ class FindingDetail(Static):
         # refactoring the pane into per-cell widgets.
         header_id = self._linkify_id(f)
         glyph = _SEVERITY_GLYPH.get(f.severity, "?")
-        lines = [f"[bold]{header_id}[/bold]   {glyph}", ""]
+        badge = risk_badge(enrichment)
+        badge_md = f"   [b]{badge}[/b]" if badge else ""
+        lines = [f"[bold]{header_id}[/bold]   {glyph}{badge_md}", ""]
 
-        rows = finding_detail_rows(f)
+        # Enrichment rows (EPSS / KEV / Risk) append after the core rows when
+        # the finding's CVE has been enriched; empty otherwise.
+        rows = finding_detail_rows(f) + enrichment_detail_rows(f.severity, enrichment)
         for label, value in rows:
             rendered = self._linkify_value(label, value)
             lines.append(f"[b]{label}:[/b]".ljust(13) + f" {rendered}")
@@ -1377,6 +1390,11 @@ class BrowseApp(App):
         # — or every fixable row in the multi-select set. Diff-first: shows
         # the proposed change before touching anything.
         Binding("F", "fix", "Fix", show=True),
+        # Live vulnerability intelligence: fetch EPSS (exploit probability) +
+        # CISA KEV (actively-exploited) for the CVEs in view and re-prioritise
+        # by real-world risk. Opt-in / offline-degrading — only reaches out
+        # when pressed.
+        Binding("i", "enrich", "Intel", show=True),
         # Multi-select — drives the bulk-action workflows (export N rows,
         # paste a CVE list into a bug tracker). ``space``/``a``/``A``
         # manage the selection set; ``c`` copies CVEs from it. ``e``
@@ -1413,6 +1431,13 @@ class BrowseApp(App):
         # Storing the live object reference is the cheapest stable key
         # for an in-memory session.
         self._selected: set[int] = set()
+        # Live vulnerability intelligence (Phase 6): CVE → Enrichment, filled
+        # on demand by ``action_enrich`` (``i``). Empty until the user asks,
+        # so the viewer never reaches the network unprompted.
+        self._enrichment: dict[str, Enrichment] = {}
+        # Injectable for tests; None ⇒ a default service (env-driven offline
+        # detection, on-disk cache) is built on first ``action_enrich``.
+        self._enrichment_service: EnrichmentService | None = None
         # Load ``view:`` config (cve_source / open_location / editor)
         # from any argus.yml the user has in cwd or beside results_dir.
         # ArgusConfig.load() auto-detects and falls back to defaults if
@@ -1837,9 +1862,54 @@ class BrowseApp(App):
             return
         finding = self._visible[row]
         block = self._source_context_block(finding)
+        enrichment = self._enrichment.get(finding.cve.upper()) if finding.cve else None
         self.query_one("#detail", FindingDetail).update_finding(
-            finding, source_block=block,
+            finding, source_block=block, enrichment=enrichment,
         )
+
+    def action_enrich(self) -> None:  # pragma: no cover — UI/worker
+        """Fetch EPSS + CISA KEV intelligence for the CVEs in view (``i``).
+
+        Opt-in and offline-degrading: only reaches the network when pressed,
+        runs in a thread so the UI never blocks, and no-ops cleanly when
+        offline or when no CVE-identified findings are present.
+        """
+        cves = sorted({f.cve for f in self.all_findings if is_cve(f.cve)})
+        if not cves:
+            self.notify("No CVE-identified findings to enrich.", severity="information")
+            return
+        service = self._enrichment_service or EnrichmentService()
+        if service.offline:
+            self.notify(
+                "Offline — enrichment needs network access (EPSS + CISA KEV).",
+                severity="warning",
+            )
+            return
+        self.notify(
+            f"Fetching EPSS + CISA KEV for {len(cves)} CVEs…", severity="information",
+        )
+        self.run_worker(
+            lambda: self._enrich_work(service, cves), thread=True, exclusive=True,
+        )
+
+    def _enrich_work(  # pragma: no cover — worker thread
+        self, service: EnrichmentService, cves: list[str],
+    ) -> None:
+        result = service.enrich(cves)
+        self.call_from_thread(self._apply_enrichment, result)
+
+    def _apply_enrichment(  # pragma: no cover — UI
+        self, result: dict[str, Enrichment],
+    ) -> None:
+        self._enrichment.update(result)
+        kev = sum(1 for e in result.values() if e.kev)
+        epss = [e.epss for e in result.values() if e.epss is not None]
+        top = round(max(epss) * 100) if epss else 0
+        self.notify(
+            f"Enriched {len(result)} CVEs · {kev} in CISA KEV · top EPSS {top}%",
+            severity="information",
+        )
+        self._update_detail(self.query_one(DataTable).cursor_row)
 
     def _source_context_block(self, finding: Finding) -> str | None:
         """Render the ``[bold]Source[/bold]`` block for the detail pane.
