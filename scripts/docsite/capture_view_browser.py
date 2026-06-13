@@ -49,6 +49,11 @@ PAGES = [
     ("findings", "/findings", []),
     ("dashboard-light", "/", ["--blink-settings=preferredColorScheme=1"]),
     ("command-palette", "/#command", []),
+    # The formal report is a long, narrow document (max-width 880px). A taller,
+    # tighter window frames the cover → provenance → summary; the later
+    # --window-size wins over the default WINDOW. Capture findings-risk via the
+    # opt-in column is exercised separately (needs ARGUS_VIEW_ENRICH + cache).
+    ("report", "/report", ["--window-size=1200,2400"]),
 ]
 
 _CHROME_CANDIDATES = [

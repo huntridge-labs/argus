@@ -103,8 +103,15 @@ browser = [
 # API (#248), so the binding floats across the tested 0.20–0.25 range; the
 # <0.26 ceiling just bounds it to versions CI has exercised.
 mumps = ["tree-sitter>=0.20,<0.26"]
+# Server-side PDF for the formal report (`argus view browser` → /report.pdf).
+# WeasyPrint is OSS (BSD) and pure-Python, but pulls heavy native libraries
+# (Pango, cairo, …), so it stays opt-in rather than in [browser]. Without it
+# the HTML /report view is still served and prints to PDF via the browser.
+# Floor bumped well past the early-CVE line; the API used (HTML(string=...),
+# write_pdf(stylesheets=[CSS(filename=...)])) is stable across the 60.x+ range.
+report = ["weasyprint>=62"]
 # All optional features
-all = ["argus-security[ai,completion,mcp,terminal,browser,mumps]"]
+all = ["argus-security[ai,completion,mcp,terminal,browser,mumps,report]"]
 
 [project.scripts]
 argus = "argus.cli:main"

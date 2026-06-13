@@ -1,0 +1,240 @@
+/*
+ * Formal vulnerability report stylesheet (Phase B4).
+ *
+ * Standalone — not loaded alongside argus.css. Used by both the on-screen
+ * /report preview (linked under strict CSP) and the WeasyPrint /report.pdf
+ * render (passed to WeasyPrint directly). Optimized for paper: white ground,
+ * dark text, fixed severity hues, and @page rules with page numbers that
+ * WeasyPrint honours (browsers ignore the paged bits harmlessly).
+ *
+ * The inline-SVG charts (argus.core.svg_charts) reference --fg / --surface-alt
+ * / --fg-muted; we define them here for a light document so the donut centre
+ * text and track render legibly on white.
+ */
+
+:root {
+  --fg: #1a2118;
+  --fg-muted: #5f6b5c;
+  --surface-alt: #e9ece6;
+
+  --report-accent: #2f6f3e;       /* argus green, darkened for print contrast */
+  --report-rule: #d6dcd3;
+  --report-ink: #1a2118;
+
+  --sev-critical: #b3261e;
+  --sev-high: #d2691e;
+  --sev-medium: #c79a00;
+  --sev-low: #2f74b5;
+  --sev-info: #6b7668;
+}
+
+* { box-sizing: border-box; }
+
+body.report {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  color: var(--report-ink);
+  background: #fff;
+  line-height: 1.5;
+  margin: 0 auto;
+  max-width: 880px;
+  padding: 2.5rem 2rem 4rem;
+  font-size: 14px;
+}
+
+/* Paged-media rules — WeasyPrint honours these; browsers ignore harmlessly. */
+@page {
+  size: A4;
+  margin: 18mm 16mm 20mm;
+  @bottom-center {
+    content: "Page " counter(page) " of " counter(pages);
+    font-size: 9px;
+    color: #6b7668;
+  }
+  @bottom-right {
+    content: "Project Argus — confidential security assessment";
+    font-size: 9px;
+    color: #9aa697;
+  }
+}
+
+/* ---- Cover ---- */
+.report-cover {
+  border-bottom: 3px solid var(--report-accent);
+  padding-bottom: 1.5rem;
+  margin-bottom: 2rem;
+}
+.report-wordmark {
+  font-size: 12px;
+  letter-spacing: 0.32em;
+  font-weight: 700;
+  color: var(--report-accent);
+  margin: 0 0 0.5rem;
+}
+.report-title {
+  font-size: 30px;
+  font-weight: 700;
+  margin: 0 0 0.25rem;
+  line-height: 1.15;
+}
+.report-subtitle { font-size: 15px; color: var(--fg-muted); margin: 0; }
+.report-generated {
+  font-size: 12px;
+  color: var(--fg-muted);
+  margin: 0.75rem 0 0;
+}
+.report-actions { margin: 1.25rem 0 0; }
+.report-pdf-btn {
+  display: inline-block;
+  background: var(--report-accent);
+  color: #fff;
+  text-decoration: none;
+  font-weight: 600;
+  padding: 0.55rem 1.1rem;
+  border-radius: 6px;
+}
+.report-pdf-btn:hover { background: #25592f; }
+.report-print-hint { font-size: 12px; color: var(--fg-muted); margin-left: 0.75rem; }
+
+/* ---- Sections ---- */
+.report-section {
+  margin: 0 0 2.25rem;
+  /* Keep a section's heading with its first rows where the engine allows. */
+  break-inside: auto;
+}
+.report-section h2 {
+  font-size: 18px;
+  border-bottom: 1px solid var(--report-rule);
+  padding-bottom: 0.35rem;
+  margin: 0 0 1rem;
+}
+.report-section h3 { font-size: 14px; margin: 1.25rem 0 0.5rem; }
+.report-lead { color: var(--fg-muted); margin: 0 0 1rem; }
+.report-muted { color: #9aa697; font-style: italic; }
+
+/* ---- Provenance ---- */
+.report-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.4rem 1.5rem;
+  margin: 0 0 1rem;
+}
+.report-facts dt { font-weight: 600; color: var(--fg-muted); }
+.report-facts dd { margin: 0; word-break: break-word; }
+.report-facts code,
+.report-digest {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  background: #f4f6f2;
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
+}
+.report-digest { word-break: break-all; }
+.report-attest { font-weight: 700; }
+.report-attest-signed { color: #2f6f3e; }
+.report-attest-unsigned { color: #c79a00; }
+
+/* ---- Verdict banner ---- */
+.report-verdict {
+  font-size: 15px;
+  padding: 0.85rem 1.1rem;
+  border-radius: 6px;
+  border-left: 5px solid;
+  margin: 0 0 1.25rem;
+}
+.report-verdict-pass { background: #eef6ef; border-color: #2f6f3e; }
+.report-verdict-fail { background: #fbecea; border-color: var(--sev-critical); }
+
+/* ---- Count strip ---- */
+.report-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0 0 1.5rem;
+}
+.report-count {
+  flex: 1 1 110px;
+  border: 1px solid var(--report-rule);
+  border-top: 3px solid var(--report-rule);
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  text-align: center;
+}
+.report-count .n { display: block; font-size: 22px; font-weight: 700; }
+.report-count .l { display: block; font-size: 11px; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.report-count-total { border-top-color: var(--report-accent); }
+.report-count-critical { border-top-color: var(--sev-critical); }
+.report-count-high { border-top-color: var(--sev-high); }
+.report-count-medium { border-top-color: var(--sev-medium); }
+.report-count-low { border-top-color: var(--sev-low); }
+.report-count-info { border-top-color: var(--sev-info); }
+
+/* ---- Charts ---- */
+.report-charts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: flex-end;
+  margin: 0 0 1rem;
+}
+.report-charts figure { margin: 0; }
+.report-charts figcaption {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-muted);
+  margin-bottom: 0.4rem;
+}
+
+/* ---- Tables ---- */
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  margin: 0 0 1rem;
+}
+.report-table th {
+  text-align: left;
+  border-bottom: 2px solid var(--report-rule);
+  padding: 0.4rem 0.5rem;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+}
+.report-table td {
+  border-bottom: 1px solid #eef1ec;
+  padding: 0.4rem 0.5rem;
+  vertical-align: top;
+}
+.report-table code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+}
+/* Don't let a finding row split across a page in the PDF. */
+.report-findings-table tr { break-inside: avoid; }
+
+/* ---- Severity group headings ---- */
+.report-group-heading {
+  padding-left: 0.6rem;
+  border-left: 4px solid;
+}
+.report-group-count { color: var(--fg-muted); font-weight: 400; }
+.report-group-critical { border-color: var(--sev-critical); }
+.report-group-high { border-color: var(--sev-high); }
+.report-group-medium { border-color: var(--sev-medium); }
+.report-group-low { border-color: var(--sev-low); }
+.report-group-info { border-color: var(--sev-info); }
+.report-group-unknown { border-color: var(--fg-muted); }
+
+.report-warnings, .report-quality ul { color: #8a5a00; }
+.report-clean { color: #2f6f3e; font-weight: 600; }
+
+/* ---- Footer ---- */
+.report-footer {
+  margin-top: 2.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--report-rule);
+  font-size: 11px;
+  color: var(--fg-muted);
+}

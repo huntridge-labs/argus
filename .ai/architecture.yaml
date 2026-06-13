@@ -132,10 +132,17 @@ components:
         reachability stays roadmap research). Shows a Reachability row in the terminal viewer's detail pane.
       core/svg_charts.py: UI-free dependency-free inline-SVG charts (Phase B1). donut / severity_donut (center
         override), trend_line (pathLength=1 for CSS draw-on), bar_chart — labels XML-escaped. Lives in core so
-        the browser dashboard and the future PDF report share one renderer. Drives the browser dashboard's
+        the browser dashboard and the formal report (Phase B4) share one renderer. Drives the browser dashboard's
         severity donut + findings-over-time trend + by-scanner bars, with count-up.js + a prefers-reduced-motion
         gated motion layer (View Transitions API, staggered reveal, draw-on) and a Cmd/Ctrl-K command palette
         (command-palette.js — vanilla, CSP-safe, indexes page nav links) in viewers/browser/static.
+      core/report.py: UI-free formal-report model (Phase B4). build_report(summary, findings) → ReportModel
+        with ReportProvenance (argus version + generation timestamp [both injectable for tests], scan_context
+        commit_sha/repo_root, scanner-toolchain image digests + cosign-verification from the ScanSummary.toolchain
+        block, and attestation status detected from the cosign bundle / in-toto statement sitting next to
+        argus-results.json) + executive summary (reuses findings_view.compute_summary so counts match every other
+        view) + severity-grouped findings. Pure data — no Jinja/FastAPI/WeasyPrint — so it''s tested without any
+        viewer extra. Drives the /report HTML view + the /report.pdf server-side render. See ADR-031.
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes
@@ -155,7 +162,14 @@ components:
         the findings viewer.'
       viewers/browser/: '`argus view --interface=browser` — FastAPI + Jinja2 web UI, 127.0.0.1 only ([browser]
         extra). Routes include ``/diff?a=<path>&b=<path>`` powered by argus.core.findings_view.diff_scans,
-        sharing the bucketing logic with the TUI''s ``D`` keybind.'
+        sharing the bucketing logic with the TUI''s ``D`` keybind. ``/report`` renders the formal vulnerability
+        report (Phase B4) — a standalone print document (report.html.j2 + static/report.css; does not extend the
+        app chrome) built from argus.core.report.build_report; ``/report.pdf`` renders the same HTML server-side
+        to PDF via report_pdf.py (WeasyPrint behind the opt-in [report] extra, lazily imported, raising
+        ViewerUnavailable with an install hint when absent — /report HTML + the browser''s own Print→Save-as-PDF
+        is the no-extra fallback). The opt-in Risk column (ARGUS_VIEW_ENRICH=1 / enrich=True) adds EPSS + CISA KEV
+        scoring to /findings via argus.core.enrichment; reachability stays terminal-only by design (read-only/no
+        source scan). See ADR-031.'
       scanners/: 'Scanner modules implementing Scanner protocol (SCANNER_REGISTRY includes linters via
         auto-merge). The container scanner orchestrates five sub-scanners on every run: trivy (CVE scan),
         grype (CVE scan, deduplicated against trivy), syft (SBOM), exposure (declared-port surface from
@@ -777,10 +791,17 @@ docsite:
         reachability stays roadmap research). Shows a Reachability row in the terminal viewer's detail pane.
       core/svg_charts.py: UI-free dependency-free inline-SVG charts (Phase B1). donut / severity_donut (center
         override), trend_line (pathLength=1 for CSS draw-on), bar_chart — labels XML-escaped. Lives in core so
-        the browser dashboard and the future PDF report share one renderer. Drives the browser dashboard's
+        the browser dashboard and the formal report (Phase B4) share one renderer. Drives the browser dashboard's
         severity donut + findings-over-time trend + by-scanner bars, with count-up.js + a prefers-reduced-motion
         gated motion layer (View Transitions API, staggered reveal, draw-on) and a Cmd/Ctrl-K command palette
         (command-palette.js — vanilla, CSP-safe, indexes page nav links) in viewers/browser/static.
+      core/report.py: UI-free formal-report model (Phase B4). build_report(summary, findings) → ReportModel
+        with ReportProvenance (argus version + generation timestamp [both injectable for tests], scan_context
+        commit_sha/repo_root, scanner-toolchain image digests + cosign-verification from the ScanSummary.toolchain
+        block, and attestation status detected from the cosign bundle / in-toto statement sitting next to
+        argus-results.json) + executive summary (reuses findings_view.compute_summary so counts match every other
+        view) + severity-grouped findings. Pure data — no Jinja/FastAPI/WeasyPrint — so it''s tested without any
+        viewer extra. Drives the /report HTML view + the /report.pdf server-side render. See ADR-031.
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes
@@ -800,7 +821,14 @@ docsite:
         the findings viewer.'
       viewers/browser/: '`argus view --interface=browser` — FastAPI + Jinja2 web UI, 127.0.0.1 only ([browser]
         extra). Routes include ``/diff?a=<path>&b=<path>`` powered by argus.core.findings_view.diff_scans,
-        sharing the bucketing logic with the TUI''s ``D`` keybind.'
+        sharing the bucketing logic with the TUI''s ``D`` keybind. ``/report`` renders the formal vulnerability
+        report (Phase B4) — a standalone print document (report.html.j2 + static/report.css; does not extend the
+        app chrome) built from argus.core.report.build_report; ``/report.pdf`` renders the same HTML server-side
+        to PDF via report_pdf.py (WeasyPrint behind the opt-in [report] extra, lazily imported, raising
+        ViewerUnavailable with an install hint when absent — /report HTML + the browser''s own Print→Save-as-PDF
+        is the no-extra fallback). The opt-in Risk column (ARGUS_VIEW_ENRICH=1 / enrich=True) adds EPSS + CISA KEV
+        scoring to /findings via argus.core.enrichment; reachability stays terminal-only by design (read-only/no
+        source scan). See ADR-031.'
       scanners/: 'Scanner modules implementing Scanner protocol (SCANNER_REGISTRY includes linters via
         auto-merge). The container scanner orchestrates five sub-scanners on every run: trivy (CVE scan),
         grype (CVE scan, deduplicated against trivy), syft (SBOM), exposure (declared-port surface from
