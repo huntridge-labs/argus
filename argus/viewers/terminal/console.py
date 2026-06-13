@@ -31,7 +31,7 @@ from textual.theme import Theme
 from textual.widgets import Footer, OptionList, Static
 from textual.widgets.option_list import Option
 
-from argus.core import console_config
+from argus.core import console_config, terminal_caps
 from argus.core.console_config import ConsoleSettings
 from argus.viewers.terminal import config_editor, console_model, init_wizard
 
@@ -125,6 +125,9 @@ class DocsScreen(ModalScreen):
     def compose(self) -> ComposeResult:  # pragma: no cover — UI
         with VerticalScroll(id="docs-body"):
             yield Static(_DOCS_TEXT)
+            yield Static(
+                f"\n[b]Terminal[/b]\n  [dim]{terminal_caps.capability_summary()}[/dim]",
+            )
 
     def on_mount(self) -> None:  # pragma: no cover — UI
         self.query_one("#docs-body", VerticalScroll).focus()
