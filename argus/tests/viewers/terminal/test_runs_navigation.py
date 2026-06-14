@@ -201,6 +201,112 @@ class TestSwitchRun:
         )
 
 
+class TestSwitchRunUpdateRoot:
+    def test_update_root_reroots_to_opened_scan(self, app):
+        _module, a, _widgets, _notify, tmp_path = app
+        # A scan in a *different* tree than the launch root.
+        run = tmp_path / "other-project" / "argus-results" / "run-1"
+        _write_run(run, severities=[Severity.HIGH])
+        a._switch_run(str(run), update_root=True)
+        # Launch root follows the opened scan so the sidebar shows its siblings.
+        assert a._launch_root == run.resolve()
+
+    def test_default_keeps_launch_root(self, app):
+        _module, a, _widgets, _notify, tmp_path = app
+        original_root = a._launch_root
+        run = tmp_path / "run-1"
+        _write_run(run, severities=[Severity.LOW])
+        a._switch_run(str(run))  # update_root defaults False
+        assert a._launch_root == original_root
+
+
+class TestTryLoad:
+    def test_returns_true_and_populates(self, app):
+        _module, a, _widgets, _notify, tmp_path = app
+        run = tmp_path / "run-1"
+        _write_run(run, severities=[Severity.HIGH, Severity.LOW])
+        assert a._try_load(str(run)) is True
+        assert len(a.all_findings) == 2
+        assert a._current_results_path is not None
+
+    def test_returns_false_on_missing(self, app):
+        _module, a, _widgets, _notify, tmp_path = app
+        assert a._try_load(str(tmp_path / "nope")) is False
+
+
+class TestOpenResults:
+    def test_action_open_results_pushes_picker(self, app):
+        module, a, _widgets, _notify, _tmp = app
+        pushed: list = []
+        a.push_screen = lambda screen, cb=None: pushed.append((screen, cb))  # type: ignore[method-assign]
+        a.action_open_results()
+        assert pushed
+        assert isinstance(pushed[0][0], module.ResultsPickerScreen)
+
+
+def _stub_picker(module, start):
+    """A ResultsPickerScreen with its Textual-provided methods stubbed."""
+    screen = module.ResultsPickerScreen(start)
+    screen._events = {"dismissed": [], "refreshed": 0}
+    screen.query_one = lambda *a, **k: types.SimpleNamespace(focus=lambda: None)  # type: ignore[method-assign]
+    screen.refresh = lambda *a, **k: screen._events.__setitem__("refreshed", screen._events["refreshed"] + 1)  # type: ignore[method-assign]
+    screen.call_after_refresh = lambda *a, **k: None  # type: ignore[method-assign]
+    screen.dismiss = lambda v=None: screen._events["dismissed"].append(v)  # type: ignore[method-assign]
+    return screen
+
+
+class TestResultsPickerScreen:
+    def test_build_options_lists_dirs_and_scans_only(self, tmp_path):
+        module = _load_app_module()
+        _write_run(tmp_path / "run-1", severities=[Severity.HIGH])
+        (tmp_path / "src").mkdir()
+        (tmp_path / "README.md").write_text("x")  # non-scan file → skipped
+        screen = module.ResultsPickerScreen(tmp_path)
+        opts = screen._build_options()
+        # run-1 (load) + src (dir) = 2; README.md dropped. No parent row at the
+        # picker's own start (tmp_path has a parent, so +1 for "..").
+        assert len(opts) == 3
+
+    def test_load_selection_dismisses_with_path(self, tmp_path):
+        module = _load_app_module()
+        screen = _stub_picker(module, tmp_path)
+        event = types.SimpleNamespace(option=types.SimpleNamespace(id="load::/p/run"))
+        screen.on_option_list_option_selected(event)
+        assert screen._events["dismissed"] == ["/p/run"]
+
+    def test_dir_selection_navigates(self, tmp_path):
+        module = _load_app_module()
+        sub = tmp_path / "child"
+        sub.mkdir()
+        screen = _stub_picker(module, tmp_path)
+        event = types.SimpleNamespace(option=types.SimpleNamespace(id=f"dir::{sub}"))
+        screen.on_option_list_option_selected(event)
+        assert screen._cwd == sub
+        assert screen._events["refreshed"] == 1
+        assert screen._events["dismissed"] == []  # navigated, not selected
+
+    def test_up_navigates_to_parent(self, tmp_path):
+        module = _load_app_module()
+        sub = tmp_path / "child"
+        sub.mkdir()
+        screen = _stub_picker(module, sub)
+        screen.action_go_up()
+        assert screen._cwd == tmp_path.resolve()
+
+    def test_none_selection_is_noop(self, tmp_path):
+        module = _load_app_module()
+        screen = _stub_picker(module, tmp_path)
+        event = types.SimpleNamespace(option=types.SimpleNamespace(id="__noop__"))
+        screen.on_option_list_option_selected(event)
+        assert screen._events["dismissed"] == []
+
+    def test_cancel_dismisses_none(self, tmp_path):
+        module = _load_app_module()
+        screen = _stub_picker(module, tmp_path)
+        screen.action_dismiss()
+        assert screen._events["dismissed"] == [None]
+
+
 class TestEventAnchor:
     def test_returns_screen_coords(self):
         module = _load_app_module()
