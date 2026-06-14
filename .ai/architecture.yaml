@@ -143,6 +143,13 @@ components:
         argus-results.json) + executive summary (reuses findings_view.compute_summary so counts match every other
         view) + severity-grouped findings. Pure data — no Jinja/FastAPI/WeasyPrint — so it''s tested without any
         viewer extra. Drives the /report HTML view + the /report.pdf server-side render. See ADR-031.
+      core/system_status.py: UI-free Console-home readiness checks. compute_status(scanner_names, backend, *probes)
+        → SystemStatus (verdict ok/warn/down + glyph + summary) over StatusCheck rows — Docker daemon state
+        (probe_docker), local-tool availability per scanner (probe_local_tools over is_available), and cached
+        Argus image-digest match vs toolchain._published_argus_digests (probe_cached_image_digests; skipped when
+        Docker is off). Docker is only *blocking* when the effective execution.backend needs it with no local
+        fallback. All probes injectable for tests; effective_backend() reads execution.backend best-effort. Drives
+        the home chip (computed in a background worker) + SystemStatusScreen.
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes
@@ -155,6 +162,9 @@ components:
         RunScanPromptScreen + RunScanScreen stream it) and reloads results when it finishes. Right-click context
         menus anchor at the cursor via mouse_actions.clamp_menu_offset. console.py + console_model.py provide the
         Argus Console — the home launcher (scan / findings / configure / init / settings / docs) with a
+        background-computed system-readiness chip (argus.core.system_status — Docker daemon / local-tool
+        availability / cached-image-digest match vs published releases; ``d`` opens SystemStatusScreen with the
+        per-check detail + remediation), a
         live-themed Settings screen backed by argus.core.console_config, a Configure form editor (ConfigScreen)
         for argus.yml backed by config_editor.py (UI-free, comment-preserving targeted line edits + schema validation),
         and an Init wizard (InitScreen) backed by init_wizard.py (UI-free frontend over argus.init detect_project +
@@ -808,6 +818,13 @@ docsite:
         argus-results.json) + executive summary (reuses findings_view.compute_summary so counts match every other
         view) + severity-grouped findings. Pure data — no Jinja/FastAPI/WeasyPrint — so it''s tested without any
         viewer extra. Drives the /report HTML view + the /report.pdf server-side render. See ADR-031.
+      core/system_status.py: UI-free Console-home readiness checks. compute_status(scanner_names, backend, *probes)
+        → SystemStatus (verdict ok/warn/down + glyph + summary) over StatusCheck rows — Docker daemon state
+        (probe_docker), local-tool availability per scanner (probe_local_tools over is_available), and cached
+        Argus image-digest match vs toolchain._published_argus_digests (probe_cached_image_digests; skipped when
+        Docker is off). Docker is only *blocking* when the effective execution.backend needs it with no local
+        fallback. All probes injectable for tests; effective_backend() reads execution.backend best-effort. Drives
+        the home chip (computed in a background worker) + SystemStatusScreen.
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes
@@ -820,6 +837,9 @@ docsite:
         RunScanPromptScreen + RunScanScreen stream it) and reloads results when it finishes. Right-click context
         menus anchor at the cursor via mouse_actions.clamp_menu_offset. console.py + console_model.py provide the
         Argus Console — the home launcher (scan / findings / configure / init / settings / docs) with a
+        background-computed system-readiness chip (argus.core.system_status — Docker daemon / local-tool
+        availability / cached-image-digest match vs published releases; ``d`` opens SystemStatusScreen with the
+        per-check detail + remediation), a
         live-themed Settings screen backed by argus.core.console_config, a Configure form editor (ConfigScreen)
         for argus.yml backed by config_editor.py (UI-free, comment-preserving targeted line edits + schema validation),
         and an Init wizard (InitScreen) backed by init_wizard.py (UI-free frontend over argus.init detect_project +

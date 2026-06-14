@@ -187,6 +187,27 @@ class TestChoiceScreen:
         assert screen._current == "high"
 
 
+class TestSystemStatusScreen:
+    def test_construction_stores_status(self, console):
+        module, _app, _calls = console
+        from argus.core.system_status import StatusCheck, SystemStatus
+        status = SystemStatus(checks=[
+            StatusCheck("docker", "Docker", True, "Docker daemon is running"),
+        ])
+        screen = module.SystemStatusScreen(status)
+        assert screen._status is status
+
+    def test_home_apply_system_status_stores(self, console):
+        module, _app, _calls = console
+        from argus.core.system_status import SystemStatus
+        home = module.HomeScreen()
+        status = SystemStatus(checks=[])
+        # query_one fails under the stub (no real widget) but the status is
+        # stored first, so the `d` action can still open the modal.
+        home._apply_system_status(status)
+        assert home._system_status is status
+
+
 class TestCommandPalette:
     def test_provider_registered_on_app(self, console):
         module, _app, _calls = console

@@ -522,6 +522,54 @@ class InitScreen(Screen):
         self.dismiss()
 
 
+class SystemStatusScreen(ModalScreen):
+    """Detailed system-readiness breakdown, opened from the home chip (``d``).
+
+    One row per check — glyph, label, detail, and a remediation hint when
+    something needs attention (Docker stopped, a tool missing, an image-digest
+    mismatch). Read-only; ESC closes. The status itself is computed UI-free in
+    ``argus.core.system_status``; this is the thin renderer.
+    """
+
+    _ROW_GLYPH = {"ok": "✔", "warn": "▲", "down": "✖"}
+
+    CSS = """
+    SystemStatusScreen { align: center middle; }
+    #sysstatus-body {
+        background: $surface; border: thick $accent;
+        width: 80%; max-width: 88; height: auto; max-height: 90%; padding: 1 2;
+    }
+    #sysstatus-title { text-style: bold; padding: 0 0 1 0; }
+    #sysstatus-hint { color: $text-muted; padding: 1 0 0 0; }
+    """
+    BINDINGS = [
+        Binding("escape", "close", "Close", show=True),
+        Binding("q", "close", show=False),
+    ]
+
+    def __init__(self, status) -> None:
+        super().__init__()
+        self._status = status
+
+    def compose(self) -> ComposeResult:  # pragma: no cover — UI
+        with Vertical(id="sysstatus-body"):
+            yield Static(
+                f"{self._status.glyph}  System status", id="sysstatus-title",
+            )
+            for check in self._status.checks:
+                glyph = self._ROW_GLYPH.get(check.verdict, "•")
+                yield Static(f"{glyph}  [b]{check.label}[/b] — {check.detail}")
+                if check.remediation and check.verdict != "ok":
+                    yield Static(f"      [dim]{check.remediation}[/dim]")
+            yield Static("esc to close", id="sysstatus-hint")
+
+    def on_mount(self) -> None:  # pragma: no cover — UI
+        self.focus()
+
+    def action_close(self) -> None:  # pragma: no cover — UI
+        self.dismiss()
+
+
 class HomeScreen(Screen):
     """The launcher: wordmark banner, project status, and the menu."""
 
@@ -537,11 +585,16 @@ class HomeScreen(Screen):
     #tagline { width: 100%; text-align: center; color: $text-muted; padding: 0 0 1 0; }
     #status { width: 100%; text-align: center; color: $text-muted; padding: 0 0 1 0;
               border-top: dashed $panel; border-bottom: dashed $panel; }
+    #system-status { width: 100%; text-align: center; color: $text-muted; padding: 0 0 1 0; }
     #menu { height: auto; width: 72; border: round $accent; padding: 0 1; }
     """
     BINDINGS = [
         Binding("q", "app.quit", "Quit"),
         Binding("s", "menu('settings')", "Settings"),
+        # System readiness (Docker / local tools / image digests). Computed in
+        # the background so the home renders instantly; ``d`` expands the chip
+        # into the detailed breakdown.
+        Binding("d", "system_status", "System"),
         Binding("question_mark", "menu('docs')", "Help", key_display="?"),
     ]
 
@@ -555,6 +608,9 @@ class HomeScreen(Screen):
                     yield Static(console_model.ARGUS_BANNER, id="banner")
                 yield Static(console_model.TAGLINE, id="tagline")
                 yield Static("", id="status")
+                yield Static(
+                    "[dim]checking system…[/dim]", id="system-status",
+                )
                 yield OptionList(
                     *(
                         Option(f"{item.icon}  {item.label}   [dim]{item.hint}[/dim]", id=item.key)
@@ -565,8 +621,12 @@ class HomeScreen(Screen):
         yield Footer()
 
     def on_mount(self) -> None:  # pragma: no cover — UI
+        self._system_status = None
         self.refresh_status()
         self.query_one("#menu", OptionList).focus()
+        # Probe system readiness off the UI thread (Docker info + tool version
+        # checks shell out and can stall) so the home paints instantly.
+        self.run_worker(self._compute_system_status, thread=True)
         if self.app.settings.motion_enabled:
             banner = self.query_one("#banner", Static)
             banner.styles.opacity = 0.0
@@ -577,6 +637,28 @@ class HomeScreen(Screen):
             self.app.launch_root, config_path=self.app.config_path,
         )
         self.query_one("#status", Static).update(console_model.status_line(status))
+
+    def _compute_system_status(self) -> None:  # pragma: no cover — UI (thread)
+        from argus.core import system_status
+        backend = system_status.effective_backend(self.app.config_path)
+        status = system_status.compute_status(
+            scanner_names=system_status.COMMON_SCANNERS, backend=backend,
+        )
+        self.app.call_from_thread(self._apply_system_status, status)
+
+    def _apply_system_status(self, status) -> None:  # pragma: no cover — UI
+        self._system_status = status
+        try:
+            chip = self.query_one("#system-status", Static)
+        except Exception:
+            return
+        chip.update(f"{status.glyph}  {status.summary}   [dim](d for details)[/dim]")
+
+    def action_system_status(self) -> None:  # pragma: no cover — UI
+        if self._system_status is None:
+            self.app.notify("Still checking system status…", timeout=2)
+            return
+        self.app.push_screen(SystemStatusScreen(self._system_status))
 
     def action_menu(self, key: str) -> None:  # pragma: no cover — UI
         self.app.dispatch_menu(key)
