@@ -1,77 +1,186 @@
 <div align="center">
 
-<a href="http://argus.huntridgelabs.com/"><img src="img/argus_readme_cover.png" alt="Argus - Perception is Protection" ></a>
-<br>
-
-<a href="http://argus.huntridgelabs.com/">Learn more at argus.huntridgelabs.com</a>
-
-<br>
+<a href="http://argus.huntridgelabs.com/"><img src="img/argus_readme_cover.png" alt="Argus — Perception is Protection"></a>
 
 ![GitHub Release](https://img.shields.io/github/v/release/huntridge-labs/argus?style=flat-square)
 ![Unit Tests](https://img.shields.io/github/actions/workflow/status/huntridge-labs/argus/test-unit.yml?label=unit%20tests&style=flat-square)
 ![Integration Tests](https://img.shields.io/github/actions/workflow/status/huntridge-labs/argus/test-actions.yml?label=integration%20tests&style=flat-square)
 [![codecov](https://img.shields.io/codecov/c/github/huntridge-labs/argus?token=SZDF9J8UGX&style=flat-square)](https://codecov.io/gh/huntridge-labs/argus)
-
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg?style=flat-square)](https://www.gnu.org/licenses/agpl-3.0)
-[![AICaC](https://img.shields.io/badge/AICaC-Comprehensive-success.svg)](https://github.com/eFAILution/AICaC)
+
+<h3>Find it. Triage it. Prove it.</h3>
+
+**Argus** unifies SAST, containers, IaC, secrets, DAST, and supply-chain scanning behind one CLI — then gives you a keyboard-driven **terminal Console** to triage what it finds and a one-click, **audit-ready PDF report** to prove what you shipped. Run it locally, in CI, or as GitHub Actions.
+
+<a href="http://argus.huntridgelabs.com/"><strong>argus.huntridgelabs.com →</strong></a>
 
 <br>
 
-Unified security scanning — SAST, containers, IaC, secrets, and DAST from a single CLI or GitHub Actions workflow.
+<table>
+<tr>
+<td width="33%" valign="top" align="center">
+<a href="docs/view-terminal.md"><img src="docs/images/console/console-home.png" alt="The Argus Console — the interactive TUI that bare argus opens"></a>
+<br><b>Terminal Console</b><br><sub>bare <code>argus</code> — scan, triage, fix</sub>
+</td>
+<td width="33%" valign="top" align="center">
+<a href="docs/view-browser.md"><img src="docs/images/browser/dashboard.png" alt="Argus browser dashboard with charts"></a>
+<br><b>Browser dashboard</b><br><sub>charts, EPSS/KEV risk, light/dark</sub>
+</td>
+<td width="33%" valign="top" align="center">
+<a href="docs/view-browser.md"><img src="docs/images/browser/report.png" alt="Argus formal PDF vulnerability report"></a>
+<br><b>One-click PDF report</b><br><sub>provenance + attestation, hand-it-to-an-auditor</sub>
+</td>
+</tr>
+</table>
 
 </div>
 
 ---
 
-## Table of Contents
+## Why Argus
 
-- [Quick Start](#quick-start)
-- [Supported Scanners](#supported-scanners)
-- [Features](#features)
-- [GitHub Enterprise Server (GHES)](#github-enterprise-server-ghes)
-- [Documentation](#documentation)
-- [Usage Examples](#usage-examples)
-- [Configuration](#configuration)
-- [Contributing](#contributing)
+Most scanners stop at a wall of JSON. Argus takes you from **find → triage → prove**:
 
-## Quick Start
+- **✦ Find it** — one CLI runs every scanner (SAST, secrets, dependencies, containers, IaC, DAST, supply-chain) with a single severity gate and SBOM input.
+- **✦ Triage it** — a full **terminal Console** (and a local **browser dashboard**) to filter, search, enrich with live exploit intel (EPSS + CISA KEV), suppress to OpenVEX, apply deterministic fixes, and run scans without leaving the UI.
+- **✦ Prove it** — cosign-verified tooling, a recorded provenance chain, and a formal **PDF report** binding findings to the exact commit and scanner image digests that produced them.
 
-### Argus SDK (Recommended)
+---
 
-The argus Python SDK is the primary interface for running security scans. It works locally, in CI, and on any platform with Python 3.11+.
+## Quick start
+
+**1 — Scan from the CLI** (the SDK; Python 3.11+, works locally and in CI):
 
 ```bash
 pip install argus-security
-
-# Initialize config and scan
-argus init
-argus scan
+argus init          # detect the project, generate argus.yml
+argus scan          # run the configured scanners
 ```
 
-Or scan immediately without a config file:
+Or skip the config and scan immediately:
 
 ```bash
 argus scan bandit gitleaks osv --severity-threshold high
 ```
 
-### Interactive triage
-
-After a scan, `argus view terminal` opens a terminal UI for navigating findings —
-filter by severity, product, or scanner; search by CVE; drill into details;
-export to CSV / JSON / Markdown / SARIF; see an executive dashboard. Ships
-behind an optional extra:
+**2 — Open the Console** (the interactive TUI):
 
 ```bash
 pip install 'argus-security[terminal]'
-argus view terminal                         # load ./argus-results/argus-results.json
-argus scan --interface=terminal             # scan, then drop straight into the terminal viewer
+argus               # bare argus opens the Console
 ```
 
-Full keyboard reference and workflow in [`docs/view-terminal.md`](docs/view-terminal.md).
+**3 — Add it to GitHub Actions** (composite actions, GHES-friendly):
 
-### GitHub Actions (Composite Actions)
+```yaml
+- uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.4.1
+  with:
+    enable_code_security: true   # upload SARIF to the Security tab
+    fail_on_severity: high
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
 
-For GitHub Actions users, composite actions remain available for direct integration:
+---
+
+## ✦ Find it — the scanners
+
+One interface, every layer of the stack. Tools run as local binaries or pinned, cosign-verified container images (auto-detected).
+
+| Layer | Scanners |
+|-------|----------|
+| **SAST** | CodeQL · Bandit (Python) · gosec (Go) · OpenGrep (multi-language) · MUMPS/M |
+| **Secrets** | Gitleaks (history + working tree) |
+| **Dependencies** | OSV · GitHub Dependency Review (PR diff + license) |
+| **Containers** | Trivy + Grype (CVEs, deduped) · Syft (SBOM) · exposed-port & service surface |
+| **Infrastructure** | Trivy IaC · Checkov |
+| **Supply chain** | zizmor + actionlint (GitHub Actions workflow security) |
+| **Malware** | ClamAV |
+| **DAST** | OWASP ZAP (running web/API endpoints, opt-in) |
+| **Compliance** | FedRAMP SCN detection |
+| **Linting** | YAML · JSON · Python · JavaScript · Dockerfile · Terraform · Shell |
+
+```bash
+argus scan --list                       # everything available
+argus scan --sbom path/to/sbom.json     # scan a CycloneDX / SPDX / Syft SBOM
+```
+
+See the [Scanner Reference](docs/scanners.md) for per-scanner configuration.
+
+---
+
+## ✦ Triage it — the Console & browser
+
+### The Argus Console (terminal)
+
+Bare `argus` opens a home base for the whole local workflow — no flags to memorise.
+
+<div align="center">
+<img src="docs/images/console/console-home.png" alt="The Argus Console home — wordmark, project + system-readiness status, and the launcher menu" width="80%">
+</div>
+
+From the Console (or `argus view terminal` straight into the findings) you can:
+
+- **Run scans in-app** (`R`) — stream `argus scan` live, reload results when it finishes.
+- **Triage fast** — filter by severity / product / scanner, search by CVE, drill into details, multi-select, export to CSV / JSON / Markdown / SARIF.
+- **Enrich with live intel** (`i`) — EPSS exploit probability + CISA KEV, re-ranking findings by *real-world* risk.
+- **Suppress to OpenVEX** (`S`) — record a triage decision (false-positive / not-exploitable / accepted) that the next scan honours.
+- **Apply deterministic fixes** (`F`) — propose + preview + apply Tier-1 dependency bumps.
+- **Explain a finding** (`x`) — a local (Ollama) or cloud model walks you through it (opt-in, no key required to use Argus).
+- **Switch & open scans** — a runs sidebar (`b`) for sibling runs and a filesystem picker (`O`) to open results from anywhere.
+- **Configure & initialise** in-app, plus a **command palette** (`Ctrl+P`), a **system-readiness chip** (Docker / tools / image digests), and a **live-preview theme picker**.
+
+Full keyboard reference: [`docs/view-terminal.md`](docs/view-terminal.md) · Console guide: [`docs/console.md`](docs/console.md).
+
+### The browser viewer
+
+For owners, managers, and execs who want at-a-glance posture without a terminal. Localhost-only, read-only, no auth to manage.
+
+```bash
+pip install 'argus-security[browser]'
+argus view browser
+```
+
+<table>
+<tr>
+<td width="50%" valign="top" align="center">
+<img src="docs/images/browser/dashboard.png" alt="Browser dashboard with severity donut, trend, and by-scanner charts">
+<br><sub>Executive dashboard — dependency-free SVG charts, sticky scan-context bar, light/dark</sub>
+</td>
+<td width="50%" valign="top" align="center">
+<img src="docs/images/browser/findings-risk.png" alt="Findings table with the opt-in EPSS/KEV risk column">
+<br><sub>Findings table — opt-in EPSS/KEV <b>Risk</b> column, <code>⌘K</code> command palette</sub>
+</td>
+</tr>
+</table>
+
+Details: [`docs/view-browser.md`](docs/view-browser.md).
+
+---
+
+## ✦ Prove it — provenance & the formal report
+
+Argus doesn't just find issues — it produces evidence you can hand to an auditor or a government body.
+
+<div align="center">
+<img src="docs/images/browser/report.png" alt="Argus formal security report — provenance, attestation, verdict, and findings inventory" width="70%">
+</div>
+
+- **One-click PDF report** (`argus view browser` → Report, `pip install 'argus-security[report]'`) — provenance & attestation block (Argus version, source commit, cosign-verified scanner image digests, signed-attestation status), a PASS/FAIL verdict, charts, and the full findings inventory grouped by severity. The HTML view prints to PDF even without the extra.
+- **Supply-chain verification** — every Argus-owned image pull is cosign-verified (Sigstore keyless); third-party images are `@sha256:` digest-pinned. A failed verification aborts the scanner.
+- **Signed attestations** — an OpenVEX-in-in-toto statement (subjects = scanned image digests + repo commit), cosign-signed and optionally registry-attached.
+- **Credentials stay out of `argus.yml`** — reference an env var via `<field>_env` or pipe via stdin; resolved values never reach logs or the audit trail.
+
+See the [Security Policy](docs/security.md) for the threat model, credential handling, and image-provenance details.
+
+---
+
+## GitHub Actions & GHES
+
+Scanner logic lives in the Argus SDK and in self-contained composite actions, so GHES users consume them directly from github.com — no mirroring or reusable-workflow restrictions.
+
+<details>
+<summary><strong>Composite-action workflow</strong></summary>
 
 ```yaml
 name: Security Scan
@@ -79,358 +188,94 @@ on: [pull_request, push]
 
 permissions:
   contents: read
-  security-events: write
-  pull-requests: write
+  security-events: write   # upload SARIF to the Security tab
+  pull-requests: write     # post PR comments
 
 jobs:
   sast:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-
       - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.4.1
-        with:
-          enable_code_security: true
-          fail_on_severity: high
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+        with: { enable_code_security: true, fail_on_severity: high }
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
       - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.4.1
-        with:
-          enable_code_security: true
-          fail_on_severity: high
-```
-
-## Supported Scanners
-
-| Category | Scanner | Description |
-|----------|---------|-------------|
-| **SAST** | CodeQL | GitHub semantic code analysis |
-| | Gitleaks | Secret detection in git history |
-| | Bandit | Python security linter |
-| | OpenGrep | Fast multi-language static analysis |
-| **Container** | Trivy Container | Comprehensive vulnerability scanner |
-| | Grype | Fast, accurate CVE detection |
-| | Syft | Software Bill of Materials (SBOM) |
-| | Exposed-port surface | Reports declared Dockerfile `EXPOSE` ports as findings (MEDIUM for risky-defaults watchlist: SSH, MySQL, Redis, etc.) |
-| **Infrastructure** | Trivy IaC | Infrastructure as Code scanner |
-| | Checkov | Policy as Code for cloud configs |
-| **Malware** | ClamAV | Open-source antivirus engine |
-| **DAST** | ZAP | Dynamic testing of running web/API endpoints (opt-in) |
-
-For detailed scanner configuration, see [Scanner Reference](docs/scanners.md).
-
-## Features
-
-- **[Argus SDK](argus/)** - Run scanners locally or in CI with `argus scan`
-- **[Unified interface](docs/scanners.md)** - One CLI or workflow for all scanners
-- **[Flexible scanner selection](docs/scanners.md)** - Use scanner groups or specific scanners
-- **[Interactive triage TUI](docs/view-terminal.md)** - `argus view terminal` — keyboard-driven findings explorer with executive dashboard
-- **[SBOM input](docs/cli-reference.md)** - `argus scan --sbom path/to/sbom.json` accepts CycloneDX / SPDX / Syft SBOMs (file or directory of SBOMs)
-- **[GitHub Security tab integration](.github/actions/scanner-codeql/README.md)** - Upload SARIF results to Code Scanning
-- **PR comments** - Inline feedback on pull requests
-- **[Severity-based failure control](docs/failure-control.md)** - Set thresholds for workflow failures
-- **[Container configuration](docs/container-scanning.md)** - Scan multiple containers from a single config file
-- **Matrix execution** - Parallel scanning for multiple targets
-- **[Credential handling](docs/security.md)** - Secrets stay out of `argus.yml`: name an env var via `<field>_env`, pipe via `--registry-password-stdin`, or both. Validator warns on literal vendor-shaped values; resolved values never reach logs / audit trail.
-- **[Supply-chain verification](docs/security.md#container-image-provenance)** - Cosign-verify on every argus-owned image pull (Sigstore keyless), implicit `@sha256:` digest verification on every third-party image. Failure aborts the scanner.
-- **[Shell tab-completion](docs/cli-reference.md)** - `argus completion zsh >> ~/.zshrc` (or `bash`) — Tab-completes subcommands, scanner / linter names, common flags. Auto-refreshes from the live scanner registry.
-- **[Optional AI summary](.github/actions/ai-summary/README.md)** - Generate executive security summaries from scan results using your own AI provider and API key (Copilot, Claude, or Gemini)
-- **[Interactive findings TUI](docs/view-terminal.md)** - `argus view terminal` — keyboard-driven triage browser (`pip install 'argus-security[terminal]'`)
-- **[Local web UI](docs/view-browser.md)** - `argus view browser` — localhost dashboard for non-engineer stakeholders (`pip install 'argus-security[browser]'`)
-
-## GitHub Enterprise Server (GHES)
-
-GHES users can use the argus SDK or composite actions directly from github.com - no mirroring required.
-
-**Architecture**: Scanner logic lives in the argus Python SDK and in composite actions. The SDK is the primary interface; composite actions provide GitHub Actions integration.
-
-<details>
-<summary><strong>GHES Quick Start</strong></summary>
-
-```yaml
-name: Security Scan (GHES)
-
-on: [pull_request, push]
-
-permissions:
-  contents: read
-  security-events: write
-  pull-requests: write
-
-jobs:
-  sast:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      # Use composite actions directly from github.com
-      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.4.1
-        with:
-          enable_code_security: true
-          fail_on_severity: high
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
-
-      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.4.1
-        with:
-          enable_code_security: true
-          fail_on_severity: high
+        with: { enable_code_security: true, fail_on_severity: high }
 ```
 
 </details>
 
-See [examples/github-enterprise/](examples/github-enterprise/) for complete GHES workflow templates:
-- [SAST Scanning](examples/github-enterprise/sast-only.yml)
-- [Container Scanning](examples/github-enterprise/container-scanning.yml)
-- [Infrastructure Scanning](examples/github-enterprise/infrastructure-scanning.yml)
-- [DAST Scanning](examples/github-enterprise/dast-scanning.yml)
+GHES templates: [SAST](examples/github-enterprise/sast-only.yml) · [Container](examples/github-enterprise/container-scanning.yml) · [Infrastructure](examples/github-enterprise/infrastructure-scanning.yml) · [DAST](examples/github-enterprise/dast-scanning.yml).
 
-## Documentation
-
-**Full documentation:** [huntridge-labs.github.io/argus](https://huntridge-labs.github.io/argus/)
-
-### User Guides
-
-- [Configuration Reference](docs/config-reference.md) - Full `argus.yml` specification
-- [Scanner Reference](docs/scanners.md) - Complete configuration for all scanners
-- [Container Scanning](docs/container-scanning.md) - Config-driven matrix container scanning
-- [Failure Control](docs/failure-control.md) - Severity-based workflow failure configuration
-- [Security Policy](docs/security.md) - Threat model, credential handling, supply-chain verification, vulnerability reporting
-- [Migration 0.6.x → 1.x](docs/migration/0.6.x-to-1.x.md) - Side-by-side guide for upgrading consumer workflows
-- [Docker Troubleshooting](docs/troubleshooting/docker.md) - Runtime detection, bind-mount permissions, image pulls, proxies, and execution-failure signals
-
-### Developer Docs
-
-- [Contributing Guide](CONTRIBUTING.md) - How to add scanners and actions
-- [Testing Guide](tests/CONTRIBUTING.md) - How to add and run tests
-- [Release Management](docs/developer/release-management.md) - Release process and versioning
-- [Enhanced PR Comments](docs/developer/enhanced-pr-comments.md) - PR comment implementation
-
-## Usage Examples
-
-<details>
-<summary><strong>SDK: Full Scan with Config File</strong></summary>
-
-```yaml
-# argus.yml
-scanners:
-  - gitleaks
-  - bandit
-  - opengrep
-  - osv
-  - trivy-iac
-  - checkov
-
-scan_path: "."
-severity_threshold: high
-```
-
-```bash
-argus scan --config argus.yml
-```
-
-</details>
-
-<details>
-<summary><strong>SDK: SAST Scanners Only</strong></summary>
-
-```bash
-argus scan bandit opengrep gitleaks --severity-threshold medium
-```
-
-</details>
-
-<details>
-<summary><strong>SDK: Container Scanning</strong></summary>
-
-```bash
-argus scan container --severity-threshold critical
-```
-
-</details>
-
-<details>
-<summary><strong>SDK: Infrastructure as Code</strong></summary>
-
-```yaml
-# argus.yml
-scanners:
-  - trivy-iac
-  - checkov
-
-scan_path: "terraform/"
-severity_threshold: high
-```
-
-```bash
-argus scan --config argus.yml
-```
-
-</details>
-
-<details>
-<summary><strong>GitHub Actions: Composite Actions</strong></summary>
-
-```yaml
-name: Security Scan
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-permissions:
-  contents: read
-  security-events: write
-  pull-requests: write
-
-jobs:
-  sast:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.4.1
-        with:
-          enable_code_security: true
-          fail_on_severity: high
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.4.1
-        with:
-          enable_code_security: true
-          fail_on_severity: high
-```
-
-</details>
-
-<details>
-<summary><strong>GitHub Actions: Config-Driven Container Scanning</strong></summary>
-
-See [Container Scanning Guide](docs/container-scanning.md) for complete documentation.
-
-</details>
+---
 
 ## Configuration
 
-### SDK Configuration (argus.yml)
-
 ```yaml
+# argus.yml
 scanners:
   - gitleaks
   - bandit
   - osv
   - trivy-iac
-
 scan_path: "."
-severity_threshold: high
+severity_threshold: high     # none · low · medium · high · critical
 ```
 
-### CLI Scanner Selection
-
 ```bash
-# Specific scanners
-argus scan gitleaks bandit osv
-
-# With severity threshold
-argus scan --severity-threshold high
-
-# With config file
 argus scan --config argus.yml
+argus scan gitleaks bandit osv          # ad-hoc scanner selection
+argus completion zsh >> ~/.zshrc        # shell tab-completion
 ```
 
-**Severity levels:** `none`, `low`, `medium`, `high`, `critical`
+Full spec: [Configuration Reference](docs/config-reference.md) · [Failure Control](docs/failure-control.md) · [Container Scanning](docs/container-scanning.md).
 
-See [Failure Control Guide](docs/failure-control.md) for detailed threshold configuration.
+---
 
-### GitHub Actions Permissions
+## MCP server (AI integration)
 
-When using composite actions in GitHub Actions workflows:
-
-```yaml
-permissions:
-  contents: read           # Read repository content
-  security-events: write   # Upload to GitHub Security tab
-  pull-requests: write     # Post PR comments
-  actions: read           # Read Actions artifacts
-```
-
-### Secrets
-
-Scanner-specific secrets (for GitHub Actions composite action usage):
-
-| Secret | Required For | Description |
-|--------|-------------|-------------|
-| `GITLEAKS_LICENSE` | Gitleaks (organizations) | License from [gitleaks.io](https://gitleaks.io) |
-| `GITHUB_TOKEN` | PR comments, Security tab | Automatically provided |
-| Registry secrets | Private containers | Token for authentication |
-
-## MCP Server (AI Integration)
-
-Argus includes an MCP server for AI-assistant integration. Tools like Claude Desktop, Claude Code, Cursor, Continue, and Cline can run scans, validate configs, classify IaC changes, and explain findings — without leaving the chat.
-
-**Zero-install** (recommended for AI-tool-only users — no global Python install needed):
+Run scans, validate configs, classify IaC changes, and explain findings from Claude Desktop / Code, Cursor, Continue, or Cline — without leaving the chat.
 
 ```bash
-uvx --from 'argus-security[mcp]' argus mcp
+uvx --from 'argus-security[mcp]' argus mcp     # zero-install
 ```
-
-**Or install via pip** (recommended if you also use the Argus CLI):
-
-```bash
-pip install 'argus-security[mcp]'
-```
-
-Add to your AI tool's MCP configuration:
 
 ```json
-{
-  "mcpServers": {
-    "argus": {"command": "argus", "args": ["mcp"]}
-  }
-}
+{ "mcpServers": { "argus": { "command": "argus", "args": ["mcp"] } } }
 ```
 
-Available tools: `argus_scan`, `argus_detect`, `argus_validate`, `argus_list_scanners`, `argus_init`, `argus_classify`, `argus_explain_finding`, `argus_scan_summary`. Resources: `argus://config`, `argus://results/latest`, `argus://config/schema`. Prompts: `security_review`, `fix_findings`, `setup_scanning`.
+Tools include `argus_scan`, `argus_validate`, `argus_explain_finding`, `argus_scan_summary`. Per-client setup + the full reference: [`docs/mcp.md`](docs/mcp.md).
 
-See [`docs/mcp.md`](docs/mcp.md) for per-client config (Claude Desktop, Claude Code, Cursor, Continue, Cline), the full tool reference, and the list of MCP server registries where Argus is listed for discovery.
+---
+
+## Documentation
+
+**Full docs:** [huntridge-labs.github.io/argus](https://huntridge-labs.github.io/argus/)
+
+| User guides | Developer |
+|-------------|-----------|
+| [Configuration Reference](docs/config-reference.md) | [Contributing](CONTRIBUTING.md) |
+| [Scanner Reference](docs/scanners.md) | [Testing Guide](tests/CONTRIBUTING.md) |
+| [Terminal Console](docs/view-terminal.md) · [Browser viewer](docs/view-browser.md) | [Release Management](docs/developer/release-management.md) |
+| [Security Policy](docs/security.md) | [SDK Roadmap](docs/developer/SDK-ROADMAP.md) |
+| [Docker Troubleshooting](docs/troubleshooting/docker.md) | [Migration 0.6.x → 1.x](docs/migration/0.6.x-to-1.x.md) |
+
+---
 
 ## Contributing
 
-Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Fastest path is the dev container:
 
-### Development Setup
-
-**Quick Start with Dev Container (Recommended):**
-
-[![Open in Dev Containers](https://img.shields.io/static/v1?label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/huntridge-labs/argus)
-
-1. Install [VS Code](https://code.visualstudio.com/) + [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
-2. Open repository → "Reopen in Container"
-3. All dependencies ready! Run `npm test`
+[![Open in Dev Containers](https://img.shields.io/static/v1?label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode&style=flat-square)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/huntridge-labs/argus)
 
 ```bash
-# Install dependencies
 npm install
 pip install -r .devcontainer/requirements.txt
-
-# Run tests
 npm test
-
-# See tests/CONTRIBUTING.md for detailed testing guide
 ```
 
-## License
+---
 
-AGPL v3 License - see [LICENSE.md](LICENSE.md) for details.
+## License & support
 
-## Support
-
-- **Documentation:** [huntridge-labs.github.io/argus](https://huntridge-labs.github.io/argus/)
-- **Issues:** [GitHub Issues](https://github.com/huntridge-labs/argus/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/huntridge-labs/argus/discussions)
-- **Security:** See [SECURITY.md](SECURITY.md) for vulnerability reporting
+AGPL v3 — see [LICENSE.md](LICENSE.md). · [Issues](https://github.com/huntridge-labs/argus/issues) · [Discussions](https://github.com/huntridge-labs/argus/discussions) · [Security reporting](SECURITY.md)
