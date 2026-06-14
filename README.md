@@ -8,7 +8,7 @@
 [![codecov](https://img.shields.io/codecov/c/github/huntridge-labs/argus?token=SZDF9J8UGX&style=flat-square)](https://codecov.io/gh/huntridge-labs/argus)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg?style=flat-square)](https://www.gnu.org/licenses/agpl-3.0)
 
-<h3>Find it. Triage it. Prove it.</h3>
+<h3><a href="#find-it">Find it.</a> <a href="#triage-it">Triage it.</a> <a href="#prove-it">Prove it.</a></h3>
 
 **Argus** unifies SAST, containers, IaC, secrets, DAST, and supply-chain scanning behind one CLI — then gives you a keyboard-driven **terminal Console** to triage what it finds and a one-click, **audit-ready PDF report** to prove what you shipped. Run it locally, in CI, or as GitHub Actions.
 
@@ -83,6 +83,8 @@ argus               # bare argus opens the Console
 
 ---
 
+<a id="find-it"></a>
+
 ## ✦ Find it — the scanners
 
 One interface, every layer of the stack. Tools run as local binaries or pinned, cosign-verified container images (auto-detected).
@@ -108,6 +110,8 @@ argus scan --sbom path/to/sbom.json     # scan a CycloneDX / SPDX / Syft SBOM
 See the [Scanner Reference](docs/scanners.md) for per-scanner configuration.
 
 ---
+
+<a id="triage-it"></a>
 
 ## ✦ Triage it — the Console & browser
 
@@ -157,6 +161,8 @@ argus view browser
 Details: [`docs/view-browser.md`](docs/view-browser.md).
 
 ---
+
+<a id="prove-it"></a>
 
 ## ✦ Prove it — provenance & the formal report
 
