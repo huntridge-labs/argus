@@ -125,6 +125,10 @@ def app(tmp_path):
     app.query_one = fake_query_one  # type: ignore[method-assign]
     app.notify = lambda *a, **k: notify_calls.append({"a": a, **k})  # type: ignore[method-assign]
     app._refresh_list = lambda: None  # type: ignore[method-assign]
+    # Run the load worker synchronously so tests can assert state right after
+    # _switch_run (production runs it in a thread to animate the spinner).
+    app.run_worker = lambda work, *a, **k: (work() if callable(work) else None)  # type: ignore[method-assign]
+    app.call_from_thread = lambda fn, *a, **k: fn(*a, **k)  # type: ignore[method-assign]
     return module, app, widgets, notify_calls, tmp_path
 
 

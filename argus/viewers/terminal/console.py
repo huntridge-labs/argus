@@ -889,12 +889,25 @@ class ConsoleApp(App):
     def _open_init(self) -> None:  # pragma: no cover — UI
         """Open the init wizard over the project at the current directory.
 
-        Detects the project, lets the user review/toggle the proposed
-        scanners, and writes argus.yml in-app. On "write & scan" it hands
-        straight to the scan runner; either way it refreshes home status.
+        Detection (``build_plan`` — a filesystem walk) runs in a worker with
+        an immediate "Detecting…" toast so the home isn't frozen blank while
+        it works; the wizard opens when detection completes.
         """
-        plan = init_wizard.build_plan(Path("."))
+        self.notify("Detecting project…", timeout=2)
 
+        def _work() -> None:
+            plan = init_wizard.build_plan(Path("."))
+            self.call_from_thread(self._show_init, plan)
+
+        self.run_worker(_work, thread=True)
+
+    def _show_init(self, plan: "init_wizard.InitPlan") -> None:  # pragma: no cover — UI
+        """Push the init wizard once detection has produced a plan.
+
+        Lets the user review/toggle the proposed scanners and writes argus.yml
+        in-app. On "write & scan" it hands to the scan runner; either way it
+        refreshes home status.
+        """
         def _after(result: object) -> None:
             self.config_path = self._detect_config_path()
             screen = self.screen

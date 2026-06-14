@@ -1228,6 +1228,10 @@ class RunScanScreen(ModalScreen[str | None]):
 
     async def _stream(self) -> None:  # pragma: no cover — subprocess streaming
         import asyncio
+        # Immediate feedback before the subprocess produces its first line —
+        # otherwise the pane sits empty during the spawn + scanner startup and
+        # reads as a hang.
+        self._append("⏳  Starting argus scan…")
         try:
             self._proc = await asyncio.create_subprocess_exec(
                 *self._argv,
@@ -1975,7 +1979,29 @@ class BrowseApp(App):
         (the sidebar, the scan runner). Surfaces load failures as a toast
         rather than crashing the session.
         """
-        if not self._try_load(path):
+        # Show the table's built-in spinner while the new scan loads + the
+        # rows rebuild (a noticeable beat for a large results file) so the
+        # switch never reads as a frozen pause. The load runs in a worker so
+        # the spinner actually animates; the rebuild happens back on the UI
+        # thread in _finish_switch.
+        try:
+            self.query_one(DataTable).loading = True
+        except Exception:
+            pass
+
+        def _work() -> None:
+            ok = self._try_load(path)
+            self.call_from_thread(self._finish_switch, ok, path, update_root)
+
+        self.run_worker(_work, thread=True)
+
+    def _finish_switch(self, ok: bool, path: str, update_root: bool) -> None:
+        """Apply a loaded run on the UI thread (called from the load worker)."""
+        try:
+            self.query_one(DataTable).loading = False
+        except Exception:
+            pass
+        if not ok:
             self.notify(
                 f"Couldn't load a scan at: {path}", severity="error", timeout=6,
             )

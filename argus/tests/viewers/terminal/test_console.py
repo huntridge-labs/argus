@@ -71,6 +71,10 @@ def console(monkeypatch, tmp_path):
     app.exit = lambda result=None: calls["exit"].append(result)  # type: ignore[method-assign]
     app._open_scan = lambda: calls.__setitem__("scan", calls["scan"] + 1)  # type: ignore[method-assign]
     app._edit_config = lambda: calls.__setitem__("edit", calls["edit"] + 1)  # type: ignore[method-assign]
+    # Run workers synchronously so deferred work (e.g. init detection) lands
+    # within the test (production runs it in a thread to keep the UI live).
+    app.run_worker = lambda work, *a, **k: (work() if callable(work) else None)  # type: ignore[method-assign]
+    app.call_from_thread = lambda fn, *a, **k: fn(*a, **k)  # type: ignore[method-assign]
     return module, app, calls
 
 
@@ -124,6 +128,7 @@ class TestDispatch:
     def test_init_opens_wizard(self, console, tmp_path, monkeypatch):
         _module, app, calls = console
         monkeypatch.chdir(tmp_path)  # detect against an empty dir, fast + deterministic
+        app.notify = lambda *a, **k: None  # "Detecting…" toast; stub avoids super().notify
         app.dispatch_menu("init")
         assert "InitScreen" in calls["push"]
         assert calls["exit"] == []  # no hand-off any more
