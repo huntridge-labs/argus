@@ -36,10 +36,15 @@ from textual.screen import ModalScreen
 from textual.widgets import DataTable, Footer, Header, Input, OptionList, Static
 from textual.widgets.option_list import Option
 
-from argus.viewers.terminal import mouse_actions, runs_sidebar, scan_runner
+from argus.viewers.terminal import (
+    mouse_actions,
+    results_picker,
+    runs_sidebar,
+    scan_runner,
+)
 from argus.viewers.terminal.loader import flatten_findings, load_summary
 from argus.core.config import ArgusConfig, ViewConfig
-from argus.core.run_discovery import discover_runs
+from argus.core.run_discovery import discover_runs, list_directory
 from argus.core import remediation
 from argus.core.findings_view import (
     SEVERITY_GLYPH,
@@ -523,6 +528,83 @@ class DiffPickerScreen(_BackgroundDismissMixin, ModalScreen[str | None]):
                 self.dismiss(None)
                 return
             self.dismiss(value)
+
+    def action_dismiss(self) -> None:
+        self.dismiss(None)
+
+
+class ResultsPickerScreen(_BackgroundDismissMixin, ModalScreen[str | None]):
+    """Filesystem browser for an ``argus-results.json`` (or a results dir).
+
+    Navigates one level at a time (like the browser ``/picker``): directories
+    holding a scan are flagged with a finding-count peek; descend into plain
+    directories, go up with ``backspace``, and select a scan to dismiss with
+    its path for the caller to load. Opened when "View findings" can't resolve
+    a scan in the launch directory, and on demand (``o``) to open results from
+    another project. Dismisses with the chosen path, or ``None`` on cancel.
+    """
+
+    BINDINGS = [
+        Binding("escape", "dismiss", show=False),
+        Binding("q", "dismiss", show=False),
+        Binding("backspace", "go_up", show=False),
+    ]
+
+    CSS = _PICKER_CSS
+
+    def __init__(self, start: Path):
+        super().__init__()
+        self._cwd = start.resolve()
+
+    def compose(self) -> ComposeResult:  # pragma: no cover — UI
+        with Container(id="picker-body"):
+            yield Static(
+                f"[b]Open scan[/b] · [dim]{self._cwd}[/dim]\n"
+                "enter to open / descend · backspace up · ESC cancel"
+            )
+            yield OptionList(*self._build_options(), id="picker-list")
+
+    def _build_options(self) -> list[Option]:
+        entries, error = list_directory(self._cwd, show_hidden=False)
+        rows = results_picker.picker_rows(
+            entries, include_parent=self._cwd.parent != self._cwd,
+        )
+        options = [Option(text, id=opt_id) for opt_id, text in rows]
+        if error:
+            options.append(Option(f"[red]{error}[/red]", id="__noop__"))
+        elif not entries:
+            options.append(Option("[dim](no sub-directories or scans here)[/dim]", id="__noop__"))
+        return options
+
+    def on_mount(self) -> None:
+        self.query_one("#picker-list", OptionList).focus()
+
+    def action_go_up(self) -> None:
+        parent = self._cwd.parent
+        if parent != self._cwd:
+            self._cwd = parent
+            self.refresh(recompose=True)
+            self.call_after_refresh(
+                lambda: self.query_one("#picker-list", OptionList).focus()
+            )
+
+    def on_option_list_option_selected(
+        self, event: OptionList.OptionSelected,
+    ) -> None:
+        action, path = results_picker.decode_id(
+            str(event.option.id) if event.option.id else None,
+        )
+        if action == "up":
+            self.action_go_up()
+        elif action == "dir" and path:
+            self._cwd = Path(path)
+            self.refresh(recompose=True)
+            self.call_after_refresh(
+                lambda: self.query_one("#picker-list", OptionList).focus()
+            )
+        elif action == "load" and path:
+            self.dismiss(path)
+        # "none" (placeholder rows) — ignore
 
     def action_dismiss(self) -> None:
         self.dismiss(None)
@@ -1312,6 +1394,7 @@ class ArgusBrowseCommands(Provider):
             ("Diff: Compare against another scan", "Pick another argus-results.json and bucket changes (new / fixed / severity-changed / still-open)", app.action_diff_against),
             ("Runs: Toggle the runs sidebar", "Show / hide the list of discovered scan runs and switch between them (b)", app.action_toggle_runs),
             ("Scan: Run argus scan", "Launch argus scan from the TUI, stream output, and reload results when done (shift+r)", app.action_run_scan),
+            ("Open: Load results from another directory", "Filesystem picker to open a scan from another project / archived results (shift+o)", app.action_open_results),
             ("Fix: Apply a Tier-1 dependency bump", "Propose + preview + apply a deterministic fix for the focused finding or selection (shift+f)", app.action_fix),
             ("Intel: Enrich with EPSS + CISA KEV", "Fetch exploit-probability + known-exploited intelligence for the CVEs in view (i)", app.action_enrich),
             ("Triage: Suppress / accept-risk (VEX)", "Record a triage decision to OpenVEX + .trivyignore/.gitleaksignore for the focused finding or selection (shift+s)", app.action_suppress),
@@ -1553,6 +1636,11 @@ class BrowseApp(App):
         # it finishes. Lowercase ``r`` stays the reveal-export action.
         Binding("b", "toggle_runs", "Runs", show=True),
         Binding("R", "run_scan", "Run scan", show=True),
+        # Open a scan from another directory (filesystem picker) — traverse
+        # to another project / archived results without relaunching. Capital
+        # ``O`` (lowercase ``o`` is "open last export"); matches the
+        # capital-for-major-action convention (R / F / S / D).
+        Binding("O", "open_results", "Open scan", show=True),
         # Deterministic Tier-1 fix (dependency bump) for the focused finding
         # — or every fixable row in the multi-select set. Diff-first: shows
         # the proposed change before touching anything.
@@ -1708,23 +1796,6 @@ class BrowseApp(App):
 
     def on_mount(self) -> None:
         self.title = "argus view (terminal)"
-        try:
-            summary, resolved = load_summary(self._results_dir)
-        except (FileNotFoundError, ValueError) as exc:
-            self.exit(message=f"\n{exc}\n", return_code=1)
-            return
-        self.sub_title = str(resolved)
-        self._current_results_path = resolved
-        self.all_findings = flatten_findings(summary)
-        # Read scan-time context (cwd / repo_root / commit_sha) off the
-        # loaded summary. Older argus-results.json files predate the
-        # field — leave self._scan_context as None and the click
-        # handlers fall back to their previous best-effort behavior.
-        self._scan_context = getattr(summary, "scan_context", None)
-        if self._scan_context is not None and self._scan_context.commit_sha:
-            # Pin the remote-URL ref to the commit the scan actually
-            # saw rather than the contributor's local HEAD.
-            self._scan_ref = self._scan_context.commit_sha
         table = self.query_one(DataTable)
         # Initial tooltip is the generic blurb; ``on_mouse_move`` swaps
         # it for a per-row summary (severity / id / package / first
@@ -1744,15 +1815,70 @@ class BrowseApp(App):
         self._col_keys = table.add_columns(
             " ", "Sev", "ID", "Package@Version", "Scanner", "Location",
         )
-        self._refresh_list()
-        self._update_sort_indicator()
-        # Discover sibling runs and fill the (initially hidden) sidebar.
+        loaded = self._try_load(self._results_dir)
+        # Discover sibling runs and fill the (initially hidden) sidebar —
+        # done even with no scan loaded so the user can see runs exist.
         self._populate_runs()
-        # Open into the findings list, not the search box. The search
-        # input is the first focusable child by yield order, so without
-        # this users land in the search field and find that ↑/↓ edit
-        # the query rather than navigating findings.
-        table.focus()
+        if loaded:
+            self._refresh_list()
+            self._update_sort_indicator()
+            # Open into the findings list, not the search box. The search
+            # input is the first focusable child by yield order, so without
+            # this users land in the search field and find that ↑/↓ edit
+            # the query rather than navigating findings.
+            table.focus()
+        else:
+            # No scan in the launch directory — open the picker so the user
+            # can navigate to one rather than dropping out to the shell with
+            # an error (which read as a "flicker back to home" from the
+            # Console hand-off).
+            self._prompt_for_results()
+
+    def _try_load(self, path: str | Path | None) -> bool:
+        """Load the scan at ``path`` into app state; ``False`` if unresolvable.
+
+        Pure state load (findings, current path, scan context) — the caller
+        refreshes the table / runs sidebar. Shared by on_mount, the runs
+        sidebar, the scan runner, and the results picker so every entry point
+        loads a scan the same way. Reads scan-time context (cwd / repo_root /
+        commit_sha) off the summary; older results predate it and leave
+        ``self._scan_context`` None, so click handlers fall back to their
+        best-effort behaviour.
+        """
+        try:
+            summary, resolved = load_summary(path)
+        except (FileNotFoundError, ValueError, OSError):
+            return False
+        self.all_findings = flatten_findings(summary)
+        self._current_results_path = resolved
+        self.sub_title = str(resolved)
+        self._scan_context = getattr(summary, "scan_context", None)
+        if self._scan_context is not None and self._scan_context.commit_sha:
+            # Pin the remote-URL ref to the commit the scan actually saw
+            # rather than the contributor's local HEAD.
+            self._scan_ref = self._scan_context.commit_sha
+        return True
+
+    def _prompt_for_results(self) -> None:  # pragma: no cover — UI event
+        """Open the results picker when no scan is loaded.
+
+        Cancelling with nothing loaded exits cleanly (there's nothing to
+        show) instead of leaving a blank screen.
+        """
+        start = self._launch_root if self._launch_root.exists() else Path.cwd()
+
+        def _chosen(path: str | None) -> None:
+            if path:
+                self._switch_run(path, update_root=True)
+                self.query_one(DataTable).focus()
+            elif self._current_results_path is None:
+                self.exit(
+                    message="\nNo scan selected. Run `argus scan` first, or "
+                            "point `argus view` at a results directory.\n",
+                    return_code=0,
+                )
+
+        self.push_screen(ResultsPickerScreen(start), _chosen)
 
     # ------------------------------------------------------------------
     # Runs sidebar + run switching
@@ -1836,32 +1962,50 @@ class BrowseApp(App):
         if path:
             self._switch_run(path)
 
-    def _switch_run(self, path: str) -> None:
+    def _switch_run(self, path: str, *, update_root: bool = False) -> None:
         """Load the run at ``path`` in place, keeping filters/sort.
 
         Resets the multi-select set (it keyed off the previous run's
         finding objects) but preserves the active severity/product/
         scanner/search filters — switching runs to compare the same
-        slice across scans is the common motivation. Surfaces load
-        failures as a toast rather than crashing the session.
+        slice across scans is the common motivation. ``update_root``
+        re-roots run discovery at the loaded scan's directory: set it when
+        opening a scan from *elsewhere* (the results picker) so the sidebar
+        shows that project's sibling runs; left off for in-root switches
+        (the sidebar, the scan runner). Surfaces load failures as a toast
+        rather than crashing the session.
         """
-        try:
-            summary, resolved = load_summary(path)
-        except (FileNotFoundError, ValueError, OSError) as exc:
+        if not self._try_load(path):
             self.notify(
-                f"Couldn't load run: {exc}", severity="error", timeout=6,
+                f"Couldn't load a scan at: {path}", severity="error", timeout=6,
             )
             return
-        self.all_findings = flatten_findings(summary)
-        self._current_results_path = resolved
-        self.sub_title = str(resolved)
-        self._scan_context = getattr(summary, "scan_context", None)
-        if self._scan_context is not None and self._scan_context.commit_sha:
-            self._scan_ref = self._scan_context.commit_sha
+        if update_root and self._current_results_path is not None:
+            self._launch_root = Path(self._current_results_path).parent
         # New run → the old selection's object identities are stale.
         self._selected.clear()
         self._refresh_list()
         self._populate_runs()
+
+    def action_open_results(self) -> None:  # pragma: no cover — UI event
+        """Open a scan from another directory (``o``).
+
+        A filesystem picker to load results from anywhere — another project,
+        an archived results folder — without relaunching. Complements the
+        runs sidebar (``b``), which switches between runs of the *current*
+        launch root; this re-roots there so the sidebar follows.
+        """
+        start = (
+            Path(self._current_results_path).parent
+            if self._current_results_path else self._launch_root
+        )
+
+        def _chosen(path: str | None) -> None:
+            if path:
+                self._switch_run(path, update_root=True)
+                self.query_one(DataTable).focus()
+
+        self.push_screen(ResultsPickerScreen(start), _chosen)
 
     def action_run_scan(self) -> None:  # pragma: no cover — UI event
         """Launch ``argus scan`` from inside the TUI (``R``).

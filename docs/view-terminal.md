@@ -70,6 +70,7 @@ Press `?` inside the TUI for the same reference, grouped by purpose.
 | `r` | reveal last export in file manager |
 | **Runs & scanning** | |
 | `b` | toggle the runs sidebar — switch between scan runs without relaunching |
+| `O` (shift+o) | open a scan from another directory — filesystem picker to load results from another project / archived folder |
 | `R` (shift+r) | run `argus scan` in-app, stream output, and reload results when done |
 | `F` (shift+f) | fix — propose a dependency bump for the finding (or selection), preview the diff, apply |
 | `i` | enrich — fetch EPSS + CISA KEV intelligence for the CVEs in view (see below) |
@@ -103,6 +104,17 @@ agree on what counts as a run (including collapsing the `latest/` symlink
 into the timestamped run it points at).
 
 ![Runs sidebar revealed on the left — two runs newest-first, the current run marked, alongside the findings list and detail pane](images/view-terminal/11-runs-sidebar.svg)
+
+**Open a scan from elsewhere (`O`).** Where the sidebar switches between
+runs of the *current* root, `O` (shift+o) opens a filesystem picker to load
+results from anywhere — another project, an archived results folder — without
+relaunching. Navigate one directory level at a time (`backspace` goes up);
+directories that contain a scan are flagged with a finding-count peek, and
+selecting one — or an `argus-results.json` file — loads it and re-roots the
+runs sidebar there. The same picker appears automatically when you open the
+viewer (or pick **View findings** in the Console) somewhere with no scan in
+the launch directory, so you can navigate to one instead of dropping back to
+the shell.
 
 **Run a scan (`R`).** Press `R` (shift+r) to launch `argus scan` without
 leaving the TUI. A prompt collects an optional scanner (blank runs all

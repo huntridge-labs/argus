@@ -148,6 +148,9 @@ components:
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes
         DiffPickerScreen + DiffScreen for scan-over-scan diff (``D`` keybind), reusing argus.core.findings_view.diff_scans.
         A runs sidebar (``b``) lists discovered runs via argus.core.run_discovery and switches between them in place;
+        ``O`` opens a filesystem ResultsPickerScreen (results_picker.py formats rows over run_discovery.list_directory)
+        to load a scan from another directory — also shown automatically when no scan resolves in the launch dir
+        (so bare ``argus`` → View findings navigates to a scan instead of exiting), via a shared BrowseApp._try_load;
         ``R`` runs argus scan in-app (runs_sidebar.py formats rows, scan_runner.py builds the argv,
         RunScanPromptScreen + RunScanScreen stream it) and reloads results when it finishes. Right-click context
         menus anchor at the cursor via mouse_actions.clamp_menu_offset. console.py + console_model.py provide the
@@ -810,6 +813,9 @@ docsite:
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes
         DiffPickerScreen + DiffScreen for scan-over-scan diff (``D`` keybind), reusing argus.core.findings_view.diff_scans.
         A runs sidebar (``b``) lists discovered runs via argus.core.run_discovery and switches between them in place;
+        ``O`` opens a filesystem ResultsPickerScreen (results_picker.py formats rows over run_discovery.list_directory)
+        to load a scan from another directory — also shown automatically when no scan resolves in the launch dir
+        (so bare ``argus`` → View findings navigates to a scan instead of exiting), via a shared BrowseApp._try_load;
         ``R`` runs argus scan in-app (runs_sidebar.py formats rows, scan_runner.py builds the argv,
         RunScanPromptScreen + RunScanScreen stream it) and reloads results when it finishes. Right-click context
         menus anchor at the cursor via mouse_actions.clamp_menu_offset. console.py + console_model.py provide the
