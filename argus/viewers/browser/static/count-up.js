@@ -1,4 +1,4 @@
-/* argus serve — animated count-up for the dashboard stat cards (Phase B0).
+/* argus view browser — animated count-up for the dashboard stat cards (Phase B0).
  *
  * Progressive enhancement: the server already renders the final numbers, so
  * with no JS (or under prefers-reduced-motion) the cards read correctly and

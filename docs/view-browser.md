@@ -243,12 +243,13 @@ findings match which filter.
 
 ## Troubleshooting
 
-**`argus: error: argument command: invalid choice: 'serve'`** — your `argus`
-binary was installed before `serve` landed. Reinstall: `pip install --upgrade
---pre 'argus-security[browser]'`.
+**`argus: error: argument command: invalid choice: 'serve'`** — `argus serve`
+was renamed. The browser UI is now `argus view browser` (or
+`argus view --interface=browser`). Update your command.
 
-**"The local web UI needs the 'serve' extra"** — you installed `argus-security`
-but not the `[serve]` extra. Retry with `pip install 'argus-security[browser]'`.
+**"The browser interface needs the 'browser' extra"** — you installed
+`argus-security` but not the `[browser]` extra. Retry with
+`pip install 'argus-security[browser]'`.
 
 **Port 8080 already in use** — pass `--port 9090` (or any free port).
 

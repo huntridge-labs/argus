@@ -1,4 +1,4 @@
-/* argus serve — picker compare-select.
+/* argus view browser — picker compare-select.
  *
  * Each scan-ready row in the picker renders a checkbox with
  * data-scan-path set to the absolute scan path. When exactly two

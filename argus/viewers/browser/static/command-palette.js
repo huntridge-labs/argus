@@ -1,4 +1,4 @@
-/* argus serve — command palette (Phase B0).
+/* argus view browser — command palette (Phase B0).
  *
  * Cmd/Ctrl-K opens a fuzzy launcher over the page's own navigation: jump to
  * any view, severity filter, product, or scanner without the mouse — browser
