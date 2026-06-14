@@ -26,6 +26,13 @@ argus scan ...   # every subcommand is unchanged
 - **Status line** — at a glance: whether an `argus.yml` exists, and the
   latest run's label, finding count, and worst severity (from the same
   run-discovery logic the viewers use).
+- **System-readiness chip** — a single go/no-go line (`●` ready / `▲` warning
+  / `✖` blocked) answering "can I scan right now, and with what?" *before* you
+  hit a wall like "Docker isn't running". It checks the Docker daemon, how many
+  common scanners are installed as local binaries, and whether cached Argus
+  images match a published release digest. Computed in the background so the
+  home paints instantly; press **`d`** to expand it into the full breakdown
+  with remediation for anything that needs attention.
 - **Launcher menu** — arrow keys + Enter, or click:
 
   | Item | What it does |
