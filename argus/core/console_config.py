@@ -143,6 +143,19 @@ class ConsoleSettings:
             data[key] = not data[key]
         return ConsoleSettings.from_dict(data)
 
+    def with_value(self, key: str, value: object) -> "ConsoleSettings":
+        """Return a copy with setting ``key`` set to ``value`` (normalized).
+
+        Unlike ``advance`` (which steps a cycle), this sets a *specific*
+        value — used by the theme picker, where the user chooses a theme
+        directly. An unknown key returns an unchanged copy; an out-of-range
+        value snaps back to the field default via ``normalized``.
+        """
+        data = self.to_dict()
+        if key in data:
+            data[key] = value
+        return ConsoleSettings.from_dict(data)
+
     def display_rows(self) -> list[tuple[str, str, str]]:
         """Return ``[(key, label, value_text), ...]`` for the Settings screen.
 

@@ -187,6 +187,55 @@ class TestChoiceScreen:
         assert screen._current == "high"
 
 
+class TestThemePicker:
+    def _picker(self, module, current="argus-dark"):
+        screen = module.ThemePickerScreen(current)
+
+        class _FakeApp:
+            def __init__(self) -> None:
+                self.settings = ConsoleSettings(theme=current)
+                self.applied: list = []
+
+            def apply_theme(self) -> None:
+                self.applied.append(self.settings.theme)
+
+        # Under the stubbed module, Screen has no read-only ``app`` property,
+        # so we can attach a fake app + record dismissal.
+        screen.app = _FakeApp()
+        screen._dismissed = []
+        screen.dismiss = lambda v=None: screen._dismissed.append(v)
+        return screen
+
+    def test_construction_remembers_original(self, console):
+        module, _app, _calls = console
+        screen = module.ThemePickerScreen("nord")
+        assert screen._original == "nord"
+
+    def test_preview_applies_theme_live(self, console):
+        module, _app, _calls = console
+        screen = self._picker(module)
+        screen._preview("dracula")
+        assert screen.app.settings.theme == "dracula"
+        assert screen.app.applied == ["dracula"]
+
+    def test_select_keeps_previewed_theme(self, console):
+        module, _app, _calls = console
+        screen = self._picker(module)
+        ev = types.SimpleNamespace(option=types.SimpleNamespace(id="gruvbox"))
+        screen.on_option_list_option_selected(ev)
+        assert screen.app.settings.theme == "gruvbox"
+        assert screen._dismissed == [True]
+
+    def test_cancel_reverts_to_original(self, console):
+        module, _app, _calls = console
+        screen = self._picker(module, current="argus-dark")
+        screen._preview("monokai")          # user arrowed around…
+        assert screen.app.settings.theme == "monokai"
+        screen.action_cancel()              # …then bailed
+        assert screen.app.settings.theme == "argus-dark"
+        assert screen._dismissed == [False]
+
+
 class TestSystemStatusScreen:
     def test_construction_stores_status(self, console):
         module, _app, _calls = console

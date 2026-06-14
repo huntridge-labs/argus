@@ -85,15 +85,17 @@ functions behind `argus init`; the wizard is just a frontend over them.
 ## Settings
 
 A keyboard- and mouse-friendly settings page. Move with the arrows, press
-Enter to change the focused setting; theme and accent **preview live**,
-and everything persists to `~/.config/argus/console.yml`
-(XDG-aware — honours `$XDG_CONFIG_HOME`).
+Enter to change the focused setting; accent **previews live**, and everything
+persists to `~/.config/argus/console.yml` (XDG-aware — honours
+`$XDG_CONFIG_HOME`). **Theme** opens a live-preview dropdown: arrow up/down to
+see each theme applied instantly, Enter to keep it, Esc to revert to the one
+you started on.
 
 ![Argus Console settings — theme, accent, animations, reduced motion, notifications](images/console/console-settings.png)
 
 | Setting | Effect |
 |---|---|
-| Theme | Any of the built-in Textual themes plus the bespoke `argus-dark`. |
+| Theme | Any of the built-in Textual themes plus the bespoke `argus-dark` — chosen from a live-preview dropdown (↑↓ preview · Enter choose · Esc revert). |
 | Accent colour | Tints the `argus-dark` theme; previews instantly. |
 | Animations | Master switch for motion (e.g. the home fade-in). |
 | Reduced motion | Overrides Animations — turns all motion off (accessibility). |

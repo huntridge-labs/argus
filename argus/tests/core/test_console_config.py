@@ -124,6 +124,24 @@ class TestAdvanceAndRows:
         assert s.animations is True  # original untouched (immutable update)
         assert advanced is not s
 
+    def test_with_value_sets_specific_theme(self):
+        s = ConsoleSettings(theme=DEFAULT_THEME)
+        assert s.with_value("theme", "nord").theme == "nord"
+
+    def test_with_value_invalid_snaps_to_default(self):
+        s = ConsoleSettings()
+        assert s.with_value("theme", "not-a-theme").theme == DEFAULT_THEME
+
+    def test_with_value_unknown_key_is_noop(self):
+        s = ConsoleSettings()
+        assert s.with_value("not-a-setting", "x") == s
+
+    def test_with_value_returns_new_instance(self):
+        s = ConsoleSettings(theme=DEFAULT_THEME)
+        out = s.with_value("theme", "dracula")
+        assert s.theme == DEFAULT_THEME  # original untouched
+        assert out is not s and out.theme == "dracula"
+
     def test_display_rows_cover_all_settings(self):
         rows = ConsoleSettings(theme="nord", animations=False).display_rows()
         by_key = {key: (label, text) for key, label, text in rows}

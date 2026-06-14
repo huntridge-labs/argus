@@ -133,10 +133,83 @@ class DocsScreen(ModalScreen):
         self.query_one("#docs-body", VerticalScroll).focus()
 
 
+class ThemePickerScreen(Screen):
+    """Live-preview theme dropdown: arrow to preview, Enter to choose, Esc to revert.
+
+    Highlighting a theme applies it immediately so the user sees it before
+    committing; Enter keeps the previewed theme, Esc restores whatever was
+    active when the picker opened. A full Screen (not a ModalScreen) for the
+    same reason ``SettingsScreen`` is — applying a theme while a ModalScreen is
+    mounted hits a Textual 8.x render bug (NoneType visual).
+    """
+
+    CSS = """
+    ThemePickerScreen { align: center middle; }
+    #theme-body {
+        background: $surface; border: thick $accent;
+        width: 60%; max-width: 56; height: auto; max-height: 80%; padding: 1 2;
+    }
+    #theme-title { text-style: bold; padding: 0 0 1 0; }
+    #theme-list { height: auto; max-height: 18; border: none; background: transparent; }
+    #theme-hint { color: $text-muted; padding: 1 0 0 0; }
+    """
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel", show=True),
+        Binding("q", "cancel", show=False),
+    ]
+
+    def __init__(self, current: str) -> None:
+        super().__init__()
+        self._original = current
+
+    def compose(self) -> ComposeResult:  # pragma: no cover — UI
+        with Vertical(id="theme-body"):
+            yield Static("🎨  Theme — ↑↓ to preview", id="theme-title")
+            yield OptionList(
+                *(
+                    Option(f"{'● ' if name == self._original else '  '}{name}", id=name)
+                    for name in console_config.THEMES
+                ),
+                id="theme-list",
+            )
+            yield Static(
+                "↑↓ preview   ·   enter choose   ·   esc cancel", id="theme-hint",
+            )
+
+    def on_mount(self) -> None:  # pragma: no cover — UI
+        option_list = self.query_one("#theme-list", OptionList)
+        if self._original in console_config.THEMES:
+            option_list.highlighted = console_config.THEMES.index(self._original)
+        option_list.focus()
+
+    def _preview(self, name: str) -> None:  # pragma: no cover — UI
+        self.app.settings = self.app.settings.with_value("theme", name)
+        self.app.apply_theme()
+
+    def on_option_list_option_highlighted(  # pragma: no cover — UI
+        self, event: OptionList.OptionHighlighted,
+    ) -> None:
+        if event.option and event.option.id:
+            self._preview(event.option.id)
+
+    def on_option_list_option_selected(  # pragma: no cover — UI
+        self, event: OptionList.OptionSelected,
+    ) -> None:
+        if event.option and event.option.id:
+            self._preview(event.option.id)
+        self.dismiss(True)   # keep the previewed theme
+
+    def action_cancel(self) -> None:  # pragma: no cover — UI
+        # Restore whatever theme was active when the picker opened.
+        self.app.settings = self.app.settings.with_value("theme", self._original)
+        self.app.apply_theme()
+        self.dismiss(False)
+
+
 class SettingsScreen(Screen):
     """herdr-style settings: an arrow-navigable list where Enter changes the
-    focused setting and the result previews live (theme / accent apply
-    immediately; toggles flip). Persisted on close.
+    focused setting and the result previews live (theme opens a live-preview
+    dropdown; accent applies immediately; toggles flip). Persisted on close.
 
     A full Screen (not a ModalScreen) on purpose: live theme application
     while a ModalScreen is mounted hits a Textual render bug
@@ -204,8 +277,21 @@ class SettingsScreen(Screen):
         if not key:
             return
         self._highlight = event.option_index
+        if key == "theme":
+            # Theme opens a live-preview dropdown (arrow to preview, enter to
+            # choose, esc to revert) rather than cycling one step per Enter.
+            def _after_pick(_chosen: object) -> None:
+                # settings.theme is already set by the picker (preview/confirm
+                # or revert); just rebuild the list to show the new value.
+                self.refresh(recompose=True)
+                self.call_after_refresh(self._restore_cursor)
+
+            self.app.push_screen(
+                ThemePickerScreen(self.app.settings.theme), _after_pick,
+            )
+            return
         self.app.settings = self.app.settings.advance(key)
-        self.app.apply_theme()       # live preview for theme / accent
+        self.app.apply_theme()       # live preview for accent
         # Rebuild the list cleanly with the new values, then restore cursor.
         self.refresh(recompose=True)
         self.call_after_refresh(self._restore_cursor)
