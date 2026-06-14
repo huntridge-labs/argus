@@ -165,7 +165,8 @@ components:
         background-computed system-readiness chip (argus.core.system_status — Docker daemon / local-tool
         availability / cached-image-digest match vs published releases; ``d`` opens SystemStatusScreen with the
         per-check detail + remediation), a
-        live-themed Settings screen backed by argus.core.console_config, a Configure form editor (ConfigScreen)
+        live-themed Settings screen backed by argus.core.console_config (theme via a live-preview
+        ThemePickerScreen dropdown — arrow previews, enter chooses, esc reverts; ConsoleSettings.with_value), a Configure form editor (ConfigScreen)
         for argus.yml backed by config_editor.py (UI-free, comment-preserving targeted line edits + schema validation),
         and an Init wizard (InitScreen) backed by init_wizard.py (UI-free frontend over argus.init detect_project +
         generate_config — detect, toggle proposed scanners, write argus.yml, optionally hand off to the scan runner),
@@ -840,7 +841,8 @@ docsite:
         background-computed system-readiness chip (argus.core.system_status — Docker daemon / local-tool
         availability / cached-image-digest match vs published releases; ``d`` opens SystemStatusScreen with the
         per-check detail + remediation), a
-        live-themed Settings screen backed by argus.core.console_config, a Configure form editor (ConfigScreen)
+        live-themed Settings screen backed by argus.core.console_config (theme via a live-preview
+        ThemePickerScreen dropdown — arrow previews, enter chooses, esc reverts; ConsoleSettings.with_value), a Configure form editor (ConfigScreen)
         for argus.yml backed by config_editor.py (UI-free, comment-preserving targeted line edits + schema validation),
         and an Init wizard (InitScreen) backed by init_wizard.py (UI-free frontend over argus.init detect_project +
         generate_config — detect, toggle proposed scanners, write argus.yml, optionally hand off to the scan runner),
