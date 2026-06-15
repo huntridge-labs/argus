@@ -18,8 +18,10 @@ from unittest.mock import patch
 import pytest
 
 from argus.container.scanner import (
+    _CONTAINER_DOCKER_CONFIG,
     RegistryAuthError,
     _docker_env_flags,
+    _docker_login_mount_args,
     _is_path_component_prefix,
     _normalize_image_ref,
     _redact_cmd_for_log,
@@ -933,6 +935,77 @@ class TestSubprocessEnv:
         assert env["PATH"] == "/usr/bin"  # host env preserved
 
 
+class TestDockerLoginMountArgs:
+    """``_docker_login_mount_args`` bridges host ``docker login`` creds into
+    the Docker-fallback scanner container (the private-ECR fix)."""
+
+    def _write_host_config(self, monkeypatch, tmp_path, payload):
+        """Point DOCKER_CONFIG at a fresh dir holding the given config.json."""
+        host_dir = tmp_path / "hostdocker"
+        host_dir.mkdir()
+        (host_dir / "config.json").write_text(json.dumps(payload), encoding="utf-8")
+        monkeypatch.setenv("DOCKER_CONFIG", str(host_dir))
+        return host_dir
+
+    def test_local_scan_never_mounts(self, monkeypatch, tmp_path):
+        # Local-image scans read the docker daemon over the socket, not
+        # the registry — no credentials to bridge.
+        self._write_host_config(
+            monkeypatch, tmp_path,
+            {"auths": {"123.dkr.ecr.us-east-1.amazonaws.com": {"auth": "QVdTOnRvaw=="}}},
+        )
+        assert _docker_login_mount_args(tmp_path, local=True) == []
+
+    def test_no_host_config_yields_no_mount(self, monkeypatch, tmp_path):
+        # Anonymous public scans (the default) must be completely
+        # unaffected — no host login, no mount, no behavior change.
+        monkeypatch.setenv("DOCKER_CONFIG", str(tmp_path / "does-not-exist"))
+        assert _docker_login_mount_args(tmp_path, local=False) == []
+
+    def test_inline_auth_is_mounted_and_sanitized(self, monkeypatch, tmp_path):
+        # The ECR case: `aws ecr get-login-password | docker login` writes
+        # an inline base64 auth. It must reach the scanner, with the
+        # unusable credsStore stripped out.
+        self._write_host_config(monkeypatch, tmp_path, {
+            "auths": {"123.dkr.ecr.us-east-1.amazonaws.com": {"auth": "QVdTOnRvaw=="}},
+            "credsStore": "ecr-login",
+        })
+        args = _docker_login_mount_args(tmp_path, local=False)
+
+        # Mount + DOCKER_CONFIG env pointed at the in-container path.
+        assert "-v" in args and "-e" in args
+        assert f"DOCKER_CONFIG={_CONTAINER_DOCKER_CONFIG}" in args
+        mount = args[args.index("-v") + 1]
+        host_side, container_side, mode = mount.rsplit(":", 2)
+        assert container_side == _CONTAINER_DOCKER_CONFIG
+        assert mode == "ro"
+
+        # Staged config keeps the inline auth and drops the helper directive.
+        staged = json.loads(
+            (tmp_path / ".docker" / "config.json").read_text(encoding="utf-8")
+        )
+        assert staged == {
+            "auths": {"123.dkr.ecr.us-east-1.amazonaws.com": {"auth": "QVdTOnRvaw=="}}
+        }
+        assert "credsStore" not in staged
+
+    def test_helper_only_config_yields_no_mount(self, monkeypatch, tmp_path):
+        # If every entry is helper-backed (no inline auth), there's nothing
+        # the scanner container could use without the absent helper binary.
+        self._write_host_config(monkeypatch, tmp_path, {
+            "auths": {"123.dkr.ecr.us-east-1.amazonaws.com": {}},
+            "credsStore": "ecr-login",
+        })
+        assert _docker_login_mount_args(tmp_path, local=False) == []
+
+    def test_malformed_config_is_skipped(self, monkeypatch, tmp_path):
+        host_dir = tmp_path / "hostdocker"
+        host_dir.mkdir()
+        (host_dir / "config.json").write_text("{not json", encoding="utf-8")
+        monkeypatch.setenv("DOCKER_CONFIG", str(host_dir))
+        assert _docker_login_mount_args(tmp_path, local=False) == []
+
+
 class TestRedactCmdForLog:
     """``_redact_cmd_for_log`` masks credential values but keeps argv shape."""
 
@@ -1042,6 +1115,13 @@ class TestRunTrivyForwardsCredsInContainer:
 
     def test_no_creds_no_e_flags(self, tmp_path, monkeypatch):
         _force_container_path(monkeypatch, "trivy")
+        # Isolate from any host `docker login` so this exercises the genuine
+        # "no auth anywhere" case. Point DOCKER_CONFIG at an empty dir (no
+        # config.json) so _docker_login_mount_args is inert — otherwise the
+        # runner's ambient ~/.docker/config.json would (correctly) inject a
+        # docker-config mount + `-e DOCKER_CONFIG`, which is what
+        # test_no_config_creds_but_host_login_mounts_config covers.
+        monkeypatch.setenv("DOCKER_CONFIG", str(tmp_path / "empty-docker"))
         intercepted: list[list[str]] = []
 
         def fake_run(cmd, **_kwargs):
@@ -1061,6 +1141,39 @@ class TestRunTrivyForwardsCredsInContainer:
         # constrained CI might reject.
         scan_cmd = intercepted[-1]
         assert "-e" not in scan_cmd
+
+    def test_no_config_creds_but_host_login_mounts_config(self, tmp_path, monkeypatch):
+        # The ECR scenario: the user passes no registry_username/registry_auth
+        # to Argus and instead authenticates the host with `docker login`.
+        # Those credentials must still reach trivy inside the fallback
+        # container — via a read-only mount of the (sanitized) host config
+        # with DOCKER_CONFIG pointed at it.
+        _force_container_path(monkeypatch, "trivy")
+        host_docker = tmp_path / "hostdocker"
+        host_docker.mkdir()
+        (host_docker / "config.json").write_text(
+            json.dumps({"auths": {"123.dkr.ecr.us-east-1.amazonaws.com": {"auth": "QVdTOnRvaw=="}}}),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("DOCKER_CONFIG", str(host_docker))
+        intercepted: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            intercepted.append(list(cmd))
+            (tmp_path / "trivy-results.json").write_text('{"Results": []}')
+            return _completed(returncode=0)
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        _run_trivy(
+            "123.dkr.ecr.us-east-1.amazonaws.com/app:latest",
+            tmp_path, local=False, config=None,
+        )
+
+        scan_cmd = intercepted[-1]
+        joined = " ".join(scan_cmd)
+        assert f"DOCKER_CONFIG={_CONTAINER_DOCKER_CONFIG}" in scan_cmd
+        assert f":{_CONTAINER_DOCKER_CONFIG}:ro" in joined
 
     def test_local_built_image_skips_creds_even_if_configured(self, tmp_path, monkeypatch):
         # A locally-built image doesn't pull from any registry; the
@@ -1115,6 +1228,39 @@ class TestRunGrypeForwardsCredsInContainer:
         assert "-e GRYPE_REGISTRY_AUTH_USERNAME=alice" in joined
         assert "-e GRYPE_REGISTRY_AUTH_PASSWORD=s3cret" in joined
 
+    def test_no_config_creds_but_host_login_mounts_config(self, tmp_path, monkeypatch):
+        # Same ECR scenario as the trivy case: no registry_* in argus.yml,
+        # the host authenticated with `docker login`. Grype (via
+        # stereoscope) honors DOCKER_CONFIG, so the sanitized host config
+        # must be mounted read-only into the fallback container.
+        _force_container_path(monkeypatch, "grype")
+        host_docker = tmp_path / "hostdocker"
+        host_docker.mkdir()
+        (host_docker / "config.json").write_text(
+            json.dumps({"auths": {"123.dkr.ecr.us-east-1.amazonaws.com": {"auth": "QVdTOnRvaw=="}}}),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("DOCKER_CONFIG", str(host_docker))
+        intercepted: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            intercepted.append(list(cmd))
+            (tmp_path / "grype-results.json").write_text('{"matches": []}')
+            return _completed(returncode=0)
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        _run_grype(
+            "123.dkr.ecr.us-east-1.amazonaws.com/app:latest",
+            tmp_path, local=False, config=None,
+        )
+
+        # DB update runs first (no creds); the mount goes on the scan step.
+        scan_cmd = intercepted[-1]
+        joined = " ".join(scan_cmd)
+        assert f"DOCKER_CONFIG={_CONTAINER_DOCKER_CONFIG}" in scan_cmd
+        assert f":{_CONTAINER_DOCKER_CONFIG}:ro" in joined
+
 
 class TestRunSyftForwardsCredsInContainer:
     """Syft uses its own env-var names."""
@@ -1142,6 +1288,36 @@ class TestRunSyftForwardsCredsInContainer:
         joined = " ".join(intercepted[0])
         assert "-e SYFT_REGISTRY_AUTH_USERNAME=alice" in joined
         assert "-e SYFT_REGISTRY_AUTH_PASSWORD=s3cret" in joined
+
+    def test_no_config_creds_but_host_login_mounts_config(self, tmp_path, monkeypatch):
+        # SBOM generation over a private registry: a host `docker login`
+        # (no registry_* in argus.yml) must reach syft inside the fallback
+        # container via the mounted, sanitized DOCKER_CONFIG.
+        _force_container_path(monkeypatch, "syft")
+        host_docker = tmp_path / "hostdocker"
+        host_docker.mkdir()
+        (host_docker / "config.json").write_text(
+            json.dumps({"auths": {"123.dkr.ecr.us-east-1.amazonaws.com": {"auth": "QVdTOnRvaw=="}}}),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("DOCKER_CONFIG", str(host_docker))
+        intercepted: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            intercepted.append(list(cmd))
+            return _completed(returncode=0)
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        _run_syft(
+            "123.dkr.ecr.us-east-1.amazonaws.com/app:latest",
+            tmp_path, local=False, config=None,
+        )
+
+        scan_cmd = intercepted[-1]
+        joined = " ".join(scan_cmd)
+        assert f"DOCKER_CONFIG={_CONTAINER_DOCKER_CONFIG}" in scan_cmd
+        assert f":{_CONTAINER_DOCKER_CONFIG}:ro" in joined
 
 
 class TestLocalBinaryPathReceivesCredsViaEnv:

@@ -259,6 +259,29 @@ back to a broader entry's creds (no silent privilege broadening). Run
 with `--verbose` to see the redacted `docker run` invocation argus
 constructs — confirms which env vars were forwarded.
 
+**Fix — private image 401s when you authenticated with `docker login`
+(e.g. AWS ECR).** If you don't pass `registry_username` / `registry_auth`
+to Argus but instead authenticate the host the usual CI way:
+
+```bash
+aws ecr get-login-password --region us-east-1 \
+  | docker login --username AWS --password-stdin <acct>.dkr.ecr.us-east-1.amazonaws.com
+```
+
+…those credentials live in the host `~/.docker/config.json`, which a
+sub-scanner running on the Docker-fallback path (no trivy/grype binary on
+the runner) cannot see — so the pull falls back to anonymous and the
+registry returns `401 Unauthorized`. Argus bridges this automatically:
+it stages a sanitized copy of the host Docker config (inline `auths`
+only — `credsStore` / `credHelpers` are dropped because the helper
+binary they name isn't present inside the scanner image) and mounts it
+read-only into the sub-scanner container with `DOCKER_CONFIG` pointed at
+the mount. No argus.yml change is required; a prior `docker login` is
+enough. Two equivalent alternatives: install trivy + grype as local
+binaries on the runner (local binaries read `~/.docker/config.json`
+directly), or configure `registry_auth` so creds are forwarded as `-e`
+env vars regardless of `docker login`.
+
 Bisect before blaming argus: `docker pull <ref>` outside argus with the
 same creds proves whether your account has access. If `docker pull`
 fails too, the issue is creds or registry permissions, not the scan

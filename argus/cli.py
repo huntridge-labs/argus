@@ -304,6 +304,25 @@ def _make_run_dir(base_dir: str) -> str:
     return str(run_dir)
 
 
+def _resolve_run_output_dir(base_dir: str, no_timestamp: bool) -> str:
+    """Pick the run's output directory: flat when ``no_timestamp``, else timestamped.
+
+    ``--no-timestamp`` (the CI / composite-action use case) writes reports
+    directly into ``base_dir`` so downstream tooling can read fixed paths
+    like ``<output_dir>/container-scan.json``. Without it, container scans
+    landed in ``<base_dir>/<timestamp>/`` (plus a ``latest`` symlink) and
+    the composite action — which reads from the output-dir root — found
+    nothing to parse or aggregate.
+
+    The default (timestamped subdirectory + ``latest`` symlink) is kept
+    for interactive local runs so prior results are never overwritten.
+    """
+    if no_timestamp:
+        Path(base_dir).mkdir(parents=True, exist_ok=True)
+        return base_dir
+    return _make_run_dir(base_dir)
+
+
 def _build_common_parent() -> argparse.ArgumentParser:
     """Flags shared across every subcommand.
 
@@ -1721,11 +1740,9 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
 
     # Initialize output directory — timestamped subdirectory by default,
     # flat directory when --no-timestamp is set (CI/action use case).
-    if getattr(args, "no_timestamp", False):
-        output_dir = config.reporting.output_dir
-        Path(output_dir).mkdir(parents=True, exist_ok=True)
-    else:
-        output_dir = _make_run_dir(config.reporting.output_dir)
+    output_dir = _resolve_run_output_dir(
+        config.reporting.output_dir, getattr(args, "no_timestamp", False),
+    )
     config.reporting.output_dir = output_dir
     log = get_logger(
         "argus",
@@ -2326,7 +2343,13 @@ def _cmd_container_scan(
 
     config = container_config
     base_dir = args.output_dir or config.get("output_dir", "./argus-results")
-    output_dir = _make_run_dir(base_dir)
+    # Honor --no-timestamp so the composite action can read container-scan.
+    # {json,md} from the output-dir root. Previously this path always nested
+    # under <output_dir>/<timestamp>/, so the action found nothing to parse
+    # or aggregate. See _resolve_run_output_dir / the generic scan path.
+    output_dir = _resolve_run_output_dir(
+        base_dir, getattr(args, "no_timestamp", False),
+    )
     formats = args.formats or ["terminal", "markdown"]
 
     # Now that we know the output dir, re-attach the logger's file
