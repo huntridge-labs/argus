@@ -1115,6 +1115,13 @@ class TestRunTrivyForwardsCredsInContainer:
 
     def test_no_creds_no_e_flags(self, tmp_path, monkeypatch):
         _force_container_path(monkeypatch, "trivy")
+        # Isolate from any host `docker login` so this exercises the genuine
+        # "no auth anywhere" case. Point DOCKER_CONFIG at an empty dir (no
+        # config.json) so _docker_login_mount_args is inert — otherwise the
+        # runner's ambient ~/.docker/config.json would (correctly) inject a
+        # docker-config mount + `-e DOCKER_CONFIG`, which is what
+        # test_no_config_creds_but_host_login_mounts_config covers.
+        monkeypatch.setenv("DOCKER_CONFIG", str(tmp_path / "empty-docker"))
         intercepted: list[list[str]] = []
 
         def fake_run(cmd, **_kwargs):
@@ -1134,6 +1141,39 @@ class TestRunTrivyForwardsCredsInContainer:
         # constrained CI might reject.
         scan_cmd = intercepted[-1]
         assert "-e" not in scan_cmd
+
+    def test_no_config_creds_but_host_login_mounts_config(self, tmp_path, monkeypatch):
+        # The ECR scenario: the user passes no registry_username/registry_auth
+        # to Argus and instead authenticates the host with `docker login`.
+        # Those credentials must still reach trivy inside the fallback
+        # container — via a read-only mount of the (sanitized) host config
+        # with DOCKER_CONFIG pointed at it.
+        _force_container_path(monkeypatch, "trivy")
+        host_docker = tmp_path / "hostdocker"
+        host_docker.mkdir()
+        (host_docker / "config.json").write_text(
+            json.dumps({"auths": {"123.dkr.ecr.us-east-1.amazonaws.com": {"auth": "QVdTOnRvaw=="}}}),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("DOCKER_CONFIG", str(host_docker))
+        intercepted: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            intercepted.append(list(cmd))
+            (tmp_path / "trivy-results.json").write_text('{"Results": []}')
+            return _completed(returncode=0)
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        _run_trivy(
+            "123.dkr.ecr.us-east-1.amazonaws.com/app:latest",
+            tmp_path, local=False, config=None,
+        )
+
+        scan_cmd = intercepted[-1]
+        joined = " ".join(scan_cmd)
+        assert f"DOCKER_CONFIG={_CONTAINER_DOCKER_CONFIG}" in scan_cmd
+        assert f":{_CONTAINER_DOCKER_CONFIG}:ro" in joined
 
     def test_local_built_image_skips_creds_even_if_configured(self, tmp_path, monkeypatch):
         # A locally-built image doesn't pull from any registry; the
