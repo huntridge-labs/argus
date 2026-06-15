@@ -15,7 +15,7 @@ This composite action runs OpenGrep, a pattern-based static analysis tool, to de
   uses: actions/checkout@v6
 
 - name: Run OpenGrep
-  uses: huntridge-labs/argus/.github/actions/scanner-opengrep@1.4.1
+  uses: huntridge-labs/argus/.github/actions/scanner-opengrep@1.5.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:

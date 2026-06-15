@@ -115,14 +115,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.4.1
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.5.0
         with:
           enable_code_security: true
           fail_on_severity: high
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.4.1
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.5.0
         with:
           enable_code_security: true
           fail_on_severity: high
@@ -137,13 +137,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@1.4.1
+      - uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@1.5.0
         with:
           iac_path: 'infrastructure'
           enable_code_security: true
           fail_on_severity: high
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-checkov@1.4.1
+      - uses: huntridge-labs/argus/.github/actions/scanner-checkov@1.5.0
         with:
           iac_path: 'infrastructure'
           fail_on_severity: medium

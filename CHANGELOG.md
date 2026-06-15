@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.5.0](https://github.com/huntridge-labs/argus/compare/1.4.1...1.5.0) (2026-06-15)
+
+### Features
+
+* **scanner-mumps:** support tree-sitter >=0.22 (Language pointer API) ([#249](https://github.com/huntridge-labs/argus/issues/249)) ([80a3dab](https://github.com/huntridge-labs/argus/commit/80a3dab977493d5fb0a4aedfa91a541760d565ec)), closes [#247](https://github.com/huntridge-labs/argus/issues/247)
+
+### Bug Fixes
+
+* **container:** authenticate to private registries via host docker login ([fbb2b15](https://github.com/huntridge-labs/argus/commit/fbb2b15119670695eb326d6bc537b5e02993d483))
+* **container:** honor --no-timestamp so the composite action finds results ([568e694](https://github.com/huntridge-labs/argus/commit/568e69486e89f02da769b1a5a439eecee43b154a))
+* **scanner-container-summary:** deprecate and forward to security-summary ([#258](https://github.com/huntridge-labs/argus/issues/258)) ([e1fc6fe](https://github.com/huntridge-labs/argus/commit/e1fc6fe133bff636fdc14de7dbb7fadfa566c90e)), closes [#251](https://github.com/huntridge-labs/argus/issues/251)
+
+### Maintenance
+
+* **ai:** migrate .ai/ AICaC context to the v2.0 schema ([#226](https://github.com/huntridge-labs/argus/issues/226)) ([5d62c51](https://github.com/huntridge-labs/argus/commit/5d62c518071e52d36a6f9e42d1a83842f9561186)), closes [#225](https://github.com/huntridge-labs/argus/issues/225) [#227](https://github.com/huntridge-labs/argus/issues/227) [#240](https://github.com/huntridge-labs/argus/issues/240) [#241](https://github.com/huntridge-labs/argus/issues/241) [#228](https://github.com/huntridge-labs/argus/issues/228) [#225](https://github.com/huntridge-labs/argus/issues/225)
+
+
+### Tests
+
+* **container:** cover host docker-login bridge for grype and syft ([97fc48b](https://github.com/huntridge-labs/argus/commit/97fc48b9b2e3f5407688c644fa07b14852656468))
+* **container:** isolate no-creds trivy test from host docker login ([e22239f](https://github.com/huntridge-labs/argus/commit/e22239fa823becb5d2eba030c01a5feadc5bd0ea))
+
 ## [1.4.1](https://github.com/huntridge-labs/argus/compare/1.4.0...1.4.1) (2026-06-12)
 
 ### Bug Fixes
