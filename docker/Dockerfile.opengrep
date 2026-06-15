@@ -1,4 +1,4 @@
-FROM alpine:3.23.4@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11 AS builder
+FROM alpine:3.24.0@sha256:a2d49ea686c2adfe3c992e47dc3b5e7fa6e6b5055609400dc2acaeb241c829f4 AS builder
 
 ARG OPENGREP_VERSION=1.22.0
 ARG TARGETARCH
@@ -13,7 +13,7 @@ RUN apk add --no-cache curl && \
       -o /usr/local/bin/opengrep && \
     chmod +x /usr/local/bin/opengrep
 
-FROM python:3.14.5-slim@sha256:c845af9399020c7e562969a13689e929074a10fd057acd1b1fad06a2fb068e97
+FROM python:3.15.0b2-slim@sha256:4c6413e9d36127c1322ef2e602b0a680dd726be10f9c2c3265b6928807810841
 
 LABEL org.opencontainers.image.source="https://github.com/huntridge-labs/argus"
 LABEL org.opencontainers.image.description="Argus OpenGrep SAST Scanner"
