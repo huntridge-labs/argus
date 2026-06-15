@@ -1228,6 +1228,39 @@ class TestRunGrypeForwardsCredsInContainer:
         assert "-e GRYPE_REGISTRY_AUTH_USERNAME=alice" in joined
         assert "-e GRYPE_REGISTRY_AUTH_PASSWORD=s3cret" in joined
 
+    def test_no_config_creds_but_host_login_mounts_config(self, tmp_path, monkeypatch):
+        # Same ECR scenario as the trivy case: no registry_* in argus.yml,
+        # the host authenticated with `docker login`. Grype (via
+        # stereoscope) honors DOCKER_CONFIG, so the sanitized host config
+        # must be mounted read-only into the fallback container.
+        _force_container_path(monkeypatch, "grype")
+        host_docker = tmp_path / "hostdocker"
+        host_docker.mkdir()
+        (host_docker / "config.json").write_text(
+            json.dumps({"auths": {"123.dkr.ecr.us-east-1.amazonaws.com": {"auth": "QVdTOnRvaw=="}}}),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("DOCKER_CONFIG", str(host_docker))
+        intercepted: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            intercepted.append(list(cmd))
+            (tmp_path / "grype-results.json").write_text('{"matches": []}')
+            return _completed(returncode=0)
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        _run_grype(
+            "123.dkr.ecr.us-east-1.amazonaws.com/app:latest",
+            tmp_path, local=False, config=None,
+        )
+
+        # DB update runs first (no creds); the mount goes on the scan step.
+        scan_cmd = intercepted[-1]
+        joined = " ".join(scan_cmd)
+        assert f"DOCKER_CONFIG={_CONTAINER_DOCKER_CONFIG}" in scan_cmd
+        assert f":{_CONTAINER_DOCKER_CONFIG}:ro" in joined
+
 
 class TestRunSyftForwardsCredsInContainer:
     """Syft uses its own env-var names."""
@@ -1255,6 +1288,36 @@ class TestRunSyftForwardsCredsInContainer:
         joined = " ".join(intercepted[0])
         assert "-e SYFT_REGISTRY_AUTH_USERNAME=alice" in joined
         assert "-e SYFT_REGISTRY_AUTH_PASSWORD=s3cret" in joined
+
+    def test_no_config_creds_but_host_login_mounts_config(self, tmp_path, monkeypatch):
+        # SBOM generation over a private registry: a host `docker login`
+        # (no registry_* in argus.yml) must reach syft inside the fallback
+        # container via the mounted, sanitized DOCKER_CONFIG.
+        _force_container_path(monkeypatch, "syft")
+        host_docker = tmp_path / "hostdocker"
+        host_docker.mkdir()
+        (host_docker / "config.json").write_text(
+            json.dumps({"auths": {"123.dkr.ecr.us-east-1.amazonaws.com": {"auth": "QVdTOnRvaw=="}}}),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("DOCKER_CONFIG", str(host_docker))
+        intercepted: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            intercepted.append(list(cmd))
+            return _completed(returncode=0)
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        _run_syft(
+            "123.dkr.ecr.us-east-1.amazonaws.com/app:latest",
+            tmp_path, local=False, config=None,
+        )
+
+        scan_cmd = intercepted[-1]
+        joined = " ".join(scan_cmd)
+        assert f"DOCKER_CONFIG={_CONTAINER_DOCKER_CONFIG}" in scan_cmd
+        assert f":{_CONTAINER_DOCKER_CONFIG}:ro" in joined
 
 
 class TestLocalBinaryPathReceivesCredsViaEnv:
