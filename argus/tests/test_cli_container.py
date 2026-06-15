@@ -2,6 +2,7 @@
 
 import argparse
 import json
+from pathlib import Path
 
 import pytest
 
@@ -11,6 +12,7 @@ from argus.cli import (
     _load_container_config,
     _print_container_terminal,
     _print_dast_terminal,
+    _resolve_run_output_dir,
     _write_container_json,
     _write_dast_json,
     _write_dast_markdown,
@@ -198,6 +200,34 @@ class TestIsDastLifecycle:
     def test_returns_false_without_lifecycle_flags(self):
         args = _base_scan_namespace()
         assert _is_dast_lifecycle(args) is False
+
+
+class TestResolveRunOutputDir:
+    """``_resolve_run_output_dir`` — flat vs timestamped output layout.
+
+    The flat layout is what lets the composite action find
+    ``<output_dir>/container-scan.{json,md}`` and aggregate container
+    results; the timestamped layout is the interactive-local default.
+    """
+
+    def test_no_timestamp_writes_flat(self, tmp_path):
+        base = tmp_path / "reports"
+        out = _resolve_run_output_dir(str(base), no_timestamp=True)
+        # Output dir IS the base dir — no timestamped subdir, no symlink.
+        assert out == str(base)
+        assert base.is_dir()
+        assert not (base / "latest").exists()
+        assert list(base.iterdir()) == []
+
+    def test_timestamped_by_default(self, tmp_path):
+        base = tmp_path / "reports"
+        out = _resolve_run_output_dir(str(base), no_timestamp=False)
+        # Output dir is a timestamped subdirectory under base, and a
+        # 'latest' pointer is created alongside it.
+        assert out != str(base)
+        assert Path(out).is_dir()
+        assert Path(out).parent == base
+        assert (base / "latest").exists()
 
 
 # =====================================================================
