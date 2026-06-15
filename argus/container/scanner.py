@@ -801,6 +801,92 @@ def _container_vol_args(
     return args
 
 
+# Where the host's Docker config is mounted inside a container-mode
+# sub-scanner. Trivy and Grype (via stereoscope) both honor DOCKER_CONFIG,
+# so pointing it at the mount makes a prior `docker login` reach the
+# scanner regardless of the scanner image's home directory.
+_CONTAINER_DOCKER_CONFIG = "/tmp/.docker"
+
+
+def _docker_login_mount_args(tmp_path: Path, local: bool) -> list[str]:
+    """Mount host ``docker login`` credentials into a container-mode sub-scanner.
+
+    The Docker-fallback path runs trivy/grype/syft inside their *own*
+    container, which by default sees neither the host's
+    ``~/.docker/config.json`` nor any host env vars. When a consumer
+    authenticates with the common ``aws ecr get-login-password | docker
+    login`` pattern (rather than passing ``registry_username`` /
+    ``registry_auth`` to Argus), those credentials never reach the
+    scanner and a private-registry pull fails with ``401 Unauthorized``
+    even though the host is fully authenticated — the most common
+    real-world failure for CI consumers of the composite action.
+
+    This bridges that gap: it materializes a *sanitized* copy of the host
+    Docker config under ``tmp_path`` containing only the ``auths`` entries
+    that carry inline credentials, then mounts it read-only and points
+    ``DOCKER_CONFIG`` at it. Explicit ``registry_auth`` creds (forwarded
+    as ``-e`` env vars) still take precedence when both are present.
+
+    The sanitization is deliberate: ``credsStore`` / ``credHelpers`` and
+    helper-backed ``auths`` entries are dropped, because the credential
+    helper binary they name (``docker-credential-ecr-login``,
+    ``docker-credential-desktop``, …) does not exist inside the scanner
+    image — mounting them verbatim would make the scanner try to exec a
+    missing helper and fail. Inline ``auth`` / ``identitytoken`` entries
+    (what ``docker login`` writes on a CI runner) are kept.
+
+    Returns ``[]`` — i.e. no behavior change — for local-image scans
+    (those read the docker daemon over the mounted socket, not the
+    registry), when no usable host config exists (anonymous public scans),
+    or when the config can't be read/parsed.
+    """
+    if local:
+        return []
+
+    config_dir = os.environ.get("DOCKER_CONFIG") or os.path.join(
+        os.path.expanduser("~"), ".docker",
+    )
+    src = os.path.join(config_dir, "config.json")
+    if not os.path.isfile(src):
+        return []
+
+    try:
+        with open(src, encoding="utf-8") as fh:
+            cfg = json.load(fh)
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.debug("skipping docker-login mount: cannot read %s (%s)", src, exc)
+        return []
+
+    auths = cfg.get("auths")
+    if not isinstance(auths, dict):
+        return []
+
+    usable = {
+        registry: entry
+        for registry, entry in auths.items()
+        if isinstance(entry, dict) and (entry.get("auth") or entry.get("identitytoken"))
+    }
+    if not usable:
+        # Only helper-backed entries (credsStore/credHelpers) — nothing the
+        # scanner container could use without the (absent) helper binary.
+        return []
+
+    dest_dir = tmp_path / ".docker"
+    try:
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        (dest_dir / "config.json").write_text(
+            json.dumps({"auths": usable}), encoding="utf-8",
+        )
+    except OSError as exc:
+        logger.debug("skipping docker-login mount: cannot stage config (%s)", exc)
+        return []
+
+    return [
+        "-v", f"{dest_dir}:{_CONTAINER_DOCKER_CONFIG}:ro",
+        "-e", f"DOCKER_CONFIG={_CONTAINER_DOCKER_CONFIG}",
+    ]
+
+
 def _validate_scanner_output(
     scanner_name: str,
     output_file: Path,
@@ -928,12 +1014,18 @@ def _run_trivy(
         # Run actual scan with --skip-db-update (DB already warm). Cred
         # flags go on the scan step only; DB download pulls from public
         # ghcr.io and doesn't need (or use) registry auth.
-        cmd = [rt, "run", "--rm"] + _docker_env_flags(auth_env) + vol_args + [
-            image,
-            "image", "--format", "json",
-            "--output", "/output/trivy-results.json",
-            "--skip-db-update",
-        ]
+        cmd = (
+            [rt, "run", "--rm"]
+            + _docker_env_flags(auth_env)
+            + _docker_login_mount_args(tmp_path, local)
+            + vol_args
+            + [
+                image,
+                "image", "--format", "json",
+                "--output", "/output/trivy-results.json",
+                "--skip-db-update",
+            ]
+        )
         if not local:
             cmd.extend(["--image-src", "remote"])
         cmd.append(image_ref)
@@ -1059,11 +1151,17 @@ def _run_grype(
 
         # Cred flags on the scan step only — the DB update pulls from
         # public sources and ignores registry auth.
-        cmd = [rt, "run", "--rm"] + _docker_env_flags(auth_env) + vol_args + [
-            image, grype_target,
-            "-o", "json",
-            "--file", "/output/grype-results.json",
-        ]
+        cmd = (
+            [rt, "run", "--rm"]
+            + _docker_env_flags(auth_env)
+            + _docker_login_mount_args(tmp_path, local)
+            + vol_args
+            + [
+                image, grype_target,
+                "-o", "json",
+                "--file", "/output/grype-results.json",
+            ]
+        )
     else:
         cmd = [
             "grype", grype_target,
@@ -1139,12 +1237,18 @@ def _run_syft(
         rt = container_runtime.runtime_cmd()
         # Syft needs docker.sock to read local images
         vol_args = _container_vol_args(tmp_path, "syft", mount_docker_sock=True)
-        cmd = [rt, "run", "--rm"] + _docker_env_flags(auth_env) + vol_args + [
-            image,
-            image_ref,
-            "-o", "cyclonedx-json",
-            "--file", "/output/syft-sbom.json",
-        ]
+        cmd = (
+            [rt, "run", "--rm"]
+            + _docker_env_flags(auth_env)
+            + _docker_login_mount_args(tmp_path, local)
+            + vol_args
+            + [
+                image,
+                image_ref,
+                "-o", "cyclonedx-json",
+                "--file", "/output/syft-sbom.json",
+            ]
+        )
     else:
         cmd = [
             "syft", image_ref,

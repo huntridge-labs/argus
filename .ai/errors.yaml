@@ -217,6 +217,36 @@ scn_detector_errors:
       \ mount, not registry pull.\n"
   reference: "argus/container/scanner.py::_registry_auth_env and docs/troubleshooting/docker.md\
     \ \u2192 'target image fails to authenticate inside the sub-scanner container'"
+- pattern: "401 Unauthorized|Not Authorized|unexpected status code 401"
+  category: container-scanning
+  context: "A container scan of a private-registry image (e.g. AWS ECR) fails with\n\
+    401 even though the CI job ran ``docker login`` successfully and a host\n``docker\
+    \ pull`` of the same ref works. Happens on the Docker-fallback\npath \u2014 trivy/grype\
+    \ run inside their own container because no scanner\nbinary is installed on the\
+    \ runner.\n"
+  root_cause: "The consumer authenticated with ``docker login`` (the common\n``aws\
+    \ ecr get-login-password | docker login`` pattern) rather than\npassing ``registry_username``\
+    \ / ``registry_auth`` to Argus. Those\n``docker login`` credentials live in the\
+    \ host ``~/.docker/config.json``,\nwhich the sub-scanner container cannot see \u2014\
+    \ so it falls back to an\nanonymous pull and the private registry rejects it.\n"
+  solution:
+    steps:
+    - "Upgrade to a build that includes _docker_login_mount_args (argus/container/scanner.py):\
+      \ Argus now stages a sanitized copy of the host Docker config and mounts it\
+      \ into the scanner container with DOCKER_CONFIG set, so docker-login creds reach\
+      \ trivy/grype/syft on the Docker-fallback path."
+    - "Alternative (no SDK change needed): install trivy + grype as local binaries\
+      \ on the runner before the scan \u2014 local binaries read ~/.docker/config.json\
+      \ directly, bypassing the fallback container."
+    - "Alternative: pass containers.registry_username_env / registry_password_env\
+      \ (or the registry_auth map) in argus.yml so creds are forwarded as -e env vars\
+      \ regardless of docker login."
+    note: "Only inline ``auths`` entries (what ``docker login`` writes on a CI\nrunner)\
+      \ are bridged. ``credsStore`` / ``credHelpers`` are dropped from the\nmounted\
+      \ copy because the helper binary they name doesn't exist inside\nthe scanner\
+      \ image. Local-image scans (built from a Dockerfile) are\nunaffected \u2014 they\
+      \ read the daemon over the mounted socket.\n"
+  reference: "argus/container/scanner.py::_docker_login_mount_args"
 errors:
   RESOURCE_NOT_ACCESSIBLE_BY_INTEGRATION:
     category: permissions

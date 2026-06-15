@@ -18,8 +18,10 @@ from unittest.mock import patch
 import pytest
 
 from argus.container.scanner import (
+    _CONTAINER_DOCKER_CONFIG,
     RegistryAuthError,
     _docker_env_flags,
+    _docker_login_mount_args,
     _is_path_component_prefix,
     _normalize_image_ref,
     _redact_cmd_for_log,
@@ -931,6 +933,77 @@ class TestSubprocessEnv:
         assert env is not None
         assert env["TRIVY_USERNAME"] == "alice"
         assert env["PATH"] == "/usr/bin"  # host env preserved
+
+
+class TestDockerLoginMountArgs:
+    """``_docker_login_mount_args`` bridges host ``docker login`` creds into
+    the Docker-fallback scanner container (the private-ECR fix)."""
+
+    def _write_host_config(self, monkeypatch, tmp_path, payload):
+        """Point DOCKER_CONFIG at a fresh dir holding the given config.json."""
+        host_dir = tmp_path / "hostdocker"
+        host_dir.mkdir()
+        (host_dir / "config.json").write_text(json.dumps(payload), encoding="utf-8")
+        monkeypatch.setenv("DOCKER_CONFIG", str(host_dir))
+        return host_dir
+
+    def test_local_scan_never_mounts(self, monkeypatch, tmp_path):
+        # Local-image scans read the docker daemon over the socket, not
+        # the registry — no credentials to bridge.
+        self._write_host_config(
+            monkeypatch, tmp_path,
+            {"auths": {"123.dkr.ecr.us-east-1.amazonaws.com": {"auth": "QVdTOnRvaw=="}}},
+        )
+        assert _docker_login_mount_args(tmp_path, local=True) == []
+
+    def test_no_host_config_yields_no_mount(self, monkeypatch, tmp_path):
+        # Anonymous public scans (the default) must be completely
+        # unaffected — no host login, no mount, no behavior change.
+        monkeypatch.setenv("DOCKER_CONFIG", str(tmp_path / "does-not-exist"))
+        assert _docker_login_mount_args(tmp_path, local=False) == []
+
+    def test_inline_auth_is_mounted_and_sanitized(self, monkeypatch, tmp_path):
+        # The ECR case: `aws ecr get-login-password | docker login` writes
+        # an inline base64 auth. It must reach the scanner, with the
+        # unusable credsStore stripped out.
+        self._write_host_config(monkeypatch, tmp_path, {
+            "auths": {"123.dkr.ecr.us-east-1.amazonaws.com": {"auth": "QVdTOnRvaw=="}},
+            "credsStore": "ecr-login",
+        })
+        args = _docker_login_mount_args(tmp_path, local=False)
+
+        # Mount + DOCKER_CONFIG env pointed at the in-container path.
+        assert "-v" in args and "-e" in args
+        assert f"DOCKER_CONFIG={_CONTAINER_DOCKER_CONFIG}" in args
+        mount = args[args.index("-v") + 1]
+        host_side, container_side, mode = mount.rsplit(":", 2)
+        assert container_side == _CONTAINER_DOCKER_CONFIG
+        assert mode == "ro"
+
+        # Staged config keeps the inline auth and drops the helper directive.
+        staged = json.loads(
+            (tmp_path / ".docker" / "config.json").read_text(encoding="utf-8")
+        )
+        assert staged == {
+            "auths": {"123.dkr.ecr.us-east-1.amazonaws.com": {"auth": "QVdTOnRvaw=="}}
+        }
+        assert "credsStore" not in staged
+
+    def test_helper_only_config_yields_no_mount(self, monkeypatch, tmp_path):
+        # If every entry is helper-backed (no inline auth), there's nothing
+        # the scanner container could use without the absent helper binary.
+        self._write_host_config(monkeypatch, tmp_path, {
+            "auths": {"123.dkr.ecr.us-east-1.amazonaws.com": {}},
+            "credsStore": "ecr-login",
+        })
+        assert _docker_login_mount_args(tmp_path, local=False) == []
+
+    def test_malformed_config_is_skipped(self, monkeypatch, tmp_path):
+        host_dir = tmp_path / "hostdocker"
+        host_dir.mkdir()
+        (host_dir / "config.json").write_text("{not json", encoding="utf-8")
+        monkeypatch.setenv("DOCKER_CONFIG", str(host_dir))
+        assert _docker_login_mount_args(tmp_path, local=False) == []
 
 
 class TestRedactCmdForLog:
