@@ -237,11 +237,60 @@ def _context_bar(scan_summary, resolved: Path | None) -> dict | None:
     }
 
 
+# Plugin seam (open-core extension point). Third-party / enterprise packages
+# register a ``register(app)`` callable under this entry-point group to add
+# routes or capabilities to the browser viewer (e.g. a server-side PDF report).
+# Mirrors the ``argus.reporters`` entry-point pattern. The OSS viewer ships no
+# plugins, so this is a no-op by default.
+_BROWSER_PLUGIN_GROUP = "argus.viewers.browser_plugins"
+
+
+def _discover_browser_plugins() -> list:
+    """Load ``register(app)`` callables from the browser-plugin entry-point group.
+
+    A broken or missing entry point is logged and skipped — discovery never
+    raises, so a bad plugin can't stop the viewer from starting.
+    """
+    from importlib.metadata import entry_points
+
+    plugins: list = []
+    try:
+        eps = entry_points(group=_BROWSER_PLUGIN_GROUP)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("browser plugin discovery failed: %s", exc)
+        return plugins
+    for ep in eps:
+        try:
+            plugins.append(ep.load())
+        except Exception as exc:
+            logger.warning("browser plugin '%s' failed to load: %s", ep.name, exc)
+    return plugins
+
+
+def _mount_browser_plugins(app: FastAPI, plugins: list | None) -> None:
+    """Let installed plugins register extra routes/capabilities on ``app``.
+
+    ``plugins`` is a list of ``register(app)`` callables; ``None`` discovers
+    them via the ``argus.viewers.browser_plugins`` entry-point group. A plugin
+    that raises is logged and skipped so one bad plugin can't take down the
+    viewer. Plugins read ``app.state`` (notably ``root``, ``load_scan``,
+    ``render_report_html``) and add routes via the FastAPI ``app``.
+    """
+    if plugins is None:
+        plugins = _discover_browser_plugins()
+    for register in plugins:
+        try:
+            register(app)
+        except Exception as exc:
+            logger.warning("browser plugin failed to register: %s", exc)
+
+
 def create_app(
     root: str | None = None,
     *,
     enrich: bool | None = None,
     enrichment_service: object | None = None,
+    browser_plugins: list | None = None,
 ) -> FastAPI:
     """Build the FastAPI app, wire templates / static, register routes.
 
@@ -250,6 +299,11 @@ def create_app(
     no-egress posture: only when enabled does the server reach the EPSS/KEV
     APIs or scan local source. ``None`` reads ``ARGUS_VIEW_ENRICH`` from the
     environment. ``enrichment_service`` is injectable for tests.
+
+    ``browser_plugins`` is the extension seam: a list of ``register(app)``
+    callables (``None`` discovers them via the ``argus.viewers.browser_plugins``
+    entry-point group). OSS ships none; enterprise / third-party packages use it
+    to add routes (e.g. the server-side PDF report). Injectable for tests.
     """
     app = FastAPI(
         title="Argus",
@@ -1016,6 +1070,14 @@ def create_app(
                 "scan_label": None,
             },
         )
+
+    # Plugin seam: expose the scan-resolution + report-render helpers that
+    # extension packages (e.g. the Argus Enterprise server-side PDF report)
+    # build on, then let installed plugins register their routes. OSS ships no
+    # plugins, so this is a no-op by default.
+    app.state.load_scan = _load_scan
+    app.state.render_report_html = _render_report_html
+    _mount_browser_plugins(app, browser_plugins)
 
     return app
 

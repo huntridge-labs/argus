@@ -186,7 +186,10 @@ components:
         source scan). A persistent sticky scan-context bar (project / commit / scan time / finding count, built by
         _context_bar + threaded through _base_context) sits under the header on the dashboard / findings / log
         views; omitted on the picker / diff where no single scan is in scope (B0 IA — top-nav + context bar chosen
-        over a left sidebar). See ADR-031.'
+        over a left sidebar). Plugin seam: create_app discovers the
+        ``argus.viewers.browser_plugins`` entry-point group and lets each registered ``register(app)`` callable add
+        routes/capabilities (mirrors argus.reporters; OSS ships none, a bad plugin is logged + skipped); it exposes
+        app.state.load_scan + render_report_html as the helper surface plugins build on. See ADR-031.'
       scanners/: 'Scanner modules implementing Scanner protocol (SCANNER_REGISTRY includes linters via
         auto-merge). The container scanner orchestrates five sub-scanners on every run: trivy (CVE scan),
         grype (CVE scan, deduplicated against trivy), syft (SBOM), exposure (declared-port surface from
@@ -862,7 +865,10 @@ docsite:
         source scan). A persistent sticky scan-context bar (project / commit / scan time / finding count, built by
         _context_bar + threaded through _base_context) sits under the header on the dashboard / findings / log
         views; omitted on the picker / diff where no single scan is in scope (B0 IA — top-nav + context bar chosen
-        over a left sidebar). See ADR-031.'
+        over a left sidebar). Plugin seam: create_app discovers the
+        ``argus.viewers.browser_plugins`` entry-point group and lets each registered ``register(app)`` callable add
+        routes/capabilities (mirrors argus.reporters; OSS ships none, a bad plugin is logged + skipped); it exposes
+        app.state.load_scan + render_report_html as the helper surface plugins build on. See ADR-031.'
       scanners/: 'Scanner modules implementing Scanner protocol (SCANNER_REGISTRY includes linters via
         auto-merge). The container scanner orchestrates five sub-scanners on every run: trivy (CVE scan),
         grype (CVE scan, deduplicated against trivy), syft (SBOM), exposure (declared-port surface from
