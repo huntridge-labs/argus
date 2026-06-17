@@ -32,6 +32,7 @@ Unified security scanning — SAST, containers, IaC, secrets, and DAST from a si
 - [Documentation](#documentation)
 - [Usage Examples](#usage-examples)
 - [Configuration](#configuration)
+- [Argus Enterprise](#argus-enterprise)
 - [Contributing](#contributing)
 
 ## Quick Start
@@ -398,6 +399,16 @@ Add to your AI tool's MCP configuration:
 Available tools: `argus_scan`, `argus_detect`, `argus_validate`, `argus_list_scanners`, `argus_init`, `argus_classify`, `argus_explain_finding`, `argus_scan_summary`. Resources: `argus://config`, `argus://results/latest`, `argus://config/schema`. Prompts: `security_review`, `fix_findings`, `setup_scanning`.
 
 See [`docs/mcp.md`](docs/mcp.md) for per-client config (Claude Desktop, Claude Code, Cursor, Continue, Cline), the full tool reference, and the list of MCP server registries where Argus is listed for discovery.
+
+## Argus Enterprise
+
+Argus is free and open source. **Argus Enterprise**, from Huntridge Labs, adds a
+commercially-licensed layer on top — the **Argus Console** (a full-screen home
+cockpit for `argus`) and **one-click, server-side PDF reports** — installed
+alongside open-source Argus and taking nothing away from it.
+
+See **[docs/enterprise.md](docs/enterprise.md)** for a tour, or
+**[contact Huntridge Labs →](https://www.huntridgelabs.com/)** to learn more.
 
 ## Contributing
 
