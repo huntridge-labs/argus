@@ -173,7 +173,9 @@ components:
         and a Ctrl+P command palette (ArgusConsoleCommands) for fuzzy jump-to-action parity with the findings viewer;
         bare ``argus`` opens it in an interactive
         TTY (cli._run_bare_argus), falling back to --help when non-interactive, and ``argus view`` deep-links to
-        the findings viewer.'
+        the findings viewer. An installed Console provider (the ``argus.console_providers`` entry-point group — e.g.
+        Argus Enterprise) takes precedence over the built-in console via cli._discover_console_provider; OSS ships
+        none, so this is the open-core seam for the bare-``argus`` experience (mirrors reporters / browser plugins).'
       viewers/browser/: '`argus view --interface=browser` — FastAPI + Jinja2 web UI, 127.0.0.1 only ([browser]
         extra). Routes include ``/diff?a=<path>&b=<path>`` powered by argus.core.findings_view.diff_scans,
         sharing the bucketing logic with the TUI''s ``D`` keybind. ``/report`` renders the formal vulnerability
@@ -852,7 +854,9 @@ docsite:
         and a Ctrl+P command palette (ArgusConsoleCommands) for fuzzy jump-to-action parity with the findings viewer;
         bare ``argus`` opens it in an interactive
         TTY (cli._run_bare_argus), falling back to --help when non-interactive, and ``argus view`` deep-links to
-        the findings viewer.'
+        the findings viewer. An installed Console provider (the ``argus.console_providers`` entry-point group — e.g.
+        Argus Enterprise) takes precedence over the built-in console via cli._discover_console_provider; OSS ships
+        none, so this is the open-core seam for the bare-``argus`` experience (mirrors reporters / browser plugins).'
       viewers/browser/: '`argus view --interface=browser` — FastAPI + Jinja2 web UI, 127.0.0.1 only ([browser]
         extra). Routes include ``/diff?a=<path>&b=<path>`` powered by argus.core.findings_view.diff_scans,
         sharing the bucketing logic with the TUI''s ``D`` keybind. ``/report`` renders the formal vulnerability

@@ -628,10 +628,49 @@ def _launch_view(
     return EXIT_ERROR
 
 
+#: Entry-point group through which an external package (e.g. Argus Enterprise)
+#: can supply the bare-``argus`` Console. The open-core seam pattern mirrors
+#: reporters (ADR-023) and the browser-viewer plugin group: OSS ships no
+#: provider, so discovery is a no-op here; an installed provider transparently
+#: takes over the bare-``argus`` experience.
+_CONSOLE_PROVIDER_GROUP = "argus.console_providers"
+
+
+def _discover_console_provider():
+    """Return an installed Console provider callable, or ``None``.
+
+    A provider is a zero-argument callable returning an ``int`` exit code,
+    registered under the :data:`_CONSOLE_PROVIDER_GROUP` entry-point group. The
+    first one found wins and takes precedence over the built-in console. OSS
+    ships none, so this returns ``None`` and the built-in console (or
+    ``--help``) is used. Discovery and load failures are swallowed (logged) so
+    a broken third-party provider can never break bare ``argus``.
+    """
+    import logging
+    from importlib.metadata import entry_points
+
+    log = logging.getLogger(__name__)
+    try:
+        eps = list(entry_points(group=_CONSOLE_PROVIDER_GROUP))
+    except Exception as exc:  # pragma: no cover - defensive
+        log.warning("console provider discovery failed: %s", exc)
+        return None
+    for ep in eps:
+        try:
+            return ep.load()
+        except Exception as exc:
+            log.warning("console provider '%s' failed to load: %s", ep.name, exc)
+    return None
+
+
 def _run_bare_argus(parser: argparse.ArgumentParser) -> int:
     """Handle bare ``argus`` (no subcommand).
 
-    In an interactive terminal, launch the Argus Console (the home TUI).
+    In an interactive terminal, launch the Argus Console (the home TUI). An
+    installed Console provider (e.g. Argus Enterprise, via the
+    ``argus.console_providers`` entry-point group) takes precedence over the
+    built-in console; OSS ships none.
+
     Non-interactive contexts (piped, redirected, CI — no TTY on stdout or
     stdin) keep the previous behaviour and print ``--help`` so scripts and
     pipelines that invoke a bare ``argus`` are unaffected. When the
@@ -640,6 +679,15 @@ def _run_bare_argus(parser: argparse.ArgumentParser) -> int:
     """
     interactive = sys.stdout.isatty() and sys.stdin.isatty()
     if interactive:
+        provider = _discover_console_provider()
+        if provider is not None:
+            try:
+                return provider()
+            except Exception as exc:  # broken provider — fall back to built-in
+                import logging
+                logging.getLogger(__name__).warning(
+                    "console provider failed, falling back to built-in: %s", exc,
+                )
         try:
             from argus.viewers.terminal import ViewerUnavailable, launch_console
             return launch_console()
