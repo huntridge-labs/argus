@@ -15,37 +15,59 @@ from the open-source edition.
 
 ## The Argus Console
 
-Run `argus` and land in a full-screen **home Console** — a single cockpit for the
-whole local workflow instead of remembering subcommands.
+Run `argus` and land in a full-screen **home Console** — one cockpit for the
+whole local workflow, instead of remembering subcommands. Scan, triage,
+configure, and initialize from a single keyboard-driven hub with a live
+system-readiness check.
 
-![The Argus Console home screen](images/enterprise/console-home.png)
+![The Argus Console home screen — wordmark, project and system-readiness status, and the launcher menu](images/enterprise/console-home.png)
 
-- **Run a scan** and watch it stream live, then drop straight into the results.
-- **Browse findings** in the interactive triage viewer.
-- **Configure `argus.yml`** through a guided form editor — toggle scanners and
-  settings without hand-editing YAML.
-- **Initialize** a project: detect languages, frameworks, and infrastructure,
-  then generate a tailored config.
-- A live **system-readiness check** (Docker, local tools, image freshness) and a
-  **`Ctrl+P` command palette** to jump anywhere.
+### Configure `argus.yml` without touching YAML
 
-**Make it yours.** Live-previewed theming, accent colours, animations, and
-notification preferences — persisted across sessions.
+A guided form editor: toggle scanners on and off and change settings with
+arrow keys and Enter — comment-preserving, schema-validated, no hand-editing.
 
-![Console settings — live theming and preferences](images/enterprise/console-settings.png)
+![Console Configure screen — a form editor for argus.yml with scanner toggles and setting dropdowns](images/enterprise/configure.png)
 
-Built-in help and keybindings are always a keystroke away.
+### Initialize a project in seconds
 
-![Console help and keybindings](images/enterprise/console-help.png)
+Detect languages, frameworks, dependency manifests, IaC, and CI workflows — then
+propose a tailored scanner set and a ready-to-write `argus.yml`, with a live
+tool-readiness summary.
+
+![Console Initialize wizard — detected project signals, proposed scanners, and tool readiness](images/enterprise/init.png)
+
+### Make it yours
+
+Live-previewed theming and preferences — arrow through themes and watch the UI
+recolour instantly; tune accent, animations, reduced-motion, and notifications,
+all persisted across sessions.
+
+![Console theme picker — a live-preview dropdown of built-in themes](images/enterprise/theme-picker.png)
+
+![Console settings — theme, accent, animations, reduced motion, and notifications](images/enterprise/console-settings.png)
+
+### Jump anywhere
+
+A `Ctrl+P` command palette for fuzzy jump-to-action, plus built-in help and a
+full keybinding reference a keystroke away.
+
+![Console command palette — fuzzy search across Console actions](images/enterprise/command-palette.png)
+
+![Console help — keybindings and detected terminal capabilities](images/enterprise/console-help.png)
 
 ---
 
-## One-click PDF reports
+## Board-ready PDF reports
 
 Turn a scan into a polished, paginated **vulnerability report PDF** — server-side,
-in a single click from the web viewer. Consistent output everywhere (no browser
-print dialogs), commit-stamped for the record, and ready for audits, customers,
-and the boardroom.
+in a single click from the web viewer. An executive summary, severity breakdown,
+findings by product and scanner, full detail tables, and a **provenance &
+attestation** section binding findings to the exact commit and cosign-verified
+scanner image digests that produced them. Consistent output everywhere (no browser
+print dialogs), commit-stamped, and ready for auditors, customers, and the board.
+
+![The Argus Enterprise PDF report — executive summary, severity chart, provenance and attestation, and detailed findings](images/enterprise/pdf-report.png)
 
 The open-source web viewer already renders an HTML report you can print from your
 browser; Enterprise adds the one-click, server-rendered PDF.
