@@ -2500,3 +2500,45 @@ decisions:
     related_adrs:
     - ADR-018
     - ADR-023
+  ADR-032:
+    title: Versioned plugin contract (argus.plugins.v1) enforced by conformance tests
+    date: '2026-06-17'
+    status: accepted
+    context: 'Third parties and Argus Enterprise build on a surface of the core
+      (Finding/ScanResult/Severity data shapes, the Scanner protocol, the
+      argus.reporters seam). These are separately-released, runtime-coupled
+      packages, so a breaking change in core can silently break a downstream
+      plugin when a user upgrades core — unacceptable for a security tool whose
+      paid plugins must keep working. We chose a RANGES compatibility model (not
+      lockstep), which only works if "compatible" is defined and breaks are caught.'
+    decision: 'Declare a stable, semver-governed public contract — argus.plugins.v1,
+      documented in docs/plugin-contract.md — and ENFORCE it with conformance
+      tests (argus/tests/test_plugin_contract.py) that run in core CI on every PR.
+      A change that removes/renames a contract field, Severity member, protocol
+      method, or the reporters entry-point group fails CI before merge. Policy:
+      additive changes are compatible; a break requires argus.plugins.v2 + a core
+      major bump. Downstreams pin a compatible range and add a load-time version
+      guard that degrades gracefully on mismatch (Argus Enterprise does this).'
+    alternatives_considered:
+    - name: Lockstep versioning (enterprise version == core version)
+      rejected_because: 'Simplest "always compatible" story but rigid — every core
+        patch forces a downstream release. Ranges + contract + guard is the
+        standard open-core approach and scales to external plugin authors.'
+    - name: Documentation only, no executable contract
+      rejected_because: 'Docs drift; nothing stops a core PR from breaking the
+        surface. Conformance tests make the contract executable + enforced.'
+    consequences:
+      positive:
+      - A core PR cannot merge a contract break (conformance tests fail CI)
+      - Defines precisely what "compatible" means for the ranges model
+      - External plugin authors get a documented, stable target
+      negative:
+      - The console/browser seams aren't on main yet, so their conformance tests
+        join later (only the data + reporter + scanner surface is guaranteed now)
+      - Adds a discipline cost — contract changes must be deliberate
+    implementation: 'docs/plugin-contract.md (the surface + stability policy);
+      argus/tests/test_plugin_contract.py (conformance suite). Complements ADR-031
+      (the container plugin sandbox) and the reporters seam (ADR-023).'
+    related_adrs:
+    - ADR-023
+    - ADR-031
