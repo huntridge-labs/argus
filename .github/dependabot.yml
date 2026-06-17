@@ -60,6 +60,16 @@ updates:
         patterns:
           - "*"
 
+    # Skip Python pre-release base images. Dependabot's docker manager sorts
+    # e.g. python:3.15.0b2-alpine ahead of the stable 3.14.x line and proposes
+    # it (see #290); Dependabot owns the Dockerfile FROM lines (Renovate, which
+    # has ignoreUnstable, only handles the ARG tool versions + source-pinned
+    # tags). Track stable Python only — the final X.Y.0 release is still picked
+    # up; only aN / bN / rcN pre-releases are ignored.
+    ignore:
+      - dependency-name: "python"
+        versions: ["*0a*", "*0b*", "*0rc*"]
+
     commit-message:
       prefix: "chore(deps)"
 
