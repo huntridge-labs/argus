@@ -85,6 +85,7 @@ components:
         by argus view terminal (TUI ``D`` keybind, DiffScreen) and argus view browser (web UI ``/diff``
         route).
       core/scopes.py: 'Finding scope taxonomy. scope_for_finding maps a finding to security / lint / supply-chain from each scanner''s category (linter->lint; sca/container/supply-chain->supply-chain; else security) via the live registry with a name-prefix fallback. Drives the scope-organized report output (reporters/scope_views.py).'
+      core/plugin_runtime.py: 'Container sandbox for untrusted third-party plugins (ADR-031, prototype). build_sandbox_argv emits a hardened docker run (no network, read-only rootfs, cap-drop ALL, no-new-privileges, non-root, resource limits, target ro at /scan, digest-pinned image, no host env/socket); validate_findings sanitizes untrusted argus.plugin.v1 output (schema / severity / length / control-chars / location-traversal); plugin_provenance + trust tiers (first-party / verified / unverified) record each plugin in the attestation. See docs/plugin-sandbox.md.'
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes
@@ -666,6 +667,7 @@ docsite:
         by argus view terminal (TUI ``D`` keybind, DiffScreen) and argus view browser (web UI ``/diff``
         route).
       core/scopes.py: 'Finding scope taxonomy. scope_for_finding maps a finding to security / lint / supply-chain from each scanner''s category (linter->lint; sca/container/supply-chain->supply-chain; else security) via the live registry with a name-prefix fallback. Drives the scope-organized report output (reporters/scope_views.py).'
+      core/plugin_runtime.py: 'Container sandbox for untrusted third-party plugins (ADR-031, prototype). build_sandbox_argv emits a hardened docker run (no network, read-only rootfs, cap-drop ALL, no-new-privileges, non-root, resource limits, target ro at /scan, digest-pinned image, no host env/socket); validate_findings sanitizes untrusted argus.plugin.v1 output (schema / severity / length / control-chars / location-traversal); plugin_provenance + trust tiers (first-party / verified / unverified) record each plugin in the attestation. See docs/plugin-sandbox.md.'
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes

@@ -2454,3 +2454,49 @@ decisions:
         already covers the container case via its scanner-summary-* pattern.
 
         '
+  ADR-031:
+    title: Container sandbox for untrusted third-party plugins
+    date: '2026-06-17'
+    status: accepted
+    context: 'Argus should let third parties build plugins, but Argus is a security
+      tool that runs in sensitive environments with repo/credential access nearby.
+      Plugin code cannot be trusted by default — an in-process Python plugin runs
+      with full host trust and could exfiltrate or tamper. We need an isolation
+      model that also enables language-agnostic plugins, and an audit trail so
+      consumers know which (and how trusted) plugins produced a result.'
+    decision: 'Run third-party plugins as isolated containers implementing the
+      ``argus.plugin.v1`` contract (scan target read-only at /scan; findings JSON
+      on stdout). The host builds a hardened ``docker run`` invocation (no network
+      by default, read-only rootfs, --cap-drop ALL, no-new-privileges, non-root,
+      resource/pid limits, no host env/secrets, no docker socket, never
+      --privileged, digest-pinned image) and treats plugin output as untrusted:
+      schema-validated, severity-coerced, length-bounded, control-char-stripped,
+      and location-sanitized (absolute/.. rejected). Plugins carry a trust tier
+      (first-party / verified / unverified); unverified requires explicit opt-in,
+      gets no network, and is flagged in the attestation. Every plugin run is
+      recorded (name, version, image digest, trust tier, signature_verified) into
+      the scan results + the cosign attestation. Prototype: argus.core.plugin_runtime.'
+    alternatives_considered:
+    - name: In-process Python plugins only (entry points, full trust)
+      rejected_because: 'Python-only, and untrusted code runs in-process with full
+        host access — unacceptable default for a security tool. Kept as the trusted
+        first-party path; the sandbox is for third-party code.'
+    - name: Obfuscation / signing without isolation
+      rejected_because: 'Signing proves origin, not safety; a signed-but-malicious
+        or compromised plugin still needs containment. Isolation is the control.'
+    consequences:
+      positive:
+      - Untrusted, language-agnostic plugins with strong default isolation
+      - Reuses the existing Docker execution backend
+      - Auditable — plugins are called out by digest + trust tier in the attestation
+      - Graceful degradation — a hostile/broken plugin can't crash a scan
+      negative:
+      - Container escape via kernel 0-day is still possible (microVM is a future option)
+      - Per-plugin container overhead; network-allowed plugins can exfiltrate by design
+      - The stable entry-point contract + cosign image verification are still to come
+    implementation: 'argus/core/plugin_runtime.py (build_sandbox_argv,
+      validate_findings, plugin_provenance, run_plugin); threat model in
+      docs/plugin-sandbox.md; reference plugin in examples/plugins/hello-plugin/.'
+    related_adrs:
+    - ADR-018
+    - ADR-023
