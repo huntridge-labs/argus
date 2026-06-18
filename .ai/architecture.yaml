@@ -86,13 +86,100 @@ components:
         route).
       core/scopes.py: 'Finding scope taxonomy. scope_for_finding maps a finding to security / lint / supply-chain from each scanner''s category (linter->lint; sca/container/supply-chain->supply-chain; else security) via the live registry with a name-prefix fallback. Drives the scope-organized report output (reporters/scope_views.py).'
       core/plugin_runtime.py: 'Container sandbox for untrusted third-party plugins (ADR-031, prototype). build_sandbox_argv emits a hardened docker run (no network, read-only rootfs, cap-drop ALL, no-new-privileges, non-root, resource limits, target ro at /scan, digest-pinned image, no host env/socket); validate_findings sanitizes untrusted argus.plugin.v1 output (schema / severity / length / control-chars / location-traversal); plugin_provenance + trust tiers (first-party / verified / unverified) record each plugin in the attestation. See docs/plugin-sandbox.md.'
+      core/run_discovery.py: Shared UI-free scan-run discovery — discover_runs (sibling runs newest-first with
+        finding count + worst severity), list_directory (one-level picker listing), peek_run_stats, is_within,
+        and the canonical RESULTS_FILENAME. Consumed by the terminal runs sidebar (run switching) and the
+        browser picker + recent-runs dropdown, so both viewers agree on what counts as a run.
+      core/console_config.py: UI-free user preferences for the Argus Console (theme, accent, animations,
+        reduced_motion, notifications). load/save to $XDG_CONFIG_HOME/argus/console.yml (pyyaml only),
+        defaults-on-garbage, plus advance()/display_rows() driving the Settings screen. Distinct from
+        argus.yml (project scan config).
+      core/remediation.py: UI-free Tier-1 fix engine (deterministic, OSS, no AI). propose(finding,
+        repo_root)/apply()/is_fixable() turn a dependency finding (package + fixed_version + purl) into a
+        unified-diff bump of requirements*.txt (pip) or package.json (npm), preserving the version-spec style,
+        with an ecosystem-command fallback. Drives the terminal viewer's ``F`` Fix overlay; AI tier (scn/ai.py)
+        and action SHA-pinning / opengrep autofix are later phases (docs/developer/CONSOLE-ROADMAP.md).
+      core/enrichment.py: UI-free live vulnerability intelligence (Phase 6). EnrichmentService.enrich(cve_ids)
+        fetches EPSS (FIRST.org, exploit probability) + CISA KEV (actively-exploited) with an on-disk TTL cache
+        and injectable HTTP/clock; risk_score(severity, enrichment) blends severity x EPSS x KEV (KEV floors at
+        0.9) for re-ranking; risk_badge / enrichment_detail_rows render it. Opt-in, offline-degrading, sends only
+        public CVE ids. Drives the terminal viewer's ``i`` Intel action (EPSS/KEV/Risk in the detail pane) and
+        the browser viewer's opt-in (ARGUS_VIEW_ENRICH) Risk column. Reachability stays terminal-only (source
+        scan = trusted shell, not the read-only browser).
+      core/suppressions.py: UI-free bulk-triage → OpenVEX + scanner ignore files (Phase 7). decision_for(action,
+        ...) maps a triage action (false_positive/not_exploitable/accept_risk/investigating) to a TriageDecision;
+        build_vex_document / merge_vex_documents emit + merge an OpenVEX v0.2.0 doc (audit trail = status,
+        justification, reason, author, timestamp; keyed by CVE+product, idempotent @id); trivyignore_entries /
+        gitleaksignore_entries + write_suppressions append to .trivyignore/.gitleaksignore (never clobber). Reuses
+        the OpenVEX vocabulary of the reporters/attest layer; drives the terminal viewer's ``S`` Suppress action.
+      core/trends.py: UI-free dependency-free visual analytics (Phase 8). sparkline (Unicode ▁-█) +
+        bar_chart (Unicode █ bars), severity_breakdown / scanner_breakdown over findings, run_count_series /
+        trend_summary over discover_runs history (findings-over-time + are-we-improving delta). No chart
+        library — renders in any terminal, keeping the dependency surface minimal. Drives the terminal
+        dashboard's (``d``) charts.
+      core/terminal_caps.py: UI-free terminal capability detection (Phase 9 graphics foundation). detect_graphics
+        (kitty/iterm/sixel/none from env), supports_graphics / supports_hyperlinks / supports_truecolor,
+        capability_summary. Env-only (no escape probing), dependency-free; the foundation richer inline-image
+        rendering (textual-image, capability-gated, ASCII fallback) would build on. Surfaced in the Console help.
+      core/ai_triage.py: UI-free AI-assisted triage (Phase 10 foundation). Reuses scn/ai.py providers
+        (create_provider / resolve_api_key, provider.call(prompt)). explain_prompt / fix_prompt + triage_explain /
+        triage_fix run against an injected provider (mocked in tests). provider_from_env is local-first —
+        ARGUS_AI_LOCAL/OLLAMA_HOST gives a keyless local Ollama endpoint, ARGUS_AI_PROVIDER + key gives cloud,
+        else off. Drives the terminal viewer's ``x`` Explain overlay; model output is advisory (fixes still gate
+        through the Phase-1 diff preview, never auto-applied).
+      core/reachability.py: UI-free reachability heuristic (Phase 12 first cut). is_imported(package, ecosystem,
+        root) + reachability_of(finding) answer "is the vulnerable dependency even imported in source?" via a
+        bounded, dependency-free pip/npm import scan (build/vendor dirs skipped, early-exit, cached). Returns
+        imported / not-imported / unknown; labelled "imported in source" (NOT "reachable" — true call-graph
+        reachability stays roadmap research). Shows a Reachability row in the terminal viewer's detail pane.
+      core/svg_charts.py: UI-free dependency-free inline-SVG charts (Phase B1). donut / severity_donut (center
+        override), trend_line (pathLength=1 for CSS draw-on), bar_chart — labels XML-escaped. Lives in core so
+        the browser dashboard and the formal report (Phase B4) share one renderer. Drives the browser dashboard's
+        severity donut + findings-over-time trend + by-scanner bars, with count-up.js + a prefers-reduced-motion
+        gated motion layer (View Transitions API, staggered reveal, draw-on) and a Cmd/Ctrl-K command palette
+        (command-palette.js — vanilla, CSP-safe, indexes page nav links) in viewers/browser/static.
+      core/system_status.py: UI-free Console-home readiness checks. compute_status(scanner_names, backend, *probes)
+        → SystemStatus (verdict ok/warn/down + glyph + summary) over StatusCheck rows — Docker daemon state
+        (probe_docker), local-tool availability per scanner (probe_local_tools over is_available), and cached
+        Argus image-digest match vs toolchain._published_argus_digests (probe_cached_image_digests; skipped when
+        Docker is off). Docker is only *blocking* when the effective execution.backend needs it with no local
+        fallback. All probes injectable for tests; effective_backend() reads execution.backend best-effort. Drives
+        the home chip (computed in a background worker) + SystemStatusScreen.
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes
-        DiffPickerScreen + DiffScreen for scan-over-scan diff (``D`` keybind), reusing argus.core.findings_view.diff_scans.'
+        DiffPickerScreen + DiffScreen for scan-over-scan diff (``D`` keybind), reusing argus.core.findings_view.diff_scans.
+        A runs sidebar (``b``) lists discovered runs via argus.core.run_discovery and switches between them in place;
+        ``O`` opens a filesystem ResultsPickerScreen (results_picker.py formats rows over run_discovery.list_directory)
+        to load a scan from another directory — also shown automatically when no scan resolves in the launch dir
+        (so bare ``argus`` → View findings navigates to a scan instead of exiting), via a shared BrowseApp._try_load;
+        ``R`` runs argus scan in-app (runs_sidebar.py formats rows, scan_runner.py builds the argv,
+        RunScanPromptScreen + RunScanScreen stream it) and reloads results when it finishes. Right-click context
+        menus anchor at the cursor via mouse_actions.clamp_menu_offset. the UI-free modules this builds on stay in
+        core: argus.core.run_discovery (run listing), argus.core.console_config (Console preferences),
+        argus.core.system_status (Docker daemon / local-tool / cached-image-digest readiness checks), and
+        argus.core.terminal_caps (graphics-capability detection). bare ``argus`` defers to an installed Console
+        provider (the ``argus.console_providers`` entry-point group) in an interactive TTY via
+        cli._run_bare_argus / cli._discover_console_provider; with no provider it prints a one-line pointer and
+        falls back to --help (non-interactive contexts always get --help). ``argus view`` deep-links to the
+        findings viewer. The core ships no built-in Console home — the home experience is delivered by a provider
+        through the seam (mirrors reporters / browser plugins; OSS ships none). See ADR-034.'
       viewers/browser/: '`argus view --interface=browser` — FastAPI + Jinja2 web UI, 127.0.0.1 only ([browser]
         extra). Routes include ``/diff?a=<path>&b=<path>`` powered by argus.core.findings_view.diff_scans,
-        sharing the bucketing logic with the TUI''s ``D`` keybind.'
+        sharing the bucketing logic with the TUI''s ``D`` keybind. Report generation (the formal vulnerability
+        report — HTML *and* one-click server-side PDF) is NOT in OSS: an installed browser plugin provides both
+        the ``/report`` and ``/report.pdf`` routes via the ``argus.viewers.browser_plugins`` seam (OSS ships
+        none). Serving the report as HTML in OSS would let a browser print it to PDF and give away the paid
+        artifact, so the whole report is an add-on. The opt-in Risk column (ARGUS_VIEW_ENRICH=1 / enrich=True) adds EPSS + CISA KEV
+        scoring to /findings via argus.core.enrichment; reachability stays terminal-only by design (read-only/no
+        source scan). A persistent sticky scan-context bar (project / commit / scan time / finding count, built by
+        _context_bar + threaded through _base_context) sits under the header on the dashboard / findings / log
+        views; omitted on the picker / diff where no single scan is in scope (B0 IA — top-nav + context bar chosen
+        over a left sidebar). Plugin seam: create_app discovers the
+        ``argus.viewers.browser_plugins`` entry-point group and lets each registered ``register(app)`` callable add
+        routes/capabilities (mirrors argus.reporters; OSS ships none, a bad plugin is logged + skipped); it exposes
+        app.state.load_scan as the helper surface plugins build on (a report add-on resolves the active scan
+        with it, then builds + renders its own report). See ADR-033, ADR-034.'
       scanners/: 'Scanner modules implementing Scanner protocol (SCANNER_REGISTRY includes linters via
         auto-merge). The container scanner orchestrates five sub-scanners on every run: trivy (CVE scan),
         grype (CVE scan, deduplicated against trivy), syft (SBOM), exposure (declared-port surface from
@@ -355,7 +442,7 @@ scanners:
     languages:
     - multi
   - name: mumps
-    purpose: 'MUMPS / M language SAST. Phase 1+ rule set, 28 rules; streaming scan loop (parse, extract lightweight call-graph facts, drop tree; re-parse per file for the rule pass) bounds peak memory to one tree regardless of corpus size. Cross-file call graph (argus.scanners.mumps.callgraph) carries per-call actuals + per-routine entry formals; argus.scanners.mumps.interproc does opt-in one-hop taint propagation (scanners.mumps.interprocedural.enabled, recursion-safe worklist, max_depth-capped). M001 also annotates findings with inter_procedural_callers metadata. M001 XECUTE injection (CWE-95, taint-gated, literal/misparse-guarded), M002 indirection injection (CWE-94, taint-gated; generic stream off by default via flag_generic_indirection), M003 OPEN/USE injection with PIPE-device CRITICAL precision (CWE-78), M004 hard-coded credentials in globals (CWE-798), M005 tainted dynamic dispatch (CWE-95), M006 tainted external $& / $ZF call (CWE-78; per-helper severity map, exec helpers / $ZF(-1) = CRITICAL, pure helpers suppressed), M007 tainted source loaded/compiled as code via ZLINK/ZINSERT/ZCOMPILE (CWE-95), M101 duplicate label, M102 unreachable code after unconditional QUIT/HALT, M201 DO/GOTO to undeclared label, M202 first label does not match filename, M203 local variable read before defined (off by default — noisiest rule on real code; misparse-driven FP tail), M204 local variable declared (NEW/READ) but never read (SET-then-unused intentionally excluded as inter-routine FP), M205 label body falls through into the next label, M206 KILL of entire global tree (no subscript), M207 bare KILL deletes all locals, M208 bare NEW stacks all locals, M209 call passes more args than entry declares, M210 duplicate variable in a NEW list, M211 scratch global ^TMP/^UTILITY written without $J (CWE-362), M212 argumentless FOR with no loop exit (CWE-835), M213 QUIT with argument inside a FOR, M214 naked global reference (off by default), M215 non-portable Z-command, M216 non-portable $Z intrinsic function (off by default), M217 non-portable $Z special variable (off by default), M218 executable code on the routine label line, M219 source line over the SAC 245-char limit (M1xx/M2xx diagnostics, INFO/LOW/MEDIUM/HIGH; M211 CWE-362 and M212 CWE-835 at HIGH). Security rules cover all five MUMPS code-injection sinks (XECUTE / indirection / OPEN/USE / dynamic dispatch / external $& call) plus the data-at-rest credential leak, exceeding the public mHawk taint-sink surface for intra-procedural detection. Recognized taint sources (shared across M001/M002/M003/M005/M006 via argus.scanners.mumps.taint): READ, $ZARGV, ^%CGI / ^%REQUEST / ^%session. Config knobs under scanners.mumps in argus.yml: taint_sources.patterns (extend the source set), taint_sources.formals_untrusted (audit mode, default off: seed entry-label formal params as untrusted to surface caller-origin/multi-hop sinks the precise intra-file default does not chase), sanitizers (functions that remove taint), known_external_vars (extend the VistA/FileMan allowlist for M203/M204), scratch_globals (scratch globals M211 requires $J-subscripted), max_line_length (M219 limit, default 245), flag_generic_indirection (M002 generic-indirection INFO advisory, default off), rules.<id>.severity (per-rule severity override; per-finding precision like M003''s PIPE bump survives), rules.<id>.enabled (toggle a rule; M203/M205/M214/M216/M217 ship off by default (M002/M201/M204 re-enabled after precision work — M002 position-aware @(expr) gating, M201 text-scanned label index + callgraph cross-routine resolution, M204 external-call implicit-NEW inheritance gate). Profiles: scanners.mumps.profile security-only|lint-only|strict|default. Inline ;argus:ignore[M0xx] suppression (counted in metadata.suppressed). M003 device taxonomy PIPE=CRITICAL/socket=HIGH/file=MEDIUM. Sanitizers SOUND: numeric coercion flow-insensitive, charset pattern-match guards flow-SENSITIVE via filter_charset_guarded (same label body only) — M002/M201/M203/M204 measured FP-dominant at scale, the rest legacy-idiom/portability-inventory). Default profile validated AT SCALE on six real MUMPS projects (1,162 routines: utility lib, MUMPS web server, two YottaDB projects, VistA Kernel + Programmer Environment), every distinct finding class adjudicated against source: 220 findings total (down from 1,628 pre-tuning); real security preserved — M003 shell-pipe OPEN/USE (lsof/kill/ps with tainted command in the Kernel), M006 $ZF, M001 READ->XECUTE. Off-by-default FP drivers: M002 flags non-executable name/glvn indirection (S @X=, @X@(sub), L +@X) not just executable X/D @v (still covered by M001/M005); M201 label extractor misses quote-heavy/final-block labels so legal forward refs read undeclared; M203 dynamic scoping + misparse; M204 intra-routine def-use misses implicit-NEW callee reads. Fixed this pass: M102 no longer treats argument-bearing Q X (QUIT-with-value) / H .05 (HANG, not HALT) as unconditional breaks; taint untaints $TEXT/$T self-source (VistA menu-driver S X=$T(MENU+OPT) D @$P(X) no longer flagged); M202 suppresses %-routine platform-variant families; DEFAULT_EXTERNAL_VARS gained the %-FileMan scratch family. Tracked on-by-default refinements: M003 socket/|TCP|/plain-file vs PIPE device taxonomy, M005 menu-dispatch-table beyond the $TEXT form, M202 residual, M211 $J-vs-JOB subscript; cross-file request-dispatch sinks (do @r via URL map, X %WCALL via $$RPC^XWBPRS) need multi-hop interprocedural array-flow, Phase 2), rules.M202.ignore_patterns, interprocedural.enabled / max_depth (opt-in one-hop cross-routine taint). Parser foundation: janus-llm/tree-sitter-mumps pinned to 345f3fb29a6a281a9e28d244e901732bc68c51fc (MITRE Public Release 23-4084, Apache-2.0). Local execution via scripts/build-mumps-grammar.sh; container execution via docker/Dockerfile.mumps (grammar pre-compiled at image build time), published to ghcr.io/huntridge-labs/argus/scanner-mumps; the engine auto-routes to it (backend auto/docker) and harvests the nested argus-results.json via MumpsScanner.parse_results. Phase 2 remaining items (multi-hop / return-value interprocedural taint, attested release image to replace the mumps-preview build, additional diagnostics toward mHawk''s 32) and Phase 3 (ObjectScript / Cache, .o analysis, LSP) captured in docs/developer/SDK-ROADMAP.md.'
+    purpose: 'MUMPS / M language SAST — taint-tracked code-injection sinks (XECUTE, indirection, OPEN/USE, dynamic dispatch, external $& calls), hardcoded credentials, and portability/correctness diagnostics. 28 rules across security + lint profiles; full rule list + config in docs/scanners.md.'
     languages:
     - mumps
   secrets:
@@ -668,13 +755,100 @@ docsite:
         route).
       core/scopes.py: 'Finding scope taxonomy. scope_for_finding maps a finding to security / lint / supply-chain from each scanner''s category (linter->lint; sca/container/supply-chain->supply-chain; else security) via the live registry with a name-prefix fallback. Drives the scope-organized report output (reporters/scope_views.py).'
       core/plugin_runtime.py: 'Container sandbox for untrusted third-party plugins (ADR-031, prototype). build_sandbox_argv emits a hardened docker run (no network, read-only rootfs, cap-drop ALL, no-new-privileges, non-root, resource limits, target ro at /scan, digest-pinned image, no host env/socket); validate_findings sanitizes untrusted argus.plugin.v1 output (schema / severity / length / control-chars / location-traversal); plugin_provenance + trust tiers (first-party / verified / unverified) record each plugin in the attestation. See docs/plugin-sandbox.md.'
+      core/run_discovery.py: Shared UI-free scan-run discovery — discover_runs (sibling runs newest-first with
+        finding count + worst severity), list_directory (one-level picker listing), peek_run_stats, is_within,
+        and the canonical RESULTS_FILENAME. Consumed by the terminal runs sidebar (run switching) and the
+        browser picker + recent-runs dropdown, so both viewers agree on what counts as a run.
+      core/console_config.py: UI-free user preferences for the Argus Console (theme, accent, animations,
+        reduced_motion, notifications). load/save to $XDG_CONFIG_HOME/argus/console.yml (pyyaml only),
+        defaults-on-garbage, plus advance()/display_rows() driving the Settings screen. Distinct from
+        argus.yml (project scan config).
+      core/remediation.py: UI-free Tier-1 fix engine (deterministic, OSS, no AI). propose(finding,
+        repo_root)/apply()/is_fixable() turn a dependency finding (package + fixed_version + purl) into a
+        unified-diff bump of requirements*.txt (pip) or package.json (npm), preserving the version-spec style,
+        with an ecosystem-command fallback. Drives the terminal viewer's ``F`` Fix overlay; AI tier (scn/ai.py)
+        and action SHA-pinning / opengrep autofix are later phases (docs/developer/CONSOLE-ROADMAP.md).
+      core/enrichment.py: UI-free live vulnerability intelligence (Phase 6). EnrichmentService.enrich(cve_ids)
+        fetches EPSS (FIRST.org, exploit probability) + CISA KEV (actively-exploited) with an on-disk TTL cache
+        and injectable HTTP/clock; risk_score(severity, enrichment) blends severity x EPSS x KEV (KEV floors at
+        0.9) for re-ranking; risk_badge / enrichment_detail_rows render it. Opt-in, offline-degrading, sends only
+        public CVE ids. Drives the terminal viewer's ``i`` Intel action (EPSS/KEV/Risk in the detail pane) and
+        the browser viewer's opt-in (ARGUS_VIEW_ENRICH) Risk column. Reachability stays terminal-only (source
+        scan = trusted shell, not the read-only browser).
+      core/suppressions.py: UI-free bulk-triage → OpenVEX + scanner ignore files (Phase 7). decision_for(action,
+        ...) maps a triage action (false_positive/not_exploitable/accept_risk/investigating) to a TriageDecision;
+        build_vex_document / merge_vex_documents emit + merge an OpenVEX v0.2.0 doc (audit trail = status,
+        justification, reason, author, timestamp; keyed by CVE+product, idempotent @id); trivyignore_entries /
+        gitleaksignore_entries + write_suppressions append to .trivyignore/.gitleaksignore (never clobber). Reuses
+        the OpenVEX vocabulary of the reporters/attest layer; drives the terminal viewer's ``S`` Suppress action.
+      core/trends.py: UI-free dependency-free visual analytics (Phase 8). sparkline (Unicode ▁-█) +
+        bar_chart (Unicode █ bars), severity_breakdown / scanner_breakdown over findings, run_count_series /
+        trend_summary over discover_runs history (findings-over-time + are-we-improving delta). No chart
+        library — renders in any terminal, keeping the dependency surface minimal. Drives the terminal
+        dashboard's (``d``) charts.
+      core/terminal_caps.py: UI-free terminal capability detection (Phase 9 graphics foundation). detect_graphics
+        (kitty/iterm/sixel/none from env), supports_graphics / supports_hyperlinks / supports_truecolor,
+        capability_summary. Env-only (no escape probing), dependency-free; the foundation richer inline-image
+        rendering (textual-image, capability-gated, ASCII fallback) would build on. Surfaced in the Console help.
+      core/ai_triage.py: UI-free AI-assisted triage (Phase 10 foundation). Reuses scn/ai.py providers
+        (create_provider / resolve_api_key, provider.call(prompt)). explain_prompt / fix_prompt + triage_explain /
+        triage_fix run against an injected provider (mocked in tests). provider_from_env is local-first —
+        ARGUS_AI_LOCAL/OLLAMA_HOST gives a keyless local Ollama endpoint, ARGUS_AI_PROVIDER + key gives cloud,
+        else off. Drives the terminal viewer's ``x`` Explain overlay; model output is advisory (fixes still gate
+        through the Phase-1 diff preview, never auto-applied).
+      core/reachability.py: UI-free reachability heuristic (Phase 12 first cut). is_imported(package, ecosystem,
+        root) + reachability_of(finding) answer "is the vulnerable dependency even imported in source?" via a
+        bounded, dependency-free pip/npm import scan (build/vendor dirs skipped, early-exit, cached). Returns
+        imported / not-imported / unknown; labelled "imported in source" (NOT "reachable" — true call-graph
+        reachability stays roadmap research). Shows a Reachability row in the terminal viewer's detail pane.
+      core/svg_charts.py: UI-free dependency-free inline-SVG charts (Phase B1). donut / severity_donut (center
+        override), trend_line (pathLength=1 for CSS draw-on), bar_chart — labels XML-escaped. Lives in core so
+        the browser dashboard and the formal report (Phase B4) share one renderer. Drives the browser dashboard's
+        severity donut + findings-over-time trend + by-scanner bars, with count-up.js + a prefers-reduced-motion
+        gated motion layer (View Transitions API, staggered reveal, draw-on) and a Cmd/Ctrl-K command palette
+        (command-palette.js — vanilla, CSP-safe, indexes page nav links) in viewers/browser/static.
+      core/system_status.py: UI-free Console-home readiness checks. compute_status(scanner_names, backend, *probes)
+        → SystemStatus (verdict ok/warn/down + glyph + summary) over StatusCheck rows — Docker daemon state
+        (probe_docker), local-tool availability per scanner (probe_local_tools over is_available), and cached
+        Argus image-digest match vs toolchain._published_argus_digests (probe_cached_image_digests; skipped when
+        Docker is off). Docker is only *blocking* when the effective execution.backend needs it with no local
+        fallback. All probes injectable for tests; effective_backend() reads execution.backend best-effort. Drives
+        the home chip (computed in a background worker) + SystemStatusScreen.
       viewers/: '`argus view` interfaces (optional extras)'
       viewers/__init__.py: ViewerUnavailable shared exception
       viewers/terminal/: '`argus view --interface=terminal` — Textual TUI ([terminal] extra). Includes
-        DiffPickerScreen + DiffScreen for scan-over-scan diff (``D`` keybind), reusing argus.core.findings_view.diff_scans.'
+        DiffPickerScreen + DiffScreen for scan-over-scan diff (``D`` keybind), reusing argus.core.findings_view.diff_scans.
+        A runs sidebar (``b``) lists discovered runs via argus.core.run_discovery and switches between them in place;
+        ``O`` opens a filesystem ResultsPickerScreen (results_picker.py formats rows over run_discovery.list_directory)
+        to load a scan from another directory — also shown automatically when no scan resolves in the launch dir
+        (so bare ``argus`` → View findings navigates to a scan instead of exiting), via a shared BrowseApp._try_load;
+        ``R`` runs argus scan in-app (runs_sidebar.py formats rows, scan_runner.py builds the argv,
+        RunScanPromptScreen + RunScanScreen stream it) and reloads results when it finishes. Right-click context
+        menus anchor at the cursor via mouse_actions.clamp_menu_offset. the UI-free modules this builds on stay in
+        core: argus.core.run_discovery (run listing), argus.core.console_config (Console preferences),
+        argus.core.system_status (Docker daemon / local-tool / cached-image-digest readiness checks), and
+        argus.core.terminal_caps (graphics-capability detection). bare ``argus`` defers to an installed Console
+        provider (the ``argus.console_providers`` entry-point group) in an interactive TTY via
+        cli._run_bare_argus / cli._discover_console_provider; with no provider it prints a one-line pointer and
+        falls back to --help (non-interactive contexts always get --help). ``argus view`` deep-links to the
+        findings viewer. The core ships no built-in Console home — the home experience is delivered by a provider
+        through the seam (mirrors reporters / browser plugins; OSS ships none). See ADR-034.'
       viewers/browser/: '`argus view --interface=browser` — FastAPI + Jinja2 web UI, 127.0.0.1 only ([browser]
         extra). Routes include ``/diff?a=<path>&b=<path>`` powered by argus.core.findings_view.diff_scans,
-        sharing the bucketing logic with the TUI''s ``D`` keybind.'
+        sharing the bucketing logic with the TUI''s ``D`` keybind. Report generation (the formal vulnerability
+        report — HTML *and* one-click server-side PDF) is NOT in OSS: an installed browser plugin provides both
+        the ``/report`` and ``/report.pdf`` routes via the ``argus.viewers.browser_plugins`` seam (OSS ships
+        none). Serving the report as HTML in OSS would let a browser print it to PDF and give away the paid
+        artifact, so the whole report is an add-on. The opt-in Risk column (ARGUS_VIEW_ENRICH=1 / enrich=True) adds EPSS + CISA KEV
+        scoring to /findings via argus.core.enrichment; reachability stays terminal-only by design (read-only/no
+        source scan). A persistent sticky scan-context bar (project / commit / scan time / finding count, built by
+        _context_bar + threaded through _base_context) sits under the header on the dashboard / findings / log
+        views; omitted on the picker / diff where no single scan is in scope (B0 IA — top-nav + context bar chosen
+        over a left sidebar). Plugin seam: create_app discovers the
+        ``argus.viewers.browser_plugins`` entry-point group and lets each registered ``register(app)`` callable add
+        routes/capabilities (mirrors argus.reporters; OSS ships none, a bad plugin is logged + skipped); it exposes
+        app.state.load_scan as the helper surface plugins build on (a report add-on resolves the active scan
+        with it, then builds + renders its own report). See ADR-033, ADR-034.'
       scanners/: 'Scanner modules implementing Scanner protocol (SCANNER_REGISTRY includes linters via
         auto-merge). The container scanner orchestrates five sub-scanners on every run: trivy (CVE scan),
         grype (CVE scan, deduplicated against trivy), syft (SBOM), exposure (declared-port surface from

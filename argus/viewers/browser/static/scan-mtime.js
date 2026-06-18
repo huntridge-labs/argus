@@ -1,4 +1,4 @@
-/* argus serve — humanize scan-file mtime in the metadata panel.
+/* argus view browser — humanize scan-file mtime in the metadata panel.
  *
  * The server renders the epoch as a raw integer so the page works
  * without JS. This script upgrades that to a locale-formatted

@@ -2542,3 +2542,153 @@ decisions:
     related_adrs:
     - ADR-023
     - ADR-031
+  ADR-033:
+    title: Formal vulnerability report — UI-free model, HTML-first, server-side PDF behind [report]
+    date: '2026-06-13'
+    status: accepted
+    context: |-
+      Browser roadmap Phase B4. Stakeholders and auditors need a single,
+      authoritative artifact — "here is what we scanned, what we found, and
+      proof of which tooling/commit produced it" — that can be archived and
+      handed to a government body. The interactive dashboard is the wrong
+      shape for that: it's collapsible, filterable, and dynamically scaled.
+      A formal report must be linear, complete, and provenance-bearing.
+      Argus already records the raw provenance facts (argus version,
+      scan_context commit_sha + repo_root, the toolchain image-digest +
+      cosign-verification block from #240/#243, and the signed attestation
+      from #241/#244) — they were just never assembled into one document.
+    decision: |-
+      Build the report in three layers, mirroring the established UI-free-core
+      pattern: (1) argus/core/report.py — a pure, dependency-free ReportModel +
+      build_report() that assembles provenance, the executive summary (reusing
+      findings_view.compute_summary so counts can't diverge from the dashboard),
+      and severity-grouped findings; (2) a standalone report.html.j2 + report.css
+      (does NOT extend the app chrome — it's a print document) rendered by a
+      /report route, always available; (3) a server-side /report.pdf route that
+      renders the same HTML to PDF via WeasyPrint, behind an opt-in [report]
+      extra. The PDF is generated server-side (not via the browser print dialog)
+      so it is deterministic and one click away. WeasyPrint's edge lives in
+      argus/viewers/browser/report_pdf.py, lazily imported and raising
+      ViewerUnavailable with an install hint when absent — the same guarded-extra
+      pattern the Console epic used. Attestation status is detected from the
+      cosign bundle / in-toto statement written alongside argus-results.json.
+    consequences:
+      positive:
+      - One authoritative, archivable artifact with cryptographic-grade provenance (commit, image digests + verification, attestation status) — not just a screenshot.
+      - Report counts/severities reuse the shared findings_view logic, so the report can never disagree with the dashboard or TUI.
+      - The core model is pure and fully unit-tested without WeasyPrint installed; only the thin PDF edge needs the native stack.
+      - Graceful degradation — /report HTML is always served; without the [report] extra the browser's own Print → Save-as-PDF produces the same document, so nothing hard-breaks.
+      - WeasyPrint (heavy native Pango/cairo stack) stays isolated behind an opt-in extra, preserving the viewer's otherwise zero-new-runtime-dep posture.
+      negative:
+      - WeasyPrint can't be exercised in the default test env (not installed); the PDF success path is tested via an injected fake renderer, and live PDF rendering is only smoke-verified where the extra is present.
+      - The report's provenance is only as complete as the scan recorded — an in-memory or non-git scan shows "not recorded" fields (surfaced honestly rather than fabricated).
+    implementation: |-
+      - argus/core/report.py — ReportModel, ReportProvenance, SeverityGroup,
+        build_report(); attestation detection from sibling bundle/statement files;
+        provenance from ScanSummary.scan_context + .toolchain + argus.__version__
+        (version + timestamp injectable for deterministic tests).
+      - argus/viewers/browser/report_pdf.py — guarded WeasyPrint edge
+        (is_available(), render_pdf(html, stylesheet=, base_url=)).
+      - argus/viewers/browser/templates/report.html.j2 — standalone print doc;
+        links /static/report.css when pdf=False (strict CSP), omits the link when
+        pdf=True so WeasyPrint receives the CSS explicitly (no HTTP fetch).
+      - argus/viewers/browser/static/report.css — print-optimized, @page rules +
+        page numbers, fixed severity hues, defines --fg/--surface-alt/--fg-muted
+        so the shared inline-SVG charts render on a light document.
+      - argus/viewers/browser/app.py — /report (HTML) + /report.pdf routes; a
+        "Report" nav link in base.html.j2.
+      - pyproject.toml — [report] = ["weasyprint>=62"]; folded into [all].
+      - Tests: argus/tests/core/test_report.py (model, provenance, attestation,
+        grouping) + argus/tests/viewers/browser/test_report_route.py (HTML render,
+        PDF guard-degradation + injected success path).
+      - Docs: docs/view-browser.md (Formal report section + screenshot),
+        scripts/docsite/capture_view_browser.py (/report capture).
+    related:
+    - ADR-021
+    - ADR-034
+    pr_references:
+    - '(browser Phase B4 — formal vulnerability report; merges into feat/tui-explorer-and-scan-runner)'
+    alternatives_considered:
+    - name: Client-side PDF (browser print / JS PDF library)
+      rejected_because: |-
+        Browser print is per-browser non-deterministic and pushes layout control
+        to the user's print dialog; a JS PDF lib (jsPDF/pdfmake) would add a heavy
+        front-end dependency and can't see the server-side provenance facts. A
+        server-side render is deterministic (same scan → same bytes) and is the
+        "one click" the requirement called for. Browser print is kept only as the
+        no-extra fallback.
+    - name: Bundle WeasyPrint into the [browser] extra
+      rejected_because: |-
+        WeasyPrint pulls a heavy native stack (Pango, cairo, …). Making it a hard
+        dependency of the browser viewer would punish every user who just wants
+        the dashboard. Isolating it behind [report] keeps the common install light
+        and matches the supply-chain-tool principle of minimizing its own surface.
+    - name: A new reporter plugin (argus.reporters entry-point) instead of a viewer route
+      rejected_because: |-
+        The report's value is the interactive HTML preview + one-click server-side
+        PDF in the same surface the findings are viewed in. A batch reporter would
+        not give the on-screen preview, and the provenance assembly is naturally a
+        view concern over a loaded ScanSummary, not a scan-time emit.
+  ADR-034:
+    title: Console and report generation are delivered through plugin seams, not shipped built-in
+    date: '2026-06-17'
+    status: accepted
+    context: |-
+      Two surfaces built on the integration branch are add-on capabilities
+      rather than core scanning: the bare-``argus`` Console home (the full
+      Textual home-hub) and *report generation* — the authoritative,
+      provenance-bearing security report (ADR-033), in both HTML and PDF form.
+      The report is the paid, archivable artifact. Shipping even its HTML view
+      in OSS would defeat that: a browser's own Print -> Save-as-PDF reproduces
+      essentially the same document for free. So the whole report (not just the
+      server-side PDF) must be out of the core. The core already exposes two
+      neutral entry-point seams — argus.console_providers and
+      argus.viewers.browser_plugins — so external packages can supply these.
+    decision: |-
+      The OSS core ships the seams (and, for the Console, the always-available
+      --help fallback), but not the two surfaces themselves:
+        - Console: keep the supporting UI-free modules (run_discovery,
+          console_config, system_status, terminal_caps) and the findings viewer.
+          bare ``argus`` defers to an installed argus.console_providers provider;
+          with none it prints a one-line pointer + --help. No built-in home-hub.
+        - Report generation: the OSS core ships NO report — no model, no
+          template, no /report or /report.pdf route. The browser app exposes
+          ``app.state.load_scan`` (resolve the active scan -> ScanSummary) and the
+          argus.viewers.browser_plugins seam; an installed plugin owns the entire
+          report — its own model + template + stylesheet, building from public
+          core helpers (findings_view, svg_charts, trends, run_discovery, the
+          loader) — and registers BOTH ``/report`` (HTML) and ``/report.pdf``.
+          Because the core registers neither route, the plugin owns them cleanly
+          (no first-registered shadowing). The free dashboard / findings views
+          stay in OSS.
+      This SUPERSEDES ADR-033's OSS-shipping decision: the report model, routes,
+      template, stylesheet, and the [report] extra all leave the core for the
+      add-on. The provenance/UI-free-core design from ADR-033 is preserved,
+      relocated into the add-on.
+    consequences:
+      positive:
+      - Core stays lean — no report model/template, no WeasyPrint, no Textual-home weight in the default install.
+      - The paid artifact is protected, because with no OSS report there is no HTML page a browser can print to PDF for free.
+      - Both seams are exercised by OSS tests (a dummy console provider; a test browser plugin that builds from load_scan), so the contract can't silently break.
+      - Clean plugin ownership of both /report and /report.pdf (no route shadowing).
+      negative:
+      - Report generation (HTML + PDF) requires the installed add-on; OSS users get the dashboard/findings views and the raw argus-results.json, not the formal report.
+      - The report + Console now live outside this repo; the seams (load_scan, browser_plugins, console_providers) must stay stable (covered by the seam tests).
+    related:
+    - ADR-023
+    - ADR-031
+    - ADR-033
+    implementation: |-
+      - Removed from OSS: argus/core/report.py, argus/viewers/browser/templates/report.html.j2,
+        argus/viewers/browser/static/report.css, the /report + /report.pdf routes + the render
+        helper + app.state.render_report_html, the "Report" nav link, the [report] extra,
+        the Console home-hub (terminal/{console,console_model,config_editor,init_wizard}.py)
+        and argus.viewers.terminal.launch_console.
+      - Kept in OSS: both entry-point seams (cli._discover_console_provider / _run_bare_argus;
+        create_app browser_plugins discovery + app.state.load_scan), the dashboard/findings
+        views + their charts, and the supporting UI-free core modules.
+      - Relocated into the add-on: the report model + template + stylesheet, served by a
+        browser plugin that registers /report (HTML, gated), /report.css, and /report.pdf
+        (gated) — all behind the `report` license entitlement.
+      - Tests: test_cli_console.py (provider/help dispatch); test_plugin_seam.py (a plugin
+        builds from app.state.load_scan; OSS exposes no report helpers).

@@ -769,3 +769,33 @@ class TestReadSourceContext:
         result = read_source_context(path, 2, before=1, after=1)
         assert result is not None
         assert len(result) == 3
+
+
+class TestClampMenuOffset:
+    """Context-menu anchoring math — open at the click, stay on screen."""
+
+    def test_open_at_click_when_room(self):
+        from argus.viewers.terminal.mouse_actions import clamp_menu_offset
+        # Click mid-screen with plenty of room → menu opens exactly there.
+        assert clamp_menu_offset(20, 10, 30, 8, 120, 40) == (20, 10)
+
+    def test_slides_back_from_right_edge(self):
+        from argus.viewers.terminal.mouse_actions import clamp_menu_offset
+        # Click near the right edge → x clamps so the box fits (120-30).
+        x, _ = clamp_menu_offset(110, 5, 30, 8, 120, 40)
+        assert x == 90
+
+    def test_slides_back_from_bottom_edge(self):
+        from argus.viewers.terminal.mouse_actions import clamp_menu_offset
+        _, y = clamp_menu_offset(10, 38, 30, 8, 120, 40)
+        assert y == 32
+
+    def test_menu_larger_than_screen_clamps_to_zero(self):
+        from argus.viewers.terminal.mouse_actions import clamp_menu_offset
+        # Degenerate: menu at least as big as the screen → pin to origin,
+        # never negative.
+        assert clamp_menu_offset(50, 50, 200, 100, 80, 24) == (0, 0)
+
+    def test_negative_click_clamps_to_zero(self):
+        from argus.viewers.terminal.mouse_actions import clamp_menu_offset
+        assert clamp_menu_offset(-5, -3, 10, 5, 80, 24) == (0, 0)

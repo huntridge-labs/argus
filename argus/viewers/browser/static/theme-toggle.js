@@ -1,4 +1,4 @@
-/* argus serve — theme toggle.
+/* argus view browser — theme toggle.
  *
  * Reads localStorage for a saved preference, applies it via
  * data-theme on <html>, and flips on click. With no saved pref the

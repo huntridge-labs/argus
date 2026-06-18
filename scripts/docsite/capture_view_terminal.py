@@ -46,6 +46,8 @@ Requirements:
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -53,12 +55,16 @@ import textwrap
 from pathlib import Path
 
 from argus.core.config import ViewConfig
-from argus.core.models import Finding, Severity
+from argus.core.models import Finding, ScanResult, ScanSummary, Severity
+from argus.core.run_discovery import RESULTS_FILENAME
+from argus.viewers.terminal import scan_runner
 from argus.viewers.terminal.app import (
     BrowseApp,
     ContextMenuScreen,
     DiffScreen,
     OpenLocationPromptScreen,
+    RunScanPromptScreen,
+    RunScanScreen,
 )
 from argus.viewers.terminal.loader import flatten_findings, load_summary
 
@@ -214,6 +220,130 @@ async def _capture_open_location_prompt(  # pragma: no cover — integration-tes
         print(f"  wrote {out.relative_to(REPO_ROOT)}")
 
 
+def _synth_runs(parent: Path) -> Path:  # pragma: no cover — integration-tested by running the script
+    """Write two sibling synthetic runs under ``parent``; return the newer.
+
+    The runs sidebar only earns its keep with more than one run to switch
+    between, and a deterministic two-run fixture keeps the screenshot
+    stable across regenerations (the real container scans land in
+    separate parents, so they don't exercise the sidebar's "siblings"
+    discovery on their own).
+    """
+    parent.mkdir(parents=True, exist_ok=True)
+    specs = {
+        "2026-06-12T18-25Z": ([
+            (Severity.CRITICAL, "CVE-2026-12345", "libxml2", "2.11.5-r0", "Heap overflow in xmlParseDoc"),
+            (Severity.HIGH, "CVE-2026-22222", "openssl", "3.1.4-r1", "Timing side-channel in RSA"),
+            (Severity.HIGH, "CVE-2026-33333", "curl", "8.5.0-r0", "Use-after-free in connection reuse"),
+            (Severity.MEDIUM, "CVE-2026-44444", "zlib", "1.3-r2", "Improper bounds check in inflate"),
+            (Severity.LOW, "CVE-2026-55555", "busybox", "1.36.1-r5", "Info leak in applet parsing"),
+        ], 2_000_000),
+        "2026-06-11T09-14Z": ([
+            (Severity.HIGH, "CVE-2026-22222", "openssl", "3.1.3-r0", "Timing side-channel in RSA"),
+            (Severity.LOW, "CVE-2026-55555", "busybox", "1.36.1-r4", "Info leak in applet parsing"),
+        ], 1_000_000),
+    }
+    newer: Path | None = None
+    for name, (rows, mtime) in specs.items():
+        run_dir = parent / name
+        run_dir.mkdir()
+        findings = [
+            Finding(id=cve, severity=sev, title=title, scanner="trivy", cve=cve,
+                    location=f"{pkg}@{ver}",
+                    metadata={"package": pkg, "installed_version": ver,
+                              "fixed_version": "—", "sbom_source": "nginx:1.27-alpine"})
+            for sev, cve, pkg, ver, title in rows
+        ]
+        results = run_dir / RESULTS_FILENAME
+        results.write_text(json.dumps(
+            ScanSummary(results=[ScanResult(scanner="trivy", findings=findings)]).to_dict()
+        ))
+        os.utime(results, (mtime, mtime))
+        if newer is None:
+            newer = run_dir
+    return newer
+
+
+async def _capture_runs_sidebar(  # pragma: no cover — integration-tested by running the script
+    filename: str, run_dir: Path, *, settle: float = 0.2,
+) -> None:
+    """Snapshot the runs sidebar (auto-revealed with two sibling runs)."""
+    app = BrowseApp(results_dir=str(run_dir))
+    async with app.run_test(headless=True, size=TERM_SIZE) as pilot:
+        await pilot.pause(settle)
+        app.sub_title = _DEMO_SUBTITLE
+        await pilot.pause(settle)
+        app.save_screenshot(str(IMAGES_DIR / filename))
+        print(f"  wrote {(IMAGES_DIR / filename).relative_to(REPO_ROOT)}")
+
+
+async def _capture_run_prompt(  # pragma: no cover — integration-tested by running the script
+    filename: str, run_dir: Path, *, settle: float = 0.2,
+) -> None:
+    """Snapshot the 'Run a scan' prompt overlay."""
+    app = BrowseApp(results_dir=str(run_dir))
+    async with app.run_test(headless=True, size=TERM_SIZE) as pilot:
+        await pilot.pause(settle)
+        app.sub_title = _DEMO_SUBTITLE
+        await pilot.pause(settle)
+        await app.push_screen(RunScanPromptScreen(default_path="."))
+        await pilot.pause(settle)
+        app.save_screenshot(str(IMAGES_DIR / filename))
+        print(f"  wrote {(IMAGES_DIR / filename).relative_to(REPO_ROOT)}")
+
+
+async def _capture_run_output(  # pragma: no cover — integration-tested by running the script
+    filename: str, run_dir: Path, *, settle: float = 0.2,
+) -> None:
+    """Snapshot the scan-runner output overlay.
+
+    The real subprocess stream is stubbed and replaced with curated
+    lines so the committed screenshot is deterministic — the point is to
+    show the overlay's shape, not a specific scan's output.
+    """
+    async def _noop() -> None:
+        return None
+
+    app = BrowseApp(results_dir=str(run_dir))
+    async with app.run_test(headless=True, size=TERM_SIZE) as pilot:
+        await pilot.pause(settle)
+        app.sub_title = _DEMO_SUBTITLE
+        await pilot.pause(settle)
+        argv = scan_runner.build_scan_argv(scanner=None, path=".", output_dir=str(run_dir.parent))
+        screen = RunScanScreen(argv, launch_root=run_dir.parent)
+        screen._stream = _noop  # type: ignore[method-assign]  # don't spawn a real scan
+        await app.push_screen(screen)
+        await pilot.pause(settle)
+        for line in [
+            "argus scan — 6 scanners enabled", "",
+            "[1/6] bandit      ✓  0 findings", "[2/6] gitleaks    ✓  0 findings",
+            "[3/6] osv         ✓  12 findings", "[4/6] trivy       ✓  47 findings",
+            "[5/6] checkov     ✓  3 findings", "[6/6] opengrep    ✓  1 finding", "",
+            "Wrote argus-results/2026-06-12T18-40Z/argus-results.json  (63 findings)",
+        ]:
+            screen._append(line)
+        screen._mark_done(success=True, code=0)
+        await pilot.pause(settle)
+        app.save_screenshot(str(IMAGES_DIR / filename))
+        print(f"  wrote {(IMAGES_DIR / filename).relative_to(REPO_ROOT)}")
+
+
+async def _capture_anchored_menu(  # pragma: no cover — integration-tested by running the script
+    filename: str, run_dir: Path, *, settle: float = 0.2,
+) -> None:
+    """Snapshot a context menu anchored at a right-click position."""
+    app = BrowseApp(results_dir=str(run_dir))
+    async with app.run_test(headless=True, size=TERM_SIZE) as pilot:
+        await pilot.pause(settle)
+        app.sub_title = _DEMO_SUBTITLE
+        await pilot.pause(settle)
+        if app.all_findings:
+            app._push_context_menu(app.all_findings[min(1, len(app.all_findings) - 1)], anchor=(104, 9))
+        await pilot.pause(settle)
+        app.save_screenshot(str(IMAGES_DIR / filename))
+        print(f"  wrote {(IMAGES_DIR / filename).relative_to(REPO_ROOT)}")
+
+
 async def _capture_all(  # pragma: no cover — integration-tested by running the script
     scan_a_dir: Path, scan_b_dir: Path,
 ) -> None:
@@ -244,6 +374,21 @@ async def _capture_all(  # pragma: no cover — integration-tested by running th
     await _capture_open_location_prompt(
         "10-open-location-prompt.svg", scan_a_dir,
     )
+
+    # Runs sidebar + scan runner states use a deterministic two-run
+    # synthetic fixture (see _synth_runs) rather than the real container
+    # scans, which land in separate parents and don't exercise sibling
+    # discovery. The runner-output state is stubbed for determinism.
+    with tempfile.TemporaryDirectory(prefix="argus-runs-") as runs_tmp:
+        run_dir = _synth_runs(Path(runs_tmp))
+        print("[runs sidebar — switch between runs]")
+        await _capture_runs_sidebar("11-runs-sidebar.svg", run_dir)
+        print("[scan runner — prompt]")
+        await _capture_run_prompt("12-scan-runner-prompt.svg", run_dir)
+        print("[scan runner — streamed output]")
+        await _capture_run_output("13-scan-runner-output.svg", run_dir)
+        print("[context menu — anchored at the cursor]")
+        await _capture_anchored_menu("14-context-menu-anchored.svg", run_dir)
 
 
 def main() -> None:  # pragma: no cover — integration-tested by running the script

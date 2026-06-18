@@ -39,11 +39,28 @@ For multi-user enterprise deployments, see the separate
 
 ## Views
 
+**Persistent scan context.** Every primary view (dashboard, findings, log)
+carries a slim **sticky context bar** under the header — project · source
+commit · when the scan ran · finding count — so you always know which scan
+you're looking at as you scroll and move between views. It's built on theme
+tokens, so it flips cleanly between light and dark, and degrades gracefully
+without JavaScript (the timestamp just stays in epoch form). On the picker and
+diff views, where there's no single scan in scope, it's omitted.
+
 ### `/` — Executive summary dashboard
 
-Opens here by default. Shows:
+Opens here by default.
 
-- **Total findings** + per-severity breakdown (cards at the top)
+![Argus browser dashboard — a sticky scan-context bar (project, commit, scan time, finding count), then severity-accented stat cards, a severity donut, a findings-over-time trend, and a by-scanner bar chart](images/browser/dashboard.png)
+
+Shows:
+
+- **Total findings** + per-severity breakdown (cards at the top, each a
+  deep-link into the matching `/findings` filter)
+- **Visual analytics** — a **severity donut**, a **findings-over-time** trend
+  line (from the run history), and a **by-scanner** bar chart. Rendered as
+  inline SVG with no chart-library dependency; the line draws on and the
+  cards count up on load (motion is gated on `prefers-reduced-motion`)
 - **Scan quality warnings** — SPDX-2.1 SBOMs Trivy can't read, low-purl
   coverage, Grype "couldn't identify scan subject" — surfaced loudly so
   empty scans aren't misread as clean
@@ -52,7 +69,35 @@ Opens here by default. Shows:
 - **Per scanner** — contribution counts (useful for spotting when one
   scanner did 90% of the work, which often signals an input format issue)
 
+> **Motion & polish.** The viewer uses a dependency-free motion layer — the
+> CSS [View Transitions API](https://developer.mozilla.org/docs/Web/API/View_Transitions_API)
+> cross-fades page navigations, cards/charts rise in on load, and the trend
+> line draws on. All of it is wrapped in `prefers-reduced-motion`, so the UI
+> degrades to a fully static, accessible page (the screenshots above are
+> captured in exactly that reduced-motion state).
+
+**Light & dark themes.** Everything — charts, cards, the command palette —
+is built on theme tokens (the chart SVGs reference CSS custom properties, not
+hardcoded colours), so it flips cleanly with the theme toggle / your OS
+`prefers-color-scheme`:
+
+![Argus browser dashboard in light theme — same charts and cards, light surfaces with dark text](images/browser/dashboard-light.png)
+
+### Command palette (`Cmd`/`Ctrl` + `K`)
+
+Browser parity with the TUI's `Ctrl+P`: a fuzzy launcher over the page's own
+navigation — jump to any view, severity filter, product/scanner, or recent
+run without the mouse. Press `Cmd`/`Ctrl`+`K` (or click the `⌘K` chip in the
+header), type to filter, `↑↓` + `Enter` to go.
+
+![Argus browser command palette — fuzzy launcher listing views, severity filters, and recent runs over a dimmed dashboard](images/browser/command-palette.png)
+
+Vanilla JS, CSP-safe (it builds its overlay in the DOM and indexes existing
+links — no inline script, no data blob), and a no-op when JavaScript is off.
+
 ### `/findings` — Filterable table
+
+![Argus browser findings table — severity-badged rows with filter bar, count, and export](images/browser/findings.png)
 
 The spreadsheet view. Dropdown filters for severity, product, and scanner;
 a search box that matches id, title, location, CVE, and scanner name. Filters
@@ -66,6 +111,48 @@ http://localhost:8080/findings?scan=/path/to/results&min_severity=high&product=B
 JS-enhanced sessions get live filter updates without a page reload; non-JS
 clients see the same content via a plain form submit (Apply button is the
 fallback).
+
+#### Risk column (EPSS + CISA KEV) — opt-in
+
+Set `ARGUS_VIEW_ENRICH=1` (or pass `enrich=True` to `create_app`) to add a
+**Risk** column: for each CVE, the live **EPSS** exploit-probability and a
+**🔥KEV** flag (CISA Known-Exploited), blended into a 0–100 risk score that
+re-ranks by *real-world* urgency — an actively-exploited CVE rises above a
+nominally-higher-severity one that isn't.
+
+![Argus browser findings with the opt-in Risk column — EPSS % + 🔥KEV badge + a 0–100 score; the KEV-flagged CRITICAL scores highest](images/browser/findings-risk.png)
+
+> **Off by default — the read-only / no-egress boundary holds.** Enrichment
+> only reaches the EPSS/KEV endpoints when you opt in; results cache on disk;
+> only public CVE ids leave the host. **Reachability** ("is the package
+> imported in source?") is deliberately *not* offered here — it scans source
+> files, which belongs in the trusted-shell terminal viewer (`argus view
+> terminal`, the `i` action), not the read-only browser.
+
+### `/report` — Formal vulnerability report (Argus Enterprise add-on)
+
+The authoritative artifact. Where the dashboard is collapsible, filterable, and
+built for triage, the report is a single linear document built to be **printed,
+archived, and handed to an auditor** — the kind of evidence a compliance officer
+or a government body can act on. What makes it *authoritative* is the
+**provenance & attestation** block: the exact Argus version, the source commit
+SHA the scan actually saw, each scanner container image + `sha256` digest + its
+cosign/digest **verification status**, and whether a signed in-toto attestation
+accompanies the scan — so every finding ties back to a specific, verifiable
+scan rather than a screenshot. Below it: a PASS/FAIL verdict, severity counts +
+charts, per-product / per-scanner breakdowns, and the full findings inventory
+grouped by severity.
+
+![Argus formal security report — cover, provenance & attestation block with commit SHA and cosign-verified scanner image digests, a PASS/FAIL verdict, severity counts and charts, and the full findings inventory grouped by severity](images/browser/report.png)
+
+**Report generation (the HTML report *and* the one-click, server-side PDF) is an
+Argus Enterprise capability — the open-source viewer ships no report.** That is
+deliberate: a report served as HTML could be saved to PDF from the browser,
+which would give away the paid artifact. The dashboard and findings views stay
+free; the authoritative, archivable report is the paid deliverable. With the
+add-on installed, the `/report` and `/report.pdf` routes light up on this same
+viewer through the `argus.viewers.browser_plugins` seam. Learn more or request
+access: <https://www.huntridgelabs.com/>.
 
 ### `/picker` — Switch scan
 
@@ -136,12 +223,13 @@ findings match which filter.
 
 ## Troubleshooting
 
-**`argus: error: argument command: invalid choice: 'serve'`** — your `argus`
-binary was installed before `serve` landed. Reinstall: `pip install --upgrade
---pre 'argus-security[browser]'`.
+**`argus: error: argument command: invalid choice: 'serve'`** — `argus serve`
+was renamed. The browser UI is now `argus view browser` (or
+`argus view --interface=browser`). Update your command.
 
-**"The local web UI needs the 'serve' extra"** — you installed `argus-security`
-but not the `[serve]` extra. Retry with `pip install 'argus-security[browser]'`.
+**"The browser interface needs the 'browser' extra"** — you installed
+`argus-security` but not the `[browser]` extra. Retry with
+`pip install 'argus-security[browser]'`.
 
 **Port 8080 already in use** — pass `--port 9090` (or any free port).
 
