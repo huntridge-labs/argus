@@ -86,3 +86,37 @@ class TestPluginSeam:
         resp = TestClient(app).get("/__finding_count")
         assert resp.status_code == 200
         assert resp.json()["count"] == 1
+
+
+class TestReportUpsell:
+    """With no report add-on, the enterprise report paths return a friendly
+    402 upsell (not a bare 404); an installed plugin's route is never shadowed."""
+
+    def test_report_paths_upsell_when_absent(self, tmp_path):
+        c = TestClient(create_app(root=str(tmp_path), browser_plugins=[]))
+        r = c.get("/report")
+        assert r.status_code == 402
+        assert "Argus Enterprise" in r.text and "huntridgelabs.com" in r.text
+        assert r.headers["content-type"].startswith("text/html")
+        p = c.get("/report.pdf")
+        assert p.status_code == 402
+        assert "huntridgelabs.com" in p.text
+        assert p.headers["content-type"].startswith("text/plain")
+
+    def test_dashboard_still_free(self, tmp_path):
+        # The upsell is scoped to report paths; the free views are unaffected.
+        assert TestClient(create_app(root=str(tmp_path), browser_plugins=[])).get("/").status_code == 200
+
+    def test_installed_plugin_route_not_shadowed_by_upsell(self, tmp_path):
+        def register(app):
+            from fastapi import Response
+
+            @app.get("/report")
+            def real_report():
+                return Response("REAL REPORT", media_type="text/plain")
+
+        c = TestClient(create_app(root=str(tmp_path), browser_plugins=[register]))
+        r = c.get("/report")
+        assert r.status_code == 200 and "REAL REPORT" in r.text   # plugin wins
+        # the path it did NOT claim still upsells
+        assert c.get("/report.pdf").status_code == 402

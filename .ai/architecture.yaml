@@ -163,14 +163,20 @@ components:
         cli._run_bare_argus / cli._discover_console_provider; with no provider it prints a one-line pointer and
         falls back to --help (non-interactive contexts always get --help). ``argus view`` deep-links to the
         findings viewer. The core ships no built-in Console home — the home experience is delivered by a provider
-        through the seam (mirrors reporters / browser plugins; OSS ships none). See ADR-034.'
+        through the seam (mirrors reporters / browser plugins; OSS ships none). An installed package can also add
+        explicit subcommands via the ``argus.cli_commands`` seam (cli._discover_cli_command_registrars, dispatched
+        through args.func); enterprise registers ``argus console`` there. Known-but-uninstalled enterprise command
+        names (cli.ENTERPRISE_COMMANDS, e.g. ``console``) are NOT added to --help and, when typed, print an
+        add-on pointer to huntridgelabs.com (cli._enterprise_command_upsell) instead of an argparse error. See ADR-034.'
       viewers/browser/: '`argus view --interface=browser` — FastAPI + Jinja2 web UI, 127.0.0.1 only ([browser]
         extra). Routes include ``/diff?a=<path>&b=<path>`` powered by argus.core.findings_view.diff_scans,
         sharing the bucketing logic with the TUI''s ``D`` keybind. Report generation (the formal vulnerability
         report — HTML *and* one-click server-side PDF) is NOT in OSS: an installed browser plugin provides both
         the ``/report`` and ``/report.pdf`` routes via the ``argus.viewers.browser_plugins`` seam (OSS ships
         none). Serving the report as HTML in OSS would let a browser print it to PDF and give away the paid
-        artifact, so the whole report is an add-on. The opt-in Risk column (ARGUS_VIEW_ENRICH=1 / enrich=True) adds EPSS + CISA KEV
+        artifact, so the whole report is an add-on. When no plugin claims them, create_app registers a 402 upsell
+        on /report + /report.pdf (app._mount_report_upsell, after plugin mount so an installed plugin is never
+        shadowed) — a friendly "Enterprise feature" pointer rather than a bare 404. The opt-in Risk column (ARGUS_VIEW_ENRICH=1 / enrich=True) adds EPSS + CISA KEV
         scoring to /findings via argus.core.enrichment; reachability stays terminal-only by design (read-only/no
         source scan). A persistent sticky scan-context bar (project / commit / scan time / finding count, built by
         _context_bar + threaded through _base_context) sits under the header on the dashboard / findings / log
@@ -832,14 +838,20 @@ docsite:
         cli._run_bare_argus / cli._discover_console_provider; with no provider it prints a one-line pointer and
         falls back to --help (non-interactive contexts always get --help). ``argus view`` deep-links to the
         findings viewer. The core ships no built-in Console home — the home experience is delivered by a provider
-        through the seam (mirrors reporters / browser plugins; OSS ships none). See ADR-034.'
+        through the seam (mirrors reporters / browser plugins; OSS ships none). An installed package can also add
+        explicit subcommands via the ``argus.cli_commands`` seam (cli._discover_cli_command_registrars, dispatched
+        through args.func); enterprise registers ``argus console`` there. Known-but-uninstalled enterprise command
+        names (cli.ENTERPRISE_COMMANDS, e.g. ``console``) are NOT added to --help and, when typed, print an
+        add-on pointer to huntridgelabs.com (cli._enterprise_command_upsell) instead of an argparse error. See ADR-034.'
       viewers/browser/: '`argus view --interface=browser` — FastAPI + Jinja2 web UI, 127.0.0.1 only ([browser]
         extra). Routes include ``/diff?a=<path>&b=<path>`` powered by argus.core.findings_view.diff_scans,
         sharing the bucketing logic with the TUI''s ``D`` keybind. Report generation (the formal vulnerability
         report — HTML *and* one-click server-side PDF) is NOT in OSS: an installed browser plugin provides both
         the ``/report`` and ``/report.pdf`` routes via the ``argus.viewers.browser_plugins`` seam (OSS ships
         none). Serving the report as HTML in OSS would let a browser print it to PDF and give away the paid
-        artifact, so the whole report is an add-on. The opt-in Risk column (ARGUS_VIEW_ENRICH=1 / enrich=True) adds EPSS + CISA KEV
+        artifact, so the whole report is an add-on. When no plugin claims them, create_app registers a 402 upsell
+        on /report + /report.pdf (app._mount_report_upsell, after plugin mount so an installed plugin is never
+        shadowed) — a friendly "Enterprise feature" pointer rather than a bare 404. The opt-in Risk column (ARGUS_VIEW_ENRICH=1 / enrich=True) adds EPSS + CISA KEV
         scoring to /findings via argus.core.enrichment; reachability stays terminal-only by design (read-only/no
         source scan). A persistent sticky scan-context bar (project / commit / scan time / finding count, built by
         _context_bar + threaded through _base_context) sits under the header on the dashboard / findings / log

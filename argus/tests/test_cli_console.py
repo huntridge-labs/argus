@@ -14,7 +14,19 @@ from __future__ import annotations
 
 import sys
 
-from argus.cli import _discover_console_provider, _run_bare_argus, EXIT_SUCCESS
+import pytest
+
+from argus.cli import (
+    ENTERPRISE_COMMANDS,
+    EXIT_ERROR,
+    EXIT_SUCCESS,
+    _discover_console_provider,
+    _enterprise_command_upsell,
+    _run_bare_argus,
+    _subcommand_choices,
+    build_parser,
+    main,
+)
 
 
 class _FakeParser:
@@ -120,3 +132,58 @@ class TestConsoleProviderSeam:
         monkeypatch.setattr("importlib.metadata.entry_points", lambda group: [_BadEP()])
         # A provider whose load() raises is skipped, not propagated.
         assert _discover_console_provider() is None
+
+
+class TestEnterpriseGhostCommands:
+    """Known enterprise subcommands upsell (not argparse-error) when absent,
+    and stay out of ``--help`` until the providing package registers them."""
+
+    def test_console_is_a_known_enterprise_command(self):
+        assert "console" in ENTERPRISE_COMMANDS
+
+    def test_not_registered_in_oss_help(self):
+        # OSS ships no argus.cli_commands provider, so `console` is not a
+        # subparser choice → never shown in --help.
+        assert "console" not in _subcommand_choices(build_parser())
+
+    def test_upsell_message_and_exit_code(self, capsys):
+        rc = _enterprise_command_upsell("console")
+        assert rc == EXIT_ERROR
+        err = capsys.readouterr().err
+        assert "Argus Enterprise" in err and "huntridgelabs.com" in err
+
+    def test_typing_console_uninstalled_upsells_not_argparse_error(self, monkeypatch, capsys):
+        # No registrar installed → bare `argus console` must upsell + exit
+        # EXIT_ERROR, never reaching argparse's "invalid choice".
+        monkeypatch.setattr("argus.cli._discover_cli_command_registrars", lambda: [])
+        with pytest.raises(SystemExit) as exc:
+            main(["console"])
+        assert exc.value.code == EXIT_ERROR
+        err = capsys.readouterr().err
+        assert "huntridgelabs.com" in err
+        assert "invalid choice" not in err
+
+    def test_installed_registrar_makes_console_real(self, monkeypatch):
+        # An installed package registers a real `console` subcommand via the
+        # seam → it IS in choices and dispatches through args.func.
+        ran = {"n": 0}
+
+        def _register(subparsers, parent):
+            p = subparsers.add_parser("console", parents=[parent], help="x")
+            p.set_defaults(func=lambda args: (ran.__setitem__("n", ran["n"] + 1), 0)[1])
+
+        monkeypatch.setattr("argus.cli._discover_cli_command_registrars", lambda: [_register])
+        # Now in --help / choices...
+        assert "console" in _subcommand_choices(build_parser())
+        # ...and it runs (dispatched via the func default, not the upsell).
+        with pytest.raises(SystemExit) as exc:
+            main(["console"])
+        assert exc.value.code == 0
+        assert ran["n"] == 1
+
+    def test_unknown_nonenterprise_command_still_argparse_errors(self, monkeypatch):
+        monkeypatch.setattr("argus.cli._discover_cli_command_registrars", lambda: [])
+        # A name we don't know is NOT intercepted — argparse rejects it (exit 2).
+        with pytest.raises(SystemExit) as exc:
+            main(["definitely-not-a-command"])
+        assert exc.value.code == EXIT_ERROR

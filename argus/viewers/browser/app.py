@@ -284,6 +284,59 @@ def _mount_browser_plugins(app: FastAPI, plugins: list | None) -> None:
             logger.warning("browser plugin failed to register: %s", exc)
 
 
+#: Where users are pointed to learn about / acquire enterprise capabilities.
+_ENTERPRISE_CTA = "https://www.huntridgelabs.com/"
+
+#: Enterprise report routes. When the report add-on is installed it registers
+#: these (the formal HTML report + the one-click server-side PDF); the OSS core
+#: ships no report. To avoid a bare 404 on these well-known paths, the core
+#: registers a friendly upsell *only for the ones no plugin claimed* — so an
+#: installed plugin always wins (no route shadowing).
+_ENTERPRISE_REPORT_ROUTES = ("/report", "/report.pdf")
+
+_REPORT_UPSELL_HTML = (
+    "<!doctype html><html><head><meta charset='utf-8'>"
+    "<title>Argus report</title></head><body style='font-family:system-ui;"
+    "max-width:40rem;margin:4rem auto;line-height:1.5'>"
+    "<h1>Report generation is an Argus Enterprise feature</h1>"
+    "<p>The authoritative, provenance-bearing security report (HTML &amp; PDF) "
+    "is not part of the open-source viewer. The dashboard and findings views "
+    "are always free.</p>"
+    f"<p><a href='{_ENTERPRISE_CTA}'>Learn more or request access &rarr;</a></p>"
+    "</body></html>"
+)
+_REPORT_UPSELL_TEXT = (
+    "Report generation is an Argus Enterprise feature; it is not installed. "
+    f"Learn more or request access: {_ENTERPRISE_CTA}\n"
+)
+
+
+def _mount_report_upsell(app: FastAPI) -> None:
+    """Register a 402 upsell on enterprise report paths no plugin claimed.
+
+    Called after :func:`_mount_browser_plugins`, so when the report add-on is
+    installed its real routes already exist and are left untouched; only the
+    *absent* ones get the "this is an Enterprise feature" placeholder instead of
+    a bare 404.
+    """
+    claimed = {getattr(r, "path", None) for r in app.router.routes}
+    for path in _ENTERPRISE_REPORT_ROUTES:
+        if path in claimed:
+            continue
+        if path.endswith(".pdf"):
+            async def _pdf_upsell() -> Response:
+                return Response(
+                    _REPORT_UPSELL_TEXT, status_code=402,
+                    media_type="text/plain; charset=utf-8",
+                )
+            app.add_api_route(path, _pdf_upsell, methods=["GET"])
+        else:
+            async def _html_upsell() -> Response:
+                return HTMLResponse(_REPORT_UPSELL_HTML, status_code=402)
+            app.add_api_route(path, _html_upsell, methods=["GET"],
+                              response_class=HTMLResponse)
+
+
 def create_app(
     root: str | None = None,
     *,
@@ -989,6 +1042,7 @@ def create_app(
     # register their routes. OSS ships no plugins, so this is a no-op by default.
     app.state.load_scan = _load_scan
     _mount_browser_plugins(app, browser_plugins)
+    _mount_report_upsell(app)
 
     return app
 
