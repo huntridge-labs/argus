@@ -740,6 +740,8 @@ ENTERPRISE_CTA = "https://www.huntridgelabs.com/"
 ENTERPRISE_COMMANDS: dict[str, str] = {
     "console": "the interactive Argus Console — a home base for the whole "
                "local workflow (run a scan, browse findings, edit config)",
+    "report-pdf": "the formal, provenance-bearing security report as a PDF, "
+                  "generated anywhere — no browser required",
 }
 
 #: Entry-point group through which an installed package contributes CLI

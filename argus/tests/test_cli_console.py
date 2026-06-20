@@ -141,6 +141,21 @@ class TestEnterpriseGhostCommands:
     def test_console_is_a_known_enterprise_command(self):
         assert "console" in ENTERPRISE_COMMANDS
 
+    def test_report_pdf_is_a_known_enterprise_command(self):
+        assert "report-pdf" in ENTERPRISE_COMMANDS
+
+    @pytest.mark.parametrize("name", sorted(ENTERPRISE_COMMANDS))
+    def test_every_enterprise_command_upsells_when_uninstalled(self, name, monkeypatch, capsys):
+        # Each known name must upsell (exit EXIT_ERROR) — never an argparse error —
+        # and never be advertised in --help when no provider is installed.
+        monkeypatch.setattr("argus.cli._discover_cli_command_registrars", lambda: [])
+        assert name not in _subcommand_choices(build_parser())
+        with pytest.raises(SystemExit) as exc:
+            main([name])
+        assert exc.value.code == EXIT_ERROR
+        err = capsys.readouterr().err
+        assert "huntridgelabs.com" in err and "invalid choice" not in err
+
     def test_not_registered_in_oss_help(self):
         # OSS ships no argus.cli_commands provider, so `console` is not a
         # subparser choice → never shown in --help.
