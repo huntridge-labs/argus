@@ -107,6 +107,13 @@ class TestReportUpsell:
         # The upsell is scoped to report paths; the free views are unaffected.
         assert TestClient(create_app(root=str(tmp_path), browser_plugins=[])).get("/").status_code == 200
 
+    def test_report_nav_link_present_for_discovery(self, tmp_path):
+        # The chrome always links to /report so the capability is discoverable —
+        # with the add-on it opens the report, without it the 402 upsell.
+        (tmp_path / "argus-results.json").write_text(json.dumps(_sca_payload()))
+        body = TestClient(create_app(root=str(tmp_path), browser_plugins=[])).get("/").text
+        assert 'href="/report' in body
+
     def test_installed_plugin_route_not_shadowed_by_upsell(self, tmp_path):
         def register(app):
             from fastapi import Response

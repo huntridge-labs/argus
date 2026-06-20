@@ -35,6 +35,16 @@
          {% if _active_nav == "/findings" %}aria-current="page"{% endif %}>Findings</a>
       <a href="/log{% if scan_param %}?scan={{ scan_param | urlencode }}{% endif %}"
          {% if _active_nav == "/log" %}aria-current="page"{% endif %}>Log</a>
+      {#- Report is an Argus Enterprise add-on (the formal, provenance-bearing
+          security report — HTML + one-click PDF). The OSS core ships no report
+          route; an installed add-on registers /report through the
+          argus.viewers.browser_plugins seam. The link is shown regardless so
+          the capability is discoverable: with the add-on it opens the real
+          report (which carries the Download-PDF button); without it, /report
+          returns the "Enterprise feature → contact us" upsell. Opens in a new
+          tab — it's a standalone document, not app chrome. -#}
+      <a href="/report{% if scan_param %}?scan={{ scan_param | urlencode }}{% endif %}"
+         target="_blank" rel="noopener">Report&#8239;<span aria-hidden="true">↗</span></a>
       {#- Recent runs dropdown — only rendered when there are at
           least two scan-ready dirs under the launch root. Single-scan
           deployments (the common case for a one-off argus scan) get
