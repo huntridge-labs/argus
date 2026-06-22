@@ -26,7 +26,7 @@ security-summary:
   if: always()
 
   steps:
-    - uses: huntridge-labs/argus/.github/actions/security-summary@1.5.0
+    - uses: huntridge-labs/argus/.github/actions/security-summary@1.6.0
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -36,7 +36,7 @@ That's it! The action will automatically find and combine all scanner summaries,
 ### With Custom Settings
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/security-summary@1.5.0
+- uses: huntridge-labs/argus/.github/actions/security-summary@1.6.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -82,7 +82,7 @@ security-summary:
     contents: read
     pull-requests: write
   steps:
-    - uses: huntridge-labs/argus/.github/actions/security-summary@1.5.0
+    - uses: huntridge-labs/argus/.github/actions/security-summary@1.6.0
       with:
         scan_statuses: |
           {
@@ -122,7 +122,7 @@ permissions:
 jobs:
   security-summary:
     steps:
-      - uses: huntridge-labs/argus/.github/actions/security-summary@1.5.0
+      - uses: huntridge-labs/argus/.github/actions/security-summary@1.6.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Required for PR comments
 ```
@@ -170,21 +170,21 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v6
-      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.5.0
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.6.0
 
   gitleaks-scan:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
       - uses: actions/checkout@v6
-      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.5.0
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.6.0
 
   security-summary:
     runs-on: ubuntu-latest
     needs: [bandit-scan, gitleaks-scan]
     if: always()
     steps:
-      - uses: huntridge-labs/argus/.github/actions/security-summary@1.5.0
+      - uses: huntridge-labs/argus/.github/actions/security-summary@1.6.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```

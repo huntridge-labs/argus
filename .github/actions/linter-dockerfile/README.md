@@ -13,7 +13,7 @@ This action checks Dockerfiles for best practices and common issues. It uploads 
   uses: actions/checkout@v6
 
 - name: Run Dockerfile linting
-  uses: huntridge-labs/argus/.github/actions/linter-dockerfile@1.5.0
+  uses: huntridge-labs/argus/.github/actions/linter-dockerfile@1.6.0
   with:
     fail_on_issues: false
 ```

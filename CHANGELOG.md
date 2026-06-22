@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.6.0](https://github.com/huntridge-labs/argus/compare/1.5.0...1.6.0) (2026-06-22)
+
+### Features
+
+* **plugins:** container sandbox prototype for untrusted third-party plugins ([#296](https://github.com/huntridge-labs/argus/issues/296)) ([c2deeaa](https://github.com/huntridge-labs/argus/commit/c2deeaa61e17b8598abf164b35cff9bb40e6fdb7))
+* **viewers:** modern browser + TUI viewers and plugin seams ([#298](https://github.com/huntridge-labs/argus/issues/298)) ([0d45f74](https://github.com/huntridge-labs/argus/commit/0d45f74b311d9f1e3453390d1c478159aacc458f))
+
+### Dependencies
+
+* **deps:** bump commitizen in the npm-minor-patch group ([#303](https://github.com/huntridge-labs/argus/issues/303)) ([ce21a42](https://github.com/huntridge-labs/argus/commit/ce21a424d42d79a04a77774fc23f76b89199601c))
+* **deps:** bump the docker-all group across 2 directories with 3 updates ([#304](https://github.com/huntridge-labs/argus/issues/304)) ([e9f5989](https://github.com/huntridge-labs/argus/commit/e9f5989eb0f7d0680b852ecb1b4d6218503bd2e1))
+* **deps:** skip Python pre-release base images in Dependabot ([#295](https://github.com/huntridge-labs/argus/issues/295)) ([9d99b07](https://github.com/huntridge-labs/argus/commit/9d99b0769f0d5da697957b2c62a671b45f6d5e78)), closes [#290](https://github.com/huntridge-labs/argus/issues/290)
+* **deps:** Update container-images ([#288](https://github.com/huntridge-labs/argus/issues/288)) ([a352d92](https://github.com/huntridge-labs/argus/commit/a352d924e5e1b9773c3eb1d2e8dc1ec2c89d4598))
+* **deps:** Update container-images ([#300](https://github.com/huntridge-labs/argus/issues/300)) ([de76795](https://github.com/huntridge-labs/argus/commit/de7679536c141d6a7ae430b91b8d1868aab002b5))
+* **deps:** update pytest requirement in the pip-all group ([#305](https://github.com/huntridge-labs/argus/issues/305)) ([d143878](https://github.com/huntridge-labs/argus/commit/d1438785fdbd8ccf736c268e49644a4f767e87ed))
+* **deps:** Update tool-versions ([#289](https://github.com/huntridge-labs/argus/issues/289)) ([16fa8e6](https://github.com/huntridge-labs/argus/commit/16fa8e62fae5e45078497bfc5be7538d2a3d96dd))
+* **deps:** Update tool-versions to v0.71.1 ([#301](https://github.com/huntridge-labs/argus/issues/301)) ([610b885](https://github.com/huntridge-labs/argus/commit/610b885c7f43ce5713a1060e1b437b56a9c542ac))
+
+
+### Documentation
+
+* **ai:** carry forward scopes.py + [#237](https://github.com/huntridge-labs/argus/issues/237) digest-binding prose ([#260](https://github.com/huntridge-labs/argus/issues/260)) ([6a64e3b](https://github.com/huntridge-labs/argus/commit/6a64e3ba8b576b92672c99e43465f49269fd2294)), closes [#226](https://github.com/huntridge-labs/argus/issues/226)
+* **enterprise:** showcase Argus Enterprise + contact CTA ([#294](https://github.com/huntridge-labs/argus/issues/294)) ([40d2582](https://github.com/huntridge-labs/argus/commit/40d258216178ef076ba768170658534478b599a2))
+
+### Tests
+
+* **contract:** conformance tests for the argus.plugins.v1 public surface ([#297](https://github.com/huntridge-labs/argus/issues/297)) ([7054720](https://github.com/huntridge-labs/argus/commit/7054720b84f4f8d92394e06e5184770f8904b423))
+
 ## [1.5.0](https://github.com/huntridge-labs/argus/compare/1.4.1...1.5.0) (2026-06-15)
 
 ### Features
