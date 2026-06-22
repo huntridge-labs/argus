@@ -8,7 +8,7 @@
 # ---------------------------------------------------------------------------
 FROM alpine:3.23.4@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11 AS builder
 
-ARG TRIVY_VERSION=0.71.0
+ARG TRIVY_VERSION=0.71.1
 ARG GRYPE_VERSION=0.114.0
 ARG SYFT_VERSION=1.45.1
 ARG GITLEAKS_VERSION=8.30.1
