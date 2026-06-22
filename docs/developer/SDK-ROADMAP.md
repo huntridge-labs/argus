@@ -212,6 +212,16 @@ calls that need to land before the integration touches argus's surfaces.
 
 ## In-flight initiatives
 
+### Argus Console (TUI evolution)
+
+The terminal viewer is growing from post-scan triage into a full
+terminal-native control centre (scan → triage → fix → configure), and
+eventually what bare `argus` launches in an interactive TTY. Multi-phase
+epic tracked separately in [`CONSOLE-ROADMAP.md`](CONSOLE-ROADMAP.md).
+Phase 0 (runs explorer + in-app scan runner + shared `run_discovery`)
+ships in PR #261; mitigation, config editor, init wizard, and the Console
+home entry follow.
+
 ### MUMPS / M language SAST (`argus scan mumps`)
 
 Closes the OSS gap behind mHawk (IDEA Systems, commercial, the only purpose-built MUMPS

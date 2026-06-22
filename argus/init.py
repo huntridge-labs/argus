@@ -43,6 +43,24 @@ _DOCS_URL = "https://huntridge-labs.github.io/argus/"
 EXIT_SUCCESS = 0
 EXIT_ERROR = 2
 
+# Human labels for the signal keys ``detect_project`` emits. Module-level so
+# the CLI summary (``_print_summary``) and any Console add-on built on these
+# detection signals render the same names.
+SIGNAL_LABELS: dict[str, str] = {
+    "python": "Python source files",
+    "javascript": "JavaScript/TypeScript files",
+    "go": "Go source files",
+    "java": "Java source files",
+    "node": "Node.js project",
+    "dependencies": "Dependency manifests",
+    "container": "Container/Docker files",
+    "iac": "Infrastructure as code",
+    "github-actions": "GitHub Actions workflows",
+    "gitlab-ci": "GitLab CI configuration",
+    "jenkins": "Jenkinsfile",
+    "tool-configs": "Existing tool configurations",
+}
+
 
 def run_init(
     force: bool = False,
@@ -489,22 +507,8 @@ def _print_summary(
 
     if signals:
         print(f"\n{G}  Detected:{R}")
-        signal_labels = {
-            "python": "Python source files",
-            "javascript": "JavaScript/TypeScript files",
-            "go": "Go source files",
-            "java": "Java source files",
-            "node": "Node.js project",
-            "dependencies": "Dependency manifests",
-            "container": "Container/Docker files",
-            "iac": "Infrastructure as code",
-            "github-actions": "GitHub Actions workflows",
-            "gitlab-ci": "GitLab CI configuration",
-            "jenkins": "Jenkinsfile",
-            "tool-configs": "Existing tool configurations",
-        }
         for key, evidence in signals.items():
-            label = signal_labels.get(key, key)
+            label = SIGNAL_LABELS.get(key, key)
             print(f"    {D}-{R} {label} {D}({evidence[0]}){R}")
 
     if readiness is not None:

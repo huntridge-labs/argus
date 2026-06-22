@@ -1,4 +1,4 @@
-/* argus serve — progressive-enhancement filter refresh.
+/* argus view browser — progressive-enhancement filter refresh.
  *
  * The findings form works fully without JavaScript (plain GET submit
  * renders a new page). This script upgrades the experience: as the
@@ -65,7 +65,7 @@
         // via devtools can see why the table didn't refresh. The
         // full-page Apply button is still the fallback path.
         console.warn(
-          "argus serve: filter refresh returned HTTP " + resp.status +
+          "argus view browser: filter refresh returned HTTP " + resp.status +
           " — leaving table as-is. Click Apply to submit as a full page."
         );
         return;
@@ -78,7 +78,7 @@
       // Network hiccup — leave the table as-is. Surface the error
       // to devtools so it isn't silently swallowed; full-page submit
       // via the Apply button is always the fallback.
-      console.warn("argus serve: filter refresh failed:", err);
+      console.warn("argus view browser: filter refresh failed:", err);
     } finally {
       target.classList.remove("is-loading");
     }

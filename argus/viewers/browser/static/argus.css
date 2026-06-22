@@ -1,4 +1,4 @@
-/* argus serve — minimal classless styles, self-contained (no CDN).
+/* argus view browser — minimal classless styles, self-contained (no CDN).
  *
  * Palette and type scale lifted from argus.huntridgelabs.com so the
  * local UI feels like the same product. Color tokens prefixed
@@ -317,6 +317,43 @@ header nav a[aria-current="page"] {
   color: var(--accent-dim);
   background: var(--argus-deep-bg);
 }
+
+/* ── Sticky scan-context bar (B0 IA) ──────────────────────────────
+ * A slim strip under the header carrying the active scan's identity
+ * (project · commit · scan time · finding count) so context follows
+ * the user down every primary view. Sticks to the top on scroll.
+ *
+ * z-index stays at 50 — below the header's stacking context (100) —
+ * so the Recent-runs dropdown still paints over the bar rather than
+ * being clipped by it. Theme-aware via tokens (flips with light/dark);
+ * a frosted translucent background where color-mix + backdrop-filter
+ * are supported, with a solid var(--surface) fallback first. */
+.scan-context-bar {
+  position: sticky; top: 0; z-index: 50;
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 0.5rem;
+  max-width: var(--max-width); margin: 0 auto 1.5rem;
+  padding: 0.55rem 1.5rem;
+  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  font-size: 0.85rem; color: var(--fg-muted);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.scb-project {
+  font-weight: 600; color: var(--fg);
+  font-family: var(--font-heading);
+  letter-spacing: 0.02em;
+}
+.scb-commit code {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.85em; color: var(--accent-dim);
+}
+.scb-sep { opacity: 0.45; }
+.scb-count, .scb-time { color: var(--fg-muted); }
 
 /* ── Scan metadata panel ─────────────────────────────────────────
  * Collapsed <details> on the dashboard showing per-scanner info
@@ -1018,4 +1055,211 @@ footer a { color: var(--accent-dim); }
   color: var(--fg-muted);
   font-style: italic;
   margin: 1rem 0;
+}
+
+/* ===========================================================================
+   Phase B0/B1 — design-system motion + dashboard charts.
+
+   All motion is additive and gated behind ``prefers-reduced-motion:
+   no-preference`` (with a hard reduce override at the end), so the UI stays
+   fully usable and static for users who ask for less motion. No new
+   dependency — pure CSS + the native View Transitions API.
+   =========================================================================== */
+
+:root {
+  /* Premium easing curve used for the motion below (Material/Linear-style). */
+  --argus-ease: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Cross-document page transitions: navigating Dashboard → Findings → Diff
+   cross-fades like an SPA, with zero JavaScript. Supported browsers opt in
+   via this at-rule; others simply navigate normally. */
+@view-transition { navigation: auto; }
+
+/* Dashboard charts (Phase B1): a responsive grid of chart cards. */
+.charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--gap);
+  margin: 1rem 0 1.5rem;
+}
+.chart-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.1rem 1.2rem;
+}
+.chart-card h3 {
+  margin: 0 0 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--argus-muted-text);
+}
+.chart-card .chart { display: flex; justify-content: center; }
+.chart-card svg { max-width: 100%; height: auto; }
+
+/* Keyboard focus ring — consistent, visible, brand-coloured. */
+a:focus-visible,
+button:focus-visible,
+.card:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--argus-accent-lime);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Staggered rise-in for the stat cards + chart cards on load. */
+  @keyframes argus-rise {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: none; }
+  }
+  .cards .card,
+  .charts .chart-card {
+    animation: argus-rise 0.45s var(--argus-ease) both;
+  }
+  .cards .card:nth-child(2) { animation-delay: 0.04s; }
+  .cards .card:nth-child(3) { animation-delay: 0.08s; }
+  .cards .card:nth-child(4) { animation-delay: 0.12s; }
+  .cards .card:nth-child(5) { animation-delay: 0.16s; }
+  .cards .card:nth-child(6) { animation-delay: 0.20s; }
+  .charts .chart-card:nth-child(2) { animation-delay: 0.08s; }
+  .charts .chart-card:nth-child(3) { animation-delay: 0.16s; }
+
+  /* Subtle hover lift on the interactive cards (they already transition
+     transform), signalling clickability. */
+  .card:hover { transform: translateY(-2px); }
+
+  /* Draw-on for the trend line: the polyline declares pathLength="1", so a
+     normalised dash sweep animates it in. Scoped here so reduced-motion
+     users get the line fully drawn (no dash) rather than an empty box. */
+  .chart polyline {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: argus-draw 1s var(--argus-ease) 0.25s forwards;
+  }
+  @keyframes argus-draw { to { stroke-dashoffset: 0; } }
+}
+
+/* Respect a reduced-motion request: kill animations + collapse transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ===========================================================================
+   Phase B0 — command palette (Cmd/Ctrl-K). Overlay built by
+   command-palette.js; styled here. CSP-safe (no inline styles).
+   =========================================================================== */
+
+/* The discoverable ⌘K chip in the header nav. */
+.cmdk-hint {
+  display: inline-flex;
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.15rem 0.45rem;
+  color: var(--argus-muted-text);
+  cursor: pointer;
+  transition: border-color 0.15s var(--argus-ease, ease), color 0.15s var(--argus-ease, ease);
+}
+.cmdk-hint:hover { border-color: var(--argus-primary-green); color: var(--argus-light-text); }
+.cmdk-hint kbd {
+  font: inherit;
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+}
+
+.cmdk-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12vh;
+  background: rgba(4, 7, 6, 0.6);
+  backdrop-filter: blur(2px);
+}
+.cmdk-overlay[hidden] { display: none; }
+
+.cmdk-box {
+  width: min(560px, 92vw);
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--argus-primary-green);
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cmdk-overlay:not([data-reduce]) .cmdk-box {
+    animation: cmdk-pop 0.16s var(--argus-ease) both;
+  }
+  @keyframes cmdk-pop {
+    from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+    to   { opacity: 1; transform: none; }
+  }
+}
+
+.cmdk-input {
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--argus-light-text);
+  font-size: 1.05rem;
+  padding: 0.9rem 1.1rem;
+  outline: none;
+}
+.cmdk-input::placeholder { color: var(--argus-muted-text); }
+
+.cmdk-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem;
+  overflow-y: auto;
+}
+.cmdk-item {
+  padding: 0.55rem 0.8rem;
+  border-radius: 8px;
+  color: var(--argus-light-text);
+  cursor: pointer;
+}
+.cmdk-item.is-selected {
+  background: color-mix(in srgb, var(--argus-primary-green) 22%, transparent);
+}
+
+/* ===========================================================================
+   Phase B2 — risk (EPSS/KEV) + reachability column (opt-in).
+   =========================================================================== */
+.risk-cell { white-space: nowrap; line-height: 1.5; }
+.risk-badge {
+  display: inline-block;
+  font-size: 0.8rem;
+  color: var(--fg);
+}
+.risk-score {
+  display: inline-block;
+  min-width: 1.8em;
+  margin-left: 0.35em;
+  padding: 0.05rem 0.4rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-alt);
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.risk-reach {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--fg-muted);
 }

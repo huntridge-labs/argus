@@ -1,4 +1,4 @@
-/* argus serve — Copy-to-clipboard button for the Export menu.
+/* argus view browser — Copy-to-clipboard button for the Export menu.
  *
  * Each Copy button carries the /export URL in data-export-url. On
  * click we fetch the serialized content, write it to the clipboard
@@ -84,7 +84,7 @@
       }
       flash(fmt.toUpperCase() + " copied to clipboard", "ok");
     } catch (err) {
-      console.warn("argus serve: export copy failed:", err);
+      console.warn("argus view browser: export copy failed:", err);
       flash("Copy failed — see devtools for details", "error");
     } finally {
       btn.disabled = false;

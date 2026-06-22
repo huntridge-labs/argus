@@ -378,6 +378,19 @@ def build_parser() -> argparse.ArgumentParser:
     _build_cache_parser(subparsers, common)
     _build_view_parser(subparsers, common)
 
+    # Open-core seam: let an installed package (e.g. Argus Enterprise) contribute
+    # its own subcommands. Each registrar adds a subparser + a handler via
+    # ``set_defaults(func=...)``. OSS ships none, so this is a no-op by default;
+    # a registrar that raises is logged and skipped (never breaks the CLI).
+    for register in _discover_cli_command_registrars():
+        try:
+            register(subparsers, common)
+        except Exception as exc:  # pragma: no cover - defensive
+            import logging
+            logging.getLogger(__name__).warning(
+                "CLI command registration failed: %s", exc,
+            )
+
     return parser
 
 
@@ -644,6 +657,147 @@ def _launch_view(
             return EXIT_ERROR
 
     print(f"Error: unknown interface '{interface}'", file=sys.stderr)
+    return EXIT_ERROR
+
+
+#: Entry-point group through which an external package (e.g. Argus Enterprise)
+#: can supply the bare-``argus`` Console. The open-core seam pattern mirrors
+#: reporters (ADR-023) and the browser-viewer plugin group: OSS ships no
+#: provider, so discovery is a no-op here; an installed provider transparently
+#: takes over the bare-``argus`` experience.
+_CONSOLE_PROVIDER_GROUP = "argus.console_providers"
+
+
+def _discover_console_provider():
+    """Return an installed Console provider callable, or ``None``.
+
+    A provider is a zero-argument callable returning an ``int`` exit code,
+    registered under the :data:`_CONSOLE_PROVIDER_GROUP` entry-point group. The
+    first one found wins and takes precedence over the built-in console. OSS
+    ships none, so this returns ``None`` and the built-in console (or
+    ``--help``) is used. Discovery and load failures are swallowed (logged) so
+    a broken third-party provider can never break bare ``argus``.
+    """
+    import logging
+    from importlib.metadata import entry_points
+
+    log = logging.getLogger(__name__)
+    try:
+        eps = list(entry_points(group=_CONSOLE_PROVIDER_GROUP))
+    except Exception as exc:  # pragma: no cover - defensive
+        log.warning("console provider discovery failed: %s", exc)
+        return None
+    for ep in eps:
+        try:
+            return ep.load()
+        except Exception as exc:
+            log.warning("console provider '%s' failed to load: %s", ep.name, exc)
+    return None
+
+
+def _run_bare_argus(parser: argparse.ArgumentParser) -> int:
+    """Handle bare ``argus`` (no subcommand).
+
+    In an interactive terminal, defer to an installed Console provider (via the
+    ``argus.console_providers`` entry-point group) when one is present. The core
+    ships no built-in Console, so without a provider bare ``argus`` prints a
+    one-line pointer and then ``--help``.
+
+    Non-interactive contexts (piped, redirected, CI — no TTY on stdout or
+    stdin) print ``--help`` so scripts and pipelines that invoke a bare
+    ``argus`` are unaffected.
+    """
+    interactive = sys.stdout.isatty() and sys.stdin.isatty()
+    if interactive:
+        provider = _discover_console_provider()
+        if provider is not None:
+            try:
+                return provider()
+            except Exception as exc:  # broken provider — fall back to help
+                import logging
+                logging.getLogger(__name__).warning(
+                    "console provider failed, falling back to help: %s", exc,
+                )
+        else:
+            print(
+                "The interactive Argus Console is available as an add-on — "
+                f"see {ENTERPRISE_CTA}\n",
+                file=sys.stderr,
+            )
+    parser.print_help()
+    return EXIT_SUCCESS
+
+
+#: Where users are pointed to learn about / acquire enterprise capabilities.
+ENTERPRISE_CTA = "https://www.huntridgelabs.com/"
+
+#: Known Argus Enterprise CLI subcommands, by name → a short human description.
+#: These are **not** registered as subparsers in the OSS core, so they never
+#: appear in ``argus --help``. When the providing package (Argus Enterprise) is
+#: installed it registers the real subcommand through the ``argus.cli_commands``
+#: seam (then it *is* in help and works). Typing one of these names without the
+#: package installed yields a friendly upsell instead of an argparse error.
+ENTERPRISE_COMMANDS: dict[str, str] = {
+    "console": "the interactive Argus Console — a home base for the whole "
+               "local workflow (run a scan, browse findings, edit config)",
+    "report-pdf": "the formal, provenance-bearing security report as a PDF, "
+                  "generated anywhere — no browser required",
+}
+
+#: Entry-point group through which an installed package contributes CLI
+#: subcommands. A registrar is ``register(subparsers, parent) -> None`` that
+#: adds its subparser(s) and sets a handler via ``set_defaults(func=...)``.
+#: OSS ships none; discovery never raises (a bad plugin is logged + skipped).
+_CLI_COMMANDS_GROUP = "argus.cli_commands"
+
+
+def _discover_cli_command_registrars() -> list:
+    """Load ``register(subparsers, parent)`` callables from installed packages."""
+    import logging
+    from importlib.metadata import entry_points
+
+    log = logging.getLogger(__name__)
+    registrars: list = []
+    try:
+        eps = list(entry_points(group=_CLI_COMMANDS_GROUP))
+    except Exception as exc:  # pragma: no cover - defensive
+        log.warning("CLI command discovery failed: %s", exc)
+        return registrars
+    for ep in eps:
+        try:
+            registrars.append(ep.load())
+        except Exception as exc:
+            log.warning("CLI command '%s' failed to load: %s", ep.name, exc)
+    return registrars
+
+
+def _subcommand_choices(parser: argparse.ArgumentParser) -> set[str]:
+    """Return the set of registered subcommand names on ``parser``."""
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return set(action.choices)
+    return set()
+
+
+def _first_command_token(raw_args: list[str]) -> str | None:
+    """The first positional token (the subcommand), skipping global flags."""
+    return next((t for t in raw_args if not t.startswith("-")), None)
+
+
+def _enterprise_command_upsell(name: str) -> int:
+    """Print the add-on pointer for an enterprise subcommand that isn't installed.
+
+    Reached only for a name in :data:`ENTERPRISE_COMMANDS` that no installed
+    package registered — so the OSS core neither advertises it in ``--help`` nor
+    errors out with a bare argparse ``invalid choice``; it explains the feature
+    and points at Huntridge Labs instead.
+    """
+    print(
+        f"`argus {name}` is an Argus Enterprise feature "
+        f"({ENTERPRISE_COMMANDS[name]}).\n"
+        f"It is not installed. Learn more or request access: {ENTERPRISE_CTA}\n",
+        file=sys.stderr,
+    )
     return EXIT_ERROR
 
 
@@ -3815,6 +3969,15 @@ def main(argv: list[str] | None = None) -> None:
 
     parser = build_parser()
 
+    # Upsell for a known enterprise subcommand that isn't installed: intercept
+    # before argparse so the name never triggers a bare ``invalid choice`` error
+    # (and is never advertised in ``--help``). When the providing package is
+    # installed it registered a real subparser via the argus.cli_commands seam,
+    # so the name is in the parser's choices and we fall through to argparse.
+    cmd_token = _first_command_token(raw_args)
+    if cmd_token in ENTERPRISE_COMMANDS and cmd_token not in _subcommand_choices(parser):
+        sys.exit(_enterprise_command_upsell(cmd_token))
+
     # Enable shell tab completion (requires: pip install argcomplete)
     try:
         import argcomplete
@@ -3825,8 +3988,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(raw_args)
 
     if args.command is None:
-        parser.print_help()
-        sys.exit(EXIT_SUCCESS)
+        sys.exit(_run_bare_argus(parser))
 
     handlers = {
         "init": cmd_init,
@@ -3841,7 +4003,10 @@ def main(argv: list[str] | None = None) -> None:
         "view": cmd_view,
     }
 
-    handler = handlers.get(args.command)
+    # A seam-registered subcommand (argus.cli_commands) carries its handler on
+    # the parsed args via set_defaults(func=...); fall back to it for any command
+    # not in the built-in table.
+    handler = handlers.get(args.command) or getattr(args, "func", None)
     if handler is None:
         parser.print_help()
         sys.exit(EXIT_ERROR)

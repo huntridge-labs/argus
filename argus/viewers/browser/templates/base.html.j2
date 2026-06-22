@@ -1,5 +1,5 @@
 {#-
-  Base layout for every argus serve page.
+  Base layout for every argus view browser page.
   Intentionally minimal: header with nav + scan context, main content
   block, footer. Templates override only ``title`` and ``content``.
   CSP header is set by the FastAPI response; we add a meta tag as
@@ -35,7 +35,16 @@
          {% if _active_nav == "/findings" %}aria-current="page"{% endif %}>Findings</a>
       <a href="/log{% if scan_param %}?scan={{ scan_param | urlencode }}{% endif %}"
          {% if _active_nav == "/log" %}aria-current="page"{% endif %}>Log</a>
-
+      {#- Report is an Argus Enterprise add-on (the formal, provenance-bearing
+          security report — HTML + one-click PDF). The OSS core ships no report
+          route; an installed add-on registers /report through the
+          argus.viewers.browser_plugins seam. The link is shown regardless so
+          the capability is discoverable: with the add-on it opens the real
+          report (which carries the Download-PDF button); without it, /report
+          returns the "Enterprise feature → contact us" upsell. Opens in a new
+          tab — it's a standalone document, not app chrome. -#}
+      <a href="/report{% if scan_param %}?scan={{ scan_param | urlencode }}{% endif %}"
+         target="_blank" rel="noopener">Report&#8239;<span aria-hidden="true">↗</span></a>
       {#- Recent runs dropdown — only rendered when there are at
           least two scan-ready dirs under the launch root. Single-scan
           deployments (the common case for a one-off argus scan) get
@@ -60,6 +69,15 @@
       <a href="/picker"
          {% if _active_nav == "/picker" %}aria-current="page"{% endif %}>Switch scan</a>
 
+      {#- Command palette hint (Cmd/Ctrl-K). The keybinding works without
+          this button; it's a discoverable affordance + a click target.
+          command-palette.js wires the click and the keydown; with no JS
+          it's a harmless inert chip. -#}
+      <button type="button" class="cmdk-hint" data-cmdk-open
+              aria-label="Open command palette (Control or Command + K)">
+        <kbd>⌘K</kbd>
+      </button>
+
       {#- Theme toggle — flips between dark and light via a
           data-theme attribute on <html>. Defaults to the user's
           prefers-color-scheme until they click it, after which the
@@ -73,6 +91,29 @@
       </button>
     </nav>
   </header>
+
+  {#- Persistent scan-context bar (B0 IA). A slim sticky strip carrying the
+      identity of the scan in scope — project · commit · when it ran · finding
+      count — so context follows the user down every primary view. Rendered
+      only when a scan is loaded (scan_context_bar set by the route); omitted on
+      the picker / diff / error states. The time upgrades from a raw epoch to a
+      humanized string via scan-mtime.js (no-JS sees the integer, which is
+      harmless and rare). -#}
+  {% if scan_context_bar %}
+    <div class="scan-context-bar" role="status" aria-label="Active scan context">
+      <span class="scb-project">{{ scan_context_bar.project }}</span>
+      {% if scan_context_bar.commit %}
+        <span class="scb-sep" aria-hidden="true">·</span>
+        <span class="scb-commit">commit <code>{{ scan_context_bar.commit }}</code></span>
+      {% endif %}
+      {% if scan_context_bar.mtime %}
+        <span class="scb-sep" aria-hidden="true">·</span>
+        <time class="scan-mtime scb-time" data-epoch="{{ scan_context_bar.mtime }}">{{ scan_context_bar.mtime | int }}</time>
+      {% endif %}
+      <span class="scb-sep" aria-hidden="true">·</span>
+      <span class="scb-count">{{ scan_context_bar.total }} finding{{ scan_context_bar.total != 1 and 's' or '' }}</span>
+    </div>
+  {% endif %}
 
   <main>
     {% if scan_label %}
@@ -95,5 +136,13 @@
       prefers-color-scheme rule in argus.css has already done the
       right thing. -#}
   <script src="/static/theme-toggle.js" defer></script>
+  {#- Command palette (Cmd/Ctrl-K): a fuzzy launcher over the page's nav.
+      Vanilla, external (strict CSP), builds its overlay in the DOM and
+      indexes existing links — no-ops cleanly with no JS. -#}
+  <script src="/static/command-palette.js" defer></script>
+  {#- Humanizes any .scan-mtime[data-epoch] (the sticky context bar's time +
+      the dashboard's scan-metadata panel) from raw epoch to a locale string.
+      No-op under no-JS — the integer stays, which is harmless. -#}
+  <script src="/static/scan-mtime.js" defer></script>
 </body>
 </html>

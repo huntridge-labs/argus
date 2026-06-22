@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -25,6 +26,11 @@ from fastapi.templating import Jinja2Templates
 from argus.viewers.browser.log_view import filter_entries, load_log
 from argus.viewers.terminal.export import CONTENT_TYPES, RENDERERS
 from argus.viewers.terminal.loader import RESULTS_FILENAME, flatten_findings, load_summary
+from argus.core.run_discovery import (
+    discover_runs as _collect_recent_scans,
+    is_within as _is_within,
+    list_directory as _list_directory,
+)
 from argus.core.findings_view import (
     ViewState,
     compute_summary,
@@ -34,6 +40,8 @@ from argus.core.findings_view import (
     unique_scanners,
 )
 from argus.core.models import Severity
+from argus.core import svg_charts, trends
+from argus.core.enrichment import EnrichmentService, is_cve, risk_badge, risk_score
 
 
 logger = logging.getLogger("argus.viewers.browser")
@@ -49,20 +57,6 @@ _STATIC_DIR = _SERVE_DIR / "static"
 # template edit that re-introduces an inline style= will fail loudly
 # in devtools rather than silently loosen the policy.
 _CSP = "default-src 'self'; style-src 'self'; script-src 'self'"
-
-
-def _is_within(child: Path, root: Path) -> bool:
-    """Return True if ``child`` is ``root`` itself or a descendant of it.
-
-    Both paths must already be resolved (symlinks followed, absolute).
-    Uses ``relative_to`` rather than string-prefix matching so we don't
-    false-positive on ``/foo-bar`` when the root is ``/foo``.
-    """
-    try:
-        child.relative_to(root)
-    except ValueError:
-        return False
-    return True
 
 
 def _resolve_scan(
@@ -211,120 +205,158 @@ def _scan_metadata(scan_summary, resolved: Path | None) -> dict | None:
     }
 
 
-def _collect_recent_scans(
-    launch_root: Path, current: Path | None = None, *, limit: int = 12,
-) -> list[dict]:
-    """Return scan-ready directories under ``launch_root``, newest first.
+def _context_bar(scan_summary, resolved: Path | None) -> dict | None:
+    """Persistent scan-context strip for the sticky bar under the header (B0 IA).
 
-    Used to populate the header's "Recent runs" dropdown so a user can
-    switch between runs without visiting the picker. Each dict carries::
+    Surfaces the identity of the scan currently in scope — project, source
+    commit, when it ran, and the finding count — so that context follows the
+    user down every primary view rather than living only on the dashboard.
 
-        {
-            "path":       absolute path to the scan dir (or .json),
-            "label":      short display name (dir basename),
-            "is_current": True if path matches ``current`` (resolved),
-            "count":      finding count peeked from the JSON,
-            "mtime":      file mtime as epoch seconds (sort key),
-        }
-
-    Scope rules:
-    - If ``launch_root`` itself contains ``argus-results.json``, we
-      treat it as a single scan and look at its parent for siblings.
-      This is the common "argus view browser <one-run-dir>" case.
-    - Otherwise we iterate ``launch_root``'s immediate subdirs and
-      keep those that are scan-ready. This is the "argus view browser
-      <runs parent>" case.
-
-    Both cases apply a symlink de-dup: ``latest/`` resolves to a
-    timestamped sibling, so we won't render both rows for what is
-    effectively the same run.
-
-    ``limit`` caps the list length. 12 is a soft cap that covers
-    ~a fortnight of daily runs without drowning the nav.
+    Returns ``None`` when no scan is loaded (picker, diff, error states) so the
+    bar is simply omitted rather than rendering an empty shell. ``project`` is
+    the repo-root (or cwd) basename when the scan recorded one, falling back to
+    the results directory name.
     """
-    launch_root = launch_root.resolve()
-
-    # Where do we look for scan-ready dirs?
-    if (launch_root / RESULTS_FILENAME).is_file():
-        parent = launch_root.parent
-    else:
-        parent = launch_root
-
-    try:
-        candidates = list(parent.iterdir())
-    except (PermissionError, FileNotFoundError):
-        return []
-
-    # Include the parent itself if it's scan-ready (direct drop case).
-    if (parent / RESULTS_FILENAME).is_file():
-        candidates.insert(0, parent)
-
-    seen_resolved: set[Path] = set()
-    scans: list[dict] = []
-    # Normalize ``current`` to the directory. Callers pass either the
-    # scan directory or the ``argus-results.json`` inside it (that's
-    # what _load_scan returns); collapse to the dir so comparisons
-    # match resolved candidate dirs below.
-    current_resolved: Path | None = None
-    if current is not None:
-        resolved_current = current.resolve()
-        current_resolved = (
-            resolved_current.parent if resolved_current.is_file()
-            else resolved_current
-        )
-
-    for c in candidates:
+    if scan_summary is None:
+        return None
+    ctx = getattr(scan_summary, "scan_context", None)
+    repo_root = (ctx.repo_root or ctx.cwd) if ctx else ""
+    project = Path(repo_root).name if repo_root else (resolved.parent.name if resolved else "")
+    mtime = None
+    if resolved is not None:
         try:
-            if not c.is_dir():
-                continue
-            results_file = c / RESULTS_FILENAME
-            if not results_file.is_file():
-                continue
-            # Dedup via the symlink-resolved directory so ``latest/``
-            # collapses into the timestamped dir it points at.
-            resolved = c.resolve()
-            if resolved in seen_resolved:
-                continue
-            seen_resolved.add(resolved)
+            mtime = resolved.stat().st_mtime
+        except OSError:
+            mtime = None
+    return {
+        "project": project or "scan",
+        "commit": (ctx.commit_sha[:7] if ctx and ctx.commit_sha else ""),
+        "mtime": mtime,
+        "total": scan_summary.total_count,
+    }
 
-            # Cheap finding-count peek — the same pattern ``_list_directory``
-            # uses when flagging scan-ready picker rows. Doesn't load the
-            # whole scan; just counts the "findings" arrays. Every access
-            # is type-guarded so a malformed results file (a stray list,
-            # a nested non-dict result block, string under ``findings``)
-            # degrades to count=0 instead of crashing the dropdown.
-            count = 0
-            try:
-                with results_file.open() as fh:
-                    data = json.load(fh)
-                if isinstance(data, dict):
-                    for r in data.get("results", []) or []:
-                        if isinstance(r, dict):
-                            findings = r.get("findings") or []
-                            if isinstance(findings, list):
-                                count += len(findings)
-            except (OSError, json.JSONDecodeError):
-                count = 0
 
-            is_current = current_resolved is not None and resolved == current_resolved
-            scans.append({
-                "path": str(c),
-                "label": c.name,
-                "is_current": is_current,
-                "count": count,
-                "mtime": results_file.stat().st_mtime,
-            })
-        except (PermissionError, OSError):
-            # Unreadable scan dir — skip without failing the whole
-            # dropdown. Better a short list than no dropdown at all.
+# Plugin seam (open-core extension point). Third-party / enterprise packages
+# register a ``register(app)`` callable under this entry-point group to add
+# routes or capabilities to the browser viewer (e.g. a server-side PDF report).
+# Mirrors the ``argus.reporters`` entry-point pattern. The OSS viewer ships no
+# plugins, so this is a no-op by default.
+_BROWSER_PLUGIN_GROUP = "argus.viewers.browser_plugins"
+
+
+def _discover_browser_plugins() -> list:
+    """Load ``register(app)`` callables from the browser-plugin entry-point group.
+
+    A broken or missing entry point is logged and skipped — discovery never
+    raises, so a bad plugin can't stop the viewer from starting.
+    """
+    from importlib.metadata import entry_points
+
+    plugins: list = []
+    try:
+        eps = entry_points(group=_BROWSER_PLUGIN_GROUP)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("browser plugin discovery failed: %s", exc)
+        return plugins
+    for ep in eps:
+        try:
+            plugins.append(ep.load())
+        except Exception as exc:
+            logger.warning("browser plugin '%s' failed to load: %s", ep.name, exc)
+    return plugins
+
+
+def _mount_browser_plugins(app: FastAPI, plugins: list | None) -> None:
+    """Let installed plugins register extra routes/capabilities on ``app``.
+
+    ``plugins`` is a list of ``register(app)`` callables; ``None`` discovers
+    them via the ``argus.viewers.browser_plugins`` entry-point group. A plugin
+    that raises is logged and skipped so one bad plugin can't take down the
+    viewer. Plugins read ``app.state`` (notably ``root`` and ``load_scan``) and
+    add routes via the FastAPI ``app`` (e.g. an add-on that generates a report).
+    """
+    if plugins is None:
+        plugins = _discover_browser_plugins()
+    for register in plugins:
+        try:
+            register(app)
+        except Exception as exc:
+            logger.warning("browser plugin failed to register: %s", exc)
+
+
+#: Where users are pointed to learn about / acquire enterprise capabilities.
+_ENTERPRISE_CTA = "https://www.huntridgelabs.com/"
+
+#: Enterprise report routes. When the report add-on is installed it registers
+#: these (the formal HTML report + the one-click server-side PDF); the OSS core
+#: ships no report. To avoid a bare 404 on these well-known paths, the core
+#: registers a friendly upsell *only for the ones no plugin claimed* — so an
+#: installed plugin always wins (no route shadowing).
+_ENTERPRISE_REPORT_ROUTES = ("/report", "/report.pdf")
+
+_REPORT_UPSELL_HTML = (
+    "<!doctype html><html><head><meta charset='utf-8'>"
+    "<title>Argus report</title></head><body style='font-family:system-ui;"
+    "max-width:40rem;margin:4rem auto;line-height:1.5'>"
+    "<h1>Report generation is an Argus Enterprise feature</h1>"
+    "<p>The authoritative, provenance-bearing security report (HTML &amp; PDF) "
+    "is not part of the open-source viewer. The dashboard and findings views "
+    "are always free.</p>"
+    f"<p><a href='{_ENTERPRISE_CTA}'>Learn more or request access &rarr;</a></p>"
+    "</body></html>"
+)
+_REPORT_UPSELL_TEXT = (
+    "Report generation is an Argus Enterprise feature; it is not installed. "
+    f"Learn more or request access: {_ENTERPRISE_CTA}\n"
+)
+
+
+def _mount_report_upsell(app: FastAPI) -> None:
+    """Register a 402 upsell on enterprise report paths no plugin claimed.
+
+    Called after :func:`_mount_browser_plugins`, so when the report add-on is
+    installed its real routes already exist and are left untouched; only the
+    *absent* ones get the "this is an Enterprise feature" placeholder instead of
+    a bare 404.
+    """
+    claimed = {getattr(r, "path", None) for r in app.router.routes}
+    for path in _ENTERPRISE_REPORT_ROUTES:
+        if path in claimed:
             continue
+        if path.endswith(".pdf"):
+            async def _pdf_upsell() -> Response:
+                return Response(
+                    _REPORT_UPSELL_TEXT, status_code=402,
+                    media_type="text/plain; charset=utf-8",
+                )
+            app.add_api_route(path, _pdf_upsell, methods=["GET"])
+        else:
+            async def _html_upsell() -> Response:
+                return HTMLResponse(_REPORT_UPSELL_HTML, status_code=402)
+            app.add_api_route(path, _html_upsell, methods=["GET"],
+                              response_class=HTMLResponse)
 
-    scans.sort(key=lambda s: s["mtime"], reverse=True)
-    return scans[:limit]
 
+def create_app(
+    root: str | None = None,
+    *,
+    enrich: bool | None = None,
+    enrichment_service: object | None = None,
+    browser_plugins: list | None = None,
+) -> FastAPI:
+    """Build the FastAPI app, wire templates / static, register routes.
 
-def create_app(root: str | None = None) -> FastAPI:
-    """Build the FastAPI app, wire templates / static, register routes."""
+    ``enrich`` opts into the risk (EPSS / CISA KEV) + reachability columns
+    (Phase B2). It is **off by default**, preserving the read-only /
+    no-egress posture: only when enabled does the server reach the EPSS/KEV
+    APIs or scan local source. ``None`` reads ``ARGUS_VIEW_ENRICH`` from the
+    environment. ``enrichment_service`` is injectable for tests.
+
+    ``browser_plugins`` is the extension seam: a list of ``register(app)``
+    callables (``None`` discovers them via the ``argus.viewers.browser_plugins``
+    entry-point group). OSS ships none; enterprise / third-party packages use it
+    to add routes (e.g. the server-side PDF report). Injectable for tests.
+    """
     app = FastAPI(
         title="Argus",
         description="Local read-only view of argus scan findings.",
@@ -333,6 +365,11 @@ def create_app(root: str | None = None) -> FastAPI:
         redoc_url=None,
     )
     app.state.root = Path(root).resolve() if root else Path.cwd()
+    app.state.enrich = (
+        os.environ.get("ARGUS_VIEW_ENRICH", "").strip().lower() in ("1", "true", "yes")
+        if enrich is None else bool(enrich)
+    )
+    app.state.enrichment_service = enrichment_service
 
     import time as _time
     templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
@@ -377,7 +414,7 @@ def create_app(root: str | None = None) -> FastAPI:
         # even though the path ends in .ico.
         return FileResponse(_STATIC_DIR / "favicon.png", media_type="image/png")
 
-    def _base_context(resolved: Path | None = None) -> dict:
+    def _base_context(resolved: Path | None = None, scan_summary=None) -> dict:
         """Shared context keys threaded into every HTML render.
 
         Recent scans power the header dropdown — always visible so
@@ -386,9 +423,15 @@ def create_app(root: str | None = None) -> FastAPI:
         that don't have a single "current" scan (the picker, the diff
         view) pass ``None``; nothing is highlighted but the list still
         renders.
+
+        ``scan_summary`` (when the route has already loaded one) feeds the
+        sticky scan-context bar under the header — project / commit / scan
+        time / finding count. Routes without a single loaded scan leave it
+        ``None`` and the bar is omitted.
         """
         return {
             "recent_scans": _collect_recent_scans(app.state.root, resolved),
+            "scan_context_bar": _context_bar(scan_summary, resolved),
         }
 
     def _load_scan(scan: str | None) -> tuple[object, Path | None, str | None]:
@@ -407,6 +450,27 @@ def create_app(root: str | None = None) -> FastAPI:
         except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
             return None, None, str(exc)
 
+    def _dashboard_charts(
+        findings: list, recent_scans: list[dict], *, total: int | None = None,
+    ) -> dict:
+        """Inline SVG charts for the dashboard (Phase B1).
+
+        Dependency-free (``argus.core.svg_charts`` over ``argus.core.trends``
+        data): a severity donut, a findings-over-time trend (from the run
+        history that powers the header dropdown), and a by-scanner bar chart.
+        ``total`` is the summary's authoritative finding count, shown in the
+        donut centre so it always matches the "Total findings" card. The
+        trend is omitted with fewer than two runs.
+        """
+        series = trends.run_count_series(recent_scans)
+        return {
+            "severity": svg_charts.severity_donut(
+                trends.severity_breakdown(findings), size=180, center=total,
+            ),
+            "trend": svg_charts.trend_line(series, width=300, height=90) if len(series) >= 2 else "",
+            "scanners": svg_charts.bar_chart(trends.scanner_breakdown(findings)[:6], width=340),
+        }
+
     @app.get("/", response_class=HTMLResponse)
     async def dashboard(request: Request, scan: str | None = None) -> Response:
         """Executive-summary dashboard for the active scan context.
@@ -416,17 +480,24 @@ def create_app(root: str | None = None) -> FastAPI:
         scan by pointing back at ``/?scan=...``.
         """
         scan_summary, resolved, error = _load_scan(scan)
+        base = _base_context(resolved, scan_summary)
         summary = None
+        charts = None
         if scan_summary is not None:
-            summary = compute_summary(flatten_findings(scan_summary), top_n=3)
+            findings = flatten_findings(scan_summary)
+            summary = compute_summary(findings, top_n=3)
+            charts = _dashboard_charts(
+                findings, base.get("recent_scans") or [], total=summary.get("total"),
+            )
         return templates.TemplateResponse(
             request=request,
             name="summary.html.j2",
             context={
-                **_base_context(resolved),
+                **base,
                 "scan_param": scan,
                 "scan_label": str(resolved) if resolved else None,
                 "summary": summary,
+                "charts": charts,
                 "metadata": _scan_metadata(scan_summary, resolved),
                 "error": error,
             },
@@ -494,6 +565,32 @@ def create_app(root: str | None = None) -> FastAPI:
         matched.sort(key=view_state.sort_key_fn(), reverse=view_state.sort_reverse)
         return matched
 
+    def _build_risk_cells(findings: list) -> list:
+        """Per-row risk (EPSS / CISA KEV) cells, aligned with ``findings``.
+
+        Opt-in path only (``app.state.enrich``): fetches EPSS/CISA KEV for the
+        CVEs in view (cached, offline-degrading). Returns a list the same
+        length as ``findings`` (``None`` where a row has no CVE signal).
+
+        Reachability is deliberately *not* surfaced here: it scans source
+        files, which belongs in the trusted-shell terminal viewer (Phase 12),
+        not the read-only browser. The browser stays read-only / no-source-scan.
+        """
+        cves = sorted({f.cve.upper() for f in findings if f.cve and is_cve(f.cve)})
+        service = app.state.enrichment_service or EnrichmentService()
+        risk_map = service.enrich(cves) if cves else {}
+        cells: list = []
+        for f in findings:
+            enr = risk_map.get(f.cve.upper()) if f.cve else None
+            if enr is None:
+                cells.append(None)
+                continue
+            cells.append({
+                "badge": risk_badge(enr),
+                "score": round(risk_score(f.severity, enr) * 100),
+            })
+        return cells
+
     @app.get("/findings", response_class=HTMLResponse)
     async def findings(
         request: Request,
@@ -518,7 +615,7 @@ def create_app(root: str | None = None) -> FastAPI:
         # typo in the URL doesn't bubble into KeyError territory.
         active_sort = sort if sort in _ALLOWED_SORTS else "severity_desc"
         context = {
-            **_base_context(resolved),
+            **_base_context(resolved, scan_summary),
             "scan_param": scan,
             "scan_label": str(resolved) if resolved else None,
             "summary": scan_summary,
@@ -576,11 +673,18 @@ def create_app(root: str | None = None) -> FastAPI:
                 "fix": any(f.metadata.get("fixed_version") for f in matched),
                 "sbom": any(f.metadata.get("sbom_source") for f in matched),
             }
+            # Risk (EPSS/KEV) + reachability columns — opt-in (Phase B2).
+            context["enrich_on"] = app.state.enrich
+            context["risk_cells"] = (
+                _build_risk_cells(matched) if app.state.enrich else []
+            )
         else:
             # No scan loaded → template paths that check show_columns
             # still need the dict keys to exist; default to True so
             # no branch throws on access during error-state rendering.
             context["show_columns"] = {"package": True, "fix": True, "sbom": True}
+            context["enrich_on"] = False
+            context["risk_cells"] = []
 
         # ?partial=1 returns just the table fragment for auto-filter.js
         # to swap in, skipping the layout. Non-JS clients never set it
@@ -786,7 +890,7 @@ def create_app(root: str | None = None) -> FastAPI:
             request=request,
             name="log.html.j2",
             context={
-                **_base_context(resolved),
+                **_base_context(resolved, scan_summary),
                 "scan_param": scan,
                 "scan_label": str(resolved) if resolved else None,
                 "log_available": log_data is not None,
@@ -932,90 +1036,15 @@ def create_app(root: str | None = None) -> FastAPI:
             },
         )
 
+    # Plugin seam: expose the scan-resolution + report-render helpers that
+    # extension packages build on (e.g. an add-on that generates a report
+    # resolves the active scan via load_scan), then let installed plugins
+    # register their routes. OSS ships no plugins, so this is a no-op by default.
+    app.state.load_scan = _load_scan
+    _mount_browser_plugins(app, browser_plugins)
+    _mount_report_upsell(app)
+
     return app
-
-
-# Common noise in argus workflows; hidden from the default picker listing
-# but surfaced via ``?show_hidden=1`` when the user actually needs to dig.
-_HIDDEN_BY_DEFAULT = {
-    "node_modules", ".git", ".venv", "venv", "__pycache__",
-    ".tox", ".pytest_cache", ".mypy_cache",
-}
-
-
-def _list_directory(
-    base: Path,
-    *,
-    show_hidden: bool,
-) -> tuple[list[dict], str | None]:
-    """Return ``(entries, error)`` for picker consumption.
-
-    Each entry dict carries:
-      - ``name``    : bare filename
-      - ``path``    : absolute path (string, ready for URL encoding)
-      - ``is_dir``  : True if it's a directory
-      - ``is_results_file`` : True if it's named argus-results.json
-      - ``has_results``    : True if it's a directory that contains
-                             argus-results.json directly inside
-      - ``finding_count``  : total findings if has_results (cheap
-                             read — one open+json.load) else None
-
-    Directories first, then files, alphabetical within each group.
-    Readability trumps performance here: picker content is interactive
-    and users wait at the rendering boundary, so we do the small I/O
-    that makes the status column useful.
-    """
-    import json as _json
-    try:
-        raw = sorted(base.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
-    except PermissionError as exc:
-        return [], f"Permission denied: {exc}"
-    except OSError as exc:
-        return [], f"Could not list directory: {exc}"
-
-    entries: list[dict] = []
-    for item in raw:
-        name = item.name
-        # Filter rules: hide dotfiles and the well-known build/cache
-        # directories unless the user explicitly opted in.
-        if not show_hidden and (
-            name.startswith(".") or name in _HIDDEN_BY_DEFAULT
-        ):
-            continue
-
-        is_dir = item.is_dir()
-        is_results_file = not is_dir and name == RESULTS_FILENAME
-
-        has_results = False
-        finding_count = None
-        if is_dir:
-            candidate = item / RESULTS_FILENAME
-            if candidate.is_file():
-                has_results = True
-                # Peek at the finding count so the picker row can
-                # advertise scan size — users picking among dated
-                # scan dirs can see which one had activity worth
-                # looking at. Best-effort only; a parse failure
-                # reduces to "no count shown" rather than erroring.
-                try:
-                    data = _json.loads(candidate.read_text(encoding="utf-8"))
-                    finding_count = sum(
-                        len(r.get("findings", []))
-                        for r in data.get("results", [])
-                    )
-                except (OSError, _json.JSONDecodeError, TypeError):
-                    finding_count = None
-
-        entries.append({
-            "name": name,
-            "path": str(item),
-            "is_dir": is_dir,
-            "is_results_file": is_results_file,
-            "has_results": has_results,
-            "finding_count": finding_count,
-        })
-
-    return entries, None
 
 
 def run_app(

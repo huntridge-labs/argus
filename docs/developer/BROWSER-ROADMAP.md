@@ -1,0 +1,203 @@
+# Argus Browser & Reporting Roadmap
+
+The browser viewer (`argus view --interface=browser`) is the right surface
+for an audience the terminal isn't built for: stakeholders who want to *see*
+the security posture, and auditors who need an authoritative artifact. This
+roadmap turns it from a read-only findings viewer into the **report-and-share
+surface** — culminating in a formal, government-grade PDF vulnerability
+report.
+
+It's the deliberate alternative to a web Console (see
+[`CONSOLE-ROADMAP.md`](CONSOLE-ROADMAP.md) Phase 11, *not pursued*): rather
+than serving the operate-from TUI over a browser — clunky, and a security
+surface — we invest in what the browser does that a terminal fundamentally
+can't.
+
+This is an epic, built the same way as the Console: each phase its own green
+PR with tests + docs, merged into the integration branch
+(`feat/tui-explorer-and-scan-runner`).
+
+---
+
+## Principles
+
+- **The read-only boundary holds.** The browser viewer stays read-only,
+  `127.0.0.1`, no repo mutation. Nothing here runs scans, writes config, or
+  applies fixes — that's the terminal's trusted-shell job.
+- **Reuse the shared UI-free cores.** Charts, risk, and reachability come
+  from `argus/core/` modules built for the Console epic
+  (`trends`, `enrichment`, `reachability`) — the browser is just another
+  front-end over the same logic. No console code is imported.
+- **Dependency-conscious, with one deliberate exception.** Everything is
+  zero-new-runtime-dep (inline SVG, vanilla JS — the viewer's existing
+  style) *except* the formal PDF, whose engine lives behind an opt-in
+  `[report]` extra (see Phase B4). A supply-chain tool minimises its own
+  surface; the one heavy dependency is isolated and justified.
+
+## North star
+
+A teammate runs `argus scan`, opens the browser viewer, and can: read the
+findings with real charts; sort by real-world risk (EPSS/KEV) and see which
+deps are actually imported; share a URL to an exact filtered slice; and
+generate **one PDF** — counts, trends, charts, breakdowns, full findings,
+and the cryptographic provenance of the scan — that they can hand to an
+auditor or a government body as the authoritative record of "this is what we
+scanned and what we found."
+
+---
+
+## Phase B0 — Design system & motion foundation (lands first)
+
+**Status — ✅ shipped.** Design tokens, the command palette, the motion layer
+(View Transitions, count-up, draw-on), and the crafted theme toggle landed with
+B1. The IA piece shipped last: **top nav + a persistent sticky scan-context
+bar** (project · commit · scan time · finding count) on the primary views —
+chosen over a full left sidebar, which reads sparse and over-engineered for a
+five-destination localhost tool (the lower-risk choice that keeps the clean top
+nav while still delivering the persistent-context signal). `_context_bar` builds
+it; `_base_context` threads it through.
+
+The investment that makes the difference between "internal tool" and
+"product built by a large, mature company" — and the base the charts (B1)
+and report (B4) sit on. All dependency-light: CSS custom properties, the
+native View Transitions API, SVG, and small vanilla JS. No React / GSAP /
+Tailwind.
+
+**Build**
+- **Design tokens** (`argus.css` custom properties): a disciplined colour
+  system (brand dark base + a consistent **severity scale** — crit
+  `#e74c3c`, high `#e67e22`, med `#f1c40f`, low `#3498db`, info muted — used
+  identically across badge, row accent, donut, chart), a type scale, an 8px
+  spacing scale, radii, an elevation/shadow system, and `:focus-visible`
+  rings. The quiet craft that signals intention (Linear / Vercel / Stripe).
+- **Information architecture**: top nav + a **persistent sticky scan-context
+  bar** carrying scan context (project · commit · scan time · finding count)
+  on every primary view — *shipped in favour of a left sidebar* (see Status
+  above); overview→drilldown so every dashboard tile links into a pre-filtered
+  findings view (Snyk / GitHub Security / Wiz pattern).
+- **Command palette** (Cmd/Ctrl-K, vanilla JS) — browser parity with the
+  TUI's `Ctrl+P`; jump to any view / filter.
+- **Motion primitives**, each gated behind
+  `@media (prefers-reduced-motion: no-preference)`:
+  - **View Transitions API** (`@view-transition { navigation: auto; }`) —
+    cross-document page transitions that make a server-rendered MPA feel
+    SPA-smooth with zero JS framework. The headline; almost no security tool
+    does this.
+  - Animated **count-up** for exec numbers (tiny JS), **staggered reveal**
+    of finding rows/cards (CSS `animation-delay` by index), **skeleton
+    shimmer** loading states (CSS), premium easing on hover/focus/select
+    (`cubic-bezier(0.4, 0, 0.2, 1)`, 150–250ms).
+- **Crafted empty states** (not blank pages) + a theme toggle that animates.
+
+**Effort/Risk** — moderate; pure front-end, no new dependency, fully
+reduced-motion-accessible. The reusable bits (tokens, transition rules,
+count-up/stagger helpers) make every later phase faster.
+
+## Phase B1 — Real charts on the dashboard
+
+The dashboard has no visualisations today. The browser is where charts
+belong (the terminal only got Unicode bars out of necessity). Charts also
+get **draw-on animation** (animating SVG `stroke-dashoffset` for the donut
+ring + trend line) on the B0 motion foundation — reduced-motion-gated.
+
+**Build** — inline **SVG** charts (hand-rolled, **no** `d3`/`plotly`/chart
+library — matches the viewer's vanilla `argus.css` + JS): a severity donut,
+a findings-over-runs trend line, and by-scanner / by-package bars. The data
+comes from `argus.core.trends` (already unit-tested); a small UI-free
+`svg`-string helper (testable) emits the markup, the Jinja template embeds
+it. Degrades to the existing tables where data is absent.
+
+## Phase B2 — Risk & reachability columns
+
+**Build** — surface the Console epic's intelligence in the read-only viewer:
+an **EPSS / KEV risk** badge + sortable risk column (`argus.core.enrichment`)
+and an **"imported in source"** reachability indicator
+(`argus.core.reachability`). Enrichment is a *server-side* fetch (public CVE
+ids only, cached) — **opt-in** (a config/flag), honouring the same offline
+posture as the terminal. Read-only: these annotate, never mutate.
+
+## Phase B3 — URL-addressable views & dependency drilldown
+
+**Build** — lean into the browser's superpower, the URL: bookmarkable,
+shareable links for a filtered slice (`/findings?severity=high&scanner=osv`)
+and a deep-link/anchor to a specific finding, so "here are the 3 criticals to
+look at" is a pasteable link. Plus an interactive, collapsible
+**dependency-tree / SBOM drilldown** ("why is this package here?") — HTML
+does nesting + expand/collapse far better than a TUI.
+
+## Phase B4 — Formal PDF vulnerability report (the centrepiece)
+
+**Status — ✅ built, then relocated to an add-on.** Report generation (the
+UI-free model + provenance assembly, the standalone `report.html.j2` +
+`report.css`, and the `/report` HTML + `/report.pdf` server-side routes) is an
+Argus add-on, **not** part of the OSS core — serving the report as HTML in OSS
+would let a browser print it to PDF and give away the paid artifact. The OSS
+browser viewer exposes `app.state.load_scan` + the
+`argus.viewers.browser_plugins` seam; the add-on builds the report from public
+core helpers (`findings_view`, `svg_charts`, `trends`, `run_discovery`, the
+loader) and registers both routes, gated by a `report` entitlement. See
+ADR-034. The design notes below are retained as history.
+
+A comprehensive, **authoritative** PDF — the artifact you hand to an auditor
+or government body to make formal policy decisions about scanned software.
+
+**Build**
+- A new report **route + template** assembling: a **cover page** (project,
+  scan timestamp, argus version), an **executive summary** (counts +
+  severity breakdown + trend), **charts** (reusing B1's SVG), per-severity /
+  per-scanner / per-product **breakdowns**, the **full findings** tables
+  (with CVE/CWE/location/package/fix), and a **provenance appendix**.
+- **Provenance appendix — the authoritative facts**, pulled from what Argus
+  already records: **argus version** (`core/version.py`), **scanner
+  toolchain provenance** (`core/toolchain.py` — the `toolchain` block:
+  per-scanner image digests + signature-verification status, #243), the
+  **signed scan attestation** (`core/attest.py` — OpenVEX in-toto, subject =
+  image digests + repo commit, #244), and **commit SHA / repo root**
+  (`ScanSummary`). This is what makes the PDF *authoritative*, not just
+  pretty.
+- **Server-side one-click PDF** via **WeasyPrint** (HTML/CSS/SVG → PDF),
+  behind an opt-in **`[report]` extra** — its native stack (pango/cairo)
+  can't be a core dependency, so the feature errors with a clear
+  `pip install 'argus-security[report]'` hint when absent (the same
+  guarded-extra pattern the Console epic used). The report's HTML doubles as
+  an on-screen view; the PDF is the frozen, signed-provenance record.
+- **UI-free core** (`argus/core/report.py`, testable without WeasyPrint):
+  assembles the report *model* (sections, provenance facts, chart data) from
+  a `ScanSummary`; the HTML render + PDF conversion are the thin,
+  dependency-bearing edges.
+
+**Effort/Risk** — the largest phase; the provenance assembly + report model
+are pure/tested, the WeasyPrint edge is guarded and smoke-tested.
+
+## Phase B5 — Accessibility & responsive polish
+
+**Build** — screen-reader semantics (ARIA on charts/tables), keyboard
+navigation, and a responsive layout so the read-only report reads well on a
+tablet / projector for the non-technical / exec audience the browser serves.
+
+---
+
+## Build order
+
+Merge-train into `feat/tui-explorer-and-scan-runner`, foundation-first:
+**B0 → B1 → B2 → B3 → B4 → B5**. B0 (design system + motion) lands first
+because the charts and report sit on it; B1's SVG charts are reused by B4's
+report; B4 (the formal report) is the centrepiece everything builds toward;
+B5 finishes the accessibility/responsive pass once the content is there.
+
+## Decisions
+
+- **PDF engine = WeasyPrint, behind a `[report]` extra** (decided). Chosen
+  for HTML/CSS/SVG fidelity so the report and the on-screen HTML share one
+  template. Native-lib install is documented; the feature is opt-in, never a
+  core dependency.
+- **Charts = inline SVG, no chart library** (decided) — keeps the
+  zero-new-dep posture for everything except the isolated PDF extra.
+- **Enrichment in the browser is opt-in** (server-side egress of public CVE
+  ids) — same posture as the terminal's `i` action.
+- **Motion stack = native web only** (decided, B0): CSS custom properties +
+  the View Transitions API + CSS animations + small vanilla JS. No
+  React / GSAP / framer-motion / Tailwind. Every animation is gated behind
+  `prefers-reduced-motion` so it degrades to a static, fully-accessible UI.
+  This keeps the "feels like a mature product" polish at zero new runtime
+  dependency — the same discipline the Console epic held.
