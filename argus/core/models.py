@@ -395,6 +395,12 @@ class ScanSummary:
     # per-image verify results; None when built outside the engine or when no
     # container image was pulled (e.g. an all-local-binary run).
     toolchain: Optional[dict] = None
+    # Installed Argus add-on packages (issue: whole-picture provenance): the
+    # third-party/commercial extensions present when this scan ran, discovered
+    # generically from the plugin entry-point groups (see argus.core.addons).
+    # Each entry is {"name", "version", "groups"}. None when built outside the
+    # engine or when no add-ons are installed (an OSS-only run).
+    addons: Optional[list] = None
 
     @property
     def critical_count(self) -> int:
@@ -452,6 +458,8 @@ class ScanSummary:
             out["scan_context"] = self.scan_context.to_dict()
         if self.toolchain is not None:
             out["toolchain"] = self.toolchain
+        if self.addons is not None:
+            out["addons"] = self.addons
         return out
 
     @classmethod
@@ -470,4 +478,5 @@ class ScanSummary:
             severity_threshold=threshold,
             scan_context=scan_context,
             toolchain=data.get("toolchain"),
+            addons=data.get("addons"),
         )

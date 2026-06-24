@@ -3858,12 +3858,29 @@ def cmd_collect(args: argparse.Namespace) -> int:
 
 
 def _get_version() -> str:
-    """Return the package version string."""
+    """Return the version string: core version + any installed Argus add-ons.
+
+    Add-ons (commercial or third-party extensions that plug into Argus's plugin
+    seams) are listed beneath the core version so ``argus --version`` shows the
+    whole installed picture, not just core. Discovery is best-effort.
+    """
     try:
         from argus import __version__
-        return f"argus {__version__}"
+        base = f"argus {__version__}"
     except ImportError:
-        return "argus (unknown version)"
+        base = "argus (unknown version)"
+
+    try:
+        from argus.core.addons import installed_addons
+        addons = installed_addons()
+    except Exception:
+        addons = []
+
+    if not addons:
+        return base
+    lines = [base, "Installed add-ons:"]
+    lines += [f"  {addon['name']} {addon['version']}" for addon in addons]
+    return "\n".join(lines)
 
 
 def _show_scanner_help(scanner_name: str) -> None:
