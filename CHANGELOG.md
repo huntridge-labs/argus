@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.7.0](https://github.com/huntridge-labs/argus/compare/1.6.0...1.7.0) (2026-06-24)
+
+### Features
+
+* **core:** surface installed add-ons in `argus --version` + scan provenance ([#306](https://github.com/huntridge-labs/argus/issues/306)) ([2907fdb](https://github.com/huntridge-labs/argus/commit/2907fdb35ecc59833db549084b47e1bbe954aaa6))
+
 ## [1.6.0](https://github.com/huntridge-labs/argus/compare/1.5.0...1.6.0) (2026-06-22)
 
 ### Features

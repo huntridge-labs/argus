@@ -57,7 +57,7 @@ jobs:
 
       - name: Parse container config
         id: parse
-        uses: huntridge-labs/argus/.github/actions/parse-container-config@1.6.0
+        uses: huntridge-labs/argus/.github/actions/parse-container-config@1.7.0
         with:
           config_file: container-config.yml
 
@@ -81,7 +81,7 @@ jobs:
       matrix: ${{ fromJson(needs.setup.outputs.scan_matrix) }}
     steps:
       - name: Run ${{ matrix.scanner }} scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-container@1.6.0
+        uses: huntridge-labs/argus/.github/actions/scanner-container@1.7.0
         with:
           image_ref: ${{ matrix.image }}
           container_name: ${{ matrix.name }}
@@ -101,7 +101,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Generate combined summary
-        uses: huntridge-labs/argus/.github/actions/security-summary@1.6.0
+        uses: huntridge-labs/argus/.github/actions/security-summary@1.7.0
         with:
           summary_pattern: 'scanner-summary-container-*'
           title: '🐳 Container Security Scan Results'

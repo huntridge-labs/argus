@@ -209,7 +209,7 @@ the Rekor transparency log.
 At pull time, argus runs:
 
 ```
-cosign verify ghcr.io/huntridge-labs/argus/scanner-bandit:1.6.0 \
+cosign verify ghcr.io/huntridge-labs/argus/scanner-bandit:1.7.0 \
   --certificate-identity-regexp '^https://github\.com/huntridge-labs/argus/\.github/workflows/release\.yml@' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
 ```
@@ -283,7 +283,7 @@ locally, and scans (their images won't match our published digests):
 "toolchain": {
   "images": [
     {
-      "image": "ghcr.io/huntridge-labs/argus/scanner-bandit:1.6.0@sha256:…",
+      "image": "ghcr.io/huntridge-labs/argus/scanner-bandit:1.7.0@sha256:…",
       "digest": "sha256:…",
       "verification": "verified_cosign",
       "argus_owned": true,
@@ -389,7 +389,7 @@ step is usually enough:
 
 ```yaml
 - name: Run argus
-  uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.6.0
+  uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.7.0
   id: scan
   with:
     enable_code_security: true
