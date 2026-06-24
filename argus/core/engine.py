@@ -389,6 +389,12 @@ class ArgusEngine:
         from argus.core.toolchain import build_toolchain_provenance
         toolchain = build_toolchain_provenance(self._verify_results)
 
+        # Installed add-ons (whole-picture provenance): record which Argus
+        # extensions were present when this scan ran. None when none installed
+        # (an OSS-only run) so the field is omitted rather than an empty list.
+        from argus.core.addons import installed_addons
+        addons = installed_addons() or None
+
         # TODO: Add total_duration_ms to ScanSummary for audit trail.
         # Requires a model change (new field on the ScanSummary dataclass).
         # Per-scanner duration_ms is already recorded in each ScanResult.metadata.
@@ -397,6 +403,7 @@ class ArgusEngine:
             severity_threshold=self.config.reporting.severity_threshold,
             scan_context=ScanContext.capture(),
             toolchain=toolchain,
+            addons=addons,
         )
 
     def _prepare_jobs(
