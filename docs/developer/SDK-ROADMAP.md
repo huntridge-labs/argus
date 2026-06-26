@@ -212,6 +212,22 @@ calls that need to land before the integration touches argus's surfaces.
 
 ## In-flight initiatives
 
+### Argus Cloud (hosted scanning — an Enterprise capability)
+
+A **licensable capability of Argus Enterprise** (alongside Console and the
+report, not a separate tier): a CISO installs a least-privilege GitHub App,
+picks an org/repos, and the latest Argus suite runs on every merge to the
+default branch — no workflows, no CI. Results land in a multi-tenant
+dashboard (executive + engineer lenses) and an optional living issue.
+Because it runs on our compute, the license **parameterises** the
+engagement — repo scope and scan cadence are contract terms the control
+plane enforces, so unit economics are bounded by design. It reuses the
+engine, `ScanSummary`, `findings_view`, browser templates, cosign-verified
+images, and the existing entitlement mechanism — scanning logic stays in the
+SDK, never forked. Proposal + phased plan in
+[`CLOUD-ROADMAP.md`](CLOUD-ROADMAP.md); decision recorded as
+[`.ai/decisions.yaml`](../../.ai/decisions.yaml) ADR-035.
+
 ### Argus Console (TUI evolution)
 
 The terminal viewer is growing from post-scan triage into a full

@@ -2692,3 +2692,144 @@ decisions:
         (gated) — all behind the `report` license entitlement.
       - Tests: test_cli_console.py (provider/help dispatch); test_plugin_seam.py (a plugin
         builds from app.state.load_scan; OSS exposes no report helpers).
+  ADR-035:
+    title: Argus Cloud — hosted scanning as a licensable capability of Argus Enterprise
+    date: '2026-06-26'
+    status: proposed
+    context: |-
+      Argus has two products: the OSS SDK/CLI (AGPL-3.0, "run it yourself") and
+      Argus Enterprise, the commercial layer. ADR-034 established that Enterprise
+      is not a monolith but a set of independently-licensable capabilities
+      delivered through plugin seams and gated by license entitlements (today:
+      the Console home-hub and the provenance report). Both existing capabilities
+      run on the customer's own machine.
+      A large, already-paying market wants the opposite of "run it yourself": a
+      hosted service they don't operate. CISOs buy GitHub Advanced Security,
+      GitLab Ultimate, and Docker Scout precisely to avoid running scanners and
+      to get a posture dashboard. The hard part of a hosted offering already
+      exists in OSS — the engine orchestrates 18+ scanners, normalises output to
+      a canonical argus-results.json (ScanSummary), runs each scanner in a
+      cosign-verified container (argus/containers.py), and renders findings from
+      the FastAPI + Jinja2 browser viewer. A hosted edition is mostly
+      operationalising this behind a control plane, a GitHub App, and a license
+      boundary — not new scanning.
+      The defining difference from the existing capabilities: Cloud runs scans on
+      OUR compute. An unbounded license is therefore an unbounded bill. So the
+      license cannot be a mere unlock; it must PARAMETERISE the engagement (which
+      repos, how often) and the platform must enforce those bounds, or the
+      capability is not financially viable.
+    decision: |-
+      Add **Argus Cloud** as a new *licensable capability of Argus Enterprise*
+      (NOT a separate third tier). It sits alongside the Console and report
+      capabilities under the same entitlement mechanism (ADR-034); customers
+      license any subset — Console, report, Cloud, or a mix — and the contracting
+      team prices each engagement (per-seat, per-product, or a blend; TBD).
+      Engineering offers the options and the knobs, not the prices.
+      With the Cloud entitlement, a CISO installs a least-privilege GitHub App,
+      selects org/repos, and Argus runs the latest pinned suite on every merge to
+      the default branch — no workflows, no CI, no runners. Results land in a
+      multi-tenant dashboard (executive + engineer lenses over the same
+      ScanSummary) and an optional living "Argus security" issue. Hard boundaries:
+        - Scanning logic has ONE home (the OSS SDK). Cloud must never fork the
+          engine; the hosted worker runs `argus scan` exactly as a laptop would.
+        - COMPUTE IS LICENSE-CONTROLLED (the gating constraint). The Cloud
+          entitlement encodes repo scope (allowlist/cap) and scan cadence
+          (debounce/coalescing, per-period run budget, concurrency cap), enforced
+          by the control plane BEFORE a job is enqueued. A merge storm cannot fan
+          out into one full scan per merge. Every job is metered (worker seconds,
+          scanners run) against the tenant budget. At the ceiling we queue/defer
+          and prompt upsell — never run unbudgeted compute. Unit economics become
+          a contract term, not a hope.
+        - Billing must support BOTH per-seat (live unique-committer count) and
+          per-product (per-capability usage) bases, since contracting picks per
+          deal.
+        - GitHub App is contents:read only (never code write); per-job short-lived
+          tokens; workers are ephemeral, single-tenant, clone to tmpfs destroyed
+          after the run. Only findings + artifacts persist, never source.
+        - Findings inherit the SDK's secret redaction before storage/render, with
+          an explicit ingest-time test.
+        - The OSS self-host exit stays permanent; GHES/FedRAMP get a single-tenant
+          deployment of the same code (cadence ceilings then protect customer infra).
+      Architecture: the service runs in AWS. The initial offering is a GitHub App
+      a customer attaches to an org/repo-list. Ingest+API on ECS Fargate (behind
+      API Gateway/ALB) verifies the license, checks quota, and enqueues to SQS;
+      ephemeral single-tenant Fargate worker tasks pull the cosign-signed Argus
+      image from ECR (we maintain "the latest" via a release pipeline that
+      re-points the task definition), run `argus scan`, and self-destruct. Aurora
+      PostgreSQL holds tenant data + ScanSummary + the quota ledger; S3 (per-tenant
+      prefix, KMS-encrypted) holds artifacts. The customer license is issued by
+      Huntridge and lives in AWS — signed by an asymmetric key in AWS KMS (cosign
+      KMS signer, private key never leaves KMS), so Huntridge manages customer keys
+      and controls issuance/revocation. Two UIs: the customer-facing **Argus
+      Portal** (separate in-flight project; auth is Amazon Cognito — AWS-native —
+      with one user pool fronting three login methods: GitHub OIDC,
+      username/password, and per-tenant org SSO via SAML/OIDC; vuln data
+      tenant-scoped at the data layer so only the customer's users + Argus admins
+      can read it)
+      and a Huntridge **admin console** (fleet/cluster health, live activity,
+      deployed Argus version, customer/repo/seat counts, compute-vs-budget). The
+      in-repo living "Argus security" issue is the GitHub-native dashboard. A
+      future opt-in capability adds agentic fix PRs / hardening suggestions
+      (escalates the App to write scopes only for consenting repos).
+      Scaling/HA/cost: multi-AZ stateless compute; in-flight jobs redriven from
+      SQS (visibility timeout + DLQ); worker fleet autoscales on SQS backlog with
+      scale-to-zero on Fargate Spot. Cost has TWO independent floors — the
+      per-tenant license ceiling AND a global platform concurrency ceiling (the
+      master valve) that bounds aggregate spend even if every tenant maxes out at
+      once. Scheduled baselines are jittered across their window (no midnight
+      thundering herd); dispatch is fair-shared per tenant; merge scans run in a
+      higher-priority lane than scheduled/on-demand. On-demand "scan now" ships at
+      MVP as just another budget-debited, rate-limited, low-priority job — never
+      an unmetered button. The admin console is not just observability: it is the
+      live PERFORMANCE & COST CONTROL surface — the global concurrency ceiling,
+      lane/fair-share weights, jitter window, Spot mix, alarm thresholds, and
+      per-tenant overrides (throttle/pause/kill) are all tunable without redeploy
+      and audit-logged, read by the control plane at dispatch time. A minimal
+      control surface (global ceiling + per-tenant throttle/pause/kill) exists at
+      MVP since the ceiling and on-demand are live then; the full console lands at
+      GA. AWS Budgets + Cost Anomaly Detection + per-tenant cost tagging feed it.
+      Full design + phasing: docs/developer/CLOUD-ROADMAP.md.
+    alternatives_considered:
+    - name: Argus Cloud as a standalone third tier (separate from Enterprise)
+      rejected_because: Customers want to pick and choose what Argus offers; a separate tier forces an all-or-nothing bundle instead of à la carte capabilities priced per engagement
+    - name: Stay SDK + local capabilities only
+      rejected_because: Leaves the largest, already-paying segment (CISOs who want a hosted dashboard, not a tool to run) to GHAS/GitLab/Scout
+    - name: Fixed all-inclusive per-seat price set in product
+      rejected_because: Pricing is contracting's call per engagement; the platform must support per-seat OR per-product, not hard-code one basis
+    - name: Unbounded scanning, control cost later with infra tuning
+      rejected_because: Cloud runs on our compute — an unbounded license is an unbounded bill; repo scope + cadence MUST be license-enforced from MVP or we lose money
+    - name: Fork the engine for a cloud-optimised scanner path
+      rejected_because: Two engines drift; the whole economic case is that OSS already does the scanning
+    - name: PR-time scanning as the MVP wedge
+      rejected_because: Default-branch-only is the simplest promise and cleanest dashboard story; PR-time is a later opt-in to avoid scope creep
+    consequences:
+      positive:
+      - À la carte capability that competes with GHAS / GitLab Ultimate / Docker Scout on coverage breadth, priced flexibly per engagement
+      - Reuses the engine, ScanSummary, findings_view, browser templates, cosign-verified images, the living-issue pattern, AND the existing entitlement mechanism — little net-new scanning code
+      - Same data model across OSS and Enterprise; customers can exit to the OSS SDK without losing their model
+      - Compute cost is bounded by contract terms the control plane enforces, with metering to reconcile cost-vs-price — unit economics are a term, not a hope
+      - Forces secret-redaction and provenance guarantees to be first-class at ingest
+      negative:
+      - Cloud clones customer source — raises the trust/liability/compliance bar; needs legal + security review before non-design-partner customers
+      - License-enforced quota/cadence/metering is real net-new platform work that gates MVP (cannot ship without it)
+      - New operational surface (multi-tenant control plane, worker fleet, billing on two bases, SSO) the project has not run before
+      - Seat definition ("unique committer") must be countable and unsurprising before any per-seat deal
+    related:
+    - ADR-033
+    - ADR-034
+    implementation: |-
+      Proposal only — no code yet. Phased plan in docs/developer/CLOUD-ROADMAP.md:
+      Phase 0 (GitHub App + webhook + one hand-run worker + tenant data model),
+      Phase 1 (self-serve onboarding + hosted dashboard + living issue + worker
+      fleet + LICENSE-ENFORCED repo scope/cadence/metering — not deferrable),
+      Phase 2 (billing on per-seat AND per-product bases + executive lens + PDF +
+      SSO/RBAC), Phase 3 (self-hosted/air-gapped, more VCS providers, PR-time,
+      remediation).
+      License shape (argus.license/v1) is defined in CLOUD-ROADMAP.md → "The
+      license token": one signed, offline-verifiable document (cosign trust root)
+      carrying the à la carte capability list; only `cloud` carries a `quota`
+      block (repos / cadence / scope / overage). Critical split — the signed
+      license states the CEILINGS (immutable for the term); a mutable server-side
+      runtime ledger tracks CONSUMPTION against them, so we never re-sign per
+      scan. Control plane verifies + checks quota BEFORE enqueue (8-step flow in
+      the doc).
