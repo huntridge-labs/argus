@@ -26,7 +26,7 @@ from pathlib import Path
 # release, Renovate rewrites BOTH the version segment and the digest
 # segment in a single PR.
 OFFICIAL_IMAGES = {
-    "trivy": "aquasec/trivy:0.71.1@sha256:53570e6911c2361ebe7995228088cf83a6b9b73e7f3cdca44bd8f8f425e80fa7",
+    "trivy": "aquasec/trivy:0.71.2@sha256:f5d0e600ecda7449e2a9b272805aef698631d3bb3f3a739a750de2c6819acdc9",
     "grype": "anchore/grype:v0.114.0@sha256:7a9fc7f89ccef78ae5a7691a115d3f0d41b1f319d589dd8cc1dcb9ab3f01dd28",
     "syft": "anchore/syft:v1.45.1@sha256:c6d5719f48f5a5986acf2847eb1ed7c53176e712d5721fcd156184cfb262f6eb",
     "gitleaks": "zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f",
@@ -39,7 +39,7 @@ OFFICIAL_IMAGES = {
     # the eslint entry.
     "kics": "checkmarx/kics:latest@sha256:3e5a268eb8adda2e5a483c9359ddfc4cd520ab856a7076dc0b1d8784a37e2602",
     "osv-scanner": "ghcr.io/google/osv-scanner:v2.3.6@sha256:2e07e642463100474fc5e214b66e6beccbd6bfa63dd3fbf047b3f755e78a6cfe",
-    "zap": "ghcr.io/zaproxy/zaproxy:2.17.0@sha256:7c2f8afc893e4e4000be8ad3fd22013fc36e5cce59359349f5a2d45626e2ccb9",
+    "zap": "ghcr.io/zaproxy/zaproxy:2.17.0@sha256:8d387b1a63e3425beef4846e39719f5af2a787753af2d8b6558c6257d7a577a2",
     # promptfoo LLM red-team / eval. Opt-in scanner; requires provider
     # API keys + network at scan time. Pinned to an immutable version tag
     # + digest (Renovate-managed), like every other image here — the
