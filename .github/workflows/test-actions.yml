@@ -227,7 +227,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.14'
 
@@ -830,7 +830,7 @@ jobs:
 
     services:
       podinfo:
-        image: stefanprodan/podinfo:latest@sha256:7bdd8cc80b64377b05f5c0a51604c028ed6adea4beaca2e766b9325efa52916c
+        image: stefanprodan/podinfo:latest@sha256:0a8aa037137c010a75aed8d3fe56931d0edd3bcd0e55acfb96db11e1e96397b1
         ports:
           - 9898:9898
 
@@ -1150,7 +1150,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.14'
 

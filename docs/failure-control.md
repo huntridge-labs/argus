@@ -34,7 +34,7 @@ python -m argus scan --config argus.yml --severity-threshold high
 Set the `fail_on_severity` input on each action:
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.6.0
+- uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.7.0
   with:
     fail_on_severity: high  # Fail on HIGH or CRITICAL findings
 ```
@@ -168,11 +168,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.6.0
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.7.0
         with:
           fail_on_severity: high
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.6.0
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.7.0
         with:
           fail_on_severity: critical
         env:
@@ -230,7 +230,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.6.0
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.7.0
         with:
           fail_on_severity: high
     continue-on-error: true  # Don't block merge

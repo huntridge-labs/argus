@@ -83,7 +83,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -230,7 +230,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -250,7 +250,7 @@ jobs:
           {
             echo "## Example Action-Input Audit"
             echo ""
-            echo "Checks every \`uses: huntridge-labs/argus/.github/actions/<name>@1.6.0 step in"
+            echo "Checks every \`uses: huntridge-labs/argus/.github/actions/<name>@1.7.0 step in"
             echo "\`examples/**\` against its action's current \`action.yml::inputs\` list."
             echo ""
             echo "Source of truth: \`.github/actions/<name>/action.yml\`."

@@ -34,7 +34,7 @@ If no config file is found, Argus uses default settings.
 Add the JSON Schema directive at the top of your config file for autocompletion and inline validation:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argus/1.6.0/argus-config.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argus/1.7.0/argus-config.schema.json
 version: "1.0"
 ```
 
@@ -598,7 +598,7 @@ Errors are fatal and abort the scan. Warnings are logged but the scan proceeds.
 ## Complete Example
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argus/1.6.0/argus-config.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argus/1.7.0/argus-config.schema.json
 version: "1.0"
 
 scanners:

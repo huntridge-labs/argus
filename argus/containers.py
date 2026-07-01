@@ -26,7 +26,7 @@ from pathlib import Path
 # release, Renovate rewrites BOTH the version segment and the digest
 # segment in a single PR.
 OFFICIAL_IMAGES = {
-    "trivy": "aquasec/trivy:0.71.1@sha256:53570e6911c2361ebe7995228088cf83a6b9b73e7f3cdca44bd8f8f425e80fa7",
+    "trivy": "aquasec/trivy:0.71.2@sha256:f5d0e600ecda7449e2a9b272805aef698631d3bb3f3a739a750de2c6819acdc9",
     "grype": "anchore/grype:v0.114.0@sha256:7a9fc7f89ccef78ae5a7691a115d3f0d41b1f319d589dd8cc1dcb9ab3f01dd28",
     "syft": "anchore/syft:v1.45.1@sha256:c6d5719f48f5a5986acf2847eb1ed7c53176e712d5721fcd156184cfb262f6eb",
     "gitleaks": "zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f",
@@ -39,7 +39,7 @@ OFFICIAL_IMAGES = {
     # the eslint entry.
     "kics": "checkmarx/kics:latest@sha256:3e5a268eb8adda2e5a483c9359ddfc4cd520ab856a7076dc0b1d8784a37e2602",
     "osv-scanner": "ghcr.io/google/osv-scanner:v2.3.6@sha256:2e07e642463100474fc5e214b66e6beccbd6bfa63dd3fbf047b3f755e78a6cfe",
-    "zap": "ghcr.io/zaproxy/zaproxy:2.17.0@sha256:7c2f8afc893e4e4000be8ad3fd22013fc36e5cce59359349f5a2d45626e2ccb9",
+    "zap": "ghcr.io/zaproxy/zaproxy:2.17.0@sha256:8d387b1a63e3425beef4846e39719f5af2a787753af2d8b6558c6257d7a577a2",
     # promptfoo LLM red-team / eval. Opt-in scanner; requires provider
     # API keys + network at scan time. Pinned to an immutable version tag
     # + digest (Renovate-managed), like every other image here — the
@@ -69,10 +69,10 @@ OFFICIAL_IMAGES = {
 # Custom images built and published by Argus to ghcr.io/huntridge-labs/argus/
 # Versions managed by release-it regex bumper
 CUSTOM_IMAGES = {
-    "bandit": "ghcr.io/huntridge-labs/argus/scanner-bandit:1.6.0@sha256:b60ee8f5d4879414609234b81c664175447d45a8dd20d455915b40cb9f85cff6",
-    "semgrep": "ghcr.io/huntridge-labs/argus/scanner-opengrep:1.6.0@sha256:6236895ad8331fc29ffa868563ce95298b9feb53dbc7de24c116a3e0513b2aa5",
-    "supply-chain": "ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.6.0@sha256:8e647459e28970537ac2a1c15175cd99f68e7c265788cec7440fea71d28aa6d6",
-    "cli": "ghcr.io/huntridge-labs/argus/cli:1.6.0@sha256:0ac9649bcf3ce177a8b0b3e786843e5e0061976f2689d68319d9735526580033",
+    "bandit": "ghcr.io/huntridge-labs/argus/scanner-bandit:1.7.0@sha256:4baca148ea429111befe0330bd46fdb6baf721ec5e486586d85b89f51ba0f527",
+    "semgrep": "ghcr.io/huntridge-labs/argus/scanner-opengrep:1.7.0@sha256:0a64e4c0eb5c52c37b890dc510c3aeda79046bab6854071191055f75197cd61b",
+    "supply-chain": "ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.7.0@sha256:b827a666fb8aa0669e13cf852bee79cd7172023eced168285773bdee8f3fa949",
+    "cli": "ghcr.io/huntridge-labs/argus/cli:1.7.0@sha256:a1f14a9e77fc3290e88fd4ea91fa7d0abd2809bea2aa2f3b98a0bd6b8a02e019",
     # PRE-MERGE PREVIEW. The MUMPS scanner image is published from the
     # feat/scanner-m-mumps branch under the mutable ``mumps-preview`` tag
     # so testers can run ``argus scan mumps`` with zero local toolchain
@@ -82,7 +82,7 @@ CUSTOM_IMAGES = {
     # rewrites this line to the versioned ``scanner-mumps:<version>`` tag
     # + release digest. The digest pin below is still the content-hash
     # gate the manifest check verifies.
-    "mumps": "ghcr.io/huntridge-labs/argus/scanner-mumps:1.6.0@sha256:93b57b1c6c4af2ce1ea8a387acbc6f03ca2711b26cf03c5176d5aff3ca5a63df",
+    "mumps": "ghcr.io/huntridge-labs/argus/scanner-mumps:1.7.0@sha256:66fd80b13ce0afbc7d40cd62cec242bb67d23a0ab260089d97f95cb54f9bb33b",
 }
 
 

@@ -80,12 +80,12 @@ jobs:
           fetch-depth: 0  # Full history for gitleaks
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.14'
 
       - name: Install Argus
-        uses: huntridge-labs/argus/.github/actions/setup-argus@1.6.0
+        uses: huntridge-labs/argus/.github/actions/setup-argus@1.7.0
 
       - name: Run scan
         run: |
@@ -119,7 +119,7 @@ jobs:
 
       - name: Comment PR with results
         if: github.event_name == 'pull_request' && inputs.post_pr_comment
-        uses: huntridge-labs/argus/.github/actions/comment-pr@1.6.0
+        uses: huntridge-labs/argus/.github/actions/comment-pr@1.7.0
         with:
           summary_file: ./argus-results/argus-results.md
           comment_marker: gitleaks-scanner-comment-marker

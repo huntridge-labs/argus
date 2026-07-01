@@ -110,12 +110,12 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.14'
 
       - name: Install Argus
-        uses: huntridge-labs/argus/.github/actions/setup-argus@1.6.0
+        uses: huntridge-labs/argus/.github/actions/setup-argus@1.7.0
 
       - name: Discover Dockerfiles in repository
         id: discover
@@ -188,12 +188,12 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.14'
 
       - name: Install Argus
-        uses: huntridge-labs/argus/.github/actions/setup-argus@1.6.0
+        uses: huntridge-labs/argus/.github/actions/setup-argus@1.7.0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
@@ -288,12 +288,12 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.14'
 
       - name: Install Argus
-        uses: huntridge-labs/argus/.github/actions/setup-argus@1.6.0
+        uses: huntridge-labs/argus/.github/actions/setup-argus@1.7.0
 
       - name: Authenticate to container registry
         if: inputs.registry_username != ''
@@ -370,7 +370,7 @@ jobs:
       # security-summary self-downloads the per-container summary artifacts
       # (scanner-summary-container-*), so no separate download step is needed.
       - name: Generate container summary
-        uses: huntridge-labs/argus/.github/actions/security-summary@1.6.0
+        uses: huntridge-labs/argus/.github/actions/security-summary@1.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
