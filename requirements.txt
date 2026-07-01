@@ -1,6 +1,6 @@
 # Test dependencies
 # Floors bumped past known-CVE versions and stale-floor noise.
-pytest>=9.1.0
+pytest>=9.1.1
 pytest-cov>=7.1.0
 pyyaml>=6.0.2
 
