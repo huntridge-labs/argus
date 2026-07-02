@@ -26,6 +26,14 @@ class Scanner(Protocol):
         supports_sbom: bool — True when the scanner can accept a pre-built
             SBOM via ``config["sbom_path"]`` instead of a filesystem path.
             Consumed by ``argus scan --sbom`` to auto-select capable tools.
+
+    Config metadata (optional — drives config UIs like the Console / Argus Cloud):
+        config_options: list[ConfigOption] — the scanner's own configurable
+            knobs beyond the common base (see ``argus.core.config_options``).
+        native_ignore: NativeIgnore — how to suppress findings at the source
+            when there's no direct ``argus.yml`` key (e.g. ``.trivyignore``).
+        A scanner that declares neither still surfaces the common base options,
+        so a new scanner needs no config-UI change to be configurable.
     """
 
     name: str

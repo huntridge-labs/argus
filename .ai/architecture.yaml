@@ -28,6 +28,7 @@ components:
       core/models.py: Severity enum, Finding/ScanResult/ScanSummary dataclasses
       core/scanner.py: Scanner Protocol definition
       core/config.py: ArgusConfig loading from argus.yml
+      core/config_options.py: 'Machine-readable config surface (versioned in the wheel). ConfigOption/NativeIgnore + BASE_OPTIONS + curated per-scanner knobs; config_surface() returns argus version + JSON schema + registry + every scanner''s options and how to ignore findings (skip_check / expose_ignore_ports / rules_file / native .trivyignore etc.). Scanners may also declare config_options/native_ignore on the class. Consumed by config UIs (Console, Argus Cloud) so they render the exact installed version''s knobs with no separate schema to sync.'
       core/engine.py: 'ArgusEngine orchestrating scanners and aggregating results (delegates to core/prewarm.py
         for background image pre-warm + lazy pulls in parallel mode). Container path honors three optional
         Scanner hooks: container_args/build_args (CLI argv), container_env(config)->dict (resolved values
@@ -703,6 +704,7 @@ docsite:
       core/models.py: Severity enum, Finding/ScanResult/ScanSummary dataclasses
       core/scanner.py: Scanner Protocol definition
       core/config.py: ArgusConfig loading from argus.yml
+      core/config_options.py: 'Machine-readable config surface (versioned in the wheel). ConfigOption/NativeIgnore + BASE_OPTIONS + curated per-scanner knobs; config_surface() returns argus version + JSON schema + registry + every scanner''s options and how to ignore findings (skip_check / expose_ignore_ports / rules_file / native .trivyignore etc.). Scanners may also declare config_options/native_ignore on the class. Consumed by config UIs (Console, Argus Cloud) so they render the exact installed version''s knobs with no separate schema to sync.'
       core/engine.py: 'ArgusEngine orchestrating scanners and aggregating results (delegates to core/prewarm.py
         for background image pre-warm + lazy pulls in parallel mode). Container path honors three optional
         Scanner hooks: container_args/build_args (CLI argv), container_env(config)->dict (resolved values
