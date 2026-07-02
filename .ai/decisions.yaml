@@ -232,9 +232,9 @@ decisions:
       \   - name: Comment PR with security summary\n        uses: actions/github-script@v8  # Only job\
       \ that posts PR comment\n"
     usage_examples:
-      standalone: "# Individual scanner posts its own PR comment\n- uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.7.0
+      standalone: "# Individual scanner posts its own PR comment\n- uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.8.0
         \  with:\n    post_pr_comment: true\n"
-      reusable: "# Only security-summary posts comprehensive comment\nuses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@1.7.0
+      reusable: "# Only security-summary posts comprehensive comment\nuses: huntridge-labs/argus/.github/workflows/reusable-security-hardening.yml@1.8.0
         with:\n  scanners: all\n  post_pr_comment: true  # Controls security-summary, not individual scanners\n"
   ADR-009:
     title: Consolidate scripts and tests to Python
@@ -667,7 +667,7 @@ decisions:
       \ outcomes.\n- `<details>` wrapping: container-scan summaries ship pre-wrapped in\n  a disclosure;\
       \ the rollup wrapped them again, forcing reviewers to\n  click twice to see findings.\n- Composites\
       \ installed only `pip install pyyaml`, assuming argus-security\n  was on PYTHONPATH via side effects.\
-      \ A consumer pulling the composite\n  via `uses: huntridge-labs/argus/.github/actions/scanner-*@1.7.0
+      \ A consumer pulling the composite\n  via `uses: huntridge-labs/argus/.github/actions/scanner-*@1.8.0
       \ had no\n  reliable way to get the SDK installed.\n"
     decision: "The security-summary composite is now the single aggregation surface.\nIts contract:\n\
       \  1. Accepts an optional `scan_statuses` JSON input mapping scanner\n     name -> job result (success|failure|cancelled|skipped).\n\
@@ -732,13 +732,13 @@ decisions:
       silent_failure_guard: "# In a reusable pipeline, every scanner's needs.*.result becomes a\n# row\
         \ in the aggregator's status table. A crashed scanner with no\n# summary shows up as ❌ and the\
         \ job exits non-zero.\nsecurity-summary:\n  needs: [scanner-codeql, scanner-opengrep, scanner-container,\
-        \ scanner-zap]\n  if: always()\n  steps:\n    - uses: huntridge-labs/argus/.github/actions/security-summary@1.7.0
+        \ scanner-zap]\n  if: always()\n  steps:\n    - uses: huntridge-labs/argus/.github/actions/security-summary@1.8.0
         \      with:\n        scan_statuses: |\n          {\n            \"codeql\":    \"${{ needs.scanner-codeql.result\
         \ }}\",\n            \"opengrep\":  \"${{ needs.scanner-opengrep.result }}\",\n            \"\
         container\": \"${{ needs.scanner-container.result }}\",\n            \"zap\":       \"${{ needs.scanner-zap.result\
         \ }}\"\n          }\n"
       informational_mode: "# Opt-out of blocking on scanner failures (e.g., for a canary report):\nsecurity-summary:\n\
-        \  steps:\n    - uses: huntridge-labs/argus/.github/actions/security-summary@1.7.0      with:\n\
+        \  steps:\n    - uses: huntridge-labs/argus/.github/actions/security-summary@1.8.0      with:\n\
         \        fail_on_scanner_failure: 'false'\n        scan_statuses: '{\"...\": \"...\"}'\n"
   ADR-017:
     title: argus view browser — localhost-only SDK-bundled web UI, separate from argus-portal

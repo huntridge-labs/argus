@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.8.0](https://github.com/huntridge-labs/argus/compare/1.7.0...1.8.0) (2026-07-02)
+
+### Features
+
+* **core:** machine-readable config surface for version-derived config UIs ([53301dd](https://github.com/huntridge-labs/argus/commit/53301dd19cd2920ade5f2b6e30c5d8c4b3c75325))
+
+### Dependencies
+
+* **deps:** bump the docker-all group across 2 directories with 2 updates ([#310](https://github.com/huntridge-labs/argus/issues/310)) ([0a08713](https://github.com/huntridge-labs/argus/commit/0a08713fc243b940bc17cd768ae78ea5176cf520))
+* **deps:** Update container-images ([#308](https://github.com/huntridge-labs/argus/issues/308)) ([b91181a](https://github.com/huntridge-labs/argus/commit/b91181af34df817d575606be50ea7400893ff750))
+* **deps:** Update github-actions-minor-patch ([#299](https://github.com/huntridge-labs/argus/issues/299)) ([0870eb0](https://github.com/huntridge-labs/argus/commit/0870eb0d0c59768fbb553afccaefa52257b25e3c))
+* **deps:** update pytest requirement in the pip-all group ([#311](https://github.com/huntridge-labs/argus/issues/311)) ([670731d](https://github.com/huntridge-labs/argus/commit/670731d94e386e2b45cb24eafedc24863f7d2c0b))
+* **deps:** Update tool-versions ([#309](https://github.com/huntridge-labs/argus/issues/309)) ([e2f9d4b](https://github.com/huntridge-labs/argus/commit/e2f9d4bceaae1e5929466717ec51865f1280dd99))
+
+
+### Tests
+
+* **config-options:** guard curated metadata against scanner renames ([7a75084](https://github.com/huntridge-labs/argus/commit/7a750842e000b75a45cc070109c8c05df98f51af))
+
 ## [1.7.0](https://github.com/huntridge-labs/argus/compare/1.6.0...1.7.0) (2026-06-24)
 
 ### Features
