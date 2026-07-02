@@ -74,6 +74,23 @@ def test_class_declared_options_win_over_central_and_base() -> None:
     assert scanner_native_ignore("fake", FakeScanner).comment == "# fake:skip"
 
 
+def test_curated_metadata_never_orphans() -> None:
+    """Every curated extras/native-ignore key must name a REGISTERED scanner.
+
+    Guards the scale seam: if a scanner is renamed or removed, its curated
+    metadata would otherwise silently orphan (the scanner would fall back to
+    base-only knobs and the stale entry would linger forever)."""
+    from argus.core.config_options import _NATIVE_IGNORE, _SCANNER_EXTRAS
+
+    registered = set(SCANNER_REGISTRY)
+    assert set(_SCANNER_EXTRAS) <= registered, (
+        f"orphaned _SCANNER_EXTRAS keys: {set(_SCANNER_EXTRAS) - registered}"
+    )
+    assert set(_NATIVE_IGNORE) <= registered, (
+        f"orphaned _NATIVE_IGNORE keys: {set(_NATIVE_IGNORE) - registered}"
+    )
+
+
 def test_config_option_to_dict_omits_empty_but_keeps_core() -> None:
     d = ConfigOption("k", "L").to_dict()
     assert d["key"] == "k" and d["label"] == "L" and d["kind"] == "string"
