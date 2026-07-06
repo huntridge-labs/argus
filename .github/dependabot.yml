@@ -60,15 +60,15 @@ updates:
         patterns:
           - "*"
 
-    # Skip Python pre-release base images. Dependabot's docker manager sorts
-    # e.g. python:3.15.0b2-alpine ahead of the stable 3.14.x line and proposes
-    # it (see #290); Dependabot owns the Dockerfile FROM lines (Renovate, which
-    # has ignoreUnstable, only handles the ARG tool versions + source-pinned
-    # tags). Track stable Python only — the final X.Y.0 release is still picked
-    # up; only aN / bN / rcN pre-releases are ignored.
-    ignore:
-      - dependency-name: "python"
-        versions: ["*0a*", "*0b*", "*0rc*"]
+    # NOTE on Python pre-release base images (#290): Dependabot's docker manager
+    # can sort e.g. python:3.15.0b2-alpine ahead of the stable 3.14.x line. There
+    # is NO valid dependabot.yml way to filter these out — docker `ignore.versions`
+    # uses Bundler version-requirement syntax, so substring globs like "*0b*" are
+    # rejected as invalid version requirements (they broke config validation), and
+    # ignoring pre-release docker tags via `versions` is unsupported upstream
+    # (dependabot-core #15154). A pre-release base-image PR, if it recurs, is caught
+    # by the mandatory manual review below + the 7-day cooldown; FROM lines are
+    # SHA-digest pinned, so nothing auto-applies. Revisit if #15154 ships a fix.
 
     commit-message:
       prefix: "chore(deps)"
