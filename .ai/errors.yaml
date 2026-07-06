@@ -678,3 +678,57 @@ errors:
         '
       reference: argus/containers.py + .github/workflows/release.yml (promote/cosign/notes loops) + scripts/ci/check_container_images.py
     symptom: manifest unknown|<scanner>:<version> failed manifest check|pinned image tag does not resolve after release
+  EMPTY_CHANGELOG_CONVENTIONALCOMMITS_V10_INCOMPATIBLE_WITH_RELEASE_IT:
+    category: release
+    context: 'The release-preview / release-it changelog renders EMPTY — just the
+
+      version header (e.g. ``## [1.8.1](compare/1.8.0...1.8.1)``) with no
+
+      ``### Maintenance`` / ``### Dependencies`` sections and no commit
+
+      entries, even though there are conventional ``chore(deps):`` commits
+
+      since the last tag.
+
+      '
+    root_cause: 'A major bump of ``conventional-changelog-conventionalcommits``
+
+      to v10 (Dependabot npm-major, PR #316). v10 replaced Handlebars
+
+      template *strings* with render *functions* (``@conventional-changelog/
+
+      template``), which require ``conventional-changelog-writer@9``. But
+
+      ``@release-it/conventional-changelog@11`` (latest) still pins
+
+      ``conventional-changelog@7`` → ``writer@8`` (Handlebars) and expects
+
+      the preset at ``^9.3.1``. writer@8 handed v10 function templates
+
+      compiles to nothing: commits parse and pass filtering (transform
+
+      returns kept=true) but the template layer renders empty. The
+
+      ``hidden`` → ``effect`` config change in v10 is a red herring here —
+
+      even ``effect: bump`` stays empty because the writer can''t render.
+
+      '
+    solution:
+      steps:
+      - 'Pin ``conventional-changelog-conventionalcommits`` to ``^9.3.1`` in package.json (align with what @release-it/conventional-changelog@11 supports). NOT a git revert of the merge — a forward constraint fix.'
+      - 'Add a Dependabot ``ignore`` for that dep''s ``version-update:semver-major`` (npm ecosystem) so v10 is not re-proposed until the release toolchain adopts the render-function stack (conventional-changelog@8 / writer@9).'
+      - 'Guard in CI: the release-preview "Verify changelog structure" step hard-fails when a release is expected but the changelog body has no sections/entries — catches this class of preset/writer incompatibility for any dep.'
+      note: 'Verify locally without cutting a release: ``npx release-it --changelog
+
+        --no-git.requireUpstream --hooks.before:init=true`` (prints the changelog
+
+        and exits; the hook override skips the npm test before:init hook). A
+
+        clean migration to v10 is blocked until @release-it/conventional-changelog
+
+        ships render-function support.
+
+        '
+      reference: package.json + .github/dependabot.yml + .github/workflows/release-preview.yml + scripts/release-it-process-changelog.js
+    symptom: empty changelog|release preview shows only version header|no Maintenance/Dependencies section|chore(deps) commits missing from changelog

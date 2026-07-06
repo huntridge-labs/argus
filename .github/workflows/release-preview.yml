@@ -177,8 +177,45 @@ jobs:
           path: release_output.txt
           retention-days: 7
 
+      - name: Verify changelog structure
+        # Gate: if release-it would cut a release, the generated changelog MUST
+        # contain sections/entries. A version bump with an EMPTY changelog body
+        # is the signature of a conventional-changelog preset/writer
+        # incompatibility (e.g. conventionalcommits v10 render-function templates
+        # vs the Handlebars conventional-changelog-writer@8 our release toolchain
+        # pins). This blocks such a dependency update from merging.
+        run: |
+          if ! grep -q "Let's release" release_output.txt; then
+            echo "No release expected for this PR; skipping changelog structure check."
+            exit 0
+          fi
+
+          # Extract the changelog body the same way the preview does.
+          sed -n '/^Changelog:/,/^Updating version/p' release_output.txt \
+            | sed '1d;$d' > changelog_check.md
+
+          # A healthy changelog has at least one section (### ...) or entry (* / -).
+          if grep -qE '^[[:space:]]*(\*|-|###)[[:space:]]' changelog_check.md; then
+            echo "✅ Changelog structure OK — sections/entries present."
+            exit 0
+          fi
+
+          echo "::error title=Empty changelog::A release is expected but the generated changelog has no sections or entries."
+          echo ""
+          echo "This is the signature of a conventional-changelog preset/writer incompatibility."
+          echo "Most likely a conventional-changelog-conventionalcommits major bump (v10+) whose"
+          echo "render-function templates are not understood by the Handlebars-based"
+          echo "conventional-changelog-writer@8 that @release-it/conventional-changelog@11 pins."
+          echo ""
+          echo "Fix: keep conventional-changelog-conventionalcommits at ^9.3.1 until the release"
+          echo "toolchain adopts the render-function stack (conventional-changelog@8 / writer@9)."
+          echo ""
+          echo "----- rendered changelog body (empty) -----"
+          cat changelog_check.md
+          exit 1
+
       - name: Comment PR
-        if: success() && github.event.pull_request.head.repo.full_name == github.repository
+        if: always() && github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         continue-on-error: true
         with:
