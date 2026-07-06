@@ -25,36 +25,29 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
       echo "64bit" > /tmp/arch_trivy && echo "amd64" > /tmp/arch_go && echo "x86" > /tmp/arch_opengrep && echo "x64" > /tmp/arch_gitleaks; \
     fi
 
-# Trivy
-RUN ARCH=$(cat /tmp/arch_trivy) && \
-    curl -sSfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-${ARCH}.tar.gz" \
-      | tar -xz -C /usr/local/bin trivy
-
-# Grype
-RUN ARCH=$(cat /tmp/arch_go) && \
-    curl -sSfL "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_linux_${ARCH}.tar.gz" \
-      | tar -xz -C /usr/local/bin grype
-
-# Syft
-RUN ARCH=$(cat /tmp/arch_go) && \
-    curl -sSfL "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_${ARCH}.tar.gz" \
-      | tar -xz -C /usr/local/bin syft
-
-# Gitleaks
-RUN ARCH=$(cat /tmp/arch_gitleaks) && \
-    curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_${ARCH}.tar.gz" \
-      | tar -xz -C /usr/local/bin gitleaks
-
-# Actionlint
-RUN ARCH=$(cat /tmp/arch_go) && \
-    curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_${ARCH}.tar.gz" \
-      | tar -xz -C /usr/local/bin actionlint
-
-# OpenGrep
-RUN ARCH=$(cat /tmp/arch_opengrep) && \
-    curl -sSfL "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_${ARCH}" \
-      -o /usr/local/bin/opengrep && \
-    chmod +x /usr/local/bin/opengrep
+# Download binary tools. dl() fetches to a temp file with retries so a transient
+# GitHub 5xx/timeout/conn-reset is retried instead of failing the release
+# (see #320), and tar/install only run on a complete download — no partial-stream
+# corruption from a broken `curl | tar` pipe. Retries are scoped to transient
+# errors (408/429/5xx/timeouts + connection-refused); a 404 (bad version pin)
+# still fails fast rather than retrying, so it surfaces loudly.
+RUN set -eu && \
+    dl() { curl -fsSL --retry 5 --retry-delay 2 --retry-connrefused --connect-timeout 10 -o "$2" "$1"; } && \
+    TRIVY_ARCH=$(cat /tmp/arch_trivy) && GO_ARCH=$(cat /tmp/arch_go) && \
+    OG_ARCH=$(cat /tmp/arch_opengrep) && GL_ARCH=$(cat /tmp/arch_gitleaks) && \
+    dl "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-${TRIVY_ARCH}.tar.gz" /tmp/trivy.tgz && \
+    tar -xzf /tmp/trivy.tgz -C /usr/local/bin trivy && \
+    dl "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_linux_${GO_ARCH}.tar.gz" /tmp/grype.tgz && \
+    tar -xzf /tmp/grype.tgz -C /usr/local/bin grype && \
+    dl "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_${GO_ARCH}.tar.gz" /tmp/syft.tgz && \
+    tar -xzf /tmp/syft.tgz -C /usr/local/bin syft && \
+    dl "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_${GL_ARCH}.tar.gz" /tmp/gitleaks.tgz && \
+    tar -xzf /tmp/gitleaks.tgz -C /usr/local/bin gitleaks && \
+    dl "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_${GO_ARCH}.tar.gz" /tmp/actionlint.tgz && \
+    tar -xzf /tmp/actionlint.tgz -C /usr/local/bin actionlint && \
+    dl "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_${OG_ARCH}" /tmp/opengrep && \
+    install -m 0755 /tmp/opengrep /usr/local/bin/opengrep && \
+    rm -f /tmp/trivy.tgz /tmp/grype.tgz /tmp/syft.tgz /tmp/gitleaks.tgz /tmp/actionlint.tgz /tmp/opengrep
 
 # ---------------------------------------------------------------------------
 # Stage 2: Runtime image
