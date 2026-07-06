@@ -105,6 +105,21 @@ updates:
           - "minor"
           - "patch"
 
+    # Hold conventional-changelog-conventionalcommits at v9.x. v10 replaced
+    # Handlebars template strings with render functions (@conventional-changelog/
+    # template), which require conventional-changelog-writer@9. Our release
+    # toolchain's writer is pinned transitively by @release-it/conventional-
+    # changelog@11 (latest), which still depends on conventional-changelog@7 →
+    # writer@8 (Handlebars) and conventionalcommits@^9.3.1. Under v10 the
+    # changelog renders EMPTY (commits parse + pass filtering but the Handlebars
+    # writer can't compile function templates). Re-enable the major bump once
+    # @release-it/conventional-changelog ships support for the render-function
+    # stack (core@8 / writer@9). See the release-preview "Verify changelog
+    # structure" gate.
+    ignore:
+      - dependency-name: "conventional-changelog-conventionalcommits"
+        update-types: ["version-update:semver-major"]
+
     commit-message:
       prefix: "chore(deps)"
 
