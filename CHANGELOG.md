@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.8.1](https://github.com/huntridge-labs/argus/compare/1.8.0...1.8.1) (2026-07-06)
+
+### Bug Fixes
+
+* **deps:** remove invalid docker pre-release ignore from dependabot config ([e39cfe3](https://github.com/huntridge-labs/argus/commit/e39cfe32f127fe080b714514c204a0f81e0208cc)), closes [#318](https://github.com/huntridge-labs/argus/issues/318) [#15154](https://github.com/huntridge-labs/argus/issues/15154) [#318](https://github.com/huntridge-labs/argus/issues/318)
+* **release:** pin conventionalcommits to v9 + guard changelog structure ([481e2be](https://github.com/huntridge-labs/argus/commit/481e2be97b70efc6836c25af435e219c69a16e64)), closes [#316](https://github.com/huntridge-labs/argus/issues/316) [#316](https://github.com/huntridge-labs/argus/issues/316)
+
+### Dependencies
+
+* **deps:** bump conventional-changelog-conventionalcommits ([#316](https://github.com/huntridge-labs/argus/issues/316)) ([1e1ea23](https://github.com/huntridge-labs/argus/commit/1e1ea2387bc3c036ee3398316e8901fe99e23ea6))
+* **deps:** bump the npm-minor-patch group with 3 updates ([#317](https://github.com/huntridge-labs/argus/issues/317)) ([f8d481f](https://github.com/huntridge-labs/argus/commit/f8d481fbb1a892003f24d78b22cdde5ea512a2db))
+* **deps:** Update container-images ([#315](https://github.com/huntridge-labs/argus/issues/315)) ([f3eec0f](https://github.com/huntridge-labs/argus/commit/f3eec0fcea4035c7f614da27e0e78207f9ecd753))
+* **deps:** Update github-actions-minor-patch ([#314](https://github.com/huntridge-labs/argus/issues/314)) ([8bf0e0f](https://github.com/huntridge-labs/argus/commit/8bf0e0f663e7f4d31e99b6918259d1afcca45bb3))
+
+
 ## [1.8.0](https://github.com/huntridge-labs/argus/compare/1.7.0...1.8.0) (2026-07-02)
 
 ### Features

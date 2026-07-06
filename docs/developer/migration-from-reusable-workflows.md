@@ -41,7 +41,7 @@ Replace `workflow_call` references with direct action usage.
 ```yaml
 jobs:
   bandit:
-    uses: huntridge-labs/argus/.github/workflows/scanner-bandit.yml@1.8.0
+    uses: huntridge-labs/argus/.github/workflows/scanner-bandit.yml@1.8.1
     with:
       fail_on_severity: 'high'
       enable_code_security: true
@@ -59,7 +59,7 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
-      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.8.0
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.8.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -80,7 +80,7 @@ Replace the entire workflow job with a direct SDK invocation.
 ```yaml
 jobs:
   bandit:
-    uses: huntridge-labs/argus/.github/workflows/scanner-bandit.yml@1.8.0
+    uses: huntridge-labs/argus/.github/workflows/scanner-bandit.yml@1.8.1
     with:
       fail_on_severity: 'high'
     secrets: inherit

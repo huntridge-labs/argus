@@ -522,7 +522,7 @@ See `argus.example.yml` for a quick-start template, or [Configuration Reference]
 #### Individual Scanner
 ```yaml
 - name: Run Bandit Python Scanner
-  uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.8.0
+  uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.8.1
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -540,12 +540,12 @@ See `examples/composite-actions-example.yml` for a full example with:
 
 #### Config-Driven Container Scanning
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/parse-container-config@1.8.0
+- uses: huntridge-labs/argus/.github/actions/parse-container-config@1.8.1
   id: parse
   with:
     config_file: 'container-config.yml'
 
-- uses: huntridge-labs/argus/.github/actions/scanner-container@1.8.0
+- uses: huntridge-labs/argus/.github/actions/scanner-container@1.8.1
   strategy:
     matrix: ${{ fromJson(steps.parse.outputs.matrix) }}
   with:
