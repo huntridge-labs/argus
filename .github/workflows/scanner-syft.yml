@@ -33,6 +33,11 @@ on:
         default: 'cyclonedx-json'
   workflow_call:
     inputs:
+      allow_failure:
+        description: 'When true (default) the scan never fails the job (non-blocking); when false, a scan crash or a fail_on_severity breach fails the job so a caller/pipeline can gate on it.'
+        required: false
+        type: boolean
+        default: true
       enable_code_security:
         description: 'Whether GitHub Code Security is enabled for this repository'
         required: false
@@ -75,7 +80,7 @@ jobs:
     name: Generate SBOM
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    continue-on-error: true
+    continue-on-error: ${{ inputs.allow_failure == true }}
 
     steps:
       - name: Checkout repository

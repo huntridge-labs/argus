@@ -14,6 +14,11 @@ on:
   workflow_dispatch:
   workflow_call:
     inputs:
+      allow_failure:
+        description: 'When true (default) the scan never fails the job (non-blocking); when false, a scan crash or a fail_on_severity breach fails the job so a caller/pipeline can gate on it.'
+        required: false
+        type: boolean
+        default: true
       post_pr_comment:
         description: 'Whether to post PR comments'
         required: false
@@ -70,7 +75,7 @@ jobs:
     name: Secrets Detection - Gitleaks
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    continue-on-error: true
+    continue-on-error: ${{ inputs.allow_failure == true }}
 
     steps:
       - name: Checkout repository
