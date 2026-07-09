@@ -114,8 +114,17 @@ runs:
       env:
         SCAN_PATH: ${{ inputs.scan_path }}
         FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
+        JOB_ID: ${{ inputs.job_id }}
       run: |
         mkdir -p osv-reports scanner-summaries
+
+        # Unique internal summary filename per invocation so that multiple
+        # invocations feeding one security-summary (merge-multiple) don't
+        # clobber identically named files. Key on job_id (same identifier the
+        # caller uses to keep the artifact name unique).
+        SAFE_ID=$(printf '%s' "${JOB_ID}" | tr -c 'A-Za-z0-9._-' '_')
+        SUMMARY_FILE="scanner-summaries/osv-${SAFE_ID}.md"
+        echo "summary_file=${SUMMARY_FILE}" >> "$GITHUB_OUTPUT"
 
         # SDK auto-discovers argus.yml if present; works without one too
         SCAN_EXIT=0
@@ -143,7 +152,7 @@ runs:
 
         # Copy markdown summary for PR comment artifact
         if [ -f "osv-reports/argus-summary.md" ]; then
-          cp osv-reports/argus-summary.md scanner-summaries/osv.md
+          cp osv-reports/argus-summary.md "${SUMMARY_FILE}"
           cat osv-reports/argus-summary.md >> "$GITHUB_STEP_SUMMARY"
         fi
 
@@ -171,7 +180,7 @@ runs:
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       with:
         name: scanner-summary-osv-${{ inputs.job_id }}
-        path: scanner-summaries/osv.md
+        path: ${{ steps.scan.outputs.summary_file }}
         retention-days: 7
       continue-on-error: true
 
@@ -179,7 +188,7 @@ runs:
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
       uses: huntridge-labs/argus/.github/actions/comment-pr@1.8.1
       with:
-        summary_file: scanner-summaries/osv.md
+        summary_file: ${{ steps.scan.outputs.summary_file }}
         comment_marker: osv-scanner-comment-marker
         title: '📦 OSV Dependency Scan Results'
         fallback_message: 'No OSV scan results available'

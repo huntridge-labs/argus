@@ -68,6 +68,15 @@ on:
         required: false
         default: '.'
         type: string
+      container_image_ref:
+        description: |
+          Container image to scan with the trivy-container / grype scanners
+          (e.g. ghcr.io/owner/app:tag). These scanners are opt-in (not part of
+          `all`); when they are selected but this is empty, their jobs are
+          skipped rather than scanning a placeholder image.
+        required: false
+        default: ''
+        type: string
       allow_failure:
         description: |
           Whether to allow the workflow to continue when any scanner fails or reports findings
@@ -323,7 +332,12 @@ jobs:
           case "$token" in
             '' ) ;;
             all|full)
-              local -a exclude=(sbom trivy-container grype zap dependency-review)
+              # sbom (Syft) generates a repo SBOM on every default run — it is in
+              # DEFAULT_SCANNERS and included here so `all` and DEFAULT_SCANNERS
+              # agree. The excluded scanners are opt-in/context-specific: the
+              # container scanners need an image (container_image_ref), zap needs
+              # a target URL, and dependency-review needs a pull_request event.
+              local -a exclude=(trivy-container grype zap dependency-review)
               for key in "${!RUN[@]}"; do
                 if [[ " ${exclude[*]} " != *" ${key} "* ]]; then
                   add_scanner "$key"
@@ -633,11 +647,11 @@ jobs:
   scanner-trivy-container:
     name: Trivy Container Scanner
     needs: scan-coordinator
-    if: needs.scan-coordinator.outputs.run_trivy_container == 'true'
+    if: needs.scan-coordinator.outputs.run_trivy_container == 'true' && inputs.container_image_ref != ''
     uses: huntridge-labs/argus/.github/workflows/scanner-trivy-container.yml@1.8.1
     with:
       allow_failure: ${{ inputs.allow_failure }}
-      image_ref: 'nginx:latest'
+      image_ref: ${{ inputs.container_image_ref }}
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
       fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
@@ -652,11 +666,11 @@ jobs:
   scanner-grype:
     name: Grype Scanner
     needs: scan-coordinator
-    if: needs.scan-coordinator.outputs.run_grype == 'true'
+    if: needs.scan-coordinator.outputs.run_grype == 'true' && inputs.container_image_ref != ''
     uses: huntridge-labs/argus/.github/workflows/scanner-grype.yml@1.8.1
     with:
       allow_failure: ${{ inputs.allow_failure }}
-      image_ref: 'nginx:latest'
+      image_ref: ${{ inputs.container_image_ref }}
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
       fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}

@@ -83,8 +83,17 @@ runs:
       env:
         FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
         SCAN_PATH: ${{ inputs.scan_path }}
+        JOB_ID: ${{ inputs.job_id }}
       run: |
         mkdir -p clamav-reports scanner-summaries
+
+        # Unique internal summary filename per invocation so that multiple
+        # invocations feeding one security-summary (merge-multiple) don't
+        # clobber identically named files. Key on job_id (same identifier the
+        # caller uses to keep the artifact name unique).
+        SAFE_ID=$(printf '%s' "${JOB_ID}" | tr -c 'A-Za-z0-9._-' '_')
+        SUMMARY_FILE="scanner-summaries/clamav-${SAFE_ID}.md"
+        echo "summary_file=${SUMMARY_FILE}" >> "$GITHUB_OUTPUT"
 
         # SDK auto-discovers argus.yml if present; works without one too
         SCAN_EXIT=0
@@ -128,7 +137,7 @@ runs:
 
         # Copy markdown summary for PR comment artifact and step summary
         if [ -f "clamav-reports/argus-summary.md" ]; then
-          cp clamav-reports/argus-summary.md scanner-summaries/clamav.md
+          cp clamav-reports/argus-summary.md "${SUMMARY_FILE}"
           cat clamav-reports/argus-summary.md >> "$GITHUB_STEP_SUMMARY"
         fi
 
@@ -154,7 +163,7 @@ runs:
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       with:
         name: scanner-summary-clamav-${{ inputs.job_id }}
-        path: scanner-summaries/clamav.md
+        path: ${{ steps.scan.outputs.summary_file }}
         retention-days: 7
       continue-on-error: true
 
@@ -162,7 +171,7 @@ runs:
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
       uses: huntridge-labs/argus/.github/actions/comment-pr@1.8.1
       with:
-        summary_file: scanner-summaries/clamav.md
+        summary_file: ${{ steps.scan.outputs.summary_file }}
         comment_marker: clamav-scanner-comment-marker
         title: '🛡️ ClamAV Malware Scan Results'
         fallback_message: 'No ClamAV results available'
