@@ -32,6 +32,11 @@ on:
         default: 'none'
   workflow_call:
     inputs:
+      allow_failure:
+        description: 'When true (default) the scan never fails the job (non-blocking); when false, a scan crash or a fail_on_severity breach fails the job so a caller/pipeline can gate on it.'
+        required: false
+        type: boolean
+        default: true
       image_ref:
         description: 'Container image reference to scan (e.g., nginx:latest, ghcr.io/owner/image:tag)'
         required: true
@@ -78,7 +83,7 @@ jobs:
     name: Trivy Container Scan
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    continue-on-error: true
+    continue-on-error: ${{ inputs.allow_failure == true }}
 
     steps:
       - name: Checkout repository

@@ -453,6 +453,7 @@ jobs:
     if: needs.scan-coordinator.outputs.run_codeql == 'true'
     uses: huntridge-labs/argus/.github/workflows/scanner-codeql.yml@1.8.1
     with:
+      allow_failure: ${{ inputs.allow_failure }}
       codeql_languages: ${{ inputs.codeql_languages }}
       config_file: ${{ inputs.codeql_config_file }}
       post_pr_comment: false
@@ -471,6 +472,7 @@ jobs:
     if: needs.scan-coordinator.outputs.run_opengrep == 'true'
     uses: huntridge-labs/argus/.github/workflows/scanner-opengrep.yml@1.8.1
     with:
+      allow_failure: ${{ inputs.allow_failure }}
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
       fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
@@ -487,6 +489,7 @@ jobs:
     if: needs.scan-coordinator.outputs.run_bandit == 'true'
     uses: huntridge-labs/argus/.github/workflows/scanner-bandit.yml@1.8.1
     with:
+      allow_failure: ${{ inputs.allow_failure }}
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
       fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
@@ -504,6 +507,7 @@ jobs:
     if: needs.scan-coordinator.outputs.run_gitleaks == 'true'
     uses: huntridge-labs/argus/.github/workflows/scanner-gitleaks.yml@1.8.1
     with:
+      allow_failure: ${{ inputs.allow_failure }}
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
       fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
@@ -526,6 +530,7 @@ jobs:
     if: needs.scan-coordinator.outputs.run_clamav == 'true'
     uses: huntridge-labs/argus/.github/workflows/scanner-clamav.yml@1.8.1
     with:
+      allow_failure: ${{ inputs.allow_failure }}
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
       scan_path: ${{ inputs.clamav_scan_path }}
@@ -577,6 +582,7 @@ jobs:
     if: needs.scan-coordinator.outputs.run_sbom == 'true'
     uses: huntridge-labs/argus/.github/workflows/scanner-syft.yml@1.8.1
     with:
+      allow_failure: ${{ inputs.allow_failure }}
       enable_code_security: ${{ inputs.enable_code_security }}
     permissions:
       contents: read
@@ -592,6 +598,7 @@ jobs:
     if: needs.scan-coordinator.outputs.run_trivy_iac == 'true'
     uses: huntridge-labs/argus/.github/workflows/scanner-trivy-iac.yml@1.8.1
     with:
+      allow_failure: ${{ inputs.allow_failure }}
       iac_path: ${{ inputs.iac_path }}
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -609,6 +616,7 @@ jobs:
     if: needs.scan-coordinator.outputs.run_checkov == 'true'
     uses: huntridge-labs/argus/.github/workflows/scanner-checkov.yml@1.8.1
     with:
+      allow_failure: ${{ inputs.allow_failure }}
       iac_path: ${{ inputs.iac_path }}
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -626,6 +634,7 @@ jobs:
     if: needs.scan-coordinator.outputs.run_trivy_container == 'true'
     uses: huntridge-labs/argus/.github/workflows/scanner-trivy-container.yml@1.8.1
     with:
+      allow_failure: ${{ inputs.allow_failure }}
       image_ref: 'nginx:latest'
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -644,6 +653,7 @@ jobs:
     if: needs.scan-coordinator.outputs.run_grype == 'true'
     uses: huntridge-labs/argus/.github/workflows/scanner-grype.yml@1.8.1
     with:
+      allow_failure: ${{ inputs.allow_failure }}
       image_ref: 'nginx:latest'
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -662,6 +672,7 @@ jobs:
     if: needs.scan-coordinator.outputs.run_zap == 'true'
     uses: huntridge-labs/argus/.github/workflows/scanner-zap.yml@1.8.1
     with:
+      allow_failure: ${{ inputs.allow_failure }}
       scan_mode: ${{ inputs.zap_scan_mode }}
       scan_type: ${{ inputs.zap_scan_type }}
       target_url: ${{ inputs.zap_target_urls }}
@@ -686,6 +697,7 @@ jobs:
     if: needs.scan-coordinator.outputs.run_osv == 'true'
     uses: huntridge-labs/argus/.github/workflows/scanner-osv.yml@1.8.1
     with:
+      allow_failure: ${{ inputs.allow_failure }}
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
       fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
@@ -705,6 +717,7 @@ jobs:
     if: needs.scan-coordinator.outputs.run_dependency_review == 'true'
     uses: huntridge-labs/argus/.github/workflows/scanner-dependency-review.yml@1.8.1
     with:
+      allow_failure: ${{ inputs.allow_failure }}
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
       fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
@@ -725,6 +738,7 @@ jobs:
     if: needs.scan-coordinator.outputs.run_supply_chain == 'true'
     uses: huntridge-labs/argus/.github/workflows/scanner-supply-chain.yml@1.8.1
     with:
+      allow_failure: ${{ inputs.allow_failure }}
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
       scan_path: ${{ inputs.supply_chain_scan_path }}

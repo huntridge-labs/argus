@@ -56,6 +56,11 @@ on:
         type: string
   workflow_call:
     inputs:
+      allow_failure:
+        description: 'When true (default) the scan never fails the job (non-blocking); when false, a scan crash or a fail_on_severity breach fails the job so a caller/pipeline can gate on it.'
+        required: false
+        type: boolean
+        default: true
       config_file:
         description: 'Path to ZAP config file (YAML, JSON, or JS)'
         required: true
@@ -101,7 +106,7 @@ jobs:
     needs: parse-config
     if: needs.parse-config.outputs.has_scans == 'true'
     timeout-minutes: 60
-    continue-on-error: true
+    continue-on-error: ${{ inputs.allow_failure == true }}
 
     strategy:
       fail-fast: false
