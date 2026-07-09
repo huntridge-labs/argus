@@ -105,7 +105,7 @@ jobs:
             --image "$IMAGE_REF" \
             --scanners grype \
             --severity-threshold "$SEVERITY_THRESHOLD" \
-            --format terminal --format sarif --format json \
+            --format terminal --format sarif --format json --format markdown \
             --output-dir ./argus-results \
             --verbose
         env:
@@ -122,6 +122,33 @@ jobs:
           path: ./argus-results/
           retention-days: 30
 
+      - name: Build scanner summary
+        if: always()
+        env:
+          SCAN_NAME: ${{ inputs.scan_name || 'grype-scan' }}
+        run: |
+          mkdir -p scanner-summaries
+          SAFE=$(printf '%s' "$SCAN_NAME" | tr -c 'A-Za-z0-9._-' '_')
+          {
+            echo "<details><summary>🐳 Grype (Container) (${SCAN_NAME})</summary>"
+            echo ""
+            if [ -f ./argus-results/argus-summary.md ]; then
+              cat ./argus-results/argus-summary.md
+            else
+              echo "_No 🐳 Grype (Container) findings summary was produced._"
+            fi
+            echo ""
+            echo "</details>"
+          } > "scanner-summaries/grype-${SAFE}.md"
+
+      - name: Upload scanner summary
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: scanner-summary-grype-${{ inputs.scan_name || 'grype-scan' }}
+          path: scanner-summaries/
+          retention-days: 30
+
       - name: Upload SARIF
         if: inputs.enable_code_security && always() && github.actor != 'nektos/act'
         uses: github/codeql-action/upload-sarif@54f647b7e1bb85c95cddabcd46b0c578ec92bc1a # v4
@@ -130,10 +157,10 @@ jobs:
         continue-on-error: true
 
       - name: Comment PR with results
-        if: github.event_name == 'pull_request' && inputs.post_pr_comment
+        if: always() && github.event_name == 'pull_request' && inputs.post_pr_comment
         uses: huntridge-labs/argus/.github/actions/comment-pr@1.8.1
         with:
-          summary_file: ./argus-results/argus-results.md
+          summary_file: ./argus-results/argus-summary.md
           comment_marker: container-${{ inputs.scan_name || 'grype-scan' }}-comment-marker
           title: 'Grype Container Scan Results'
           fallback_message: 'No Grype results available'

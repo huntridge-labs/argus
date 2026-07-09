@@ -75,7 +75,7 @@ jobs:
           python -m argus scan opengrep \
             --path "$SCAN_PATH" \
             --severity-threshold "$SEVERITY_THRESHOLD" \
-            --format terminal --format sarif --format json \
+            --format terminal --format sarif --format json --format markdown \
             --output-dir ./argus-results \
             --verbose
         env:
@@ -91,6 +91,30 @@ jobs:
           path: ./argus-results/
           retention-days: 30
 
+      - name: Build scanner summary
+        if: always()
+        run: |
+          mkdir -p scanner-summaries
+          {
+            echo "<details><summary>🔎 OpenGrep (SAST)</summary>"
+            echo ""
+            if [ -f ./argus-results/argus-summary.md ]; then
+              cat ./argus-results/argus-summary.md
+            else
+              echo "_No 🔎 OpenGrep (SAST) findings summary was produced._"
+            fi
+            echo ""
+            echo "</details>"
+          } > scanner-summaries/opengrep.md
+
+      - name: Upload scanner summary
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: scanner-summary-opengrep
+          path: scanner-summaries/
+          retention-days: 30
+
       - name: Upload SARIF
         if: inputs.enable_code_security && always() && github.actor != 'nektos/act'
         uses: github/codeql-action/upload-sarif@54f647b7e1bb85c95cddabcd46b0c578ec92bc1a # v4
@@ -99,10 +123,10 @@ jobs:
         continue-on-error: true
 
       - name: Comment PR with results
-        if: github.event_name == 'pull_request' && inputs.post_pr_comment
+        if: always() && github.event_name == 'pull_request' && inputs.post_pr_comment
         uses: huntridge-labs/argus/.github/actions/comment-pr@1.8.1
         with:
-          summary_file: ./argus-results/argus-results.md
+          summary_file: ./argus-results/argus-summary.md
           comment_marker: opengrep-comment-marker
           title: 'OpenGrep SAST Results'
           fallback_message: 'No OpenGrep results available'
