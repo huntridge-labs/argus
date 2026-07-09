@@ -12,9 +12,12 @@ inputs:
     required: false
     default: 'scanner-summary-zap-*'
   output_name:
-    description: 'Name for the combined summary artifact'
+    description: |
+      Name for the combined summary artifact. Defaults to a
+      `scanner-summary-*` name so a top-level `security-summary` aggregator
+      (which collects `scanner-summary-*`) picks up the combined ZAP summary.
     required: false
-    default: 'zap-combined-summary'
+    default: 'scanner-summary-zap-combined'
   retention_days:
     description: 'Number of days to retain the summary artifact'
     required: false
@@ -79,6 +82,7 @@ runs:
       env:
         ARTIFACT_PATTERN: ${{ inputs.artifact_pattern }}
         SUMMARY_PATTERN: ${{ inputs.summary_pattern }}
+        UNIQUE_KEY: ${{ github.run_id }}-${{ github.job }}
       run: |
         # Reference Python scripts from scanner-zap action
         SCANNER_ZAP_SCRIPTS="${{ github.action_path }}/../scanner-zap/scripts"
@@ -96,9 +100,17 @@ runs:
         # Run the summary generator
         python3 "$GENERATOR"
 
+        # The generator writes a fixed internal filename (scanner-summaries/zap.md).
+        # Rename it to a per-invocation unique name so multiple combiner runs
+        # feeding one security-summary (merge-multiple) don't clobber identically
+        # named files. This action has no job_id input, so key on run_id + job.
+        SAFE_ID=$(printf '%s' "${UNIQUE_KEY}" | tr -c 'A-Za-z0-9._-' '_')
+        GENERATED_FILE="scanner-summaries/zap.md"
+        SUMMARY_FILE="scanner-summaries/zap-${SAFE_ID}.md"
+
         # Set outputs
-        SUMMARY_FILE="scanner-summaries/zap.md"
-        if [[ -f "$SUMMARY_FILE" ]]; then
+        if [[ -f "$GENERATED_FILE" ]]; then
+          mv "$GENERATED_FILE" "$SUMMARY_FILE"
           echo "summary_path=$SUMMARY_FILE" >> "$GITHUB_OUTPUT"
           echo "has_findings=true" >> "$GITHUB_OUTPUT"
         else
@@ -174,7 +186,7 @@ runs:
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
       uses: huntridge-labs/argus/.github/actions/comment-pr@1.8.1
       with:
-        summary_file: scanner-summaries/zap.md
+        summary_file: ${{ steps.generate.outputs.summary_path }}
         comment_marker: zap-scan-summary-comment
         title: '🕷️ ZAP DAST Scan Results'
         fallback_message: 'No ZAP scan results available'

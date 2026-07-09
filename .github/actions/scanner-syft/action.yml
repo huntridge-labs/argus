@@ -328,8 +328,11 @@ runs:
           echo "" >> "$output"
         }
 
-        # Generate PR comment artifact
-        generate_summary "scanner-summaries/syft.md" "true"
+        # Generate PR comment artifact. Filename is suffixed with the unique
+        # per-invocation prefix (same identifier the artifact name uses) so
+        # multiple invocations feeding one security-summary (merge-multiple)
+        # don't clobber identically named files.
+        generate_summary "scanner-summaries/syft-${PREFIX}.md" "true"
 
         # Generate job summary
         generate_summary "$GITHUB_STEP_SUMMARY" "false"
@@ -340,7 +343,7 @@ runs:
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       with:
         name: scanner-summary-syft-${{ steps.setup.outputs.prefix }}
-        path: scanner-summaries/syft.md
+        path: scanner-summaries/syft-${{ steps.setup.outputs.prefix }}.md
         retention-days: 7
       continue-on-error: true
 
@@ -348,7 +351,7 @@ runs:
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
       uses: huntridge-labs/argus/.github/actions/comment-pr@1.8.1
       with:
-        summary_file: scanner-summaries/syft.md
+        summary_file: scanner-summaries/syft-${{ steps.setup.outputs.prefix }}.md
         comment_marker: syft-scanner-comment-marker
         title: '📦 Syft SBOM Results'
         fallback_message: 'No Syft SBOM results available'

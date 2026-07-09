@@ -22,7 +22,7 @@ Composite action to aggregate and summarize results from multiple ZAP DAST scans
 |-------|-------------|----------|---------|
 | `artifact_pattern` | Pattern to match ZAP report artifacts | No | `zap-reports-*` |
 | `summary_pattern` | Pattern to match scanner summary artifacts | No | `scanner-summary-zap-*` |
-| `output_name` | Name for the combined summary artifact | No | `zap-combined-summary` |
+| `output_name` | Name for the combined summary artifact (defaults to a `scanner-summary-*` name so a top-level `security-summary` aggregator collects it) | No | `scanner-summary-zap-combined` |
 | `retention_days` | Days to retain the summary artifact | No | `30` |
 | `write_step_summary` | Write summary to GITHUB_STEP_SUMMARY | No | `true` |
 | `post_pr_comment` | Post results as PR comment | No | `true` |

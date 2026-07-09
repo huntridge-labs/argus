@@ -202,6 +202,7 @@ runs:
       continue-on-error: true
 
     - name: Generate scanner summary
+      id: generate-summary
       if: always()
       shell: bash
       run: |
@@ -213,8 +214,16 @@ runs:
           SKIPPED="true"
         fi
 
+        # Unique internal summary filename per invocation so that multiple
+        # invocations feeding one security-summary (merge-multiple) don't
+        # clobber identically named files. Key on job_id (same identifier the
+        # caller uses to keep the artifact name unique).
+        SAFE_ID=$(printf '%s' "${JOB_ID}" | tr -c 'A-Za-z0-9._-' '_')
+        SUMMARY_FILE="scanner-summaries/dependency-review-${SAFE_ID}.md"
+        echo "summary_file=${SUMMARY_FILE}" >> "$GITHUB_OUTPUT"
+
         python3 "$SCRIPT_DIR/scripts/generate_summary.py" \
-          --output-file "scanner-summaries/dependency-review.md" \
+          --output-file "${SUMMARY_FILE}" \
           --is-pr-comment "true" \
           --skipped "$SKIPPED" \
           --critical "${STEPS_PARSE_RESULTS_OUTPUTS_CRITICAL_COUNT}" \
@@ -242,6 +251,7 @@ runs:
           --github-run-id "${{ github.run_id }}"
       continue-on-error: true
       env:
+        JOB_ID: ${{ inputs.job_id }}
         STEPS_CHECK_EVENT_OUTPUTS_IS_PR: ${{ steps.check-event.outputs.is_pr }}
         STEPS_PARSE_RESULTS_OUTPUTS_CRITICAL_COUNT: ${{ steps.parse-results.outputs.critical_count }}
         STEPS_PARSE_RESULTS_OUTPUTS_HIGH_COUNT: ${{ steps.parse-results.outputs.high_count }}
@@ -254,7 +264,7 @@ runs:
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       with:
         name: scanner-summary-dependency-review-${{ inputs.job_id }}
-        path: scanner-summaries/dependency-review.md
+        path: ${{ steps.generate-summary.outputs.summary_file }}
         retention-days: 7
       continue-on-error: true
 
@@ -262,7 +272,7 @@ runs:
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
       uses: huntridge-labs/argus/.github/actions/comment-pr@1.8.1
       with:
-        summary_file: scanner-summaries/dependency-review.md
+        summary_file: ${{ steps.generate-summary.outputs.summary_file }}
         comment_marker: dependency-review-comment-marker
         title: '🔗 Dependency Review Results'
         fallback_message: 'No dependency review results available'
