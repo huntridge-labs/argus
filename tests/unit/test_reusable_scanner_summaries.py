@@ -20,8 +20,11 @@ WORKFLOWS = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows
 
 # CLI-inline leaf scanners that feed the consolidated comment. codeql / syft /
 # dependency-review delegate to composite actions that emit their own
-# scanner-summary-* artifact; zap has its own scanner-zap-summary path. New
-# inline scanners should be added here (and emit a scanner-summary-* artifact).
+# scanner-summary-* artifact. The direct scanner-zap.yml workflow runs the CLI
+# inline and posts its own PR comment, so it must emit scanner-summary-zap too
+# (scanner-zap-from-config.yml is the separate matrix path that aggregates via
+# the scanner-zap-summary composite action). New inline scanners should be
+# added here (and emit a scanner-summary-* artifact).
 CLI_SCANNERS = [
     "bandit",
     "checkov",
@@ -33,6 +36,7 @@ CLI_SCANNERS = [
     "trivy-iac",
     "grype",
     "trivy-container",
+    "zap",
 ]
 
 
