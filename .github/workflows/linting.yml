@@ -28,6 +28,15 @@ on:
         required: false
         type: boolean
         default: false
+      fail_on_tool_error:
+        description: |
+          Fail the workflow when a linter tool itself errors (a crash — argus exit
+          code 2), independent of fail_on_issues. Default false: a tool error is
+          always surfaced in the job log, the status table, and the PR comment, but
+          only blocks the pipeline when this is true.
+        required: false
+        type: boolean
+        default: false
       post_pr_comment:
         description: 'Post linting summary as PR comment'
         required: false
@@ -53,6 +62,7 @@ jobs:
     continue-on-error: true
     outputs:
       yaml_issues: ${{ steps.lint.outputs.issues_count }}
+      yaml_tool_status: ${{ steps.lint.outputs.tool_status }}
 
     steps:
       - name: Checkout repository
@@ -70,6 +80,7 @@ jobs:
     continue-on-error: true
     outputs:
       json_issues: ${{ steps.lint.outputs.issues_count }}
+      json_tool_status: ${{ steps.lint.outputs.tool_status }}
 
     steps:
       - name: Checkout repository
@@ -87,6 +98,7 @@ jobs:
     continue-on-error: true
     outputs:
       python_issues: ${{ steps.lint.outputs.issues_count }}
+      python_tool_status: ${{ steps.lint.outputs.tool_status }}
 
     steps:
       - name: Checkout repository
@@ -104,6 +116,7 @@ jobs:
     continue-on-error: true
     outputs:
       js_issues: ${{ steps.lint.outputs.issues_count }}
+      js_tool_status: ${{ steps.lint.outputs.tool_status }}
 
     steps:
       - name: Checkout repository
@@ -121,6 +134,7 @@ jobs:
     continue-on-error: true
     outputs:
       docker_issues: ${{ steps.lint.outputs.issues_count }}
+      docker_tool_status: ${{ steps.lint.outputs.tool_status }}
 
     steps:
       - name: Checkout repository
@@ -138,6 +152,7 @@ jobs:
     continue-on-error: true
     outputs:
       terraform_issues: ${{ steps.lint.outputs.issues_count }}
+      terraform_tool_status: ${{ steps.lint.outputs.tool_status }}
 
     steps:
       - name: Checkout repository
@@ -192,22 +207,24 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           post_pr_comment: ${{ inputs.post_pr_comment }}
-          # Render the per-linter pass/fail table so a skipped/failed linter is
-          # visible instead of the report reading "clean". The workflow's fail
-          # contract stays governed solely by fail_on_issues below, so
-          # fail_on_scanner_failure is left off here. (Hard-failing on a crashed
-          # linter is limited by the lint jobs' continue-on-error — which also
-          # absorbs linters' non-zero-on-findings exit — and is tracked as a
-          # follow-up in #325.)
-          fail_on_scanner_failure: false
+          # Drive the per-linter status table from each linter's tool_status
+          # output (ok|error), NOT needs.*.result. The lint jobs use
+          # continue-on-error, which can mask a job's result; tool_status is
+          # written by the linter action from the argus exit code (2 = tool
+          # error, distinct from 1 = findings) and always propagates. A tool
+          # error → "failure" in the table, so a crashed linter is visible in the
+          # check summary and PR comment instead of the report reading "clean".
+          # Whether a tool error BLOCKS is governed by fail_on_tool_error;
+          # findings remain governed solely by fail_on_issues below.
+          fail_on_scanner_failure: ${{ inputs.fail_on_tool_error }}
           scan_statuses: |
             {
-              "yaml":       "${{ needs.yaml-lint.result }}",
-              "json":       "${{ needs.json-lint.result }}",
-              "python":     "${{ needs.python-lint.result }}",
-              "javascript": "${{ needs.javascript-lint.result }}",
-              "dockerfile": "${{ needs.dockerfile-lint.result }}",
-              "terraform":  "${{ needs.terraform-lint.result }}"
+              "yaml":       "${{ needs.yaml-lint.outputs.yaml_tool_status == 'error' && 'failure' || 'success' }}",
+              "json":       "${{ needs.json-lint.outputs.json_tool_status == 'error' && 'failure' || 'success' }}",
+              "python":     "${{ needs.python-lint.outputs.python_tool_status == 'error' && 'failure' || 'success' }}",
+              "javascript": "${{ needs.javascript-lint.outputs.js_tool_status == 'error' && 'failure' || 'success' }}",
+              "dockerfile": "${{ needs.dockerfile-lint.outputs.docker_tool_status == 'error' && 'failure' || 'success' }}",
+              "terraform":  "${{ needs.terraform-lint.outputs.terraform_tool_status == 'error' && 'failure' || 'success' }}"
             }
 
       - name: Fail if issues found

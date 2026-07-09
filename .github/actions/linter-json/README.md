@@ -23,6 +23,7 @@ This action checks JSON syntax across your repository. It uploads results as art
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
 | `fail_on_issues` | Fail the job if issues are found | No | `false` |
+| `fail_on_tool_error` | Fail the job when the linter tool itself errors (a crash — argus exit code 2), independent of `fail_on_issues`. Tool errors are always surfaced in the job log, status table, and PR comment; this only makes them block. | No | `false` |
 | `paths` | Paths to search for JSON files (space-separated) | No | `.` |
 | `node_version` | Node.js version to use | No | `20` |
 
@@ -31,6 +32,7 @@ This action checks JSON syntax across your repository. It uploads results as art
 | Output | Description |
 |--------|-------------|
 | `issues_count` | Number of validation issues found |
+| `tool_status` | Whether the linter tool ran cleanly: `ok`, or `error` when the tool itself crashed (argus exit code 2). |
 
 ## Artifacts
 

@@ -24,6 +24,7 @@ This action checks YAML syntax and style. It uploads results as artifacts that c
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
 | `fail_on_issues` | Fail the job if issues are found | No | `false` |
+| `fail_on_tool_error` | Fail the job when the linter tool itself errors (a crash — argus exit code 2), independent of `fail_on_issues`. Tool errors are always surfaced in the job log, status table, and PR comment; this only makes them block. | No | `false` |
 | `config_file` | Path to yamllint configuration file | No | `''` |
 | `paths` | Paths to lint (space-separated) | No | `.` |
 | `python_version` | Python version to use for yamllint | No | `3.12` |
@@ -33,6 +34,7 @@ This action checks YAML syntax and style. It uploads results as artifacts that c
 | Output | Description |
 |--------|-------------|
 | `issues_count` | Number of linting issues found |
+| `tool_status` | Whether the linter tool ran cleanly: `ok`, or `error` when the tool itself crashed (argus exit code 2). |
 
 ## Artifacts
 
