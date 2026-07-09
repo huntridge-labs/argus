@@ -550,6 +550,7 @@ jobs:
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
+      allow_failure: ${{ inputs.allow_failure }}
       fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
     permissions:
       contents: read
