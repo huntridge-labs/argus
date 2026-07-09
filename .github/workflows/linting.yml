@@ -155,14 +155,35 @@ jobs:
     needs: [yaml-lint, json-lint, python-lint, javascript-lint, dockerfile-lint, terraform-lint]
     if: always()
     outputs:
-      status: ${{ steps.summary.outputs.status }}
-      issues_found: ${{ steps.summary.outputs.total_issues }}
+      status: ${{ steps.summary.outputs.overall_status }}
+      issues_found: ${{ steps.totals.outputs.total_issues }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
+
+      - name: Tally linter issue counts
+        id: totals
+        env:
+          YAML_ISSUES: ${{ needs.yaml-lint.outputs.yaml_issues }}
+          JSON_ISSUES: ${{ needs.json-lint.outputs.json_issues }}
+          PYTHON_ISSUES: ${{ needs.python-lint.outputs.python_issues }}
+          JS_ISSUES: ${{ needs.javascript-lint.outputs.js_issues }}
+          DOCKER_ISSUES: ${{ needs.dockerfile-lint.outputs.docker_issues }}
+          TERRAFORM_ISSUES: ${{ needs.terraform-lint.outputs.terraform_issues }}
+        run: |
+          total=0
+          for v in "$YAML_ISSUES" "$JSON_ISSUES" "$PYTHON_ISSUES" "$JS_ISSUES" "$DOCKER_ISSUES" "$TERRAFORM_ISSUES"; do
+            case "$v" in
+              ''|*[!0-9]*) n=0 ;;
+              *) n="$v" ;;
+            esac
+            total=$((total + n))
+          done
+          echo "total_issues=$total" >> "$GITHUB_OUTPUT"
+          echo "Linting issues found: $total"
 
       - name: Generate Linting Summary
         id: summary
@@ -171,11 +192,28 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           post_pr_comment: ${{ inputs.post_pr_comment }}
+          # Render the per-linter pass/fail table so a skipped/failed linter is
+          # visible instead of the report reading "clean". The workflow's fail
+          # contract stays governed solely by fail_on_issues below, so
+          # fail_on_scanner_failure is left off here. (Hard-failing on a crashed
+          # linter is limited by the lint jobs' continue-on-error — which also
+          # absorbs linters' non-zero-on-findings exit — and is tracked as a
+          # follow-up in #325.)
+          fail_on_scanner_failure: false
+          scan_statuses: |
+            {
+              "yaml":       "${{ needs.yaml-lint.result }}",
+              "json":       "${{ needs.json-lint.result }}",
+              "python":     "${{ needs.python-lint.result }}",
+              "javascript": "${{ needs.javascript-lint.result }}",
+              "dockerfile": "${{ needs.dockerfile-lint.result }}",
+              "terraform":  "${{ needs.terraform-lint.result }}"
+            }
 
       - name: Fail if issues found
-        if: inputs.fail_on_issues == true && steps.summary.outputs.total_issues != '0'
+        if: inputs.fail_on_issues == true && steps.totals.outputs.total_issues != '0'
         run: |
-          echo "::error::Found ${STEPS_SUMMARY_OUTPUTS_TOTAL_ISSUES} linting issues"
+          echo "::error::Found ${TOTAL} linting issues"
           exit 1
         env:
-          STEPS_SUMMARY_OUTPUTS_TOTAL_ISSUES: ${{ steps.summary.outputs.total_issues }}
+          TOTAL: ${{ steps.totals.outputs.total_issues }}
