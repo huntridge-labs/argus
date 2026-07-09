@@ -250,7 +250,6 @@ jobs:
       run_bandit: ${{ steps.resolve.outputs.run_bandit }}
       run_gitleaks: ${{ steps.resolve.outputs.run_gitleaks }}
       run_container: ${{ steps.resolve.outputs.run_container }}
-      run_infrastructure: ${{ steps.resolve.outputs.run_infrastructure }}
       run_sbom: ${{ steps.resolve.outputs.run_sbom }}
       run_trivy_iac: ${{ steps.resolve.outputs.run_trivy_iac }}
       run_checkov: ${{ steps.resolve.outputs.run_checkov }}
@@ -280,7 +279,6 @@ jobs:
           [bandit]=false
           [gitleaks]=false
           [container]=false
-          [infrastructure]=false
           [trivy-iac]=false
           [checkov]=false
           [trivy-container]=false
@@ -294,7 +292,7 @@ jobs:
           [supply-chain]=false
         )
 
-        DEFAULT_SCANNERS=(codeql opengrep bandit gitleaks container infrastructure sbom)
+        DEFAULT_SCANNERS=(codeql opengrep bandit gitleaks container trivy-iac checkov sbom)
         SELECTED=()
 
         normalize() {
@@ -325,7 +323,7 @@ jobs:
           case "$token" in
             '' ) ;;
             all|full)
-              local -a exclude=(trivy-iac checkov sbom trivy-container grype zap dependency-review)
+              local -a exclude=(sbom trivy-container grype zap dependency-review)
               for key in "${!RUN[@]}"; do
                 if [[ " ${exclude[*]} " != *" ${key} "* ]]; then
                   add_scanner "$key"
@@ -341,7 +339,12 @@ jobs:
             bandit) add_scanner bandit ;;
             gitleaks|git-leaks) add_scanner gitleaks ;;
             container|containers|container-scan|docker) add_scanner container ;;
-            infrastructure|infra|iac|terraform) add_scanner infrastructure ;;
+            infrastructure|infra|iac|terraform)
+              # `infrastructure` is an alias for the trivy-iac + checkov per-scanner
+              # workflows (the compound infrastructure-scan.yml is deprecated, #327).
+              add_scanner trivy-iac
+              add_scanner checkov
+              ;;
             sbom) add_scanner sbom ;;
             trivy-iac|trivyiac) add_scanner trivy-iac ;;
             checkov) add_scanner checkov ;;
@@ -560,23 +563,6 @@ jobs:
       pull-requests: write
     secrets: inherit
 
-  scanner-infrastructure:
-    name: Infrastructure Scanner
-    needs: scan-coordinator
-    if: needs.scan-coordinator.outputs.run_infrastructure == 'true'
-    uses: huntridge-labs/argus/.github/workflows/infrastructure-scan.yml@1.8.1
-    with:
-      iac_path: ${{ inputs.iac_path }}
-      post_pr_comment: false
-      enable_code_security: ${{ inputs.enable_code_security }}
-      fail_on_severity: ${{ inputs.allow_failure == false && inputs.severity_threshold || 'none' }}
-    permissions:
-      contents: read
-      security-events: write
-      actions: read
-      pull-requests: write
-    secrets: inherit
-
   scanner-sbom:
     name: SBOM Generator
     needs: scan-coordinator
@@ -774,7 +760,6 @@ jobs:
       - scanner-gitleaks
       - scanner-clamav
       - scanner-container
-      - scanner-infrastructure
       - scanner-sbom
       - scanner-trivy-iac
       - scanner-checkov
@@ -817,7 +802,6 @@ jobs:
               "gitleaks":          "${{ needs.scanner-gitleaks.result }}",
               "clamav":            "${{ needs.scanner-clamav.result }}",
               "container":         "${{ needs.scanner-container.result }}",
-              "infrastructure":    "${{ needs.scanner-infrastructure.result }}",
               "sbom":              "${{ needs.scanner-sbom.result }}",
               "trivy-iac":         "${{ needs.scanner-trivy-iac.result }}",
               "checkov":           "${{ needs.scanner-checkov.result }}",
