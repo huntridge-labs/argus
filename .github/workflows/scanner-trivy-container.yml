@@ -161,6 +161,6 @@ jobs:
         uses: huntridge-labs/argus/.github/actions/comment-pr@1.8.1
         with:
           summary_file: ./argus-results/argus-summary.md
-          comment_marker: container-${{ inputs.scan_name || 'trivy-scan' }}-comment-marker
+          comment_marker: trivy-container-${{ inputs.scan_name || 'trivy-scan' }}-comment-marker
           title: 'Trivy Container Scan Results'
           fallback_message: 'No Trivy container results available'
