@@ -212,7 +212,7 @@ jobs:
 
           ARGUS_CMD="$ARGUS_CMD --scan-type $SCAN_TYPE"
           ARGUS_CMD="$ARGUS_CMD --severity-threshold $SEVERITY_THRESHOLD"
-          ARGUS_CMD="$ARGUS_CMD --format terminal --format sarif --format json"
+          ARGUS_CMD="$ARGUS_CMD --format terminal --format sarif --format json --format markdown"
           ARGUS_CMD="$ARGUS_CMD --output-dir ./argus-results"
           ARGUS_CMD="$ARGUS_CMD --verbose"
 
@@ -239,11 +239,38 @@ jobs:
           path: ./argus-results/
           retention-days: 30
 
+      - name: Build scanner summary
+        if: always()
+        env:
+          SCAN_NAME: ${{ inputs.scan_name || 'zap-scan' }}
+        run: |
+          mkdir -p scanner-summaries
+          SAFE=$(printf '%s' "$SCAN_NAME" | tr -c 'A-Za-z0-9._-' '_')
+          {
+            echo "<details><summary>🕷️ OWASP ZAP (DAST) (${SCAN_NAME})</summary>"
+            echo ""
+            if [ -f ./argus-results/argus-summary.md ]; then
+              cat ./argus-results/argus-summary.md
+            else
+              echo "_No 🕷️ OWASP ZAP (DAST) findings summary was produced._"
+            fi
+            echo ""
+            echo "</details>"
+          } > "scanner-summaries/zap-${SAFE}.md"
+
+      - name: Upload scanner summary
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: scanner-summary-zap-${{ inputs.scan_name || 'zap-scan' }}
+          path: scanner-summaries/
+          retention-days: 30
+
       - name: Comment PR with results
-        if: github.event_name == 'pull_request' && inputs.post_pr_comment
+        if: always() && github.event_name == 'pull_request' && inputs.post_pr_comment
         uses: huntridge-labs/argus/.github/actions/comment-pr@1.8.1
         with:
-          summary_file: ./argus-results/argus-results.md
+          summary_file: ./argus-results/argus-summary.md
           comment_marker: zap-dast-comment-${{ inputs.scan_name || 'zap-scan' }}
           title: 'ZAP DAST Scan Results'
           fallback_message: 'No ZAP results available'
