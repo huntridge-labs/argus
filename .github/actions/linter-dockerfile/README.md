@@ -23,6 +23,7 @@ This action checks Dockerfiles for best practices and common issues. It uploads 
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
 | `fail_on_issues` | Fail the job if issues are found | No | `false` |
+| `fail_on_tool_error` | Fail the job when the linter tool itself errors (a crash — argus exit code 2), independent of `fail_on_issues`. Tool errors are always surfaced in the job log, status table, and PR comment; this only makes them block. | No | `false` |
 | `paths` | Paths to search for Dockerfiles (space-separated) | No | `.` |
 | `config_file` | Path to Hadolint configuration file | No | `''` |
 | `ignore_rules` | Hadolint rules to ignore (comma-separated) | No | `''` |
@@ -32,6 +33,7 @@ This action checks Dockerfiles for best practices and common issues. It uploads 
 | Output | Description |
 |--------|-------------|
 | `issues_count` | Number of linting issues found |
+| `tool_status` | Whether the linter tool ran cleanly: `ok`, or `error` when the tool itself crashed (argus exit code 2). |
 
 ## Artifacts
 

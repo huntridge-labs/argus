@@ -24,6 +24,7 @@ This action validates Terraform files using `terraform fmt`, `terraform validate
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
 | `fail_on_issues` | Fail the job if issues are found | No | `false` |
+| `fail_on_tool_error` | Fail the job when the linter tool itself errors (a crash — argus exit code 2), independent of `fail_on_issues`. Tool errors are always surfaced in the job log, status table, and PR comment; this only makes them block. | No | `false` |
 | `paths` | Paths to search for Terraform files (space-separated) | No | `.` |
 | `terraform_version` | Terraform version to use | No | `latest` |
 | `run_tflint` | Run TFLint in addition to fmt/validate | No | `true` |
@@ -33,6 +34,7 @@ This action validates Terraform files using `terraform fmt`, `terraform validate
 | Output | Description |
 |--------|-------------|
 | `issues_count` | Total number of linting issues found |
+| `tool_status` | Whether the linter tool ran cleanly: `ok`, or `error` when the tool itself crashed (argus exit code 2). |
 | `fmt_issues` | Number of formatting issues |
 | `validate_issues` | Number of validation issues |
 | `tflint_issues` | Number of TFLint issues |

@@ -31,11 +31,22 @@ inputs:
     description: 'Whether to post PR comments'
     required: false
     default: 'false'
+  fail_on_tool_error:
+    description: |
+      Fail the job when jshint itself errors (a tool crash — argus exit code 2),
+      independent of fail_on_issues. Default false: a tool error is always surfaced
+      in the job log, the status table, and the PR comment, but only blocks the job
+      when this is set to true.
+    required: false
+    default: 'false'
 
 outputs:
   issues_count:
     description: 'Total number of linting issues found'
     value: ${{ steps.scan.outputs.issue_count }}
+  tool_status:
+    description: 'Whether jshint ran cleanly: "ok", or "error" when the tool itself crashed (argus exit code 2).'
+    value: ${{ steps.scan.outputs.tool_status }}
 
 runs:
   using: 'composite'
@@ -78,7 +89,10 @@ runs:
           SEVERITY="info"
         fi
 
-        SCAN_EXIT=0
+        # argus scan exit codes: 0 = clean, 1 = findings over threshold,
+        # 2 = tool error (jshint/argus itself crashed). Capture combined
+        # output so a crash can be echoed into the console AND the summary.
+        set +e
         python -m argus scan lint-javascript \
           --path "${SCAN_PATH}" \
           --severity-threshold "${SEVERITY}" \
@@ -86,18 +100,53 @@ runs:
           --output-dir ./javascript-lint-reports \
           --output-vars ./javascript-lint-reports/counts.env \
           --no-timestamp \
-          || SCAN_EXIT=$?
+          2>&1 | tee javascript-lint-reports/output.log
+        SCAN_EXIT=${PIPESTATUS[0]}
+        set -e
 
-        # Forward counts to GitHub Actions outputs
+        # Forward counts + a machine-readable exit code to job outputs.
         [ -f javascript-lint-reports/counts.env ] && cat javascript-lint-reports/counts.env >> "$GITHUB_OUTPUT"
+        echo "scan_exit=${SCAN_EXIT}" >> "$GITHUB_OUTPUT"
 
-        # Copy markdown summary for PR comment and step summary
-        if [ -f "javascript-lint-reports/argus-summary.md" ]; then
-          cp javascript-lint-reports/argus-summary.md scanner-summaries/javascript-lint.md
-          cat javascript-lint-reports/argus-summary.md >> "$GITHUB_STEP_SUMMARY"
+        # Distinguish a tool error (exit 2) from findings (exit 1). A tool error
+        # means the result is untrustworthy, so surface it in the job log now; it
+        # is also carried up via the tool_status output (status table) and the
+        # summary banner below (PR comment).
+        if [ "${SCAN_EXIT}" -eq 2 ]; then
+          echo "tool_status=error" >> "$GITHUB_OUTPUT"
+          echo "::error title=JavaScript linter error::jshint (argus lint-javascript) exited with a tool error (code 2). The JavaScript lint result is incomplete — inspect this job log. Triage: ignore, patch, or open an Argus issue."
+        else
+          echo "tool_status=ok" >> "$GITHUB_OUTPUT"
         fi
 
-        exit $SCAN_EXIT
+        # Build the summary section (stitched into the check summary + PR comment).
+        # On a tool error, prepend an actionable banner + the error tail so every
+        # persona (comment / summary / console) has enough to triage.
+        {
+          if [ "${SCAN_EXIT}" -eq 2 ]; then
+            echo "> ⚠️ **JavaScript linter errored (tool exit code 2) — result is incomplete.** Triage: ignore / patch / open an Argus issue."
+            echo ""
+            if [ -s javascript-lint-reports/output.log ]; then
+              echo '<details><summary>Error output (last 20 lines)</summary>'
+              echo ""
+              echo '```'
+              tail -n 20 javascript-lint-reports/output.log
+              echo '```'
+              echo ""
+              echo '</details>'
+              echo ""
+            fi
+          fi
+          if [ -f "javascript-lint-reports/argus-summary.md" ]; then
+            cat javascript-lint-reports/argus-summary.md
+          fi
+        } > scanner-summaries/javascript-lint.md
+
+        cat scanner-summaries/javascript-lint.md >> "$GITHUB_STEP_SUMMARY"
+
+        # Do NOT exit non-zero here: aborting would stop this composite from
+        # exporting tool_status/issue_count to the caller. The failure policy is
+        # applied in the "Enforce lint failure policy" step below.
 
     - name: Upload JavaScript lint artifacts
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -124,6 +173,26 @@ runs:
         comment_marker: javascript-linter-comment-marker
         title: '📜 JavaScript Linting Results'
         fallback_message: 'No JavaScript linting results available'
+
+    - name: Enforce lint failure policy
+      if: always()
+      shell: bash
+      env:
+        FAIL_ON_ISSUES: ${{ inputs.fail_on_issues }}
+        FAIL_ON_TOOL_ERROR: ${{ inputs.fail_on_tool_error }}
+        SCAN_EXIT: ${{ steps.scan.outputs.scan_exit }}
+        TOOL_STATUS: ${{ steps.scan.outputs.tool_status }}
+      run: |
+        # Findings gate (documented fail_on_issues contract): argus exit 1.
+        if [ "$FAIL_ON_ISSUES" = "true" ] && [ "$SCAN_EXIT" = "1" ]; then
+          echo "::error title=JavaScript lint findings::Linting issues found and fail_on_issues is enabled."
+          exit 1
+        fi
+        # Tool-error gate (opt-in; distinct from findings): argus exit 2.
+        if [ "$FAIL_ON_TOOL_ERROR" = "true" ] && [ "$TOOL_STATUS" = "error" ]; then
+          echo "::error title=JavaScript linter error::jshint errored and fail_on_tool_error is enabled."
+          exit 1
+        fi
 
 branding:
   icon: 'code'
