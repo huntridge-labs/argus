@@ -1,5 +1,11 @@
 # Dependency Security Scanner - Reusable Workflow
 #
+# DEPRECATED (#327): This compound wrapper does not emit scanner-summary-* artifacts
+# or PR comments, so its findings never reach an aggregated summary. It is not used by
+# reusable-security-hardening.yml (which runs scanner-osv.yml + scanner-dependency-review.yml
+# directly). Prefer those per-scanner workflows; this file is retained only for backward
+# compatibility and will be removed in a future release.
+#
 # COMPOUND WRAPPER: Runs OSV (via argus CLI) + Dependency Review scanners in parallel.
 # OSV scanning: argus/scanners/osv.py (invoked via `python -m argus scan osv`)
 # Dependency Review: .github/actions/scanner-dependency-review/action.yml (GitHub-native)

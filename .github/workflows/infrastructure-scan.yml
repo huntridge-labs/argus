@@ -1,5 +1,12 @@
 # Infrastructure Security Scanner - Reusable Workflow
 #
+# DEPRECATED (#327): This compound wrapper does not emit scanner-summary-* artifacts
+# or PR comments, so its findings never reach an aggregated summary. It is no longer
+# used by reusable-security-hardening.yml — the `infrastructure` scanner key now runs
+# the per-scanner scanner-trivy-iac.yml + scanner-checkov.yml workflows, which produce
+# summaries, comments, and correct failure gating. Prefer those directly; this file is
+# retained only for backward compatibility and will be removed in a future release.
+#
 # COMPOUND WRAPPER: Runs Trivy IaC + Checkov scanners in parallel via the argus CLI.
 # Scanner implementations: argus/scanners/trivy_iac.py, argus/scanners/checkov.py
 #
