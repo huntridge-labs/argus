@@ -187,10 +187,20 @@ runs:
           echo "manual_review_count=0" >> "$GITHUB_OUTPUT"
         fi
 
-        # Copy markdown summary for PR comment and step summary
+        # Render the raw report to the job step summary, then build a wrapped
+        # copy for the security-summary aggregator. The aggregator collects
+        # `scanner-summary-*` artifacts and unwraps a single outer <details>
+        # into a `#### heading`, so wrapping here makes SCN render with a
+        # scanner heading alongside the other scanners' collapsible sections.
         if [ -f "scn-reports/scn-report.md" ]; then
-          cp scn-reports/scn-report.md scn-summaries/scn-report.md
           cat scn-reports/scn-report.md >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "<details><summary>🔐 FedRAMP SCN Analysis (Compliance)</summary>"
+            echo ""
+            cat scn-reports/scn-report.md
+            echo ""
+            echo "</details>"
+          } > scn-summaries/scn-report.md
         fi
 
         # Handle fail_on_category
@@ -219,7 +229,7 @@ runs:
     - name: Upload SCN summary
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       with:
-        name: scn-summary-${{ inputs.job_id }}
+        name: scanner-summary-scn-${{ inputs.job_id }}
         path: scn-summaries/
         retention-days: 7
       if: always()
@@ -235,7 +245,7 @@ runs:
       env:
         GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
       with:
-        summary_file: scn-summaries/scn-report.md
+        summary_file: scn-reports/scn-report.md
         comment_marker: scn-detector-comment-marker
         title: '🔐 FedRAMP SCN Analysis'
         fallback_message: 'No SCN analysis available'

@@ -400,7 +400,7 @@ Located at `.github/actions/scn-detector/profiles/fedramp-low.yml`
 The action uploads the following artifacts (90-day retention for compliance):
 
 - **`scn-reports-{job_id}`** - Full analysis (iac-changes.json, scn-classifications.json, scn-audit-trail.json)
-- **`scn-summary-{job_id}`** - Markdown summary (scn-report.md)
+- **`scanner-summary-scn-{job_id}`** - Markdown summary (scn-report.md), collected by the `security-summary` aggregator
 
 ## Troubleshooting
 
