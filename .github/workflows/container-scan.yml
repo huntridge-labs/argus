@@ -174,7 +174,7 @@ jobs:
     needs: discover-containers
     if: needs.discover-containers.outputs.has_containers == 'true'
     timeout-minutes: 30
-    continue-on-error: true
+    continue-on-error: ${{ inputs.allow_failure == true }}
 
     strategy:
       fail-fast: false
@@ -229,6 +229,17 @@ jobs:
             echo "build_success=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Fail if the image build failed
+        # A failed build (build step is continue-on-error) skips the scan below,
+        # leaving the image unscanned. Surface that as a failure unless the
+        # caller opted into allow_failure, so an unscanned container can't pass green.
+        if: steps.build.outputs.build_success != 'true' && inputs.allow_failure == false
+        env:
+          CONTAINER_NAME: ${{ matrix.container.name }}
+        run: |
+          echo "::error::Container build failed for ${CONTAINER_NAME} — image was not scanned."
+          exit 1
+
       - name: Run security scanners via argus CLI
         id: scan
         if: steps.build.outputs.build_success == 'true'
@@ -279,7 +290,7 @@ jobs:
     runs-on: ubuntu-latest
     if: inputs.scan_mode == 'remote' && inputs.image_ref != ''
     timeout-minutes: 30
-    continue-on-error: true
+    continue-on-error: ${{ inputs.allow_failure == true }}
 
     steps:
       - name: Checkout repository
@@ -378,3 +389,13 @@ jobs:
           title: '🐳 Container Security Scan Results'
           comment_marker: 'container-scan-parallel-comment'
           post_pr_comment: ${{ inputs.post_pr_comment }}
+          # Render the pass/fail table and gate on it so a failed build or scan
+          # can't pass green. A build/remote-scan failure is masked into
+          # `success` unless allow_failure is false (see the gated job-level
+          # continue-on-error above), so this table + gate is the surfacing point.
+          fail_on_scanner_failure: ${{ inputs.allow_failure == false }}
+          scan_statuses: |
+            {
+              "container-build-and-scan": "${{ needs.build-and-scan.result }}",
+              "container-remote-scan": "${{ needs.scan-remote-image.result }}"
+            }
