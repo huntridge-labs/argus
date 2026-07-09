@@ -392,6 +392,28 @@ jobs:
           for key in "${DEFAULT_SCANNERS[@]}"; do add_scanner "$key"; done
         fi
 
+        # Disable CodeQL BEFORE emitting run_* outputs. CodeQL requires GitHub
+        # Code Security to be enabled; when it isn't we must finalize
+        # RUN[codeql]=false here so the emit loop below writes run_codeql=false
+        # and RUN_ANY reflects the real selection. Doing this after the loop
+        # (the previous behavior) left a stale run_codeql=true in
+        # $GITHUB_OUTPUT, so the scanner-codeql job still triggered despite the
+        # "skipped" warning.
+        ENABLE_CODE_SECURITY="${{ inputs.enable_code_security }}"
+        if [[ "${RUN[codeql]}" == "true" && "$ENABLE_CODE_SECURITY" != "true" ]]; then
+          echo "::warning title=CodeQL Disabled::GitHub Code Security is not enabled for this repository. CodeQL scanning will be skipped."
+          RUN[codeql]=false
+          # Remove codeql as a discrete element. Substring replacement
+          # (${SELECTED[@]/codeql}) would leave an empty "" entry that pollutes
+          # selected_scanners and selected_scanners_json.
+          PRUNED=()
+          for item in "${SELECTED[@]}"; do
+            [[ "$item" == "codeql" ]] && continue
+            PRUNED+=("$item")
+          done
+          SELECTED=("${PRUNED[@]}")
+        fi
+
         RUN_ANY=false
         for key in "${!RUN[@]}"; do
           if [[ "${RUN[$key]}" == "true" ]]; then
@@ -403,13 +425,6 @@ jobs:
 
         if [[ "$RUN_ANY" == "false" ]]; then
           echo "::warning title=No scanners selected::No scanners were selected. The workflow will execute the summary only."
-        fi
-
-        ENABLE_CODE_SECURITY="${{ inputs.enable_code_security }}"
-        if [[ "${RUN[codeql]}" == "true" && "$ENABLE_CODE_SECURITY" != "true" ]]; then
-          echo "::warning title=CodeQL Disabled::GitHub Code Security is not enabled for this repository. CodeQL scanning will be skipped."
-          RUN[codeql]=false
-          SELECTED=("${SELECTED[@]/codeql}")
         fi
 
         echo "run_any=$RUN_ANY" >> "$GITHUB_OUTPUT"
