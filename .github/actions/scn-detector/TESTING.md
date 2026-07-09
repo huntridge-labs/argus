@@ -372,7 +372,7 @@ For each test PR, verify:
 - [ ] ✅ GitHub Issues created for non-routine changes
 - [ ] ✅ Issue labels applied correctly (`scn`, `scn:adaptive`, etc.)
 - [ ] ✅ Issue timelines calculated correctly
-- [ ] ✅ Artifacts uploaded (scn-reports, scn-summary)
+- [ ] ✅ Artifacts uploaded (scn-reports, scanner-summary-scn)
 - [ ] ✅ Job summary appears in Actions tab
 - [ ] ✅ Outputs are set correctly
 - [ ] ✅ Workflow passes/fails based on `fail_on_category`
