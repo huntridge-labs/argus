@@ -11,6 +11,29 @@ _LOCAL = ScanPaths(workspace=".", output="/tmp/out.json")
 _CONTAINER = ScanPaths(workspace="/workspace", output="/output/results.json")
 
 
+class TestOsvFixedVersion:
+    """_extract_fixed_version pulls the upstream fix (if any) for fix-aware grading."""
+
+    def test_extracts_fixed_version_from_ranges(self):
+        vuln = {"affected": [{"ranges": [{"events": [{"introduced": "0"}, {"fixed": "2.0.1"}]}]}]}
+        assert OsvScanner()._extract_fixed_version(vuln) == "2.0.1"
+
+    def test_no_fix_event_returns_none(self):
+        vuln = {"affected": [{"ranges": [{"events": [{"introduced": "0"}]}]}]}
+        assert OsvScanner()._extract_fixed_version(vuln) is None
+
+    def test_missing_affected_returns_none(self):
+        assert OsvScanner()._extract_fixed_version({}) is None
+
+    def test_fixed_version_rides_in_finding_metadata(self, fixtures_dir):
+        findings = OsvScanner().parse_results(
+            fixtures_dir / "osv" / "results-with-findings.json"
+        )
+        # Every parsed finding carries the key (value may be None when unfixed),
+        # so the cloud ingest can read it uniformly.
+        assert all("fixed_version" in f.metadata for f in findings)
+
+
 class TestOsvParseResults:
     """Test OsvScanner.parse_results with fixture data."""
 

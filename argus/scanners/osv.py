@@ -154,8 +154,25 @@ class OsvScanner:
                 "package_version": pkg_version,
                 "ecosystem": pkg_ecosystem,
                 "aliases": vuln.get("aliases", []),
+                "fixed_version": self._extract_fixed_version(vuln),
             },
         )
+
+    def _extract_fixed_version(self, vuln: dict) -> str | None:
+        """The upstream-fixed version for this vuln, if OSV reports one.
+
+        OSV records fixes as ``affected[].ranges[].events[]`` entries carrying a
+        ``fixed`` key. Return the first fixed version found; ``None`` means no
+        upstream fix is published yet — consumers use this to avoid grading an
+        unpatchable-upstream CVE like negligence (fix-aware grading).
+        """
+        for affected in vuln.get("affected", []):
+            for rng in affected.get("ranges", []):
+                for event in rng.get("events", []):
+                    fixed = event.get("fixed")
+                    if fixed:
+                        return str(fixed)
+        return None
 
     def _extract_severity(self, vuln: dict) -> Severity:
         """Extract severity from database_specific or affected blocks."""
