@@ -15,7 +15,7 @@ description: |
         if: always()
         runs-on: ubuntu-latest
         steps:
-          - uses: huntridge-labs/argus/.github/actions/security-summary@1.8.1
+          - uses: huntridge-labs/argus/.github/actions/security-summary@1.9.0
             with:
               summary_pattern: 'scanner-summary-container-*'
               title: '🐳 Container Security Scan Results'
@@ -56,7 +56,7 @@ runs:
         echo "::warning title=Deprecated action::scanner-container-summary is deprecated and now forwards to security-summary. Migrate to huntridge-labs/argus/.github/actions/security-summary with summary_pattern: 'scanner-summary-container-*'. This shim will be removed in a future major release."
 
     - name: Aggregate container scan summaries
-      uses: huntridge-labs/argus/.github/actions/security-summary@1.8.1
+      uses: huntridge-labs/argus/.github/actions/security-summary@1.9.0
       with:
         summary_pattern: ${{ inputs.artifact_pattern }}
         title: '🐳 Container Security Scan Results'

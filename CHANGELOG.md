@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.9.0](https://github.com/huntridge-labs/argus/compare/1.8.1...1.9.0) (2026-07-12)
+
+### Features
+
+* **osv:** emit upstream fixed_version in finding metadata ([43b1c07](https://github.com/huntridge-labs/argus/commit/43b1c07a45361c1551b82dd61f12a6e10c63d97b))
+
+### Bug Fixes
+
+* **ci:** apply CodeQL disable before emitting run_codeql output ([#340](https://github.com/huntridge-labs/argus/issues/340)) ([6e07e76](https://github.com/huntridge-labs/argus/commit/6e07e767aa89adee68429c8d01681f6a355cf0d5)), closes [#330](https://github.com/huntridge-labs/argus/issues/330)
+* **ci:** bring scanner-zap PR comment + summary to parity ([#341](https://github.com/huntridge-labs/argus/issues/341)) ([2bc79c3](https://github.com/huntridge-labs/argus/commit/2bc79c3cb449321e5242c649e1375c920cb71cd3)), closes [#324](https://github.com/huntridge-labs/argus/issues/324) [#328](https://github.com/huntridge-labs/argus/issues/328) [#324](https://github.com/huntridge-labs/argus/issues/324) [#328](https://github.com/huntridge-labs/argus/issues/328) [#322](https://github.com/huntridge-labs/argus/issues/322) [#324](https://github.com/huntridge-labs/argus/issues/324) [#328](https://github.com/huntridge-labs/argus/issues/328)
+* **ci:** emit scanner-summary artifacts + fix per-scanner PR comments ([#334](https://github.com/huntridge-labs/argus/issues/334)) ([4f9bd2d](https://github.com/huntridge-labs/argus/commit/4f9bd2d1cf589e879badf2ef5b6048c0e6fd1df3)), closes [#324](https://github.com/huntridge-labs/argus/issues/324) [#328](https://github.com/huntridge-labs/argus/issues/328) [#322](https://github.com/huntridge-labs/argus/issues/322) [#322](https://github.com/huntridge-labs/argus/issues/322) [#324](https://github.com/huntridge-labs/argus/issues/324)
+* **ci:** gate container scan on failures + status-table the summary ([#336](https://github.com/huntridge-labs/argus/issues/336)) ([739ac35](https://github.com/huntridge-labs/argus/commit/739ac35efab7f968d4220d9e750751764f82758f)), closes [#333](https://github.com/huntridge-labs/argus/issues/333) [#333](https://github.com/huntridge-labs/argus/issues/333)
+* **ci:** make grype/trivy-container PR-comment markers distinct ([#338](https://github.com/huntridge-labs/argus/issues/338)) ([3a71f22](https://github.com/huntridge-labs/argus/commit/3a71f224a72237fe9c8079e7fd365dc4a8aa2b1c))
+* **ci:** repair linting summary status table + output contract ([#335](https://github.com/huntridge-labs/argus/issues/335)) ([caaf375](https://github.com/huntridge-labs/argus/commit/caaf3756f8d2a78699a1dd9aba8f4ab5a92ad756))
+* **ci:** reusable-workflow lows — sbom default, container image gate, summary naming ([#343](https://github.com/huntridge-labs/argus/issues/343)) ([a96b645](https://github.com/huntridge-labs/argus/commit/a96b645fa81956bff2772c95d3e2b55da401202a)), closes [#332](https://github.com/huntridge-labs/argus/issues/332) [#332](https://github.com/huntridge-labs/argus/issues/332)
+* **ci:** route infrastructure key to per-scanner workflows; deprecate wrappers ([#337](https://github.com/huntridge-labs/argus/issues/337)) ([abdf404](https://github.com/huntridge-labs/argus/commit/abdf40497a44d4b45d01cb2729c9383b3d25d897)), closes [#327](https://github.com/huntridge-labs/argus/issues/327) [333/#334](https://github.com/333/argus/issues/334)
+* **ci:** separate linter tool errors from findings and surface them ([#342](https://github.com/huntridge-labs/argus/issues/342)) ([f41a4d4](https://github.com/huntridge-labs/argus/commit/f41a4d4b96a13408a4cc2edf589b70ef20dc7f8e)), closes [#325](https://github.com/huntridge-labs/argus/issues/325) [#325](https://github.com/huntridge-labs/argus/issues/325)
+* **ci:** surface scanner failures — gate continue-on-error on allow_failure ([#333](https://github.com/huntridge-labs/argus/issues/333)) ([392469f](https://github.com/huntridge-labs/argus/commit/392469fdfd95fb02e44f826a335777bcac8f6654)), closes [#326](https://github.com/huntridge-labs/argus/issues/326) [#327](https://github.com/huntridge-labs/argus/issues/327)
+* **docker:** harden release tool downloads with retries + temp-file extract ([359562c](https://github.com/huntridge-labs/argus/commit/359562c4638e407c72f31c52c6297dd511b265a9))
+* **scn-detector:** emit scanner-summary-scn artifact for aggregator ([#339](https://github.com/huntridge-labs/argus/issues/339)) ([ab8b89b](https://github.com/huntridge-labs/argus/commit/ab8b89b2db56376a524524840386922d9d1d777e)), closes [#331](https://github.com/huntridge-labs/argus/issues/331)
+
 ## [1.8.1](https://github.com/huntridge-labs/argus/compare/1.8.0...1.8.1) (2026-07-06)
 
 ### Bug Fixes

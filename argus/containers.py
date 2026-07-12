@@ -69,10 +69,10 @@ OFFICIAL_IMAGES = {
 # Custom images built and published by Argus to ghcr.io/huntridge-labs/argus/
 # Versions managed by release-it regex bumper
 CUSTOM_IMAGES = {
-    "bandit": "ghcr.io/huntridge-labs/argus/scanner-bandit:1.8.1@sha256:fedac75a35c72b90f4917cca0f5f1c9f65e974f2c7b3768e5c1c32cd37b06593",
-    "semgrep": "ghcr.io/huntridge-labs/argus/scanner-opengrep:1.8.1@sha256:17053df63967d0a7c86221bf7e8309eed84e1974abc6bf428dbdc512f9ef7bfe",
-    "supply-chain": "ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.8.1@sha256:2315a88c2d1b24759c7df52a58e0f60502b90b2f857b464bc48815ca6cdf4c65",
-    "cli": "ghcr.io/huntridge-labs/argus/cli:1.8.1@sha256:51487591df7071b016baf65417aa89485c4ca4a1c0f37fb1ebfe95533f3a33a1",
+    "bandit": "ghcr.io/huntridge-labs/argus/scanner-bandit:1.9.0@sha256:13d7097353e3f425b5675fe0f1c71284058a62049453bc94a47aad8394b9e5e4",
+    "semgrep": "ghcr.io/huntridge-labs/argus/scanner-opengrep:1.9.0@sha256:08a495a7dda778aecc0e19905ef60a43fa59f897dc5390de035bfebd5129d25d",
+    "supply-chain": "ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.9.0@sha256:4f87c2d921ec3538c5b7e643730148ae6e193fc9d51125cf133173783d060d9a",
+    "cli": "ghcr.io/huntridge-labs/argus/cli:1.9.0@sha256:11dadd81c84a749f77eccd24e8df748f4877d674497e8a68f4ce93096bb6b970",
     # PRE-MERGE PREVIEW. The MUMPS scanner image is published from the
     # feat/scanner-m-mumps branch under the mutable ``mumps-preview`` tag
     # so testers can run ``argus scan mumps`` with zero local toolchain
@@ -82,7 +82,7 @@ CUSTOM_IMAGES = {
     # rewrites this line to the versioned ``scanner-mumps:<version>`` tag
     # + release digest. The digest pin below is still the content-hash
     # gate the manifest check verifies.
-    "mumps": "ghcr.io/huntridge-labs/argus/scanner-mumps:1.8.1@sha256:b47ec0e79a5da49fd1b95033c3137c7df93d4fe5254bf40fe4f2135e469d2c0e",
+    "mumps": "ghcr.io/huntridge-labs/argus/scanner-mumps:1.9.0@sha256:f03cdfa254876ee5544eecd172dea3f1e411703d90e8b416c82c85a99e5378d6",
 }
 
 

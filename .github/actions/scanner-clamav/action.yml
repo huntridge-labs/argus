@@ -169,7 +169,7 @@ runs:
 
     - name: Comment PR with ClamAV results
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@1.8.1
+      uses: huntridge-labs/argus/.github/actions/comment-pr@1.9.0
       with:
         summary_file: ${{ steps.scan.outputs.summary_file }}
         comment_marker: clamav-scanner-comment-marker

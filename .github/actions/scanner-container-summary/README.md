@@ -23,7 +23,7 @@ summary:
   if: always()
   runs-on: ubuntu-latest
   steps:
-    - uses: huntridge-labs/argus/.github/actions/security-summary@1.8.1
+    - uses: huntridge-labs/argus/.github/actions/security-summary@1.9.0
       with:
         summary_pattern: 'scanner-summary-container-*'
         title: '🐳 Container Security Scan Results'
