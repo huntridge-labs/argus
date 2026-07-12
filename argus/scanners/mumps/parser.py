@@ -122,7 +122,7 @@ def _load_grammar(grammar: Path):
     ``Language(path, name)`` was replaced by ``Language(<pointer>)`` and the
     language now goes to the ``Parser`` constructor instead of
     ``set_language``. We support both so the ``[mumps]`` extra works across
-    the 0.20–0.25 range without forcing a binding version (#248). The
+    the 0.20–0.26 range without forcing a binding version (#248). The
     compiled grammar (ABI 14) is accepted by both.
     """
     from tree_sitter import Language, Parser

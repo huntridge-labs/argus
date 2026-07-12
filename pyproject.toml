@@ -100,8 +100,8 @@ browser = [
 # ``scripts/build-mumps-grammar.sh`` (local) or the scanner-mumps container image
 # (which ships a prebuilt grammar). MumpsParser supports both the pre-0.22
 # Language(path, name) API and the >=0.22 Language(<pointer>) + Parser(lang)
-# API (#248), so the binding floats across the tested 0.20–0.25 range; the
-# <0.26 ceiling just bounds it to versions CI has exercised.
+# API (#248), so the binding floats across the tested 0.20–0.26 range; the
+# <0.27 ceiling just bounds it to versions CI has exercised.
 mumps = ["tree-sitter>=0.20,<0.27"]
 # All optional features
 all = ["argus-security[ai,completion,mcp,terminal,browser,mumps]"]
