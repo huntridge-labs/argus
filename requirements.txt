@@ -2,6 +2,14 @@
 # Floors bumped past known-CVE versions and stale-floor noise.
 pytest>=9.1.1
 pytest-cov>=7.1.0
+# coverage arrives transitively via pytest-cov. Cap below 7.15.1: that release
+# (2026-07-12) regressed HTML-report generation on Python 3.14 — its
+# find_soft_key_lines runs ast.parse() over every reported source file and
+# throws SyntaxError on the em-dash in the comment header of
+# argus/viewers/browser/templates/_findings_table.html.j2, crashing the run
+# with an INTERNALERROR after all tests pass. Lift the ceiling once coverage
+# ships a fix for the html reporter parsing non-Python source.
+coverage>=7.10.6,<7.15.1
 pyyaml>=6.0.2
 
 # Container name sanitization
