@@ -26,12 +26,12 @@ from pathlib import Path
 # release, Renovate rewrites BOTH the version segment and the digest
 # segment in a single PR.
 OFFICIAL_IMAGES = {
-    "trivy": "aquasec/trivy:0.71.2@sha256:f5d0e600ecda7449e2a9b272805aef698631d3bb3f3a739a750de2c6819acdc9",
+    "trivy": "aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f",
     "grype": "anchore/grype:v0.115.0@sha256:decd87500a90c1e4faa1706f77b0b2cbc1d2f9364e976f1898ce9037de09cc3a",
     "syft": "anchore/syft:v1.46.0@sha256:473a60e3a58e29aca3aedb3e99e787bb4ef273917e44d10fcbea4330a07320bb",
     "gitleaks": "zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f",
     "clamav": "clamav/clamav:1.5.2-35@sha256:898c176d1cfec61d4585f71d1e2e8515b3cc8d5f83cd9fc2f6748e8b20de82a2",
-    "checkov": "bridgecrew/checkov:3.3.5@sha256:81c3b0cd32f05bb5ac98d3371224dd505419768a76527e1b7ff220a5d91aafcf",
+    "checkov": "bridgecrew/checkov:3.3.6@sha256:39894d0672bb53c913b9784614f05c98de167cb2041ff96aa53dbd64a0b4a159",
     # KICS (Checkmarx) multi-format IaC scanner. The upstream
     # ``checkmarx/kics`` repo tags ``:latest`` mutably (no semver release
     # tag per build), so the digest pin below is the content-hash gate
