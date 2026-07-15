@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.9.1](https://github.com/huntridge-labs/argus/compare/1.9.0...1.9.1) (2026-07-15)
+
+### Bug Fixes
+
+* **ci:** cap coverage below 7.15.1 to unblock Python 3.14 CI ([#350](https://github.com/huntridge-labs/argus/issues/350)) ([bd54f77](https://github.com/huntridge-labs/argus/commit/bd54f778e113c945d9c231b2e6a4bc23b192227e))
+
+### Security Tools
+
+* **deps:** Update github/codeql-action digest to 99df26d ([#348](https://github.com/huntridge-labs/argus/issues/348)) ([40196e9](https://github.com/huntridge-labs/argus/commit/40196e9fd78d20fdc6391fd4aecc0d71ae34710b))
+
+### Dependencies
+
+* **deps:** bump the npm-minor-patch group with 2 updates ([#345](https://github.com/huntridge-labs/argus/issues/345)) ([0fc9e9c](https://github.com/huntridge-labs/argus/commit/0fc9e9c121b6572fe0fc221801428cbabe18dc73))
+* **deps:** Update container-images ([#349](https://github.com/huntridge-labs/argus/issues/349)) ([a272e45](https://github.com/huntridge-labs/argus/commit/a272e45945604e86e02681b48f5c4ebc3caf2004))
+* **deps:** update coverage requirement in the pip-all group ([#353](https://github.com/huntridge-labs/argus/issues/353)) ([745ce81](https://github.com/huntridge-labs/argus/commit/745ce8122438034732cc2a8e58992b5497ebb8b7))
+* **deps:** Update github-actions-major to v7 ([#352](https://github.com/huntridge-labs/argus/issues/352)) ([b018449](https://github.com/huntridge-labs/argus/commit/b018449e8101f7a89aee5377d10cdc5dd57946f3))
+* **deps:** Update tool-versions ([#351](https://github.com/huntridge-labs/argus/issues/351)) ([713bc73](https://github.com/huntridge-labs/argus/commit/713bc735222c24fede84ebb45cff32ad9f958407))
+* **deps:** update tree-sitter requirement in the pip-all group ([#346](https://github.com/huntridge-labs/argus/issues/346)) ([cfddd0d](https://github.com/huntridge-labs/argus/commit/cfddd0d2e5ad862821d5ca46fbb2bf1d0115d818))
+
+
+### Documentation
+
+* **mumps:** sync tree-sitter tested-range comments with <0.27 ceiling ([#347](https://github.com/huntridge-labs/argus/issues/347)) ([322191b](https://github.com/huntridge-labs/argus/commit/322191b4f29f7029e3b41592497cb2f5915f6744)), closes [#346](https://github.com/huntridge-labs/argus/issues/346)
+
 ## [1.9.0](https://github.com/huntridge-labs/argus/compare/1.8.1...1.9.0) (2026-07-12)
 
 ### Features
