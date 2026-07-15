@@ -1,0 +1,7185 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="OSS-first GitHub Actions security hardening — Huntridge Labs">
+      
+      
+      
+        <link rel="canonical" href="https://huntridge-labs.github.io/argus/1.9.1/guides/scanners/">
+      
+      
+        <link rel="prev" href="../plugin-sandbox/">
+      
+      
+        <link rel="next" href="../security/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/argus_favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Scanners - Argus Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/custom.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#architecture" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Argus Docs" class="md-header__button md-logo" aria-label="Argus Docs" data-md-component="logo">
+      
+  <img src="../../assets/HL.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Argus Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Scanners
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/huntridge-labs/argus" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    huntridge-labs/argus
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../quick-start/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Quick Start
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../cli-reference/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../examples/" class="md-tabs__link">
+          
+  
+  
+  Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../contributing/" class="md-tabs__link">
+          
+  
+  
+  About
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Argus Docs" class="md-nav__button md-logo" aria-label="Argus Docs" data-md-component="logo">
+      
+  <img src="../../assets/HL.png" alt="logo">
+
+    </a>
+    Argus Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/huntridge-labs/argus" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    huntridge-labs/argus
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../config-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Config Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../console/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Console
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../container-scanning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Container Scanning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing-reporters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing Reporters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../enterprise/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Enterprise
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../failure-control/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Failure Control
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugin-contract/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugin Contract
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugin-sandbox/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugin Sandbox
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scanners
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scanners
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table of Contents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sast-scanners" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SAST Scanners
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SAST Scanners">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#codeql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CodeQL
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gitleaks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gitleaks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bandit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bandit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gosec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        gosec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#opengrep-semgrep" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenGrep (Semgrep)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mumps-m-language-mumps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MUMPS / M language (mumps)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#container-scanners" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Container Scanners
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Container Scanners">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#trivy-container" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trivy Container
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#grype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Grype
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#syft-sbom" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Syft (SBOM)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#exposed-port-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exposed-port surface
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#service-enumeration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Service enumeration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#infrastructure-scanners" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Infrastructure Scanners
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Infrastructure Scanners">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#trivy-iac" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trivy IaC
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#checkov" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checkov
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        KICS
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#malware-scanner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Malware Scanner
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Malware Scanner">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#clamav" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ClamAV
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dast-scanners" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DAST Scanners
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DAST Scanners">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ZAP
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ZAP">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#quick-start-recommended-config-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start (Recommended: Config File)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuring-zap-via-argusyml-recommended-for-sdk-users" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuring ZAP via argus.yml (recommended for SDK users)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#llm-security-scanners" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LLM-Security Scanners
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="LLM-Security Scanners">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#promptfoo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        promptfoo
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="promptfoo">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-configuration-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Configuration Patterns
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Common Configuration Patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#enable-github-security-tab-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enable GitHub Security Tab (Actions)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#disable-pr-comments-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Disable PR Comments (Actions)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scanner-selection-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scanner Selection Patterns
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../view-browser/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    View Browser
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../view-terminal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    View Terminal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_15" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_15" id="__nav_3_15_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_15_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_15">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Migration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migration/0.6.x-to-1.x/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    0.6.x → 1.x
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_16" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_16" id="__nav_3_16_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_16_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_16">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Troubleshooting
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2" id="__nav_4_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CI
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    CI
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1" id="__nav_4_2_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GitHub Actions
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_4_2_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    GitHub Actions
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1" id="__nav_4_2_1_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Actions
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_4_2_1_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Actions
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_2" id="__nav_4_2_1_1_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    🤖 AI & Reporting
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    🤖 AI & Reporting
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/ai-summary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Security Summary
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_3" id="__nav_4_2_1_1_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ✅ Code Quality & Linting
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    ✅ Code Quality & Linting
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/linter-dockerfile/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dockerfile Linter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/linter-javascript/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JavaScript Linter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/linter-json/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JSON Linter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/linter-python/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python Linter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/linter-terraform/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terraform Linter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/linter-yaml/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    YAML Linter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/linting-summary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linting Summary
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_4" id="__nav_4_2_1_1_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    📦 Container Security
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    📦 Container Security
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/parse-container-config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parse Container Config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/scanner-container/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Container Security Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/scanner-container-summary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Container Scanner Summary (deprecated)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/scanner-syft/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Syft SBOM Generator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_5" id="__nav_4_2_1_1_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    🕷️ DAST
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    🕷️ DAST
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/parse-zap-config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parse ZAP Config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/scanner-zap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZAP DAST Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/scanner-zap-summary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZAP Summary Generator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_6" id="__nav_4_2_1_1_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    🔍 SAST
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    🔍 SAST
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/scanner-bandit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bandit Python Security Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/scanner-codeql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CodeQL Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/scanner-opengrep/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenGrep Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/scanner-supply-chain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supply Chain Security Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_7" id="__nav_4_2_1_1_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    🏗️ Infrastructure Security
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    🏗️ Infrastructure Security
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/scanner-checkov/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Checkov Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/scanner-trivy-iac/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trivy IaC Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_8" id="__nav_4_2_1_1_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    🛡️ Malware Detection
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    🛡️ Malware Detection
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/scanner-clamav/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ClamAV Malware Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_9" id="__nav_4_2_1_1_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    🔗 Dependency Scanning
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    🔗 Dependency Scanning
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/scanner-dependency-review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dependency Review Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/scanner-osv/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OSV Dependency Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_10" id="__nav_4_2_1_1_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    🔑 Secrets Detection
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    🔑 Secrets Detection
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/scanner-gitleaks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Gitleaks Secrets Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_11" id="__nav_4_2_1_1_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    📋 Compliance & Change Control
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    📋 Compliance & Change Control
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/scn-detector/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SCN Detector
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_1_12" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_1_12" id="__nav_4_2_1_1_12_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Utility & Reporting
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_4_2_1_1_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_1_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    ⚙️ Utility & Reporting
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../actions/security-summary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Summary
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_1_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_1_2" id="__nav_4_2_1_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflows
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_4_2_1_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_1_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Workflows
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/build-containers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build, Scan & Test Containers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/container-scan-from-config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Container Scan from Config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/container-scan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Container Security Scanning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/container-smoke/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Container Smoke
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/dependency-scan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dependency Security Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/ghcr-prune/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GHCR Cleanup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/infrastructure-scan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Infrastructure Security Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/linting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Quality and Linting Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/publish-pypi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Package Validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/reusable-security-hardening/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reusable Security Hardening Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/scanner-bandit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bandit Python Security Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/scanner-checkov/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Checkov Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/scanner-clamav/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ClamAV Malware Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/scanner-codeql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CodeQL Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/scanner-dependency-review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dependency Review Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/scanner-gitleaks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Gitleaks Secrets Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/scanner-grype/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Grype Container Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/scanner-opengrep/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenGrep Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/scanner-osv/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OSV Dependency Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/scanner-supply-chain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supply Chain Security Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/scanner-syft/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Generate SBOM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/scanner-trivy-container/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trivy Container Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/scanner-trivy-iac/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trivy IaC Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/scanner-zap-from-config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZAP DAST from Config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/scanner-zap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZAP DAST Scanner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/security-reusable-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Hardening (Reusable Demo)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/security-scan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Scan (Argus)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/ci/gitlab-ci-yml/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GitLab CI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/ci/jenkinsfile/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Jenkins
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/ci/azure-devops-yml/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure DevOps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_3" id="__nav_4_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configs
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configs
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/configs/ai-config-anthropic.example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Config Anthropic.example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/configs/ai-config-openai.example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Config Openai.example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/configs/ai-config.example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Config.example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/configs/container-config.example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Container Config.example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/configs/scn-profile-custom.example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scn Profile Custom.example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/configs/zap-config-grouped.example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Zap Config Grouped.example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/configs/zap-config.example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Zap Config.example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_4" id="__nav_4_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Github Enterprise
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Github Enterprise
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/github-enterprise/all-scanners/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    All Scanners
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/github-enterprise/container-scanning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Container Scanning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/github-enterprise/containerized-web-app/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Containerized Web App
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/github-enterprise/dast-scanning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DAST Scanning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/github-enterprise/infrastructure-scanning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Infrastructure Scanning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/github-enterprise/sast-only/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SAST Only
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflows
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Workflows
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/workflows/actions-container-scan-matrix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Actions Container Scan Matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/workflows/actions-linting-example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Actions Linting Example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/workflows/actions-scanner-zap-from-config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Actions Scanner Zap From Config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/workflows/actions-scanner-zap-full-example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Actions Scanner Zap Full Example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/workflows/composite-actions-example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Composite Actions Example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/workflows/scn-detection-complete.example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scn Detection Complete.example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/workflows/scn-detection-example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scn Detection Example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/workflows/sdk-github-actions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sdk Github Actions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    About
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../code_of_conduct/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code of Conduct
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Policy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table of Contents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sast-scanners" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SAST Scanners
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SAST Scanners">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#codeql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CodeQL
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gitleaks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gitleaks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bandit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bandit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gosec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        gosec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#opengrep-semgrep" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenGrep (Semgrep)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mumps-m-language-mumps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MUMPS / M language (mumps)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#container-scanners" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Container Scanners
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Container Scanners">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#trivy-container" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trivy Container
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#grype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Grype
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#syft-sbom" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Syft (SBOM)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#exposed-port-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exposed-port surface
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#service-enumeration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Service enumeration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#infrastructure-scanners" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Infrastructure Scanners
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Infrastructure Scanners">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#trivy-iac" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trivy IaC
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#checkov" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checkov
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        KICS
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#malware-scanner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Malware Scanner
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Malware Scanner">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#clamav" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ClamAV
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dast-scanners" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DAST Scanners
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DAST Scanners">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ZAP
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ZAP">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#quick-start-recommended-config-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start (Recommended: Config File)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuring-zap-via-argusyml-recommended-for-sdk-users" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuring ZAP via argus.yml (recommended for SDK users)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#llm-security-scanners" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LLM-Security Scanners
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="LLM-Security Scanners">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#promptfoo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        promptfoo
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="promptfoo">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-configuration-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Configuration Patterns
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Common Configuration Patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#enable-github-security-tab-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enable GitHub Security Tab (Actions)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#disable-pr-comments-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Disable PR Comments (Actions)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scanner-selection-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scanner Selection Patterns
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation" >
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../cli-reference/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Guides
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+  <h1>Scanners</h1>
+
+<div align=center>
+
+# Scanner Configuration Reference
+
+Complete configuration reference for all available security scanners.
+
+</div>
+
+<h2 id="architecture">Architecture</h2>
+<p>The argus Python SDK (<code>argus scan</code>) is the primary interface for running scanners. Composite actions remain available for GitHub Actions users.</p>
+<ul>
+<li><strong>Argus SDK</strong> (<code>argus/</code>) - Primary interface, works locally and in any CI</li>
+<li><strong>Composite Actions</strong> (<code>.github/actions/scanner-*/</code>) - GitHub Actions integration</li>
+<li><strong>Example Workflows</strong> (<code>examples/github-enterprise/</code>) - Templates for GHES users</li>
+</ul>
+<p><strong>SDK usage (recommended)</strong>:</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>argus-security
+argus<span class="w"> </span>scan<span class="w"> </span>gitleaks<span class="w"> </span>bandit<span class="w"> </span>--severity-threshold<span class="w"> </span>high
+</code></pre></div>
+<p><strong>Post-scan triage</strong>: Once you have <code>argus-results.json</code>, run
+<a href="../view-terminal/"><code>argus view terminal</code></a> for an interactive terminal UI — filter by
+severity, product, or scanner; export to CSV/JSON/Markdown/SARIF; open an
+executive dashboard. Install via <code>pip install 'argus-security[terminal]'</code>,
+or combine with scanning in one shot: <code>argus scan --interface=terminal</code>.</p>
+<p><strong>Composite action usage (GitHub Actions)</strong>:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">jobs</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">security</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">runs-on</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ubuntu-latest</span>
+<span class="w">    </span><span class="nt">steps</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/checkout@v6</span>
+
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">huntridge-labs/argus/.github/actions/scanner-gitleaks@1.9.1</span>
+<span class="w">        </span><span class="nt">with</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">enable_code_security</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">          </span><span class="nt">fail_on_severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">high</span>
+<span class="w">        </span><span class="nt">env</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">GITHUB_TOKEN</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ secrets.GITHUB_TOKEN }}</span>
+</code></pre></div>
+<p>See <a href="https://github.com/huntridge-labs/argus/blob/1.9.1/examples/github-enterprise">examples/github-enterprise/</a> for GHES templates.</p>
+<hr />
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#sast-scanners">SAST Scanners</a></li>
+<li><a href="#codeql">CodeQL</a></li>
+<li><a href="#gitleaks">Gitleaks</a></li>
+<li><a href="#bandit">Bandit</a></li>
+<li><a href="#gosec">gosec</a></li>
+<li><a href="#opengrep-semgrep">OpenGrep (Semgrep)</a></li>
+<li><a href="#mumps--m-language-mumps">MUMPS / M language</a></li>
+<li><a href="#container-scanners">Container Scanners</a></li>
+<li><a href="#trivy-container">Trivy Container</a></li>
+<li><a href="#grype">Grype</a></li>
+<li><a href="#syft-sbom">Syft (SBOM)</a></li>
+<li><a href="#infrastructure-scanners">Infrastructure Scanners</a></li>
+<li><a href="#trivy-iac">Trivy IaC</a></li>
+<li><a href="#checkov">Checkov</a></li>
+<li><a href="#kics">KICS</a></li>
+<li><a href="#malware-scanner">Malware Scanner</a></li>
+<li><a href="#clamav">ClamAV</a></li>
+<li><a href="#dast-scanners">DAST Scanners</a></li>
+<li><a href="#zap">ZAP</a></li>
+<li><a href="#llm-security-scanners">LLM-Security Scanners</a></li>
+<li><a href="#promptfoo">promptfoo</a></li>
+<li><a href="#common-configuration-patterns">Common Configuration Patterns</a></li>
+</ul>
+<h2 id="sast-scanners">SAST Scanners</h2>
+<h3 id="codeql">CodeQL</h3>
+<p>GitHub's semantic code analysis engine for finding security vulnerabilities and coding errors.</p>
+<p><strong>Supported languages:</strong> <code>python</code>, <code>javascript</code>, <code>typescript</code>, <code>java</code>, <code>csharp</code>, <code>cpp</code>, <code>go</code>, <code>ruby</code></p>
+<details>
+<summary><strong>Configuration & Examples</strong></summary>
+
+**Configuration:**
+
+| Input | Description | Default | Required |
+|-------|-------------|---------|----------|
+| `codeql_languages` | Comma-separated list of languages | `python,javascript` | No |
+| `enable_code_security` | Upload to GitHub Security tab | `false` | No |
+| `post_pr_comment` | Post findings as PR comments | `true` | No |
+
+**Example:**
+
+<div class="highlight"><pre><span></span><code><span class="nt">with</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">scanners</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">codeql</span>
+<span class="w">  </span><span class="nt">codeql_languages</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;python,javascript,go&#39;</span>
+<span class="w">  </span><span class="nt">enable_code_security</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</code></pre></div>
+
+</details>
+
+<h3 id="gitleaks">Gitleaks</h3>
+<p>Scans git history and code for hardcoded secrets, API keys, passwords, and tokens.</p>
+<p><strong>Scan behavior:</strong> Scans PR changes, new commits, or full history depending on event type.</p>
+<details>
+<summary><strong>Configuration & Examples</strong></summary>
+
+**Configuration:**
+
+| Input | Description | Default | Required |
+|-------|-------------|---------|----------|
+| `gitleaks_enable_comments` | Enable inline PR comments | `true` | No |
+| `gitleaks_notify_user_list` | Users to notify (e.g., `@user1,@user2`) | `''` | No |
+| `gitleaks_enable_summary` | Enable job summary | `true` | No |
+| `gitleaks_enable_upload_artifact` | Upload SARIF artifact | `true` | No |
+| `gitleaks_config` | Path to custom config file | `''` | No |
+| `enable_code_security` | Upload to GitHub Security tab | `false` | No |
+| `fail_on_severity` | Fail on any secret detection | `none` | No |
+
+**Required secrets:**
+
+| Secret | Description | Required |
+|--------|-------------|----------|
+| `GITLEAKS_LICENSE` | License key from [gitleaks.io](https://gitleaks.io) | Yes (for organizations) |
+
+**Scan behavior by event type:**
+- `pull_request`: Scans all changes in the PR
+- `push`: Scans only new commits
+- `workflow_dispatch`/`schedule`: Full repository history scan
+
+**Example:**
+
+<div class="highlight"><pre><span></span><code><span class="nt">with</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">scanners</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gitleaks</span>
+<span class="w">  </span><span class="nt">gitleaks_enable_comments</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">gitleaks_notify_user_list</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;@security-team&#39;</span>
+<span class="w">  </span><span class="nt">fail_on_severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">critical</span>
+<span class="nt">secrets</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">GITLEAKS_LICENSE</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ secrets.GITLEAKS_LICENSE }}</span>
+</code></pre></div>
+
+</details>
+
+<h3 id="bandit">Bandit</h3>
+<p>Python security linter for finding common security issues using static analysis.</p>
+<p><strong>Severity levels:</strong> LOW, MEDIUM, HIGH</p>
+<details>
+<summary><strong>Configuration & Examples</strong></summary>
+
+**Configuration:**
+
+| Input | Description | Default | Required |
+|-------|-------------|---------|----------|
+| `enable_code_security` | Upload to GitHub Security tab | `false` | No |
+| `post_pr_comment` | Post findings as PR comments | `true` | No |
+| `fail_on_severity` | Fail on any finding | `none` | No |
+
+**Example:**
+
+<div class="highlight"><pre><span></span><code><span class="nt">with</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">scanners</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bandit</span>
+<span class="w">  </span><span class="nt">enable_code_security</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">fail_on_severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">high</span>
+</code></pre></div>
+
+</details>
+
+<h3 id="gosec">gosec</h3>
+<p>Go-native security linter — the Go equivalent of Bandit. Inspects the Go AST for security anti-patterns such as hardcoded credentials (G101), SQL injection via string formatting (G201), and file path traversal (G304), with deeper precision than pattern-based scanning.</p>
+<p><strong>Supported languages:</strong> <code>go</code></p>
+<p><strong>Severity levels:</strong> LOW, MEDIUM, HIGH</p>
+<details>
+<summary><strong>Configuration & Examples</strong></summary>
+
+**Configuration:**
+
+| Input | Description | Default | Required |
+|-------|-------------|---------|----------|
+| `enable_code_security` | Upload to GitHub Security tab | `false` | No |
+| `post_pr_comment` | Post findings as PR comments | `true` | No |
+| `fail_on_severity` | Fail on any finding | `none` | No |
+
+**SDK config (`argus.yml`):**
+
+<div class="highlight"><pre><span></span><code><span class="nt">scanners</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gosec</span>
+<span class="nt">scan_path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;.&quot;</span>
+<span class="nt">fail_on_severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">high</span>
+</code></pre></div>
+
+Optional per-scanner keys: `config_file` (path to a gosec config passed via `-conf`) and `exclude` (comma-separated rule IDs passed via `-exclude`).
+
+**Example:**
+
+<div class="highlight"><pre><span></span><code><span class="nt">with</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">scanners</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gosec</span>
+<span class="w">  </span><span class="nt">enable_code_security</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">fail_on_severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">high</span>
+</code></pre></div>
+
+> **Secret redaction:** for the G101 (hardcoded-credentials) rule, gosec's `code` excerpt and `details` string contain the matched literal. Argus drops the code excerpt and scrubs the literal from the description before the finding reaches any reporter, export, or the MCP server.
+
+</details>
+
+<h3 id="opengrep-semgrep">OpenGrep (Semgrep)</h3>
+<p>Fast, customizable static analysis with extensive rule sets for multiple languages.</p>
+<details>
+<summary><strong>Configuration & Examples</strong></summary>
+
+**Configuration:**
+
+| Input | Description | Default | Required |
+|-------|-------------|---------|----------|
+| `enable_code_security` | Upload to GitHub Security tab | `false` | No |
+| `post_pr_comment` | Post findings as PR comments | `true` | No |
+| `fail_on_severity` | Severity threshold | `none` | No |
+
+**Example:**
+
+<div class="highlight"><pre><span></span><code><span class="nt">with</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">scanners</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">opengrep</span>
+<span class="w">  </span><span class="nt">enable_code_security</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">fail_on_severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">medium</span>
+</code></pre></div>
+
+</details>
+
+<h3 id="mumps-m-language-mumps">MUMPS / M language (<code>mumps</code>)</h3>
+<p>OSS SAST for the MUMPS / M language (VistA, YottaDB, GT.M, FileMan). Phase 1+ ships 28 rules (7 security M001-M007, 21 diagnostics M101-M102 and M201-M219) backed by <a href="https://github.com/janus-llm/tree-sitter-mumps"><code>janus-llm/tree-sitter-mumps</code></a> (Apache-2.0, MITRE Public Release 23-4084) pinned at <code>345f3fb2</code>. Target audience is federal / healthcare orgs whose procurement posture rules out closed-source MUMPS SAST.</p>
+<p><strong>Supported languages:</strong> <code>mumps</code></p>
+<p><strong>File extensions:</strong> <code>.m</code> (Caché <code>.mac</code> / <code>.int</code> arrive in Phase 2 alongside ObjectScript dialect support)</p>
+<p><strong>Severity levels:</strong> INFO, LOW, MEDIUM, HIGH, CRITICAL</p>
+<table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>Title</th>
+<th>Severity</th>
+<th>CWE</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>M001</code></td>
+<td>XECUTE of tainted expression</td>
+<td>HIGH</td>
+<td>CWE-95</td>
+</tr>
+<tr>
+<td><code>M002</code></td>
+<td>Expression indirection (<code>@(...)</code>) of a tainted value</td>
+<td>HIGH</td>
+<td>CWE-94</td>
+</tr>
+<tr>
+<td><code>M003</code></td>
+<td>OPEN / USE of tainted device (PIPE=CRITICAL, socket=HIGH, file/generic=MEDIUM)</td>
+<td>CRITICAL–MEDIUM</td>
+<td>CWE-78</td>
+</tr>
+<tr>
+<td><code>M004</code></td>
+<td>Hard-coded credential in MUMPS global</td>
+<td>CRITICAL</td>
+<td>CWE-798</td>
+</tr>
+<tr>
+<td><code>M005</code></td>
+<td>DO of READ-tainted indirection (dynamic routine dispatch)</td>
+<td>CRITICAL</td>
+<td>CWE-95</td>
+</tr>
+<tr>
+<td><code>M006</code></td>
+<td>Tainted argument to external (<code>$&amp;</code> / <code>$ZF</code>) call (exec helper=CRITICAL)</td>
+<td>CRITICAL/HIGH</td>
+<td>CWE-78</td>
+</tr>
+<tr>
+<td><code>M007</code></td>
+<td>Tainted source loaded/compiled as code (ZLINK / ZINSERT / ZCOMPILE)</td>
+<td>HIGH</td>
+<td>CWE-95</td>
+</tr>
+<tr>
+<td><code>M101</code></td>
+<td>Duplicate label declared in routine</td>
+<td>INFO</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td><code>M102</code></td>
+<td>Unreachable code after unconditional QUIT / HALT</td>
+<td>INFO</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td><code>M201</code></td>
+<td>DO / GOTO to undeclared label</td>
+<td>INFO</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td><code>M202</code></td>
+<td>Routine name does not match filename</td>
+<td>INFO</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td><code>M203</code></td>
+<td>Local variable read before it was defined</td>
+<td>INFO</td>
+<td>n/a (off by default)</td>
+</tr>
+<tr>
+<td><code>M204</code></td>
+<td>Local variable declared (NEW/READ) but never read</td>
+<td>INFO</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td><code>M205</code></td>
+<td>Label body falls through into the following label</td>
+<td>INFO</td>
+<td>n/a (off by default)</td>
+</tr>
+<tr>
+<td><code>M206</code></td>
+<td>KILL of an entire global tree (no subscript)</td>
+<td>INFO</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td><code>M207</code></td>
+<td>Bare KILL command deletes every local variable</td>
+<td>INFO</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td><code>M208</code></td>
+<td>Bare NEW command stacks every local variable</td>
+<td>INFO</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td><code>M209</code></td>
+<td>Call passes more arguments than the entry declares</td>
+<td>MEDIUM</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td><code>M210</code></td>
+<td>Duplicate variable in a single NEW argument list</td>
+<td>LOW</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td><code>M211</code></td>
+<td>Scratch global (<code>^TMP</code>/<code>^UTILITY</code>) written without <code>$J</code></td>
+<td>INFO</td>
+<td>CWE-362</td>
+</tr>
+<tr>
+<td><code>M212</code></td>
+<td>Argumentless FOR with no loop exit (infinite loop)</td>
+<td>HIGH</td>
+<td>CWE-835</td>
+</tr>
+<tr>
+<td><code>M213</code></td>
+<td>QUIT with an argument inside a FOR loop</td>
+<td>MEDIUM</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td><code>M214</code></td>
+<td>Naked global reference (<code>^(sub)</code>)</td>
+<td>INFO</td>
+<td>n/a (off by default)</td>
+</tr>
+<tr>
+<td><code>M215</code></td>
+<td>Non-portable Z-command (<code>ZSYSTEM</code>/<code>ZGOTO</code>/…)</td>
+<td>LOW</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td><code>M216</code></td>
+<td>Non-portable <code>$Z</code> intrinsic function</td>
+<td>INFO</td>
+<td>n/a (off by default)</td>
+</tr>
+<tr>
+<td><code>M217</code></td>
+<td>Non-portable <code>$Z</code> special variable</td>
+<td>INFO</td>
+<td>n/a (off by default)</td>
+</tr>
+<tr>
+<td><code>M218</code></td>
+<td>Executable code on the routine label (first) line</td>
+<td>LOW</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td><code>M219</code></td>
+<td>Source line exceeds the SAC 245-char limit</td>
+<td>LOW</td>
+<td>n/a</td>
+</tr>
+</tbody>
+</table>
+<p>The security rules above cover the MUMPS-specific code-injection sinks — XECUTE (M001), expression indirection (M002), OPEN/USE device arguments (M003), dynamic routine dispatch (M005), external <code>$&amp;</code> / <code>$ZF</code> calls (M006), and source load/compile via ZLINK/ZINSERT (M007) — plus data-at-rest credential leaks (M004). Together they exceed the public mHawk taint-sink surface for intra-procedural detection. The diagnostic rules (M101–M102, M201–M219) cover structural, control-flow (infinite FOR, value-QUIT-in-FOR), def-use, call-arity, scratch-global concurrency, VistA SAC, and portability checks — 21 diagnostics toward mHawk's ~32. Rules marked <em>off by default</em> (M203, M205, M214, M216, M217) are opt-in via <code>rules.&lt;id&gt;.enabled: true</code> because they are idiomatic in legacy VistA (naked refs, fallthrough), portability-inventory only, or — for M203 (read-before-def) — too sensitive to the grammar's misparse of complex routines for an unattended default. (M002, M201, and M204 were previously off for being false-positive-dominant at scale; the precision work described below made them trustworthy enough to ship on.)</p>
+<p><strong>Default profile precision (validated at scale).</strong> The default profile is tuned so a clean codebase stays quiet and a real one yields actionable signal rather than a wall of noise. It was validated against <strong>six real MUMPS projects totalling 1,162 routines</strong> — a utility library, a MUMPS web server, two YottaDB projects, and the VistA <strong>Kernel</strong> (signon, device handling, <code>$ZF</code> callouts, the XECUTE-driven menu system) and Programmer Environment — with every distinct finding class adjudicated against the real source. The default profile produces <strong>234 findings across all 1,162 routines, down from 1,628 before precision tuning</strong> (85 security findings — 34 CRITICAL, 18 HIGH), while the genuine security signal is preserved: real shell-injection sinks in the Kernel (<code>OPEN "lsof"/"kill"/"ps":(shell=…:command=&lt;tainted&gt;)</code>, <code>$ZF(-1,…)</code> with a tainted command) are caught by M003/M006, READ→XECUTE injection by M001, expression indirection by M002, and code-load injection by M007. Three rules previously off-by-default for being false-positive-dominant are now precise enough to ship on, each validated by a corpus re-run showing the false positives gone: <strong>M002</strong> is position-aware — it fires only on the <code>@(&lt;expr&gt;)</code> expression form in a value position (name/glvn indirection like <code>S @X=…</code> and <code>@X@(sub)</code>, and X/D/G dispatch owned by M001/M005, are suppressed; 52→0 FPs on the Kernel); <strong>M201</strong> uses a text-scanned column-0 label index plus call-graph cross-routine resolution (48→0); <strong>M204</strong> treats a NEW-scoped variable as live whenever the file makes any <code>^ROUTINE</code> call that could inherit it via implicit-<code>NEW</code> (832→6, all genuine dead declarations). Taint sanitization is <strong>flow-sensitive</strong>: a charset pattern-match guard (<code>I X?1A.7AN</code>) or numeric coercion (<code>S N=+X</code>) clears a value, but a charset guard cleans only sinks that follow it in the same label body — so a validation gap on a <em>different</em> entry path still fires (it surfaced a real cross-entry expression injection the earlier flow-insensitive version hid).</p>
+<p><strong>Known limitations on the on-by-default rules (refinements tracked).</strong> A few rules that remain on are accurate enough to ship but still carry a residual false-positive fraction pending deeper work: <strong>M003</strong> does not yet distinguish socket/<code>|TCP|</code> and plain-file OPENs from shell <code>|PIPE|</code> command devices (only the latter is true command injection), <strong>M005</strong> still flags some by-design menu-driver dispatch beyond the <code>$TEXT</code>-table form already suppressed, <strong>M202</strong> suppresses <code>%</code>-routine platform-variant families but not every multi-platform naming convention, and <strong>M211</strong> treats only literal <code>$J</code> (not a job-id-bearing subscript such as <code>JOB</code>) as process-private. Tune per-finding severity or disable a specific rule via the config below if any is noisy on your codebase.</p>
+<p><strong>Known Phase-1 limitation (cross-file request dispatch).</strong> Web-framework request routing where the handler is selected across files — <code>do @ROUTINE</code> driven by a URL map, or <code>X %WCALL</code> reached through <code>$$RPC^XWBPRS()</code> — needs inter-procedural array-flow that the one-hop <code>interprocedural.enabled</code> pass does not yet model, so those dispatch sinks are not flagged by default. The roadmap's multi-hop / return-value taint work closes this; until then, extend <code>taint_sources.patterns</code> with your framework's request global if you want the intra-file portion of those chains surfaced.</p>
+<details>
+<summary><strong>Configuration & Examples</strong></summary>
+
+**SDK config (`argus.yml`):**
+
+<div class="highlight"><pre><span></span><code><span class="nt">scanners</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mumps</span>
+<span class="nt">scan_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./routines</span>
+<span class="nt">fail_on_severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">high</span>
+</code></pre></div>
+
+Optional per-scanner keys:
+- `extensions` — file extensions to scan (defaults to `[".m"]`).
+- `taint_sources.patterns` — list of regex strings appended to the built-in taint-source set. Any assignment whose RHS matches one of these patterns taints its LHS. Use for site-specific intrinsics or HTTP globals beyond `READ` / `$ZARGV` / `^%CGI` / `^%REQUEST` / `^%session`.
+- `taint_sources.formals_untrusted` — **attack-surface audit mode** (default off). Seeds every entry-label formal parameter as an untrusted boundary input, so a sink fed by a parameter whose taint origin is in a *caller* (e.g. `DEL(FILE) … S RC=$ZF(-1,"rm "_FILE)`) still fires. Off by default because it widens the source surface to all API entry points and is far noisier (on the VistA Kernel it surfaces ~200 additional parameter-derived sinks vs. the precise default); turn it on for a deliberate boundary-input audit. This is the practical recall lever for the formal-argument / multi-hop sinks the default intra-file model does not chase.
+- `sanitizers` — list of function / intrinsic names that *remove* taint when applied. A variable assigned from an expression that calls one of these is treated as clean by every taint-aware rule. Pair with the existing source-patterns config to make the full taint flow tunable per codebase.
+- `rules.<id>.severity` — per-rule severity override. Replaces the rule's default baseline severity. Per-finding precision (M003's PIPE bump to CRITICAL) is preserved — only baseline severity is user-tunable. Accepts `critical` / `high` / `medium` / `low` / `info`.
+- `profile` — a rule preset selectable in config or via CLI: `security-only` (just the M00x security rules), `lint-only` (just the diagnostics), `strict` (every rule, including the off-by-default ones), or `default`. An explicit `rules.<id>.enabled` always overrides the profile.
+- `rules.<id>.enabled` — turn an individual rule on or off. Most rules are on by default; **M203, M205, M214, M216, and M217 ship off by default.** M203 (read-before-def) is the noisiest rule on real code — enable it for a deliberate implicit-declaration audit. M205 (label fallthrough) is off because top-to-bottom fallthrough between labels is the intended idiom in old-style linear VistA routines (it was ~69% false-positive on the VistA Kernel). M214/M216/M217 are portability-inventory checks, opt-in for migration audits. (M002, M201, and M204 are now on by default following the precision work above.)
+- **Inline suppression** — a `;argus:ignore` comment silences every finding on its line (and the line below it); `;argus:ignore[M002]` or `;argus:ignore[M002,M211]` silences only the listed rules. Suppressions are counted in `metadata.suppressed`, never dropped silently.
+- `known_external_vars` — list of variable names treated as externally defined / read (extends the built-in VistA / FileMan / Kernel allowlist used by M003 / M203 / M204).
+- `flag_generic_indirection` — when `true`, M002 also emits an INFO advisory for indirection of a *non-tainted* non-constant expression (default `false`). By default M002 fires HIGH only on indirection of a tainted variable; the generic stream is for audit / modernization sweeps and never counts toward a severity gate.
+- `scratch_globals` — list of shared scratch globals that must be `$J`-subscripted (M211); defaults to `["^TMP", "^UTILITY"]`.
+- `max_line_length` — SAC line-length limit for M219 (default 245).
+- `rules.M202.ignore_patterns` — regex list of routine-name families to exclude from the filename-mismatch check (M202).
+- `interprocedural.enabled` / `interprocedural.max_depth` — opt in to one-hop cross-routine taint propagation (default off; `max_depth` default 1). When on, a tainted actual argument passed to `LABEL^ROUTINE(...)` taints the callee's matching formal parameter, so the callee's sinks (XECUTE / OPEN-USE / dispatch / external call of that formal) fire. Yields on parameter-passing code; codebases using the classic shared-scratch-variable calling convention (much of legacy VistA) see little additional signal.
+
+<div class="highlight"><pre><span></span><code><span class="nt">scanners</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">mumps</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">taint_sources</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">patterns</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;\\$ZIO\\b&quot;</span><span class="w">             </span><span class="c1"># YottaDB pending input</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;\\^MyApp\\.input\\b&quot;</span><span class="w">   </span><span class="c1"># site-specific HTTP global</span>
+<span class="w">    </span><span class="nt">sanitizers</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;$$ESCAPE^HTML&quot;</span><span class="w">           </span><span class="c1"># output-encoder</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;$$VALIDATE^INPUT&quot;</span><span class="w">        </span><span class="c1"># input-validator</span>
+<span class="w">    </span><span class="nt">rules</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">M203</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">             </span><span class="c1"># opt in to read-before-def audit (off by default)</span>
+<span class="w">      </span><span class="nt">M001</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">critical</span><span class="w">        </span><span class="c1"># promote XECUTE in this codebase</span>
+<span class="w">      </span><span class="nt">M205</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">             </span><span class="c1"># opt in (off by default)</span>
+<span class="w">      </span><span class="nt">M202</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">            </span><span class="c1"># silence a rule entirely</span>
+</code></pre></div>
+
+**Installation paths:**
+
+The scanner needs a compiled `mumps.so` shared library. The `scanner-mumps` container image (built by `docker/Dockerfile.mumps`) bundles a prebuilt grammar at `/opt/argus/grammars/mumps.so`, so the container path needs no local toolchain. Three ways to run it:
+
+1. **Container, via the SDK (recommended).** With Docker available, the engine pulls and runs the image automatically - no grammar build:
+   <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">&#39;argus-security[mumps]&#39;</span>
+argus<span class="w"> </span>scan<span class="w"> </span>mumps<span class="w"> </span>--path<span class="w"> </span>./routines
+</code></pre></div>
+
+2. **Container, directly.** No Python or Argus install at all:
+   <div class="highlight"><pre><span></span><code>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">:/workspace:ro&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>ghcr.io/huntridge-labs/argus/scanner-mumps:mumps-preview<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>scan<span class="w"> </span>mumps<span class="w"> </span>--path<span class="w"> </span>/workspace
+</code></pre></div>
+
+3. **Local execution.** Run in-process; compile the grammar once (needs a C compiler + git):
+   <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">&#39;argus-security[mumps]&#39;</span>
+./scripts/build-mumps-grammar.sh
+<span class="c1"># Drops mumps.so at ~/.cache/argus/grammars/</span>
+argus<span class="w"> </span>scan<span class="w"> </span>mumps<span class="w"> </span>--path<span class="w"> </span>./routines<span class="w">   </span><span class="c1"># backend: local, or no Docker present</span>
+</code></pre></div>
+
+The `ARGUS_MUMPS_GRAMMAR` environment variable overrides the grammar lookup path when a CI pipeline pins a custom build.
+
+> **Preview image:** `:mumps-preview` is a pre-merge build published from the `feat/scanner-m-mumps` branch (mutable tag, workstation-built - no cosign / SLSA attestations yet). On merge the release pipeline republishes it multi-arch with attestations under the versioned `scanner-mumps:<version>` tag, and `argus/containers.py` is repinned to that digest.
+
+**Example:**
+
+<div class="highlight"><pre><span></span><code><span class="nt">scanners</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mumps</span>
+<span class="nt">scan_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./routines</span>
+<span class="nt">fail_on_severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">high</span>
+<span class="nt">reporters</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">terminal</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sarif</span>
+</code></pre></div>
+
+> **Secret redaction:** for the M004 (hard-coded credentials) rule, the matched literal value is replaced with the redaction placeholder before the finding is constructed. Defense-in-depth: `Finding.__post_init__` runs the pattern-based redactor as a second pass. The literal never reaches any reporter, export, or the MCP server. Integration test `test_literal_value_is_redacted` enforces this contract.
+
+> **Taint scope:** Phase 1 taint *detection* is intra-file. Recognized taint sources are `READ` (terminal input), `$ZARGV` (YottaDB / GT.M process arguments), and the HTTP context globals `^%CGI`, `^%REQUEST`, `^%session`. The collector is shared between M001 / M002 / M003 / M005 / M006 so every taint-sink rule sees the full source surface uniformly. The **inter-procedural call graph** is built on every multi-file scan (`argus/scanners/mumps/callgraph.py`); M001 findings carry an `inter_procedural_callers` metadata list naming the routines that reach the sink. **One-hop taint propagation** across that graph is available via `interprocedural.enabled` (opt-in): a tainted actual argument flows into the callee's formal parameter (recursion-safe monotone worklist, `max_depth`-capped). Deeper multi-hop propagation, return-value taint, and per-finding provenance remain on the roadmap.
+
+</details>
+
+<h2 id="container-scanners">Container Scanners</h2>
+<h3 id="trivy-container">Trivy Container</h3>
+<p>Comprehensive vulnerability scanner for container images and filesystems.</p>
+<details>
+<summary><strong>Configuration & Examples</strong></summary>
+
+**Configuration:**
+
+| Input | Description | Default | Required |
+|-------|-------------|---------|----------|
+| `image_ref` | Container image to scan | - | Yes |
+| `registry_username` | Username for private registry authentication | `''` | No |
+| `enable_code_security` | Upload to GitHub Security tab | `false` | No |
+| `post_pr_comment` | Post findings as PR comments | `false` | No |
+| `fail_on_severity` | Severity threshold | `none` | No |
+
+**Required secrets (for private registries):**
+
+| Secret | Description | Required |
+|--------|-------------|----------|
+| `registry_password` | Password/token for registry authentication | No |
+
+**Example:**
+
+<div class="highlight"><pre><span></span><code><span class="c1"># Public image</span>
+<span class="nt">with</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">scanners</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">trivy-container</span>
+<span class="w">  </span><span class="nt">image_ref</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;nginx:latest&#39;</span>
+<span class="w">  </span><span class="nt">enable_code_security</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">fail_on_severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">critical</span>
+
+<span class="c1"># Private registry</span>
+<span class="nt">with</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">scanners</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">trivy-container</span>
+<span class="w">  </span><span class="nt">image_ref</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;ghcr.io/myorg/myapp:latest&#39;</span>
+<span class="w">  </span><span class="nt">registry_username</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ github.actor }}</span>
+<span class="w">  </span><span class="nt">enable_code_security</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">fail_on_severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">critical</span>
+<span class="nt">secrets</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">registry_password</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ secrets.GITHUB_TOKEN }}</span>
+</code></pre></div>
+
+</details>
+
+<h3 id="grype">Grype</h3>
+<p>Fast, accurate vulnerability scanner with excellent detection rates.</p>
+<details>
+<summary><strong>Configuration & Examples</strong></summary>
+
+**Configuration:**
+
+| Input | Description | Default | Required |
+|-------|-------------|---------|----------|
+| `image_ref` | Container image to scan | - | Yes |
+| `registry_username` | Username for private registry authentication | `''` | No |
+| `enable_code_security` | Upload to GitHub Security tab | `false` | No |
+| `post_pr_comment` | Post findings as PR comments | `false` | No |
+| `fail_on_severity` | Severity threshold | `none` | No |
+
+**Required secrets (for private registries):**
+
+| Secret | Description | Required |
+|--------|-------------|----------|
+| `registry_password` | Password/token for registry authentication | No |
+
+**Example:**
+
+<div class="highlight"><pre><span></span><code><span class="c1"># Public image</span>
+<span class="nt">with</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">scanners</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">grype</span>
+<span class="w">  </span><span class="nt">image_ref</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;nginx:latest&#39;</span>
+<span class="w">  </span><span class="nt">fail_on_severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">high</span>
+
+<span class="c1"># Private registry</span>
+<span class="nt">with</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">scanners</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">grype</span>
+<span class="w">  </span><span class="nt">image_ref</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;ghcr.io/myorg/myapp:latest&#39;</span>
+<span class="w">  </span><span class="nt">registry_username</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ github.actor }}</span>
+<span class="w">  </span><span class="nt">fail_on_severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">high</span>
+<span class="nt">secrets</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">registry_password</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ secrets.GITHUB_TOKEN }}</span>
+</code></pre></div>
+
+</details>
+
+<h3 id="syft-sbom">Syft (SBOM)</h3>
+<p>Generates detailed Software Bill of Materials (SBOM) for images and filesystems.</p>
+<details>
+<summary><strong>Configuration & Examples</strong></summary>
+
+**Configuration:**
+
+| Input | Description | Default | Required |
+|-------|-------------|---------|----------|
+| `scan-path` | Directory or file path to scan | `.` | No |
+| `scan-image` | Container image to scan | - | No |
+| `registry_username` | Username for private registry authentication | `''` | No |
+| `enable_code_security` | Upload to GitHub Security tab | `false` | No |
+
+**Required secrets (for private registries):**
+
+| Secret | Description | Required |
+|--------|-------------|----------|
+| `registry_password` | Password/token for registry authentication | No |
+
+**Example:**
+
+<div class="highlight"><pre><span></span><code><span class="c1"># Scan filesystem</span>
+<span class="nt">with</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">scanners</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sbom</span>
+<span class="w">  </span><span class="nt">scan-path</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;dist/&#39;</span>
+
+<span class="c1"># Scan public container image</span>
+<span class="nt">with</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">scanners</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sbom</span>
+<span class="w">  </span><span class="nt">scan-image</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;nginx:latest&#39;</span>
+
+<span class="c1"># Scan private container image</span>
+<span class="nt">with</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">scanners</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sbom</span>
+<span class="w">  </span><span class="nt">scan-image</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;ghcr.io/myorg/myapp:latest&#39;</span>
+<span class="w">  </span><span class="nt">registry_username</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ github.actor }}</span>
+<span class="nt">secrets</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">registry_password</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ secrets.GITHUB_TOKEN }}</span>
+</code></pre></div>
+
+</details>
+
+<h3 id="exposed-port-surface">Exposed-port surface</h3>
+<p>Reports the network endpoints a container image declares via Dockerfile
+<code>EXPOSE</code> — separate from whether those endpoints have known CVEs. "Image
+exposes 6379/tcp" is a different question from "image has a vulnerable
+Redis package" and most security reviewers want both. Runs as a
+sub-scanner inside the container scanner (no new module); the data is
+free since the container scanner already runs <code>docker inspect</code> on every
+pull.</p>
+<p><strong>Output shape:</strong> one <code>Finding</code> per declared port:</p>
+<div class="highlight"><pre><span></span><code>INFO   EXPOSE-8080-tcp    Port 8080/tcp declared exposed
+MEDIUM EXPOSE-22-tcp      Port 22/tcp (SSH) declared exposed
+MEDIUM EXPOSE-3306-tcp    Port 3306/tcp (MySQL) declared exposed
+</code></pre></div>
+<p>Findings flow through every reporter (terminal, markdown, sarif, json,
+github, gitlab, junit), <code>--severity-threshold</code> filtering, audit trail,
+and the view-terminal / view-browser UIs without per-reporter custom
+code.</p>
+<p><strong>Built-in risky-defaults watchlist</strong> (MEDIUM severity by default — each
+entry's rationale is cited in <code>argus/scanners/container.py::RISKY_PORTS</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Port</th>
+<th>Service</th>
+<th>Port</th>
+<th>Service</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>21/tcp</td>
+<td>FTP</td>
+<td>3306/tcp</td>
+<td>MySQL</td>
+</tr>
+<tr>
+<td>22/tcp</td>
+<td>SSH</td>
+<td>3389/tcp</td>
+<td>RDP</td>
+</tr>
+<tr>
+<td>23/tcp</td>
+<td>Telnet</td>
+<td>5432/tcp</td>
+<td>PostgreSQL</td>
+</tr>
+<tr>
+<td>25/tcp</td>
+<td>SMTP</td>
+<td>6379/tcp</td>
+<td>Redis</td>
+</tr>
+<tr>
+<td>110/tcp</td>
+<td>POP3</td>
+<td>9200/tcp</td>
+<td>Elasticsearch</td>
+</tr>
+<tr>
+<td>143/tcp</td>
+<td>IMAP</td>
+<td>11211/tcp</td>
+<td>Memcached</td>
+</tr>
+<tr>
+<td>161/udp</td>
+<td>SNMP</td>
+<td>27017/tcp</td>
+<td>MongoDB</td>
+</tr>
+<tr>
+<td>389/tcp</td>
+<td>LDAP</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>445/tcp</td>
+<td>SMB</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Configuring via argus.yml:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="nt">scanners</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">container</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image_ref</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;myapp:latest&quot;</span>
+<span class="w">    </span><span class="c1"># Default sub-scanner set; remove &quot;exposure&quot; to opt out</span>
+<span class="w">    </span><span class="nt">scanners</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;trivy,grype,syft,exposure,services&quot;</span>
+<span class="w">    </span><span class="c1"># Override the built-in WARN list (replaces the defaults).</span>
+<span class="w">    </span><span class="c1"># Pass [] to demote every declared port to INFO.</span>
+<span class="w">    </span><span class="nt">expose_warn_ports</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">22/tcp</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3306/tcp</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8080/tcp</span><span class="w">           </span><span class="c1"># promote app port to WARN</span>
+<span class="w">    </span><span class="c1"># Suppress findings entirely for ports the team has accepted.</span>
+<span class="w">    </span><span class="nt">expose_ignore_ports</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">443/tcp</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">9090/tcp</span>
+</code></pre></div>
+<p>Both lists accept <code>"PORT/PROTO"</code> strings; bare <code>"PORT"</code> defaults to tcp.
+Schema validator errors on malformed entries at config-load time. See
+<a href="../config-reference/"><code>docs/config-reference.md</code></a> for the full schema.</p>
+<p><strong>Out of scope:</strong> <em>runtime</em> port enumeration (start the container, probe
+with <code>nmap</code>/<code>ss</code>). Static <code>EXPOSE</code> data is the bulk of the value at a
+fraction of the operational cost.</p>
+<h3 id="service-enumeration">Service enumeration</h3>
+<p>Walks the container image's filesystem at scan time, parses systemd
+unit files (<code>/etc/systemd/system</code>, <code>/lib/systemd/system</code>,
+<code>/usr/lib/systemd/system</code>) and SysV init scripts (<code>/etc/init.d/</code>),
+and emits one <code>Finding</code> per declared service. Runs as a sub-scanner
+inside the container scanner — same Docker requirement, no new
+heavy dependencies. Works on distroless / scratch images because
+file extraction goes through <code>docker create</code> + <code>docker cp</code> (tar
+stream) rather than <code>docker run</code>. Per-file reads are bounded at 1
+MB to prevent hostile-image memory blow-up.</p>
+<p><strong>Output shape:</strong> one <code>Finding</code> per service:</p>
+<div class="highlight"><pre><span></span><code>INFO   SVC-nginx       Service &quot;nginx&quot; declared (systemd unit)
+MEDIUM SVC-sshd        Service &quot;sshd&quot; declared (systemd unit)
+MEDIUM SVC-postgresql  Service &quot;postgresql&quot; declared (systemd unit)
+</code></pre></div>
+<p>Findings flow through every reporter (terminal, markdown, sarif,
+json, github, gitlab, junit), <code>--severity-threshold</code> filtering,
+audit trail, and the view-terminal / view-browser UIs without
+per-reporter custom code.</p>
+<p><strong>Built-in risky-defaults watchlist</strong> (MEDIUM severity by default —
+each entry cites a "why" in
+<code>argus/scanners/container.py::RISKY_SERVICES</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Service</th>
+<th>Service</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>sshd</td>
+<td>postgresql</td>
+<td>redis-server</td>
+</tr>
+<tr>
+<td>telnetd</td>
+<td>mysqld</td>
+<td>redis</td>
+</tr>
+<tr>
+<td>vsftpd</td>
+<td>mariadb</td>
+<td>mongod</td>
+</tr>
+<tr>
+<td>memcached</td>
+<td>elasticsearch</td>
+<td>snmpd</td>
+</tr>
+<tr>
+<td>rpcbind</td>
+<td>nfs-server</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Configuring via argus.yml:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="nt">scanners</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">container</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image_ref</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;myapp:latest&quot;</span>
+<span class="w">    </span><span class="c1"># Default sub-scanner set; remove &quot;services&quot; to opt out</span>
+<span class="w">    </span><span class="nt">scanners</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;trivy,grype,syft,exposure,services&quot;</span>
+<span class="w">    </span><span class="c1"># Override the built-in WARN list (replaces the defaults).</span>
+<span class="w">    </span><span class="c1"># Pass [] to demote every declared service to INFO.</span>
+<span class="w">    </span><span class="nt">services_warn</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sshd</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">postgresql</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">nginx</span><span class="w">               </span><span class="c1"># promote app service to WARN</span>
+<span class="w">    </span><span class="c1"># Suppress findings entirely for services the team has accepted.</span>
+<span class="w">    </span><span class="nt">services_ignore</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cron</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rsyslog</span>
+</code></pre></div>
+<p>Matching is case-insensitive. <code>.timer</code>, <code>.socket</code>, <code>.target</code>, and
+<code>.mount</code> units are skipped (only <code>.service</code> units and init.d
+scripts are reported). Schema validator errors on malformed entries
+at config-load time. See
+<a href="../config-reference/"><code>docs/config-reference.md</code></a> for the full schema.</p>
+<p><strong>Out of scope:</strong> <em>runtime</em> service probing (start the container,
+observe what binds). Static unit-file declarations are the bulk of
+the value at a fraction of the operational cost.</p>
+<h2 id="infrastructure-scanners">Infrastructure Scanners</h2>
+<h3 id="trivy-iac">Trivy IaC</h3>
+<p>Scans Infrastructure as Code files for misconfigurations and security issues.</p>
+<p><strong>Supported frameworks:</strong> Terraform, CloudFormation, Kubernetes, Dockerfile</p>
+<details>
+<summary><strong>Configuration & Examples</strong></summary>
+
+**Configuration:**
+
+| Input | Description | Default | Required |
+|-------|-------------|---------|----------|
+| `iac_path` | Path to IaC directory | `infrastructure` | No |
+| `enable_code_security` | Upload to GitHub Security tab | `false` | No |
+| `post_pr_comment` | Post findings as PR comments | `false` | No |
+| `fail_on_severity` | Severity threshold | `none` | No |
+
+**Example:**
+
+<div class="highlight"><pre><span></span><code><span class="nt">with</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">scanners</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">trivy-iac</span>
+<span class="w">  </span><span class="nt">iac_path</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;terraform/&#39;</span>
+<span class="w">  </span><span class="nt">enable_code_security</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">fail_on_severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">high</span>
+</code></pre></div>
+
+</details>
+
+<h3 id="checkov">Checkov</h3>
+<p>Policy as Code scanner for cloud infrastructure configurations.</p>
+<details>
+<summary><strong>Configuration & Examples</strong></summary>
+
+**Configuration:**
+
+| Input | Description | Default | Required |
+|-------|-------------|---------|----------|
+| `iac_path` | Path to IaC directory | `infrastructure` | No |
+| `framework` | IaC framework | `terraform` | No |
+| `enable_code_security` | Upload to GitHub Security tab | `false` | No |
+| `post_pr_comment` | Post findings as PR comments | `false` | No |
+| `fail_on_severity` | Fail on any check failure | `none` | No |
+
+**Example:**
+
+<div class="highlight"><pre><span></span><code><span class="nt">with</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">scanners</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">checkov</span>
+<span class="w">  </span><span class="nt">iac_path</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;infrastructure/&#39;</span>
+<span class="w">  </span><span class="nt">framework</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">terraform</span>
+<span class="w">  </span><span class="nt">enable_code_security</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</code></pre></div>
+
+</details>
+
+<h3 id="kics">KICS</h3>
+<p>Checkmarx KICS (Keeping Infrastructure as Code Secure) — multi-format IaC scanner with ~3000 built-in queries (Apache-2.0). Covers formats <code>trivy-iac</code>/<code>checkov</code> handle poorly or not at all, most notably <strong>Ansible</strong>.</p>
+<p><strong>Supported frameworks:</strong> Ansible, Bicep, Helm, Terraform, Kubernetes, Dockerfile, CloudFormation, OpenAPI, Tekton, Buildah, and server-side template engines.</p>
+<p>KICS, <code>trivy-iac</code>, and <code>checkov</code> are designed to run concurrently — they catch different things on the same target. Scope KICS to <code>--scanners kics</code> if you only want the formats the other two miss.</p>
+<details>
+<summary><strong>Configuration & Examples</strong></summary>
+
+**SDK usage:**
+
+<div class="highlight"><pre><span></span><code><span class="c1"># Run KICS on its own</span>
+argus<span class="w"> </span>scan<span class="w"> </span>kics<span class="w"> </span>--path<span class="w"> </span>infrastructure/
+
+<span class="c1"># Run the full IaC trio</span>
+argus<span class="w"> </span>scan<span class="w"> </span>trivy-iac<span class="w"> </span>checkov<span class="w"> </span>kics
+</code></pre></div>
+
+**Severity levels:** HIGH, MEDIUM, LOW, INFO (mapped directly to Argus severities).
+
+**Config (`argus.yml`):**
+
+| Key | Description | Default |
+|-----|-------------|---------|
+| `config_file` | Path to a KICS config file (`--config`) | `''` |
+| `exclude` | Comma-separated paths to exclude (`--exclude-paths`) | `''` |
+
+<div class="highlight"><pre><span></span><code><span class="nt">scanners</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">kics</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">exclude</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;examples,vendor&quot;</span>
+</code></pre></div>
+
+> **Secrets handling:** KICS echoes the offending source snippet in each match's `actual_value` / `search_value` fields, which for a secrets-class query is the secret itself. Argus redacts all per-match value fields before they reach a finding — the `file:line` location and query name remain as triage signal.
+
+</details>
+
+<h2 id="malware-scanner">Malware Scanner</h2>
+<h3 id="clamav">ClamAV</h3>
+<p>Open-source antivirus engine for detecting trojans, viruses, and malware.</p>
+<details>
+<summary><strong>Configuration & Examples</strong></summary>
+
+**Configuration:**
+
+| Input | Description | Default | Required |
+|-------|-------------|---------|----------|
+| `clamav_scan_path` | Path to scan | `.` | No |
+| `enable_code_security` | Upload to GitHub Security tab | `false` | No |
+| `post_pr_comment` | Post findings as PR comments | `true` | No |
+| `fail_on_severity` | Fail if malware detected | `none` | No |
+
+**Example:**
+
+<div class="highlight"><pre><span></span><code><span class="c1"># Scan entire repository</span>
+<span class="nt">with</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">scanners</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">clamav</span>
+
+<span class="c1"># Scan specific directory</span>
+<span class="nt">with</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">scanners</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">clamav</span>
+<span class="w">  </span><span class="nt">clamav_scan_path</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;uploads/&#39;</span>
+<span class="w">  </span><span class="nt">fail_on_severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">critical</span>
+</code></pre></div>
+
+</details>
+
+<h2 id="dast-scanners">DAST Scanners</h2>
+<h3 id="zap">ZAP</h3>
+<p>ZAP (Zed Attack Proxy) provides Dynamic Application Security Testing (DAST) for running web applications and APIs.</p>
+<p><strong>Key Features:</strong>
+- <strong>Config-file driven</strong>: Define multiple scans with different targets, types, and settings in a single YAML/JSON file
+- <strong>Parallel scan groups</strong>: Run URL-based and container-based scans in parallel pipelines
+- <strong>Flexible defaults</strong>: Set defaults once, override per-scan as needed
+- <strong>Multiple target modes</strong>: URL (already running), docker-run (single container), or compose (multi-container)
+- <strong>Multiple scan types</strong>: baseline, full, or API scans with OpenAPI/Swagger specs</p>
+<hr />
+<h4 id="quick-start-recommended-config-file">Quick Start (Recommended: Config File)</h4>
+<p><strong>1. Create a ZAP config file</strong> (e.g., <code>.github/zap-config.yml</code>):</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Simple flat config - single target mode</span>
+<span class="nt">defaults</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">max_duration_minutes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span>
+<span class="w">  </span><span class="nt">fail_on_severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">medium</span>
+<span class="w">  </span><span class="nt">allow_failure</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+
+<span class="nt">target</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">url</span>
+
+<span class="nt">scans</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">baseline-scan</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">baseline</span>
+<span class="w">    </span><span class="nt">target_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://example.com</span>
+
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">api-scan</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">api</span>
+<span class="w">    </span><span class="nt">target_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://api.example.com</span>
+<span class="w">    </span><span class="nt">api_spec</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://api.example.com/openapi.json</span>
+</code></pre></div>
+<p><strong>2. Run the scan</strong>:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Via SDK</span>
+python<span class="w"> </span>-m<span class="w"> </span>argus<span class="w"> </span>scan<span class="w"> </span>zap<span class="w"> </span>--config<span class="w"> </span>argus.yml
+</code></pre></div>
+<p>Or via composite action in GitHub Actions:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">jobs</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">zap-scan</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">runs-on</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ubuntu-latest</span>
+<span class="w">    </span><span class="nt">steps</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/checkout@v6</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">huntridge-labs/argus/.github/actions/scanner-zap@1.9.1</span>
+<span class="w">        </span><span class="nt">with</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">zap_config_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.github/zap-config.yml</span>
+</code></pre></div>
+<hr />
+<h4 id="configuring-zap-via-argusyml-recommended-for-sdk-users">Configuring ZAP via <code>argus.yml</code> (recommended for SDK users)</h4>
+<p>ADR-024 decided that ZAP-specific tuning lives in the standard <code>argus.yml</code>
+under <code>scanners.zap.*</code>, working identically across SDK-direct, composite-
+action, and any-CI use. The composite action surface stays minimal
+(target identification + common cross-scanner inputs); everything else
+configures from one place.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">scanners</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">zap</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">    </span><span class="nt">target_url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://app.example.com&quot;</span>
+
+<span class="w">    </span><span class="c1"># Tuning (container backend; all optional)</span>
+<span class="w">    </span><span class="nt">scan_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">baseline</span><span class="w">                 </span><span class="c1"># baseline | full | api (api is implicit</span>
+<span class="w">                                         </span><span class="c1"># when api_spec is set)</span>
+<span class="w">    </span><span class="nt">api_spec</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://app.example.com/openapi.json&quot;</span>
+<span class="w">    </span><span class="nt">rules_file</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;.zap/rules.tsv&quot;</span><span class="w">         </span><span class="c1"># mounted at /zap/wrk/rules.tsv</span>
+<span class="w">    </span><span class="nt">max_duration_minutes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30</span>
+<span class="w">    </span><span class="nt">cmd_options</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;-z&quot;</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;-config</span><span class="nv"> </span><span class="s">view.locale=en_GB&quot;</span>
+
+<span class="w">    </span><span class="c1"># Registry auth for app_image_ref pulls (private images).</span>
+<span class="w">    </span><span class="c1"># Name the env var; argus reads os.environ at scan time.</span>
+<span class="w">    </span><span class="c1"># Setting registry_password directly is back-compat-supported</span>
+<span class="w">    </span><span class="c1"># but warned at config-load if the value looks like a vendor secret.</span>
+<span class="w">    </span><span class="nt">registry_username_env</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">REGISTRY_USER</span>
+<span class="w">    </span><span class="nt">registry_password_env</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">REGISTRY_TOKEN</span>
+
+<span class="w">    </span><span class="c1"># Web-app authentication — ZAP context-file passthrough.</span>
+<span class="w">    </span><span class="c1"># User authors the context file (DOM selectors, logged-in regex,</span>
+<span class="w">    </span><span class="c1"># session management); argus mounts it and exports ZAP_AUTH_USERNAME</span>
+<span class="w">    </span><span class="c1"># / ZAP_AUTH_PASSWORD into the container for the {%username%} /</span>
+<span class="w">    </span><span class="c1"># {%password%} placeholders to substitute.</span>
+<span class="w">    </span><span class="nt">auth</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">context_file</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;.zap/context.xml&quot;</span>
+<span class="w">      </span><span class="nt">username_env</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ZAP_APP_USER</span>
+<span class="w">      </span><span class="nt">password_env</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ZAP_APP_PASSWORD</span>
+</code></pre></div>
+<p>See <a href="../config-reference/#credential-fields"><code>docs/config-reference.md</code></a> for
+the full credential-field contract and the list of every <code>scanners.zap.*</code>
+key.</p>
+<hr />
+<details>
+<summary><strong>Configuration Options</strong></summary>
+
+#### Configuration Options
+
+**Via workflow inputs (legacy/simple mode):**
+
+| Input | Description | Default | Required |
+|-------|-------------|---------|----------|
+| `scanners` | Include `zap` (opt-in; not included in `all`) | - | Yes |
+| `zap_config_file` | Path to ZAP config file (YAML/JSON). **Recommended approach** - drives all scan configuration. | `''` | No |
+| `zap_scan_mode` | `url`, `docker-run`, or `compose` (ignored if `zap_config_file` set) | `url` | No |
+| `zap_target_urls` | Comma-separated URLs to scan (ignored if `zap_config_file` set) | `''` | Conditional |
+| `zap_scan_type` | `baseline`, `full`, or `api` (ignored if `zap_config_file` set) | `baseline` | No |
+| `zap_api_spec` | OpenAPI/Swagger spec URL or path (ignored if `zap_config_file` set) | `''` | Conditional |
+| `allow_failure` | Allow workflow to continue on failures | `false` | No |
+| `severity_threshold` | Minimum severity to fail (`none`, `low`, `medium`, `high`, `critical`) | `high` | No |
+
+> **Note**: When `zap_config_file` is provided, it takes precedence and other `zap_*` inputs are ignored.
+
+</details>
+
+<hr />
+<details>
+<summary><strong>Config File Reference</strong></summary>
+
+#### Config File Reference
+
+**Schema URL**: [`zap-config.schema.json`](https://github.com/huntridge-labs/argus/blob/1.9.1/.github/actions/parse-zap-config/schemas/zap-config.schema.json)
+
+**Two config styles supported:**
+
+1. **Flat** - single target, multiple scans
+2. **Grouped** - multiple scan groups with different targets (enables parallel pipelines)
+
+##### Flat Config Example
+
+All scans share the same target configuration:
+
+<div class="highlight"><pre><span></span><code><span class="nt">target</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">url</span><span class="w">  </span><span class="c1"># or docker-run, compose</span>
+
+<span class="nt">defaults</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">max_duration_minutes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span>
+<span class="w">  </span><span class="nt">fail_on_severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">medium</span>
+<span class="w">  </span><span class="nt">allow_failure</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+<span class="w">  </span><span class="nt">post_pr_comment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+
+<span class="nt">scans</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">baseline-scan</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">baseline</span>
+<span class="w">    </span><span class="nt">target_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://app.example.com</span>
+
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">api-scan</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">api</span>
+<span class="w">    </span><span class="nt">target_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://api.example.com</span>
+<span class="w">    </span><span class="nt">api_spec</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://api.example.com/openapi.json</span>
+<span class="w">    </span><span class="nt">fail_on_severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">high</span><span class="w">  </span><span class="c1"># Override default</span>
+</code></pre></div>
+
+##### Grouped Config Example (Parallel Pipelines)
+
+Create separate scan groups with their own targets - ideal for running URL scans and container scans in parallel:
+
+<div class="highlight"><pre><span></span><code><span class="nt">defaults</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">max_duration_minutes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span>
+<span class="w">  </span><span class="nt">fail_on_severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">medium</span>
+<span class="w">  </span><span class="nt">allow_failure</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+
+<span class="nt">scan_groups</span><span class="p">:</span>
+<span class="w">  </span><span class="c1"># Group 1: URL-based scans (external targets)</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">url-scans</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;External</span><span class="nv"> </span><span class="s">URL</span><span class="nv"> </span><span class="s">Scans&quot;</span>
+<span class="w">    </span><span class="nt">target</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">url</span>
+<span class="w">    </span><span class="nt">scans</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">baseline-prod</span>
+<span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">baseline</span>
+<span class="w">        </span><span class="nt">target_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://example.com</span>
+
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">api-prod</span>
+<span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">api</span>
+<span class="w">        </span><span class="nt">target_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://api.example.com</span>
+<span class="w">        </span><span class="nt">api_spec</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://api.example.com/openapi.json</span>
+
+<span class="w">  </span><span class="c1"># Group 2: Container scans (start app, then scan)</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">docker-scans</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Container-based</span><span class="nv"> </span><span class="s">Scans&quot;</span>
+<span class="w">    </span><span class="nt">target</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">docker-run</span>
+<span class="w">      </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/myorg/myapp:latest</span>
+<span class="w">      </span><span class="nt">ports</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;8080:8080&quot;</span>
+<span class="w">    </span><span class="nt">defaults</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">target_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://localhost:8080</span>
+<span class="w">    </span><span class="nt">scans</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">baseline-container</span>
+<span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">baseline</span>
+
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">full-container</span>
+<span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">full</span>
+<span class="w">        </span><span class="nt">max_duration_minutes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">20</span>
+</code></pre></div>
+
+##### Target Configuration
+
+**`target.mode`** options:
+
+- **`url`** (default): Scan already-running endpoints
+- **`docker-run`**: Start a single container, then scan
+- **`compose`**: Start a docker-compose stack, then scan
+
+**Docker-run mode example:**
+
+<div class="highlight"><pre><span></span><code><span class="nt">target</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">docker-run</span>
+<span class="w">  </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myapp:latest</span>
+<span class="w">  </span><span class="nt">ports</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;3000:3000,8080:8080&quot;</span>
+<span class="w">  </span><span class="nt">healthcheck_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://localhost:3000/health</span>
+
+<span class="w">  </span><span class="c1"># Optional: build from local Dockerfile</span>
+<span class="w">  </span><span class="nt">build</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">context</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.</span>
+<span class="w">    </span><span class="nt">dockerfile</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./Dockerfile</span>
+<span class="w">    </span><span class="nt">tag</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myapp:test</span>
+
+<span class="w">  </span><span class="c1"># Optional: private registry auth</span>
+<span class="w">  </span><span class="nt">registry</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io</span>
+<span class="w">    </span><span class="nt">username</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ github.actor }}</span>
+<span class="w">    </span><span class="nt">auth_secret</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">GITHUB_TOKEN</span><span class="w">  </span><span class="c1"># Secret name</span>
+</code></pre></div>
+
+**Compose mode example:**
+
+<div class="highlight"><pre><span></span><code><span class="nt">target</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">compose</span>
+<span class="w">  </span><span class="nt">compose_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">docker-compose.test.yml</span>
+<span class="w">  </span><span class="nt">compose_build</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">healthcheck_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://localhost:8080/health</span>
+</code></pre></div>
+
+##### Scan Configuration
+
+**Required fields:**
+- `name`: Unique scan identifier (alphanumeric, hyphens, underscores)
+- `type`: `baseline`, `full`, or `api`
+
+**Common fields:**
+- `target_url`: Target URL to scan (required for baseline/full scans)
+- `api_spec`: OpenAPI/Swagger spec URL or file path (required for api scans)
+- `max_duration_minutes`: Maximum scan duration (1-120, default: 10)
+- `fail_on_severity`: Fail threshold - `none`, `low`, `medium`, `high`, `critical` (default: `none`)
+- `allow_failure`: Continue workflow on failure (default: `false`)
+- `post_pr_comment`: Post scan results as PR comment (default: `false`)
+
+**Advanced fields:**
+- `healthcheck_url`: Override target healthcheck (waits for 200 response before scanning)
+- `rules_file`: Path to ZAP rules file (.tsv) to ignore specific alerts
+- `context_file`: Path to ZAP context file for session/auth
+- `cmd_options`: Additional ZAP CLI options (e.g., `-z "-config api.addrs.addr.name=.*"`)
+
+**Authentication (header-based):**
+
+<div class="highlight"><pre><span></span><code><span class="nt">scans</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">authenticated-scan</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">baseline</span>
+<span class="w">    </span><span class="nt">target_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://app.example.com</span>
+<span class="w">    </span><span class="nt">auth</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">header_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Authorization</span>
+<span class="w">      </span><span class="nt">header_secret</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">API_TOKEN</span><span class="w">  </span><span class="c1"># GitHub secret name</span>
+<span class="w">      </span><span class="c1"># OR for non-secret values:</span>
+<span class="w">      </span><span class="c1"># header_value: &quot;Bearer ${MY_TOKEN}&quot;</span>
+</code></pre></div>
+
+##### Defaults
+
+Set defaults at root or per-group that apply to all scans (scans can override):
+
+<div class="highlight"><pre><span></span><code><span class="nt">defaults</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">max_duration_minutes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">15</span>
+<span class="w">  </span><span class="nt">fail_on_severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">medium</span>
+<span class="w">  </span><span class="nt">allow_failure</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+<span class="w">  </span><span class="nt">post_pr_comment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">target_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://localhost:8080</span><span class="w">  </span><span class="c1"># Default target</span>
+<span class="w">  </span><span class="nt">rules_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.zap/rules.tsv</span>
+<span class="w">  </span><span class="nt">auth</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">header_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">X-API-Key</span>
+<span class="w">    </span><span class="nt">header_secret</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">API_KEY</span>
+</code></pre></div>
+
+</details>
+
+<hr />
+<details>
+<summary><strong>Complete Examples</strong></summary>
+
+#### Complete Examples
+
+##### Example 1: Simple URL Scan
+
+<div class="highlight"><pre><span></span><code><span class="c1"># .github/zap-config.yml</span>
+<span class="nt">target</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">url</span>
+
+<span class="nt">scans</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">baseline</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">baseline</span>
+<span class="w">    </span><span class="nt">target_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://example.com</span>
+<span class="w">    </span><span class="nt">max_duration_minutes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span>
+<span class="w">    </span><span class="nt">fail_on_severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">high</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="c1"># Via SDK</span>
+python<span class="w"> </span>-m<span class="w"> </span>argus<span class="w"> </span>scan<span class="w"> </span>zap<span class="w"> </span>--config<span class="w"> </span>argus.yml
+</code></pre></div>
+
+##### Example 2: Container Scan with Build
+
+<div class="highlight"><pre><span></span><code><span class="c1"># .github/zap-config.yml</span>
+<span class="nt">target</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">docker-run</span>
+<span class="w">  </span><span class="nt">build</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">context</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.</span>
+<span class="w">    </span><span class="nt">dockerfile</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Dockerfile</span>
+<span class="w">    </span><span class="nt">tag</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">app:test</span>
+<span class="w">  </span><span class="nt">ports</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;8080:8080&quot;</span>
+<span class="w">  </span><span class="nt">healthcheck_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://localhost:8080/health</span>
+
+<span class="nt">defaults</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">max_duration_minutes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span>
+<span class="w">  </span><span class="nt">fail_on_severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">medium</span>
+<span class="w">  </span><span class="nt">target_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://localhost:8080</span>
+
+<span class="nt">scans</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">baseline</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">baseline</span>
+
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">api</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">api</span>
+<span class="w">    </span><span class="nt">api_spec</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://localhost:8080/openapi.json</span>
+</code></pre></div>
+
+##### Example 3: Parallel Pipelines (Grouped)
+
+<div class="highlight"><pre><span></span><code><span class="c1"># .github/zap-config.yml</span>
+<span class="nt">defaults</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">max_duration_minutes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span>
+<span class="w">  </span><span class="nt">fail_on_severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">medium</span>
+
+<span class="nt">scan_groups</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">url-scans</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Production</span><span class="nv"> </span><span class="s">URL</span><span class="nv"> </span><span class="s">Scans&quot;</span>
+<span class="w">    </span><span class="nt">target</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">url</span>
+<span class="w">    </span><span class="nt">scans</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prod-baseline</span>
+<span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">baseline</span>
+<span class="w">        </span><span class="nt">target_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://example.com</span>
+
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prod-api</span>
+<span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">api</span>
+<span class="w">        </span><span class="nt">target_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://api.example.com</span>
+<span class="w">        </span><span class="nt">api_spec</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://api.example.com/openapi.json</span>
+
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">container-scans</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Local</span><span class="nv"> </span><span class="s">Container</span><span class="nv"> </span><span class="s">Scans&quot;</span>
+<span class="w">    </span><span class="nt">target</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">docker-run</span>
+<span class="w">      </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myapp:latest</span>
+<span class="w">      </span><span class="nt">ports</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;3000:3000&quot;</span>
+<span class="w">    </span><span class="nt">defaults</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">target_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://localhost:3000</span>
+<span class="w">    </span><span class="nt">scans</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">container-baseline</span>
+<span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">baseline</span>
+
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">container-full</span>
+<span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">full</span>
+<span class="w">        </span><span class="nt">max_duration_minutes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">20</span>
+</code></pre></div>
+
+This creates two parallel scan pipelines in your GitHub Actions workflow - one for URL scans and one for container scans.
+
+</details>
+
+<hr />
+<details>
+<summary><strong>Legacy Input-Based Configuration</strong></summary>
+
+#### Legacy Input-Based Configuration
+
+For simple single-scan scenarios via composite actions, you can pass inputs directly (no config file):
+
+**URL-only scan:**
+
+<div class="highlight"><pre><span></span><code><span class="nt">jobs</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">zap-scan</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">runs-on</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ubuntu-latest</span>
+<span class="w">    </span><span class="nt">steps</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/checkout@v6</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">huntridge-labs/argus/.github/actions/scanner-zap@1.9.1</span>
+<span class="w">        </span><span class="nt">with</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">zap_scan_mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">url</span>
+<span class="w">          </span><span class="nt">zap_target_urls</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://example.com</span>
+<span class="w">          </span><span class="nt">fail_on_severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">medium</span>
+</code></pre></div>
+
+> **Note**: Input-based configuration is limited to single scans. Use config files for multiple scans or advanced features.
+
+</details>
+
+<h2 id="llm-security-scanners">LLM-Security Scanners</h2>
+<h3 id="promptfoo">promptfoo</h3>
+<p><a href="https://github.com/promptfoo/promptfoo">promptfoo</a> is an OSS LLM eval and
+red-team framework with 60+ plugins aligned to the
+<a href="https://owasp.org/www-project-top-10-for-large-language-model-applications/">OWASP LLM Top 10</a>
+(prompt injection, jailbreaks, PII leakage, hallucination, bias). Argus
+runs it container-first, so the Node.js runtime stays inside the promptfoo
+image and never touches Argus core.</p>
+<blockquote>
+<p><strong>Opt-in scanner.</strong> promptfoo is <strong>not</strong> included in <code>all</code>. It requires
+provider API keys (OpenAI, Anthropic, etc.) <strong>and network access at scan
+time</strong> — every probe is a live request to the configured model endpoint.
+Enable it explicitly and budget for provider API usage.</p>
+</blockquote>
+<p><strong>Key Features:</strong>
+- Red-team probes (prompt injection, jailbreak, PII, RBAC/BOLA, SSRF, …) and plain eval assertions
+- Failed red-team probes map to <code>HIGH</code>; failed eval assertions to <code>MEDIUM</code>
+- Adversarial prompts and model responses are <strong>never</strong> echoed into Argus findings — only structural metadata (plugin id, assertion type, provider) is surfaced, so secrets/PII in prompts or responses don't leak into reports</p>
+<hr />
+<h4 id="quick-start">Quick Start</h4>
+<p><strong>1. Author a promptfoo config</strong> (e.g. <code>promptfooconfig.yaml</code>) per the
+<a href="https://www.promptfoo.dev/docs/configuration/guide/">promptfoo docs</a> —
+declare your providers, prompts, and red-team plugins there.</p>
+<p><strong>2. Configure Argus</strong> (<code>argus.yml</code>):</p>
+<div class="highlight"><pre><span></span><code><span class="nt">scanners</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">promptfoo</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">    </span><span class="nt">config_file</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;promptfooconfig.yaml&quot;</span><span class="w">   </span><span class="c1"># mounted at /app/promptfooconfig.yaml</span>
+
+<span class="w">    </span><span class="c1"># Provider API keys — name the env var; argus reads os.environ at</span>
+<span class="w">    </span><span class="c1"># scan time and exports it into the container. The literal value</span>
+<span class="w">    </span><span class="c1"># never appears in argus.yml.</span>
+<span class="w">    </span><span class="nt">openai_api_key_env</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">OPENAI_API_KEY</span>
+<span class="w">    </span><span class="nt">anthropic_api_key_env</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ANTHROPIC_API_KEY</span>
+
+<span class="w">    </span><span class="c1"># Any additional provider: map the provider&#39;s native env-var name</span>
+<span class="w">    </span><span class="c1"># to the host env var holding the secret.</span>
+<span class="w">    </span><span class="nt">api_keys</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">MISTRAL_API_KEY</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">MY_MISTRAL_SECRET</span>
+
+<span class="w">    </span><span class="nt">cmd_options</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;--max-concurrency&quot;</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;2&quot;</span>
+</code></pre></div>
+<p><strong>3. Run the scan</strong>:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">OPENAI_API_KEY</span><span class="o">=</span>sk-...<span class="w"> </span>argus<span class="w"> </span>scan<span class="w"> </span>promptfoo<span class="w"> </span>--config<span class="w"> </span>argus.yml
+</code></pre></div>
+<p>The scanner invokes <code>promptfoo eval -c &lt;config&gt; -o /output/results.json
+--no-progress-bar</code> inside the container and normalizes failing results
+into Argus findings.</p>
+<hr />
+<h2 id="common-configuration-patterns">Common Configuration Patterns</h2>
+<h3 id="enable-github-security-tab-actions">Enable GitHub Security Tab (Actions)</h3>
+<p>Upload SARIF results when using composite actions:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">with</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">enable_code_security</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</code></pre></div>
+<h3 id="disable-pr-comments-actions">Disable PR Comments (Actions)</h3>
+<p>Useful for scheduled scans using composite actions:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">with</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">post_pr_comment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+</code></pre></div>
+<h3 id="scanner-selection-patterns">Scanner Selection Patterns</h3>
+<p><strong>SDK:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="c1"># SAST only</span>
+python<span class="w"> </span>-m<span class="w"> </span>argus<span class="w"> </span>scan<span class="w"> </span>codeql<span class="w"> </span>opengrep<span class="w"> </span>bandit<span class="w"> </span>gitleaks
+
+<span class="c1"># Infrastructure only</span>
+python<span class="w"> </span>-m<span class="w"> </span>argus<span class="w"> </span>scan<span class="w"> </span>trivy-iac<span class="w"> </span>checkov<span class="w"> </span>kics
+
+<span class="c1"># Container only</span>
+python<span class="w"> </span>-m<span class="w"> </span>argus<span class="w"> </span>scan<span class="w"> </span>container
+
+<span class="c1"># Focused mix</span>
+python<span class="w"> </span>-m<span class="w"> </span>argus<span class="w"> </span>scan<span class="w"> </span>gitleaks<span class="w"> </span>trivy-iac<span class="w"> </span>checkov
+</code></pre></div>
+<p><strong>Composite actions:</strong> Use individual <code>scanner-*</code> actions in your workflow steps.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/huntridge-labs/argus" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.expand", "navigation.path", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
