@@ -12,5 +12,10 @@ FROM python:3.14-alpine
 
 COPY plugin.py /plugin.py
 
+# Run as the non-root "nobody" user. Matches the sandbox's runtime
+# --user 65534:65534 and satisfies dockerfile.security.missing-user-entrypoint
+# (defense-in-depth: the image itself never defaults to root).
+USER 65534:65534
+
 # Emits an argus.plugin.v1 findings document on stdout.
 ENTRYPOINT ["python3", "/plugin.py"]

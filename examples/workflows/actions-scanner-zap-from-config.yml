@@ -56,13 +56,21 @@ jobs:
           config_file: ${{ inputs.config_file || 'examples/configs/zap-config.example.yml' }}
 
       - name: Display parsed config
+        # Route inputs/outputs through env so untrusted values are never
+        # interpolated into the shell command; reference the quoted variables
+        # instead (avoids yaml.github-actions.security.run-shell-injection).
+        env:
+          CONFIG_FILE: ${{ inputs.config_file }}
+          SCAN_COUNT: ${{ steps.parse.outputs.total_scan_count }}
+          POST_PR_COMMENT: ${{ steps.parse.outputs.post_pr_comment }}
+          MATRIX_JSON: ${{ steps.parse.outputs.matrix }}
         run: |
-          echo "📋 Config file: ${{ inputs.config_file }}"
-          echo "📊 Scan count: ${{ steps.parse.outputs.total_scan_count }}"
-          echo "💬 PR comment: ${{ steps.parse.outputs.post_pr_comment }}"
+          echo "📋 Config file: $CONFIG_FILE"
+          echo "📊 Scan count: $SCAN_COUNT"
+          echo "💬 PR comment: $POST_PR_COMMENT"
           echo ""
           echo "🔍 Matrix JSON:"
-          echo '${{ steps.parse.outputs.matrix }}' | jq '.'
+          echo "$MATRIX_JSON" | jq '.'
 
   zap-scan:
     name: ZAP ${{ matrix.name }}
@@ -107,5 +115,9 @@ jobs:
 
       - name: Check for critical findings
         if: steps.summary.outputs.total_critical > 0 || steps.summary.outputs.total_high > 0
+        # Same pattern as above: keep step outputs out of the shell command line.
+        env:
+          TOTAL_CRITICAL: ${{ steps.summary.outputs.total_critical }}
+          TOTAL_HIGH: ${{ steps.summary.outputs.total_high }}
         run: |
-          echo "::warning::Found security findings - Critical: ${{ steps.summary.outputs.total_critical }}, High: ${{ steps.summary.outputs.total_high }}"
+          echo "::warning::Found security findings - Critical: $TOTAL_CRITICAL, High: $TOTAL_HIGH"
