@@ -2692,3 +2692,54 @@ decisions:
         (gated) — all behind the `report` license entitlement.
       - Tests: test_cli_console.py (provider/help dispatch); test_plugin_seam.py (a plugin
         builds from app.state.load_scan; OSS exposes no report helpers).
+  ADR-035:
+    title: Argus informs, never decides (no data mutation, no auto-suppression, no attestation)
+    date: '2026-07-18'
+    status: accepted
+    context: |-
+      A proposed reachability-aware Go scanner (govulncheck, PR #250) downgraded any
+      vulnerability it judged "imported but not called" to severity INFO, discarding the
+      advisory's real severity. That conflates two orthogonal axes — severity (how
+      dangerous the vuln is) with reachability (whether a static call path was found) —
+      and does it by mutating the raw finding. Reachability analysis is unsound:
+      govulncheck, like any static call-graph tool, cannot see reflection, cgo, unsafe,
+      dynamic dispatch, or build-tag paths, so "no call path found" is evidence, not a
+      verdict of "not affected." The open question was how much authority Argus should
+      assume when a signal suggests a finding may not apply.
+    decision: |-
+      Argus informs; it never decides or assumes on the user's behalf. It reports every
+      finding at its true, source-derived severity and surfaces secondary signals
+      (reachability, confidence, etc.) as attributed facts — e.g. "govulncheck: no call
+      path to the vulnerable symbol found" — never as a severity override or a
+      suppression. Argus does not mutate raw scanner/advisory data, does not
+      auto-suppress findings, and does not emit attestations (e.g. VEX not_affected)
+      under its own name. Decision-SUPPORT is offered only through explicit,
+      user-configured, transparent, reversible policy — e.g. an opt-in gate that
+      excludes no-call-path findings from the exit-code threshold — off by default,
+      affecting only pass/fail, and never altering or hiding a reported finding.
+    alternatives_considered:
+    - name: Downgrade unreachable findings to INFO (the original govulncheck PR approach)
+      rejected_because: Mutates raw severity and makes Argus decide a vuln doesn't matter
+        from an unsound guess; misstates the finding and loses its true value.
+    - name: Auto-generate a VEX not_affected statement from reachability
+      rejected_because: Puts Argus's name on a security attestation it cannot stand
+        behind; a false "not affected" silently suppresses a real vuln downstream, which
+        is worse than a false positive.
+    - name: Auto-emit SARIF suppressions for unreachable findings
+      rejected_because: Same class of error — a suppression is Argus deciding; the human
+        or the UI should dismiss a finding, not the scanner.
+    consequences:
+      positive:
+      - Raw scanner/advisory output is never distorted; findings stay trustworthy and reproducible.
+      - Reachability and similar signals still deliver triage value, as context.
+      - The operator, not Argus, owns risk acceptance (patch, remove the unused dependency, or formally accept/VEX via their own process).
+      - A consistent, high-integrity posture across every scanner and reporter.
+      negative:
+      - More findings surface at full severity by default; honest noise is the default and teams opt into any gating relaxation explicitly.
+      - Reachability-aware quieting must be user-configured, never automatic.
+    implementation: |-
+      - Scanners set Finding.severity from the source advisory only; they never rewrite it from a derived signal.
+      - Secondary signals (reachability, confidence, etc.) live in Finding.metadata as attributed facts; reporters may group or annotate by them but must render the true severity.
+      - Any "don't gate on X" behavior lives in the engine's severity-threshold policy, keyed off metadata + argus.yml config — never by mutating severity.
+      - Argus emits no VEX/suppression attestation of its own; it may hand the raw signal to a human who authors and signs such an artifact themselves.
+      - Consistent with ADR-007 (the user controls failure behavior, not Argus).
