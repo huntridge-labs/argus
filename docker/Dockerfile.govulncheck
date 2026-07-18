@@ -14,11 +14,11 @@
 #     only) but sets no -w, so the relative ``./...`` pattern govulncheck
 #     receives must resolve here. This mirrors the local path's cwd=path.
 
-# NOTE: tag-only base ref. Renovate pins this to a ``@sha256:...`` digest
-# on first ingestion (same policy as every image in argus/containers.py);
-# left un-pinned here only because the digest must be resolved against the
-# registry at build time, which the release pipeline does.
-FROM golang:1.23-alpine AS base
+# Base pinned to an immutable digest, same policy as every other argus
+# Dockerfile (Dependabot maintains the FROM pins repo-wide). The golang
+# image provides the toolchain govulncheck source mode needs to type-check
+# and build the target packages when computing reachability.
+FROM golang:1.23-alpine@sha256:383395b794dffa5b53012a212365d40c8e37109a626ca30d6151c8348d380b5f AS base
 
 LABEL org.opencontainers.image.source="https://github.com/huntridge-labs/argus"
 LABEL org.opencontainers.image.description="Argus govulncheck reachability-aware Go vulnerability scanner"

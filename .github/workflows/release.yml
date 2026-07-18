@@ -235,6 +235,7 @@ jobs:
             "scanner-supply-chain:docker/Dockerfile.supply-chain:SCANNER_SUPPLY_CHAIN"
             "cli:docker/Dockerfile.cli:CLI"
             "scanner-mumps:docker/Dockerfile.mumps:SCANNER_MUMPS"
+            "scanner-govulncheck:docker/Dockerfile.govulncheck:SCANNER_GOVULNCHECK"
           )
 
           # Single source of truth: export the bare image names so the

@@ -87,11 +87,14 @@ CUSTOM_IMAGES = {
     # official govulncheck image (upstream ships it via
     # ``go install golang.org/x/vuln/cmd/govulncheck``), so argus builds
     # and publishes its own from docker/Dockerfile.govulncheck (golang
-    # base + pinned govulncheck). PRE-PUBLISH PLACEHOLDER: the digest
-    # below is a zero placeholder; the release pipeline builds the image,
-    # then release-it rewrites this line to the real release digest. Until
-    # that first publish, run the scanner with a locally-installed
-    # govulncheck — the SDK prefers the local binary when present.
+    # base + pinned govulncheck), wired into the release ``IMAGES`` matrix
+    # like every other custom image. PRE-PUBLISH PLACEHOLDER: the digest
+    # below stays all-zeros until the first release builds the image and
+    # scripts/release_it/inject_image_digests.py writes the real digest
+    # here (release-it bumps the tag; the injector writes the digest).
+    # While it's a placeholder, ``published_image`` reports no image so the
+    # scanner runs the locally-installed govulncheck (see GovulncheckScanner);
+    # the container path activates automatically once the real digest lands.
     "govulncheck": "ghcr.io/huntridge-labs/argus/scanner-govulncheck:1.9.1@sha256:0000000000000000000000000000000000000000000000000000000000000000",
 }
 

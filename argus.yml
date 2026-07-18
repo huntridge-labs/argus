@@ -85,6 +85,9 @@ containers:
     - dockerfile: docker/Dockerfile.mumps
       context: .
       name: scanner-mumps
+    - dockerfile: docker/Dockerfile.govulncheck
+      context: .
+      name: scanner-govulncheck
   scanners: [trivy, grype, syft]
 
 reporting:

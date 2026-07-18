@@ -46,6 +46,19 @@
     },
     {
       "customType": "regex",
+      "description": "govulncheck version in Dockerfiles",
+      "managerFilePatterns": [
+        "docker/Dockerfile.*"
+      ],
+      "matchStrings": [
+        "ARG GOVULNCHECK_VERSION=(?<currentValue>v[\\d.]+)"
+      ],
+      "depNameTemplate": "golang.org/x/vuln",
+      "packageNameTemplate": "golang.org/x/vuln",
+      "datasourceTemplate": "go"
+    },
+    {
+      "customType": "regex",
       "description": "Grype version in Dockerfiles",
       "managerFilePatterns": [
         "docker/Dockerfile.*"
