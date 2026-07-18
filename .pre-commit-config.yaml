@@ -16,7 +16,11 @@ repos:
         exclude: ^(docs)
       - id: check-case-conflict
       - id: check-json
-        exclude: ^(tests/invalid\.json)$
+        # govulncheck emits a *stream* of concatenated JSON objects (config,
+        # progress, osv, finding) rather than one document — these fixtures
+        # capture that verbatim so the stream parser is exercised, so they are
+        # intentionally not valid single-document JSON.
+        exclude: ^(tests/invalid\.json|tests/fixtures/scanner-outputs/govulncheck/.*\.json)$
       - id: detect-private-key
         exclude: ^(tests/secrets_test\.py|argus/tests/core/test_redact\.py)$
       - id: mixed-line-ending
@@ -30,7 +34,9 @@ repos:
         # verbatim from `argus scan`; re-emitting them through
         # json.dump(ensure_ascii=True) escapes em-dashes / non-ASCII
         # and makes them diverge from real argus output.
-        exclude: ^(docs/images/.*\.json|tests/invalid\.json)$
+        # govulncheck stream fixtures (concatenated JSON objects) must not be
+        # reformatted as a single document — see check-json above.
+        exclude: ^(docs/images/.*\.json|tests/invalid\.json|tests/fixtures/scanner-outputs/govulncheck/.*\.json)$
   # renovate: datasource=github-tags depName=pre-commit/pygrep-hooks versioning=semver
   - repo: https://github.com/pre-commit/pygrep-hooks
     rev: v1.10.0  # Use the ref you want to point at

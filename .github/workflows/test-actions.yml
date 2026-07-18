@@ -1054,6 +1054,61 @@ jobs:
           STEPS_SCAN_OUTPUTS_HIGH_COUNT: ${{ steps.scan.outputs.high_count }}
           STEPS_SCAN_OUTPUTS_LICENSE_VIOLATIONS: ${{ steps.scan.outputs.license_violations }}
 
+  test-govulncheck:
+    name: Dependencies / govulncheck
+    runs-on: ubuntu-latest
+    if: (github.event_name == 'workflow_dispatch' && (inputs.test_group == 'all' || inputs.test_group == 'dependencies') || github.event_name != 'workflow_dispatch') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - name: Run govulncheck scanner
+        id: scan
+        uses: ./.github/actions/scanner-govulncheck
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Pinned intentionally-vulnerable Go module fixture with a known
+          # REACHABLE advisory (GO-2022-1059, reached via a call to
+          # language.ParseAcceptLanguage). This exercises govulncheck's
+          # call-graph reachability end to end — the whole point of the
+          # scanner — not just presence-based detection.
+          scan_path: 'tests/fixtures/test-apps/go-app'
+          post_pr_comment: 'false'
+          enable_code_security: ${{ env.ENABLE_CODE_SECURITY }}
+          # Keep the job green regardless of severity (Go advisories often
+          # lack a CVSS, so the reachable finding is UNKNOWN); we assert on
+          # the finding count instead.
+          fail_on_severity: 'none'
+
+      - name: Verify scan detected the reachable vulnerability
+        shell: bash
+        run: |
+          {
+            echo "## govulncheck Scanner Test Results"
+            echo "✅ govulncheck scanner executed successfully"
+            echo ""
+            echo "**Total findings:** ${STEPS_SCAN_OUTPUTS_TOTAL_COUNT}"
+            echo "**Scan status:** ${STEPS_SCAN_OUTPUTS_SCAN_STATUS}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # The fixture pins a dependency with a known reachable advisory, so
+          # govulncheck must surface at least one finding. Zero means the scan
+          # didn't actually analyze the Go module (Go/govulncheck not set up,
+          # or reachability silently no-op'd) — the exact regression this
+          # E2E guards against.
+          if [ "${STEPS_SCAN_OUTPUTS_TOTAL_COUNT:-0}" -lt 1 ]; then
+            echo "::error::govulncheck reported 0 findings against the vulnerable Go fixture — expected >= 1 (GO-2022-1059)."
+            exit 1
+          fi
+        env:
+          STEPS_SCAN_OUTPUTS_TOTAL_COUNT: ${{ steps.scan.outputs.total_count }}
+          STEPS_SCAN_OUTPUTS_SCAN_STATUS: ${{ steps.scan.outputs.scan_status }}
+
   # ============================================================================
   # Summary Generators
   # Tests: linting-summary
@@ -1347,6 +1402,7 @@ jobs:
       - test-supply-chain
       - test-osv
       - test-dependency-review
+      - test-govulncheck
       - test-linting-summary
       - test-parse-container-config
       - test-parse-zap-config
@@ -1380,6 +1436,7 @@ jobs:
           NEEDS_TEST_SUPPLY_CHAIN_RESULT: ${{ needs.test-supply-chain.result }}
           NEEDS_TEST_OSV_RESULT: ${{ needs.test-osv.result }}
           NEEDS_TEST_DEPENDENCY_REVIEW_RESULT: ${{ needs.test-dependency-review.result }}
+          NEEDS_TEST_GOVULNCHECK_RESULT: ${{ needs.test-govulncheck.result }}
           NEEDS_TEST_LINTING_SUMMARY_RESULT: ${{ needs.test-linting-summary.result }}
           NEEDS_TEST_PARSE_CONTAINER_CONFIG_RESULT: ${{ needs.test-parse-container-config.result }}
           NEEDS_TEST_PARSE_ZAP_CONFIG_RESULT: ${{ needs.test-parse-zap-config.result }}
@@ -1410,6 +1467,7 @@ jobs:
             echo "| Supply Chain | ${{ needs.test-supply-chain.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_SUPPLY_CHAIN_RESULT} |"
             echo "| OSV Dependencies | ${{ needs.test-osv.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_OSV_RESULT} |"
             echo "| Dependency Review | ${{ needs.test-dependency-review.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_DEPENDENCY_REVIEW_RESULT} |"
+            echo "| govulncheck (Go Dependencies) | ${{ needs.test-govulncheck.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_GOVULNCHECK_RESULT} |"
             echo "| Linting Summary | ${{ needs.test-linting-summary.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_LINTING_SUMMARY_RESULT} |"
             echo "| Container Config Parser | ${{ needs.test-parse-container-config.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_PARSE_CONTAINER_CONFIG_RESULT} |"
             echo "| ZAP Config Parser | ${{ needs.test-parse-zap-config.result == 'success' && '✅' || '⚠️' }} ${NEEDS_TEST_PARSE_ZAP_CONFIG_RESULT} |"
@@ -1452,6 +1510,7 @@ jobs:
       - test-supply-chain
       - test-osv
       - test-dependency-review
+      - test-govulncheck
       - test-linting-summary
       - test-parse-container-config
       - test-parse-zap-config

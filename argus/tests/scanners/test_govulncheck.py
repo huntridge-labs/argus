@@ -163,6 +163,21 @@ class TestGovulncheckScannerMeta:
         scanner = get_scanner("govulncheck")
         assert isinstance(scanner, GovulncheckScanner)
 
+    def test_container_image_reflects_publish_state(self):
+        """Until the custom image is published its CUSTOM_IMAGES entry pins the
+        all-zeros placeholder digest, and the scanner must advertise NO image so
+        ``auto`` runs the local binary instead of pulling a digest that doesn't
+        exist. Once the release pipeline writes the real digest, the scanner
+        exposes it and the container path activates. This invariant holds in
+        both states, so it doesn't break on publish."""
+        from argus.containers import get_image, is_placeholder_image
+
+        raw = get_image("govulncheck")
+        if is_placeholder_image(raw):
+            assert GovulncheckScanner.container_image == ""
+        else:
+            assert GovulncheckScanner.container_image == raw
+
     def test_build_args_default_scans_whole_module(self):
         scanner = GovulncheckScanner()
         paths = ScanPaths(workspace="/workspace", output="/output/results.json")

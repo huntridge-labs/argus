@@ -17,7 +17,7 @@ import sys
 
 
 def main() -> int:
-    from argus.containers import OFFICIAL_IMAGES, CUSTOM_IMAGES
+    from argus.containers import OFFICIAL_IMAGES, CUSTOM_IMAGES, is_placeholder_image
 
     if not shutil.which("docker"):
         print("docker not found — skipping image manifest check")
@@ -28,6 +28,13 @@ def main() -> int:
 
     failures = []
     for name, image in sorted(all_images.items()):
+        # A pre-publish placeholder (all-zeros digest) intentionally has no
+        # published manifest yet — the release pipeline builds it and rewrites
+        # the digest. Skip it rather than fail on a digest that can't resolve.
+        if is_placeholder_image(image):
+            print(f"  ⏭️  {name:<20} {image}")
+            print("     unpublished placeholder — skipped (release pipeline publishes it)")
+            continue
         result = subprocess.run(
             ["docker", "manifest", "inspect", image],
             capture_output=True, text=True, timeout=30,

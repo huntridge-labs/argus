@@ -113,6 +113,35 @@ def get_image(scanner_name: str) -> str:
     return OFFICIAL_IMAGES.get(key, CUSTOM_IMAGES.get(key, ""))
 
 
+# Sentinel digest for a custom image argus builds but hasn't published yet.
+# A CUSTOM_IMAGES entry pinned to this all-zeros digest is a *pre-publish
+# placeholder*: the release pipeline builds the image on first release and the
+# release-it regex bumper rewrites the line to the real digest. Until then,
+# consumers must treat the image as "not available" — the scanner advertises no
+# container image (so ``auto`` runs the local tool), version verification is
+# skipped (the argus image tag is not the tool's own version), and CI
+# image-manifest / smoke checks skip it rather than failing on a digest that
+# intentionally can't resolve. When the real digest lands, every path
+# reactivates automatically with no further code change.
+PLACEHOLDER_DIGEST = "sha256:" + "0" * 64
+
+
+def is_placeholder_image(image: str) -> bool:
+    """True if *image* pins the unpublished-image placeholder digest."""
+    return bool(image) and image.endswith("@" + PLACEHOLDER_DIGEST)
+
+
+def published_image(scanner_name: str) -> str:
+    """Return the scanner's container image, or ``""`` if it isn't published.
+
+    Wraps :func:`get_image` so a scanner pinned to the placeholder digest
+    advertises no image and callers fall back to the local tool until the
+    release pipeline writes the real digest.
+    """
+    image = get_image(scanner_name)
+    return "" if is_placeholder_image(image) else image
+
+
 def expected_version(container_image: str) -> str | None:
     """Extract the expected tool version from a container image tag.
 
@@ -140,8 +169,13 @@ def get_expected_version(scanner_name: str) -> str | None:
 
     Convenience wrapper that resolves the scanner name to its container
     image via :func:`get_image`, then delegates to :func:`expected_version`.
+
+    Returns ``None`` for an unpublished placeholder image — there is no real
+    image (hence no pinned tool version) to verify a local install against yet.
     """
     image = get_image(scanner_name)
+    if is_placeholder_image(image):
+        return None
     return expected_version(image)
 
 

@@ -6,9 +6,13 @@ from argus.containers import (
     CACHE_MOUNTS,
     CUSTOM_IMAGES,
     OFFICIAL_IMAGES,
+    PLACEHOLDER_DIGEST,
     _default_cache_root,
     get_cache_mount,
+    get_expected_version,
     get_image,
+    is_placeholder_image,
+    published_image,
 )
 
 
@@ -154,6 +158,38 @@ class TestScannerContainerImages:
             assert isinstance(args, list), (
                 f"{name} container args method should return list"
             )
+
+
+class TestPlaceholderImages:
+    """Pre-publish placeholder sentinel: a CUSTOM_IMAGES entry pinned to the
+    all-zeros digest is 'not published yet' — consumers fall back to the local
+    tool and CI manifest/smoke checks skip it. Tests use a synthetic entry so
+    they don't couple to any real scanner's current publish state."""
+
+    _FAKE = "_placeholder_test_scanner"
+    _PLACEHOLDER_IMAGE = f"ghcr.io/huntridge-labs/argus/scanner-x:1.0.0@{PLACEHOLDER_DIGEST}"
+
+    def test_is_placeholder_detects_zero_digest(self):
+        assert is_placeholder_image(self._PLACEHOLDER_IMAGE)
+
+    def test_is_placeholder_false_for_real_digest(self):
+        assert not is_placeholder_image(CUSTOM_IMAGES["bandit"])
+
+    def test_is_placeholder_false_for_empty(self):
+        assert not is_placeholder_image("")
+
+    def test_published_image_blanks_placeholder(self, monkeypatch):
+        monkeypatch.setitem(CUSTOM_IMAGES, self._FAKE, self._PLACEHOLDER_IMAGE)
+        assert published_image(self._FAKE) == ""
+
+    def test_published_image_passes_through_real(self):
+        assert published_image("bandit") == CUSTOM_IMAGES["bandit"]
+
+    def test_expected_version_none_for_placeholder(self, monkeypatch):
+        # Even though the tag ('1.0.0') parses fine, an unpublished image has no
+        # real tool version to verify a local install against.
+        monkeypatch.setitem(CUSTOM_IMAGES, self._FAKE, self._PLACEHOLDER_IMAGE)
+        assert get_expected_version(self._FAKE) is None
 
 
 class TestCacheMounts:

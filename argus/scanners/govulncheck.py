@@ -40,7 +40,7 @@ import json
 import shutil
 from pathlib import Path
 
-from argus.containers import get_image
+from argus.containers import published_image
 from argus.core.models import Finding, ScanResult, Severity
 from argus.core.scanner_template import ScanPaths, run_subprocess_scan
 from argus.core.version import parse_tool_version
@@ -56,7 +56,13 @@ class GovulncheckScanner:
     )
     category = "sca"
     languages = ["go"]
-    container_image = get_image("govulncheck")
+    # ``published_image`` returns "" while the custom image is a pre-publish
+    # placeholder (all-zeros digest in CUSTOM_IMAGES), so ``auto`` runs the
+    # local ``govulncheck`` binary instead of trying to pull an image that
+    # doesn't exist yet. Once the release pipeline writes the real digest,
+    # this resolves to the image and the container path activates — no code
+    # change needed. See argus.containers.published_image.
+    container_image = published_image("govulncheck")
     # The custom argus image declares ENTRYPOINT ["govulncheck"]; the
     # engine drops argv[0] for ENTRYPOINT-based images.
     container_entrypoint = "govulncheck"
