@@ -474,7 +474,7 @@ errors:
       - Verify action path matches exactly
       example: '# Correct
 
-        uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.9.1
+        uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.9.2
 
 
         # Wrong - missing .github prefix

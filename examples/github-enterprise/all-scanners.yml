@@ -36,20 +36,20 @@ jobs:
           fetch-depth: 0  # Full history required for Gitleaks secrets scanning
 
       - name: Run Bandit (Python)
-        uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.9.1
+        uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.9.2
         with:
           post_pr_comment: 'true'
           enable_code_security: 'true'
           fail_on_severity: 'high'
 
       - name: Run OpenGrep
-        uses: huntridge-labs/argus/.github/actions/scanner-opengrep@1.9.1
+        uses: huntridge-labs/argus/.github/actions/scanner-opengrep@1.9.2
         with:
           enable_code_security: 'true'
           fail_on_severity: 'high'
 
       - name: Run Gitleaks (Secrets Detection)
-        uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.9.1
+        uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.9.2
         env:
           # Optional: For organizations, add your license
           # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
@@ -70,7 +70,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Trivy IaC
-        uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@1.9.1
+        uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@1.9.2
         with:
           iac_path: 'infrastructure' # Adjust to your IaC directory
           post_pr_comment: 'true'
@@ -78,7 +78,7 @@ jobs:
           fail_on_severity: 'high'
 
       - name: Run Checkov
-        uses: huntridge-labs/argus/.github/actions/scanner-checkov@1.9.1
+        uses: huntridge-labs/argus/.github/actions/scanner-checkov@1.9.2
         with:
           iac_path: 'infrastructure' # Adjust to your IaC directory
           framework: 'terraform'     # Options: terraform, cloudformation, kubernetes, etc.
@@ -96,7 +96,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run ClamAV
-        uses: huntridge-labs/argus/.github/actions/scanner-clamav@1.9.1
+        uses: huntridge-labs/argus/.github/actions/scanner-clamav@1.9.2
         with:
           scan_path: '.'
           fail_on_severity: 'high' # Fail if malware detected
@@ -112,7 +112,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Generate SBOM
-        uses: huntridge-labs/argus/.github/actions/scanner-syft@1.9.1
+        uses: huntridge-labs/argus/.github/actions/scanner-syft@1.9.2
         with:
           scan_path: '.'
           output_format: 'cyclonedx-json'
@@ -142,7 +142,7 @@ jobs:
         continue-on-error: true
 
       - name: Generate combined summary
-        uses: huntridge-labs/argus/.github/actions/security-summary@1.9.1
+        uses: huntridge-labs/argus/.github/actions/security-summary@1.9.2
         with:
           post_pr_comment: 'true'
         continue-on-error: true

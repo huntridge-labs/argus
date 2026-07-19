@@ -250,7 +250,7 @@ jobs:
           {
             echo "## Example Action-Input Audit"
             echo ""
-            echo "Checks every \`uses: huntridge-labs/argus/.github/actions/<name>@1.9.1 step in"
+            echo "Checks every \`uses: huntridge-labs/argus/.github/actions/<name>@1.9.2 step in"
             echo "\`examples/**\` against its action's current \`action.yml::inputs\` list."
             echo ""
             echo "Source of truth: \`.github/actions/<name>/action.yml\`."

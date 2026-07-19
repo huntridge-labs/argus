@@ -97,7 +97,7 @@ jobs:
           python-version: '3.14'
 
       - name: Install Argus
-        uses: huntridge-labs/argus/.github/actions/setup-argus@1.9.1
+        uses: huntridge-labs/argus/.github/actions/setup-argus@1.9.2
 
       - name: Run scan
         run: |
@@ -158,7 +158,7 @@ jobs:
 
       - name: Comment PR with results
         if: always() && github.event_name == 'pull_request' && inputs.post_pr_comment
-        uses: huntridge-labs/argus/.github/actions/comment-pr@1.9.1
+        uses: huntridge-labs/argus/.github/actions/comment-pr@1.9.2
         with:
           summary_file: ./argus-results/argus-summary.md
           comment_marker: grype-${{ inputs.scan_name || 'grype-scan' }}-comment-marker

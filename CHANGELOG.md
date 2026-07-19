@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.9.2](https://github.com/huntridge-labs/argus/compare/1.9.1...1.9.2) (2026-07-19)
+
+### Bug Fixes
+
+* **examples:** harden example workflows against shell injection and add non-root USER ([#356](https://github.com/huntridge-labs/argus/issues/356)) ([e78d677](https://github.com/huntridge-labs/argus/commit/e78d677d442e685c47f89fbac3412f6a3c38393a)), closes [#355](https://github.com/huntridge-labs/argus/issues/355)
+
+### Dependencies
+
+* **deps:** bump @commitlint/cli in the npm-minor-patch group ([#359](https://github.com/huntridge-labs/argus/issues/359)) ([71b0197](https://github.com/huntridge-labs/argus/commit/71b019752687aed35acca56ce6a43ad91a6268e8))
+* **deps:** bump node ([#358](https://github.com/huntridge-labs/argus/issues/358)) ([494cebc](https://github.com/huntridge-labs/argus/commit/494cebc0f4508b5610ef8d34f6902aa096ed8812))
+
+
+### Documentation
+
+* **ai:** add ADR-035 — Argus informs, never decides ([e0cedad](https://github.com/huntridge-labs/argus/commit/e0cedadf8b81da52f2d424c2f2c9c9b62c1c721a)), closes [#250](https://github.com/huntridge-labs/argus/issues/250)
+
 ## [1.9.1](https://github.com/huntridge-labs/argus/compare/1.9.0...1.9.1) (2026-07-15)
 
 ### Bug Fixes

@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argus/1.9.1/.github/actions/parse-zap-config/schemas/zap-config.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/huntridge-labs/argus/1.9.2/.github/actions/parse-zap-config/schemas/zap-config.schema.json
 #
 # ZAP DAST Scanner Configuration
 # This file defines target application and scans to run
@@ -14,7 +14,7 @@
 #     packages: read
 #   jobs:
 #     zap:
-#       uses: huntridge-labs/argus/.github/workflows/scanner-zap-from-config.yml@1.9.1
+#       uses: huntridge-labs/argus/.github/workflows/scanner-zap-from-config.yml@1.9.2
 #       with:
 #         config_file: '.zap/config.yml'
 #       secrets: inherit  # Required for authentication
