@@ -599,7 +599,7 @@ data_flow:
       \ argus-results.json (always)\n        terminal/markdown/sarif emit alongside per reporting.formats\n\
       \nSDK container-scan pipeline (argus scan container):\n  argus scan container [--image REF | --discover\
       \ PATH]\n    → ContainerEngine resolves image targets (CLI flags > containers: config)\n    → For\
-      \ each target: scan_image(trivy + grype + syft + exposure + services)\n      → If reporting.keep_raw:\
+      \ each target: scan_image(trivy + grype + syft + exposure + services)\n      → VEX filter: containers.vex / --vex passes OpenVEX doc(s) to trivy + grype (--vex); not_affected/fixed dropped at source\n      → If reporting.keep_raw:\
       \ copy trivy/grype/syft raw outputs and write\n        exposure-findings.json / services-findings.json\
       \ to <output_dir>/raw/<image>/\n        (the exposure / services helpers have no upstream JSON output,\
       \ so the\n        lifecycle path synthesizes one when they produce findings)\n    → Bind to content: scan_image resolves the image's digest (RepoDigest when pulled/pushed, config Id for never-pushed local builds; best-effort, \"\" if unknown) onto ContainerScanResult.digest and each finding's metadata (image_digest + image_ref) — so results attest what was scanned, not just a mutable tag (#237). Surfaced in per-image markdown and argus-results.json/SARIF.\n    → Map ContainerScanResult\
