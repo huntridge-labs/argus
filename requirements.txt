@@ -9,7 +9,7 @@ pytest-cov>=7.1.0
 # argus/viewers/browser/templates/_findings_table.html.j2, crashing the run
 # with an INTERNALERROR after all tests pass. Lift the ceiling once coverage
 # ships a fix for the html reporter parsing non-Python source.
-coverage>=7.15.0,<7.15.1
+coverage>=7.15.1,<7.15.2
 pyyaml>=6.0.2
 
 # Container name sanitization
