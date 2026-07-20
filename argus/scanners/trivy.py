@@ -30,6 +30,7 @@ class TrivyScanner:
     languages = ["all"]
     container_image = get_image("trivy")
     supports_sbom = True
+    supports_vex = True
 
     def container_args(self, config: dict | None = None) -> list[str]:
         """Container args for ``aquasec/trivy``.
@@ -38,6 +39,8 @@ class TrivyScanner:
         subcommand + flags. SBOM is mounted at ``sbom_mount_path``
         (engine-set; defaults to ``/workspace/<sbom_filename>``).
         """
+        from argus.core.vex import vex_cli_flags
+
         config = config or {}
         sbom_path = config.get("sbom_path")
         if not sbom_path:
@@ -50,8 +53,18 @@ class TrivyScanner:
             "sbom",
             "--format", "json",
             "--output", "/output/results.json",
+            *vex_cli_flags(config, in_container=True),
             mount,
         ]
+
+    def container_mounts(self, config: dict | None = None) -> list[tuple[str, str]]:
+        """Bind-mount any configured OpenVEX documents into the trivy container.
+
+        The engine adds ``-v`` / ``:ro`` around each ``(host, container)`` pair.
+        """
+        from argus.core.vex import vex_container_mounts
+
+        return vex_container_mounts(config)
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run trivy against the SBOM given via ``config['sbom_path']``."""
@@ -66,12 +79,15 @@ class TrivyScanner:
                 "trivy scanner requires sbom_path (run via `argus scan --sbom <path>`)"
             )
 
+        from argus.core.vex import vex_cli_flags
+
         with tempfile.TemporaryDirectory() as tmp_dir:
             output_file = Path(tmp_dir) / "trivy-results.json"
             cmd = [
                 "trivy", "sbom",
                 "--format", "json",
                 "--output", str(output_file),
+                *vex_cli_flags(config, in_container=False),
                 str(sbom_path),
             ]
             result = subprocess.run(cmd, capture_output=True, text=True)

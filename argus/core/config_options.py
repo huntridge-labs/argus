@@ -132,6 +132,20 @@ _SCANNER_EXTRAS: dict[str, tuple[ConfigOption, ...]] = {
         ConfigOption("lockfile", "Lockfile", "path", "Scan a specific lockfile."),
         ConfigOption("recursive", "Recursive", "bool", "Recurse into subdirectories for lockfiles."),
     ),
+    "grype": (
+        ConfigOption(
+            "vex", "OpenVEX docs", "config_file",
+            "OpenVEX document(s) — path or list — to drop not_affected / fixed "
+            "findings via grype --vex.", ignore=True, example=".vex/argus.openvex.json",
+        ),
+    ),
+    "trivy": (
+        ConfigOption(
+            "vex", "OpenVEX docs", "config_file",
+            "OpenVEX document(s) — path or list — to drop not_affected / fixed "
+            "findings via trivy --vex.", ignore=True, example=".vex/argus.openvex.json",
+        ),
+    ),
     "container": (
         ConfigOption("image_ref", "Image", "string", "Container image to scan.", example="myapp:latest"),
         ConfigOption("scanners", "Sub-scanners", "string", "Comma-separated.", example="trivy,grype,syft,exposure,services"),
@@ -145,6 +159,11 @@ _SCANNER_EXTRAS: dict[str, tuple[ConfigOption, ...]] = {
         ),
         ConfigOption("expose_warn_ports", "Warn ports", "port_list", "Override the WARN-list of exposed ports."),
         ConfigOption("services_warn", "Warn services", "string_list", "Override the WARN-list of services."),
+        ConfigOption(
+            "vex", "OpenVEX docs", "config_file",
+            "OpenVEX document(s) — path or list — passed to trivy + grype to drop "
+            "not_affected / fixed findings.", ignore=True, example=".vex/argus.openvex.json",
+        ),
     ),
     "zap": (
         ConfigOption("target_url", "Target URL", "string", "URL of the running app to scan."),

@@ -91,6 +91,7 @@ class TestScannerProtocolContract:
         class MyScanner:
             name = "my-scanner"
             supports_sbom = False  # part of the Scanner contract (data member)
+            supports_vex = False  # part of the Scanner contract (data member)
 
             def scan(self, path, config=None):  # noqa: ARG002
                 return ScanResult(scanner=self.name)
