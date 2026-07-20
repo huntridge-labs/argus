@@ -177,7 +177,8 @@ jobs:
             --image-name "$IMAGE_NAME" \
             --image-ref "ghcr.io/huntridge-labs/argus/${IMAGE_NAME}:${IMAGE_TAG}" \
             --out-dir scanner-summaries \
-            --sarif-dir sarif-out
+            --sarif-dir sarif-out \
+            --vex .vex/argus-cli.openvex.json
         env:
           IMAGE_NAME: ${{ matrix.image }}
           IMAGE_TAG: ${{ github.sha }}
