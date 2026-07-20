@@ -119,16 +119,19 @@ def run(
     image_ref: str,
     out_dir: Path,
     sarif_dir: Path | None = None,
+    vex: list[str] | None = None,
 ) -> ContainerScanResult:
     """Scan ``image_ref`` via the SDK and write the CI artifacts.
 
     The image is already built and ``docker load``-ed into the local
-    daemon by an earlier job, so the target carries no Dockerfile —
+    daemon by an earlier job, so the target carries no Dockerfile;
     ``scan_image`` detects it as a local image and scans it through the
-    docker-daemon source.
+    docker-daemon source. ``vex`` (OpenVEX document paths) is forwarded to
+    trivy and grype so not_affected / fixed findings are filtered.
     """
     target = ContainerTarget(name=image_name, image_ref=image_ref)
-    result = scan_image(target, scanners=_SCANNERS, sbom=False)
+    config = {"vex": vex} if vex else None
+    result = scan_image(target, scanners=_SCANNERS, sbom=False, config=config)
 
     write_pr_comment_artifacts(result, out_dir)
     if sarif_dir is not None:
@@ -161,6 +164,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=None,
         help="Directory for the combined SARIF (omit to skip SARIF output).",
     )
+    parser.add_argument(
+        "--vex",
+        action="append",
+        dest="vex",
+        default=None,
+        metavar="PATH",
+        help="OpenVEX document to apply (repeatable); forwarded to trivy + grype.",
+    )
     args = parser.parse_args(argv)
 
     result = run(
@@ -168,6 +179,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         image_ref=args.image_ref,
         out_dir=Path(args.out_dir),
         sarif_dir=Path(args.sarif_dir) if args.sarif_dir else None,
+        vex=args.vex,
     )
 
     # A sub-scanner failure means the summary is incomplete — exit

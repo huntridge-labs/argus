@@ -63,6 +63,10 @@ scanners:
 # build-containers workflow can read this same list rather than
 # hard-coding a parallel matrix — single source of truth.
 containers:
+  # OpenVEX document: drops not_affected / fixed findings (with justification)
+  # from the trivy + grype container scans. Covers the CLI image's Go criticals
+  # that live in bundled third-party binaries (see .vex/README.md).
+  vex: .vex/argus-cli.openvex.json
   images:
     # Build-then-scan entries: dockerfile: + name: pin the build tag.
     # Under schema option A, image: is for *remote pulls only* — these

@@ -1,0 +1,115 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://huntridge-labs.github.io/argus/vex/argus-cli-go-bundled",
+  "author": "Huntridge Labs Security",
+  "role": "Document Creator",
+  "timestamp": "2026-07-20T00:00:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": {"name": "CVE-2025-47913"},
+      "products": [{"@id": "pkg:golang/golang.org/x/crypto@v0.35.0"}],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "golang.org/x/crypto is vendored into the bundled gitleaks binary (usr/local/bin/gitleaks). The affected code is in golang.org/x/crypto/ssh; Argus invokes gitleaks only as an offline scanner over the already-checked-out local working tree, so no SSH client/server handshake is performed and the vulnerable path is never reached."
+    },
+    {
+      "vulnerability": {"name": "CVE-2025-47914"},
+      "products": [{"@id": "pkg:golang/golang.org/x/crypto@v0.35.0"}],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "x/crypto vendored into gitleaks; golang.org/x/crypto/ssh path is not exercised by gitleaks scanning a local repo. Awaiting an upstream gitleaks release built against x/crypto >= 0.52.0."
+    },
+    {
+      "vulnerability": {"name": "CVE-2025-58181"},
+      "products": [{"@id": "pkg:golang/golang.org/x/crypto@v0.35.0"}],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "x/crypto vendored into gitleaks; golang.org/x/crypto/ssh path is not exercised by gitleaks scanning a local repo. Awaiting an upstream gitleaks release built against x/crypto >= 0.52.0."
+    },
+    {
+      "vulnerability": {"name": "GHSA-x527-x647-q7gg"},
+      "products": [{"@id": "pkg:golang/golang.org/x/crypto@v0.35.0"}],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Grype advisory alias for the x/crypto/ssh cluster above; same binary (gitleaks), same non-reachable path."
+    },
+    {
+      "vulnerability": {"name": "GHSA-vgwf-h737-ff37"},
+      "products": [{"@id": "pkg:golang/golang.org/x/crypto@v0.35.0"}],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Grype advisory alias for the x/crypto/ssh cluster above; same binary (gitleaks), same non-reachable path."
+    },
+    {
+      "vulnerability": {"name": "GHSA-rm3j-f69w-wqmq"},
+      "products": [{"@id": "pkg:golang/golang.org/x/crypto@v0.35.0"}],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Grype advisory alias for the x/crypto/ssh cluster above; same binary (gitleaks), same non-reachable path."
+    },
+    {
+      "vulnerability": {"name": "GHSA-jppx-rxg9-jmrx"},
+      "products": [{"@id": "pkg:golang/golang.org/x/crypto@v0.35.0"}],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Grype advisory alias for the x/crypto/ssh cluster above; same binary (gitleaks), same non-reachable path."
+    },
+    {
+      "vulnerability": {"name": "GHSA-f5wc-c3c7-36mc"},
+      "products": [{"@id": "pkg:golang/golang.org/x/crypto@v0.35.0"}],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Grype advisory alias for the x/crypto/ssh cluster above; same binary (gitleaks), same non-reachable path."
+    },
+    {
+      "vulnerability": {"name": "GHSA-89gr-r52h-f8rx"},
+      "products": [{"@id": "pkg:golang/golang.org/x/crypto@v0.35.0"}],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Grype advisory alias for the x/crypto/ssh cluster above; same binary (gitleaks), same non-reachable path."
+    },
+    {
+      "vulnerability": {"name": "GHSA-5cgq-3rg8-m6cv"},
+      "products": [{"@id": "pkg:golang/golang.org/x/crypto@v0.35.0"}],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Grype advisory alias for the x/crypto/ssh cluster above; same binary (gitleaks), same non-reachable path."
+    },
+    {
+      "vulnerability": {"name": "GO-2026-5005"},
+      "products": [{"@id": "pkg:golang/golang.org/x/crypto@v0.35.0"}],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Go vuln DB alias for the x/crypto/ssh cluster above; same binary (gitleaks), same non-reachable path."
+    },
+    {
+      "vulnerability": {"name": "GO-2026-5019"},
+      "products": [{"@id": "pkg:golang/golang.org/x/crypto@v0.35.0"}],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Go vuln DB alias for the x/crypto/ssh cluster above; same binary (gitleaks), same non-reachable path."
+    },
+    {
+      "vulnerability": {"name": "GO-2026-5020"},
+      "products": [{"@id": "pkg:golang/golang.org/x/crypto@v0.35.0"}],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Go vuln DB alias for the x/crypto/ssh cluster above; same binary (gitleaks), same non-reachable path."
+    },
+    {
+      "vulnerability": {"name": "CVE-2025-68121"},
+      "products": [{"@id": "pkg:golang/stdlib@go1.24.11"}],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Go standard library baked into the gitleaks binary (built with Go 1.24.11). gitleaks runs as a one-shot offline secret scanner over the local working tree — it opens no network listener and serves no requests — so the affected stdlib path is not reached. Fixed in Go 1.24.13+/1.25.7+; awaiting an upstream gitleaks rebuild."
+    },
+    {
+      "vulnerability": {"name": "GO-2026-4337"},
+      "products": [{"@id": "pkg:golang/stdlib@go1.24.11"}],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Go vuln DB alias of CVE-2025-68121 (same stdlib vuln in the gitleaks binary); same non-reachable rationale."
+    }
+  ]
+}

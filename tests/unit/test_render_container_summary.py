@@ -143,10 +143,11 @@ def test_sarif_includes_grype_only_cve(tmp_path: Path):
 def test_run_uses_scan_image_and_writes_all_artifacts(tmp_path: Path, monkeypatch):
     captured = {}
 
-    def fake_scan_image(target, scanners, sbom):
+    def fake_scan_image(target, scanners, sbom, config=None):
         captured["target"] = target
         captured["scanners"] = scanners
         captured["sbom"] = sbom
+        captured["config"] = config
         return _result_with_grype_only_critical()
 
     monkeypatch.setattr(rcs, "scan_image", fake_scan_image)
@@ -163,6 +164,7 @@ def test_run_uses_scan_image_and_writes_all_artifacts(tmp_path: Path, monkeypatc
     # Dogfoods the SDK's scan_image with the CVE-only sub-scanner set.
     assert captured["scanners"] == ("trivy", "grype")
     assert captured["sbom"] is False
+    assert captured["config"] is None  # no --vex passed
     assert captured["target"].image_ref.endswith("cli:testsha")
     assert captured["target"].dockerfile is None
 
@@ -175,7 +177,7 @@ def test_run_uses_scan_image_and_writes_all_artifacts(tmp_path: Path, monkeypatc
 def test_run_without_sarif_dir_skips_sarif(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
         rcs, "scan_image",
-        lambda target, scanners, sbom: _result_with_grype_only_critical(),
+        lambda target, scanners, sbom, config=None: _result_with_grype_only_critical(),
     )
     out_dir = tmp_path / "summaries"
     rcs.run("cli", "ref:tag", out_dir, sarif_dir=None)
@@ -186,7 +188,7 @@ def test_run_without_sarif_dir_skips_sarif(tmp_path: Path, monkeypatch):
 def test_main_exit_zero_on_clean_run(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
         rcs, "scan_image",
-        lambda target, scanners, sbom: _result_with_grype_only_critical(),
+        lambda target, scanners, sbom, config=None: _result_with_grype_only_critical(),
     )
     rc = rcs.main([
         "--image-name", "cli",
@@ -197,7 +199,7 @@ def test_main_exit_zero_on_clean_run(tmp_path: Path, monkeypatch):
 
 
 def test_main_exit_nonzero_on_scanner_error(tmp_path: Path, monkeypatch):
-    def scan_with_error(target, scanners, sbom):
+    def scan_with_error(target, scanners, sbom, config=None):
         r = _result_with_grype_only_critical()
         r.scanner_errors = {"grype": "grype produced 0-byte output"}
         return r
@@ -210,3 +212,38 @@ def test_main_exit_nonzero_on_scanner_error(tmp_path: Path, monkeypatch):
     ])
     # A sub-scanner failure must not be reported as a clean pass.
     assert rc == 1
+
+
+def test_run_threads_vex_into_scan_image_config(tmp_path: Path, monkeypatch):
+    captured = {}
+
+    def fake_scan_image(target, scanners, sbom, config=None):
+        captured["config"] = config
+        return _result_with_grype_only_critical()
+
+    monkeypatch.setattr(rcs, "scan_image", fake_scan_image)
+    rcs.run(
+        image_name="cli",
+        image_ref="ref:tag",
+        out_dir=tmp_path / "out",
+        vex=[".vex/argus-cli.openvex.json"],
+    )
+    assert captured["config"] == {"vex": [".vex/argus-cli.openvex.json"]}
+
+
+def test_main_forwards_vex_flag(tmp_path: Path, monkeypatch):
+    captured = {}
+
+    def fake_scan_image(target, scanners, sbom, config=None):
+        captured["config"] = config
+        return _result_with_grype_only_critical()
+
+    monkeypatch.setattr(rcs, "scan_image", fake_scan_image)
+    rcs.main([
+        "--image-name", "cli",
+        "--image-ref", "ref:tag",
+        "--out-dir", str(tmp_path / "out"),
+        "--vex", "a.json",
+        "--vex", "b.json",
+    ])
+    assert captured["config"] == {"vex": ["a.json", "b.json"]}

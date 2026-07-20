@@ -116,7 +116,7 @@ _EXECUTION_KEYS = {
 }
 
 # Top-level containers block keys
-_CONTAINERS_KEYS = {"images", "discover", "search_paths", "scanners"}
+_CONTAINERS_KEYS = {"images", "discover", "search_paths", "scanners", "vex"}
 
 # Per-image entry keys (under containers.images[*])
 _CONTAINER_IMAGE_KEYS = {"image", "dockerfile", "context", "name", "cleanup"}
