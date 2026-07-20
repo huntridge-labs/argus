@@ -160,87 +160,35 @@ jobs:
           pip install --quiet pyyaml
           echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
-      # Scan with ALL severities — perception is protection
-      - name: Scan with Trivy (SARIF)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: "ghcr.io/huntridge-labs/argus/${{ matrix.image }}:${{ github.sha }}"
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-
-      - name: Upload Trivy SARIF
-        if: always()
-        uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4
-        with:
-          sarif_file: trivy-results.sarif
-          category: "container-${{ matrix.image }}"
-        continue-on-error: true
-
-      - name: Scan with Grype
-        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7
-        with:
-          image: "ghcr.io/huntridge-labs/argus/${{ matrix.image }}:${{ github.sha }}"
-          fail-build: false
-          severity-cutoff: critical
-
-      - name: Scan with Trivy (JSON)
-        if: always()
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: "ghcr.io/huntridge-labs/argus/${{ matrix.image }}:${{ github.sha }}"
-          format: 'json'
-          output: 'trivy-results.json'
-
-      # Use argus container scanner parser + container markdown reporter
-      - name: Generate report with Argus
-        if: always()
+      # Scan the built image with the Argus SDK (Trivy + Grype, deduped by
+      # CVE) and render this container's PR-comment section + a combined
+      # SARIF. This dogfoods scan_image() — the same entrypoint
+      # `argus scan container` / ContainerEngine.run use — so BOTH tools'
+      # findings reach the report and the Security tab.
+      #
+      # The previous inline report parsed Trivy JSON only and left
+      # grype_findings=[], so the container markdown reporter rendered
+      # "No vulnerabilities detected by Grype" for every image regardless
+      # of what Grype found (a false negative), and the combined counts
+      # dropped every Grype-only CVE. See scripts/ci/render_container_summary.py.
+      - name: Scan image & render summary (Argus SDK)
         run: |
-          mkdir -p scanner-summaries
-          python3 << 'PYEOF'
-          import sys, os
-          sys.path.insert(0, os.environ.get("PYTHONPATH", "."))
-
-          from pathlib import Path
-          from argus.scanners.container import ContainerScanner
-          from argus.container.scanner import ContainerScanResult, ContainerScanSummary
-          from argus.reporters.container_markdown import ContainerMarkdownReporter
-
-          image_name = os.environ["IMAGE_NAME"]
-          image_tag = os.environ.get("IMAGE_TAG", "latest")
-          image_ref = f"ghcr.io/huntridge-labs/argus/{image_name}:{image_tag}"
-
-          trivy_json = Path("trivy-results.json")
-          scanner = ContainerScanner()
-          trivy_findings = scanner.parse_trivy_results(trivy_json) if trivy_json.exists() else []
-
-          result = ContainerScanResult(
-              name=image_name,
-              image_ref=image_ref,
-              trivy_findings=trivy_findings,
-              combined_findings=trivy_findings,
-          )
-
-          # Write just this container's detail section (not the full report)
-          reporter = ContainerMarkdownReporter()
-          reporter.report_single(result, "scanner-summaries")
-
-          # Also write a JSON summary for the combine step
-          import json
-          json.dump({
-              "name": image_name,
-              "image_ref": image_ref,
-              "critical": result.critical_count,
-              "high": result.high_count,
-              "medium": result.medium_count,
-              "low": result.low_count,
-              "total": result.total_count,
-              "unique": result.unique_count,
-              "build_success": result.build_success,
-          }, open(f"scanner-summaries/{image_name}.json", "w"))
-          PYEOF
+          python -m scripts.ci.render_container_summary \
+            --image-name "$IMAGE_NAME" \
+            --image-ref "ghcr.io/huntridge-labs/argus/${IMAGE_NAME}:${IMAGE_TAG}" \
+            --out-dir scanner-summaries \
+            --sarif-dir sarif-out
         env:
           IMAGE_NAME: ${{ matrix.image }}
           IMAGE_TAG: ${{ github.sha }}
+
+      - name: Upload SARIF to GitHub Security
+        if: always() && github.actor != 'nektos/act' && hashFiles('sarif-out/argus-results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4
+        with:
+          sarif_file: sarif-out/argus-results.sarif
+          category: "container-${{ matrix.image }}"
+        continue-on-error: true
 
       - name: Upload scan artifacts
         if: always()

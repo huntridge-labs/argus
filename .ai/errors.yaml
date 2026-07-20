@@ -247,6 +247,26 @@ scn_detector_errors:
       \ image. Local-image scans (built from a Dockerfile) are\nunaffected \u2014 they\
       \ read the daemon over the mounted socket.\n"
   reference: "argus/container/scanner.py::_docker_login_mount_args"
+- pattern: "No vulnerabilities detected by Grype|PR comment shows 0 Grype findings"
+  category: container-scanning
+  context: "The build-containers.yml PR comment reports 0 Grype findings for an image
+    while that image's own scan annotations report vulnerabilities at/above the
+    severity cutoff (e.g. \"failed minimum severity level\").\n"
+  root_cause: "The workflow's report step parsed Trivy JSON only and built a
+    ContainerScanResult with combined_findings=trivy_findings and no grype_findings.
+    Since grype_findings defaults to [], ContainerMarkdownReporter renders
+    \"No vulnerabilities detected by Grype\" for every image regardless of Grype's
+    actual result, and the combined severity counts drop every Grype-only CVE. Grype
+    ran in a separate anchore/scan-action step whose findings were never captured.\n"
+  solution:
+    steps:
+    - "Render the per-image summary via scripts/ci/render_container_summary.py, which
+      calls the SDK's scan_image() (trivy + grype, deduped by CVE) so both scanners'
+      findings populate the section, the combined counts, and the SARIF."
+    note: "Dogfood scan_image() — the same entrypoint argus scan container /
+      ContainerEngine.run use — rather than re-parsing one tool's output in CI.
+      Any per-image CI report must populate BOTH trivy_findings and grype_findings.\n"
+  reference: "scripts/ci/render_container_summary.py and .github/workflows/build-containers.yml (scan job)"
 errors:
   RESOURCE_NOT_ACCESSIBLE_BY_INTEGRATION:
     category: permissions
