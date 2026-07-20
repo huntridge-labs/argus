@@ -951,6 +951,50 @@ def _validate_scanner_output(
         )
 
 
+def _vex_args(
+    config: dict | None, use_container: bool,
+) -> tuple[list[str], list[str]]:
+    """Resolve OpenVEX documents into (docker mount args, ``--vex`` flags).
+
+    ``config['vex']`` may be a single path (str) or a list of paths. Both
+    Trivy (``trivy image --vex <file>``) and Grype (``grype --vex <file>``)
+    consume OpenVEX and drop ``not_affected`` / ``fixed`` findings, so the
+    same resolution serves both sub-scanners.
+
+    In container mode each document is bind-mounted read-only at
+    ``/vex/doc<N>.json`` and the flag points at that in-container path; in
+    local-binary mode the flag points at the resolved host path directly.
+
+    A missing file is logged and skipped rather than failing the scan — a
+    stale VEX path shouldn't abort a security scan (and silently *not*
+    suppressing is the safe direction: findings stay visible).
+    """
+    if not config:
+        return [], []
+    raw = config.get("vex")
+    if not raw:
+        return [], []
+    paths = [raw] if isinstance(raw, str) else list(raw)
+
+    mounts: list[str] = []
+    flags: list[str] = []
+    idx = 0
+    for entry in paths:
+        src = Path(str(entry)).expanduser()
+        if not src.is_file():
+            logger.warning("VEX document not found, skipping: %s", entry)
+            continue
+        src = src.resolve()
+        if use_container:
+            in_container = f"/vex/doc{idx}.json"
+            mounts += ["-v", f"{src}:{in_container}:ro"]
+            flags += ["--vex", in_container]
+        else:
+            flags += ["--vex", str(src)]
+        idx += 1
+    return mounts, flags
+
+
 def _run_trivy(
     image_ref: str, tmp_path: Path, local: bool = False,
     config: dict | None = None,
@@ -988,6 +1032,11 @@ def _run_trivy(
     # (no registry pull needed) or when no creds are configured.
     auth_env = {} if local else _registry_auth_env(config, image_ref)
 
+    # OpenVEX filtering — the same document(s) are fed to both trivy and
+    # grype so ``not_affected`` / ``fixed`` findings are dropped at the
+    # source with an auditable justification (config['vex']).
+    vex_mounts, vex_flags = _vex_args(config, use_container)
+
     if use_container:
         from argus import container_runtime
         from argus.containers import get_image
@@ -1019,12 +1068,14 @@ def _run_trivy(
             + _docker_env_flags(auth_env)
             + _docker_login_mount_args(tmp_path, local)
             + vol_args
+            + vex_mounts
             + [
                 image,
                 "image", "--format", "json",
                 "--output", "/output/trivy-results.json",
                 "--skip-db-update",
             ]
+            + vex_flags
         )
         if not local:
             cmd.extend(["--image-src", "remote"])
@@ -1034,7 +1085,7 @@ def _run_trivy(
             "trivy", "image",
             "--format", "json",
             "--output", str(output_file),
-        ]
+        ] + vex_flags
         if not local:
             cmd.extend(["--image-src", "remote"])
         cmd.append(image_ref)
@@ -1129,6 +1180,11 @@ def _run_grype(
     # (no registry pull needed) or when no creds are configured.
     auth_env = {} if local else _registry_auth_env(config, image_ref)
 
+    # OpenVEX filtering — Grype consumes the same document(s) as trivy and
+    # moves ``not_affected`` / ``fixed`` matches to the ignored set
+    # (config['vex']).
+    vex_mounts, vex_flags = _vex_args(config, use_container)
+
     if use_container:
         from argus import container_runtime
         from argus.containers import get_image
@@ -1156,18 +1212,20 @@ def _run_grype(
             + _docker_env_flags(auth_env)
             + _docker_login_mount_args(tmp_path, local)
             + vol_args
+            + vex_mounts
             + [
                 image, grype_target,
                 "-o", "json",
                 "--file", "/output/grype-results.json",
             ]
+            + vex_flags
         )
     else:
         cmd = [
             "grype", grype_target,
             "-o", "json",
             "--file", str(output_file),
-        ]
+        ] + vex_flags
 
     logger.debug("grype invocation: %s", _redact_cmd_for_log(cmd))
     try:

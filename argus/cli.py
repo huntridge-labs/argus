@@ -1098,6 +1098,15 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction, parent: argparse.
         default=None,
         help="Sub-scanners for container scanning: trivy,grype,syft (default: trivy,grype)",
     )
+    container_group.add_argument(
+        "--vex",
+        action="append",
+        dest="vex",
+        metavar="PATH",
+        help="OpenVEX document to apply (can be repeated). not_affected/fixed "
+             "findings are filtered by trivy and grype at the source. Equivalent "
+             "to containers.vex in the config file.",
+    )
 
     # ZAP DAST flags (used with: argus scan zap)
     dast_group = scan_parser.add_argument_group(
@@ -1810,6 +1819,11 @@ def _load_container_config(args: argparse.Namespace) -> dict:
         config["search_paths"] = [args.discover]
     if getattr(args, "scanners", None):
         config["scanners"] = [s.strip() for s in args.scanners.split(",")]
+    if getattr(args, "vex", None):
+        # CLI --vex overrides containers.vex. Stored as a list so trivy /
+        # grype receive every document; a single --vex still arrives as a
+        # one-element list from argparse ``action="append"``.
+        config["vex"] = args.vex
 
     return config
 
