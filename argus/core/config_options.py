@@ -146,6 +146,13 @@ _SCANNER_EXTRAS: dict[str, tuple[ConfigOption, ...]] = {
             "findings via trivy --vex.", ignore=True, example=".vex/argus.openvex.json",
         ),
     ),
+    "guarddog": (
+        ConfigOption("rules", "Only these rules", "string_list", "Run only these GuardDog rules.", example="exec-base64,code-execution"),
+        ConfigOption(
+            "exclude_rules", "Exclude rules", "string_list",
+            "GuardDog rule names to skip.", ignore=True, example="repository_integrity_mismatch",
+        ),
+    ),
     "container": (
         ConfigOption("image_ref", "Image", "string", "Container image to scan.", example="myapp:latest"),
         ConfigOption("scanners", "Sub-scanners", "string", "Comma-separated.", example="trivy,grype,syft,exposure,services"),
@@ -189,6 +196,7 @@ _NATIVE_IGNORE: dict[str, NativeIgnore] = {
     "gitleaks": NativeIgnore(file="gitleaks.toml (allowlist) / .gitleaksignore", comment="#gitleaks:allow"),
     "opengrep": NativeIgnore(comment="# nosem: <rule-id>"),
     "osv": NativeIgnore(file=".osv-scanner.toml (IgnoredVulns)", help="Ignore a CVE by id in the OSV config."),
+    "guarddog": NativeIgnore(help="Exclude heuristics via --exclude-rules (scanners.guarddog.exclude_rules)."),
     "checkov": NativeIgnore(comment="# checkov:skip=CKV_AWS_1:reason"),
     "trivy-iac": NativeIgnore(file=".trivyignore", comment="# trivy:skip=<AVD-id>"),
     "trivy": NativeIgnore(file=".trivyignore", help="Ignore CVE ids, one per line."),

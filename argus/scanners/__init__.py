@@ -6,6 +6,7 @@ from .clamav import ClamavScanner
 from .container import ContainerScanner
 from .gitleaks import GitleaksScanner
 from .gosec import GosecScanner
+from .guarddog import GuardDogScanner
 from .grype import GrypeScanner
 from .kics import KICSScanner
 from .mumps import MumpsScanner
@@ -50,6 +51,7 @@ SCANNER_REGISTRY = {
     "trivy-iac": TrivyIacScanner,
     "grype": GrypeScanner,
     "gitleaks": GitleaksScanner,
+    "guarddog": GuardDogScanner,
     "osv": OsvScanner,
     "checkov": CheckovScanner,
     "kics": KICSScanner,
