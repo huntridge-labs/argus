@@ -956,43 +956,20 @@ def _vex_args(
 ) -> tuple[list[str], list[str]]:
     """Resolve OpenVEX documents into (docker mount args, ``--vex`` flags).
 
-    ``config['vex']`` may be a single path (str) or a list of paths. Both
-    Trivy (``trivy image --vex <file>``) and Grype (``grype --vex <file>``)
-    consume OpenVEX and drop ``not_affected`` / ``fixed`` findings, so the
-    same resolution serves both sub-scanners.
-
-    In container mode each document is bind-mounted read-only at
-    ``/vex/doc<N>.json`` and the flag points at that in-container path; in
-    local-binary mode the flag points at the resolved host path directly.
-
-    A missing file is logged and skipped rather than failing the scan — a
-    stale VEX path shouldn't abort a security scan (and silently *not*
-    suppressing is the safe direction: findings stay visible).
+    Thin adapter over :mod:`argus.core.vex` (the shared source of truth for
+    every VEX-capable scanner) that formats the container-lifecycle path's
+    flat ``-v host:container:ro`` docker arguments. In local-binary mode the
+    flag points at the resolved host path and no mounts are needed.
     """
-    if not config:
-        return [], []
-    raw = config.get("vex")
-    if not raw:
-        return [], []
-    paths = [raw] if isinstance(raw, str) else list(raw)
+    from argus.core.vex import vex_cli_flags, vex_container_mounts
+
+    if not use_container:
+        return [], vex_cli_flags(config, in_container=False)
 
     mounts: list[str] = []
-    flags: list[str] = []
-    idx = 0
-    for entry in paths:
-        src = Path(str(entry)).expanduser()
-        if not src.is_file():
-            logger.warning("VEX document not found, skipping: %s", entry)
-            continue
-        src = src.resolve()
-        if use_container:
-            in_container = f"/vex/doc{idx}.json"
-            mounts += ["-v", f"{src}:{in_container}:ro"]
-            flags += ["--vex", in_container]
-        else:
-            flags += ["--vex", str(src)]
-        idx += 1
-    return mounts, flags
+    for host, container in vex_container_mounts(config):
+        mounts += ["-v", f"{host}:{container}:ro"]
+    return mounts, vex_cli_flags(config, in_container=True)
 
 
 def _run_trivy(

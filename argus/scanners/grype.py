@@ -31,6 +31,7 @@ class GrypeScanner:
     languages = ["all"]
     container_image = get_image("grype")
     supports_sbom = True
+    supports_vex = True
 
     def container_args(self, config: dict | None = None) -> list[str]:
         """Container args for ``anchore/grype``.
@@ -40,6 +41,8 @@ class GrypeScanner:
         SBOM into the container at ``sbom_mount_path`` (set by the engine;
         defaults to ``/workspace/<sbom_filename>``).
         """
+        from argus.core.vex import vex_cli_flags
+
         config = config or {}
         sbom_path = config.get("sbom_path")
         if not sbom_path:
@@ -52,7 +55,17 @@ class GrypeScanner:
             f"sbom:{mount}",
             "-o", "json",
             "--file", "/output/results.json",
+            *vex_cli_flags(config, in_container=True),
         ]
+
+    def container_mounts(self, config: dict | None = None) -> list[tuple[str, str]]:
+        """Bind-mount any configured OpenVEX documents into the grype container.
+
+        The engine adds ``-v`` / ``:ro`` around each ``(host, container)`` pair.
+        """
+        from argus.core.vex import vex_container_mounts
+
+        return vex_container_mounts(config)
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run grype against the SBOM given via ``config['sbom_path']``."""
@@ -71,6 +84,8 @@ class GrypeScanner:
                 "grype scanner requires sbom_path (run via `argus scan --sbom <path>`)"
             )
 
+        from argus.core.vex import vex_cli_flags
+
         with tempfile.TemporaryDirectory() as tmp_dir:
             output_file = Path(tmp_dir) / "grype-results.json"
             cmd = [
@@ -78,6 +93,7 @@ class GrypeScanner:
                 f"sbom:{sbom_path}",
                 "-o", "json",
                 "--file", str(output_file),
+                *vex_cli_flags(config, in_container=False),
             ]
             result = subprocess.run(cmd, capture_output=True, text=True)
             if not output_file.exists():
