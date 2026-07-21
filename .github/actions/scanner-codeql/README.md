@@ -17,7 +17,7 @@ This composite action analyzes code for security vulnerabilities using CodeQL. R
   uses: actions/checkout@v6
 
 - name: Run CodeQL (Python)
-  uses: huntridge-labs/argus/.github/actions/scanner-codeql@1.9.2
+  uses: huntridge-labs/argus/.github/actions/scanner-codeql@1.10.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -33,7 +33,7 @@ strategy:
     language: [python, javascript]
 steps:
   - uses: actions/checkout@v6
-  - uses: huntridge-labs/argus/.github/actions/scanner-codeql@1.9.2
+  - uses: huntridge-labs/argus/.github/actions/scanner-codeql@1.10.0
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     with:

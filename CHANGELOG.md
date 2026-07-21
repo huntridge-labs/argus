@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.10.0](https://github.com/huntridge-labs/argus/compare/1.9.2...1.10.0) (2026-07-21)
+
+### Features
+
+* **container:** apply OpenVEX documents to trivy and grype scans ([#364](https://github.com/huntridge-labs/argus/issues/364)) ([a8b6750](https://github.com/huntridge-labs/argus/commit/a8b6750440a938677602b3c8ea1a177ddec4da01))
+* **vex:** apply OpenVEX to the CLI container's bundled-Go criticals ([#367](https://github.com/huntridge-labs/argus/issues/367)) ([41c8a19](https://github.com/huntridge-labs/argus/commit/41c8a192726a0aced5cf13a95c4ec0afa1a52267))
+
+### Bug Fixes
+
+* **build-containers:** surface Grype findings in the container PR comment ([#362](https://github.com/huntridge-labs/argus/issues/362)) ([fa10590](https://github.com/huntridge-labs/argus/commit/fa105900b4003208deaba19378dfa64bbb85cf81))
+
+### Dependencies
+
+* **deps:** Update container-images ([#361](https://github.com/huntridge-labs/argus/issues/361)) ([e2a89b2](https://github.com/huntridge-labs/argus/commit/e2a89b217749552badd922e518711381cc33b7a3))
+
+
+### Code Refactoring
+
+* **vex:** hoist OpenVEX into a shared capability; enable grype + trivy ([#365](https://github.com/huntridge-labs/argus/issues/365)) ([b38ea7b](https://github.com/huntridge-labs/argus/commit/b38ea7b20e24abf565827c1b105f6b6282f1c515)), closes [#364](https://github.com/huntridge-labs/argus/issues/364)
+
 ## [1.9.2](https://github.com/huntridge-labs/argus/compare/1.9.1...1.9.2) (2026-07-19)
 
 ### Bug Fixes

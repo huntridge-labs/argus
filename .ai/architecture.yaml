@@ -636,7 +636,7 @@ data_flow:
       behavior: Each scanner can post its own PR comment
       control: 'Set post_pr_comment: true in action inputs'
       use_case: Single scanner workflows, focused scanning
-      example: "- uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.9.2  with:\n    post_pr_comment:\
+      example: "- uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.10.0  with:\n    post_pr_comment:\
         \ true  # Posts individual Bandit PR comment\n"
     implementation:
       comment_action: .github/actions/comment-pr/action.yml
