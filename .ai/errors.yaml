@@ -752,3 +752,39 @@ errors:
         '
       reference: package.json + .github/dependabot.yml + .github/workflows/release-preview.yml + scripts/release-it-process-changelog.js
     symptom: empty changelog|release preview shows only version header|no Maintenance/Dependencies section|chore(deps) commits missing from changelog
+  MODULENOTFOUNDERROR__NO_MODULE_NAMED__MCP_SERVER_FASTMCP__WHOLE_SUITE_ABORTS_EXIT_CODE_2:
+    category: development
+    context: 'Unit Tests and Release (dry-run) both red on main with no code
+      change that touches Python dependencies. Collection of
+      argus/tests/test_mcp.py errors out, pytest reports "collected 0 items /
+      1 error", and the run exits 2 before any result is reported.
+
+      '
+    root_cause: 'mcp 2.0.0 (released 2026-07-28) deleted the
+
+      mcp.server.fastmcp package outright — the 1.29.0 wheel ships 19
+      mcp/server/fastmcp/* entries, the 2.0.0 wheel ships zero, replaced by a
+      restructured surface (mcp/server/apps.py, context.py, extension.py).
+      requirements.txt and pyproject.toml both declared an open-ended
+      ``mcp>=1.10``, so CI resolved the new major at install time and
+      ``from mcp.server.fastmcp import FastMCP`` in argus/mcp.py:14 raised
+      ImportError at collection. Nothing in the repo changed; the break
+      arrived from PyPI. It surfaced on the first main run in a week, which
+      makes it look like whichever commit happened to trigger that run.
+
+      '
+    solution:
+      steps:
+      - 'Add a forward ceiling in BOTH places the dep is declared: ``mcp>=1.10,<2.0`` in requirements.txt and in the [mcp] extra in pyproject.toml. A ceiling in only one leaves the other resolving 2.x.'
+      - 'Add a Dependabot ``ignore`` for mcp ``version-update:semver-major`` (pip ecosystem) so the major is not re-proposed inside the pip-all group every week.'
+      - 'Do NOT revert the commit CI blamed — it is a forward constraint fix, and the failing commit is unrelated.'
+      note: 'Confirm the bound is right before trusting it — inspect the wheels
+        rather than the changelog: download both and diff the namelist for the
+        module that disappeared. 1.29.0 is the newest release that still ships
+        mcp/server/fastmcp/. Negative control: ``pip install mcp==2.0.0`` then
+        run the file — collection errors with 0 items; reinstall the range and
+        all 86 tests in argus/tests/test_mcp.py pass.
+
+        '
+      reference: requirements.txt + pyproject.toml ([project.optional-dependencies] mcp) + .github/dependabot.yml
+    symptom: No module named 'mcp.server.fastmcp'|collected 0 items / 1 error|ERROR collecting argus/tests/test_mcp.py
