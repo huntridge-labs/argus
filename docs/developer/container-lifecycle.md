@@ -18,10 +18,10 @@ OFFICIAL_IMAGES = {
 # Each entry pins the release version AND the immutable sha256 digest captured
 # at build time. release-it's after:bump hook overwrites both halves atomically.
 CUSTOM_IMAGES = {
-    "bandit": "ghcr.io/huntridge-labs/argus/scanner-bandit:1.10.0@sha256:bb5a...",
-    "semgrep": "ghcr.io/huntridge-labs/argus/scanner-opengrep:1.10.0@sha256:2e7d...",
-    "supply-chain": "ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.10.0@sha256:7a0b...",
-    "cli": "ghcr.io/huntridge-labs/argus/cli:1.10.0@sha256:52cc...",
+    "bandit": "ghcr.io/huntridge-labs/argus/scanner-bandit:1.11.0@sha256:bb5a...",
+    "semgrep": "ghcr.io/huntridge-labs/argus/scanner-opengrep:1.11.0@sha256:2e7d...",
+    "supply-chain": "ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.11.0@sha256:7a0b...",
+    "cli": "ghcr.io/huntridge-labs/argus/cli:1.11.0@sha256:52cc...",
 }
 ```
 

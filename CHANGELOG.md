@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.11.0](https://github.com/huntridge-labs/argus/compare/1.10.0...1.11.0) (2026-07-28)
+
+### Features
+
+* **mcp:** migrate the MCP server to the mcp 2.x SDK ([4cfebc9](https://github.com/huntridge-labs/argus/commit/4cfebc9301cce7c81cac359caee5d3fa127ff616)), closes [#168-O](https://github.com/huntridge-labs/argus/issues/168-O)
+
+### Bug Fixes
+
+* **deps:** cap mcp below 2.0 to unbreak the test suite ([e779206](https://github.com/huntridge-labs/argus/commit/e779206dbaa36c858f94b19c6115cd256622f037))
+
+### Security Tools
+
+* **deps:** update grype to v0.116.0 and syft to v1.48.0 container images ([40adf85](https://github.com/huntridge-labs/argus/commit/40adf850807ef5e6c8c79a7d4965669eb07ddd5c))
+* **deps:** update grype, syft, and zizmor in CLI and supply-chain images ([97836dd](https://github.com/huntridge-labs/argus/commit/97836ddb7125a01e0a96baa70bd6ef6dc98aa939))
+
+### Dependencies
+
+* **deps:** bump python ([#371](https://github.com/huntridge-labs/argus/issues/371)) ([241424d](https://github.com/huntridge-labs/argus/commit/241424d009e0468355cdf163dd61d96e8ba3e927))
+* **deps:** update actions/setup-node and actions/setup-python to v7 ([0d88eb8](https://github.com/huntridge-labs/argus/commit/0d88eb814da782abdf19690a370cbc2e386747d0))
+
+
 ## [1.10.0](https://github.com/huntridge-labs/argus/compare/1.9.2...1.10.0) (2026-07-21)
 
 ### Features
