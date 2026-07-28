@@ -30,19 +30,6 @@ updates:
         patterns:
           - "*"
 
-    # Hold mcp at 1.x. mcp 2.0.0 (2026-07-28) deleted the
-    # mcp.server.fastmcp package outright; argus/mcp.py builds its server
-    # through ``from mcp.server.fastmcp import FastMCP``, so 2.x turns
-    # collection of argus/tests/test_mcp.py into a hard error and aborts
-    # the whole suite with exit code 2. The requirements.txt / pyproject
-    # ceiling (<2.0) is the actual guard — this ignore just stops the
-    # major from being re-proposed inside the pip-all group every week.
-    # Re-enable once argus/mcp.py is ported to the 2.x server API
-    # (mcp.server.apps / mcp.server.context).
-    ignore:
-      - dependency-name: "mcp"
-        update-types: ["version-update:semver-major"]
-
     commit-message:
       prefix: "chore(deps)"
 

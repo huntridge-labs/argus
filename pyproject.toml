@@ -74,13 +74,13 @@ ai = [
 # Shell tab completion
 completion = ["argcomplete>=3.5"]
 # MCP server for AI assistant integration.
-# Cap below 2.0: that release (2026-07-28) deleted the mcp.server.fastmcp
-# package outright. argus/mcp.py builds its server through
-# ``from mcp.server.fastmcp import FastMCP``, which 2.x replaced with a
-# restructured surface (mcp.server.apps / mcp.server.context). 1.29.0 is
-# the newest release that still ships mcp/server/fastmcp/. Lift the
-# ceiling once argus/mcp.py is ported to the 2.x API.
-mcp = ["mcp>=1.10,<2.0"]
+# Floor at 2.0: argus/mcp.py builds its server with mcp.server.MCPServer,
+# the 2.x replacement for the removed mcp.server.fastmcp.FastMCP. 2.x
+# speaks the 2026-07-28 protocol revision and still serves 2025-era
+# clients from the same server object, so raising the floor costs no
+# client compatibility. The 1.x line is upstream maintenance-only
+# (security fixes) — see py.sdk.modelcontextprotocol.io/migration/.
+mcp = ["mcp>=2.0"]
 # Terminal interface for `argus view --interface=terminal`.
 # Floor bumped to 8.0 — the mouse-first interactivity work (clickable
 # Footer hints, click-to-sort headers, hover tooltips, right-click

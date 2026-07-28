@@ -774,16 +774,35 @@ errors:
 
       '
     solution:
+      status: 'RESOLVED — argus/mcp.py now builds its server with
+        mcp.server.MCPServer and the dependency floor is ``mcp>=2.0``, so the
+        <2.0 ceiling and the Dependabot mcp hold described below no longer
+        exist in the tree. Retained as the worked example for the next time an
+        upstream major deletes a module out from under a pinned-by-floor dep.
+
+        '
       steps:
       - 'Add a forward ceiling in BOTH places the dep is declared: ``mcp>=1.10,<2.0`` in requirements.txt and in the [mcp] extra in pyproject.toml. A ceiling in only one leaves the other resolving 2.x.'
-      - 'Add a Dependabot ``ignore`` for mcp ``version-update:semver-major`` (pip ecosystem) so the major is not re-proposed inside the pip-all group every week.'
+      - 'Add a Dependabot ``ignore`` for the major (pip ecosystem) so it is not re-proposed inside the pip-all group every week. The ceiling is the guard; the ignore only reduces noise.'
       - 'Do NOT revert the commit CI blamed — it is a forward constraint fix, and the failing commit is unrelated.'
+      - 'Then migrate deliberately in a separate PR rather than leaving the ceiling indefinitely: the 1.x line went maintenance-only (security fixes) at the 2.0 release, so a permanent cap parks the MCP server on an unsupported branch.'
       note: 'Confirm the bound is right before trusting it — inspect the wheels
         rather than the changelog: download both and diff the namelist for the
-        module that disappeared. 1.29.0 is the newest release that still ships
-        mcp/server/fastmcp/. Negative control: ``pip install mcp==2.0.0`` then
-        run the file — collection errors with 0 items; reinstall the range and
-        all 86 tests in argus/tests/test_mcp.py pass.
+        module that disappeared. 1.29.0 was the newest release that still
+        shipped mcp/server/fastmcp/. Negative control: ``pip install
+        mcp==2.0.0`` then run the file — collection errors with 0 items;
+        reinstall the capped range and all 86 tests in
+        argus/tests/test_mcp.py pass.
+
+        '
+      migration_notes: 'The 2.x port was mechanical: MCPServer keeps
+        ``.tool()``, ``.resource(uri)`` and ``.prompt()`` with compatible
+        signatures, and accepts ``name``/``instructions`` positionally as
+        before. Two things did change — ``version`` became a real
+        constructor parameter (1.x needed a write to the private
+        ``_mcp_server`` attribute), and that private attribute was renamed
+        to ``_lowlevel_server``, so any 1.x code reaching into it breaks on
+        2.x regardless of the import path.
 
         '
       reference: requirements.txt + pyproject.toml ([project.optional-dependencies] mcp) + .github/dependabot.yml
