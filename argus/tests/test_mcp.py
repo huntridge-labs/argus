@@ -1214,15 +1214,29 @@ class TestPrompts:
 class TestCreateServer:
     """Tests for the create_server factory."""
 
-    def test_returns_fastmcp_instance(self):
-        from mcp.server.fastmcp import FastMCP
+    def test_returns_mcpserver_instance(self):
+        from mcp.server import MCPServer
 
         server = create_server()
-        assert isinstance(server, FastMCP)
+        assert isinstance(server, MCPServer)
 
     def test_server_name_is_argus(self):
         server = create_server()
         assert server.name == "argus"
+
+    def test_server_advertises_argus_version_not_sdk_version(self):
+        """The initialize response must carry the argus version (#168-O).
+
+        Under mcp 1.x this was set by writing to the private
+        ``_mcp_server`` attribute, which nothing asserted; MCPServer takes
+        ``version`` in its constructor and exposes it as a property, so the
+        behaviour is now pinned here. A regression would make MCP clients
+        read the SDK's version and mis-identify the argus release.
+        """
+        from argus import __version__ as argus_version
+
+        server = create_server()
+        assert server.version == argus_version
 
     def test_server_has_instructions(self):
         server = create_server()

@@ -19,13 +19,11 @@ python-slugify>=8.0.4
 requests>=2.32.3
 
 # MCP server (optional at runtime, required for full test coverage)
-# Cap below 2.0: that release (2026-07-28) deleted the mcp.server.fastmcp
-# package outright, so `from mcp.server.fastmcp import FastMCP` in
-# argus/mcp.py raises ModuleNotFoundError and collection of
-# argus/tests/test_mcp.py aborts the whole run with exit code 2. 1.29.0
-# still ships mcp/server/fastmcp/. Lift the ceiling once argus/mcp.py is
-# ported to the 2.x server API (mcp.server.apps / mcp.server.context).
-mcp>=1.10,<2.0
+# Floor at 2.0: argus/mcp.py builds its server with mcp.server.MCPServer,
+# the 2.x replacement for the removed mcp.server.fastmcp.FastMCP. The 1.x
+# line is upstream maintenance-only (security fixes), so there is no
+# reason to keep straddling both.
+mcp>=2.0
 
 # Optional: AI fallback for SCN Detector (not required for rule-based classification)
 # Install with: pip install "anthropic>=0.45"

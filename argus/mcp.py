@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 
 from argus import __version__ as _ARGUS_VERSION
 
@@ -21,8 +21,9 @@ from argus import __version__ as _ARGUS_VERSION
 # older snapshots can miss recent changes or new disclosures.
 DEFAULT_FRESH_THRESHOLD_SECONDS = 86400
 
-mcp = FastMCP(
+mcp = MCPServer(
     "argus",
+    version=_ARGUS_VERSION,
     instructions="""
 Argus Security Scanner — comprehensive security scanning for your codebase.
 
@@ -68,14 +69,13 @@ SCANNER CATEGORIES:
 """,
 )
 
-# FastMCP's constructor doesn't expose ``version`` directly, so reach
-# through to the wrapped lowlevel ``mcp.server.lowlevel.Server`` and
-# set it. Without this, the MCP initialize response advertises the
-# FastMCP library version (e.g. "1.27.1") as the server version
-# instead of the argus version — MCP clients using the version to
-# disambiguate compatible argus releases would get the wrong answer
-# (issue #168-O).
-mcp._mcp_server.version = _ARGUS_VERSION
+# The server version is passed to the constructor above. MCP clients read
+# it from the initialize response to disambiguate compatible argus
+# releases, so it must be the argus version and not the SDK's own
+# (issue #168-O). Under mcp 1.x this needed a write through to the private
+# ``_mcp_server`` attribute because FastMCP's constructor did not accept
+# ``version``; MCPServer takes it directly and exposes a read-only
+# ``.version`` property.
 
 
 # ---------------------------------------------------------------------------
@@ -1073,6 +1073,6 @@ async def setup_scanning() -> str:
 # ---------------------------------------------------------------------------
 
 
-def create_server() -> FastMCP:
+def create_server() -> MCPServer:
     """Create and return the Argus MCP server instance."""
     return mcp
