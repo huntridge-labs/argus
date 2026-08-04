@@ -807,3 +807,104 @@ errors:
         '
       reference: requirements.txt + pyproject.toml ([project.optional-dependencies] mcp) + .github/dependabot.yml
     symptom: No module named 'mcp.server.fastmcp'|collected 0 items / 1 error|ERROR collecting argus/tests/test_mcp.py
+  MANIFEST_VERIFICATION_FAILED_FOR_DIGEST_THIRD_PARTY_TAG_REPUSHED_UNDER_US:
+    category: ci
+    context: 'check_container_images reports "manifest verification failed for
+      digest" on a THIRD-PARTY image (not one of ours), so the Unit Tests job
+      goes red on main with no code change behind it. Distinct from
+      MANIFEST_UNKNOWN..., which is our own release pipeline failing to promote
+      a tag: here the tag resolves fine and it is the pinned digest that has
+      gone missing.
+
+      '
+    root_cause: 'Some upstream vendors treat a patch tag as mutable and re-push
+      it. clamav/clamav:1.5.3 is rebuilt by Cisco''s bot to refresh the bundled
+      virus database, which replaces the digest behind an unchanged tag. Our pin
+      is <tag>@sha256:<digest> — correct posture, and exactly what makes the
+      drift visible — but the old digest stops resolving the moment it is
+      superseded. Renovate does re-pin digests via the containers.py custom
+      manager, however it is scheduled "before 9am on Monday", so drift landing
+      any other day leaves main red for up to a week.
+
+      '
+    solution:
+      steps:
+      - 'Resolve the live digest: docker buildx imagetools inspect <image>:<tag> (or docker manifest inspect) and read the index Digest.'
+      - 'Cross-check provenance before trusting it — do not just take whatever the registry now serves. For Docker Hub: curl -s https://hub.docker.com/v2/repositories/<ns>/<repo>/tags/<tag> and confirm digest, last_updated, and last_updater_username look like the vendor''s normal release path.'
+      - Re-pin in argus/containers.py, then run python -m scripts.ci.check_container_images and require "All images resolve" across the whole manifest, not just the one you touched.
+      note: 'A digest that stops resolving is indistinguishable at the registry
+        from a yanked-for-compromise image, so confirm the pusher before
+        bumping. Treating the re-pin as routine housekeeping is how a poisoned
+        re-push would get waved through.
+
+        '
+      reference: argus/containers.py + scripts/ci/check_container_images.py + .github/renovate.json (customManagers, container-images group)
+    symptom: manifest verification failed for digest|N image(s) failed manifest check|Unit Tests red on main with no relevant diff
+  GHCR_PRUNE_ABORTS_ON_PACKAGE_NOT_FOUND_HTTP_404:
+    category: ci
+    context: 'The scheduled GHCR Cleanup workflow fails with
+      subprocess.CalledProcessError from prune_ghcr_tags.py, on a "gh api
+      --method DELETE .../versions/<id>" that returned "gh: Package not found.
+      (HTTP 404)". Fails every night once it starts, and every package after
+      the failing one goes unpruned.
+
+      '
+    root_cause: 'The script enumerates versions once and then deletes them in a
+      loop. Deleting a manifest-list parent cascades to versions GitHub treats
+      as dependent on it, so a version listed at the top of the run can already
+      be gone by the time the loop reaches it. gh_delete used
+      subprocess.check_call, so that 404 raised and took the whole sweep down.
+
+      '
+    solution:
+      status: 'RESOLVED — gh_delete returns False on 404 instead of raising, and
+        still raises on every other error.
+
+        '
+      steps:
+      - Treat 404 on DELETE as success — the state you wanted is already true. Keep raising on anything else (401/403 are real and must not be swallowed).
+      - 'Do not "fix" this by pruning less: the sweep aborting is what leaves storage growing, so the loop has to survive individual no-ops.'
+      note: 'While fixing this, check what is actually being deleted. Cosign
+        publishes signatures and attestations as sha256-<subject digest> tags,
+        which match neither ''latest'' nor semver — the original is_keeper
+        therefore classed every one of them as prunable, so release provenance
+        older than --keep-days was being destroyed and cosign verify would fail
+        for those tags. Pruning is now two-pass: determine surviving images
+        first, then hold back any cosign artifact whose subject survives.
+
+        '
+      reference: scripts/ci/prune_ghcr_tags.py + tests/unit/test_prune_ghcr_tags.py + .github/workflows/ghcr-prune.yml
+    symptom: 'gh: Package not found. (HTTP 404)|CalledProcessError|GHCR Cleanup failing nightly'
+  RELEASE_PREVIEW_FAILS_ON_DOCKER_HUB_PULL_TIMEOUT:
+    category: release
+    context: 'Release Preview (Dry Run) fails and the Release job is skipped,
+      with 4-5 failures in argus/tests/test_docker_integration.py — docker pull
+      or docker run returning "context deadline exceeded" or "Client.Timeout
+      exceeded while awaiting headers" against registry-1.docker.io. Nothing in
+      the diff touches Docker.
+
+      '
+    root_cause: 'Those tests pull hello-world and alpine:3.19 anonymously from
+      Docker Hub. Shared GitHub runners hit Hub''s anonymous rate limits and
+      transient timeouts often enough that a release attempt can fail purely on
+      registry weather. The tests asserted returncode == 0 with no way to tell
+      an outage apart from a real defect, so infra flake blocked the release.
+
+      '
+    solution:
+      status: 'RESOLVED — the registry-dependent tests skip on transient
+        registry errors and still fail on everything else.
+
+        '
+      steps:
+      - Re-run the job first — if it goes green, it was registry weather and nothing is wrong with the commit.
+      - 'Keep the skip boundary narrow: match known transient stderr markers only (context deadline exceeded, Client.Timeout, no such host, connection refused/reset, toomanyrequests, 429, 503). manifest unknown, unauthorized, and invalid reference format must still fail.'
+      - Preflight through docker directly in any test that goes through engine._pull_image — a False return cannot distinguish an unreachable registry from a broken engine.
+      note: 'Do not widen this into a blanket "skip if docker misbehaves". The
+        module already skips when the daemon is absent; the added guard is only
+        about reachability of the remote registry. Tests for both sides of the
+        boundary live in TestTransientRegistryClassifier.
+
+        '
+      reference: argus/tests/test_docker_integration.py + .github/workflows/release.yml (Release Preview job)
+    symptom: context deadline exceeded|Client.Timeout exceeded while awaiting headers|Release Preview (Dry Run) failed with docker integration test failures
