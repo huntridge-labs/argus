@@ -735,8 +735,17 @@ errors:
 
       '
     solution:
+      status: 'SUPERSEDED — the ^9.3.1 pin and the Dependabot major-ignore below
+        were correct only while @release-it/conventional-changelog was at 11. On
+        plugin 12 the writer moved to 9 (render functions) and the preset MUST be
+        v10; keeping the old pin instead produces
+        HEADERPARTIAL_IS_NOT_A_FUNCTION below. Read the two entries as one rule:
+        preset and writer are a matched pair, and a major on either side without
+        the other breaks the changelog in one direction or the other.
+
+        '
       steps:
-      - 'Pin ``conventional-changelog-conventionalcommits`` to ``^9.3.1`` in package.json (align with what @release-it/conventional-changelog@11 supports). NOT a git revert of the merge — a forward constraint fix.'
+      - 'Pin ``conventional-changelog-conventionalcommits`` to ``^9.3.1`` in package.json (align with what @release-it/conventional-changelog@11 supports). NOT a git revert of the merge — a forward constraint fix. NOTE: only valid on plugin 11 — see status above.'
       - 'Add a Dependabot ``ignore`` for that dep''s ``version-update:semver-major`` (npm ecosystem) so v10 is not re-proposed until the release toolchain adopts the render-function stack (conventional-changelog@8 / writer@9).'
       - 'Guard in CI: the release-preview "Verify changelog structure" step hard-fails when a release is expected but the changelog body has no sections/entries — catches this class of preset/writer incompatibility for any dep.'
       note: 'Verify locally without cutting a release: ``npx release-it --changelog
@@ -908,3 +917,45 @@ errors:
         '
       reference: argus/tests/test_docker_integration.py + .github/workflows/release.yml (Release Preview job)
     symptom: context deadline exceeded|Client.Timeout exceeded while awaiting headers|Release Preview (Dry Run) failed with docker integration test failures
+  HEADERPARTIAL_IS_NOT_A_FUNCTION_RELEASE_IT_DIES_AND_PREVIEW_STILL_PASSES:
+    category: release
+    context: 'Upgrading @release-it/conventional-changelog 11 -> 12 (with
+      release-it 20 -> 21) while conventional-changelog-conventionalcommits stays
+      pinned at ^9.3.1. ``pnpm run release:dry`` dies with "ERROR headerPartial is
+      not a function" and produces no changelog and no "Let''s release" banner.
+      The exact mirror image of EMPTY_CHANGELOG_CONVENTIONALCOMMITS_V10_...
+      above, which is the same pairing broken the other way round.
+
+      '
+    root_cause: 'Plugin 12 adopts conventional-changelog-writer@9, which expects
+      the preset to supply render FUNCTIONS (@conventional-changelog/template).
+      Preset v9.3.1 still supplies Handlebars template STRINGS, so the writer
+      calls a string and throws. Two further traps in the same upgrade: release-it
+      21 raises its floor to Node >=22.21 (package.json engines still said
+      >=22.0.0), and @j-ulrich/release-it-regex-bumper below 5.6.0 has a peer
+      range of "16 || 17 || 18 || 19 || 20" that excludes release-it 21 — so the
+      dep that rewrites version references across the repo is unsatisfied.
+
+      '
+    solution:
+      status: 'RESOLVED — the four move together: release-it ^21, plugin ^12,
+        preset ^10, regex-bumper >=5.6.0, plus engines.node >=22.21.0.
+
+        '
+      steps:
+      - 'Bump the whole set in one PR. A bot proposing only the plugin + release-it majors is an INCOMPLETE change — the preset major is held by a Dependabot ignore, so it will not be offered alongside. Remove that ignore as part of the upgrade.'
+      - 'Verify before merging, because CI green is not sufficient (see note): npx release-it --changelog --no-git.requireUpstream --hooks.before:init=true and confirm you get a version header AND populated sections.'
+      - 'Check peers explicitly: pnpm peers check must be clean. An unmet release-it peer on the regex bumper is the signal that version-reference rewriting will not work during the real release.'
+      note: 'The Release Preview check PASSED on the broken upgrade. The step ran
+        ``pnpm run release:dry > release_output.txt 2>&1 || echo ...``, which
+        swallowed the non-zero exit and hid the output in a file, so the
+        "Let''s release" grep found nothing, version fell back to 0.0.0/unknown,
+        and the job reported success. That is why the version-bump numbers in the
+        job log are the thing to read: ``DEBUG: Current version: 0.0.0`` and
+        ``New version: unknown`` mean the toolchain is broken, NOT that there is
+        nothing to release. The step now cats the output and hard-fails on a
+        non-zero exit.
+
+        '
+      reference: package.json + .github/dependabot.yml + .github/workflows/release-preview.yml
+    symptom: 'headerPartial is not a function|DEBUG: Current version: 0.0.0|DEBUG: New version: unknown|release preview green but no changelog'
