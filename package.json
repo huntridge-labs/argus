@@ -7,7 +7,7 @@
   "devDependencies": {
     "@commitlint/cli": "^21.2.1",
     "@commitlint/config-conventional": "^21.2.0",
-    "@j-ulrich/release-it-regex-bumper": "^5.4.0",
+    "@j-ulrich/release-it-regex-bumper": "^5.6.0",
     "@release-it/conventional-changelog": "^11.0.1",
     "commitizen": "^4.3.2",
     "cz-conventional-changelog": "^3.3.0",
