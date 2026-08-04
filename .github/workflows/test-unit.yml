@@ -80,9 +80,21 @@ jobs:
         if: matrix.python-version == '3.13'
         run: python -m scripts.ci.check_cli_docs
 
+      # --tolerate-registry-errors: a bad pin still fails, but anonymous
+      # Docker Hub rate limits and timeouts do not. The release gate in
+      # release.yml deliberately runs WITHOUT the flag, so nothing ships
+      # unverified.
       - name: Check container image manifests
         if: matrix.python-version == '3.13'
-        run: python -m scripts.ci.check_container_images
+        run: python -m scripts.ci.check_container_images --tolerate-registry-errors
+
+      # Offline and deterministic: only asserts the two places we pin the same
+      # tool agree. The network-dependent currency comparison runs on a
+      # schedule in tool-currency.yml instead, so an upstream release can never
+      # redden main on its own.
+      - name: Check dual-pinned tool versions agree
+        if: matrix.python-version == '3.13'
+        run: python scripts/ci/check_tool_currency.py --consistency-only
 
       - name: Check .ai/ files are in sync with the SDK
         if: matrix.python-version == '3.13'
