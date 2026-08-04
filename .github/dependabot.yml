@@ -105,20 +105,15 @@ updates:
           - "minor"
           - "patch"
 
-    # Hold conventional-changelog-conventionalcommits at v9.x. v10 replaced
-    # Handlebars template strings with render functions (@conventional-changelog/
-    # template), which require conventional-changelog-writer@9. Our release
-    # toolchain's writer is pinned transitively by @release-it/conventional-
-    # changelog@11 (latest), which still depends on conventional-changelog@7 →
-    # writer@8 (Handlebars) and conventionalcommits@^9.3.1. Under v10 the
-    # changelog renders EMPTY (commits parse + pass filtering but the Handlebars
-    # writer can't compile function templates). Re-enable the major bump once
-    # @release-it/conventional-changelog ships support for the render-function
-    # stack (core@8 / writer@9). See the release-preview "Verify changelog
-    # structure" gate.
-    ignore:
-      - dependency-name: "conventional-changelog-conventionalcommits"
-        update-types: ["version-update:semver-major"]
+    # The hold on conventional-changelog-conventionalcommits v10 is lifted.
+    # @release-it/conventional-changelog@12 moved to the render-function stack
+    # (conventional-changelog-writer@9), which is what v10's function templates
+    # need, so the preset and the writer now agree. The two are a matched pair
+    # in BOTH directions — writer@8 with preset v10 renders an empty changelog,
+    # writer@9 with preset v9 dies with "headerPartial is not a function" — so
+    # never bump one across a major without the other. release-it@21 is part of
+    # the same set, and @j-ulrich/release-it-regex-bumper must be >=5.6.0 for
+    # its peer range to admit release-it 21.
 
     commit-message:
       prefix: "chore(deps)"
