@@ -44,7 +44,7 @@ OFFICIAL_IMAGES = {
     # API keys + network at scan time. Pinned to an immutable version tag
     # + digest (Renovate-managed), like every other image here — the
     # publisher's ``:latest`` is mutable and silently drifts.
-    "promptfoo": "ghcr.io/promptfoo/promptfoo:0.121.14@sha256:4348f35b8382f2564f23746ddc3160637cfb9242ea8541304ac1ec6641597840",
+    "promptfoo": "ghcr.io/promptfoo/promptfoo:0.121.19@sha256:50d3a796710e4db7a5ede90bf27dc28146ef022a7ebb83914c5105608396fd96",
     "hadolint": "hadolint/hadolint:v2.14.0@sha256:27086352fd5e1907ea2b934eb1023f217c5ae087992eb59fde121dce9c9ff21e",
     # lint-shell via shellcheck. The koalaman/shellcheck-alpine image is
     # the official multi-arch distribution (~3 MB). shellcheck is GPL-3.0
