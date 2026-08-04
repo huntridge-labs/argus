@@ -516,6 +516,85 @@ incremental progress against mHawk's diagnostic surface or operational maturity.
 
 ---
 
+### Apex / Visualforce SAST (`argus scan apex`)
+
+Proposed — not started. The suite has no coverage for Apex (`.cls`, `.trigger`) or its
+companion markup language Visualforce (`.page`, `.component`). Both are managed-runtime
+languages with their own injection and access-control failure modes: query injection
+into SOQL/SOSL, missing per-object and per-field permission checks before DML, missing
+sharing-mode declarations, and XSS through unescaped expressions in markup.
+
+**Why a new scanner is required.** `opengrep` lists `apex` among its supported languages
+but cannot actually scan it — the Apex front end is gated behind the upstream commercial
+engine and was never restored in the fork, so Apex rules are silently skipped with
+`N rule(s) were skipped because they require Pro` (opengrep/opengrep#174, open since
+2025-03-24, re-verified 2026-08-01). Nothing else in the suite parses the language, and
+every purpose-built Apex SAST product on the market is commercial, so wrapping one is off
+the table.
+
+**Foundation: PMD 7 (BSD-style / Apache-2.0, currently 7.26.0).** Two properties make it
+viable now where it wasn't before:
+
+- The Apex front end is **fully open source as of PMD 7.0.0** — the ANTLR `apex-parser`
+  grammar plus Google's Summit-AST translation layer replaced the closed-source binary
+  parser blob that PMD 5.5–6.x shipped against (pmd/pmd#3766). Nothing un-redistributable
+  lands in an Argus image, and the binary-blob policy objection that blocked PMD Apex in
+  regulated environments is gone.
+- Native SARIF v2.1.0 renderer, so the parse path is the same shape as every other
+  wrapped scanner.
+
+Rule inventory at 7.26.0: **10 Apex security rules** (`ApexSOQLInjection`,
+`ApexCRUDViolation`, `ApexSharingViolations`, `ApexXSSFromURLParam`,
+`ApexXSSFromEscapeFalse`, `ApexOpenRedirect`, `ApexInsecureEndpoint`, `ApexBadCrypto`,
+`ApexDangerousMethods`, `ApexSuggestUsingNamedCred`) inside 7 total rule categories, plus
+**3 Visualforce security rules** (`VfCsrf`, `VfUnescapeEl`, `VfHtmlStyleTagXss`).
+
+#### Phase 1 — PMD wrapper (category `sast`)
+
+- `argus/scanners/apex.py` implementing the `Scanner` protocol. Curated default ruleset
+  (security on, error-prone opt-in) vendored in-repo so scans are reproducible and
+  offline.
+- SARIF → `Finding` parse path; PMD priority 1–5 mapped onto Argus severity, with
+  per-rule enablement and severity remap under `scanners.apex.*` in `argus.yml` — the
+  same configurability contract `mumps` ships.
+- **Container-first execution.** PMD needs a JVM, so a local binary can't be the assumed
+  path: a new `docker/Dockerfile.apex` (trimmed JRE base + pinned PMD distribution) joins
+  the `argus/containers.py` manifest, digest-pinned and cosign-signed on release, with
+  `is_available()` falling through to Docker exactly like `opengrep`. No user-side tool
+  install, consistent with the rest of the suite.
+- Fixture-backed parser tests plus a minimal vulnerable app at
+  `tests/fixtures/test-apps/apex-app/` — one class with an injectable dynamic query, one
+  trigger performing unchecked DML, one page with an unescaped expression.
+- `docs/scanners.md` entry, `.ai/architecture.yaml` scanner list, and a composite-action
+  thin wrapper (`.github/actions/scanner-apex/`) once the SDK path is green.
+
+#### Phase 2 — Depth
+
+- **Visualforce as a sub-scanner** rather than a second registry entry: one invocation,
+  second ruleset, findings tagged by language.
+- **Path-sensitive dataflow.** `sfge` is a BSD-3 JVM engine that walks call paths to
+  catch the access-control violations AST rules structurally cannot — a rule-based check
+  sees the query but not whether an enclosing frame already enforced permissions. Heavy:
+  its own memory budget and a per-entrypoint compile. Evaluate as an optional second
+  engine behind `scanners.apex.dataflow`, never a default.
+- **Metadata checks.** Permission-set and profile XML carry the real authorization
+  posture; PMD's XML language plus custom rules could flag over-broad grants. Scope this
+  only after the code-side rules have real-world signal.
+
+#### Open questions
+
+- **Image size.** A JRE base is heavier than any current scanner image (Alpine + static
+  binary). A `jlink`-trimmed runtime should land near the `scanner-mumps` footprint, but
+  that needs measuring before we commit to the pattern.
+- **Registry key.** `apex` reads as a capability and leaves room to add or swap engines
+  underneath; `pmd` would be honest about the wrapper but welds the name to one tool.
+  Leaning `apex`.
+- **Rule noise.** `ApexCRUDViolation` is false-positive-heavy without dataflow. Ship it
+  enabled, but budget for the same at-scale precision pass the MUMPS rules needed
+  (Phase 1.5 above) before making any precision claim.
+
+---
+
 ### 0.6.x parity (deferred)
 
 - **Web-app authentication V2 — argus-native form block.** A `scanners.zap.auth.form` block

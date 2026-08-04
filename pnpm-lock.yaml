@@ -34,8 +34,8 @@ importers:
         specifier: ^21.2.0
         version: 21.2.0
       '@j-ulrich/release-it-regex-bumper':
-        specifier: ^5.4.0
-        version: 5.4.0(release-it@20.2.1(@types/node@25.7.0))
+        specifier: ^5.6.0
+        version: 5.6.0(release-it@20.2.1(@types/node@25.7.0))
       '@release-it/conventional-changelog':
         specifier: ^11.0.1
         version: 11.0.1(conventional-commits-filter@5.0.0)(conventional-commits-parser@6.4.0)(release-it@20.2.1(@types/node@25.7.0))
@@ -62,8 +62,8 @@ packages:
     resolution: {integrity: sha512-qehxGkRj55h/ff8EMaJ+cYhyaKlHIxqYDn682wQD7RNp9UujOQsHog2uS0r2vzr4pW+sXf90NeeayjcNaX3fFg==}
     engines: {node: '>=6.9.0'}
 
-  '@babel/runtime-corejs3@7.29.2':
-    resolution: {integrity: sha512-Lc94FOD5+0aXhdb0Tdg3RUtqT6yWbI/BbFWvlaSJ3gAb9Ks+99nHRDKADVqC37er4eCB0fHyWT+y+K3QOvJKbw==}
+  '@babel/runtime-corejs3@7.29.7':
+    resolution: {integrity: sha512-ppj9ouYku+RX0ljtgZd+KMO5mkM2bCqg8H2PYAFWnLsHEIKIdRojqbJ2i3eVHrisuxy7nOFCmngTDdWtUCdXUQ==}
     engines: {node: '>=6.9.0'}
 
   '@commitlint/cli@21.2.1':
@@ -322,11 +322,11 @@ packages:
       '@types/node':
         optional: true
 
-  '@j-ulrich/release-it-regex-bumper@5.4.0':
-    resolution: {integrity: sha512-97XLxdGsB5BeFvilqhC2yBJpBBIsKpnMAFFo8kuyKZBJepCW1Qec6aLU9OIK5MGzEnOP9H/2wMm5ZQZvoeVmjw==}
+  '@j-ulrich/release-it-regex-bumper@5.6.0':
+    resolution: {integrity: sha512-AbkLJ72DqoTOBNtouT7mPUG/HA0n2DhFNwXpm8RdkEGlg2LQihfDQZDegzyL570+nW92ZkwcCLwGJOsTWZaKUQ==}
     engines: {node: '>=16'}
     peerDependencies:
-      release-it: 16 || 17 || 18 || 19 || 20
+      release-it: 16 || 17 || 18 || 19 || 20 || 21
 
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -740,8 +740,8 @@ packages:
     resolution: {integrity: sha512-CuRUx0TXGSbbWdEci3VK/XOZGP3n0P4pIKpsqpVtBqaIIuj3GKK8H45oAqA4Rg8FHipc+CzRdUzmD4YQXxv66Q==}
     engines: {node: '>= 14'}
 
-  date-fns@4.1.0:
-    resolution: {integrity: sha512-Ukq0owbQXxa/U3EGtsdVBkR1w7KOQ5gIBqdH2hkvknzZPYvBxb/aa6E8L7tmjFtkwZBu3UXBbjIgPo/Ez4xaNg==}
+  date-fns@4.4.0:
+    resolution: {integrity: sha512-+1UMbeh68lH1SegH83CGWwpb6OHHbpSgr3+s5Eww5M4CAgswBpoWS0AjTOfEJ33HiYKz1hdj/KTFprzXHmq/6w==}
 
   dateformat@5.0.3:
     resolution: {integrity: sha512-Kvr6HmPXUMerlLcLF+Pwq3K7apHpYmGDVqrxcDasBg86UcKeTSNWbEzU8bwdXnxnR44FtMhJAxI4Bov6Y/KUfA==}
@@ -1455,11 +1455,6 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
-  semver@7.8.0:
-    resolution: {integrity: sha512-AcM7dV/5ul4EekoQ29Agm5vri8JNqRyj39o0qpX6vDF2GZrtutZl5RwgD1XnZjiTAfncsJhMI48QQH3sN87YNA==}
-    engines: {node: '>=10'}
-    hasBin: true
-
   semver@7.8.2:
     resolution: {integrity: sha512-c8jsqUZm3omBOI66G90z1Dyw5z622G8oLG+omfsHBJf3CWQTlOcwOjvOG6wtiNfW6anKm/eA39LMwMtMez2TiQ==}
     engines: {node: '>=10'}
@@ -1692,7 +1687,7 @@ snapshots:
 
   '@babel/helper-validator-identifier@7.29.7': {}
 
-  '@babel/runtime-corejs3@7.29.2':
+  '@babel/runtime-corejs3@7.29.7':
     dependencies:
       core-js-pure: 3.49.0
 
@@ -1999,14 +1994,14 @@ snapshots:
     optionalDependencies:
       '@types/node': 25.7.0
 
-  '@j-ulrich/release-it-regex-bumper@5.4.0(release-it@20.2.1(@types/node@25.7.0))':
+  '@j-ulrich/release-it-regex-bumper@5.6.0(release-it@20.2.1(@types/node@25.7.0))':
     dependencies:
       chalk: 5.6.2
-      date-fns: 4.1.0
+      date-fns: 4.4.0
       fast-glob: 3.3.3
       lodash: 4.18.1
       release-it: 20.2.1(@types/node@25.7.0)
-      semver: 7.8.0
+      semver: 7.8.5
       xregexp: 5.1.2
     optionalDependencies:
       diff: 8.0.4
@@ -2466,7 +2461,7 @@ snapshots:
 
   data-uri-to-buffer@7.0.0: {}
 
-  date-fns@4.1.0: {}
+  date-fns@4.4.0: {}
 
   dateformat@5.0.3: {}
 
@@ -3166,8 +3161,6 @@ snapshots:
 
   semver@7.7.4: {}
 
-  semver@7.8.0: {}
-
   semver@7.8.2: {}
 
   semver@7.8.5: {}
@@ -3346,7 +3339,7 @@ snapshots:
 
   xregexp@5.1.2:
     dependencies:
-      '@babel/runtime-corejs3': 7.29.2
+      '@babel/runtime-corejs3': 7.29.7
 
   y18n@5.0.8: {}
 
