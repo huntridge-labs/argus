@@ -51,7 +51,24 @@ jobs:
         run: |
           # Run release-it dry run to get actual release information
           echo "Running release-it dry run to generate preview..."
-          pnpm run release:dry > release_output.txt 2>&1 || echo "Release dry run completed"
+          DRY_RUN_EXIT=0
+          pnpm run release:dry > release_output.txt 2>&1 || DRY_RUN_EXIT=$?
+
+          # Always surface what release-it actually said. The old form piped this
+          # to a file and swallowed the exit code with `|| echo`, so a release-it
+          # that died on startup looked identical to one with nothing to release:
+          # the "Let's release" grep below found nothing, the version fell back to
+          # 0.0.0/unknown, and the job went green while the release toolchain was
+          # broken. That is how a changelog-breaking upgrade reached review with a
+          # passing check.
+          echo "--- release-it output (exit ${DRY_RUN_EXIT}) ---"
+          cat release_output.txt
+          echo "--- end release-it output ---"
+
+          if [ "$DRY_RUN_EXIT" -ne 0 ]; then
+            echo "::error::release-it dry run exited ${DRY_RUN_EXIT}. The release toolchain is broken — see the output above. Not a 'nothing to release' outcome; release-it exits 0 for that."
+            exit 1
+          fi
 
           # Extract version information from the "Let's release" line
           RELEASE_LINE=$(grep "Let's release" release_output.txt || echo "")
