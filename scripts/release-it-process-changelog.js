@@ -11,29 +11,55 @@
 const fs = require('fs');
 const path = require('path');
 
-// Security scanner patterns to detect in commit messages
+// Security scanner patterns to detect in commit messages.
+//
+// Matched as case-insensitive substrings against the whole changelog line, so
+// every tool we actually ship needs an entry here or its bump lands under the
+// generic "Dependencies" heading instead of "Security Tools". Keep this list in
+// step with OFFICIAL_IMAGES in argus/containers.py and the ARG *_VERSION pins in
+// docker/Dockerfile.* — the audit on 2026-08-04 found ten shipped tools missing.
 const securityScannerPatterns = [
-  'bridgecrewio/checkov-action',
-  'checkov-action',
-  'checkov',
+  // SAST
   'aquasecurity/trivy-action',
   'trivy-action',
   'trivy',
+  'bandit',
+  'opengrep',
+  'semgrep',
+  'gosec',
+  'github/codeql-action',
+  'codeql-action',
+  'codeql',
+  // IaC / config
+  'bridgecrewio/checkov-action',
+  'checkov-action',
+  'checkov',
+  'checkmarx',
+  'kics',
+  'tflint',
+  'hadolint',
+  // Dependencies / SBOM
   'anchore/sbom-action',
   'sbom-action',
   'syft',
   'anchore/scan-action',
   'grype',
-  'clamav',
+  'osv-scanner',
+  'osv',
+  // Secrets / malware
   'gitleaks/gitleaks-action',
   'gitleaks-action',
   'gitleaks',
-  'bandit',
-  'opengrep',
-  'semgrep',
-  'github/codeql-action',
-  'codeql-action',
-  'codeql'
+  'clamav',
+  // Supply chain
+  'zizmor',
+  'actionlint',
+  // DAST / AI
+  'zaproxy',
+  'zap',
+  'promptfoo',
+  // Shell
+  'shellcheck'
 ];
 
 function isSecurityScanner(commitText) {
