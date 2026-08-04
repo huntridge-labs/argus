@@ -14,7 +14,7 @@ description: |
   **Usage Example:**
   ```yaml
   - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-  - uses: huntridge-labs/argus/.github/actions/scanner-opengrep@1.11.0
+  - uses: huntridge-labs/argus/.github/actions/scanner-opengrep@1.12.0
     with:
       fail_on_severity: 'high'
   ```
@@ -152,7 +152,7 @@ runs:
 
     - name: Comment PR with OpenGrep results
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@1.11.0
+      uses: huntridge-labs/argus/.github/actions/comment-pr@1.12.0
       with:
         summary_file: scanner-summaries/opengrep.md
         comment_marker: opengrep-comment-marker

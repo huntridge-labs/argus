@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.12.0](https://github.com/huntridge-labs/argus/compare/1.11.0...1.12.0) (2026-08-04)
+
+### Features
+
+* **ci:** add a backstop for stale and inconsistent scanner pins ([a69aeb6](https://github.com/huntridge-labs/argus/commit/a69aeb652f39eca1ceefd893faa67eb4606d876e)), references [#375](https://github.com/huntridge-labs/argus/issues/375)
+
+### Bug Fixes
+
+* **ci:** stop the manifest check confusing rate limits with bad pins ([ce9e8df](https://github.com/huntridge-labs/argus/commit/ce9e8df25427c5255892c3111f1e6b9e6ca29fcb))
+* **ci:** unbreak the release, unit-test, and GHCR cleanup pipelines ([#378](https://github.com/huntridge-labs/argus/issues/378)) ([a58e9ab](https://github.com/huntridge-labs/argus/commit/a58e9aba9d7bc8b1957d5c60b36759ebc460bd68))
+
+### Dependencies
+
+* **deps:** bump @j-ulrich/release-it-regex-bumper ([#377](https://github.com/huntridge-labs/argus/issues/377)) ([91abc26](https://github.com/huntridge-labs/argus/commit/91abc26e69d99e2a9bc68f61d2e168c1c41afde9))
+* **deps:** Update github-actions-minor-patch ([#360](https://github.com/huntridge-labs/argus/issues/360)) ([810caaf](https://github.com/huntridge-labs/argus/commit/810caaf5c334ce31451e01ad10693783367267dd))
+* **deps:** update the four scanners past the 7-day age gate ([#380](https://github.com/huntridge-labs/argus/issues/380)) ([88e4823](https://github.com/huntridge-labs/argus/commit/88e4823a4d96d1109dac2ba5aa813302a88e25ac))
+* **deps:** Update tool-versions ([#375](https://github.com/huntridge-labs/argus/issues/375)) ([9f03be1](https://github.com/huntridge-labs/argus/commit/9f03be10cbbe4ead60ea7c248a3c2440a3a94284))
+* **deps:** upgrade the release toolchain to release-it 21 (supersedes [#376](https://github.com/huntridge-labs/argus/issues/376)) ([#379](https://github.com/huntridge-labs/argus/issues/379)) ([fc18dc4](https://github.com/huntridge-labs/argus/commit/fc18dc44c756148b4a26fa2fe4a20ea4b480cd59))
+
+### Maintenance
+
+* **renovate:** run daily and track tree-sitter explicitly ([965cb01](https://github.com/huntridge-labs/argus/commit/965cb018d6a9fc60eca5b4ff73dd47ea70d62e10))
+
+
+### Documentation
+
+* **roadmap:** add Apex / Visualforce SAST initiative ([8476de8](https://github.com/huntridge-labs/argus/commit/8476de81a44f6360c41fcd8d98b31a8cdfd268b7))
+
 ## [1.11.0](https://github.com/huntridge-labs/argus/compare/1.10.0...1.11.0) (2026-07-28)
 
 ### Features

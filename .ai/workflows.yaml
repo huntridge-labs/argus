@@ -52,7 +52,7 @@ workflows:
     description: Use a single scanner via SDK or composite action
     category: scanning
     command: python -m argus scan bandit --severity-threshold high
-    action_code: "- uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.11.0  with:\n    path:\
+    action_code: "- uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.12.0  with:\n    path:\
       \ src/\n    fail_on_severity: high\n    enable_sarif_upload: true\n"
   dependency_scanning:
     description: Scan dependencies for known vulnerabilities
@@ -128,7 +128,7 @@ workflows:
       \   - 'kubernetes/**'\n      - 'cloudformation/**'\n\npermissions:\n  contents: read\n  pull-requests:\
       \ write\n  issues: write\n\njobs:\n  scn-detection:\n    runs-on: ubuntu-latest\n    steps:\n  \
       \    - uses: actions/checkout@v6\n        with:\n          fetch-depth: 0  # Required for git diff\n\
-      \n      - uses: huntridge-labs/argus/.github/actions/scn-detector@1.11.0        env:\n        \
+      \n      - uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.0        env:\n        \
       \  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY\
       \ }}\n        with:\n          config_file: '.github/scn-config.yml'\n          create_issues: true\n\
       \          post_pr_comment: true\n          enable_ai_fallback: true\n"

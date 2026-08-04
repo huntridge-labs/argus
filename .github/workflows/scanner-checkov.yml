@@ -72,7 +72,7 @@ jobs:
           python-version: '3.14'
 
       - name: Install Argus
-        uses: huntridge-labs/argus/.github/actions/setup-argus@1.11.0
+        uses: huntridge-labs/argus/.github/actions/setup-argus@1.12.0
 
       - name: Run scan
         run: |
@@ -129,7 +129,7 @@ jobs:
 
       - name: Comment PR with results
         if: always() && github.event_name == 'pull_request' && inputs.post_pr_comment
-        uses: huntridge-labs/argus/.github/actions/comment-pr@1.11.0
+        uses: huntridge-labs/argus/.github/actions/comment-pr@1.12.0
         with:
           summary_file: ./argus-results/argus-summary.md
           comment_marker: checkov-scanner-comment-marker

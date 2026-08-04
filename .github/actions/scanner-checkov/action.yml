@@ -17,7 +17,7 @@ description: |
   **Usage Example:**
   ```yaml
   - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-  - uses: huntridge-labs/argus/.github/actions/scanner-checkov@1.11.0
+  - uses: huntridge-labs/argus/.github/actions/scanner-checkov@1.12.0
     env:
       GITHUB_TOKEN: (secrets.GITHUB_TOKEN)
       BC_API_KEY: (secrets.BC_API_KEY)  # Optional: for severity info
@@ -226,7 +226,7 @@ runs:
 
     - name: Comment PR with Checkov results
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@1.11.0
+      uses: huntridge-labs/argus/.github/actions/comment-pr@1.12.0
       with:
         summary_file: scanner-summaries/checkov.md
         comment_marker: checkov-scanner-comment-marker
