@@ -38,7 +38,7 @@ OFFICIAL_IMAGES = {
     # that protects us between Renovate-driven bumps — same pattern as
     # the eslint entry.
     "kics": "checkmarx/kics:latest@sha256:3e5a268eb8adda2e5a483c9359ddfc4cd520ab856a7076dc0b1d8784a37e2602",
-    "osv-scanner": "ghcr.io/google/osv-scanner:v2.3.6@sha256:2e07e642463100474fc5e214b66e6beccbd6bfa63dd3fbf047b3f755e78a6cfe",
+    "osv-scanner": "ghcr.io/google/osv-scanner:v2.4.0@sha256:5116601dedc01c1c580eb92371883ec052fc4c13c3fbc109d621a63ac416d475",
     "zap": "ghcr.io/zaproxy/zaproxy:2.17.0@sha256:8d387b1a63e3425beef4846e39719f5af2a787753af2d8b6558c6257d7a577a2",
     # promptfoo LLM red-team / eval. Opt-in scanner; requires provider
     # API keys + network at scan time. Pinned to an immutable version tag
