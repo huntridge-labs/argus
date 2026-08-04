@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Renovate configuration. Dependabot handles npm, pip, and Dockerfile FROM. Renovate handles GitHub Actions (workflows + composite actions), image tags pinned in Python source, and tool versions in Dockerfiles / composite actions. GitHub Actions moved here from Dependabot (see #196): Dependabot's per-directory updater timed out scanning the composite-action directories and, with a cooldown set, skipped frequently-released actions (dependabot-core #11645 / #13691); Renovate scans actions repo-wide in one pass. SUPPLY CHAIN POLICY: all updates wait 7 days after release (see Trivy supply chain attack GHSA-69fq-xp46-6x23, March 2026) so a compromised release has time to be caught before we propose it.",
+  "description": "Renovate configuration. Dependabot handles npm, pip, and Dockerfile FROM. Renovate handles GitHub Actions (workflows + composite actions), image tags pinned in Python source, and tool versions in Dockerfiles / composite actions. GitHub Actions moved here from Dependabot (see #196): Dependabot's per-directory updater timed out scanning the composite-action directories and, with a cooldown set, skipped frequently-released actions (dependabot-core #11645 / #13691); Renovate scans actions repo-wide in one pass. PACING: runs every weekday morning, not once a week. A single narrow weekly window means one missed run costs seven days, and internalChecksFilter is 'flexible' so a fast-moving image inside its cooling window cannot hold back groupmates that already cleared the gate. Neither setting shortens the 7-day wait itself. SUPPLY CHAIN POLICY: all updates wait 7 days after release (see Trivy supply chain attack GHSA-69fq-xp46-6x23, March 2026) so a compromised release has time to be caught before we propose it.",
   "extends": [
     "config:recommended"
   ],
@@ -15,7 +15,7 @@
   ],
   "commitMessagePrefix": "chore(deps):",
   "schedule": [
-    "before 9am on Monday"
+    "after 6am and before 9am every weekday"
   ],
   "timezone": "America/New_York",
   "minimumReleaseAge": "7 days",
@@ -186,6 +186,18 @@
       "depNameTemplate": "zizmor",
       "packageNameTemplate": "woodruffw/zizmor",
       "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "tree-sitter version in Dockerfiles (MUMPS grammar runtime)",
+      "managerFilePatterns": [
+        "docker/Dockerfile.*"
+      ],
+      "matchStrings": [
+        "ARG TREE_SITTER_VERSION=(?<currentValue>[\\d.]+)"
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "tree-sitter"
     }
   ],
   "packageRules": [
@@ -256,6 +268,16 @@
       ],
       "matchDepNames": [
         "/^eFAILution\\/AICaC(\\/|$)/"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Hold tree-sitter. A bump to the Python binding changed the Language() constructor signature and failed every MUMPS unit-test leg (see .ai/errors.yaml TYPEERROR__LANGUAGE___INIT____ARGUMENT_PARSER...). The grammar is vendored at a pinned SHA and the rules query its AST directly, so this moves only with a deliberate MUMPS revalidation pass. Now tracked by a manager so the dashboard shows what we are holding.",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDepNames": [
+        "tree-sitter"
       ],
       "enabled": false
     }
