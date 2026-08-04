@@ -84,6 +84,14 @@ jobs:
         if: matrix.python-version == '3.13'
         run: python -m scripts.ci.check_container_images
 
+      # Offline and deterministic: only asserts the two places we pin the same
+      # tool agree. The network-dependent currency comparison runs on a
+      # schedule in tool-currency.yml instead, so an upstream release can never
+      # redden main on its own.
+      - name: Check dual-pinned tool versions agree
+        if: matrix.python-version == '3.13'
+        run: python scripts/ci/check_tool_currency.py --consistency-only
+
       - name: Check .ai/ files are in sync with the SDK
         if: matrix.python-version == '3.13'
         run: python -m scripts.ci.check_architecture_sync
