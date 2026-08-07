@@ -2,7 +2,6 @@
 
 import json
 
-import pytest
 
 from argus.core.models import Severity
 from argus.core.redact import REDACTED_PLACEHOLDER
@@ -55,6 +54,45 @@ class TestBanditScannerMeta:
         cmd = BanditScanner().install_command()
         assert cmd is not None
         assert "bandit" in cmd
+
+
+class TestBanditBuildArgs:
+    """Regression tests for issue #385: ``skip_check`` and ``check``
+    are documented in config-reference.md as applying to bandit (same
+    rows as checkov) but were never mapped to bandit's flags, so a
+    repo-committed ``argus.yml`` skip was silently ignored — the worst
+    failure mode for a policy gate.
+    """
+
+    def _args(self, config):
+        from argus.core.scanner_template import ScanPaths
+
+        paths = ScanPaths(workspace="/workspace", output="/tmp/out.json")
+        return BanditScanner().build_args(paths, config)
+
+    def test_skip_check_maps_to_skip_flag(self):
+        args = self._args({"skip_check": "B311,B105"})
+
+        assert "--skip" in args
+        assert args[args.index("--skip") + 1] == "B311,B105"
+
+    def test_check_maps_to_tests_flag(self):
+        args = self._args({"check": "B201,B301"})
+
+        assert "--tests" in args
+        assert args[args.index("--tests") + 1] == "B201,B301"
+
+    def test_no_selection_flags_without_config(self):
+        args = self._args({})
+
+        assert "--skip" not in args
+        assert "--tests" not in args
+
+    def test_selection_composes_with_exclude(self):
+        args = self._args({"skip_check": "B311", "exclude": "tests,docs"})
+
+        assert args[args.index("--skip") + 1] == "B311"
+        assert args[args.index("--exclude") + 1] == "tests,docs"
 
 
 class TestBanditRedaction:
