@@ -7,3 +7,12 @@
 # doesn't need to build anything for argus's purposes. Deny.
 allowBuilds:
   core-js-pure: false
+
+# Security floors for transitive deps of the release tooling — each pins
+# the minimum patched version for a high-severity advisory (see the GHSA
+# ids). Remove an entry once the parent dep's own range moves past it.
+overrides:
+  "brace-expansion@<1.1.18": 1.1.18 # GHSA-3jxr-9vmj-r5cp / -mh99 / -rgw5 (DoS)
+  "fast-uri@<3.1.5": 3.1.5 # GHSA-7p8r-x3mc-p8w7, GHSA-v2hh-gcrm-f6hx
+  "ip-address@<10.3.1": 10.3.1 # GHSA-mwp4-54f8-5fhr (+ 2 moderate)
+  "js-yaml@>=4.0.0 <4.3.1": 4.3.1 # GHSA-52cp-r559-cp3m, GHSA-5p4m-2wfm-xmqj
