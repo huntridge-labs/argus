@@ -13,22 +13,26 @@ RUN apk add --no-cache curl && \
     fi && \
     curl -fsSL --retry 5 --retry-delay 2 --retry-connrefused --connect-timeout 10 \
       -o /tmp/opengrep \
-      "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_${ARCH}" && \
+      "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_musllinux_${ARCH}" && \
     install -m 0755 /tmp/opengrep /usr/local/bin/opengrep && \
     rm -f /tmp/opengrep
 
-FROM python:3.14.6-slim@sha256:cea0e6040540fb2b965b6e7fb5ffa00871e632eef63719f0ea54bca189ce14a6
+# musllinux build → alpine base, matching every other Argus image. The
+# previous debian-slim base carried the full Debian package surface
+# (perl, util-linux, ncurses, …) whose no-fix-yet CVEs dominated our own
+# base-image findings.
+FROM python:3.14.6-alpine@sha256:26730869004e2b9c4b9ad09cab8625e81d256d1ce97e72df5520e806b1709f92
 
 LABEL org.opencontainers.image.source="https://github.com/huntridge-labs/argus"
 LABEL org.opencontainers.image.description="Argus OpenGrep SAST Scanner"
 LABEL org.opencontainers.image.licenses="AGPL-3.0"
 
 # Patch OS-level vulnerabilities before anything else
-RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+RUN apk upgrade --no-cache
 
 COPY --from=builder /usr/local/bin/opengrep /usr/local/bin/opengrep
 
-RUN useradd -m -u 1000 argus
+RUN adduser -D -u 1000 argus
 
 USER argus
 WORKDIR /workspace
