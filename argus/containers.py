@@ -27,11 +27,11 @@ from pathlib import Path
 # segment in a single PR.
 OFFICIAL_IMAGES = {
     "trivy": "aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f",
-    "grype": "anchore/grype:v0.116.0@sha256:fd4ab4d1042b522c896e73bdf09ab8bf384fa417df99d6dd0d6e1008c7e7c821",
+    "grype": "anchore/grype:v0.116.1@sha256:1e71065c0a4cff3e6bd3b8add525ffac4343eb4971694eb90a31cf6d4d3e85db",
     "syft": "anchore/syft:v1.50.0@sha256:1288ea4c8b38767b4e620c1e312c8cb26b6e887a99b4f07ab6cd19fc6f225026",
     "gitleaks": "zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f",
     "clamav": "clamav/clamav:1.5.3@sha256:d06c1d6a451d616e1dd79b42f44c8c8c291bba9cf4e75ebc4d0e43c1c6dd87bb",
-    "checkov": "bridgecrew/checkov:3.3.8@sha256:c64ffb6d6fc8087c896341a2c697770a04a1cf558db04fa7b8129d8ca6bce336",
+    "checkov": "bridgecrew/checkov:3.3.9@sha256:12a62da01af22654883aee3b9da18ba4297f123f5122663bf65235db37934144",
     # KICS (Checkmarx) multi-format IaC scanner. The upstream
     # ``checkmarx/kics`` repo tags ``:latest`` mutably (no semver release
     # tag per build), so the digest pin below is the content-hash gate
@@ -45,7 +45,7 @@ OFFICIAL_IMAGES = {
     # + digest (Renovate-managed), like every other image here — the
     # publisher's ``:latest`` is mutable and silently drifts.
     "promptfoo": "ghcr.io/promptfoo/promptfoo:0.121.19@sha256:50d3a796710e4db7a5ede90bf27dc28146ef022a7ebb83914c5105608396fd96",
-    "hadolint": "hadolint/hadolint:v2.14.0@sha256:27086352fd5e1907ea2b934eb1023f217c5ae087992eb59fde121dce9c9ff21e",
+    "hadolint": "hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d",
     # lint-shell via shellcheck. The koalaman/shellcheck-alpine image is
     # the official multi-arch distribution (~3 MB). shellcheck is GPL-3.0
     # but runs container-isolated, so the licence never touches Argus.
