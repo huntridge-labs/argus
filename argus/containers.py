@@ -39,7 +39,10 @@ OFFICIAL_IMAGES = {
     # the eslint entry.
     "kics": "checkmarx/kics:latest@sha256:3e5a268eb8adda2e5a483c9359ddfc4cd520ab856a7076dc0b1d8784a37e2602",
     "osv-scanner": "ghcr.io/google/osv-scanner:v2.4.0@sha256:5116601dedc01c1c580eb92371883ec052fc4c13c3fbc109d621a63ac416d475",
-    "zap": "ghcr.io/zaproxy/zaproxy:2.17.0@sha256:8d387b1a63e3425beef4846e39719f5af2a787753af2d8b6558c6257d7a577a2",
+    # Upstream re-pushed the 2.17.0 tag (2026-08); the old index digest
+    # no longer verifies against the registry. Pin refreshed to the
+    # tag's current index digest, verified via `docker manifest inspect`.
+    "zap": "ghcr.io/zaproxy/zaproxy:2.17.0@sha256:781a2bdaea47324e7bab583e2263f21d257b0aee61ed51521a5be45f5f5081ef",
     # promptfoo LLM red-team / eval. Opt-in scanner; requires provider
     # API keys + network at scan time. Pinned to an immutable version tag
     # + digest (Renovate-managed), like every other image here — the
