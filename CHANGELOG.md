@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.12.1](https://github.com/huntridge-labs/argus/compare/1.12.0...1.12.1) (2026-08-09)
+
+### Bug Fixes
+
+* **bandit:** honor skip_check and check from argus.yml ([#386](https://github.com/huntridge-labs/argus/issues/386)) ([cab3efb](https://github.com/huntridge-labs/argus/commit/cab3efbc4a6a98bf42138752d2975cfa0e05bb0d)), closes [#385](https://github.com/huntridge-labs/argus/issues/385)
+* **opengrep:** switch scanner image to alpine via the musllinux binary ([#389](https://github.com/huntridge-labs/argus/issues/389)) ([ed9a67d](https://github.com/huntridge-labs/argus/commit/ed9a67d8e93199081659a071480486fb6404310f))
+* **zap:** refresh 2.17.0 image digest after upstream tag re-push ([#387](https://github.com/huntridge-labs/argus/issues/387)) ([6aaf888](https://github.com/huntridge-labs/argus/commit/6aaf888f985849efbe74c1a1a79fb01c24d46a5b))
+
+### Dependencies
+
+* **deps:** floor four transitive npm deps past high-severity advisories ([#388](https://github.com/huntridge-labs/argus/issues/388)) ([ada4feb](https://github.com/huntridge-labs/argus/commit/ada4febf88c86f49e4bed215146d10a10b851d64))
+* **deps:** Update container-images ([#384](https://github.com/huntridge-labs/argus/issues/384)) ([9c6f4a2](https://github.com/huntridge-labs/argus/commit/9c6f4a2642f046c32f9517a222d4b13afcd93f71))
+
+
 ## [1.12.0](https://github.com/huntridge-labs/argus/compare/1.11.0...1.12.0) (2026-08-04)
 
 ### Features

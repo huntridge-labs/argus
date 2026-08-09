@@ -81,7 +81,7 @@ jobs:
         continue-on-error: true
 
       - name: Run Container Security Scan
-        uses: huntridge-labs/argus/.github/actions/scanner-container@1.12.0
+        uses: huntridge-labs/argus/.github/actions/scanner-container@1.12.1
         with:
           image_ref: ${{ steps.image.outputs.image }}
           container_name: 'app'
@@ -124,7 +124,7 @@ jobs:
 
       - name: Run Container Security Scan
         if: steps.build.outputs.image != ''
-        uses: huntridge-labs/argus/.github/actions/scanner-container@1.12.0
+        uses: huntridge-labs/argus/.github/actions/scanner-container@1.12.1
         with:
           image_ref: ${{ steps.build.outputs.image }}
           container_name: 'local-build'
@@ -143,7 +143,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Generate SBOM
-        uses: huntridge-labs/argus/.github/actions/scanner-syft@1.12.0
+        uses: huntridge-labs/argus/.github/actions/scanner-syft@1.12.1
         with:
           scan_path: '.'
           output_format: 'cyclonedx-json'
