@@ -65,6 +65,16 @@ class BanditScanner:
         exclude = config.get("exclude")
         if exclude:
             args.extend(["--exclude", exclude])
+        # config-reference.md documents `check` / `skip_check` for
+        # bandit and checkov alike; bandit spells them --tests / --skip
+        # (comma-separated test IDs). Issue #385: these were silently
+        # dropped, so a repo-committed skip policy never took effect.
+        check = config.get("check")
+        if check:
+            args.extend(["--tests", check])
+        skip_check = config.get("skip_check")
+        if skip_check:
+            args.extend(["--skip", skip_check])
         return args
 
     def is_available(self) -> bool:

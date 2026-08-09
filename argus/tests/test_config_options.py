@@ -46,6 +46,18 @@ def test_checkov_exposes_skip_check_as_an_ignore_knob() -> None:
     assert "skip_check" in checkov["ignore_keys"]
 
 
+def test_bandit_exposes_skip_check_as_an_ignore_knob() -> None:
+    # Issue #385: bandit's skip_check/check were documented but never
+    # read, so the config surface (correctly) omitted them. Now that
+    # build_args maps them to --skip/--tests, the UI must offer both.
+    bandit = next(x for x in config_surface()["scanners"] if x["name"] == "bandit")
+    keys = {o["key"] for o in bandit["options"]}
+    assert "check" in keys
+    skip = next(o for o in bandit["options"] if o["key"] == "skip_check")
+    assert skip["kind"] == "rule_ids" and skip["ignore"] is True
+    assert "skip_check" in bandit["ignore_keys"]
+
+
 def test_container_and_zap_ignore_knobs() -> None:
     surface = {x["name"]: x for x in config_surface()["scanners"]}
     assert "expose_ignore_ports" in surface["container"]["ignore_keys"]

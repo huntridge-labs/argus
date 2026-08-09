@@ -216,6 +216,7 @@ scanners:
     severity_threshold: high
     config_file: "pyproject.toml"
     exclude: "tests,docs"
+    skip_check: "B311,B404"
 ```
 
 **Container scanning with private registry:**

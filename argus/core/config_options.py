@@ -117,6 +117,13 @@ BASE_OPTIONS: tuple[ConfigOption, ...] = (
 # the UI never offers a no-op key.
 
 _SCANNER_EXTRAS: dict[str, tuple[ConfigOption, ...]] = {
+    "bandit": (
+        ConfigOption("check", "Only these tests", "rule_ids", "Run only these bandit test IDs.", example="B201,B301"),
+        ConfigOption(
+            "skip_check", "Skip tests", "rule_ids",
+            "Bandit test IDs to ignore (e.g. B311).", ignore=True, example="B311,B404",
+        ),
+    ),
     "checkov": (
         ConfigOption("framework", "Framework", "string", "Limit to one framework.", example="terraform"),
         ConfigOption("check", "Only these checks", "rule_ids", "Run only these check IDs.", example="CKV_AWS_20"),
