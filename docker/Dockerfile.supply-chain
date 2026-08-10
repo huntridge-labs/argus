@@ -23,7 +23,7 @@ LABEL org.opencontainers.image.source="https://github.com/huntridge-labs/argus"
 LABEL org.opencontainers.image.description="Argus Supply Chain Scanner (zizmor + actionlint)"
 LABEL org.opencontainers.image.licenses="AGPL-3.0"
 
-ARG ZIZMOR_VERSION=1.28.0
+ARG ZIZMOR_VERSION=1.29.0
 
 # Patch OS-level vulnerabilities before anything else
 RUN apk upgrade --no-cache
