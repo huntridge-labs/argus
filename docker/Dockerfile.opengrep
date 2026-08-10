@@ -21,7 +21,7 @@ RUN apk add --no-cache curl && \
 # previous debian-slim base carried the full Debian package surface
 # (perl, util-linux, ncurses, …) whose no-fix-yet CVEs dominated our own
 # base-image findings.
-FROM python:3.14.6-alpine@sha256:26730869004e2b9c4b9ad09cab8625e81d256d1ce97e72df5520e806b1709f92
+FROM python:3.15.0b4-alpine@sha256:c40ec5a55436b283c1570e649ff40a8188e7e0221d7f285e624b20167c712ead
 
 LABEL org.opencontainers.image.source="https://github.com/huntridge-labs/argus"
 LABEL org.opencontainers.image.description="Argus OpenGrep SAST Scanner"
