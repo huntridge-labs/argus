@@ -64,11 +64,16 @@ dependencies = [
 # Floors bumped past known-CVE versions across the network-facing
 # stack. anthropic + openai keep major versions (1.x SDK floor for
 # openai; anthropic stays in 0.x). httpx[socks] bumped to close the
-# CVE-2024-* line. requests bumped past CVE-2024-35195.
+# CVE-2024-* line. requests is at 2.33.0 to clear CVE-2024-47081
+# (.netrc credential leak to a malicious URL, fixed 2.32.4) and
+# CVE-2026-25645 (insecure temp-file reuse in extract_zipped_paths,
+# fixed 2.33.0); the previous >=2.32.3 floor predated both. This is a
+# direct dependency — imported by argus/scn/ai.py and the scn-detector
+# action scripts — so the floor is ours to hold (#396).
 ai = [
     "anthropic>=0.45",
     "openai>=1.50",
-    "requests>=2.32.3",
+    "requests>=2.33.0",
     "httpx[socks]>=0.27",
 ]
 # Shell tab completion
