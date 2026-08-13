@@ -44,8 +44,10 @@ import json
 import re
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 # Tools pinned in BOTH argus/containers.py and docker/Dockerfile.cli.
@@ -86,6 +88,15 @@ IMAGE_RE = re.compile(
     r'(?:@sha256:(?P<digest>[a-f0-9]{64}))?"'
 )
 ARG_RE = re.compile(r"^ARG (?P<name>[A-Z0-9_]+)_VERSION=(?P<version>[\w.-]+)", re.M)
+
+# Statuses worth a second attempt. GitHub answers a tripped secondary rate
+# limit with 403 (occasionally 429) and load-sheds with 5xx — all transient.
+# A 404 means the repo was renamed or deleted, so retrying only burns quota;
+# that one surfaces on the first attempt so the rename gets fixed here.
+RETRYABLE_STATUS: frozenset[int] = frozenset({403, 429, 500, 502, 503, 504})
+FETCH_ATTEMPTS = 3
+BACKOFF_BASE_SECONDS = 2.0
+MAX_BACKOFF_SECONDS = 30.0
 
 
 @dataclass
@@ -141,17 +152,67 @@ def check_consistency(images: dict[str, str], args_versions: dict[str, str]) -> 
     return out
 
 
-def fetch_releases(repo: str) -> list[dict]:
-    """Return upstream releases, newest first. Raises on transport failure."""
+def _retry_delay(error: Exception | None, attempt: int) -> float:
+    """Seconds to wait before the next attempt.
+
+    Honours ``Retry-After`` when GitHub sends it — on a secondary rate limit it
+    tells us exactly how long to back off, and guessing shorter just trips the
+    limit again. Falls back to exponential backoff, capped so a wedged upstream
+    cannot stall the job.
+    """
+    headers = getattr(error, "headers", None)
+    if headers is not None:
+        retry_after = headers.get("Retry-After")
+        if retry_after:
+            try:
+                return min(float(retry_after), MAX_BACKOFF_SECONDS)
+            except (TypeError, ValueError):
+                pass
+    return min(BACKOFF_BASE_SECONDS**attempt, MAX_BACKOFF_SECONDS)
+
+
+def fetch_releases(
+    repo: str,
+    *,
+    attempts: int = FETCH_ATTEMPTS,
+    sleep: Callable[[float], None] = time.sleep,
+) -> list[dict]:
+    """Return upstream releases, newest first. Raises on transport failure.
+
+    Retries transient failures. A single 403 from a tripped secondary rate
+    limit used to drop the tool straight into the "Not checked" bucket, and
+    that bucket reads as "nothing to do" — the report filed for #382 listed
+    checkov and trivy as unchecked while both endpoints were in fact healthy,
+    so the run silently under-stated how many pins were behind. Retrying is
+    what makes "not checked" mean the upstream is genuinely unreachable.
+    """
     url = f"https://api.github.com/repos/{repo}/releases?per_page=30"
-    request = urllib.request.Request(
-        url, headers={"Accept": "application/vnd.github+json", "User-Agent": "argus-ci"}
-    )
+    # Resolved once: _gh_token() may shell out to `gh auth token`, which has no
+    # business running per attempt.
     token = _gh_token()
-    if token:
-        request.add_header("Authorization", f"Bearer {token}")
-    with urllib.request.urlopen(request, timeout=20) as response:
-        return json.load(response)
+    last_error: Exception | None = None
+    for attempt in range(1, max(1, attempts) + 1):
+        request = urllib.request.Request(
+            url, headers={"Accept": "application/vnd.github+json", "User-Agent": "argus-ci"}
+        )
+        if token:
+            request.add_header("Authorization", f"Bearer {token}")
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                return json.load(response)
+        except urllib.error.HTTPError as exc:
+            # HTTPError subclasses URLError subclasses OSError, so it must be
+            # caught first for the status check to get a look at all.
+            if exc.code not in RETRYABLE_STATUS:
+                raise
+            last_error = exc
+        except (urllib.error.URLError, OSError, ValueError) as exc:
+            # ValueError covers a truncated body failing json.load, which is
+            # as transient as the socket error that caused it.
+            last_error = exc
+        if attempt < max(1, attempts):
+            sleep(_retry_delay(last_error, attempt))
+    raise last_error if last_error is not None else OSError(f"no attempt made for {repo}")
 
 
 def _gh_token() -> str | None:
@@ -203,7 +264,13 @@ def check_currency(
         try:
             releases = fetch_releases(repo)
         except (urllib.error.URLError, OSError, ValueError) as exc:
-            unknown.append(Finding("unknown", key, f"could not query {repo}: {exc}"))
+            unknown.append(
+                Finding(
+                    "unknown",
+                    key,
+                    f"could not query {repo} after {FETCH_ATTEMPTS} attempt(s): {exc}",
+                )
+            )
             continue
         eligible = newest_eligible(releases, min_age_days, now)
         if eligible is None:
@@ -234,7 +301,15 @@ def render(report: Report, fmt: str, min_age_days: int) -> str:
             ]
             lines += [f"- **{f.tool}** — {f.detail}" for f in report.stale] + [""]
         if report.unknown:
-            lines += ["### Not checked", ""]
+            lines += [
+                "### Could not verify — currency UNKNOWN, not confirmed current",
+                "",
+                (
+                    "These pins were not compared against upstream. Treat them "
+                    "as unchecked, not as up to date."
+                ),
+                "",
+            ]
             lines += [f"- {f.tool} — {f.detail}" for f in report.unknown] + [""]
         if not (report.mismatches or report.stale or report.unknown):
             lines += ["Every tracked pin is current. Nothing to do."]

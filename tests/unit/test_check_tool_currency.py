@@ -17,6 +17,11 @@ behaviours that made it useful on its first run:
 from __future__ import annotations
 
 import datetime as dt
+import io
+import json
+import urllib.error
+
+import pytest
 
 from scripts.ci import check_tool_currency as ctc
 
@@ -165,6 +170,127 @@ class TestCheckCurrency:
         assert stale == []
         assert [f.tool for f in unknown] == ["syft"]
 
+    def test_unknown_detail_says_it_retried(self, monkeypatch):
+        """The report must not imply a single failed poke was the whole effort."""
+
+        def boom(repo):
+            raise OSError("forbidden")
+
+        monkeypatch.setattr(ctc, "UPSTREAM_REPOS", {"trivy": "aquasecurity/trivy"})
+        monkeypatch.setattr(ctc, "fetch_releases", boom)
+
+        _, unknown = ctc.check_currency({"trivy": "0.72.0"}, 7, NOW)
+
+        assert "attempt(s)" in unknown[0].detail
+
+
+def _http_error(code: int, *, retry_after: str | None = None) -> urllib.error.HTTPError:
+    headers = {"Retry-After": retry_after} if retry_after is not None else {}
+    return urllib.error.HTTPError(
+        "https://api.github.com/x", code, "boom", headers, None  # type: ignore[arg-type]
+    )
+
+
+class TestFetchReleasesRetry:
+    """#382 filed a report listing checkov and trivy as unchecked while both
+    endpoints were healthy — a transient 403 was enough to give up. Retrying is
+    what makes the "could not verify" bucket mean something.
+    """
+
+    def _patch_urlopen(self, monkeypatch, outcomes):
+        """Serve ``outcomes`` in order; raise them if exceptions, return if not."""
+        calls = []
+
+        def fake_urlopen(request, timeout=None):
+            outcome = outcomes[len(calls)]
+            calls.append(request)
+            if isinstance(outcome, Exception):
+                raise outcome
+
+            class _Response:
+                def __enter__(self):
+                    return io.BytesIO(json.dumps(outcome).encode())
+
+                def __exit__(self, *exc):
+                    return False
+
+            return _Response()
+
+        monkeypatch.setattr(ctc.urllib.request, "urlopen", fake_urlopen)
+        monkeypatch.setattr(ctc, "_gh_token", lambda: None)
+        return calls
+
+    def test_retries_a_transient_403_then_succeeds(self, monkeypatch):
+        releases = [_release("0.122.0", 21)]
+        calls = self._patch_urlopen(monkeypatch, [_http_error(403), releases])
+        slept: list[float] = []
+
+        got = ctc.fetch_releases("aquasecurity/trivy", sleep=slept.append)
+
+        assert got == releases
+        assert len(calls) == 2
+        assert slept == [ctc.BACKOFF_BASE_SECONDS**1]
+
+    def test_retries_5xx_and_transport_errors(self, monkeypatch):
+        releases = [_release("v1.0.0", 30)]
+        calls = self._patch_urlopen(
+            monkeypatch, [_http_error(503), urllib.error.URLError("reset"), releases]
+        )
+
+        got = ctc.fetch_releases("anchore/syft", sleep=lambda _: None)
+
+        assert got == releases and len(calls) == 3
+
+    def test_does_not_retry_a_404(self, monkeypatch):
+        """A renamed repo is a config bug — surface it instead of burning quota."""
+        calls = self._patch_urlopen(monkeypatch, [_http_error(404)])
+        slept: list[float] = []
+
+        with pytest.raises(urllib.error.HTTPError) as excinfo:
+            ctc.fetch_releases("gone/away", sleep=slept.append)
+
+        assert excinfo.value.code == 404
+        assert len(calls) == 1 and slept == []
+
+    def test_raises_the_last_error_once_attempts_run_out(self, monkeypatch):
+        calls = self._patch_urlopen(monkeypatch, [_http_error(403)] * 3)
+
+        with pytest.raises(urllib.error.HTTPError):
+            ctc.fetch_releases("aquasecurity/trivy", attempts=3, sleep=lambda _: None)
+
+        assert len(calls) == 3
+
+    def test_token_is_resolved_once_not_per_attempt(self, monkeypatch):
+        """_gh_token may shell out to `gh auth token`; keep it out of the loop."""
+        self._patch_urlopen(monkeypatch, [_http_error(403), _http_error(403), []])
+        token_calls: list[int] = []
+        monkeypatch.setattr(ctc, "_gh_token", lambda: (token_calls.append(1), "tok")[1])
+
+        ctc.fetch_releases("anchore/grype", sleep=lambda _: None)
+
+        assert len(token_calls) == 1
+
+
+class TestRetryDelay:
+    def test_honours_retry_after(self):
+        assert ctc._retry_delay(_http_error(403, retry_after="9"), 1) == 9.0
+
+    def test_falls_back_to_exponential_backoff(self):
+        assert ctc._retry_delay(_http_error(403), 1) == 2.0
+        assert ctc._retry_delay(_http_error(403), 3) == 8.0
+
+    def test_caps_the_wait(self):
+        assert ctc._retry_delay(_http_error(403, retry_after="99999"), 1) == (
+            ctc.MAX_BACKOFF_SECONDS
+        )
+        assert ctc._retry_delay(_http_error(403), 99) == ctc.MAX_BACKOFF_SECONDS
+
+    def test_ignores_a_junk_retry_after(self):
+        assert ctc._retry_delay(_http_error(403, retry_after="soon"), 1) == 2.0
+
+    def test_tolerates_an_error_with_no_headers(self):
+        assert ctc._retry_delay(OSError("reset"), 1) == 2.0
+
 
 class TestExitCodes:
     def _write(self, tmp_path, containers: str, dockerfile: str) -> list[str]:
@@ -218,8 +344,17 @@ class TestRender:
 
         assert "### Inconsistent pins (blocking)" in out
         assert "past the 7-day gate" in out
-        assert "### Not checked" in out
+        assert "Could not verify" in out
         assert "syft" in out and "tflint" in out and "zap" in out
+
+    def test_unverified_pins_are_not_presented_as_current(self):
+        """An unknown-only report used to read like a pass under "Not checked"."""
+        report = ctc.Report(unknown=[ctc.Finding("unknown", "checkov", "403")])
+
+        out = ctc.render(report, "markdown", 7)
+
+        assert "Nothing to do" not in out
+        assert "not as up to date" in out
 
     def test_markdown_says_so_when_clean(self):
         out = ctc.render(ctc.Report(), "markdown", 7)
