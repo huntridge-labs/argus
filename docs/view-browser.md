@@ -16,7 +16,7 @@ learning a TUI.
 pip install 'argus-security[browser]'
 ```
 
-Pulls in FastAPI, uvicorn, Jinja2, and python-multipart (~10 MB total).
+Pulls in FastAPI, uvicorn, and Jinja2 (~10 MB total).
 Without the extra, running `argus view browser` prints a friendly install hint and
 exits cleanly — the extra is never required for `argus scan` or any other
 subcommand.
