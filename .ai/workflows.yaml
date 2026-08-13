@@ -365,6 +365,37 @@ workflows:
   validate_schemas:
     description: Validate config files against JSON schemas
     command: npm run test:unit
+  audit_local_venv_advisories:
+    description: Scan the versions actually installed in .venv against OSV, not the floors declared
+      in pyproject.toml
+    category: maintenance
+    when_to_use: "Before trusting any dependency-CVE claim about this repo, and periodically \u2014\
+      \ a long-lived .venv drifts far below what a fresh install resolves to, so an advisory that\
+      \ looks like a repo exposure is often just local staleness (or the reverse: a clean pyproject\
+      \ hiding a vulnerable installed tree)."
+    command: .venv/bin/python -m pip list --outdated
+    code: "# Declared floors are NOT what is installed. Audit the real tree:\npython - <<'PY'\nimport\
+      \ importlib.metadata as md, json, urllib.request\npkgs = {}\nfor d in md.distributions():\n \
+      \   n = (d.metadata['Name'] or '').strip()\n    if n and d.version:\n        pkgs[n.lower()] =\
+      \ (n, d.version)\nq = [{'package': {'name': n, 'ecosystem': 'PyPI'}, 'version': v}\n     for n,\
+      \ v in pkgs.values()]\nreq = urllib.request.Request(\n    'https://api.osv.dev/v1/querybatch',\n\
+      \    data=json.dumps({'queries': q}).encode(),\n    headers={'Content-Type': 'application/json'},\n\
+      )\nres = json.load(urllib.request.urlopen(req, timeout=90))\nfor (n, v), r in zip(pkgs.values(),\
+      \ res['results']):\n    ids = [x['id'] for x in r.get('vulns', [])]\n    if ids:\n        print(n,\
+      \ v, ids)\nPY\n\n# Then bring the venv up to what a fresh install would give:\n.venv/bin/python\
+      \ -m pip list --outdated --format=json \\\n  | python -c \"import json,sys; print('\\n'.join(p['name']\
+      \ for p in json.load(sys.stdin)))\" \\\n  > /tmp/upgrade.txt\n.venv/bin/python -m pip install -U\
+      \ -r /tmp/upgrade.txt\n.venv/bin/python -m pip check          # must report no broken requirements\n\
+      pytest -q --no-cov                     # must stay green after the bump\n"
+    gotchas:
+    - "Reverse-check before pinning anything: ``md.distribution(x).requires`` tells you whether a\
+      \ package is a direct dep, an extra-only dep, or an unconditional sub-dep. Policy is to raise\
+      \ floors on direct deps only and let them pull their own trees forward."
+    - "A hard-pinned editable sibling can block an upgrade \u2014 e.g. argus-cloud-mcp pins mcp==1.28.1,\
+      \ so ``pip install -U mcp`` in a shared venv reports a conflict. Check ``pip check`` output,\
+      \ don't ignore it."
+    - "zsh does not word-split unquoted ``$VAR``, so ``pip install -U $PKGS`` passes one giant\
+      \ argument and fails. Use ``-r file`` or ``${=PKGS}``."
 testing:
   unit_tests:
     command: pytest

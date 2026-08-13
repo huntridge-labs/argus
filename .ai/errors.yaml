@@ -267,6 +267,48 @@ scn_detector_errors:
       ContainerEngine.run use — rather than re-parsing one tool's output in CI.
       Any per-image CI report must populate BOTH trivy_findings and grype_findings.\n"
   reference: "scripts/ci/render_container_summary.py and .github/workflows/build-containers.yml (scan job)"
+- pattern: "advisory reported against a dependency that pyproject.toml already floors past|local\
+    \ scan flags a CVE that CI does not|CVE-.* not found|404 Vulnerability not found"
+  category: dependencies
+  context: "A dependency-CVE report (scheduled dispatch job, local scan, or an issue filed from one)\
+    \ names a package version this repo appears to ship. Before changing any floor, two things have\
+    \ to be separated: what pyproject.toml *declares*, and what is *installed* in the local .venv.\n"
+  root_cause: "Three independent failure modes wear the same costume:\n\n1. **Stale local .venv.** The\
+    \ declared floor is fine but a long-lived venv sits far below what a fresh resolve gives. In Aug\
+    \ 2026 this repo's .venv had starlette 1.0.0 against a fresh-install resolution of 1.6.0 —\
+    \ 13 packages carried advisories that no consumer was ever exposed to.\n2. **Hallucinated CVE\
+    \ IDs.** Findings arrive citing identifiers that do not exist in any database. Two of five issues\
+    \ filed in Aug 2026 (#397 CVE-2026-2978, #398 CVE-2026-30623) cited IDs that return 404 from OSV.\
+    \ #398's underlying floor request was still correct — the real CVEs were 2026-52869 /\
+    \ 2026-52870 — so a bogus ID does not by itself invalidate the request.\n3. **Stale *branch*,\
+    \ not stale dependency.** Read floors from ``origin/main``, never from the feature branch you\
+    \ happen to be standing on. #398 asked for ``mcp>=1.27.2`` and the checked-out branch did show\
+    \ ``mcp>=1.10``, but main had already gone to ``mcp>=2.0`` via the 2.x migration (4cfebc93),\
+    \ clearing all three CVEs. A whole discovery pass was spent on an already-fixed issue.\n"
+  solution:
+    steps:
+    - "Read the current floor from ``git show origin/main:pyproject.toml``, not from the working\
+      \ tree. Long-lived feature branches predate dependency work that already landed."
+    - "Verify the CVE ID exists before acting on it: ``curl -s -o /dev/null -w '%{http_code}'\
+      \ https://api.osv.dev/v1/vulns/<ID>``. A 404 means unsubstantiated; close it that way, but check\
+      \ the package for *real* advisories first (``POST /v1/query`` with the package name) in case the\
+      \ finding is right about the floor and wrong about the ID."
+    - "Audit what is actually installed, not what is declared — see workflows.yaml\
+      \ ``audit_local_venv_advisories``. Fix venv drift with ``pip install -U``; it is not a repo\
+      \ exposure and must not drive a pyproject change."
+    - "Classify the package before touching a floor: direct dep (we import it) vs sub-dependency\
+      \ (a dep of a dep). Raise floors on direct deps only; for sub-deps, raise the floor on the\
+      \ *direct* parent and let it pull its tree forward. Confirm with\
+      \ ``importlib.metadata.distribution('<pkg>').requires``."
+    - "Check reachability before treating it as urgent. Several Aug 2026 advisories were unreachable\
+      \ by construction — python-multipart CVEs need form parsing (the browser viewer is\
+      \ GET-only), and the mcp HTTP/WebSocket CVEs need a non-stdio transport (argus/cli.py runs\
+      \ ``transport=\"stdio\"``)."
+    note: "Argus's own OSV scanner is the right tool for step 2 on a target repo, but for auditing\
+      \ the *interpreter's* installed tree the importlib.metadata + OSV querybatch snippet in\
+      \ workflows.yaml is more direct — it sees exactly what Python will import.\n"
+  reference: "pyproject.toml (browser + mcp extras, and the comments explaining why no\
+    \ python-multipart floor lives there) and issues #394-#398"
 errors:
   RESOURCE_NOT_ACCESSIBLE_BY_INTEGRATION:
     category: permissions
