@@ -15,8 +15,11 @@ pyyaml>=6.0.2
 # Container name sanitization
 python-slugify>=8.0.4
 
-# SCN Detector dependencies (closes CVE-2024-35195)
-requests>=2.32.3
+# SCN Detector dependencies. Floor at 2.33.0 to clear CVE-2024-47081
+# (.netrc credential leak, fixed 2.32.4) and CVE-2026-25645 (insecure
+# temp-file reuse in extract_zipped_paths, fixed 2.33.0). Keep in sync
+# with the ai extra in pyproject.toml.
+requests>=2.33.0
 
 # MCP server (optional at runtime, required for full test coverage)
 # Floor at 2.0: argus/mcp.py builds its server with mcp.server.MCPServer,
