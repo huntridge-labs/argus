@@ -91,14 +91,31 @@ mcp = ["mcp>=2.0"]
 # mouse-interaction matrix.
 terminal = ["textual>=8.0"]
 # Browser interface for `argus view --interface=browser` (localhost web UI).
-# jinja2>=3.1.6 closes CVE-2024-56326. python-multipart>=0.0.20 closes
-# CVE-2024-53981. fastapi + uvicorn floors raised past the early-3.x
-# CVE line.
+# jinja2>=3.1.6 closes CVE-2024-56326. fastapi + uvicorn floors raised past
+# the early-3.x CVE line.
+# No python-multipart floor here on purpose (#395). This viewer has no form
+# handling at all — every route in argus/viewers/browser/app.py is a read-only
+# GET, with no Form(), UploadFile, or request.form() anywhere — so multipart
+# parsing is never invoked and none of its advisories are reachable.
+#
+# Whether the package is installed at all depends on which extras you take:
+#   [browser] alone -> absent. Only starlette's [full] and fastapi's
+#     [standard] declare it, and we take neither. starlette/formparsers.py
+#     guards the import with `except ModuleNotFoundError` and sets
+#     `multipart = None`, so the web stack imports cleanly without it.
+#   [mcp] or [all] -> present, because ``mcp`` requires python-multipart>=0.0.9
+#     unconditionally (not behind an extra). That floor is far below the
+#     current advisory line, but it is ``mcp``'s to raise, not ours — we hold a
+#     floor on ``mcp`` itself and let it govern its own dependencies.
+# Either way we never load it, so owning a floor for it would just mean
+# chasing its advisory stream forever.
+#
+# If a form endpoint is ever added, this must come back (or move to
+# ``fastapi[standard]``) — starlette raises at request time, not import time.
 browser = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
     "jinja2>=3.1.6",
-    "python-multipart>=0.0.20",
 ]
 # MUMPS / M language SAST scanner. The grammar (janus-llm/tree-sitter-mumps,
 # Apache-2.0, MITRE PR 23-4084) is not on PyPI; installing this extra only
