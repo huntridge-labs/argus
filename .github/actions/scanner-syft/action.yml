@@ -8,7 +8,7 @@ description: |
   **Usage Example:**
   ```yaml
   - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-  - uses: huntridge-labs/argus/.github/actions/scanner-syft@1.12.1
+  - uses: huntridge-labs/argus/.github/actions/scanner-syft@1.12.2
     with:
       scan_path: '.'
       output_format: 'cyclonedx-json'
@@ -349,7 +349,7 @@ runs:
 
     - name: Comment PR with Syft SBOM results
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@1.12.1
+      uses: huntridge-labs/argus/.github/actions/comment-pr@1.12.2
       with:
         summary_file: scanner-summaries/syft-${{ steps.setup.outputs.prefix }}.md
         comment_marker: syft-scanner-comment-marker

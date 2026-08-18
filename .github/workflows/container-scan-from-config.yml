@@ -13,7 +13,7 @@ name: Container Scan from Config
 #     packages: read
 #   jobs:
 #     scan:
-#       uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@1.12.1
+#       uses: huntridge-labs/argus/.github/workflows/container-scan-from-config.yml@1.12.2
 #       with:
 #         config_file: 'containers.yml'
 #       secrets: inherit  # Required for dynamic secret resolution
@@ -71,7 +71,7 @@ permissions:
 
 env:
   # Use current branch/PR when testing in argus repo, otherwise use release tag
-  HRL_REF: ${{ github.repository == 'huntridge-labs/argus' && (github.head_ref || github.ref_name) || '1.12.1' }}
+  HRL_REF: ${{ github.repository == 'huntridge-labs/argus' && (github.head_ref || github.ref_name) || '1.12.2' }}
 
 jobs:
   parse-config:
@@ -88,7 +88,7 @@ jobs:
 
       - name: Parse container config
         id: parse
-        uses: huntridge-labs/argus/.github/actions/parse-container-config@1.12.1
+        uses: huntridge-labs/argus/.github/actions/parse-container-config@1.12.2
         with:
           config_file: ${{ inputs.config_file }}
 
@@ -113,7 +113,7 @@ jobs:
           python-version: '3.14'
 
       - name: Install Argus
-        uses: huntridge-labs/argus/.github/actions/setup-argus@1.12.1
+        uses: huntridge-labs/argus/.github/actions/setup-argus@1.12.2
 
       - name: Authenticate to container registry
         if: matrix.registry_username != ''
@@ -184,7 +184,7 @@ jobs:
     if: always()
     steps:
       - name: Generate container scan summary
-        uses: huntridge-labs/argus/.github/actions/security-summary@1.12.1
+        uses: huntridge-labs/argus/.github/actions/security-summary@1.12.2
         with:
           summary_pattern: 'scanner-summary-container-*'
           title: '🐳 Container Security Scan Results'

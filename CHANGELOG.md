@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.12.2](https://github.com/huntridge-labs/argus/compare/1.12.1...1.12.2) (2026-08-18)
+
+### Bug Fixes
+
+* **ci:** retry transient GitHub failures in the tool-currency check ([#401](https://github.com/huntridge-labs/argus/issues/401)) ([ed8e469](https://github.com/huntridge-labs/argus/commit/ed8e4697c8e7a8de4a163c7dfdc14416092ba0a6)), references [#382](https://github.com/huntridge-labs/argus/issues/382) [#382](https://github.com/huntridge-labs/argus/issues/382)
+* **deps:** drop the stale python-multipart floor from the browser extra ([#399](https://github.com/huntridge-labs/argus/issues/399)) ([f0270b5](https://github.com/huntridge-labs/argus/commit/f0270b58c2831851e6d66e051d6c57e75deb800d)), references [#395](https://github.com/huntridge-labs/argus/issues/395) [394-#398](https://github.com/394-/issues/398)
+* **deps:** raise the requests floor to >=2.33.0 ([#400](https://github.com/huntridge-labs/argus/issues/400)) ([33e6c7a](https://github.com/huntridge-labs/argus/commit/33e6c7ae8731ab576ae21aeb374c2c7b8c0c3fb7)), closes [#396](https://github.com/huntridge-labs/argus/issues/396)
+
+### Security Tools
+
+* **deps:** bump the promptfoo image to 0.122.0 ([#402](https://github.com/huntridge-labs/argus/issues/402)) ([57c7b60](https://github.com/huntridge-labs/argus/commit/57c7b60b8b4b76413b4813c14ad3901e2583fb8a)), references [#382](https://github.com/huntridge-labs/argus/issues/382)
+
+### Dependencies
+
+* **deps:** bump @octokit/plugin-paginate-rest in the npm-major group ([#392](https://github.com/huntridge-labs/argus/issues/392)) ([17d9271](https://github.com/huntridge-labs/argus/commit/17d9271b94a579e1e8e850de260a00c1dffe3276))
+* **deps:** bump release-it in the npm-minor-patch group ([#404](https://github.com/huntridge-labs/argus/issues/404)) ([85933b0](https://github.com/huntridge-labs/argus/commit/85933b05d0e32481d8bad7a78d420894479b7d69))
+* **deps:** bump the docker-all group across 2 directories with 2 updates ([#405](https://github.com/huntridge-labs/argus/issues/405)) ([714bf1f](https://github.com/huntridge-labs/argus/commit/714bf1fb1b3959946400f0ed4a964771dc35c132))
+* **deps:** Update container-images ([#403](https://github.com/huntridge-labs/argus/issues/403)) ([f702249](https://github.com/huntridge-labs/argus/commit/f7022496daf2bc8832f257aaebeed2687da8901d))
+* **deps:** Update tool-versions ([#391](https://github.com/huntridge-labs/argus/issues/391)) ([d698b65](https://github.com/huntridge-labs/argus/commit/d698b65ba89e914855732eb13b7e4f55595133dd)), references [#390](https://github.com/huntridge-labs/argus/issues/390)
+
+
 ## [1.12.1](https://github.com/huntridge-labs/argus/compare/1.12.0...1.12.1) (2026-08-09)
 
 ### Bug Fixes

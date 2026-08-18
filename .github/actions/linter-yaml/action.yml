@@ -9,7 +9,7 @@ description: |
   **Usage Example:**
   ```yaml
   - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-  - uses: huntridge-labs/argus/.github/actions/linter-yaml@1.12.1
+  - uses: huntridge-labs/argus/.github/actions/linter-yaml@1.12.2
     with:
       fail_on_issues: false
       config_file: '.yamllint.yml'
@@ -172,7 +172,7 @@ runs:
 
     - name: Comment PR with YAML lint results
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@1.12.1
+      uses: huntridge-labs/argus/.github/actions/comment-pr@1.12.2
       with:
         summary_file: scanner-summaries/yaml-lint.md
         comment_marker: yaml-linter-comment-marker

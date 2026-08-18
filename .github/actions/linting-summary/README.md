@@ -16,7 +16,7 @@ linting-summary:
   needs: [yaml-lint, json-lint, python-lint, javascript-lint, dockerfile-lint, terraform-lint]
   if: always()
   steps:
-    - uses: huntridge-labs/argus/.github/actions/linting-summary@1.12.1
+    - uses: huntridge-labs/argus/.github/actions/linting-summary@1.12.2
 ```
 
 ### With status gating (recommended)
@@ -29,7 +29,7 @@ linting-summary:
   needs: [yaml-lint, json-lint, python-lint, javascript-lint, dockerfile-lint, terraform-lint]
   if: always()
   steps:
-    - uses: huntridge-labs/argus/.github/actions/linting-summary@1.12.1
+    - uses: huntridge-labs/argus/.github/actions/linting-summary@1.12.2
       with:
         scan_statuses: |
           {

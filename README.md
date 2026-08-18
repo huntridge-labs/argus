@@ -89,14 +89,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.12.1
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.12.2
         with:
           enable_code_security: true
           fail_on_severity: high
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.12.1
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.12.2
         with:
           enable_code_security: true
           fail_on_severity: high
@@ -166,7 +166,7 @@ jobs:
       - uses: actions/checkout@v6
 
       # Use composite actions directly from github.com
-      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.12.1
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.12.2
         with:
           enable_code_security: true
           fail_on_severity: high
@@ -174,7 +174,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.12.1
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.12.2
         with:
           enable_code_security: true
           fail_on_severity: high
@@ -294,14 +294,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.12.1
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.12.2
         with:
           enable_code_security: true
           fail_on_severity: high
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.12.1
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.12.2
         with:
           enable_code_security: true
           fail_on_severity: high

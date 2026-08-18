@@ -126,7 +126,7 @@ See [`.github/workflows/security-scan.yml`](../.github/workflows/security-scan.y
 **Usage:**
 ```yaml
 - name: Run Bandit Scanner
-  uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.12.1
+  uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.12.2
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
