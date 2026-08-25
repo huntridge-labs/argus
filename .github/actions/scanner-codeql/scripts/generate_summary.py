@@ -14,6 +14,31 @@ def capitalize_language(language):
     return language[0].upper() + language[1:]
 
 
+def parse_count(value):
+    """Coerce a severity-count flag into an int, tolerating empty values.
+
+    GitHub Actions expands the outputs of a *skipped* step to an empty string,
+    so this script can legitimately be handed ``--critical ""`` when an earlier
+    step (Initialize CodeQL / Autobuild / Perform CodeQL Analysis) failed.
+    argparse's ``default=`` only applies when a flag is absent, so ``type=int``
+    would raise ``invalid int value: ''`` on that input.
+
+    Empty or whitespace-only values become 0.  Genuinely malformed values (e.g.
+    "abc") are still an error, so real parse bugs are not papered over.
+    """
+    if value is None:
+        return 0
+    text = str(value).strip()
+    if not text:
+        return 0
+    try:
+        return int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"expected an integer or an empty value, got {value!r}"
+        )
+
+
 def generate_codeql_summary(
     output_file,
     is_pr_comment,
@@ -27,8 +52,15 @@ def generate_codeql_summary(
     server_url,
     repository,
     run_id,
+    scan_status="success",
 ):
-    """Generate CodeQL summary markdown."""
+    """Generate CodeQL summary markdown.
+
+    ``scan_status`` distinguishes "the scan ran and found nothing" from "the
+    scan never ran".  Anything other than "success" renders an unmistakable
+    failure banner instead of a clean findings table, because zero findings
+    from a scan that did not run is not a clean bill of health.
+    """
     output_path = Path(output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -47,11 +79,27 @@ def generate_codeql_summary(
         f.write("\n")
 
         # Check if we have results
-        total_int = int(total)
+        total_int = parse_count(total)
         sarif_dir = Path("codeql-reports/sarif")
         has_results = total_int > 0 or sarif_dir.exists()
+        scan_ok = str(scan_status).strip().lower() == "success"
 
-        if has_results:
+        if not scan_ok:
+            # The analysis did not complete.  Never render this as "no findings".
+            f.write("**Status:** ❌ CodeQL analysis did not complete\n")
+            f.write("\n")
+            f.write(
+                "The scan did not run to completion, so **these results are "
+                "incomplete and must not be read as a clean bill of health.** "
+                "Check the workflow logs for a failing `Initialize CodeQL`, "
+                "`Autobuild`, `Perform CodeQL Analysis` or `Organize CodeQL "
+                "results` step.\n"
+            )
+            f.write("\n")
+            f.write(
+                f"**Artifacts:** [CodeQL Reports ({lang_display})]({server_url}/{repository}/actions/runs/{run_id}#artifacts)\n"
+            )
+        elif has_results:
             if is_pr_comment:
                 f.write("**Status:** Completed\n")
                 f.write("\n")
@@ -65,8 +113,8 @@ def generate_codeql_summary(
             f.write("\n")
 
             # Priority messages
-            critical_int = int(critical)
-            high_int = int(high)
+            critical_int = parse_count(critical)
+            high_int = parse_count(high)
 
             if critical_int > 0:
                 f.write(
@@ -208,19 +256,34 @@ def main():
         "--language", default="", help="Language analyzed (default: empty)"
     )
     parser.add_argument(
-        "--critical", type=int, default=0, help="Number of critical issues (default: 0)"
+        "--critical",
+        type=parse_count,
+        default=0,
+        help="Number of critical issues (empty value treated as 0, default: 0)",
     )
     parser.add_argument(
-        "--high", type=int, default=0, help="Number of high issues (default: 0)"
+        "--high",
+        type=parse_count,
+        default=0,
+        help="Number of high issues (empty value treated as 0, default: 0)",
     )
     parser.add_argument(
-        "--medium", type=int, default=0, help="Number of medium issues (default: 0)"
+        "--medium",
+        type=parse_count,
+        default=0,
+        help="Number of medium issues (empty value treated as 0, default: 0)",
     )
     parser.add_argument(
-        "--low", type=int, default=0, help="Number of low issues (default: 0)"
+        "--low",
+        type=parse_count,
+        default=0,
+        help="Number of low issues (empty value treated as 0, default: 0)",
     )
     parser.add_argument(
-        "--total", type=int, default=0, help="Total number of findings (default: 0)"
+        "--total",
+        type=parse_count,
+        default=0,
+        help="Total number of findings (empty value treated as 0, default: 0)",
     )
     parser.add_argument(
         "--repo-url", default="", help="Repository URL (default: empty)"
@@ -234,6 +297,15 @@ def main():
     )
     parser.add_argument(
         "--run-id", default="", help="GitHub run ID (default: empty)"
+    )
+    parser.add_argument(
+        "--scan-status",
+        default="success",
+        help=(
+            "Whether the CodeQL analysis completed: 'success', or anything "
+            "else (e.g. 'failed', 'unknown') to render a did-not-run banner "
+            "instead of a findings table (default: success)"
+        ),
     )
 
     args = parser.parse_args()
@@ -255,6 +327,7 @@ def main():
         args.server_url,
         args.repository,
         args.run_id,
+        scan_status=args.scan_status,
     )
 
 

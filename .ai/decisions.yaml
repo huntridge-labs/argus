@@ -2743,3 +2743,69 @@ decisions:
       - Any "don't gate on X" behavior lives in the engine's severity-threshold policy, keyed off metadata + argus.yml config — never by mutating severity.
       - Argus emits no VEX/suppression attestation of its own; it may hand the raw signal to a human who authors and signs such an artifact themselves.
       - Consistent with ADR-007 (the user controls failure behavior, not Argus).
+  ADR-036:
+    title: 'CodeQL severity gate fails closed: a scan that did not run is not a pass'
+    date: '2026-08-25'
+    status: accepted
+    context: 'The scanner-codeql action skipped `Parse results` whenever an earlier
+
+      step failed (Initialize CodeQL, Autobuild, Perform CodeQL Analysis), because
+
+      that step carried no `if:` condition. A skipped step''s outputs expand to the
+
+      empty string, and `Generate scanner summary` is `if: always()`, so it invoked
+
+      generate_summary.py with `--critical ""` and argparse aborted with
+
+      `invalid int value: ''`. Reported by huntridge-labs/dice, which deleted its
+
+      codeql job entirely. Fixing only the argparse layer would have been strictly
+
+      worse: `Check severity threshold` reads the same empty outputs, and its
+
+      `[ "$CRITICAL" -gt 0 ] && SHOULD_FAIL=true` idiom fails inside the `&&` list
+
+      on an empty value, leaving SHOULD_FAIL=false and exiting 0. A CodeQL scan
+
+      that never ran would have reported a green severity gate.
+
+      '
+    decision: 'The severity gate fails closed on an incomplete scan. `Parse results`
+
+      runs with `if: always()` and publishes a `scan_status` output derived from
+
+      `steps.analyze.outcome`, `steps.organize.outcome`, and the presence of SARIF
+
+      output. `Check severity threshold` also runs with `always()` and exits 1 when
+
+      `scan_status` is anything other than `success` — before examining any count.
+
+      Zero findings are only meaningful when the scan actually produced them.
+
+      '
+    alternatives_considered:
+    - name: Coerce empty counts to 0 in argparse and stop there
+      rejected_because: Converts a red check for the wrong reason into a false green;
+        an incomplete CodeQL scan would silently pass the severity gate. Strictly
+        worse than the crash it replaces.
+    - name: Let the gate stay non-always() and rely on the failing step to fail the job
+      rejected_because: Steps carrying continue-on-error (analyze, organize) do not
+        fail the job, so an analysis that failed and was continued past would leave
+        the gate reporting a pass on empty counts.
+    - name: Treat a missing SARIF file as "no findings"
+      rejected_because: A successful CodeQL analyze always emits SARIF; its absence
+        means something broke in the pipeline, not that the code is clean.
+    consequences:
+      positive:
+      - The summary step no longer crashes on empty counts; the reported failure matches the real one.
+      - An incomplete scan can never be mistaken for a clean one by the gate, the summary, or a downstream consumer.
+      - Consumers can branch on the new `scan_status` output directly.
+      negative:
+      - 'With fail_on_severity set, infrastructure failures (CodeQL bootstrap, runner disk) now fail the job rather than passing quietly. That is the intent, but it is a behaviour change for consumers who were getting undeserved greens.'
+      - 'With the default fail_on_severity: none the gate does not run at all, so an incomplete scan is reported (scan_status + summary banner) but does not break the build.'
+    implementation: |-
+      - .github/actions/scanner-codeql/action.yml: `Parse results` gains `if: always()` and a `scan_status` output; `Check severity threshold` gains `always()` and a fail-closed scan_status check; the summary step defaults every interpolated count with `${VAR:-0}`.
+      - .github/actions/scanner-codeql/scripts/generate_summary.py: `parse_count()` replaces `type=int` on the five count flags — empty/whitespace coerces to 0, malformed input still errors. A `--scan-status` flag renders a did-not-complete banner instead of a findings table.
+      - Regression coverage in .github/actions/scanner-codeql/tests/test_codeql_generate_summary.py exercises main()/argparse (the pre-existing tests called generate_codeql_summary() directly, which is why the crash shipped) and runs the action's parse/gate shell bodies directly.
+      - Semantics documented in .github/actions/scanner-codeql/README.md.
+      - Consistent with ADR-007 (the user controls failure behavior) — the gate only runs when the user sets fail_on_severity.

@@ -81,6 +81,12 @@ outputs:
   total_count:
     description: 'Total number of findings'
     value: ${{ steps.parse-results.outputs.total_count }}
+  scan_status:
+    description: >-
+      'success' when the CodeQL analysis completed and produced SARIF output;
+      'failed' when it did not run to completion. Zero findings are only
+      meaningful when this is 'success'.
+    value: ${{ steps.parse-results.outputs.scan_status }}
 
 runs:
   using: 'composite'
@@ -158,9 +164,15 @@ runs:
 
     - name: Parse results
       id: parse-results
+      # Must run even when Initialize CodeQL / Autobuild / Perform CodeQL
+      # Analysis failed. A skipped step's outputs expand to the empty string,
+      # which used to crash the summary step downstream.
+      if: always()
       shell: bash
       env:
         LANGUAGE: ${{ inputs.language }}
+        ANALYZE_OUTCOME: ${{ steps.analyze.outcome }}
+        ORGANIZE_OUTCOME: ${{ steps.organize.outcome }}
       run: |
         echo "::group::Parsing CodeQL results"
 
@@ -217,7 +229,25 @@ runs:
           fi
         done
 
+        # Distinguish "scan ran, found nothing" from "scan did not run".
+        # analyze/organize carry continue-on-error, so .outcome (not
+        # .conclusion) holds the real result; a skipped step yields
+        # 'skipped', and an empty value means the step never reported.
+        SCAN_STATUS=failed
+        if [ "$ANALYZE_OUTCOME" = "success" ] && [ "$ORGANIZE_OUTCOME" = "success" ]; then
+          if ls codeql-reports/sarif/*.sarif >/dev/null 2>&1; then
+            SCAN_STATUS=success
+          else
+            echo "::warning::CodeQL analysis reported success but produced no SARIF output"
+          fi
+        fi
+
+        if [ "$SCAN_STATUS" != "success" ]; then
+          echo "::warning::CodeQL analysis did not complete (analyze='${ANALYZE_OUTCOME:-unknown}', organize='${ORGANIZE_OUTCOME:-unknown}'); reported counts are not a clean bill of health"
+        fi
+
         echo "Results for $LANGUAGE:"
+        echo "  Scan status: $SCAN_STATUS"
         echo "  Critical: $CRITICAL"
         echo "  High: $HIGH"
         echo "  Medium: $MEDIUM"
@@ -229,6 +259,7 @@ runs:
         echo "medium_count=$MEDIUM" >> $GITHUB_OUTPUT
         echo "low_count=$LOW" >> $GITHUB_OUTPUT
         echo "total_count=$TOTAL" >> $GITHUB_OUTPUT
+        echo "scan_status=$SCAN_STATUS" >> $GITHUB_OUTPUT
 
         echo "::endgroup::"
 
@@ -252,6 +283,7 @@ runs:
         MEDIUM: ${{ steps.parse-results.outputs.medium_count }}
         LOW: ${{ steps.parse-results.outputs.low_count }}
         TOTAL: ${{ steps.parse-results.outputs.total_count }}
+        SCAN_STATUS: ${{ steps.parse-results.outputs.scan_status }}
       run: |
         mkdir -p scanner-summaries
 
@@ -262,11 +294,12 @@ runs:
           "scanner-summaries/codeql-${LANGUAGE}.md" \
           --is-pr-comment "true" \
           --language "$LANGUAGE" \
-          --critical "$CRITICAL" \
-          --high "$HIGH" \
-          --medium "$MEDIUM" \
-          --low "$LOW" \
-          --total "$TOTAL" \
+          --critical "${CRITICAL:-0}" \
+          --high "${HIGH:-0}" \
+          --medium "${MEDIUM:-0}" \
+          --low "${LOW:-0}" \
+          --total "${TOTAL:-0}" \
+          --scan-status "${SCAN_STATUS:-failed}" \
           --repo-url "$REPO_URL" \
           --server-url "${{ github.server_url }}" \
           --repository "${{ github.repository }}" \
@@ -276,11 +309,12 @@ runs:
           "$GITHUB_STEP_SUMMARY" \
           --is-pr-comment "false" \
           --language "$LANGUAGE" \
-          --critical "$CRITICAL" \
-          --high "$HIGH" \
-          --medium "$MEDIUM" \
-          --low "$LOW" \
-          --total "$TOTAL" \
+          --critical "${CRITICAL:-0}" \
+          --high "${HIGH:-0}" \
+          --medium "${MEDIUM:-0}" \
+          --low "${LOW:-0}" \
+          --total "${TOTAL:-0}" \
+          --scan-status "${SCAN_STATUS:-failed}" \
           --repo-url "$REPO_URL" \
           --server-url "${{ github.server_url }}" \
           --repository "${{ github.repository }}" \
@@ -306,19 +340,28 @@ runs:
         fallback_message: 'No CodeQL ${{ inputs.language }} results available'
 
     - name: Check severity threshold
-      if: inputs.fail_on_severity != 'none' && inputs.fail_on_severity != ''
+      # always() so a failed Initialize/Autobuild/Analyze cannot skip the gate.
+      if: always() && inputs.fail_on_severity != 'none' && inputs.fail_on_severity != ''
       shell: bash
       env:
+        SCAN_STATUS: ${{ steps.parse-results.outputs.scan_status }}
         CRITICAL_COUNT: ${{ steps.parse-results.outputs.critical_count }}
         HIGH_COUNT: ${{ steps.parse-results.outputs.high_count }}
         MEDIUM_COUNT: ${{ steps.parse-results.outputs.medium_count }}
         LOW_COUNT: ${{ steps.parse-results.outputs.low_count }}
         FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
       run: |
-        CRITICAL=$CRITICAL_COUNT
-        HIGH=$HIGH_COUNT
-        MEDIUM=$MEDIUM_COUNT
-        LOW=$LOW_COUNT
+        # A scan that did not run has zero findings. That is not a pass.
+        # Fail closed before looking at any count.
+        if [ "${SCAN_STATUS:-}" != "success" ]; then
+          echo "::error::CodeQL analysis did not complete (scan_status='${SCAN_STATUS:-unknown}'). Failing the severity gate: zero findings from a scan that did not run is not a pass."
+          exit 1
+        fi
+
+        CRITICAL="${CRITICAL_COUNT:-0}"
+        HIGH="${HIGH_COUNT:-0}"
+        MEDIUM="${MEDIUM_COUNT:-0}"
+        LOW="${LOW_COUNT:-0}"
         THRESHOLD="$FAIL_ON_SEVERITY"
 
         SHOULD_FAIL=false
@@ -342,3 +385,6 @@ runs:
           echo "Critical: $CRITICAL, High: $HIGH, Medium: $MEDIUM, Low: $LOW"
           exit 1
         fi
+
+        echo "CodeQL analysis completed; no findings at or above '$THRESHOLD' severity"
+        echo "Critical: $CRITICAL, High: $HIGH, Medium: $MEDIUM, Low: $LOW"
