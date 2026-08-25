@@ -872,21 +872,36 @@ errors:
       it. clamav/clamav:1.5.3 is rebuilt by Cisco''s bot to refresh the bundled
       virus database, which replaces the digest behind an unchanged tag. Our pin
       is <tag>@sha256:<digest> — correct posture, and exactly what makes the
-      drift visible — but the old digest stops resolving the moment it is
-      superseded. Renovate does re-pin digests via the containers.py custom
-      manager, however it is scheduled "before 9am on Monday", so drift landing
-      any other day leaves main red for up to a week.
+      drift visible.
+
+      The old digest does NOT stop resolving: registry storage is content
+      addressed, so fetching the superseded manifest BY DIGEST still returns
+      200 long after the tag has moved. What breaks is the combined
+      <tag>@<digest> reference — docker resolves the tag, then verifies the
+      result against the pinned digest, and the two now disagree. Hence
+      "manifest verification failed for digest", not "manifest unknown".
+
+      Renovate does re-pin digests via the containers.py custom manager
+      (.github/renovate.json customManagers[0], group container-images), and it
+      is scheduled every weekday morning — but minimumReleaseAge is 7 days, so
+      it will not propose a digest until the re-push is a week old, and the
+      group sets automerge:false. That cooldown, not the schedule, is why a
+      re-push can leave main red for up to a week.
 
       '
     solution:
       steps:
-      - 'Resolve the live digest: docker buildx imagetools inspect <image>:<tag> (or docker manifest inspect) and read the index Digest.'
+      - 'Resolve the live digest: docker buildx imagetools inspect <image>:<tag> (or docker manifest inspect) and read the index Digest. With no docker daemon available, GET the registry manifest with an anonymous token and read the docker-content-digest response header.'
       - 'Cross-check provenance before trusting it — do not just take whatever the registry now serves. For Docker Hub: curl -s https://hub.docker.com/v2/repositories/<ns>/<repo>/tags/<tag> and confirm digest, last_updated, and last_updater_username look like the vendor''s normal release path.'
       - Re-pin in argus/containers.py, then run python -m scripts.ci.check_container_images and require "All images resolve" across the whole manifest, not just the one you touched.
-      note: 'A digest that stops resolving is indistinguishable at the registry
-        from a yanked-for-compromise image, so confirm the pusher before
-        bumping. Treating the re-pin as routine housekeeping is how a poisoned
-        re-push would get waved through.
+      note: 'Still confirm the pusher before bumping — a moved tag is exactly
+        what a supply-chain attack would also look like, and treating the
+        re-pin as routine housekeeping is how a poisoned re-push gets waved
+        through. But note the superseded image is still addressable by its old
+        digest, so you can inspect both and diff them (platforms, entry count,
+        media type, layer digests) rather than reasoning from absence. A
+        vendor rebuild and a hostile re-push differ in what the new manifest
+        CONTAINS, not in whether the old one is reachable.
 
         '
       reference: argus/containers.py + scripts/ci/check_container_images.py + .github/renovate.json (customManagers, container-images group)
