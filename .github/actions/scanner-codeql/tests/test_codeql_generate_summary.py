@@ -533,6 +533,19 @@ def _step_script(step_name):
     raise AssertionError(f"step not found in action.yml: {step_name}")
 
 
+class TestStepScriptHelper:
+    """The action.yml step loader must fail loudly, not silently."""
+
+    def test_unknown_step_name_raises(self):
+        """A renamed step in action.yml must break these tests, not skip them."""
+        with pytest.raises(AssertionError, match="step not found in action.yml"):
+            _step_script("No Such Step")
+
+    def test_expressions_are_neutralised(self):
+        """`${{ ... }}` must not survive into the script handed to bash."""
+        assert "${{" not in _step_script("Check severity threshold")
+
+
 class TestParseResultsScanStatus:
     """`Parse results` must report whether the analysis actually ran."""
 
