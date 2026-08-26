@@ -359,3 +359,93 @@ class TestRender:
     def test_markdown_says_so_when_clean(self):
         out = ctc.render(ctc.Report(), "markdown", 7)
         assert "Nothing to do" in out
+
+
+class TestIsNewer:
+    """Ordering, not inequality.
+
+    ``check_currency`` used to flag a pin whenever the newest eligible
+    upstream tag merely *differed* from it, which reports a DOWNGRADE as
+    an update whenever the pin is ahead of that tag. Same wrong-direction
+    bug ``argus/update_check.py`` documents at issue #174-1.1.c.
+    """
+
+    def test_newer_upstream_is_newer(self):
+        assert ctc.is_newer("3.3.13", "3.3.11") is True
+
+    def test_older_upstream_is_not_newer(self):
+        assert ctc.is_newer("3.3.9", "3.3.11") is False
+
+    def test_equal_is_not_newer(self):
+        assert ctc.is_newer("3.3.11", "3.3.11") is False
+
+    def test_v_prefix_does_not_affect_ordering(self):
+        assert ctc.is_newer("v1.51.0", "1.50.0") is True
+        assert ctc.is_newer("v1.50.0", "1.50.0") is False
+
+    def test_double_digit_segments_compare_numerically(self):
+        """String comparison would put 3.3.9 above 3.3.11."""
+        assert ctc.is_newer("3.3.9", "3.3.11") is False
+        assert ctc.is_newer("3.3.11", "3.3.9") is True
+
+    def test_unorderable_versions_return_none(self):
+        assert ctc.is_newer("stable", "1.2.3") is None
+        assert ctc.is_newer("1.2.3", "latest") is None
+
+
+class TestCurrencyDirection:
+    """The checkov false positive, and the guard against re-introducing it.
+
+    ``bridgecrew/checkov`` publishes some Docker tags (3.3.10, 3.3.11) with
+    no matching GitHub release, and ``newest_eligible`` additionally skips
+    anything inside the cooling window. Both make it normal for our pin to
+    sit AHEAD of the newest eligible release. Reporting that as STALE told
+    a reader to "update" 3.3.11 to 3.3.9.
+    """
+
+    def test_pin_ahead_of_newest_eligible_is_not_stale(self, monkeypatch):
+        monkeypatch.setattr(ctc, "UPSTREAM_REPOS", {"checkov": "bridgecrewio/checkov"})
+        monkeypatch.setattr(
+            ctc,
+            "fetch_releases",
+            # 3.3.13/3.3.12 are inside the cooling window; 3.3.10 and 3.3.11
+            # are Docker-only tags and have no release at all.
+            lambda repo: [_release("3.3.13", 1), _release("3.3.12", 2), _release("3.3.9", 23)],
+        )
+
+        stale, unknown = ctc.check_currency({"checkov": "3.3.11"}, 7, NOW)
+
+        assert stale == [], f"pin ahead of upstream reported as stale: {stale}"
+        assert unknown == []
+
+    def test_genuinely_behind_pin_is_still_reported(self, monkeypatch):
+        """The guard must not silence the case the checker exists for."""
+        monkeypatch.setattr(ctc, "UPSTREAM_REPOS", {"osv-scanner": "google/osv-scanner"})
+        monkeypatch.setattr(
+            ctc, "fetch_releases", lambda repo: [_release("v2.5.1", 8), _release("v2.4.0", 60)]
+        )
+
+        stale, unknown = ctc.check_currency({"osv-scanner": "v2.4.0"}, 7, NOW)
+
+        assert [f.tool for f in stale] == ["osv-scanner"]
+        assert "v2.5.1" in stale[0].detail
+        assert unknown == []
+
+    def test_unorderable_pair_is_unknown_not_stale(self, monkeypatch):
+        """Can't order them -> say so. Don't assert a direction we don't have."""
+        monkeypatch.setattr(ctc, "UPSTREAM_REPOS", {"kics": "Checkmarx/kics"})
+        monkeypatch.setattr(ctc, "fetch_releases", lambda repo: [_release("stable", 30)])
+
+        stale, unknown = ctc.check_currency({"kics": "1.7.13"}, 7, NOW)
+
+        assert stale == []
+        assert [f.tool for f in unknown] == ["kics"]
+        assert "not comparable" in unknown[0].detail
+
+    def test_equal_pin_stays_silent_and_is_not_unknown(self, monkeypatch):
+        monkeypatch.setattr(ctc, "UPSTREAM_REPOS", {"syft": "anchore/syft"})
+        monkeypatch.setattr(ctc, "fetch_releases", lambda repo: [_release("v1.51.0", 10)])
+
+        stale, unknown = ctc.check_currency({"syft": "v1.51.0"}, 7, NOW)
+
+        assert stale == [] and unknown == []
