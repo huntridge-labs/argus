@@ -1016,3 +1016,42 @@ errors:
         '
       reference: package.json + .github/dependabot.yml + .github/workflows/release-preview.yml
     symptom: 'headerPartial is not a function|DEBUG: Current version: 0.0.0|DEBUG: New version: unknown|release preview green but no changelog'
+  CODEQL_SUMMARY_INVALID_INT_VALUE:
+    category: scanner-codeql
+    context: 'The `Generate scanner summary` step of scanner-codeql, when an earlier
+
+      step in the same action failed.
+
+      '
+    root_cause: '`Parse results` had no `if:` condition, so it was skipped whenever
+
+      `Initialize CodeQL`, `Autobuild`, `Perform CodeQL Analysis` or `Organize
+
+      CodeQL results` failed. A skipped step''s outputs expand to the empty string.
+
+      `Generate scanner summary` is `if: always()`, so it still ran and passed
+
+      `--critical ""` to generate_summary.py, whose count flags used `type=int`.
+
+      argparse''s `default=` applies only when a flag is ABSENT, so an explicitly
+
+      passed empty string still went through `int('''')` and raised.
+
+      '
+    solution:
+      status: 'RESOLVED — `Parse results` now runs with `if: always()`, the summary
+
+        step defaults every count with `${VAR:-0}`, and the count flags use a
+
+        `parse_count()` coercion that maps empty/whitespace to 0 while still
+
+        rejecting malformed input.
+
+        '
+      steps:
+      - 'The visible crash is a SYMPTOM, not the failure. Read the log upward: the real failure is the earlier CodeQL step that got skipped or errored (bootstrap failure, autobuild failure, missing language pack).'
+      - 'Check the `scan_status` output. `failed` means the analysis did not complete and the severity counts are not trustworthy.'
+      - 'Do not fix this by coercing empty counts to 0 alone. `Check severity threshold` reads the same outputs, and `[ "$CRITICAL" -gt 0 ]` on an empty value fails inside its `&&` list, leaving SHOULD_FAIL=false and exiting 0 — turning the crash into a FALSE GREEN. The gate must fail closed on a non-success scan_status. See ADR-036.'
+      verification: 'A did-not-run scan must produce a "CodeQL analysis did not complete" summary banner and, when fail_on_severity is set, a failing `Check severity threshold` step.'
+      reference: .ai/decisions.yaml ADR-036 + .github/actions/scanner-codeql/README.md
+    symptom: "generate_summary.py: error: argument --critical: invalid int value: ''"
