@@ -38,7 +38,7 @@ OFFICIAL_IMAGES = {
     # that protects us between Renovate-driven bumps — same pattern as
     # the eslint entry.
     "kics": "checkmarx/kics:latest@sha256:3e5a268eb8adda2e5a483c9359ddfc4cd520ab856a7076dc0b1d8784a37e2602",
-    "osv-scanner": "ghcr.io/google/osv-scanner:v2.4.0@sha256:5116601dedc01c1c580eb92371883ec052fc4c13c3fbc109d621a63ac416d475",
+    "osv-scanner": "ghcr.io/google/osv-scanner:v2.5.1@sha256:8108ae94eadea5a02c9bec6e646909d5b790b44bd62d7f5b7f0b1d6d0ffc7734",
     # Upstream re-pushed the 2.17.0 tag (2026-08); the old index digest
     # no longer verifies against the registry. Pin refreshed to the
     # tag's current index digest, verified via `docker manifest inspect`.
