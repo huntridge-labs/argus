@@ -15,8 +15,10 @@ Two independent checks:
 ``currency``
     Compares each pin against the newest upstream release that is already
     older than ``--min-age-days``, i.e. one we are allowed to adopt under the
-    supply-chain policy in ``.github/renovate.json``. Needs the network and
-    depends on upstream release cadence, so by default it reports without
+    supply-chain policy in ``.github/renovate.json``. Reports only when that
+    release is strictly NEWER than the pin — a pin sitting ahead of it is
+    normal (see ``is_newer``), not something to "update". Needs the network
+    and depends on upstream release cadence, so by default it reports without
     failing — a tool releasing upstream is not a reason to redden ``main``.
 
 Why this exists: ``osv-scanner`` sat 46 days behind and ``tflint`` 17 days
@@ -116,6 +118,37 @@ class Report:
 def normalise(version: str) -> str:
     """Strip a leading ``v`` so ``v1.2.3`` and ``1.2.3`` compare equal."""
     return version[1:] if version.startswith("v") else version
+
+
+def is_newer(candidate: str, pinned: str) -> bool | None:
+    """Is ``candidate`` a real upgrade over ``pinned``?
+
+    ``True`` / ``False`` for an orderable pair, ``None`` when the two
+    cannot be ordered at all (a non-semver tag like ``latest``, or a
+    missing ``packaging``).
+
+    Ordering matters here, not inequality. Our pin routinely sits AHEAD
+    of the newest *eligible* upstream release for two ordinary reasons:
+    ``newest_eligible`` skips anything inside the cooling window, and some
+    publishers ship Docker tags with no matching GitHub release at all
+    (``bridgecrew/checkov`` 3.3.10 and 3.3.11). Treating "differs" as
+    "behind" turned both into a STALE line advising a DOWNGRADE — e.g.
+    "pinned 3.3.11, 3.3.9 available". Same wrong-direction bug that
+    ``argus/update_check.py`` fixed at issue #174-1.1.c.
+
+    Note string comparison is not a shortcut here: ``"3.3.9" > "3.3.11"``
+    is True lexicographically and False numerically.
+    """
+    try:
+        from packaging.version import InvalidVersion, parse
+    except ImportError:
+        # Declared in pyproject.toml [project].dependencies; only an
+        # exotic env reaches this. Report unknown rather than guess.
+        return None
+    try:
+        return parse(normalise(candidate)) > parse(normalise(pinned))
+    except InvalidVersion:
+        return None
 
 
 def parse_images(source: str) -> dict[str, str]:
@@ -276,7 +309,8 @@ def check_currency(
         if eligible is None:
             continue
         tag, age = eligible
-        if normalise(tag) != normalise(pinned):
+        newer = is_newer(tag, pinned)
+        if newer:
             stale.append(
                 Finding(
                     "stale",
@@ -285,6 +319,18 @@ def check_currency(
                     f"(>= {min_age_days}d gate) — {repo}",
                 )
             )
+        elif newer is None and normalise(tag) != normalise(pinned):
+            unknown.append(
+                Finding(
+                    "unknown",
+                    key,
+                    f"pinned {pinned}, newest eligible upstream is {tag} — "
+                    f"versions not comparable, currency unverified — {repo}",
+                )
+            )
+        # newer is False: the pin is at or ahead of the newest release we
+        # are allowed to adopt. Not stale, and not worth a line — see
+        # is_newer() for why being ahead is the normal case.
     return stale, unknown
 
 
