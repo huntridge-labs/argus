@@ -14,7 +14,7 @@ Scans GitHub Actions workflows for security vulnerabilities using [zizmor](https
 
 ```yaml
 - uses: actions/checkout@v6
-- uses: huntridge-labs/argus/.github/actions/scanner-supply-chain@1.12.2
+- uses: huntridge-labs/argus/.github/actions/scanner-supply-chain@1.12.3
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     scan_path: '.'

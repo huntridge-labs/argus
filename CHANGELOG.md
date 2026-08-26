@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.12.3](https://github.com/huntridge-labs/argus/compare/1.12.2...1.12.3) (2026-08-26)
+
+### Bug Fixes
+
+* **ci:** only report a pin stale when upstream is actually newer ([#413](https://github.com/huntridge-labs/argus/issues/413)) ([c7309cf](https://github.com/huntridge-labs/argus/commit/c7309cf91fe10961ccb053d65471d4754e440ef0)), closes [#174-1](https://github.com/huntridge-labs/argus/issues/174-1)
+* **containers:** refresh clamav 1.5.4 digest after upstream tag re-push ([#410](https://github.com/huntridge-labs/argus/issues/410)) ([4ba8286](https://github.com/huntridge-labs/argus/commit/4ba82867d515dd7249a83045edd2843d7a36ad23))
+* **scanner-codeql:** stop summary crash on empty counts and fail the severity gate closed ([#409](https://github.com/huntridge-labs/argus/issues/409)) ([20d7f1e](https://github.com/huntridge-labs/argus/commit/20d7f1e81e7051b11c21de56020ec39e6bee7a85))
+
+### Security Tools
+
+* **deps:** bump osv-scanner to v2.5.1 ([#412](https://github.com/huntridge-labs/argus/issues/412)) ([0777fa9](https://github.com/huntridge-labs/argus/commit/0777fa96de52c46881036a6c643a29ffe5bfa773)), references [#382](https://github.com/huntridge-labs/argus/issues/382) [#95](https://github.com/huntridge-labs/argus/issues/95) [#95](https://github.com/huntridge-labs/argus/issues/95) [#382](https://github.com/huntridge-labs/argus/issues/382)
+* **deps:** update trivy 0.74.0, opengrep 1.27.1, checkov 3.3.11 as one consistent set ([#411](https://github.com/huntridge-labs/argus/issues/411)) ([d3f6fca](https://github.com/huntridge-labs/argus/commit/d3f6fca90cd052dcd2654e50652111a933bc5555)), references [#406](https://github.com/huntridge-labs/argus/issues/406) [#406](https://github.com/huntridge-labs/argus/issues/406)
+
+### Dependencies
+
+* **deps:** bump the npm-minor-patch group with 3 updates ([#408](https://github.com/huntridge-labs/argus/issues/408)) ([101e657](https://github.com/huntridge-labs/argus/commit/101e657e14a04c98f2fc924fd3d5763072750c46))
+
+
 ## [1.12.2](https://github.com/huntridge-labs/argus/compare/1.12.1...1.12.2) (2026-08-18)
 
 ### Bug Fixes

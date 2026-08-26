@@ -19,7 +19,7 @@ description: |
     needs: [yaml-lint, json-lint, python-lint, javascript-lint, dockerfile-lint, terraform-lint]
     if: always()
     steps:
-      - uses: huntridge-labs/argus/.github/actions/linting-summary@1.12.2
+      - uses: huntridge-labs/argus/.github/actions/linting-summary@1.12.3
   ```
 
   **With status gating (recommended):**
@@ -35,7 +35,7 @@ description: |
     needs: [yaml-lint, json-lint, python-lint, javascript-lint, dockerfile-lint, terraform-lint]
     if: always()
     steps:
-      - uses: huntridge-labs/argus/.github/actions/linting-summary@1.12.2
+      - uses: huntridge-labs/argus/.github/actions/linting-summary@1.12.3
         with:
           scan_statuses: |
             {
@@ -150,7 +150,7 @@ runs:
 
     - name: Comment PR with linting summary
       if: github.event_name == 'pull_request' && inputs.post_pr_comment == 'true'
-      uses: huntridge-labs/argus/.github/actions/comment-pr@1.12.2
+      uses: huntridge-labs/argus/.github/actions/comment-pr@1.12.3
       with:
         summary_file: combined-summaries/linting.md
         comment_marker: ${{ inputs.comment_marker }}
