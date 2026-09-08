@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.12.4](https://github.com/huntridge-labs/argus/compare/1.12.3...1.12.4) (2026-09-08)
+
+### Bug Fixes
+
+* **containers:** re-pin clamav digest after upstream tag re-push ([#420](https://github.com/huntridge-labs/argus/issues/420)) ([ee83fe8](https://github.com/huntridge-labs/argus/commit/ee83fe899640d77e73b218cf660ed19792bd668f))
+
+### Dependencies
+
+* **deps:** bump conventional-changelog-conventionalcommits ([#414](https://github.com/huntridge-labs/argus/issues/414)) ([b8da3af](https://github.com/huntridge-labs/argus/commit/b8da3af14a182e36400f80517368131d0021f4e4))
+* **deps:** bump node ([#415](https://github.com/huntridge-labs/argus/issues/415)) ([ca3f188](https://github.com/huntridge-labs/argus/commit/ca3f188f92a9739dcefbb9bdfabd8cd251c37f72))
+* **deps:** update coverage requirement in the pip-all group ([#419](https://github.com/huntridge-labs/argus/issues/419)) ([8ae0f54](https://github.com/huntridge-labs/argus/commit/8ae0f5464c853df2b58b46742b2cada4b391c461))
+* **deps:** update tool versions and container image pins together ([#421](https://github.com/huntridge-labs/argus/issues/421)) ([8955c51](https://github.com/huntridge-labs/argus/commit/8955c511ecdafe8094f9b7ce18ed199cecb98db6))
+
+
 ## [1.12.3](https://github.com/huntridge-labs/argus/compare/1.12.2...1.12.3) (2026-08-26)
 
 ### Bug Fixes
