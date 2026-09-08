@@ -18,7 +18,7 @@
   "dependencies": {
     "@digitalroute/cz-conventional-changelog-for-jira": "^8.0.1",
     "@octokit/plugin-paginate-rest": "^15.0.0",
-    "conventional-changelog-conventionalcommits": "^10.3.0",
+    "conventional-changelog-conventionalcommits": "^10.4.0",
     "cz-emoji-conventional": "^1.2.1",
     "dateformat": "^5.0.3",
     "husky": "^9.1.7"
