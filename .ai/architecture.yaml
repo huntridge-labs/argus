@@ -509,6 +509,10 @@ scanners:
     purpose: GitHub Actions workflow security scanning via zizmor + actionlint
     output: JSON/SARIF
     note: Uses zizmorcore/zizmor-action and actionlint for comprehensive workflow security
+  - name: guarddog
+    purpose: Malicious-package heuristics (typosquat, install-hooks, obfuscation) for pip/npm/go/rubygems manifests
+    output: JSON
+    note: OSS (Datadog). Local-exec (pip install guarddog); CVE-free so no VEX — suppress via --exclude-rules. Complements the CVE scanners (osv/grype/trivy) with a malicious-package signal. CI image bundling is a follow-up (needs libgit2 for pygit2).
   compliance:
   - name: scn-detector
     purpose: FedRAMP Significant Change Notification detection and classification
@@ -900,6 +904,7 @@ docsite:
     - kics
     - opengrep
     - supply-chain
+    - guarddog
     - zap
     - container
     - promptfoo
