@@ -24,8 +24,8 @@ importers:
         specifier: ^10.4.0
         version: 10.4.0
       cz-emoji-conventional:
-        specifier: ^1.2.1
-        version: 1.2.1(@types/node@25.7.0)
+        specifier: ^1.3.0
+        version: 1.3.0(@types/node@25.7.0)(typescript@6.0.3)
       dateformat:
         specifier: ^5.0.3
         version: 5.0.3
@@ -724,8 +724,9 @@ packages:
     resolution: {integrity: sha512-U466fIzU5U22eES5lTNiNbZ+d8dfcHcssH4o7QsdWaCcRs/feIPCxKYSWkYBNs5mny7MvEfwpTLWjvbm94hecw==}
     engines: {node: '>= 10'}
 
-  cz-emoji-conventional@1.2.1:
-    resolution: {integrity: sha512-ge1bnmUlRjQKCck65yqjPc2/dBtI9cBBE3e/j/2XkFVGXX94xQM7q9bD9a0NlKf9RvMb7oRGZwi86zgxkY3ujQ==}
+  cz-emoji-conventional@1.3.0:
+    resolution: {integrity: sha512-77Poz4EMKWNeNryvdGgfj8rOK6K90NiwIIh9EGJykjVeeGBlNVXAWWUXCHKO6XDORX2jx0a96jIVt/UNXziZvg==}
+    engines: {node: '>=18'}
 
   data-uri-to-buffer@8.0.0:
     resolution: {integrity: sha512-6UHfyCux51b8PTGDgveqtz1tvphBku5DrMKKJbFAZAJOI2zsjDpDoYE1+QGj7FOMS4BdTFNJsJiR3zEB0xH0yQ==}
@@ -2364,13 +2365,14 @@ snapshots:
       - '@types/node'
       - typescript
 
-  cz-emoji-conventional@1.2.1(@types/node@25.7.0):
+  cz-emoji-conventional@1.3.0(@types/node@25.7.0)(typescript@6.0.3):
     dependencies:
       chalk: 4.1.2
       commitizen: 4.3.2(@types/node@25.7.0)(typescript@6.0.3)
       word-wrap: 1.2.5
     transitivePeerDependencies:
       - '@types/node'
+      - typescript
 
   data-uri-to-buffer@8.0.0: {}
 
