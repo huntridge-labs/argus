@@ -30,7 +30,7 @@ OFFICIAL_IMAGES = {
     "grype": "anchore/grype:v0.118.0@sha256:8a93fc48da96bd6ec5981279d099b69de11541dc68fdf222fb9161f8ff284af7",
     "syft": "anchore/syft:v1.51.1@sha256:95fe0835e5bebc6f8b1f8acef68d47d63d594ef4c0f25c097ff853b23cbac74c",
     "gitleaks": "zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f",
-    "clamav": "clamav/clamav:1.5.4@sha256:1fdfd24c6f0a0fb60788481487459a6d4eda8a9b448641594e04db8410d34422",
+    "clamav": "clamav/clamav:1.5.4@sha256:9cb27d7660bdf66e9878c832cb433dd8aa152cfbe16f3c2c0084c80b04ae22b4",
     "checkov": "bridgecrew/checkov:3.3.16@sha256:7407699a91a556849ae66e05c3753f58cf0ce922aa6ddfac7839aad4f390c016",
     # KICS (Checkmarx) multi-format IaC scanner. The upstream
     # ``checkmarx/kics`` repo tags ``:latest`` mutably (no semver release
