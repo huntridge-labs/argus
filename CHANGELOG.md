@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.12.5](https://github.com/huntridge-labs/argus/compare/1.12.4...1.12.5) (2026-09-15)
+
+### Bug Fixes
+
+* **containers:** re-pin clamav 1.5.4 digest after upstream re-push ([#426](https://github.com/huntridge-labs/argus/issues/426)) ([552b9fa](https://github.com/huntridge-labs/argus/commit/552b9fa34435f4ab75749b8a56cbf61cb64a8afe))
+
+### Security Tools
+
+* **deps:** Update dependency opengrep to v1.30.0 ([#423](https://github.com/huntridge-labs/argus/issues/423)) ([d1fc70b](https://github.com/huntridge-labs/argus/commit/d1fc70be1a54ff0c6f0b71e96fcb8f23e98018e6))
+
+### Dependencies
+
+* **deps:** bump cz-emoji-conventional ([#424](https://github.com/huntridge-labs/argus/issues/424)) ([677caae](https://github.com/huntridge-labs/argus/commit/677caaee1d59a4b39b125f25a1d4a0ba620d9e62))
+* **deps:** bump the docker-all group across 2 directories with 2 updates ([#425](https://github.com/huntridge-labs/argus/issues/425)) ([13d1e03](https://github.com/huntridge-labs/argus/commit/13d1e03612641cd1f98343124001f2d316a0008e))
+* **deps:** Update github-actions-minor-patch ([#383](https://github.com/huntridge-labs/argus/issues/383)) ([2cfbc4d](https://github.com/huntridge-labs/argus/commit/2cfbc4d67772e5480a92900499655d155c37cb40))
+* **deps:** Update hashicorp/terraform Docker tag to v1.16.1 ([#422](https://github.com/huntridge-labs/argus/issues/422)) ([3a470ad](https://github.com/huntridge-labs/argus/commit/3a470ad83660bf46845ea8ae1e55b1ddf830f19c))
+
+
 ## [1.12.4](https://github.com/huntridge-labs/argus/compare/1.12.3...1.12.4) (2026-09-08)
 
 ### Bug Fixes
