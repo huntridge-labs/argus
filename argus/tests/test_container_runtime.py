@@ -285,3 +285,92 @@ class TestDetectImagePlatforms:
         _only_docker(monkeypatch)
         mock_run.return_value = MagicMock(returncode=0, stdout="not json", stderr="")
         assert cr.detect_image_platforms("app:1") == []
+
+
+class TestRunContainer:
+    """``run_container`` builds the argv for a one-shot container run.
+
+    The function was untouched by this branch but had no coverage at all,
+    so annotating its subprocess call pulled uncovered lines into the diff.
+    Argv order matters: every flag has to precede the image, and the
+    command args have to follow it, or the runtime parses them as flags to
+    itself rather than to the container.
+    """
+
+    def setup_method(self):
+        cr._cached_runtime = None
+
+    def teardown_method(self):
+        cr._cached_runtime = None
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_minimal_invocation(self, mock_run, monkeypatch):
+        _only_docker(monkeypatch)
+        mock_run.return_value = MagicMock(returncode=0)
+        cr.run_container("alpine:3.18", ["echo", "hi"])
+        assert mock_run.call_args[0][0] == [
+            "docker", "run", "--rm", "alpine:3.18", "echo", "hi",
+        ]
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_network_volumes_and_entrypoint_precede_the_image(
+        self, mock_run, monkeypatch,
+    ):
+        _only_docker(monkeypatch)
+        mock_run.return_value = MagicMock(returncode=0)
+        cr.run_container(
+            "scanner:1",
+            ["--json"],
+            volumes={"/host/out": "/output", "/host/in": "/input"},
+            network="argus-net",
+            entrypoint="/bin/scan",
+        )
+        cmd = mock_run.call_args[0][0]
+
+        assert cmd[:3] == ["docker", "run", "--rm"]
+        assert "--network" in cmd
+        assert cmd[cmd.index("--network") + 1] == "argus-net"
+        assert cmd[cmd.index("--entrypoint") + 1] == "/bin/scan"
+        assert "-v" in cmd
+        assert "/host/out:/output" in cmd
+        assert "/host/in:/input" in cmd
+
+        # Every flag before the image; the container's own args after it.
+        image_at = cmd.index("scanner:1")
+        for flag in ("--network", "--entrypoint", "-v"):
+            assert cmd.index(flag) < image_at
+        assert cmd[image_at + 1:] == ["--json"]
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_timeout_is_forwarded(self, mock_run, monkeypatch):
+        _only_docker(monkeypatch)
+        mock_run.return_value = MagicMock(returncode=0)
+        cr.run_container("alpine:3.18", [], timeout=30)
+        assert mock_run.call_args[1]["timeout"] == 30
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_no_volumes_means_no_v_flag(self, mock_run, monkeypatch):
+        """``volumes=None`` must not emit a stray ``-v``."""
+        _only_docker(monkeypatch)
+        mock_run.return_value = MagicMock(returncode=0)
+        cr.run_container("alpine:3.18", [], volumes=None)
+        assert "-v" not in mock_run.call_args[0][0]
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_result_is_returned_to_the_caller(self, mock_run, monkeypatch):
+        _only_docker(monkeypatch)
+        sentinel = MagicMock(returncode=7, stdout="out")
+        mock_run.return_value = sentinel
+        assert cr.run_container("alpine:3.18", []) is sentinel
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_honors_the_detected_runtime(self, mock_run, monkeypatch):
+        """argv[0] follows runtime detection, not a hardcoded docker."""
+        monkeypatch.setattr(
+            "shutil.which",
+            lambda name: "/usr/bin/podman" if name == "podman" else None,
+        )
+        mock_run.return_value = MagicMock(returncode=0)
+        cr.run_container("alpine:3.18", [])
+        assert mock_run.call_args[0][0][0] == "podman"
+
