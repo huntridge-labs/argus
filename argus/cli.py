@@ -1099,6 +1099,16 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction, parent: argparse.
         help="Sub-scanners for container scanning: trivy,grype,syft (default: trivy,grype)",
     )
     container_group.add_argument(
+        "--platform",
+        default=None,
+        metavar="OS/ARCH",
+        help="Image platform to scan, e.g. linux/arm64. Scanners read "
+             "image layers rather than execute them, so a foreign "
+             "architecture is scannable from any runner; set this when "
+             "the image's platform cannot be read from the registry "
+             "manifest. Overrides containers.platform in the config file.",
+    )
+    container_group.add_argument(
         "--vex",
         action="append",
         dest="vex",
@@ -1819,6 +1829,8 @@ def _load_container_config(args: argparse.Namespace) -> dict:
         config["search_paths"] = [args.discover]
     if getattr(args, "scanners", None):
         config["scanners"] = [s.strip() for s in args.scanners.split(",")]
+    if getattr(args, "platform", None):
+        config["platform"] = args.platform
     if getattr(args, "vex", None):
         # CLI --vex overrides containers.vex. Stored as a list so trivy /
         # grype receive every document; a single --vex still arrives as a

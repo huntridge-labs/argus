@@ -1,6 +1,6 @@
 # Argus CLI Reference (v1.12.5)
 
-> Auto-generated from argparse definitions on 2026-09-15.
+> Auto-generated from argparse definitions on 2026-09-17.
 > Do not edit manually — run `python -m scripts.ci.gen_cli_docs` to regenerate.
 
 Argus Security Scanner — comprehensive security scanning for your codebase
@@ -80,8 +80,8 @@ argus scan [-h] [--no-update-check] [--path PATH] [--config CONFIG]
                   [--no-parallel] [--allow-local-versions] [--no-cache]
                   [--keep-raw | --no-keep-raw] [--registry-password-stdin]
                   [--zap-auth-password-stdin] [--discover [PATH]]
-                  [--image REF] [--scanners SCANNERS] [--vex PATH]
-                  [--target URL] [--port PORT] [--env KEY=VALUE]
+                  [--image REF] [--scanners SCANNERS] [--platform OS/ARCH]
+                  [--vex PATH] [--target URL] [--port PORT] [--env KEY=VALUE]
                   [--scan-type {baseline,full}]
                   [--startup-timeout STARTUP_TIMEOUT]
                   [scanner]
@@ -130,6 +130,7 @@ argus scan [-h] [--no-update-check] [--path PATH] [--config CONFIG]
 | `--discover` | Discover Dockerfiles in PATH (default: current directory) |  |
 | `--image` | Container image to scan (can be repeated) |  |
 | `--scanners` | Sub-scanners for container scanning: trivy,grype,syft (default: trivy,grype) |  |
+| `--platform` | Image platform to scan, e.g. linux/arm64. Scanners read image layers rather than execute them, so a foreign architecture is scannable from any runner; set this when the image's platform cannot be read from the registry manifest. Overrides containers.platform in the config file. |  |
 | `--vex` | OpenVEX document to apply (can be repeated). not_affected/fixed findings are filtered by trivy and grype at the source. Equivalent to containers.vex in the config file. |  |
 
 **Dast Scanning:**

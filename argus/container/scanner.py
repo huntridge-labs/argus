@@ -968,6 +968,25 @@ def _validate_scanner_output(
         )
 
 
+def _platform_args(config: dict | None) -> list[str]:
+    """Return ``["--platform", <value>]`` when a platform is configured.
+
+    trivy, grype and syft all accept ``--platform os/arch[/variant]``
+    and all three default to resolving a multi-arch manifest against
+    the host's own architecture. That default is wrong for a scan:
+    these tools read image layers, they never execute them, so an
+    arm64-only image is scannable from an amd64 runner — it just has
+    to be named. ``containers.platform`` in argus.yml (or ``--platform``
+    on the CLI) supplies the value; unset means "let the tool decide",
+    which preserves the historic behaviour for single-arch and
+    host-matching images.
+    """
+    platform = (config or {}).get("platform")
+    if not platform:
+        return []
+    return ["--platform", str(platform)]
+
+
 def _vex_args(
     config: dict | None, use_container: bool,
 ) -> tuple[list[str], list[str]]:
@@ -1082,6 +1101,7 @@ def _run_trivy(
         )
         if not local:
             cmd.extend(["--image-src", "remote"])
+        cmd.extend(_platform_args(config))
         cmd.append(image_ref)
     else:
         cmd = [
@@ -1091,6 +1111,7 @@ def _run_trivy(
         ] + vex_flags
         if not local:
             cmd.extend(["--image-src", "remote"])
+        cmd.extend(_platform_args(config))
         cmd.append(image_ref)
 
     logger.debug("trivy invocation: %s", _redact_cmd_for_log(cmd))
@@ -1227,19 +1248,26 @@ def _run_grype(
             + _docker_login_mount_args(tmp_path, local)
             + vol_args
             + vex_mounts
+            + [image]
+            + _platform_args(config)
             + [
-                image, grype_target,
+                grype_target,
                 "-o", "json",
                 "--file", "/output/grype-results.json",
             ]
             + vex_flags
         )
     else:
-        cmd = [
-            "grype", grype_target,
-            "-o", "json",
-            "--file", str(output_file),
-        ] + vex_flags
+        cmd = (
+            ["grype"]
+            + _platform_args(config)
+            + [
+                grype_target,
+                "-o", "json",
+                "--file", str(output_file),
+            ]
+            + vex_flags
+        )
 
     logger.debug("grype invocation: %s", _redact_cmd_for_log(cmd))
     try:
@@ -1316,19 +1344,24 @@ def _run_syft(
             + _docker_env_flags(auth_env)
             + _docker_login_mount_args(tmp_path, local)
             + vol_args
+            + [image]
+            + _platform_args(config)
             + [
-                image,
                 image_ref,
                 "-o", "cyclonedx-json",
                 "--file", "/output/syft-sbom.json",
             ]
         )
     else:
-        cmd = [
-            "syft", image_ref,
-            "-o", "cyclonedx-json",
-            "--file", str(output_file),
-        ]
+        cmd = (
+            ["syft"]
+            + _platform_args(config)
+            + [
+                image_ref,
+                "-o", "cyclonedx-json",
+                "--file", str(output_file),
+            ]
+        )
 
     try:
         subprocess.run(

@@ -1,5 +1,6 @@
 """Tests for argus.container_runtime — shared container helpers."""
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -77,13 +78,141 @@ class TestPullImage:
         assert cr.pull_image("test:latest", policy="never") is False
 
     @patch("argus.container_runtime.subprocess.run")
-    def test_pull_retries_with_platform(self, mock_run, monkeypatch):
-        """When native pull fails, retries with --platform linux/amd64."""
+    def test_pull_retries_with_the_images_own_platform(self, mock_run, monkeypatch):
+        """A failed native pull retries against a platform the image publishes.
+
+        Scanners read image layers rather than execute them, so an
+        arm64-only image is perfectly scannable from an amd64 runner —
+        the pull just has to name the architecture, because the daemon
+        otherwise resolves the manifest against its own. The retry
+        platform comes from the registry manifest, not a hardcoded
+        linux/amd64 (which could never rescue an arm64-only image).
+        """
         monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/docker" if x == "docker" else None)
-        # First call (inspect) fails, second (pull) fails, third (pull --platform) succeeds
+        monkeypatch.setattr(cr, "_native_platform", lambda: "linux/amd64")
+        manifest = json.dumps([
+            {"Descriptor": {"platform": {"os": "linux", "architecture": "arm64"}}},
+        ])
         mock_run.side_effect = [
-            MagicMock(returncode=1),              # inspect
-            MagicMock(returncode=1, stderr="err"), # pull
-            MagicMock(returncode=0),               # pull --platform
+            MagicMock(returncode=1),                       # image inspect
+            MagicMock(returncode=1, stderr="no match"),    # native pull
+            MagicMock(returncode=0, stdout=manifest, stderr=""),  # manifest inspect
+            MagicMock(returncode=0, stderr=""),            # pull --platform
         ]
         assert cr.pull_image("test:latest", policy="if-not-present") is True
+
+        retry = mock_run.call_args_list[-1][0][0]
+        assert "--platform" in retry
+        assert retry[retry.index("--platform") + 1] == "linux/arm64"
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_pull_prefers_native_platform_when_image_publishes_it(
+        self, mock_run, monkeypatch,
+    ):
+        """A multi-arch image retries on this host's own architecture.
+
+        The native pull may have failed for an unrelated, transient
+        reason; re-pulling the foreign variant of an image that does
+        ship ours would be a silent downgrade.
+        """
+        monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/docker" if x == "docker" else None)
+        monkeypatch.setattr(cr, "_native_platform", lambda: "linux/amd64")
+        manifest = json.dumps([
+            {"Descriptor": {"platform": {"os": "linux", "architecture": "arm64"}}},
+            {"Descriptor": {"platform": {"os": "linux", "architecture": "amd64"}}},
+        ])
+        mock_run.side_effect = [
+            MagicMock(returncode=1),
+            MagicMock(returncode=1, stderr="transient"),
+            MagicMock(returncode=0, stdout=manifest, stderr=""),
+            MagicMock(returncode=0, stderr=""),
+        ]
+        assert cr.pull_image("test:latest", policy="if-not-present") is True
+        retry = mock_run.call_args_list[-1][0][0]
+        assert retry[retry.index("--platform") + 1] == "linux/amd64"
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_pull_does_not_retry_without_platform_information(
+        self, mock_run, monkeypatch,
+    ):
+        """A bad tag / auth failure costs one pull attempt, not two.
+
+        The old unconditional ``--platform linux/amd64`` retry burned a
+        second full pull on every permanently-failing reference.
+        """
+        monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/docker" if x == "docker" else None)
+        mock_run.side_effect = [
+            MagicMock(returncode=1),                      # image inspect
+            MagicMock(returncode=1, stderr="not found"),  # native pull
+            MagicMock(returncode=1, stdout="", stderr="no such manifest"),
+        ]
+        assert cr.pull_image("test:latest", policy="if-not-present") is False
+        pull_calls = [
+            c[0][0] for c in mock_run.call_args_list if "pull" in c[0][0]
+        ]
+        assert len(pull_calls) == 1
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_explicit_platform_is_used_verbatim(self, mock_run, monkeypatch):
+        """An explicit platform is honored with no fallback attempt."""
+        monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/docker" if x == "docker" else None)
+        mock_run.side_effect = [
+            MagicMock(returncode=1),            # image inspect
+            MagicMock(returncode=0, stderr=""),  # pull --platform
+        ]
+        assert cr.pull_image(
+            "test:latest", policy="if-not-present", platform="linux/s390x",
+        ) is True
+        pull = mock_run.call_args_list[-1][0][0]
+        assert pull[pull.index("--platform") + 1] == "linux/s390x"
+
+
+class TestDetectImagePlatforms:
+    """``detect_image_platforms`` reads the registry manifest."""
+
+    def setup_method(self):
+        cr._cached_runtime = None
+
+    def teardown_method(self):
+        cr._cached_runtime = None
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_single_arch_image(self, mock_run, monkeypatch):
+        monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/docker" if x == "docker" else None)
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=json.dumps(
+                {"Descriptor": {"platform": {
+                    "os": "linux", "architecture": "arm", "variant": "v7",
+                }}}
+            ),
+            stderr="",
+        )
+        assert cr.detect_image_platforms("armv7/app:1") == ["linux/arm/v7"]
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_attestation_entries_are_skipped(self, mock_run, monkeypatch):
+        """buildx provenance entries are unknown/unknown and unpullable."""
+        monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/docker" if x == "docker" else None)
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=json.dumps([
+                {"Descriptor": {"platform": {"os": "linux", "architecture": "amd64"}}},
+                {"Descriptor": {"platform": {"os": "unknown", "architecture": "unknown"}}},
+            ]),
+            stderr="",
+        )
+        assert cr.detect_image_platforms("app:1") == ["linux/amd64"]
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_unreadable_manifest_returns_empty(self, mock_run, monkeypatch):
+        """No information is not the same as no platforms."""
+        monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/docker" if x == "docker" else None)
+        mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="denied")
+        assert cr.detect_image_platforms("private/app:1") == []
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_unparsable_manifest_returns_empty(self, mock_run, monkeypatch):
+        monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/docker" if x == "docker" else None)
+        mock_run.return_value = MagicMock(returncode=0, stdout="not json", stderr="")
+        assert cr.detect_image_platforms("app:1") == []

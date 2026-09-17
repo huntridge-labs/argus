@@ -547,7 +547,19 @@ class ContainerScanner:
         # Ensure the image is present locally before inspecting.
         # ``if-not-present`` is a fast cache hit when trivy/grype/syft
         # already pulled the image in this scan run.
-        if not container_runtime.pull_image(image_ref, policy="if-not-present"):
+        #
+        # ``platform`` pins which variant to inspect. Without it the
+        # daemon resolves the manifest against its own architecture, so
+        # an image published only for a foreign arch fails to pull here
+        # even though its layers are perfectly readable — scanners read
+        # layers, they don't execute them. ``pull_image`` recovers that
+        # case on its own by reading the registry manifest; the explicit
+        # value is for registries where the manifest can't be read.
+        if not container_runtime.pull_image(
+            image_ref,
+            policy="if-not-present",
+            platform=config.get("platform"),
+        ):
             return [], {
                 "error": f"could not pull or locate image {image_ref} for inspection",
             }
@@ -649,7 +661,10 @@ class ContainerScanner:
         }
 
     def _extract_paths_from_image(
-        self, image_ref: str, paths: tuple[str, ...] | list[str],
+        self,
+        image_ref: str,
+        paths: tuple[str, ...] | list[str],
+        platform: str | None = None,
     ) -> dict[str, bytes]:
         """Pull files from a container image's filesystem without running it.
 
@@ -677,7 +692,12 @@ class ContainerScanner:
         # Ensure the image is locally present. The container scanner's
         # trivy/grype step normally pulls already; this is the safety
         # net when ``services`` runs as the only enabled sub-scanner.
-        if not container_runtime.pull_image(image_ref, policy="if-not-present"):
+        # ``platform`` matters for the same reason as in
+        # ``_scan_exposed_ports``: a foreign-architecture image is
+        # readable, but only if the pull names its architecture.
+        if not container_runtime.pull_image(
+            image_ref, policy="if-not-present", platform=platform,
+        ):
             return {}
 
         create = subprocess.run(
@@ -778,7 +798,9 @@ class ContainerScanner:
                            "Podman, or nerdctl to enable service enumeration",
             }
 
-        files = self._extract_paths_from_image(image_ref, _SERVICE_PATHS)
+        files = self._extract_paths_from_image(
+            image_ref, _SERVICE_PATHS, platform=config.get("platform"),
+        )
         if not files:
             return [], {
                 "execution": "local-extract",

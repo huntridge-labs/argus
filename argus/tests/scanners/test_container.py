@@ -202,7 +202,7 @@ class TestScanExposedPorts:
         monkeypatch.setattr(rt_mod, "is_available", lambda: True)
         monkeypatch.setattr(rt_mod, "runtime_cmd", lambda: "docker")
         monkeypatch.setattr(rt_mod, "pull_image",
-                            lambda image, policy="if-not-present": pull_ok)
+                            lambda image, policy="if-not-present", platform=None: pull_ok)
 
         if inspect_stdout is None:
             import json as _json
@@ -547,7 +547,7 @@ class TestScanServices:
         scanner = ContainerScanner()
         monkeypatch.setattr(
             scanner, "_extract_paths_from_image",
-            lambda image_ref, paths: files,
+            lambda image_ref, paths, platform=None: files,
         )
         return scanner
 
@@ -744,7 +744,7 @@ class TestExtractPathsFromImage:
         monkeypatch.setattr(rt_mod, "is_available", lambda: True)
         monkeypatch.setattr(rt_mod, "runtime_cmd", lambda: "docker")
         monkeypatch.setattr(rt_mod, "pull_image",
-                            lambda image, policy="if-not-present": True)
+                            lambda image, policy="if-not-present", platform=None: True)
 
         # Build a tar archive matching what ``docker cp <cid>:/etc/systemd/system -``
         # would emit: a top-level directory entry plus files inside it.
@@ -812,7 +812,7 @@ class TestExtractPathsFromImage:
         monkeypatch.setattr(rt_mod, "is_available", lambda: True)
         monkeypatch.setattr(rt_mod, "runtime_cmd", lambda: "docker")
         monkeypatch.setattr(rt_mod, "pull_image",
-                            lambda image, policy="if-not-present": True)
+                            lambda image, policy="if-not-present", platform=None: True)
 
         def fake_run(cmd, **kwargs):
             return _subprocess.CompletedProcess(
