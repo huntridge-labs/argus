@@ -309,6 +309,47 @@ scn_detector_errors:
       \ workflows.yaml is more direct — it sees exactly what Python will import.\n"
   reference: "pyproject.toml (browser + mcp extras, and the comments explaining why no\
     \ python-multipart floor lives there) and issues #394-#398"
+- pattern: "container scan passes with 0 findings|workflow green but nothing scanned|Unknown container sub-scanner"
+  category: container-scanning
+  context: "A container scan exits 0 with no findings, or a security gate stays green
+    while the image was never actually examined.\n"
+  root_cause: "Both container dispatch sites select sub-scanners with membership tests
+    (`if \"trivy\" in enabled`), so a name that is not in SUB_SCANNERS matched no branch,
+    ran nothing, and returned a clean ScanResult. A typo such as `tryvi` in a scanners
+    list was enough. Three sibling cases had the same shape: trivy/grype returning []
+    when neither a local binary nor a container runtime was available; container-scan.yml
+    skipping every scan job when scan_mode was remote with an empty image_ref; and
+    reusable-security-hardening.yml substituting DEFAULT_SCANNERS after an unknown token.\n"
+  solution:
+    steps:
+    - "Check the sub-scanner names against SUB_SCANNERS (trivy, grype, syft, exposure,
+      services). An unknown or empty selection now exits 2 naming the offending value."
+    - "Read images_scanned on container-scan.yml's workflow_call outputs — 0 means
+      nothing ran, which is distinct from a clean scan."
+    - "If a tool is genuinely unavailable, either install it, make a container runtime
+      available, or narrow the scanners list explicitly rather than relying on a skip."
+    note: "Exit-code contract: 0 = every requested sub-scanner ran and nothing breached
+      the threshold; 1 = findings at/above the severity threshold; 2 = the scan could not
+      be completed. \"Nothing could be scanned\" is never 0. See ADR-037.\n"
+  reference: "argus/scanners/container.py (SUB_SCANNERS, validate_sub_scanners), argus/container/scanner.py, .github/workflows/container-scan.yml"
+- pattern: "no matching manifest for linux/amd64|could not pull or locate image .* for inspection|arm64.* image cannot be scanned"
+  category: container-scanning
+  context: "Scanning an arm64-only or multi-arch image from an amd64 runner (or the
+    reverse) fails at the pull or inspect step.\n"
+  root_cause: "docker pull, docker image inspect, trivy, grype and syft all resolve a
+    manifest against the host's own architecture by default. pull_image compounded this
+    with an unconditional `--platform linux/amd64` retry, which cannot rescue an
+    arm64-only image and wastes a second pull on every unrelated failure.\n"
+  solution:
+    steps:
+    - "Usually nothing: a failed pull now reads the image's published platforms from the
+      registry manifest and retries against one of them automatically."
+    - "If the registry manifest is unreadable from this host (private registry, no creds),
+      set containers.platform in argus.yml, --platform on the CLI, or the platform input
+      on container-scan.yml — e.g. linux/arm64."
+    note: "Scanners read image layers; they never execute them, so a foreign architecture
+      is scannable from any runner. No QEMU/binfmt emulation is needed. See ADR-038.\n"
+  reference: "argus/container_runtime.py (detect_image_platforms, pull_image), argus/container/scanner.py (_platform_args)"
 errors:
   RESOURCE_NOT_ACCESSIBLE_BY_INTEGRATION:
     category: permissions

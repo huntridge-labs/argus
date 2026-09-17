@@ -18,6 +18,21 @@ workflows:
     description: Scan container images
     category: scanning
     command: python -m argus scan container --severity-threshold high
+    exit_codes: '0 = every requested sub-scanner ran and nothing breached the threshold;
+      1 = findings at/above --severity-threshold; 2 = the scan could not be completed
+      (unknown sub-scanner name, no targets, registry auth failure, or a sub-scanner
+      that could not run). "Nothing could be scanned" is never 0 — see ADR-037.'
+  container_scanning_foreign_architecture:
+    description: Scan an arm64-only or multi-arch image from an amd64 runner (or the reverse)
+    category: scanning
+    when_to_use: The image's architecture differs from the host's, or the pull fails with
+      "no matching manifest for linux/amd64"
+    command: python -m argus scan container --image arm64v8/alpine:3.18 --platform linux/arm64
+    note: '--platform is usually unnecessary — a failed pull resolves the image''s published
+      platforms from the registry manifest automatically. Set it explicitly only when this
+      host cannot read that manifest (private registry without credentials). Equivalent to
+      containers.platform in argus.yml and the platform input on container-scan.yml.'
+    reference: .ai/decisions.yaml → ADR-038, docs/config-reference.md → containers.platform
   container_scanning_private_registry:
     description: Scan container images from a private registry (Iron Bank, GHCR-private, ECR, Artifactory,
       internal Harbor)

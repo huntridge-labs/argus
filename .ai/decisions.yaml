@@ -2809,3 +2809,108 @@ decisions:
       - Regression coverage in .github/actions/scanner-codeql/tests/test_codeql_generate_summary.py exercises main()/argparse (the pre-existing tests called generate_codeql_summary() directly, which is why the crash shipped) and runs the action's parse/gate shell bodies directly.
       - Semantics documented in .github/actions/scanner-codeql/README.md.
       - Consistent with ADR-007 (the user controls failure behavior) — the gate only runs when the user sets fail_on_severity.
+  ADR-037:
+    title: A scan that did not run is never a pass — validate scanner selection up front
+    date: '2026-09-17'
+    status: accepted
+    context: |-
+      Both container dispatch sites (ContainerScanner.scan and
+      argus.container.scanner.scan_image) select sub-scanners with membership
+      tests: `if "trivy" in enabled`. An unrecognised name therefore matched no
+      branch, ran nothing, produced zero findings, and exited 0. A typo in a
+      scanners list ("tryvi") rendered a passing security gate over a completely
+      unscanned image. The same shape appeared in three other places:
+      `_run_trivy` / `_run_grype` returned [] when no binary and no container
+      runtime were available; container-scan.yml skipped every scan job when
+      scan_mode was remote with an empty image_ref; and
+      reusable-security-hardening.yml emitted a ::notice:: for an unknown scanner
+      token and then silently substituted DEFAULT_SCANNERS, running a different
+      scan from the one the caller asked for.
+    decision: |-
+      Treat "nothing was scanned" as an error, never as a clean result.
+      Scanner selection is validated before any work starts, and a tool that
+      cannot run is recorded as a failure rather than as zero findings.
+    alternatives_considered:
+    - name: 'Keep ignoring unknown names but raise the log level to ::warning::'
+      rejected_because: An annotation does not change the job's verdict. The gate
+        still passes green over an unscanned image, which is the actual defect;
+        making the log louder only makes it easier to miss in a long run.
+    - name: Fall back to the default scanner set when the selection is unrecognised
+      rejected_because: Silently substitutes a different scan for the requested
+        one. The green tick then attests to something the caller never asked for
+        — worse than failing, because it looks like success.
+    - name: 'Gate the behavior behind an opt-in flag (--fail-on-scanner-error)'
+      rejected_because: Puts the safe behavior behind a flag nobody sets. The
+        reported workflows never passed it, which is exactly why the gap shipped.
+    consequences:
+      positive:
+      - A typo in a scanners list fails loudly instead of producing a green gate over an unscanned image.
+      - The exit-code contract is stated: 0 = scanned and clean, 1 = findings at/above threshold, 2 = could not scan.
+      - Callers can distinguish "clean" from "never ran" via the images_scanned workflow output.
+      negative:
+      - Previously-green runs with a typo'd scanner name now fail. This is the intended correction, but it lands as a breaking change for any caller relying on the old silent behavior.
+      - A tool that is genuinely unavailable now fails the scan rather than being skipped; operators who want partial coverage must narrow the scanners list explicitly.
+    implementation: |-
+      - argus.scanners.container.SUB_SCANNERS is the single source of truth for valid
+        sub-scanner names; validate_sub_scanners() is the gate both entry points call.
+      - argus.core.schema duplicates the set (to keep argus.core free of an
+        argus.scanners dependency); test_schema_and_runtime_agree pins them together.
+      - _run_trivy / _run_grype raise RuntimeError when no binary and no container
+        runtime are available, or on timeout, so the orchestrator records the failure
+        under scanner_errors and ContainerScanSummary.scan_failures drives a non-zero exit.
+      - scan_image keeps a backstop for drift between SUB_SCANNERS and the dispatch branches.
+      - container-scan.yml gains a validate-inputs job; reusable-security-hardening.yml
+        collects unknown tokens and exits 1 rather than substituting DEFAULT_SCANNERS.
+      - Consistent with ADR-007 (the user controls failure behavior) — the user chooses
+        the severity threshold, but not whether an unrun scan counts as a pass.
+      - Generalizes ADR-036, which established the same rule for the CodeQL severity
+        gate, to the container scanner and the two reusable workflows.
+  ADR-038:
+    title: Scanners read image layers, so a foreign architecture is scannable
+    date: '2026-09-17'
+    status: accepted
+    context: |-
+      An arm64-only image could not be scanned from an amd64 runner. Every step
+      that touches the image — docker pull, docker image inspect, trivy, grype,
+      syft — resolves a manifest against the host's own architecture by default,
+      so the scan failed outright for anyone publishing multi-arch or arm64-only
+      images. container_runtime.pull_image compounded this with an unconditional
+      `--platform linux/amd64` retry on any pull failure, which could only ever
+      rescue amd64 images and burned a second full pull attempt on every
+      unrelated failure (bad tag, auth, network).
+    decision: |-
+      Treat the scanned image's architecture as data to be discovered, not as a
+      property of the runner. Vulnerability scanners read image layers; they
+      never execute them, so there is no reason a foreign architecture should be
+      unscannable.
+    alternatives_considered:
+    - name: Require callers to run on a matching-architecture runner
+      rejected_because: Pushes a per-image infrastructure cost onto every consumer
+        publishing multi-arch images, to work around a limitation that does not
+        technically exist — nothing in a layer scan needs to execute the binary.
+    - name: Keep the unconditional --platform linux/amd64 retry
+      rejected_because: Hardcodes one architecture as privileged. It cannot rescue
+        the arm64-only case at all, and it doubles pull time for every permanently
+        failing reference.
+    - name: Emulate the foreign architecture with QEMU/binfmt
+      rejected_because: Solves a problem we do not have (execution) at significant
+        setup and runtime cost; layer reading needs no emulation.
+    consequences:
+      positive:
+      - Multi-arch and single-arch-foreign images scan from any runner without extra setup.
+      - A permanently failing pull now costs one attempt, not two.
+      - The retry names the architecture it chose, so the log explains the decision.
+      negative:
+      - Adds a `<runtime> manifest inspect` call on the pull-failure path; on a private
+        registry whose manifest this host cannot read it returns nothing and no retry
+        happens, so containers.platform must be set explicitly.
+    implementation: |-
+      - container_runtime.detect_image_platforms() reads Descriptor.platform from
+        `<runtime> manifest inspect --verbose`, filtering buildx unknown/unknown
+        attestation entries.
+      - pull_image(platform=...) uses an explicit value verbatim with no fallback;
+        without one, a failed pull retries against a published platform, preferring
+        the host's own architecture when the image publishes it.
+      - containers.platform (argus.yml) / --platform (CLI) / platform (container-scan.yml
+        input) thread a value to trivy, grype, syft and both daemon-backed sub-scanners
+        (exposure, services) via _platform_args().
