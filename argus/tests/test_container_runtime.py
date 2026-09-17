@@ -374,3 +374,47 @@ class TestRunContainer:
         cr.run_container("alpine:3.18", [])
         assert mock_run.call_args[0][0][0] == "podman"
 
+
+class TestNativePlatform:
+    """``_native_platform`` maps the host arch to a container platform string.
+
+    Tested directly rather than through ``pull_image``: the two tests that
+    reach the retry branch stub this function out, so without these the
+    real mapping is never executed. It only looked covered locally because
+    ``docker manifest inspect`` talks to the registry rather than the
+    daemon, so a network-dependent path in the wider suite happened to run
+    it on one machine and not in CI.
+    """
+
+    @pytest.mark.parametrize("machine,expected", [
+        ("x86_64", "linux/amd64"),
+        ("AMD64", "linux/amd64"),     # uname on Windows hosts
+        ("amd64", "linux/amd64"),
+        ("aarch64", "linux/arm64"),   # uname on Linux arm64
+        ("arm64", "linux/arm64"),     # uname on Apple silicon
+        ("ARM64", "linux/arm64"),
+    ])
+    def test_known_architectures_normalise(self, machine, expected, monkeypatch):
+        monkeypatch.setattr("platform.machine", lambda: machine)
+        assert cr._native_platform() == expected
+
+    def test_unknown_architecture_passes_through(self, monkeypatch):
+        """An unmapped arch is still a usable platform string.
+
+        s390x and ppc64le already use the name Docker expects, so passing
+        them through beats guessing or raising — the value is only ever
+        compared against what the registry manifest reported.
+        """
+        monkeypatch.setattr("platform.machine", lambda: "s390x")
+        assert cr._native_platform() == "linux/s390x"
+
+    def test_os_component_is_always_linux(self, monkeypatch):
+        """Container images are Linux images even on macOS/Windows hosts.
+
+        Docker Desktop runs a Linux VM, so keying the OS component off the
+        host OS would produce a platform no registry publishes.
+        """
+        monkeypatch.setattr("platform.machine", lambda: "arm64")
+        monkeypatch.setattr("platform.system", lambda: "Darwin")
+        assert cr._native_platform().startswith("linux/")
+
