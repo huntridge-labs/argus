@@ -116,12 +116,21 @@ _EXECUTION_KEYS = {
 }
 
 # Top-level containers block keys
-_CONTAINERS_KEYS = {"images", "discover", "search_paths", "scanners", "vex"}
+_CONTAINERS_KEYS = {
+    "images", "discover", "search_paths", "scanners", "vex", "platform",
+}
 
 # Per-image entry keys (under containers.images[*])
 _CONTAINER_IMAGE_KEYS = {"image", "dockerfile", "context", "name", "cleanup"}
 
-# Sub-scanners argus scan container can dispatch to
+# Sub-scanners argus scan container can dispatch to. Must stay in sync
+# with ``argus.scanners.container.SUB_SCANNERS``, the runtime validator's
+# source of truth — a disagreement would mean one of the two accepts a
+# name that dispatches to nothing, which is the silent-green-scan bug
+# ``validate_sub_scanners`` exists to prevent. Duplicated rather than
+# imported to keep ``argus.core`` free of a dependency on
+# ``argus.scanners``; ``test_schema_matches_runtime_sub_scanners`` pins
+# the two together.
 _CONTAINER_SUB_SCANNERS = {"trivy", "grype", "syft", "exposure", "services"}
 
 

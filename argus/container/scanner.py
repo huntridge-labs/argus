@@ -9,7 +9,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from argus.core.models import Finding, Severity
-from argus.scanners.container import ContainerScanner
+from argus.scanners.container import (
+    SUB_SCANNERS,
+    ContainerScanner,
+    validate_sub_scanners,
+)
 
 from .discovery import ContainerTarget
 from .resources import get_image_digest, is_image_local
@@ -704,6 +708,19 @@ def scan_image(
                     raw_output_dir, exc,
                 )
 
+    # Defence in depth behind ``validate_sub_scanners``: every branch
+    # above is a membership test, so a selection that matches none of
+    # them would produce a clean, empty result — a green gate over an
+    # image nothing looked at. Record it as a scan failure instead, so
+    # ``ContainerScanSummary.scan_failures`` is non-zero and the CLI
+    # exits non-zero.
+    if not any(name in scanners for name in SUB_SCANNERS) and not sbom:
+        scanner_errors["selection"] = (
+            f"no container sub-scanner ran for {target.image_ref}: "
+            f"requested {', '.join(scanners) or '(none)'}; "
+            f"valid names are {', '.join(SUB_SCANNERS)}"
+        )
+
     combined = deduplicate_findings(
         trivy_findings, grype_findings,
         extra=[*exposure_findings, *services_findings],
@@ -997,11 +1014,20 @@ def _run_trivy(
 
         image = _resolve_sub_scanner_image(get_image("trivy"), config)
         if not image or not container_runtime.is_available():
-            logger.warning("trivy not available (local or container) — skipping")
-            return []
+            # "Cannot run" is not "ran and found nothing". Returning an
+            # empty list here used to render a clean PASS over an image
+            # that was never examined. Raise so the caller records it
+            # under ``scanner_errors`` and the CLI exits non-zero.
+            raise RuntimeError(
+                "trivy is not available: no local binary and no container "
+                "runtime to fall back to. Install trivy or make Docker/"
+                "Podman available, or drop trivy from the scanners list."
+            )
         if not container_runtime.pull_image(image):
-            logger.error("Failed to pull trivy image: %s", image)
-            return []
+            raise RuntimeError(
+                f"failed to pull the trivy scanner image {image} — "
+                f"the image could not be scanned"
+            )
         use_container = True
         logger.info("Running trivy via container: %s", image)
 
@@ -1073,12 +1099,14 @@ def _run_trivy(
             cmd, capture_output=True, text=True, timeout=600,
             env=_subprocess_env(auth_env),
         )
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
         logger.error("trivy timed out scanning %s", image_ref)
-        return []
-    except FileNotFoundError:
+        raise RuntimeError(
+            f"trivy timed out after 600s scanning {image_ref}"
+        ) from exc
+    except FileNotFoundError as exc:
         logger.error("trivy binary not found")
-        return []
+        raise RuntimeError(f"trivy binary not found on PATH") from exc
 
     _validate_scanner_output("trivy", output_file, result)
 
@@ -1119,11 +1147,20 @@ def _run_grype(
 
         image = _resolve_sub_scanner_image(get_image("grype"), config)
         if not image or not container_runtime.is_available():
-            logger.warning("grype not available (local or container) — skipping")
-            return []
+            # "Cannot run" is not "ran and found nothing". Returning an
+            # empty list here used to render a clean PASS over an image
+            # that was never examined. Raise so the caller records it
+            # under ``scanner_errors`` and the CLI exits non-zero.
+            raise RuntimeError(
+                "grype is not available: no local binary and no container "
+                "runtime to fall back to. Install grype or make Docker/"
+                "Podman available, or drop grype from the scanners list."
+            )
         if not container_runtime.pull_image(image):
-            logger.error("Failed to pull grype image: %s", image)
-            return []
+            raise RuntimeError(
+                f"failed to pull the grype scanner image {image} — "
+                f"the image could not be scanned"
+            )
         use_container = True
         logger.info("Running grype via container: %s", image)
 
@@ -1210,12 +1247,14 @@ def _run_grype(
             cmd, capture_output=True, text=True, timeout=600,
             env=_subprocess_env(auth_env),
         )
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
         logger.error("grype timed out scanning %s", image_ref)
-        return []
-    except FileNotFoundError:
+        raise RuntimeError(
+            f"grype timed out after 600s scanning {image_ref}"
+        ) from exc
+    except FileNotFoundError as exc:
         logger.error("grype binary not found")
-        return []
+        raise RuntimeError(f"grype binary not found on PATH") from exc
 
     _validate_scanner_output("grype", output_file, result)
 

@@ -224,6 +224,67 @@ def _parse_systemd_unit(content: bytes) -> dict[str, str]:
     return result
 
 
+# ── Canonical sub-scanner names ─────────────────────────────────────
+#
+# The container scanner is an orchestrator: every entry here maps to a
+# distinct sub-scanner the dispatch in ``ContainerScanner.scan`` (and
+# ``argus.container.scanner.scan_image``) knows how to run. Both
+# dispatch sites are pure membership tests (``if "trivy" in enabled``),
+# so an unrecognised name matches nothing, runs nothing, and — before
+# this list existed — produced a clean ScanResult with zero findings.
+# A typo in a ``scanners:`` list ("tryvi") therefore rendered a green
+# security gate over a completely unscanned image.
+#
+# ``validate_sub_scanners`` is the single gate both entry points call
+# so an unknown name is rejected up front with an actionable message
+# rather than silently dropped. Adding a sub-scanner means adding it
+# here *and* to both dispatch sites.
+SUB_SCANNERS: tuple[str, ...] = (
+    "trivy",
+    "grype",
+    "syft",
+    "exposure",
+    "services",
+)
+
+
+def validate_sub_scanners(
+    names: "str | list[str] | tuple[str, ...]", source: str = "scanners",
+) -> list[str]:
+    """Return ``names`` normalised, or raise ``ValueError`` if any is unknown.
+
+    Accepts either a sequence or a comma-separated string — config
+    files use both shapes (``scanners: "trivy,grype"`` and
+    ``scanners: [trivy, grype]``) and so does the CLI.
+
+    ``source`` names where the value came from (``--scanners``,
+    ``containers.scanners``) so the error message points at the thing
+    the user actually has to edit.
+
+    An empty selection is rejected too: "run no sub-scanners" is never
+    a useful request, and letting it through reproduces exactly the
+    silent-pass this function exists to prevent.
+    """
+    if isinstance(names, str):
+        names = names.split(",")
+    normalised = [str(n).strip().lower() for n in names if str(n).strip()]
+    if not normalised:
+        raise ValueError(
+            f"{source} selected no container sub-scanners. "
+            f"Valid names: {', '.join(SUB_SCANNERS)}"
+        )
+
+    unknown = [n for n in normalised if n not in SUB_SCANNERS]
+    if unknown:
+        plural = "s" if len(unknown) > 1 else ""
+        raise ValueError(
+            f"Unknown container sub-scanner{plural} in {source}: "
+            f"{', '.join(unknown)}. "
+            f"Valid names: {', '.join(SUB_SCANNERS)}"
+        )
+    return normalised
+
+
 class ContainerScanner:
     """Wraps Trivy, Grype, and Syft for container image scanning."""
 
@@ -292,7 +353,26 @@ class ContainerScanner:
                 ],
             )
 
-        enabled = self._enabled_scanners(config)
+        try:
+            enabled = self._enabled_scanners(config)
+        except ValueError as exc:
+            # An unknown sub-scanner name used to match no dispatch
+            # branch and yield a clean, empty ScanResult — a green gate
+            # over an unscanned image. Surface it as a failed phase so
+            # the engine buckets this scanner as "did not run cleanly".
+            return ScanResult(
+                scanner=self.name,
+                metadata={"error": str(exc), "execution_failed": True},
+                phase_results=[
+                    PhaseResult(
+                        phase="container-scanner-selection",
+                        status="failed",
+                        findings=[],
+                        error=str(exc),
+                    )
+                ],
+            )
+
         all_findings: list[Finding] = []
         metadata: dict = {}
         seen_cves: set[str] = set()
@@ -354,11 +434,19 @@ class ContainerScanner:
                 metadata["services"] = services_meta
 
             if not metadata:
+                # Every requested sub-scanner is a valid name (validated
+                # above) yet none produced a metadata entry, so none of
+                # them could be executed. That is a scan that did not
+                # happen, not a scan that found nothing — flag it as an
+                # execution failure so the engine's "did not run cleanly"
+                # bucket and ``--fail-on-scanner-error`` both see it.
                 metadata["error"] = (
-                    "None of the enabled scanners "
-                    "(trivy, grype, syft) could be executed — "
-                    "install locally or ensure Docker is available"
+                    "None of the enabled sub-scanners "
+                    f"({', '.join(enabled)}) could be executed — "
+                    "install them locally or ensure a container runtime "
+                    "is available"
                 )
+                metadata["execution_failed"] = True
 
         return ScanResult(
             scanner=self.name,
@@ -420,7 +508,14 @@ class ContainerScanner:
         of them explicitly via the ``scanners`` config key.
         """
         raw = config.get("scanners", "trivy,grype,syft,exposure,services")
-        return [s.strip().lower() for s in raw.split(",") if s.strip()]
+        if isinstance(raw, str):
+            raw = raw.split(",")
+        # Raises ValueError on an unknown or empty selection — see
+        # ``validate_sub_scanners``. ``scan()`` converts that into a
+        # failed ``container-scanner-selection`` phase so the engine
+        # counts the scanner as "did not run cleanly" instead of
+        # reporting a clean pass over an image nothing looked at.
+        return validate_sub_scanners(raw, source="scanners.container.scanners")
 
     def _scan_exposed_ports(
         self, image_ref: str, config: dict,

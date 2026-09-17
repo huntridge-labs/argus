@@ -27,6 +27,7 @@ from .scanner import (
     ContainerScanSummary,
     RegistryAuthError,
     scan_image,
+    validate_sub_scanners,
 )
 
 logger = logging.getLogger("argus.container")
@@ -281,13 +282,20 @@ class ContainerEngine:
         --image`` and ``argus scan --config argus.yml`` produce the
         same attack-surface signal. ``syft`` is implicit (driven by
         the ``sbom`` flag) and is not listed here.
+
+        Raises ``ValueError`` on an unknown or empty selection. The
+        dispatch in ``scan_image`` is a membership test, so an
+        unrecognised name would otherwise run nothing and report a
+        clean scan over an image nothing looked at. The CLI validates
+        the same value before the engine starts; this call is the
+        backstop for direct API callers.
         """
         raw = self.config.get(
             "scanners", ["trivy", "grype", "exposure", "services"],
         )
         if isinstance(raw, str):
-            return tuple(s.strip().lower() for s in raw.split(",") if s.strip())
-        return tuple(s.strip().lower() for s in raw if s.strip())
+            raw = raw.split(",")
+        return tuple(validate_sub_scanners(raw, source="containers.scanners"))
 
     def _sbom_enabled(self) -> bool:
         """Check if SBOM generation is enabled."""

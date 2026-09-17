@@ -1825,6 +1825,24 @@ def _load_container_config(args: argparse.Namespace) -> dict:
         # one-element list from argparse ``action="append"``.
         config["vex"] = args.vex
 
+    # Reject unknown sub-scanner names before any target is resolved or
+    # any image is pulled. Both dispatch sites (ContainerScanner.scan and
+    # container.scanner.scan_image) test membership, so a typo such as
+    # ``--scanners tryvi`` used to match no branch, run nothing, and exit
+    # 0 — a green security gate over an image nothing had looked at.
+    # Raised as ValueError so the dispatcher's existing handler prints it
+    # on stderr and returns EXIT_ERROR.
+    if "scanners" in config:
+        from argus.scanners.container import validate_sub_scanners
+        source = (
+            "--scanners"
+            if getattr(args, "scanners", None)
+            else "containers.scanners"
+        )
+        config["scanners"] = validate_sub_scanners(
+            config["scanners"], source=source,
+        )
+
     return config
 
 
