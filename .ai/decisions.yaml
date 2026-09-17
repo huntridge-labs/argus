@@ -2845,7 +2845,7 @@ decisions:
     consequences:
       positive:
       - A typo in a scanners list fails loudly instead of producing a green gate over an unscanned image.
-      - The exit-code contract is stated: 0 = scanned and clean, 1 = findings at/above threshold, 2 = could not scan.
+      - 'The exit-code contract is stated: 0 = scanned and clean, 1 = findings at/above threshold, 2 = could not scan.'
       - Callers can distinguish "clean" from "never ran" via the images_scanned workflow output.
       negative:
       - Previously-green runs with a typo'd scanner name now fail. This is the intended correction, but it lands as a breaking change for any caller relying on the old silent behavior.
