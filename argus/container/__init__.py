@@ -9,8 +9,8 @@ from .scanner import (
     scan_image,
     deduplicate_findings,
     validate_registry_auth,
-    validate_sub_scanners,
 )
+from argus.scanners.container import validate_sub_scanners
 from .engine import ContainerEngine
 
 __all__ = [

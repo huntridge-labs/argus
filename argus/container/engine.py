@@ -22,12 +22,13 @@ from .resources import (
     prune_docker_build_cache,
     remove_docker_image,
 )
+from argus.scanners.container import validate_sub_scanners
+
 from .scanner import (
     ContainerScanResult,
     ContainerScanSummary,
     RegistryAuthError,
     scan_image,
-    validate_sub_scanners,
 )
 
 logger = logging.getLogger("argus.container")

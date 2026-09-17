@@ -23,8 +23,6 @@ The contract these tests pin down:
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -260,6 +258,56 @@ class TestUnrunnableScannerIsAFailure:
         with pytest.raises(RuntimeError) as excinfo:
             runner("alpine:3.18", tmp_path)
         assert "timed out" in str(excinfo.value)
+
+    @pytest.mark.parametrize(
+        "tool,runner", [("trivy", _run_trivy), ("grype", _run_grype)],
+    )
+    def test_scanner_image_pull_failure_raises(
+        self, tool, runner, tmp_path, monkeypatch,
+    ):
+        """The tool falls back to a container, but that image cannot be pulled.
+
+        Distinct from "no runtime at all": a runtime exists, we just could
+        not get the scanner image. Either way the target image went
+        unexamined, so it must not read as a clean scan.
+        """
+        monkeypatch.setattr(
+            "argus.container.scanner.shutil.which", lambda _name: None,
+        )
+        monkeypatch.setattr(
+            "argus.container_runtime.is_available", lambda: True,
+        )
+        monkeypatch.setattr(
+            "argus.container_runtime.pull_image",
+            lambda *_a, **_kw: False,
+        )
+        with pytest.raises(RuntimeError) as excinfo:
+            runner("alpine:3.18", tmp_path)
+        assert "failed to pull" in str(excinfo.value)
+
+    @pytest.mark.parametrize(
+        "tool,runner", [("trivy", _run_trivy), ("grype", _run_grype)],
+    )
+    def test_binary_vanishing_mid_run_raises(
+        self, tool, runner, tmp_path, monkeypatch,
+    ):
+        """shutil.which found the binary but exec failed.
+
+        A race or a broken PATH entry. Previously returned [] and read as a
+        clean scan.
+        """
+        monkeypatch.setattr(
+            "argus.container.scanner.shutil.which",
+            lambda name: f"/usr/local/bin/{name}" if name == tool else None,
+        )
+
+        def _missing(*_args, **_kwargs):
+            raise FileNotFoundError(tool)
+
+        monkeypatch.setattr("subprocess.run", _missing)
+        with pytest.raises(RuntimeError) as excinfo:
+            runner("alpine:3.18", tmp_path)
+        assert "not found on PATH" in str(excinfo.value)
 
     @pytest.mark.parametrize(
         "tool,runner", [("trivy", _run_trivy), ("grype", _run_grype)],

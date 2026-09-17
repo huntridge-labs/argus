@@ -201,8 +201,10 @@ class TestScanExposedPorts:
 
         monkeypatch.setattr(rt_mod, "is_available", lambda: True)
         monkeypatch.setattr(rt_mod, "runtime_cmd", lambda: "docker")
-        monkeypatch.setattr(rt_mod, "pull_image",
-                            lambda image, policy="if-not-present", platform=None: pull_ok)
+        monkeypatch.setattr(
+            rt_mod, "pull_image",
+            lambda image, policy="if-not-present", platform=None: pull_ok,
+        )
 
         if inspect_stdout is None:
             import json as _json

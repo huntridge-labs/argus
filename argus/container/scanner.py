@@ -9,11 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from argus.core.models import Finding, Severity
-from argus.scanners.container import (
-    SUB_SCANNERS,
-    ContainerScanner,
-    validate_sub_scanners,
-)
+from argus.scanners.container import SUB_SCANNERS, ContainerScanner
 
 from .discovery import ContainerTarget
 from .resources import get_image_digest, is_image_local
@@ -1045,7 +1041,7 @@ def _run_trivy(
         if not container_runtime.pull_image(image):
             raise RuntimeError(
                 f"failed to pull the trivy scanner image {image} — "
-                f"the image could not be scanned"
+                "the image could not be scanned"
             )
         use_container = True
         logger.info("Running trivy via container: %s", image)
@@ -1127,7 +1123,7 @@ def _run_trivy(
         ) from exc
     except FileNotFoundError as exc:
         logger.error("trivy binary not found")
-        raise RuntimeError(f"trivy binary not found on PATH") from exc
+        raise RuntimeError("trivy binary not found on PATH") from exc
 
     _validate_scanner_output("trivy", output_file, result)
 
@@ -1180,7 +1176,7 @@ def _run_grype(
         if not container_runtime.pull_image(image):
             raise RuntimeError(
                 f"failed to pull the grype scanner image {image} — "
-                f"the image could not be scanned"
+                "the image could not be scanned"
             )
         use_container = True
         logger.info("Running grype via container: %s", image)
@@ -1282,7 +1278,7 @@ def _run_grype(
         ) from exc
     except FileNotFoundError as exc:
         logger.error("grype binary not found")
-        raise RuntimeError(f"grype binary not found on PATH") from exc
+        raise RuntimeError("grype binary not found on PATH") from exc
 
     _validate_scanner_output("grype", output_file, result)
 
