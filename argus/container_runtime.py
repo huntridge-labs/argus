@@ -14,6 +14,27 @@ import time
 
 logger = logging.getLogger("argus")
 
+# ── On the ``# nosec B603`` markers below ───────────────────────────
+#
+# Every subprocess call in this module passes an argv *list* with
+# ``shell=False`` (the default), so image refs and platform strings —
+# the only caller-influenced values — are argv elements and can never
+# be re-parsed as shell syntax. A ref like ``foo; rm -rf /`` is handed
+# to the runtime as one opaque argument and rejected by it as an
+# invalid reference.
+#
+# argv[0] is always ``runtime_cmd()``, which resolves to one of
+# docker / podman / nerdctl found on PATH, or to ``ARGUS_CONTAINER_RUNTIME``
+# when that names a binary ``shutil.which`` can find. That env var is
+# operator-supplied configuration at the same trust level as PATH
+# itself: anyone able to set it for the argus process could equally
+# prepend a directory to PATH. It is not attacker-controlled input in
+# any threat model where the rest of argus is meaningful.
+#
+# B603 is bandit's blanket "you called subprocess" warning and cannot
+# distinguish these from a genuine injection sink, so each site is
+# marked individually with this rationale as the reference.
+
 # Cache runtime detection across calls within a process
 _cached_runtime: str | None = None
 
@@ -68,7 +89,7 @@ def detect_image_platforms(image: str) -> list[str]:
     Callers treat that as "no information", not as "no platforms".
     """
     rt = runtime_cmd()
-    result = subprocess.run(
+    result = subprocess.run(  # nosec B603 — argv list, no shell; see module header
         [rt, "manifest", "inspect", "--verbose", image],
         capture_output=True, text=True,
     )
@@ -134,13 +155,13 @@ def pull_image(
     inspect_cmd = [rt, "image", "inspect", image]
 
     if policy == "never":
-        result = subprocess.run(inspect_cmd, capture_output=True)
+        result = subprocess.run(inspect_cmd, capture_output=True)  # nosec B603
         if result.returncode != 0:
             logger.warning("Image '%s' not found locally and pull_policy=never", image)
         return result.returncode == 0
 
     if policy == "if-not-present":
-        result = subprocess.run(inspect_cmd, capture_output=True)
+        result = subprocess.run(inspect_cmd, capture_output=True)  # nosec B603
         if result.returncode == 0:
             logger.debug("Image '%s' found locally — skipping pull", image)
             return True
@@ -149,7 +170,7 @@ def pull_image(
     def _pull(plat: str | None) -> tuple[int, str, int]:
         cmd = [rt, "pull"] + (["--platform", plat] if plat else []) + [image]
         at = time.monotonic()
-        proc = subprocess.run(cmd, capture_output=True, text=True)
+        proc = subprocess.run(cmd, capture_output=True, text=True)  # nosec B603
         return proc.returncode, proc.stderr, int((time.monotonic() - at) * 1000)
 
     if platform:
@@ -258,6 +279,6 @@ def run_container(
     cmd.append(image)
     cmd.extend(args)
 
-    return subprocess.run(
+    return subprocess.run(  # nosec B603 — argv list, no shell; see module header
         cmd, capture_output=True, text=True, timeout=timeout,
     )
