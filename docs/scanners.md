@@ -1298,6 +1298,54 @@ into Argus findings.
 
 ---
 
+## Supply-Chain Scanners
+
+### GuardDog (`guarddog`)
+
+[GuardDog](https://github.com/DataDog/guarddog) (Datadog, OSS) flags
+**malicious** packages — install-time code execution, typosquatting,
+obfuscation, exfiltration, suspicious metadata — using source-code (Semgrep)
+and metadata heuristics. This is a different signal from the CVE-based SCA
+scanners (`osv` / `grype` / `trivy`): those find *known vulnerabilities*,
+GuardDog finds packages that look *malicious*. Run both.
+
+It walks the scan path for dependency manifests and runs
+`guarddog <ecosystem> verify` on each:
+
+| Manifest | Ecosystem |
+|----------|-----------|
+| `requirements.txt` | pypi |
+| `package.json` | npm |
+| `go.mod` | go |
+| `Gemfile.lock` | rubygems |
+
+```yaml
+scanners:
+  - guarddog
+```
+
+```yaml
+# Optional tuning
+scanners:
+  guarddog:
+    rules: [exec-base64, code-execution]        # run only these heuristics
+    exclude_rules: [repository_integrity_mismatch]   # suppress a noisy rule
+```
+
+**Execution:** local binary — `pip install guarddog`. There is no bundled
+container image yet (GuardDog needs `pygit2`/libgit2 in the base image);
+until that lands, the scanner runs where `guarddog` is installed and is
+gracefully skipped otherwise. Findings are `HIGH` severity; GuardDog is
+malicious-indicator detection, not CVE matching, so it has no VEX support —
+suppress false positives with `exclude_rules`.
+
+> **Note:** matched source excerpts from a flagged package are deliberately
+> **not** copied into `argus-results.json` (only rule/package/location) so a
+> malicious payload can't leak into scan artifacts. Re-run
+> `guarddog <ecosystem> scan <package>` locally to inspect the code.
+
+---
+
 ## Common Configuration Patterns
 
 ### Enable GitHub Security Tab (Actions)
