@@ -426,8 +426,14 @@ jobs:
             infrastructure-only) SCANNERS_RAW='infrastructure' ;;
             full|'') SCANNERS_RAW='all' ;;
             *)
-              echo "::notice title=Unknown legacy scan type::Scan type '$SCAN_TYPE_RAW' not recognized. Falling back to 'all'."
-              SCANNERS_RAW='all'
+              # Same rule as the unknown-scanner refusal below: falling
+              # back to 'all' meant `scan_type: container_only` (an
+              # underscore typo of container-only) ran codeql, opengrep,
+              # bandit, gitleaks, checkov, trivy-iac and sbom instead of
+              # the container scan that was asked for, then reported
+              # green over a request nobody had made.
+              echo "::error title=Unknown scan type::Scan type '$SCAN_TYPE_RAW' is not recognized. Valid values: codeql-only, sast-only, container-only, infrastructure-only, full. Nothing was run."
+              exit 1
               ;;
           esac
         fi

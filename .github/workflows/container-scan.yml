@@ -66,6 +66,11 @@ on:
         required: false
         type: string
         default: ''
+      fail_on_no_targets:
+        description: 'Fail the run when discovery finds no Dockerfiles (instead of passing green with nothing scanned)'
+        required: false
+        type: boolean
+        default: false
 
   workflow_call:
     inputs:
@@ -212,6 +217,21 @@ jobs:
           # scan job skips, and only the summary runs — a green workflow
           # over an image nobody ever named. An unset variable upstream is
           # the usual cause, so say that plainly.
+          # `scan_mode` is a plain string on workflow_call (the
+          # workflow_dispatch side is a `choice`, so only callers can get
+          # here with a typo). Every downstream gate tests it for equality
+          # with 'remote', so 'Remote' or 'remot' closes scan-remote-image
+          # and opens discover-containers: the named image is never looked
+          # at, whatever Dockerfiles happen to be lying around are scanned
+          # instead, and the run reports success.
+          case "$SCAN_MODE" in
+            remote|discover|'') ;;
+            *)
+              echo "::error title=Invalid scan_mode::scan_mode '$SCAN_MODE' is not recognized. Valid values: remote, discover. The requested image would never have been scanned."
+              FAILED=1
+              ;;
+          esac
+
           if [ "$SCAN_MODE" = "remote" ] && [ -z "$IMAGE_REF" ]; then
             echo "::error title=Missing image_ref::scan_mode is 'remote' but image_ref is empty. No image would be scanned and the workflow would pass green. Pass image_ref, or use scan_mode: discover."
             FAILED=1
