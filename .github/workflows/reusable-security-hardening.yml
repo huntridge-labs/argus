@@ -4,7 +4,23 @@ on:
   workflow_call:
     inputs:
       scanners:
-        description: 'Comma-separated list of scanners to run (codeql, opengrep, bandit, gitleaks, container, infrastructure, trivy-iac, checkov, trivy-container, grype, lint, clamav, sbom, zap, osv, dependency-review, supply-chain, dependencies, all, sast, secrets, etc.). Note: zap (DAST) is opt-in and is not included in "all" by default.'
+        description: |
+          Comma-separated list of scanners to run. An unrecognized name fails the
+          workflow before any job starts — it is never ignored, because falling
+          back to the default set would run a scan the caller did not ask for and
+          then report it green.
+
+          Scanners: codeql, opengrep, bandit, gitleaks, container, trivy-iac,
+          checkov, trivy-container, grype, lint, clamav, sbom, zap, osv,
+          dependency-review, supply-chain.
+          Groups: all, sast, secrets, infrastructure, dependencies, none.
+          Aliases: code-ql, semgrep/open-grep, git-leaks, containers/
+          container-scan/docker, infra/iac/terraform, trivyiac, trivycontainer,
+          linting/code-quality, malware/antivirus, dast, osv-scanner,
+          dep-review, supply_chain/supplychain/actions-security, deps/dependency,
+          sast-only, secrets-only, full, off.
+
+          Note: zap (DAST) is opt-in and is not included in "all" by default.
         required: false
         default: 'all'
         type: string
@@ -303,6 +319,12 @@ jobs:
 
         DEFAULT_SCANNERS=(codeql opengrep bandit gitleaks container trivy-iac checkov sbom)
         SELECTED=()
+        # Names the caller asked for that this workflow cannot dispatch.
+        # Collected rather than failing on the first one so a caller with
+        # several typos sees them all in a single run.
+        UNKNOWN_TOKENS=()
+        # Set when the caller explicitly asked for no scanners at all.
+        EXPLICIT_NONE=false
 
         normalize() {
           echo "$1" | tr '[:upper:]' '[:lower:]' | tr -d ' \t' | tr '_' '-'
@@ -311,7 +333,8 @@ jobs:
         add_scanner() {
           local key="$1"
           if [[ -z "${RUN[$key]+_}" ]]; then
-            echo "::notice title=Unknown scanner token::Scanner '$key' is not recognized and will be ignored."
+            echo "::error title=Unknown scanner::Scanner '$key' is not recognized."
+            UNKNOWN_TOKENS+=("$key")
             return
           fi
           if [[ "${RUN[$key]}" != "true" ]]; then
@@ -373,9 +396,21 @@ jobs:
             dependencies|deps|dependency)
               for key in osv dependency-review; do add_scanner "$key"; done
               ;;
-            none|off) reset_selection ;;
+            none|off)
+              reset_selection
+              # Explicit "run nothing" must not fall through to the
+              # empty-selection default below, which would run the full
+              # DEFAULT_SCANNERS set — the opposite of what was asked.
+              EXPLICIT_NONE=true
+              ;;
             *)
-              echo "::notice title=Unknown scanner token::Value '$token' is not recognized and will be ignored."
+              # Previously a ::notice:: that the run then ignored, falling
+              # back to DEFAULT_SCANNERS. The caller silently got a
+              # *different* scan from the one they asked for, and a notice
+              # annotation is not visible enough to catch it. A scanner
+              # name the workflow cannot honor is now fatal.
+              echo "::error title=Unknown scanner::Value '$token' is not a recognized scanner or alias."
+              UNKNOWN_TOKENS+=("$token")
               ;;
           esac
         }
@@ -391,8 +426,14 @@ jobs:
             infrastructure-only) SCANNERS_RAW='infrastructure' ;;
             full|'') SCANNERS_RAW='all' ;;
             *)
-              echo "::notice title=Unknown legacy scan type::Scan type '$SCAN_TYPE_RAW' not recognized. Falling back to 'all'."
-              SCANNERS_RAW='all'
+              # Same rule as the unknown-scanner refusal below: falling
+              # back to 'all' meant `scan_type: container_only` (an
+              # underscore typo of container-only) ran codeql, opengrep,
+              # bandit, gitleaks, checkov, trivy-iac and sbom instead of
+              # the container scan that was asked for, then reported
+              # green over a request nobody had made.
+              echo "::error title=Unknown scan type::Scan type '$SCAN_TYPE_RAW' is not recognized. Valid values: codeql-only, sast-only, container-only, infrastructure-only, full. Nothing was run."
+              exit 1
               ;;
           esac
         fi
@@ -402,7 +443,17 @@ jobs:
           apply_token "$(normalize "$raw")"
         done
 
-        if [[ ${#SELECTED[@]} -eq 0 ]]; then
+        # Refuse to run a scan the caller did not ask for. Substituting
+        # DEFAULT_SCANNERS for an unrecognized name meant `scanners: tryvi`
+        # quietly executed gitleaks, checkov, opengrep, bandit, sbom,
+        # trivy-iac and the container scanner — a full run whose green tick
+        # attested to something the caller never requested.
+        if [[ ${#UNKNOWN_TOKENS[@]} -gt 0 ]]; then
+          echo "::error title=Unknown scanner::Unrecognized scanner name(s): ${UNKNOWN_TOKENS[*]}. Valid names and aliases are listed in the 'scanners' input description. Nothing was run."
+          exit 1
+        fi
+
+        if [[ ${#SELECTED[@]} -eq 0 && "$EXPLICIT_NONE" != "true" ]]; then
           for key in "${DEFAULT_SCANNERS[@]}"; do add_scanner "$key"; done
         fi
 

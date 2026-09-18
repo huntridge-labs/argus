@@ -436,7 +436,8 @@ Configuration for container image scanning via `argus scan container`. This sect
 | `discover` | boolean | `false` | Automatically discover Dockerfiles and build images for scanning. |
 | `search_paths` | array of strings | | Directories to search for Dockerfiles when `discover` is enabled. |
 | `images` | array of [image objects](#image-object) | | Explicit list of container images to scan. |
-| `scanners` | array of strings | `["trivy", "grype"]` | Sub-scanners to use. Values: `trivy`, `grype`, `syft`. |
+| `scanners` | array of strings | `["trivy", "grype", "exposure", "services"]` | Sub-scanners to use. Values: `trivy`, `grype`, `syft`, `exposure`, `services`. An unrecognized or empty value is a hard error — see [Sub-scanner selection](#sub-scanner-selection). |
+| `platform` | string | | Image platform to scan, e.g. `linux/arm64`. Leave unset to resolve it from the registry manifest. See [Scanning a foreign architecture](#scanning-a-foreign-architecture). |
 | `output_dir` | string | `"./argus-results"` | Output directory for container scan results. |
 | `registry_username` | string | | Literal username applied to every image when no `registry_auth` entry matches. Prefer `registry_username_env`. |
 | `registry_username_env` | string | | **Name** of an environment variable holding the default registry username. |
@@ -445,6 +446,62 @@ Configuration for container image scanning via `argus scan container`. This sect
 | `registry_auth` | mapping | | Per-registry credential map keyed by registry host (or `host/path-prefix` for finer granularity). Longest matching prefix wins. See [Per-registry credentials](#per-registry-credentials) below. |
 
 Registry credentials are forwarded to Trivy, Grype, and Syft as their native env vars (`TRIVY_USERNAME` / `TRIVY_PASSWORD`, `GRYPE_REGISTRY_AUTH_USERNAME` / `GRYPE_REGISTRY_AUTH_PASSWORD`, `SYFT_REGISTRY_AUTH_USERNAME` / `SYFT_REGISTRY_AUTH_PASSWORD`) for both the local-binary and container-fallback execution paths. For back-compat, Argus also reads the top-level credential fields from `scanners.container.*` — the canonical `containers.*` location wins when both are set.
+
+### Sub-scanner selection
+
+`scanners` names the sub-scanners to run. Valid values are `trivy`, `grype`, `syft`, `exposure` and `services`.
+
+An unrecognized name is rejected before the scan starts:
+
+```console
+$ argus scan container --image alpine:3.18 --scanners tryvi
+Error: Unknown container sub-scanner in --scanners: tryvi. Valid names: trivy, grype, syft, exposure, services
+$ echo $?
+2
+```
+
+This is deliberately fatal rather than a warning. Both dispatch paths select sub-scanners by name lookup, so an unrecognized value used to match nothing, run nothing, and exit `0` — a passing security gate over an image that was never examined. An empty selection is rejected for the same reason.
+
+#### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Every requested sub-scanner ran; nothing at or above `--severity-threshold`. |
+| `1` | Findings at or above the severity threshold. |
+| `2` | The scan could not be completed. |
+
+Exit `2` covers an unknown sub-scanner name, no targets to scan, a registry authentication failure, and any requested sub-scanner that could not run — an unpullable image, a tool with neither a local binary nor a container runtime to fall back on, a timeout, or output that could not be parsed. **"Nothing could be scanned" never exits `0`.**
+
+### Scanning a foreign architecture
+
+Vulnerability scanners read image layers; they never execute them. An `arm64`-only image is therefore perfectly scannable from an `amd64` runner.
+
+Normally this needs no configuration. If a pull fails, Argus reads the image's published platforms from the registry manifest and retries against one of them, preferring the host's own architecture when the image publishes it.
+
+Set `platform` explicitly when this host cannot read that manifest — typically a private registry the runner has no credentials for, or a runtime with no manifest support:
+
+| Runtime | Manifest read | Automatic retry |
+|---------|---------------|-----------------|
+| Docker | `manifest inspect --verbose` | Yes |
+| Podman | `manifest inspect` (OCI index) | Yes |
+| nerdctl | not supported | No — set `platform` |
+
+```yaml
+containers:
+  platform: linux/arm64
+  images:
+    - image: registry.example.com/team/app:1.4.0
+```
+
+The equivalent CLI flag overrides the config file:
+
+```bash
+argus scan container --image arm64v8/alpine:3.18 --platform linux/arm64
+```
+
+The value must be `os/arch` or `os/arch/variant` (e.g. `linux/arm64`, `linux/arm/v7`); anything else is rejected at config-validation time rather than passed through to the scanners. An empty value means "unset" — no flag is emitted, so `platform: ""` is a valid placeholder.
+
+It is threaded to Trivy, Grype and Syft as their native `--platform` flag on both container paths, and to the `exposure` and `services` sub-scanners as the pull platform. An explicit value also defeats the local-image cache: if a copy of the ref is already present for a different architecture, the requested platform is pulled rather than the cached one being reused. No QEMU or `binfmt` emulation is involved.
 
 ### Per-registry credentials
 

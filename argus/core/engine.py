@@ -913,15 +913,49 @@ class ArgusEngine:
             stderr = result.stderr.strip()
             category, retryable = _classify_pull_error(stderr)
             if retryable:
+                # Unlike the scanner-image pulls in
+                # ``argus.container_runtime``, the images pulled here are
+                # *executed*, not read — so the retry wants a variant this
+                # host can actually run. Ask the registry what the image
+                # publishes and prefer this host's own architecture;
+                # linux/amd64 stays the fallback because the case this
+                # retry exists for is an upstream that ships amd64 only,
+                # which a host with emulation configured can still run.
+                # Reusing ``detect_image_platforms`` keeps this path and
+                # ``container_runtime.pull_image`` reading the same
+                # manifest rather than drifting apart.
+                from argus.container_runtime import (
+                    _native_platform,
+                    _os_arch,
+                    detect_image_platforms,
+                )
+
+                native = _native_platform()
+                published = [
+                    plat for plat in detect_image_platforms(image)
+                    if plat.startswith("linux/")
+                ]
+                target_platform = next(
+                    (plat for plat in published if _os_arch(plat) == native),
+                    "linux/amd64",
+                )
+                # Deliberately still retries even when the chosen
+                # platform is this host's own. It re-runs a command that
+                # just failed, which looks wasteful, but `unclassified`
+                # is one of only two retryable categories and a plain
+                # second attempt is the one thing that rescues a
+                # transient failure. Dropping it to save a pull would
+                # trade reliability for speed on the path that pulls the
+                # scanner images every run depends on.
                 logger.info(
                     "%s: native pull failed (%dms, %s) — retrying with "
-                    "--platform linux/amd64 (common for upstreams "
-                    "without arm64 builds). stderr: %s",
-                    image, elapsed, category, stderr[:200],
+                    "--platform %s (published: %s). stderr: %s",
+                    image, elapsed, category, target_platform,
+                    ", ".join(published) or "unknown", stderr[:200],
                 )
                 start = time.monotonic()
                 result = subprocess.run(
-                    [self._runtime, "pull", "--platform", "linux/amd64", image],
+                    [self._runtime, "pull", "--platform", target_platform, image],
                     capture_output=True,
                     text=True,
                 )

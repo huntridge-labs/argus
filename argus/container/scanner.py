@@ -9,7 +9,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from argus.core.models import Finding, Severity
-from argus.scanners.container import ContainerScanner
+from argus.scanners.container import (
+    SUB_SCANNERS,
+    ContainerScanner,
+    _platform_args,  # re-exported: one implementation, both container paths
+    _sub_scanner_failed,
+)
 
 from .discovery import ContainerTarget
 from .resources import get_image_digest, is_image_local
@@ -568,6 +573,12 @@ def scan_image(
     exposure_findings: list[Finding] = []
     services_findings: list[Finding] = []
     scanner_errors: dict[str, str] = {}
+    # Sub-scanners that were actually dispatched, as opposed to
+    # merely selected. The gate at the end of this function keys off
+    # this rather than off ``scanners``: a name can be valid, pass
+    # ``validate_sub_scanners``, and still match no dispatch branch,
+    # which is the silent green scan this whole module guards against.
+    ran: set[str] = set()
 
     # Determine if the image is local (built by us) or remote.
     #
@@ -616,6 +627,7 @@ def scan_image(
         tmp_path = Path(tmp_dir)
 
         if "trivy" in scanners:
+            ran.add("trivy")
             try:
                 trivy_findings = _run_trivy(
                     target.image_ref, tmp_path, local=is_local, config=cfg,
@@ -625,6 +637,7 @@ def scan_image(
                 scanner_errors["trivy"] = str(exc)
 
         if "grype" in scanners:
+            ran.add("grype")
             try:
                 grype_findings = _run_grype(
                     target.image_ref, tmp_path, local=is_local, config=cfg,
@@ -633,38 +646,68 @@ def scan_image(
                 logger.error("grype scan failed for %s: %s", target.image_ref, exc)
                 scanner_errors["grype"] = str(exc)
 
-        if sbom and "syft" not in scanners:
-            _run_syft(target.image_ref, tmp_path, local=is_local, config=cfg)
+        # SBOM generation. ``sbom=True`` (the default) emits one
+        # implicitly; naming ``syft`` in ``scanners`` asks for it
+        # explicitly. Either way syft runs exactly once — the previous
+        # ``sbom and "syft" not in scanners`` read inverted, running
+        # syft only for callers who had *not* asked for it and
+        # skipping it for the one caller who had.
+        #
+        # Only an explicit request counts towards ``ran``. An implicit
+        # SBOM is an inventory, not a vulnerability scan, and must not
+        # satisfy the "something actually ran" gate below.
+        syft_requested = "syft" in scanners
+        if sbom or syft_requested:
+            produced = _run_syft(
+                target.image_ref, tmp_path, local=is_local, config=cfg,
+            )
+            if syft_requested:
+                ran.add("syft")
+                if not produced:
+                    scanner_errors["syft"] = (
+                        "syft was requested but could not run: no local "
+                        "binary and no container runtime available"
+                    )
 
         # Attack-surface sub-scanners. They take an image ref + a
         # config dict, run locally (no DB pulls), and return
-        # ``(findings, metadata)``. Metadata is dropped here — the
-        # canonical ``argus-results.json`` already carries per-scanner
-        # status, and these helpers don't error out: they just return
-        # zero findings when there's nothing to report.
-        if "exposure" in scanners:
+        # ``(findings, metadata)``.
+        #
+        # They signal "could not run" in that metadata rather than by
+        # raising — ``{"skipped": "no container runtime available"}`` when
+        # there is no daemon to inspect the image with. Dropping the
+        # metadata therefore turned "nothing looked at this image" into
+        # "nothing to report": ``argus scan container --scanners exposure``
+        # on a host without Docker returned zero findings, zero errors and
+        # exit 0. Raising it into ``scanner_errors`` is what makes the
+        # exit-code contract true for these two as well.
+        for name, runner in (
+            ("exposure", _parser._scan_exposed_ports),
+            ("services", _parser._scan_services),
+        ):
+            if name not in scanners:
+                continue
+            ran.add(name)
             try:
-                exposure_findings, _meta = _parser._scan_exposed_ports(
-                    target.image_ref, cfg,
-                )
+                found, meta = runner(target.image_ref, cfg)
             except Exception as exc:  # pylint: disable=broad-except
                 logger.error(
-                    "exposure scan failed for %s: %s",
-                    target.image_ref, exc,
+                    "%s scan failed for %s: %s", name, target.image_ref, exc,
                 )
-                scanner_errors["exposure"] = str(exc)
-
-        if "services" in scanners:
-            try:
-                services_findings, _meta = _parser._scan_services(
-                    target.image_ref, cfg,
-                )
-            except Exception as exc:  # pylint: disable=broad-except
+                scanner_errors[name] = str(exc)
+                continue
+            if _sub_scanner_failed(meta):
+                reason = meta.get("error") or meta.get("skipped")
                 logger.error(
-                    "services scan failed for %s: %s",
-                    target.image_ref, exc,
+                    "%s scan did not run for %s: %s",
+                    name, target.image_ref, reason,
                 )
-                scanner_errors["services"] = str(exc)
+                scanner_errors[name] = str(reason)
+                continue
+            if name == "exposure":
+                exposure_findings = found
+            else:
+                services_findings = found
 
         # Persist raw scanner artifacts (best-effort) before the
         # tempdir is wiped. We copy whatever files exist; missing
@@ -703,6 +746,25 @@ def scan_image(
                     "Failed to persist raw scanner outputs to %s: %s",
                     raw_output_dir, exc,
                 )
+
+    # Defence in depth behind ``validate_sub_scanners``: every branch
+    # above is a membership test, so a selection that matches none of
+    # them would produce a clean, empty result — a green gate over an
+    # image nothing looked at. Record it as a scan failure instead, so
+    # ``ContainerScanSummary.scan_failures`` is non-zero and the CLI
+    # exits non-zero.
+    #
+    # This tests what ran, not what was selected. Testing the selection
+    # against ``SUB_SCANNERS`` let a name that is valid but undispatched
+    # satisfy the gate, and the old ``and not sbom`` conjunct could never
+    # be true under ``sbom: bool = True``, so the check was dead on every
+    # default call.
+    if not ran:
+        scanner_errors["selection"] = (
+            f"no container sub-scanner ran for {target.image_ref}: "
+            f"requested {', '.join(scanners) or '(none)'}; "
+            f"valid names are {', '.join(SUB_SCANNERS)}"
+        )
 
     combined = deduplicate_findings(
         trivy_findings, grype_findings,
@@ -997,11 +1059,20 @@ def _run_trivy(
 
         image = _resolve_sub_scanner_image(get_image("trivy"), config)
         if not image or not container_runtime.is_available():
-            logger.warning("trivy not available (local or container) — skipping")
-            return []
+            # "Cannot run" is not "ran and found nothing". Returning an
+            # empty list here used to render a clean PASS over an image
+            # that was never examined. Raise so the caller records it
+            # under ``scanner_errors`` and the CLI exits non-zero.
+            raise RuntimeError(
+                "trivy is not available: no local binary and no container "
+                "runtime to fall back to. Install trivy or make Docker/"
+                "Podman available, or drop trivy from the scanners list."
+            )
         if not container_runtime.pull_image(image):
-            logger.error("Failed to pull trivy image: %s", image)
-            return []
+            raise RuntimeError(
+                f"failed to pull the trivy scanner image {image} — "
+                "the image could not be scanned"
+            )
         use_container = True
         logger.info("Running trivy via container: %s", image)
 
@@ -1056,6 +1127,7 @@ def _run_trivy(
         )
         if not local:
             cmd.extend(["--image-src", "remote"])
+        cmd.extend(_platform_args(config))
         cmd.append(image_ref)
     else:
         cmd = [
@@ -1065,6 +1137,7 @@ def _run_trivy(
         ] + vex_flags
         if not local:
             cmd.extend(["--image-src", "remote"])
+        cmd.extend(_platform_args(config))
         cmd.append(image_ref)
 
     logger.debug("trivy invocation: %s", _redact_cmd_for_log(cmd))
@@ -1073,12 +1146,14 @@ def _run_trivy(
             cmd, capture_output=True, text=True, timeout=600,
             env=_subprocess_env(auth_env),
         )
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
         logger.error("trivy timed out scanning %s", image_ref)
-        return []
-    except FileNotFoundError:
+        raise RuntimeError(
+            f"trivy timed out after 600s scanning {image_ref}"
+        ) from exc
+    except FileNotFoundError as exc:
         logger.error("trivy binary not found")
-        return []
+        raise RuntimeError("trivy binary not found on PATH") from exc
 
     _validate_scanner_output("trivy", output_file, result)
 
@@ -1119,11 +1194,20 @@ def _run_grype(
 
         image = _resolve_sub_scanner_image(get_image("grype"), config)
         if not image or not container_runtime.is_available():
-            logger.warning("grype not available (local or container) — skipping")
-            return []
+            # "Cannot run" is not "ran and found nothing". Returning an
+            # empty list here used to render a clean PASS over an image
+            # that was never examined. Raise so the caller records it
+            # under ``scanner_errors`` and the CLI exits non-zero.
+            raise RuntimeError(
+                "grype is not available: no local binary and no container "
+                "runtime to fall back to. Install grype or make Docker/"
+                "Podman available, or drop grype from the scanners list."
+            )
         if not container_runtime.pull_image(image):
-            logger.error("Failed to pull grype image: %s", image)
-            return []
+            raise RuntimeError(
+                f"failed to pull the grype scanner image {image} — "
+                "the image could not be scanned"
+            )
         use_container = True
         logger.info("Running grype via container: %s", image)
 
@@ -1190,19 +1274,26 @@ def _run_grype(
             + _docker_login_mount_args(tmp_path, local)
             + vol_args
             + vex_mounts
+            + [image]
+            + _platform_args(config)
             + [
-                image, grype_target,
+                grype_target,
                 "-o", "json",
                 "--file", "/output/grype-results.json",
             ]
             + vex_flags
         )
     else:
-        cmd = [
-            "grype", grype_target,
-            "-o", "json",
-            "--file", str(output_file),
-        ] + vex_flags
+        cmd = (
+            ["grype"]
+            + _platform_args(config)
+            + [
+                grype_target,
+                "-o", "json",
+                "--file", str(output_file),
+            ]
+            + vex_flags
+        )
 
     logger.debug("grype invocation: %s", _redact_cmd_for_log(cmd))
     try:
@@ -1210,12 +1301,14 @@ def _run_grype(
             cmd, capture_output=True, text=True, timeout=600,
             env=_subprocess_env(auth_env),
         )
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
         logger.error("grype timed out scanning %s", image_ref)
-        return []
-    except FileNotFoundError:
+        raise RuntimeError(
+            f"grype timed out after 600s scanning {image_ref}"
+        ) from exc
+    except FileNotFoundError as exc:
         logger.error("grype binary not found")
-        return []
+        raise RuntimeError("grype binary not found on PATH") from exc
 
     _validate_scanner_output("grype", output_file, result)
 
@@ -1242,10 +1335,16 @@ def _run_grype(
 def _run_syft(
     image_ref: str, tmp_path: Path,
     local: bool = False, config: dict | None = None,
-) -> None:
+) -> bool:
     """Run syft to generate an SBOM (best-effort).
 
     Tries local binary first, falls back to Docker container image.
+
+    Returns True when syft was actually invoked, False when neither a
+    local binary nor a container runtime was available to run it. An
+    implicit SBOM (``sbom=True``) ignores the result — it has always
+    been best-effort — but a caller who named ``syft`` in ``scanners``
+    is owed an error rather than a clean, empty pass.
     """
     import subprocess
 
@@ -1263,10 +1362,10 @@ def _run_syft(
         image = _resolve_sub_scanner_image(get_image("syft"), config)
         if not image or not container_runtime.is_available():
             logger.debug("syft not available (local or container) — skipping SBOM")
-            return
+            return False
         if not container_runtime.pull_image(image):
             logger.debug("Failed to pull syft image — skipping SBOM")
-            return
+            return False
 
         logger.info("Running syft via container: %s", image)
         rt = container_runtime.runtime_cmd()
@@ -1277,26 +1376,50 @@ def _run_syft(
             + _docker_env_flags(auth_env)
             + _docker_login_mount_args(tmp_path, local)
             + vol_args
+            + [image]
+            + _platform_args(config)
             + [
-                image,
                 image_ref,
                 "-o", "cyclonedx-json",
                 "--file", "/output/syft-sbom.json",
             ]
         )
     else:
-        cmd = [
-            "syft", image_ref,
-            "-o", "cyclonedx-json",
-            "--file", str(output_file),
-        ]
+        cmd = (
+            ["syft"]
+            + _platform_args(config)
+            + [
+                image_ref,
+                "-o", "cyclonedx-json",
+                "--file", str(output_file),
+            ]
+        )
 
     try:
-        subprocess.run(
+        proc = subprocess.run(
             cmd, capture_output=True, text=True, timeout=300,
             env=_subprocess_env(auth_env),
         )
     except subprocess.TimeoutExpired:
         logger.warning("syft timed out generating SBOM for %s", image_ref)
+        return False
     except FileNotFoundError:
         logger.debug("syft binary not found")
+        return False
+
+    # Being invoked is not the same as succeeding. An unpullable image or a
+    # registry auth failure exits non-zero with no SBOM written; reporting
+    # that as "ran" let ``--scanners syft`` exit 0 over an image syft never
+    # read, which is the silent pass this module exists to prevent.
+    if proc.returncode != 0:
+        logger.warning(
+            "syft failed for %s (rc=%d): %s",
+            image_ref, proc.returncode, (proc.stderr or "").strip()[:300],
+        )
+        return False
+    if not output_file.exists() or output_file.stat().st_size == 0:
+        logger.warning(
+            "syft exited cleanly but wrote no SBOM for %s", image_ref,
+        )
+        return False
+    return True

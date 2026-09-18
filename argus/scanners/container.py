@@ -224,6 +224,110 @@ def _parse_systemd_unit(content: bytes) -> dict[str, str]:
     return result
 
 
+# ── Canonical sub-scanner names ─────────────────────────────────────
+#
+# The container scanner is an orchestrator: every entry here maps to a
+# distinct sub-scanner the dispatch in ``ContainerScanner.scan`` (and
+# ``argus.container.scanner.scan_image``) knows how to run. Both
+# dispatch sites are pure membership tests (``if "trivy" in enabled``),
+# so an unrecognised name matches nothing, runs nothing, and — before
+# this list existed — produced a clean ScanResult with zero findings.
+# A typo in a ``scanners:`` list ("tryvi") therefore rendered a green
+# security gate over a completely unscanned image.
+#
+# ``validate_sub_scanners`` is the single gate both entry points call
+# so an unknown name is rejected up front with an actionable message
+# rather than silently dropped. Adding a sub-scanner means adding it
+# here *and* to both dispatch sites.
+SUB_SCANNERS: tuple[str, ...] = (
+    "trivy",
+    "grype",
+    "syft",
+    "exposure",
+    "services",
+)
+
+
+def validate_sub_scanners(
+    names: "str | list[str] | tuple[str, ...]", source: str = "scanners",
+) -> list[str]:
+    """Return ``names`` normalised, or raise ``ValueError`` if any is unknown.
+
+    Accepts either a sequence or a comma-separated string — config
+    files use both shapes (``scanners: "trivy,grype"`` and
+    ``scanners: [trivy, grype]``) and so does the CLI.
+
+    ``source`` names where the value came from (``--scanners``,
+    ``containers.scanners``) so the error message points at the thing
+    the user actually has to edit.
+
+    An empty selection is rejected too: "run no sub-scanners" is never
+    a useful request, and letting it through reproduces exactly the
+    silent-pass this function exists to prevent.
+    """
+    if isinstance(names, str):
+        names = names.split(",")
+    normalised = [str(n).strip().lower() for n in names if str(n).strip()]
+    if not normalised:
+        raise ValueError(
+            f"{source} selected no container sub-scanners. "
+            f"Valid names: {', '.join(SUB_SCANNERS)}"
+        )
+
+    unknown = [n for n in normalised if n not in SUB_SCANNERS]
+    if unknown:
+        plural = "s" if len(unknown) > 1 else ""
+        raise ValueError(
+            f"Unknown container sub-scanner{plural} in {source}: "
+            f"{', '.join(unknown)}. "
+            f"Valid names: {', '.join(SUB_SCANNERS)}"
+        )
+    return normalised
+
+
+def _platform_args(config: dict | None) -> list[str]:
+    """Return ``["--platform", <value>]`` when a platform is configured.
+
+    trivy, grype and syft all accept ``--platform os/arch[/variant]`` and
+    all three otherwise resolve a multi-arch manifest against the host's
+    own architecture. That default is wrong for a scan: these tools read
+    image layers, they never execute them, so an arm64-only image is
+    scannable from an amd64 runner — it just has to be named.
+
+    ``containers.platform`` in argus.yml (or ``--platform`` on the CLI)
+    supplies the value; unset — absent, None, or empty — means "let the
+    tool decide", which preserves the historic behaviour for single-arch
+    and host-matching images. ``argus.core.schema`` accepts an empty
+    value for exactly this reason.
+
+    This is the single implementation for both container paths:
+    ``argus.container.scanner`` imports it from here (it already depends
+    on this module for ``SUB_SCANNERS``, so the dependency runs one way
+    only). It previously existed only on that path, so this module's
+    trivy/grype/syft calls silently ignored the setting while its
+    ``exposure`` and ``services`` sub-scanners honoured it — one run
+    could mix platform-pinned attack-surface results with
+    host-resolved CVE results for different variants of the same image.
+    """
+    platform = (config or {}).get("platform")
+    if not platform:
+        return []
+    return ["--platform", str(platform)]
+
+
+def _sub_scanner_failed(meta: object) -> bool:
+    """True when a sub-scanner's metadata says it did not produce a result.
+
+    Sub-scanners report inability to run in two shapes: ``error`` (tried
+    and failed, or no binary and no runtime) and ``skipped`` (a
+    precondition was absent, e.g. no container runtime for the
+    attack-surface scanners). Anything else means the tool ran.
+    """
+    if not isinstance(meta, dict):
+        return False
+    return "error" in meta or "skipped" in meta
+
+
 class ContainerScanner:
     """Wraps Trivy, Grype, and Syft for container image scanning."""
 
@@ -292,12 +396,32 @@ class ContainerScanner:
                 ],
             )
 
-        enabled = self._enabled_scanners(config)
+        try:
+            enabled = self._enabled_scanners(config)
+        except ValueError as exc:
+            # An unknown sub-scanner name used to match no dispatch
+            # branch and yield a clean, empty ScanResult — a green gate
+            # over an unscanned image. Surface it as a failed phase so
+            # the engine buckets this scanner as "did not run cleanly".
+            return ScanResult(
+                scanner=self.name,
+                metadata={"error": str(exc), "execution_failed": True},
+                phase_results=[
+                    PhaseResult(
+                        phase="container-scanner-selection",
+                        status="failed",
+                        findings=[],
+                        error=str(exc),
+                    )
+                ],
+            )
+
         all_findings: list[Finding] = []
         metadata: dict = {}
         seen_cves: set[str] = set()
 
         env = self._build_env(config)
+        platform_args = _platform_args(config)
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
@@ -306,9 +430,11 @@ class ContainerScanner:
                 trivy_output = tmp_path / "trivy-results.json"
                 trivy_findings, trivy_meta = self._run_sub_scanner(
                     tool="trivy",
-                    local_cmd=["trivy", "image", "--format", "json",
+                    local_cmd=["trivy", "image", *platform_args,
+                               "--format", "json",
                                "--output", str(trivy_output), image_ref],
-                    container_args=["image", "--format", "json",
+                    container_args=["image", *platform_args,
+                                    "--format", "json",
                                     "--output", "/output/results.json", image_ref],
                     output_file=trivy_output,
                     parse_fn=self.parse_trivy_results,
@@ -321,9 +447,10 @@ class ContainerScanner:
                 grype_output = tmp_path / "grype-results.json"
                 grype_findings, grype_meta = self._run_sub_scanner(
                     tool="grype",
-                    local_cmd=["grype", image_ref, "-o", "json",
+                    local_cmd=["grype", *platform_args, image_ref,
+                               "-o", "json",
                                "--file", str(grype_output)],
-                    container_args=[image_ref, "-o", "json",
+                    container_args=[*platform_args, image_ref, "-o", "json",
                                     "--file", "/output/results.json"],
                     output_file=grype_output,
                     parse_fn=self.parse_grype_results,
@@ -335,7 +462,7 @@ class ContainerScanner:
             if "syft" in enabled:
                 syft_output = tmp_path / "syft-sbom.json"
                 syft_meta = self._run_syft_with_fallback(
-                    image_ref, syft_output, env,
+                    image_ref, syft_output, env, platform_args,
                 )
                 metadata["syft"] = syft_meta
 
@@ -353,12 +480,30 @@ class ContainerScanner:
                 all_findings.extend(services_findings)
                 metadata["services"] = services_meta
 
-            if not metadata:
+            # Every requested sub-scanner is a valid name (validated
+            # above) yet none of them actually executed. That is a scan
+            # that did not happen, not a scan that found nothing — flag
+            # it as an execution failure so the engine's "did not run
+            # cleanly" bucket and ``--fail-on-scanner-error`` both see it.
+            #
+            # The test is "did any sub-scanner succeed", not "is metadata
+            # empty". Every branch above writes its metadata key even when
+            # the tool could not be run — ``_run_sub_scanner`` returns
+            # ``{"error": ...}`` rather than nothing — so a ``not metadata``
+            # test could never fire, and a host with no trivy, no grype and
+            # no container runtime reported a clean PASS.
+            if all(_sub_scanner_failed(m) for m in metadata.values()):
+                reasons = "; ".join(
+                    f"{name}: {m.get('error') or m.get('skipped')}"
+                    for name, m in sorted(metadata.items())
+                ) or "no sub-scanner produced a result"
                 metadata["error"] = (
-                    "None of the enabled scanners "
-                    "(trivy, grype, syft) could be executed — "
-                    "install locally or ensure Docker is available"
+                    "None of the enabled sub-scanners "
+                    f"({', '.join(enabled)}) could be executed — "
+                    "install them locally or ensure a container runtime "
+                    f"is available ({reasons})"
                 )
+                metadata["execution_failed"] = True
 
         return ScanResult(
             scanner=self.name,
@@ -420,7 +565,14 @@ class ContainerScanner:
         of them explicitly via the ``scanners`` config key.
         """
         raw = config.get("scanners", "trivy,grype,syft,exposure,services")
-        return [s.strip().lower() for s in raw.split(",") if s.strip()]
+        if isinstance(raw, str):
+            raw = raw.split(",")
+        # Raises ValueError on an unknown or empty selection — see
+        # ``validate_sub_scanners``. ``scan()`` converts that into a
+        # failed ``container-scanner-selection`` phase so the engine
+        # counts the scanner as "did not run cleanly" instead of
+        # reporting a clean pass over an image nothing looked at.
+        return validate_sub_scanners(raw, source="scanners.container.scanners")
 
     def _scan_exposed_ports(
         self, image_ref: str, config: dict,
@@ -452,7 +604,19 @@ class ContainerScanner:
         # Ensure the image is present locally before inspecting.
         # ``if-not-present`` is a fast cache hit when trivy/grype/syft
         # already pulled the image in this scan run.
-        if not container_runtime.pull_image(image_ref, policy="if-not-present"):
+        #
+        # ``platform`` pins which variant to inspect. Without it the
+        # daemon resolves the manifest against its own architecture, so
+        # an image published only for a foreign arch fails to pull here
+        # even though its layers are perfectly readable — scanners read
+        # layers, they don't execute them. ``pull_image`` recovers that
+        # case on its own by reading the registry manifest; the explicit
+        # value is for registries where the manifest can't be read.
+        if not container_runtime.pull_image(
+            image_ref,
+            policy="if-not-present",
+            platform=config.get("platform"),
+        ):
             return [], {
                 "error": f"could not pull or locate image {image_ref} for inspection",
             }
@@ -554,8 +718,11 @@ class ContainerScanner:
         }
 
     def _extract_paths_from_image(
-        self, image_ref: str, paths: tuple[str, ...] | list[str],
-    ) -> dict[str, bytes]:
+        self,
+        image_ref: str,
+        paths: tuple[str, ...] | list[str],
+        platform: str | None = None,
+    ) -> dict[str, bytes] | None:
         """Pull files from a container image's filesystem without running it.
 
         Creates a stopped container from ``image_ref`` (no entrypoint
@@ -567,6 +734,14 @@ class ContainerScanner:
         ``finally`` so partial extraction never leaves dangling
         container IDs.
 
+        Returns ``None`` when the image could not be read at all — no
+        runtime, an unpullable image, or a failed ``create``. That is a
+        different fact from an empty dict ("the image genuinely has none
+        of these paths"), and conflating the two let the ``services``
+        sub-scanner report a clean ``services_declared: 0`` for an image
+        it had never opened. The daemon being installed but not running
+        is the common way to hit it.
+
         This is the read-side primitive shared by the ``services``
         sub-scanner and any future config-file walker (e.g.
         ``sshd_config`` parsing). Stdlib + container_runtime only.
@@ -577,20 +752,30 @@ class ContainerScanner:
 
         rt = container_runtime.runtime_cmd()
         if not container_runtime.is_available():
-            return {}
+            return None
 
         # Ensure the image is locally present. The container scanner's
         # trivy/grype step normally pulls already; this is the safety
         # net when ``services`` runs as the only enabled sub-scanner.
-        if not container_runtime.pull_image(image_ref, policy="if-not-present"):
-            return {}
+        # ``platform`` matters for the same reason as in
+        # ``_scan_exposed_ports``: a foreign-architecture image is
+        # readable, but only if the pull names its architecture.
+        if not container_runtime.pull_image(
+            image_ref, policy="if-not-present", platform=platform,
+        ):
+            return None
 
         create = subprocess.run(
             [rt, "create", image_ref],
             capture_output=True, text=True,
         )
         if create.returncode != 0 or not create.stdout.strip():
-            return {}
+            logger.debug(
+                "Could not create a container from %s to read its "
+                "filesystem: %s",
+                image_ref, create.stderr.strip()[:200],
+            )
+            return None
         cid = create.stdout.strip()
 
         extracted: dict[str, bytes] = {}
@@ -683,7 +868,22 @@ class ContainerScanner:
                            "Podman, or nerdctl to enable service enumeration",
             }
 
-        files = self._extract_paths_from_image(image_ref, _SERVICE_PATHS)
+        files = self._extract_paths_from_image(
+            image_ref, _SERVICE_PATHS, platform=config.get("platform"),
+        )
+        if files is None:
+            # The image was never opened — an unpullable ref, or a
+            # runtime that is installed but not running. Reporting zero
+            # services here is indistinguishable from a genuinely
+            # service-free image, which is the silent pass ADR-037
+            # forbids.
+            return [], {
+                "error": (
+                    f"could not read the filesystem of {image_ref} — "
+                    "the image could not be pulled or opened; check that "
+                    "the container runtime is running and the ref is valid"
+                ),
+            }
         if not files:
             return [], {
                 "execution": "local-extract",
@@ -874,11 +1074,13 @@ class ContainerScanner:
         image_ref: str,
         output_file: Path,
         env: dict[str, str],
+        platform_args: list[str] | None = None,
     ) -> dict:
         """Run Syft SBOM generation locally or via Docker fallback."""
+        platform_args = platform_args or []
         if shutil.which("syft"):
             cmd = [
-                "syft", image_ref,
+                "syft", *platform_args, image_ref,
                 "-o", "cyclonedx-json",
                 "--file", str(output_file),
             ]
@@ -902,6 +1104,7 @@ class ContainerScanner:
                 rt, "run", "--rm",
                 "-v", f"{output_dir}:/output",
                 image,
+                *platform_args,
                 image_ref,
                 "-o", "cyclonedx-json",
                 "--file", "/output/results.json",

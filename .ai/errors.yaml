@@ -309,6 +309,47 @@ scn_detector_errors:
       \ workflows.yaml is more direct — it sees exactly what Python will import.\n"
   reference: "pyproject.toml (browser + mcp extras, and the comments explaining why no\
     \ python-multipart floor lives there) and issues #394-#398"
+- pattern: "container scan passes with 0 findings|workflow green but nothing scanned|Unknown container sub-scanner"
+  category: container-scanning
+  context: "A container scan exits 0 with no findings, or a security gate stays green
+    while the image was never actually examined.\n"
+  root_cause: "Both container dispatch sites select sub-scanners with membership tests
+    (`if \"trivy\" in enabled`), so a name that is not in SUB_SCANNERS matched no branch,
+    ran nothing, and returned a clean ScanResult. A typo such as `tryvi` in a scanners
+    list was enough. Three sibling cases had the same shape: trivy/grype returning []
+    when neither a local binary nor a container runtime was available; container-scan.yml
+    skipping every scan job when scan_mode was remote with an empty image_ref; and
+    reusable-security-hardening.yml substituting DEFAULT_SCANNERS after an unknown token.\n"
+  solution:
+    steps:
+    - "Check the sub-scanner names against SUB_SCANNERS (trivy, grype, syft, exposure,
+      services). An unknown or empty selection now exits 2 naming the offending value."
+    - "Read images_scanned on container-scan.yml's workflow_call outputs — 0 means
+      nothing ran, which is distinct from a clean scan."
+    - "If a tool is genuinely unavailable, either install it, make a container runtime
+      available, or narrow the scanners list explicitly rather than relying on a skip."
+    note: "Exit-code contract: 0 = every requested sub-scanner ran and nothing breached
+      the threshold; 1 = findings at/above the severity threshold; 2 = the scan could not
+      be completed. \"Nothing could be scanned\" is never 0. See ADR-037.\n"
+  reference: "argus/scanners/container.py (SUB_SCANNERS, validate_sub_scanners), argus/container/scanner.py, .github/workflows/container-scan.yml"
+- pattern: "no matching manifest for linux/amd64|could not pull or locate image .* for inspection|arm64.* image cannot be scanned"
+  category: container-scanning
+  context: "Scanning an arm64-only or multi-arch image from an amd64 runner (or the
+    reverse) fails at the pull or inspect step.\n"
+  root_cause: "docker pull, docker image inspect, trivy, grype and syft all resolve a
+    manifest against the host's own architecture by default. pull_image compounded this
+    with an unconditional `--platform linux/amd64` retry, which cannot rescue an
+    arm64-only image and wastes a second pull on every unrelated failure.\n"
+  solution:
+    steps:
+    - "Usually nothing: a failed pull now reads the image's published platforms from the
+      registry manifest and retries against one of them automatically."
+    - "If the registry manifest is unreadable from this host (private registry, no creds),
+      set containers.platform in argus.yml, --platform on the CLI, or the platform input
+      on container-scan.yml — e.g. linux/arm64."
+    note: "Scanners read image layers; they never execute them, so a foreign architecture
+      is scannable from any runner. No QEMU/binfmt emulation is needed. See ADR-038.\n"
+  reference: "argus/container_runtime.py (detect_image_platforms, pull_image), argus/container/scanner.py (_platform_args)"
 errors:
   RESOURCE_NOT_ACCESSIBLE_BY_INTEGRATION:
     category: permissions
@@ -433,6 +474,72 @@ errors:
         \ registry.internal.corp/argus\n  backend: docker\n"
     reference: argus/core/config.py::StrictSafeLoader
     symptom: Invalid YAML.*found duplicate key
+  CONTAINER_SUB_SCANNER_RAN_NOTHING:
+    category: container
+    context: |-
+      A container scan reports success with zero findings and the image was
+      never actually examined. Reached from four directions, all fixed.
+    root_cause: |-
+      Both container dispatch sites select sub-scanners with membership tests
+      (`if "trivy" in scanners`), so a selection that matches no branch runs
+      nothing and returns a clean, empty result. The variants:
+      (1) an unrecognised name ("tryvi") matched nothing;
+      (2) `syft` was a valid name with no dispatch branch — the condition read
+      `if sbom and "syft" not in scanners`, running syft only for callers who
+      had NOT asked for it;
+      (3) the scan_image backstop tested the selection against SUB_SCANNERS
+      rather than what ran, so syft satisfied it while running nothing, and its
+      `and not sbom` conjunct could never be true under `sbom: bool = True`;
+      (4) ContainerScanner.scan guarded on `if not metadata`, but every branch
+      writes its metadata key even on failure, so a host with no trivy, no grype
+      and no container runtime returned a clean PASS.
+    solution:
+      status: |-
+        RESOLVED — validate_sub_scanners rejects unknown and empty selections up
+        front; scan_image tracks a `ran` set each branch adds itself to and
+        records a selection failure when it is empty; syft has a real dispatch
+        branch; ContainerScanner flags execution_failed when every sub-scanner
+        reported error or skipped.
+      steps:
+      - 'Check `scanner_errors` on the result. A `selection` key means the requested names matched no dispatch branch; a per-tool key means that tool could not run.'
+      - 'Exit code 2 means the scan could not be completed. Never read a 0 as clean unless images_scanned is non-zero.'
+      - 'Adding a sub-scanner means adding it to SUB_SCANNERS, to argus.core.schema._CONTAINER_SUB_SCANNERS, AND to both dispatch sites. A name in the registry with no dispatch branch is the exact bug this entry describes.'
+      verification: '`argus scan container --image <ref> --scanners bogusscanner` exits 2 with a message naming the bad token and the valid names.'
+      reference: .ai/decisions.yaml ADR-037 + argus/tests/test_container_no_silent_pass.py
+    symptom: 'Container scan passes with 0 findings but nothing was scanned|Unknown container sub-scanner|no container sub-scanner ran for'
+  CONTAINER_WRONG_ARCHITECTURE_SCANNED:
+    category: container
+    context: |-
+      A multi-arch image scans "successfully" but the results describe a
+      different architecture than the one requested, or a foreign-architecture
+      image fails to pull at all under Podman or nerdctl.
+    root_cause: |-
+      Scanners read image layers rather than executing them, so a foreign
+      architecture is scannable — but every step resolves a manifest against the
+      host's architecture by default. Three specific traps:
+      (1) `pull_image(policy="if-not-present")` short-circuited on any cached
+      copy of the ref without checking its architecture, so an explicit
+      `platform` was ignored whenever an earlier step had cached another variant;
+      (2) the native-preference comparison was exact, and `_native_platform()`
+      never emits a variant, so `linux/arm64` never matched a published
+      `linux/arm64/v8` and the retry fell through to amd64;
+      (3) `detect_image_platforms` parsed only Docker's `Descriptor.platform`
+      shape, so under Podman (OCI index, no `--verbose` flag) or nerdctl (no
+      `manifest inspect` at all) it returned nothing and no retry fired.
+    solution:
+      status: |-
+        RESOLVED — the cache short-circuit compares the cached image's own
+        os/arch against an explicit platform; native preference compares
+        os/arch ignoring the variant suffix; the manifest probe tries
+        `--verbose` then drops it, and parses both the Docker and OCI index
+        shapes.
+      steps:
+      - 'Set `containers.platform` (or `--platform`) explicitly when the runtime cannot read the registry manifest — notably nerdctl, which has no `manifest inspect` subcommand.'
+      - 'The value must be `os/arch` or `os/arch/variant`; the schema rejects anything else rather than passing it through to trivy as a literal flag value.'
+      - 'Check the pull log line — it names the platform it chose and the platforms the image publishes.'
+      verification: 'A cached amd64 copy plus `platform="linux/arm64"` must trigger a pull, not a cache hit.'
+      reference: .ai/decisions.yaml ADR-038 + argus/tests/test_container_runtime.py
+    symptom: 'no matching manifest for linux/|scan results describe the wrong architecture|arm64-only image fails to pull under podman'
   CONTAINER_SCAN_FOUND_NO_IMAGES:
     category: configuration
     context: container-scan-from-config returns empty matrix

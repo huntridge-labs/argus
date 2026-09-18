@@ -7,6 +7,29 @@
 # - discover: Find and build local Dockerfiles, then scan (argus scan container --discover)
 # - remote: Scan pre-existing images from a registry (argus scan container --image)
 #
+# ## Exit-code contract
+#
+# The workflow is green ONLY when every image it was asked to scan was
+# actually scanned. Specifically:
+#
+# | Situation                                          | Result  |
+# |----------------------------------------------------|---------|
+# | All images scanned, nothing at/above fail_on_severity | success |
+# | Findings at or above `fail_on_severity`             | failure |
+# | `scan_mode: remote` with an empty `image_ref`       | failure |
+# | An unknown name in `scanners`                       | failure |
+# | An image could not be pulled / a scanner could not run | failure |
+# | A Dockerfile build failed                           | failure |
+# | `discover` mode found no Dockerfiles                | success, unless `fail_on_no_targets: true` |
+#
+# "Nothing could be scanned" is never success. The underlying CLI exits 2
+# when any requested sub-scanner fails to run (unpullable image, tool
+# unavailable, timeout, unparsable output) and 1 when findings breach the
+# severity threshold; both fail the job. The single deliberate exception is
+# discovery mode finding no Dockerfiles at all, which is a legitimate
+# "this repo has no containers" result — set `fail_on_no_targets: true`
+# if your repo is expected to always have one.
+#
 # For GHES users: Use the composite action directly instead of this workflow.
 # See: examples/github-enterprise/container-scanning.yml
 
@@ -33,6 +56,21 @@ on:
         required: false
         type: string
         default: ''
+      search_paths:
+        description: 'Comma- or newline-separated paths to search for Dockerfiles (only used when scan_mode is "discover")'
+        required: false
+        type: string
+        default: '.'
+      platform:
+        description: 'Image platform to scan, e.g. linux/arm64. Leave empty to resolve from the registry manifest.'
+        required: false
+        type: string
+        default: ''
+      fail_on_no_targets:
+        description: 'Fail the run when discovery finds no Dockerfiles (instead of passing green with nothing scanned)'
+        required: false
+        type: boolean
+        default: false
 
   workflow_call:
     inputs:
@@ -57,12 +95,30 @@ on:
         type: string
         default: 'discover'
       image_ref:
-        description: 'Remote image reference to scan (only used when scan_mode is "remote")'
+        description: 'Remote image reference to scan (required when scan_mode is "remote")'
         required: false
         type: string
         default: ''
       container_name:
         description: 'Name identifier for the container (only used when scan_mode is "remote")'
+        required: false
+        type: string
+        default: ''
+      search_paths:
+        description: |
+          Comma- or newline-separated paths to search for Dockerfiles, mirroring
+          `containers.search_paths` in argus.yml. Only used when scan_mode is
+          "discover". Defaults to the whole repository.
+        required: false
+        type: string
+        default: '.'
+      platform:
+        description: |
+          Image platform to scan, e.g. linux/arm64. Scanners read image layers
+          rather than execute them, so a foreign architecture is scannable from
+          any runner. Leave empty to resolve the platform from the registry
+          manifest automatically; set it explicitly for registries whose
+          manifest this runner cannot read.
         required: false
         type: string
         default: ''
@@ -72,10 +128,23 @@ on:
         type: string
         default: ''
       scanners:
-        description: 'Comma-separated list of scanners to run: trivy,grype,syft'
+        description: |
+          Comma-separated list of sub-scanners to run. Valid names: trivy, grype,
+          syft, exposure, services. An unrecognized name fails the workflow —
+          it is never silently ignored, because that would render a green gate
+          over an unscanned image.
         required: false
         type: string
         default: 'trivy,grype,syft'
+      fail_on_no_targets:
+        description: |
+          Fail when scan_mode is "discover" and no Dockerfiles are found. Default
+          false, because a repository with no containers is a legitimate clean
+          result. Set true when your repository is expected to always contain at
+          least one Dockerfile, so a bad `search_paths` cannot pass green.
+        required: false
+        type: boolean
+        default: false
       allow_failure:
         description: 'Allow the workflow to continue even if scanning fails'
         required: false
@@ -85,6 +154,39 @@ on:
       registry_password:
         description: 'Password or token for authenticating to private container registry'
         required: false
+    outputs:
+      critical_count:
+        description: 'Total CRITICAL findings across every scanned image.'
+        value: ${{ jobs.container-scan-summary.outputs.critical_count }}
+      high_count:
+        description: 'Total HIGH findings across every scanned image.'
+        value: ${{ jobs.container-scan-summary.outputs.high_count }}
+      medium_count:
+        description: 'Total MEDIUM findings across every scanned image.'
+        value: ${{ jobs.container-scan-summary.outputs.medium_count }}
+      low_count:
+        description: 'Total LOW findings across every scanned image.'
+        value: ${{ jobs.container-scan-summary.outputs.low_count }}
+      total_count:
+        description: 'Total findings of every severity across every scanned image.'
+        value: ${{ jobs.container-scan-summary.outputs.total_count }}
+      vulnerabilities_found:
+        description: '"true" when any finding was reported, "false" otherwise.'
+        value: ${{ jobs.container-scan-summary.outputs.vulnerabilities_found }}
+      images_scanned:
+        description: |
+          Number of images that were actually scanned. "0" with an overall_status
+          of success means nothing was scanned — check it when you need to
+          distinguish "clean" from "never ran".
+        value: ${{ jobs.container-scan-summary.outputs.images_scanned }}
+      overall_status:
+        description: '"success", "failure", or "skipped" — the verdict across all scan jobs.'
+        value: ${{ jobs.container-scan-summary.outputs.overall_status }}
+      scan_statuses:
+        description: |
+          JSON object mapping each scan job to its result, e.g.
+          {"container-build-and-scan":"success","container-remote-scan":"skipped"}.
+        value: ${{ jobs.container-scan-summary.outputs.scan_statuses }}
 
 permissions:
   contents: read
@@ -94,10 +196,74 @@ permissions:
   pull-requests: write
 
 jobs:
+  # Fail fast on input combinations that would otherwise skip every scan
+  # job and leave the workflow green with nothing scanned.
+  validate-inputs:
+    name: Validate Inputs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check scan inputs
+        env:
+          SCAN_MODE: ${{ inputs.scan_mode }}
+          IMAGE_REF: ${{ inputs.image_ref }}
+          SCANNERS: ${{ inputs.scanners }}
+        run: |
+          set -euo pipefail
+          FAILED=0
+
+          # `scan-remote-image` is gated on image_ref != '' and
+          # `discover-containers` on scan_mode != 'remote'. With
+          # scan_mode=remote and an empty image_ref BOTH gates close, every
+          # scan job skips, and only the summary runs — a green workflow
+          # over an image nobody ever named. An unset variable upstream is
+          # the usual cause, so say that plainly.
+          # `scan_mode` is a plain string on workflow_call (the
+          # workflow_dispatch side is a `choice`, so only callers can get
+          # here with a typo). Every downstream gate tests it for equality
+          # with 'remote', so 'Remote' or 'remot' closes scan-remote-image
+          # and opens discover-containers: the named image is never looked
+          # at, whatever Dockerfiles happen to be lying around are scanned
+          # instead, and the run reports success.
+          case "$SCAN_MODE" in
+            remote|discover|'') ;;
+            *)
+              echo "::error title=Invalid scan_mode::scan_mode '$SCAN_MODE' is not recognized. Valid values: remote, discover. The requested image would never have been scanned."
+              FAILED=1
+              ;;
+          esac
+
+          if [ "$SCAN_MODE" = "remote" ] && [ -z "$IMAGE_REF" ]; then
+            echo "::error title=Missing image_ref::scan_mode is 'remote' but image_ref is empty. No image would be scanned and the workflow would pass green. Pass image_ref, or use scan_mode: discover."
+            FAILED=1
+          fi
+
+          # Unknown sub-scanner names dispatch to nothing. The argus CLI
+          # rejects them too; checking here means the caller finds out in
+          # seconds instead of after a checkout, a Python setup and an
+          # image pull.
+          VALID="trivy grype syft exposure services"
+          if [ -n "$SCANNERS" ]; then
+            IFS=',' read -ra TOKENS <<< "$SCANNERS"
+            for raw in "${TOKENS[@]}"; do
+              token="$(echo "$raw" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+              [ -z "$token" ] && continue
+              if [[ " $VALID " != *" $token "* ]]; then
+                echo "::error title=Unknown scanner::'$token' is not a container sub-scanner. Valid names: ${VALID// /, }."
+                FAILED=1
+              fi
+            done
+          fi
+
+          if [ "$FAILED" -ne 0 ]; then
+            exit 1
+          fi
+          echo "Inputs validated: scan_mode=${SCAN_MODE:-discover}"
+
   # Discover containers in this repository (skipped in remote mode)
   discover-containers:
     name: Discover Container Images
     runs-on: ubuntu-latest
+    needs: validate-inputs
     if: inputs.scan_mode != 'remote'
     outputs:
       containers: ${{ steps.discover.outputs.containers }}
@@ -119,13 +285,48 @@ jobs:
 
       - name: Discover Dockerfiles in repository
         id: discover
+        env:
+          # Mirrors containers.search_paths in argus.yml. Empty means the
+          # whole repository, preserving the previous hardcoded behavior.
+          SEARCH_PATHS: ${{ inputs.search_paths }}
         run: |
-          echo "Discovering Dockerfiles in repository..."
+          set -euo pipefail
 
-          DOCKERFILES=$(find . -name "Dockerfile*" -not -path "./.git/*" -type f)
+          # Accept comma- or newline-separated paths, matching how the
+          # equivalent argus.yml list reads to a human.
+          SEARCH_PATHS="${SEARCH_PATHS:-.}"
+          mapfile -t PATHS < <(
+            printf '%s' "$SEARCH_PATHS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$'
+          )
+          if [ "${#PATHS[@]}" -eq 0 ]; then
+            PATHS=(".")
+          fi
+
+          echo "Discovering Dockerfiles in: ${PATHS[*]}"
+
+          MISSING=0
+          FOUND_FILE="$(mktemp)"
+          for search_path in "${PATHS[@]}"; do
+            if [ ! -d "$search_path" ]; then
+              # A typo'd search path must not read as "no containers here".
+              echo "::error title=Search path not found::'$search_path' is not a directory in this repository."
+              MISSING=1
+              continue
+            fi
+            find "$search_path" -name "Dockerfile*" -not -path "*/.git/*" -type f >> "$FOUND_FILE"
+          done
+
+          if [ "$MISSING" -ne 0 ]; then
+            exit 1
+          fi
+
+          # Dedupe: overlapping search paths (e.g. "." and "docker/") would
+          # otherwise build and scan the same image twice.
+          DOCKERFILES=$(sort -u "$FOUND_FILE")
+          rm -f "$FOUND_FILE"
 
           if [ -z "$DOCKERFILES" ]; then
-            echo "No Dockerfiles found in repository"
+            echo "No Dockerfiles found in: ${PATHS[*]}"
             echo "has_containers=false" >> "$GITHUB_OUTPUT"
             echo "containers=[]" >> "$GITHUB_OUTPUT"
             exit 0
@@ -137,7 +338,8 @@ jobs:
           containers="["
           first=true
 
-          for dockerfile in $DOCKERFILES; do
+          while IFS= read -r dockerfile; do
+            [ -z "$dockerfile" ] && continue
             dir=$(dirname "$dockerfile")
             name=$(basename "$dir")
 
@@ -158,7 +360,7 @@ jobs:
             fi
 
             containers="$containers{\"dockerfile\":\"$dockerfile\",\"name\":\"$name\",\"context\":\"$dir\"}"
-          done
+          done <<< "$DOCKERFILES"
 
           containers="$containers]"
 
@@ -167,6 +369,17 @@ jobs:
 
           echo "Container scan matrix:"
           echo "$containers" | jq '.'
+
+      - name: Fail if discovery found nothing
+        # Opt-in gate for repositories that are expected to always ship a
+        # Dockerfile: without it, a bad search_paths silently disables the
+        # whole scan and the workflow still reports success.
+        if: steps.discover.outputs.has_containers != 'true' && inputs.fail_on_no_targets == true
+        env:
+          SEARCH_PATHS: ${{ inputs.search_paths }}
+        run: |
+          echo "::error title=No containers found::No Dockerfiles matched search_paths='${SEARCH_PATHS:-.}' and fail_on_no_targets is true — nothing was scanned."
+          exit 1
 
   build-and-scan:
     name: Build & Scan - ${{ matrix.container.name }}
@@ -249,6 +462,7 @@ jobs:
           ARGUS_FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
           ARGUS_ENABLE_CODE_SECURITY: ${{ inputs.enable_code_security }}
           ARGUS_ALLOW_FAILURE: ${{ inputs.allow_failure }}
+          ARGUS_PLATFORM: ${{ inputs.platform }}
           CONTAINER_NAME: ${{ matrix.container.name }}
         run: |
           # Write reports to a fixed dir (no timestamp) so the per-container
@@ -256,10 +470,16 @@ jobs:
           # for the downstream security-summary job to stitch. Capture the scan
           # exit code so the markdown is still copied when findings fail the
           # gate, then re-exit with it to preserve the severity-threshold result.
+          PLATFORM_ARGS=()
+          if [ -n "${ARGUS_PLATFORM:-}" ]; then
+            PLATFORM_ARGS=(--platform "$ARGUS_PLATFORM")
+          fi
+
           SCAN_EXIT=0
           python -m argus scan container \
             --image "$ARGUS_IMAGE_REF" \
             --scanners "$ARGUS_SCANNERS" \
+            "${PLATFORM_ARGS[@]}" \
             --severity-threshold "$ARGUS_FAIL_ON_SEVERITY" \
             --output-dir ./container-reports \
             --no-timestamp \
@@ -271,6 +491,26 @@ jobs:
           mkdir -p scanner-summaries
           if [ -f container-reports/container-scan.md ]; then
             cp container-reports/container-scan.md "scanner-summaries/container-${SAFE_NAME}.md"
+          fi
+
+          # Publish this image's counts for the summary job to aggregate.
+          # The extraction is key-agnostic on purpose — it forwards every
+          # top-level number rather than naming fields. The mapping from
+          # argus-results.json onto the workflow_call outputs lives in
+          # exactly one place (the summary job), so these two scan jobs
+          # have nothing to drift apart on.
+          #
+          # No results file means the scan did not complete. The sentinel
+          # records that so images_scanned stays honest: a caller reading
+          # it can tell "scanned and clean" from "never ran".
+          mkdir -p scanner-counts
+          if [ -f container-reports/argus-results.json ]; then
+            jq -c 'with_entries(select(.value | type == "number"))' \
+              container-reports/argus-results.json \
+              > "scanner-counts/container-${SAFE_NAME}.json"
+          else
+            echo '{"argus_scan_incomplete":true}' \
+              > "scanner-counts/container-${SAFE_NAME}.json"
           fi
 
           exit $SCAN_EXIT
@@ -285,9 +525,22 @@ jobs:
           retention-days: 7
         continue-on-error: true
 
+      - name: Upload container finding counts
+        if: always() && steps.scan.outputs.safe_name != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: scanner-counts-container-${{ steps.scan.outputs.safe_name }}
+          path: scanner-counts/container-${{ steps.scan.outputs.safe_name }}.json
+          if-no-files-found: warn
+          retention-days: 7
+        continue-on-error: true
+
   scan-remote-image:
     name: Scan Remote Image
     runs-on: ubuntu-latest
+    needs: validate-inputs
+    # image_ref != '' is guaranteed by validate-inputs in remote mode; the
+    # check is kept so the job condition stays self-describing.
     if: inputs.scan_mode == 'remote' && inputs.image_ref != ''
     timeout-minutes: 30
     continue-on-error: ${{ inputs.allow_failure == true }}
@@ -333,14 +586,24 @@ jobs:
           ARGUS_FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
           ARGUS_ENABLE_CODE_SECURITY: ${{ inputs.enable_code_security }}
           ARGUS_ALLOW_FAILURE: ${{ inputs.allow_failure }}
+          ARGUS_PLATFORM: ${{ inputs.platform }}
           CONTAINER_NAME: ${{ inputs.container_name != '' && inputs.container_name || inputs.image_ref }}
         run: |
           # See build-and-scan: write to a fixed dir, capture exit, publish the
           # per-container markdown as a scanner-summary-container-* artifact.
+          # --platform is optional; argus resolves the image's own platform
+          # from the registry manifest when it is not set, so an arm64-only
+          # image is scannable from this amd64 runner.
+          PLATFORM_ARGS=()
+          if [ -n "${ARGUS_PLATFORM:-}" ]; then
+            PLATFORM_ARGS=(--platform "$ARGUS_PLATFORM")
+          fi
+
           SCAN_EXIT=0
           python -m argus scan container \
             --image "$ARGUS_IMAGE_REF" \
             --scanners "$ARGUS_SCANNERS" \
+            "${PLATFORM_ARGS[@]}" \
             --severity-threshold "$ARGUS_FAIL_ON_SEVERITY" \
             --output-dir ./container-reports \
             --no-timestamp \
@@ -352,6 +615,26 @@ jobs:
           mkdir -p scanner-summaries
           if [ -f container-reports/container-scan.md ]; then
             cp container-reports/container-scan.md "scanner-summaries/container-${SAFE_NAME}.md"
+          fi
+
+          # Publish this image's counts for the summary job to aggregate.
+          # The extraction is key-agnostic on purpose — it forwards every
+          # top-level number rather than naming fields. The mapping from
+          # argus-results.json onto the workflow_call outputs lives in
+          # exactly one place (the summary job), so these two scan jobs
+          # have nothing to drift apart on.
+          #
+          # No results file means the scan did not complete. The sentinel
+          # records that so images_scanned stays honest: a caller reading
+          # it can tell "scanned and clean" from "never ran".
+          mkdir -p scanner-counts
+          if [ -f container-reports/argus-results.json ]; then
+            jq -c 'with_entries(select(.value | type == "number"))' \
+              container-reports/argus-results.json \
+              > "scanner-counts/container-${SAFE_NAME}.json"
+          else
+            echo '{"argus_scan_incomplete":true}' \
+              > "scanner-counts/container-${SAFE_NAME}.json"
           fi
 
           exit $SCAN_EXIT
@@ -366,17 +649,122 @@ jobs:
           retention-days: 7
         continue-on-error: true
 
+      - name: Upload container finding counts
+        if: always() && steps.scan.outputs.safe_name != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: scanner-counts-container-${{ steps.scan.outputs.safe_name }}
+          path: scanner-counts/container-${{ steps.scan.outputs.safe_name }}.json
+          if-no-files-found: warn
+          retention-days: 7
+        continue-on-error: true
+
   container-scan-summary:
     name: Container Scan Summary
     runs-on: ubuntu-latest
-    needs: [discover-containers, build-and-scan, scan-remote-image]
+    needs: [validate-inputs, discover-containers, build-and-scan, scan-remote-image]
     if: always()
+    outputs:
+      critical_count: ${{ steps.counts.outputs.critical_count }}
+      high_count: ${{ steps.counts.outputs.high_count }}
+      medium_count: ${{ steps.counts.outputs.medium_count }}
+      low_count: ${{ steps.counts.outputs.low_count }}
+      total_count: ${{ steps.counts.outputs.total_count }}
+      vulnerabilities_found: ${{ steps.counts.outputs.vulnerabilities_found }}
+      images_scanned: ${{ steps.counts.outputs.images_scanned }}
+      overall_status: ${{ steps.counts.outputs.overall_status }}
+      scan_statuses: ${{ steps.counts.outputs.scan_statuses }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+
+      # Per-image counts, published by each scan job. Aggregated here
+      # because a matrix job's own outputs are last-writer-wins and so
+      # cannot carry per-leg totals.
+      - name: Download container finding counts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: scanner-counts-container-*
+          path: scanner-counts
+          merge-multiple: true
+        continue-on-error: true
+
+      - name: Aggregate counts into workflow outputs
+        id: counts
+        env:
+          BUILD_SCAN_RESULT: ${{ needs.build-and-scan.result }}
+          REMOTE_SCAN_RESULT: ${{ needs.scan-remote-image.result }}
+          VALIDATE_RESULT: ${{ needs.validate-inputs.result }}
+          DISCOVER_RESULT: ${{ needs.discover-containers.result }}
+        run: |
+          set -euo pipefail
+
+          # The one place argus-results.json's field names are mapped onto
+          # the workflow_call count outputs. It used to live in both scan
+          # jobs; a one-sided edit there skewed every count for one scan
+          # mode while the other stayed correct, and nothing in CI noticed.
+          CRIT=0; HIGH=0; MED=0; LOW=0; TOTAL=0; IMAGES=0
+          shopt -s nullglob
+          for f in scanner-counts/*.json; do
+            # A scan that did not complete publishes a sentinel instead of
+            # counts. It contributes nothing and must NOT increment
+            # images_scanned — that is how a caller distinguishes a clean
+            # scan from one that never ran.
+            if jq -e '.argus_scan_incomplete == true' "$f" >/dev/null 2>&1; then
+              echo "::warning title=Container scan incomplete::$f reports a scan that did not complete; it is excluded from images_scanned."
+              continue
+            fi
+            CRIT=$((CRIT + $(jq -r '.critical_count // 0' "$f")))
+            HIGH=$((HIGH + $(jq -r '.high_count // 0' "$f")))
+            MED=$((MED + $(jq -r '.medium_count // 0' "$f")))
+            LOW=$((LOW + $(jq -r '.low_count // 0' "$f")))
+            TOTAL=$((TOTAL + $(jq -r '.total_count // 0' "$f")))
+            IMAGES=$((IMAGES + 1))
+          done
+          shopt -u nullglob
+
+          VULNS_FOUND=false
+          [ "$TOTAL" -gt 0 ] && VULNS_FOUND=true
+
+          # A job that did not succeed and was not skipped is a failure.
+          # "skipped" on its own is not — in discover mode the remote job
+          # always skips, and vice versa.
+          OVERALL=success
+          for result in "$VALIDATE_RESULT" "$DISCOVER_RESULT" \
+                        "$BUILD_SCAN_RESULT" "$REMOTE_SCAN_RESULT"; do
+            case "$result" in
+              success|skipped|'') ;;
+              *) OVERALL=failure ;;
+            esac
+          done
+          if [ "$OVERALL" = "success" ] && [ "$IMAGES" -eq 0 ]; then
+            # Nothing failed but nothing ran either. Reported as "skipped"
+            # rather than "success" so a caller gating on this output is
+            # never told an unscanned image is clean.
+            OVERALL=skipped
+          fi
+
+          STATUSES=$(jq -nc \
+            --arg build "$BUILD_SCAN_RESULT" \
+            --arg remote "$REMOTE_SCAN_RESULT" \
+            '{"container-build-and-scan": $build, "container-remote-scan": $remote}')
+
+          {
+            echo "critical_count=$CRIT"
+            echo "high_count=$HIGH"
+            echo "medium_count=$MED"
+            echo "low_count=$LOW"
+            echo "total_count=$TOTAL"
+            echo "images_scanned=$IMAGES"
+            echo "vulnerabilities_found=$VULNS_FOUND"
+            echo "overall_status=$OVERALL"
+            echo "scan_statuses=$STATUSES"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Aggregated: images=$IMAGES critical=$CRIT high=$HIGH medium=$MED low=$LOW total=$TOTAL status=$OVERALL"
 
       # security-summary self-downloads the per-container summary artifacts
       # (scanner-summary-container-*), so no separate download step is needed.
