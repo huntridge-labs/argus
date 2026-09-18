@@ -285,6 +285,49 @@ def validate_sub_scanners(
     return normalised
 
 
+def _platform_args(config: dict | None) -> list[str]:
+    """Return ``["--platform", <value>]`` when a platform is configured.
+
+    trivy, grype and syft all accept ``--platform os/arch[/variant]`` and
+    all three otherwise resolve a multi-arch manifest against the host's
+    own architecture. That default is wrong for a scan: these tools read
+    image layers, they never execute them, so an arm64-only image is
+    scannable from an amd64 runner — it just has to be named.
+
+    ``containers.platform`` in argus.yml (or ``--platform`` on the CLI)
+    supplies the value; unset — absent, None, or empty — means "let the
+    tool decide", which preserves the historic behaviour for single-arch
+    and host-matching images. ``argus.core.schema`` accepts an empty
+    value for exactly this reason.
+
+    This is the single implementation for both container paths:
+    ``argus.container.scanner`` imports it from here (it already depends
+    on this module for ``SUB_SCANNERS``, so the dependency runs one way
+    only). It previously existed only on that path, so this module's
+    trivy/grype/syft calls silently ignored the setting while its
+    ``exposure`` and ``services`` sub-scanners honoured it — one run
+    could mix platform-pinned attack-surface results with
+    host-resolved CVE results for different variants of the same image.
+    """
+    platform = (config or {}).get("platform")
+    if not platform:
+        return []
+    return ["--platform", str(platform)]
+
+
+def _sub_scanner_failed(meta: object) -> bool:
+    """True when a sub-scanner's metadata says it did not produce a result.
+
+    Sub-scanners report inability to run in two shapes: ``error`` (tried
+    and failed, or no binary and no runtime) and ``skipped`` (a
+    precondition was absent, e.g. no container runtime for the
+    attack-surface scanners). Anything else means the tool ran.
+    """
+    if not isinstance(meta, dict):
+        return False
+    return "error" in meta or "skipped" in meta
+
+
 class ContainerScanner:
     """Wraps Trivy, Grype, and Syft for container image scanning."""
 
@@ -378,6 +421,7 @@ class ContainerScanner:
         seen_cves: set[str] = set()
 
         env = self._build_env(config)
+        platform_args = _platform_args(config)
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
@@ -386,9 +430,11 @@ class ContainerScanner:
                 trivy_output = tmp_path / "trivy-results.json"
                 trivy_findings, trivy_meta = self._run_sub_scanner(
                     tool="trivy",
-                    local_cmd=["trivy", "image", "--format", "json",
+                    local_cmd=["trivy", "image", *platform_args,
+                               "--format", "json",
                                "--output", str(trivy_output), image_ref],
-                    container_args=["image", "--format", "json",
+                    container_args=["image", *platform_args,
+                                    "--format", "json",
                                     "--output", "/output/results.json", image_ref],
                     output_file=trivy_output,
                     parse_fn=self.parse_trivy_results,
@@ -401,9 +447,10 @@ class ContainerScanner:
                 grype_output = tmp_path / "grype-results.json"
                 grype_findings, grype_meta = self._run_sub_scanner(
                     tool="grype",
-                    local_cmd=["grype", image_ref, "-o", "json",
+                    local_cmd=["grype", *platform_args, image_ref,
+                               "-o", "json",
                                "--file", str(grype_output)],
-                    container_args=[image_ref, "-o", "json",
+                    container_args=[*platform_args, image_ref, "-o", "json",
                                     "--file", "/output/results.json"],
                     output_file=grype_output,
                     parse_fn=self.parse_grype_results,
@@ -415,7 +462,7 @@ class ContainerScanner:
             if "syft" in enabled:
                 syft_output = tmp_path / "syft-sbom.json"
                 syft_meta = self._run_syft_with_fallback(
-                    image_ref, syft_output, env,
+                    image_ref, syft_output, env, platform_args,
                 )
                 metadata["syft"] = syft_meta
 
@@ -433,18 +480,28 @@ class ContainerScanner:
                 all_findings.extend(services_findings)
                 metadata["services"] = services_meta
 
-            if not metadata:
-                # Every requested sub-scanner is a valid name (validated
-                # above) yet none produced a metadata entry, so none of
-                # them could be executed. That is a scan that did not
-                # happen, not a scan that found nothing — flag it as an
-                # execution failure so the engine's "did not run cleanly"
-                # bucket and ``--fail-on-scanner-error`` both see it.
+            # Every requested sub-scanner is a valid name (validated
+            # above) yet none of them actually executed. That is a scan
+            # that did not happen, not a scan that found nothing — flag
+            # it as an execution failure so the engine's "did not run
+            # cleanly" bucket and ``--fail-on-scanner-error`` both see it.
+            #
+            # The test is "did any sub-scanner succeed", not "is metadata
+            # empty". Every branch above writes its metadata key even when
+            # the tool could not be run — ``_run_sub_scanner`` returns
+            # ``{"error": ...}`` rather than nothing — so a ``not metadata``
+            # test could never fire, and a host with no trivy, no grype and
+            # no container runtime reported a clean PASS.
+            if all(_sub_scanner_failed(m) for m in metadata.values()):
+                reasons = "; ".join(
+                    f"{name}: {m.get('error') or m.get('skipped')}"
+                    for name, m in sorted(metadata.items())
+                ) or "no sub-scanner produced a result"
                 metadata["error"] = (
                     "None of the enabled sub-scanners "
                     f"({', '.join(enabled)}) could be executed — "
                     "install them locally or ensure a container runtime "
-                    "is available"
+                    f"is available ({reasons})"
                 )
                 metadata["execution_failed"] = True
 
@@ -991,11 +1048,13 @@ class ContainerScanner:
         image_ref: str,
         output_file: Path,
         env: dict[str, str],
+        platform_args: list[str] | None = None,
     ) -> dict:
         """Run Syft SBOM generation locally or via Docker fallback."""
+        platform_args = platform_args or []
         if shutil.which("syft"):
             cmd = [
-                "syft", image_ref,
+                "syft", *platform_args, image_ref,
                 "-o", "cyclonedx-json",
                 "--file", str(output_file),
             ]
@@ -1019,6 +1078,7 @@ class ContainerScanner:
                 rt, "run", "--rm",
                 "-v", f"{output_dir}:/output",
                 image,
+                *platform_args,
                 image_ref,
                 "-o", "cyclonedx-json",
                 "--file", "/output/results.json",
