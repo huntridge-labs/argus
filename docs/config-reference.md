@@ -478,7 +478,13 @@ Vulnerability scanners read image layers; they never execute them. An `arm64`-on
 
 Normally this needs no configuration. If a pull fails, Argus reads the image's published platforms from the registry manifest and retries against one of them, preferring the host's own architecture when the image publishes it.
 
-Set `platform` explicitly only when this host cannot read that manifest — typically a private registry the runner has no credentials for:
+Set `platform` explicitly when this host cannot read that manifest — typically a private registry the runner has no credentials for, or a runtime with no manifest support:
+
+| Runtime | Manifest read | Automatic retry |
+|---------|---------------|-----------------|
+| Docker | `manifest inspect --verbose` | Yes |
+| Podman | `manifest inspect` (OCI index) | Yes |
+| nerdctl | not supported | No — set `platform` |
 
 ```yaml
 containers:
@@ -493,7 +499,9 @@ The equivalent CLI flag overrides the config file:
 argus scan container --image arm64v8/alpine:3.18 --platform linux/arm64
 ```
 
-The value is threaded to Trivy, Grype and Syft as their native `--platform` flag, and to the `exposure` and `services` sub-scanners as the pull platform. No QEMU or `binfmt` emulation is involved.
+The value must be `os/arch` or `os/arch/variant` (e.g. `linux/arm64`, `linux/arm/v7`); anything else is rejected at config-validation time rather than passed through to the scanners. An empty value means "unset" — no flag is emitted, so `platform: ""` is a valid placeholder.
+
+It is threaded to Trivy, Grype and Syft as their native `--platform` flag on both container paths, and to the `exposure` and `services` sub-scanners as the pull platform. An explicit value also defeats the local-image cache: if a copy of the ref is already present for a different architecture, the requested platform is pulled rather than the cached one being reused. No QEMU or `binfmt` emulation is involved.
 
 ### Per-registry credentials
 

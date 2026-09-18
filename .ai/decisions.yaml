@@ -2850,6 +2850,8 @@ decisions:
       negative:
       - Previously-green runs with a typo'd scanner name now fail. This is the intended correction, but it lands as a breaking change for any caller relying on the old silent behavior.
       - A tool that is genuinely unavailable now fails the scan rather than being skipped; operators who want partial coverage must narrow the scanners list explicitly.
+      - An unrecognised scan_type on reusable-security-hardening.yml now fails instead of running the full default set. Callers relying on the old fallback must correct the value.
+      - An unrecognised scan_mode on container-scan.yml now fails instead of silently falling back to discovery.
     implementation: |-
       - argus.scanners.container.SUB_SCANNERS is the single source of truth for valid
         sub-scanner names; validate_sub_scanners() is the gate both entry points call.
@@ -2858,9 +2860,43 @@ decisions:
       - _run_trivy / _run_grype raise RuntimeError when no binary and no container
         runtime are available, or on timeout, so the orchestrator records the failure
         under scanner_errors and ContainerScanSummary.scan_failures drives a non-zero exit.
-      - scan_image keeps a backstop for drift between SUB_SCANNERS and the dispatch branches.
-      - container-scan.yml gains a validate-inputs job; reusable-security-hardening.yml
-        collects unknown tokens and exits 1 rather than substituting DEFAULT_SCANNERS.
+      - scan_image keeps a backstop for drift between SUB_SCANNERS and the dispatch
+        branches. It tests what actually ran (a `ran` set each branch adds itself to),
+        not what was selected: a name can be valid, pass validate_sub_scanners and
+        still match no dispatch branch, which is the same silent pass reached from a
+        third direction. syft is a dispatched sub-scanner like any other — the earlier
+        `if sbom and "syft" not in scanners` ran it only for callers who had not asked
+        for it. An implicit SBOM (sbom=True) does not satisfy the gate; an inventory
+        is not a vulnerability scan.
+      - ContainerScanner.scan flags execution_failed when every sub-scanner reported
+        error or skipped, not when the metadata dict is empty — every branch writes its
+        key even on failure, so the empty test could never fire.
+      - ContainerEngine validates the selection once in run(), before the target loop.
+        Inside _process_target the ValueError is swallowed by the broad `except
+        Exception` and rewritten to a generic "Scan failed for <ref>", discarding the
+        offending token and the valid-names list.
+      - argus.core.schema normalises case and whitespace the way validate_sub_scanners
+        does, so `argus validate` cannot reject a config the scanner runs.
+      - container-scan.yml gains a validate-inputs job that checks scan_mode itself
+        (a free-form string on workflow_call, so 'Remote' silently downgraded a remote
+        scan to discovery) alongside image_ref and the sub-scanner names;
+        fail_on_no_targets is declared on both workflow_call and workflow_dispatch so
+        the guard can fire on either entry point.
+      - reusable-security-hardening.yml collects unknown tokens and exits 1 rather than
+        substituting DEFAULT_SCANNERS. The same refusal applies to an unrecognised
+        scan_type, which previously fell through to 'all' — so a `container_only`
+        typo ran seven unrelated scanners and reported green.
+      - container-scan.yml's two scan jobs (build-and-scan, scan-remote-image) carry a
+        byte-identical scan step, including the jq mapping that produces the
+        workflow_call count outputs. Carrying it once as a composite action is the
+        real fix but has to land in the same release as its first use: a reusable
+        workflow's run steps execute against the CALLER's checkout, so a shared
+        script here would not exist for consumers, and a composite action is
+        referenced by @<tag> — a tag that will not contain it until release-it cuts
+        the release. Until then tests/unit/test_container_scan_outputs_contract.py
+        fails the moment the two copies diverge, which is the actual risk (a
+        one-sided edit skews images_scanned and every *_count for one scan mode
+        while the other stays correct, and nothing else in CI would notice).
       - Consistent with ADR-007 (the user controls failure behavior) — the user chooses
         the severity threshold, but not whether an unrun scan counts as a pass.
       - Generalizes ADR-036, which established the same rule for the CodeQL severity
@@ -2905,12 +2941,44 @@ decisions:
         registry whose manifest this host cannot read it returns nothing and no retry
         happens, so containers.platform must be set explicitly.
     implementation: |-
-      - container_runtime.detect_image_platforms() reads Descriptor.platform from
-        `<runtime> manifest inspect --verbose`, filtering buildx unknown/unknown
-        attestation entries.
-      - pull_image(platform=...) uses an explicit value verbatim with no fallback;
-        without one, a failed pull retries against a published platform, preferring
-        the host's own architecture when the image publishes it.
+      - container_runtime.detect_image_platforms() reads the platform blocks from
+        `<runtime> manifest inspect`, filtering buildx unknown/unknown attestation
+        entries. The runtimes disagree on both flag and payload: Docker needs
+        --verbose and reports Descriptor.platform, Podman rejects --verbose and
+        reports an OCI index under manifests[].platform. It branches on the detected
+        runtime rather than probing twice, so the common path costs exactly one
+        subprocess call; only an unrecognised ARGUS_CONTAINER_RUNTIME falls back to
+        trying both forms. nerdctl has no manifest inspect at all and is skipped
+        without a call — this runs after every failed pull, and a guaranteed-failing
+        subprocess there is the cost this ADR set out to remove; containers.platform
+        must be set explicitly for it. The call is bounded by a 60s timeout, because
+        a blackholed registry would otherwise hang the CLI with no job-level timeout
+        to fall back on.
+      - pull_image(platform=...) uses an explicit value verbatim with no fallback,
+        including against the local cache: an `if-not-present` hit is only a hit when
+        the cached copy's own architecture matches, otherwise the requested platform
+        is pulled. Without an explicit platform, a failed pull retries against a
+        published platform, preferring the host's own architecture when the image
+        publishes it. That comparison is on os/arch only — _native_platform() never
+        emits a variant, so an exact match missed every image published as
+        linux/arm64/v8 and fell through to the first candidate, usually amd64.
       - containers.platform (argus.yml) / --platform (CLI) / platform (container-scan.yml
         input) thread a value to trivy, grype, syft and both daemon-backed sub-scanners
-        (exposure, services) via _platform_args().
+        (exposure, services) via _platform_args(). There is ONE _platform_args:
+        argus/scanners/container.py defines it and argus/container/scanner.py imports
+        it (that dependency already runs one way, for SUB_SCANNERS), so the two
+        container paths cannot drift. The schema validates the value as
+        os/arch[/variant]; only key membership was checked before, so `platform: 123`
+        reached trivy as `--platform 123`. An empty value is "unset", not invalid —
+        _platform_args emits no flag for it and the workflow input defaults to '',
+        so rejecting it would be the same schema/runtime drift in the other
+        direction.
+      - ScanEngine._pull_image (argus/core/engine.py) is the second pull path and
+        pulls images that are *executed*, not merely read, so its retry prefers this
+        host's architecture from the same manifest read and keeps linux/amd64 only as
+        the fallback for upstreams that ship amd64 only. Sharing
+        detect_image_platforms keeps the two paths from drifting. It still retries
+        even when the chosen platform is the host's own and the command is therefore
+        identical to the one that just failed: `unclassified` is one of only two
+        retryable categories, and a plain second attempt is the one thing that
+        rescues a transient failure on the path that fetches every scanner image.
