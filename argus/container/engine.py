@@ -62,6 +62,10 @@ class ContainerEngine:
         self.config = config
         self._cleanup = config.get("cleanup", True)
         self._built_images: list[str] = []
+        # Memoised, validated sub-scanner selection. Populated on the
+        # first ``_scanners()`` call so the selection is validated once
+        # per run rather than once per target.
+        self._scanner_selection: tuple[str, ...] | None = None
         # Progress callback signature: (idx, total, name, phase, elapsed_ms).
         # Default is a no-op so engine code can call ``self._progress(...)``
         # unconditionally without checking. The CLI installs a callback
@@ -84,6 +88,14 @@ class ContainerEngine:
         4. Final cleanup (dangling images, build cache)
         5. Return aggregated summary
         """
+        # Validate the sub-scanner selection before any target work.
+        # Called from inside ``_process_target`` the ValueError is caught
+        # by that method's broad ``except Exception`` and rewritten to a
+        # generic "Scan failed for <ref>", discarding both the offending
+        # token and the list of valid names — which is most of what the
+        # message is for. Raising here reaches the CLI's handler intact.
+        self._scanners()
+
         targets = self._resolve_targets()
         if not targets:
             logger.warning("No container targets found")
@@ -291,12 +303,17 @@ class ContainerEngine:
         the same value before the engine starts; this call is the
         backstop for direct API callers.
         """
+        if self._scanner_selection is not None:
+            return self._scanner_selection
         raw = self.config.get(
             "scanners", ["trivy", "grype", "exposure", "services"],
         )
         if isinstance(raw, str):
             raw = raw.split(",")
-        return tuple(validate_sub_scanners(raw, source="containers.scanners"))
+        self._scanner_selection = tuple(
+            validate_sub_scanners(raw, source="containers.scanners")
+        )
+        return self._scanner_selection
 
     def _sbom_enabled(self) -> bool:
         """Check if SBOM generation is enabled."""

@@ -388,3 +388,257 @@ class TestCliRejectsUnknownScanner:
             _load_container_config(_container_args(images=None, config="argus.yml"))
         assert "tryvi" in str(excinfo.value)
         assert "containers.scanners" in str(excinfo.value)
+
+
+# =====================================================================
+# PR #427 review follow-ups — the two holes left in the backstop
+# =====================================================================
+
+class TestSyftIsADispatchedSubScanner:
+    """``--scanners syft`` must actually run syft.
+
+    ``syft`` is in ``SUB_SCANNERS`` and passes ``validate_sub_scanners``,
+    but the dispatch read ``if sbom and "syft" not in scanners`` — it ran
+    syft only for callers who had *not* asked for it, and skipped it for
+    the one caller who had. The old backstop then counted syft as a match
+    because it is in ``SUB_SCANNERS``, so nothing was recorded: zero
+    findings, zero errors, exit 0 over an unscanned image.
+    """
+
+    def _local_image(self, monkeypatch):
+        monkeypatch.setattr(
+            "argus.container.scanner.is_image_local", lambda _ref: True,
+        )
+
+    def test_explicitly_requested_syft_runs(self, monkeypatch):
+        calls: list[str] = []
+        self._local_image(monkeypatch)
+        monkeypatch.setattr(
+            "argus.container.scanner._run_syft",
+            lambda ref, path, **kw: calls.append(ref) or True,
+        )
+        scan_image(
+            ContainerTarget(name="app", image_ref="app:latest"),
+            scanners=("syft",),
+        )
+        assert calls == ["app:latest"], "syft was selected but never invoked"
+
+    def test_explicitly_requested_syft_satisfies_the_gate(self, monkeypatch):
+        self._local_image(monkeypatch)
+        monkeypatch.setattr(
+            "argus.container.scanner._run_syft", lambda *a, **kw: True,
+        )
+        result = scan_image(
+            ContainerTarget(name="app", image_ref="app:latest"),
+            scanners=("syft",),
+        )
+        assert "selection" not in result.scanner_errors
+
+    def test_requested_syft_that_cannot_run_is_a_failure(self, monkeypatch):
+        """An SBOM that could not be produced is not a pass."""
+        self._local_image(monkeypatch)
+        monkeypatch.setattr(
+            "argus.container.scanner._run_syft", lambda *a, **kw: False,
+        )
+        result = scan_image(
+            ContainerTarget(name="app", image_ref="app:latest"),
+            scanners=("syft",),
+        )
+        assert "syft" in result.scanner_errors
+
+    def test_implicit_sbom_still_runs_for_other_selections(self, monkeypatch):
+        """``sbom=True`` keeps emitting an SBOM alongside a CVE scan."""
+        calls: list[str] = []
+        self._local_image(monkeypatch)
+        monkeypatch.setattr(
+            "argus.container.scanner._run_syft",
+            lambda ref, path, **kw: calls.append(ref) or True,
+        )
+        monkeypatch.setattr(
+            "argus.container.scanner._run_trivy", lambda *a, **kw: [],
+        )
+        scan_image(
+            ContainerTarget(name="app", image_ref="app:latest"),
+            scanners=("trivy",),
+        )
+        assert calls == ["app:latest"]
+
+
+class TestBackstopFiresOnTheDefaultPath:
+    """``and not sbom`` made the backstop dead for every default caller.
+
+    ``scan_image``'s signature is ``sbom: bool = True``, so ``not sbom``
+    was False on every call that did not explicitly opt out — and both
+    original tests passed ``sbom=False``. A direct API caller (the case
+    ``ContainerEngine._scanners``' docstring names) got a clean result.
+    """
+
+    def test_bogus_selection_is_caught_with_sbom_left_at_its_default(
+        self, monkeypatch,
+    ):
+        monkeypatch.setattr(
+            "argus.container.scanner.is_image_local", lambda _ref: True,
+        )
+        monkeypatch.setattr(
+            "argus.container.scanner._run_syft", lambda *a, **kw: True,
+        )
+        result = scan_image(
+            ContainerTarget(name="app", image_ref="app:latest"),
+            scanners=("tryvi",),
+        )
+        assert "selection" in result.scanner_errors
+        assert "tryvi" in result.scanner_errors["selection"]
+
+    def test_an_implicit_sbom_does_not_satisfy_the_gate(self, monkeypatch):
+        """An inventory is not a vulnerability scan."""
+        from argus.container.scanner import ContainerScanSummary
+
+        monkeypatch.setattr(
+            "argus.container.scanner.is_image_local", lambda _ref: True,
+        )
+        monkeypatch.setattr(
+            "argus.container.scanner._run_syft", lambda *a, **kw: True,
+        )
+        result = scan_image(
+            ContainerTarget(name="app", image_ref="app:latest"),
+            scanners=("tryvi",),
+        )
+        assert ContainerScanSummary(results=[result]).scan_failures == 1
+
+
+class TestEngineSurfacesTheSelectionMessage:
+    """``run()`` must not let the broad ``except Exception`` eat it.
+
+    ``_scanners()`` was called inside ``_scan_one_target``'s try block,
+    whose ``except Exception`` rewrote the ValueError to a generic
+    "Scan failed for <ref>" — discarding the bad token and the list of
+    valid names, which is most of the message's value.
+    """
+
+    def test_run_raises_with_the_offending_token(self, monkeypatch):
+        monkeypatch.setattr(
+            "argus.container.engine.parse_container_config",
+            lambda _cfg: [ContainerTarget(name="app", image_ref="app:latest")],
+        )
+        engine = ContainerEngine(
+            {"images": [{"image": "app:latest"}], "scanners": "tryvi"},
+        )
+        with pytest.raises(ValueError) as excinfo:
+            engine.run()
+        msg = str(excinfo.value)
+        assert "tryvi" in msg
+        assert "containers.scanners" in msg
+        assert "trivy" in msg  # the valid-names list survives
+
+    def test_selection_is_validated_once_not_once_per_target(self):
+        engine = ContainerEngine({"scanners": ["trivy"]})
+        assert engine._scanners() is engine._scanners()
+
+
+class TestSdkScannerUnrunnableIsNotAPass:
+    """``if not metadata`` could never fire, so the SDK path passed green.
+
+    Every dispatch branch writes its metadata key even on failure —
+    ``_run_sub_scanner`` returns ``{"error": ...}`` rather than nothing —
+    so on a host with no trivy, no grype and no container runtime the
+    scanner returned zero findings, no ``execution_failed``, and the
+    engine reported PASS.
+    """
+
+    def test_all_sub_scanners_failing_sets_execution_failed(self, monkeypatch):
+        monkeypatch.setattr(
+            "argus.scanners.container.shutil.which", lambda _n: None,
+        )
+        monkeypatch.setattr(
+            "argus.container_runtime.is_available", lambda: False,
+        )
+        result = ContainerScanner().scan(
+            ".", {"image_ref": "app:latest", "scanners": ["trivy", "grype"]},
+        )
+        assert result.metadata.get("execution_failed") is True
+        assert "could be executed" in result.metadata["error"]
+
+    def test_a_succeeding_sub_scanner_keeps_the_scan_clean(self):
+        from argus.scanners.container import _sub_scanner_failed
+
+        assert _sub_scanner_failed({"error": "boom"}) is True
+        assert _sub_scanner_failed({"skipped": "no runtime"}) is True
+        assert _sub_scanner_failed({"returncode": 0}) is False
+
+
+class TestRunSyftReportsWhetherItRan:
+    """``_run_syft`` returning False is what turns a requested-but-absent
+    syft into a recorded failure rather than a silent clean pass."""
+
+    def test_no_binary_and_no_runtime_returns_false(self, tmp_path, monkeypatch):
+        from argus.container.scanner import _run_syft
+
+        monkeypatch.setattr(
+            "argus.container.scanner.shutil.which", lambda _n: None,
+        )
+        monkeypatch.setattr("argus.container_runtime.is_available", lambda: False)
+        assert _run_syft("app:1", tmp_path) is False
+
+    def test_failed_image_pull_returns_false(self, tmp_path, monkeypatch):
+        from argus.container.scanner import _run_syft
+
+        monkeypatch.setattr(
+            "argus.container.scanner.shutil.which", lambda _n: None,
+        )
+        monkeypatch.setattr("argus.container_runtime.is_available", lambda: True)
+        monkeypatch.setattr(
+            "argus.container_runtime.pull_image", lambda *a, **kw: False,
+        )
+        assert _run_syft("app:1", tmp_path) is False
+
+    def test_missing_binary_at_exec_time_returns_false(self, tmp_path, monkeypatch):
+        from argus.container.scanner import _run_syft
+
+        monkeypatch.setattr(
+            "argus.container.scanner.shutil.which", lambda _n: "/usr/bin/syft",
+        )
+
+        def boom(*a, **kw):
+            raise FileNotFoundError("syft")
+
+        monkeypatch.setattr("subprocess.run", boom)
+        assert _run_syft("app:1", tmp_path) is False
+
+    def test_timeout_returns_false(self, tmp_path, monkeypatch):
+        import subprocess
+
+        from argus.container.scanner import _run_syft
+
+        monkeypatch.setattr(
+            "argus.container.scanner.shutil.which", lambda _n: "/usr/bin/syft",
+        )
+
+        def slow(*a, **kw):
+            raise subprocess.TimeoutExpired(cmd="syft", timeout=300)
+
+        monkeypatch.setattr("subprocess.run", slow)
+        assert _run_syft("app:1", tmp_path) is False
+
+    def test_successful_invocation_returns_true(self, tmp_path, monkeypatch):
+        import subprocess
+
+        from argus.container.scanner import _run_syft
+
+        monkeypatch.setattr(
+            "argus.container.scanner.shutil.which", lambda _n: "/usr/bin/syft",
+        )
+        monkeypatch.setattr(
+            "subprocess.run",
+            lambda *a, **kw: subprocess.CompletedProcess([], 0, "", ""),
+        )
+        assert _run_syft("app:1", tmp_path) is True
+
+
+class TestSubScannerFailedPredicate:
+    """Non-dict metadata must not be mistaken for a failure."""
+
+    def test_non_dict_metadata_is_not_a_failure(self):
+        from argus.scanners.container import _sub_scanner_failed
+
+        assert _sub_scanner_failed("a string") is False
+        assert _sub_scanner_failed(None) is False

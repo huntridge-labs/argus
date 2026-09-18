@@ -9,7 +9,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from argus.core.models import Finding, Severity
-from argus.scanners.container import SUB_SCANNERS, ContainerScanner
+from argus.scanners.container import (
+    SUB_SCANNERS,
+    ContainerScanner,
+    _platform_args,  # re-exported: one implementation, both container paths
+)
 
 from .discovery import ContainerTarget
 from .resources import get_image_digest, is_image_local
@@ -568,6 +572,12 @@ def scan_image(
     exposure_findings: list[Finding] = []
     services_findings: list[Finding] = []
     scanner_errors: dict[str, str] = {}
+    # Sub-scanners that were actually dispatched, as opposed to
+    # merely selected. The gate at the end of this function keys off
+    # this rather than off ``scanners``: a name can be valid, pass
+    # ``validate_sub_scanners``, and still match no dispatch branch,
+    # which is the silent green scan this whole module guards against.
+    ran: set[str] = set()
 
     # Determine if the image is local (built by us) or remote.
     #
@@ -616,6 +626,7 @@ def scan_image(
         tmp_path = Path(tmp_dir)
 
         if "trivy" in scanners:
+            ran.add("trivy")
             try:
                 trivy_findings = _run_trivy(
                     target.image_ref, tmp_path, local=is_local, config=cfg,
@@ -625,6 +636,7 @@ def scan_image(
                 scanner_errors["trivy"] = str(exc)
 
         if "grype" in scanners:
+            ran.add("grype")
             try:
                 grype_findings = _run_grype(
                     target.image_ref, tmp_path, local=is_local, config=cfg,
@@ -633,8 +645,28 @@ def scan_image(
                 logger.error("grype scan failed for %s: %s", target.image_ref, exc)
                 scanner_errors["grype"] = str(exc)
 
-        if sbom and "syft" not in scanners:
-            _run_syft(target.image_ref, tmp_path, local=is_local, config=cfg)
+        # SBOM generation. ``sbom=True`` (the default) emits one
+        # implicitly; naming ``syft`` in ``scanners`` asks for it
+        # explicitly. Either way syft runs exactly once — the previous
+        # ``sbom and "syft" not in scanners`` read inverted, running
+        # syft only for callers who had *not* asked for it and
+        # skipping it for the one caller who had.
+        #
+        # Only an explicit request counts towards ``ran``. An implicit
+        # SBOM is an inventory, not a vulnerability scan, and must not
+        # satisfy the "something actually ran" gate below.
+        syft_requested = "syft" in scanners
+        if sbom or syft_requested:
+            produced = _run_syft(
+                target.image_ref, tmp_path, local=is_local, config=cfg,
+            )
+            if syft_requested:
+                ran.add("syft")
+                if not produced:
+                    scanner_errors["syft"] = (
+                        "syft was requested but could not run: no local "
+                        "binary and no container runtime available"
+                    )
 
         # Attack-surface sub-scanners. They take an image ref + a
         # config dict, run locally (no DB pulls), and return
@@ -643,6 +675,7 @@ def scan_image(
         # status, and these helpers don't error out: they just return
         # zero findings when there's nothing to report.
         if "exposure" in scanners:
+            ran.add("exposure")
             try:
                 exposure_findings, _meta = _parser._scan_exposed_ports(
                     target.image_ref, cfg,
@@ -655,6 +688,7 @@ def scan_image(
                 scanner_errors["exposure"] = str(exc)
 
         if "services" in scanners:
+            ran.add("services")
             try:
                 services_findings, _meta = _parser._scan_services(
                     target.image_ref, cfg,
@@ -710,7 +744,13 @@ def scan_image(
     # image nothing looked at. Record it as a scan failure instead, so
     # ``ContainerScanSummary.scan_failures`` is non-zero and the CLI
     # exits non-zero.
-    if not any(name in scanners for name in SUB_SCANNERS) and not sbom:
+    #
+    # This tests what ran, not what was selected. Testing the selection
+    # against ``SUB_SCANNERS`` let a name that is valid but undispatched
+    # satisfy the gate, and the old ``and not sbom`` conjunct could never
+    # be true under ``sbom: bool = True``, so the check was dead on every
+    # default call.
+    if not ran:
         scanner_errors["selection"] = (
             f"no container sub-scanner ran for {target.image_ref}: "
             f"requested {', '.join(scanners) or '(none)'}; "
@@ -962,25 +1002,6 @@ def _validate_scanner_output(
             f"{scanner_name} scan produced empty output file "
             f"(exit {result.returncode}): {stderr or 'no output'}"
         )
-
-
-def _platform_args(config: dict | None) -> list[str]:
-    """Return ``["--platform", <value>]`` when a platform is configured.
-
-    trivy, grype and syft all accept ``--platform os/arch[/variant]``
-    and all three default to resolving a multi-arch manifest against
-    the host's own architecture. That default is wrong for a scan:
-    these tools read image layers, they never execute them, so an
-    arm64-only image is scannable from an amd64 runner — it just has
-    to be named. ``containers.platform`` in argus.yml (or ``--platform``
-    on the CLI) supplies the value; unset means "let the tool decide",
-    which preserves the historic behaviour for single-arch and
-    host-matching images.
-    """
-    platform = (config or {}).get("platform")
-    if not platform:
-        return []
-    return ["--platform", str(platform)]
 
 
 def _vex_args(
@@ -1305,10 +1326,16 @@ def _run_grype(
 def _run_syft(
     image_ref: str, tmp_path: Path,
     local: bool = False, config: dict | None = None,
-) -> None:
+) -> bool:
     """Run syft to generate an SBOM (best-effort).
 
     Tries local binary first, falls back to Docker container image.
+
+    Returns True when syft was actually invoked, False when neither a
+    local binary nor a container runtime was available to run it. An
+    implicit SBOM (``sbom=True``) ignores the result — it has always
+    been best-effort — but a caller who named ``syft`` in ``scanners``
+    is owed an error rather than a clean, empty pass.
     """
     import subprocess
 
@@ -1326,10 +1353,10 @@ def _run_syft(
         image = _resolve_sub_scanner_image(get_image("syft"), config)
         if not image or not container_runtime.is_available():
             logger.debug("syft not available (local or container) — skipping SBOM")
-            return
+            return False
         if not container_runtime.pull_image(image):
             logger.debug("Failed to pull syft image — skipping SBOM")
-            return
+            return False
 
         logger.info("Running syft via container: %s", image)
         rt = container_runtime.runtime_cmd()
@@ -1366,5 +1393,8 @@ def _run_syft(
         )
     except subprocess.TimeoutExpired:
         logger.warning("syft timed out generating SBOM for %s", image_ref)
+        return False
     except FileNotFoundError:
         logger.debug("syft binary not found")
+        return False
+    return True
