@@ -73,46 +73,128 @@ def is_available() -> bool:
     return detect_runtime() is not None
 
 
+# How long to wait on a registry manifest read. The call is reached
+# after every failed pull, so a registry that accepts the connection and
+# then never answers — proxy blackhole, stale DNS behind a firewall —
+# would otherwise hang ``argus scan container`` forever. There is no
+# job-level timeout to fall back on in local CLI use.
+_MANIFEST_TIMEOUT = 60
+
+
+def _platform_blocks(data: object) -> list[dict]:
+    """Yield the platform dicts in a manifest payload, whatever its shape.
+
+    Three shapes are in play, because the runtimes disagree:
+
+    - Docker ``manifest inspect --verbose`` — a list (multi-arch) or a
+      single object (single-arch) of entries carrying ``Descriptor.platform``.
+    - Podman ``manifest inspect`` — an OCI image index: a single object
+      with a ``manifests`` array whose entries carry ``platform`` directly.
+      Podman also rejects ``--verbose``, which is handled by the caller.
+    - A bare OCI descriptor list, which some registries' tooling emits.
+    """
+    entries = data if isinstance(data, list) else [data]
+    blocks: list[dict] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        nested = entry.get("manifests")
+        if isinstance(nested, list):
+            for sub_entry in nested:
+                if isinstance(sub_entry, dict):
+                    plat = sub_entry.get("platform")
+                    if isinstance(plat, dict):
+                        blocks.append(plat)
+            continue
+        descriptor = entry.get("Descriptor")
+        plat = (
+            descriptor.get("platform")
+            if isinstance(descriptor, dict)
+            else entry.get("platform")
+        )
+        if isinstance(plat, dict):
+            blocks.append(plat)
+    return blocks
+
+
 def detect_image_platforms(image: str) -> list[str]:
     """Return the platforms ``image`` publishes, e.g. ``["linux/arm64"]``.
 
-    Reads the registry manifest with ``<runtime> manifest inspect
-    --verbose``, which reports a ``Descriptor.platform`` block for both
-    single-arch images (one entry) and multi-arch manifest lists (one
-    entry per architecture). Attestation entries — the ``unknown/unknown``
-    platform buildx attaches for provenance/SBOM — are filtered out;
-    they are not pullable and would otherwise be picked as a retry
-    candidate.
+    Reads the registry manifest with ``<runtime> manifest inspect``,
+    which reports a platform block for both single-arch images (one
+    entry) and multi-arch manifest lists (one entry per architecture).
+    Docker needs ``--verbose`` to emit the block and Podman rejects that
+    flag entirely, so the flag is tried first and dropped on failure;
+    :func:`_platform_blocks` then accepts either payload shape.
+    Attestation entries — the ``unknown/unknown`` platform buildx
+    attaches for provenance/SBOM — are filtered out; they are not
+    pullable and would otherwise be picked as a retry candidate.
 
     Returns an empty list when the manifest cannot be read (no runtime,
-    private registry without credentials, manifest command unsupported).
-    Callers treat that as "no information", not as "no platforms".
+    private registry without credentials, manifest command unsupported —
+    nerdctl has no ``manifest inspect`` subcommand at all). Callers treat
+    that as "no information", not as "no platforms"; pin
+    ``containers.platform`` explicitly for those cases.
     """
     rt = runtime_cmd()
-    result = subprocess.run(  # nosec B603 — argv list, no shell; see module header
-        [rt, "manifest", "inspect", "--verbose", image],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
+    name = os.path.basename(rt).lower()
+
+    # nerdctl has no `manifest inspect` at all, so there is nothing to
+    # ask. Returning early keeps a guaranteed-failing subprocess off the
+    # pull-failure path, which ADR-038 is explicit about keeping cheap.
+    if "nerdctl" in name:
         logger.debug(
-            "Could not read manifest for %s: %s",
-            image, result.stderr.strip()[:200],
+            "%s has no 'manifest inspect' — no platform information for %s; "
+            "set containers.platform to scan a foreign architecture",
+            name, image,
         )
         return []
 
+    # Docker needs --verbose to emit a platform block; Podman rejects the
+    # flag outright. Branch on the runtime rather than probing twice, so
+    # the common path costs exactly one call. An unrecognised runtime
+    # (ARGUS_CONTAINER_RUNTIME can name anything on PATH) gets the Docker
+    # form first and one retry without the flag.
+    attempts = [[rt, "manifest", "inspect", image]]
+    if "podman" not in name:
+        attempts.insert(0, [rt, "manifest", "inspect", "--verbose", image])
+        if "docker" in name:
+            attempts.pop()  # docker: --verbose only, no second guess
+
+    stdout = ""
+    for argv in attempts:
+        try:
+            result = subprocess.run(  # nosec B603 — argv list, no shell; see module header
+                argv, capture_output=True, text=True,
+                timeout=_MANIFEST_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired:
+            logger.debug(
+                "Timed out after %ds reading the manifest for %s",
+                _MANIFEST_TIMEOUT, image,
+            )
+            return []
+        except OSError as exc:
+            logger.debug("Could not run %s: %s", " ".join(argv[:3]), exc)
+            return []
+        if result.returncode == 0:
+            stdout = result.stdout
+            break
+        logger.debug(
+            "Could not read manifest for %s via %s: %s",
+            image, " ".join(argv[1:-1]), result.stderr.strip()[:200],
+        )
+    else:
+        return []
+
     try:
-        data = json.loads(result.stdout)
+        data = json.loads(stdout)
     except (json.JSONDecodeError, ValueError):
         logger.debug("Could not parse manifest output for %s", image)
         return []
 
-    entries = data if isinstance(data, list) else [data]
     platforms: list[str] = []
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        descriptor = entry.get("Descriptor") or {}
-        plat = descriptor.get("platform") or {}
+    for plat in _platform_blocks(data):
         os_name = plat.get("os")
         arch = plat.get("architecture")
         if not os_name or not arch:
@@ -120,10 +202,38 @@ def detect_image_platforms(image: str) -> list[str]:
         if os_name == "unknown" or arch == "unknown":
             continue  # buildx attestation entry, not a pullable image
         variant = plat.get("variant")
-        platforms.append(
+        candidate = (
             f"{os_name}/{arch}/{variant}" if variant else f"{os_name}/{arch}"
         )
+        if candidate not in platforms:
+            platforms.append(candidate)
     return platforms
+
+
+def _os_arch(platform: str) -> str:
+    """Reduce ``os/arch[/variant]`` to ``os/arch``.
+
+    Registries routinely publish ``linux/arm64/v8`` where a host reports
+    plain ``linux/arm64``, so any equality test between a requested and a
+    published platform has to ignore the variant suffix or it silently
+    never matches.
+    """
+    return "/".join(platform.split("/")[:2])
+
+
+def _local_image_os_arch(image: str) -> str | None:
+    """Return the ``os/arch`` of the locally cached ``image``, or None."""
+    rt = runtime_cmd()
+    try:
+        result = subprocess.run(  # nosec B603 — argv list, no shell; see module header
+            [rt, "image", "inspect", "--format", "{{.Os}}/{{.Architecture}}", image],
+            capture_output=True, text=True, timeout=_MANIFEST_TIMEOUT,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
 
 
 def pull_image(
@@ -163,9 +273,26 @@ def pull_image(
     if policy == "if-not-present":
         result = subprocess.run(inspect_cmd, capture_output=True)  # nosec B603
         if result.returncode == 0:
-            logger.debug("Image '%s' found locally — skipping pull", image)
-            return True
-        logger.debug("Image '%s' not found locally — pulling", image)
+            # A cache hit only counts when it is a cache hit on the
+            # *requested* architecture. An earlier step may well have
+            # pulled the host-native variant of this same ref, and
+            # returning it here would hand the caller an image of the
+            # wrong architecture while the docstring promises the
+            # platform is used verbatim — the exposure and services
+            # sub-scanners would then report EXPOSE ports and systemd
+            # units read from a variant nobody asked about.
+            cached = _local_image_os_arch(image) if platform else None
+            if platform and cached and _os_arch(platform) != cached:
+                logger.info(
+                    "Image '%s' is cached as %s but %s was requested — "
+                    "pulling the requested platform",
+                    image, cached, platform,
+                )
+            else:
+                logger.debug("Image '%s' found locally — skipping pull", image)
+                return True
+        else:
+            logger.debug("Image '%s' not found locally — pulling", image)
 
     def _pull(plat: str | None) -> tuple[int, str, int]:
         cmd = [rt, "pull"] + (["--platform", plat] if plat else []) + [image]
@@ -201,8 +328,16 @@ def pull_image(
             # unrelated, transient reason); otherwise take the first
             # published platform — for a single-arch image that is the
             # only one there is.
+            # Compare on ``os/arch`` only: ``_native_platform`` never
+            # emits a variant, so an exact membership test missed every
+            # image published as ``linux/arm64/v8`` and fell through to
+            # ``candidates[0]`` — usually amd64, the opposite of what
+            # "prefer this host's own architecture" means.
             native = _native_platform()
-            chosen = native if native in candidates else candidates[0]
+            chosen = next(
+                (c for c in candidates if _os_arch(c) == native),
+                candidates[0],
+            )
             logger.info(
                 "Native pull failed for %s (%dms); image publishes %s — "
                 "retrying with --platform %s",

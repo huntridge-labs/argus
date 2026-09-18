@@ -14,12 +14,40 @@ def _only_docker(monkeypatch):
     Used by every pull/manifest test: the code under test resolves its
     runtime via ``shutil.which``, so the stub has to answer for docker and
     deny podman/nerdctl.
+
+    Resets the process-level runtime cache first. Without that, a test
+    that ran earlier under a different runtime leaves ``_cached_runtime``
+    set and ``runtime_cmd()`` keeps returning the stale name — the stub
+    here is then silently ignored, and whether a test passes depends on
+    file ordering.
     """
+    cr._cached_runtime = None
+    monkeypatch.delenv("ARGUS_CONTAINER_RUNTIME", raising=False)
     monkeypatch.setattr(
         "shutil.which",
         lambda name: "/usr/bin/docker" if name == "docker" else None,
     )
 
+
+
+def _only_podman(monkeypatch):
+    """Make ``podman`` the sole runtime on PATH."""
+    cr._cached_runtime = None
+    monkeypatch.delenv("ARGUS_CONTAINER_RUNTIME", raising=False)
+    monkeypatch.setattr(
+        "shutil.which",
+        lambda name: "/usr/bin/podman" if name == "podman" else None,
+    )
+
+
+def _only_nerdctl(monkeypatch):
+    """Make ``nerdctl`` the sole runtime on PATH."""
+    cr._cached_runtime = None
+    monkeypatch.delenv("ARGUS_CONTAINER_RUNTIME", raising=False)
+    monkeypatch.setattr(
+        "shutil.which",
+        lambda name: "/usr/bin/nerdctl" if name == "nerdctl" else None,
+    )
 
 
 class TestDetectRuntime:
@@ -158,6 +186,8 @@ class TestPullImage:
         mock_run.side_effect = [
             MagicMock(returncode=1),                      # image inspect
             MagicMock(returncode=1, stderr="not found"),  # native pull
+            # Docker gets exactly one manifest call: the runtime is known,
+            # so there is no second form to guess at.
             MagicMock(returncode=1, stdout="", stderr="no such manifest"),
         ]
         assert cr.pull_image("test:latest", policy="if-not-present") is False
@@ -418,3 +448,247 @@ class TestNativePlatform:
         monkeypatch.setattr("platform.system", lambda: "Darwin")
         assert cr._native_platform().startswith("linux/")
 
+
+# =====================================================================
+# PR #427 review follow-ups
+# =====================================================================
+
+class TestManifestParsingAcrossRuntimes:
+    """``detect_image_platforms`` must not be Docker-only.
+
+    It parsed Docker's ``Descriptor.platform`` shape exclusively, so under
+    Podman (an OCI index under ``manifests``, and no ``--verbose`` flag)
+    or nerdctl (no ``manifest inspect`` at all) it returned ``[]`` and the
+    foreign-architecture retry never fired — while the config reference
+    told users this "normally needs no configuration".
+    """
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_docker_verbose_shape(self, mock_run, monkeypatch):
+        _only_docker(monkeypatch)
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=json.dumps([
+                {"Descriptor": {"platform": {
+                    "os": "linux", "architecture": "arm64", "variant": "v8",
+                }}},
+            ]),
+            stderr="",
+        )
+        assert cr.detect_image_platforms("app:1") == ["linux/arm64/v8"]
+        assert mock_run.call_count == 1
+        assert "--verbose" in mock_run.call_args[0][0]
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_podman_oci_index_shape(self, mock_run, monkeypatch):
+        """Podman rejects --verbose and nests platforms under `manifests`."""
+        _only_podman(monkeypatch)
+        oci_index = json.dumps({
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "manifests": [
+                {"platform": {"os": "linux", "architecture": "amd64"}},
+                {"platform": {"os": "linux", "architecture": "arm64",
+                              "variant": "v8"}},
+                {"platform": {"os": "unknown", "architecture": "unknown"}},
+            ],
+        })
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout=oci_index, stderr="",
+        )
+        assert cr.detect_image_platforms("app:1") == [
+            "linux/amd64", "linux/arm64/v8",
+        ]
+        # One call, and without the flag podman would reject.
+        assert mock_run.call_count == 1
+        assert "--verbose" not in mock_run.call_args[0][0]
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_nerdctl_is_not_probed_at_all(self, mock_run, monkeypatch):
+        """nerdctl has no `manifest inspect`, so asking is pure waste.
+
+        This runs after every failed pull; a guaranteed-failing subprocess
+        there is exactly the cost ADR-038 set out to remove.
+        """
+        _only_nerdctl(monkeypatch)
+        assert cr.detect_image_platforms("app:1") == []
+        assert mock_run.call_count == 0
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_unknown_runtime_tries_both_forms(self, mock_run, monkeypatch):
+        """ARGUS_CONTAINER_RUNTIME can name anything on PATH."""
+        cr._cached_runtime = None
+        monkeypatch.setenv("ARGUS_CONTAINER_RUNTIME", "mystery")
+        monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/mystery")
+        mock_run.side_effect = [
+            MagicMock(returncode=1, stdout="", stderr="unknown flag"),
+            MagicMock(returncode=1, stdout="", stderr="unknown subcommand"),
+        ]
+        assert cr.detect_image_platforms("app:1") == []
+        assert mock_run.call_count == 2
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_manifest_read_is_bounded_by_a_timeout(self, mock_run, monkeypatch):
+        """A blackholed registry must not hang the CLI forever.
+
+        This runs after every failed pull and there is no job-level
+        timeout in local use, so an unbounded wait meant `argus scan
+        container` simply never returned.
+        """
+        import subprocess as _sp
+        _only_docker(monkeypatch)
+        mock_run.side_effect = _sp.TimeoutExpired(cmd="docker", timeout=60)
+        assert cr.detect_image_platforms("app:1") == []
+        assert mock_run.call_args[1]["timeout"] == cr._MANIFEST_TIMEOUT
+
+
+class TestCachedImageRespectsPlatform:
+    """``if-not-present`` must not serve a cached copy of the wrong arch.
+
+    The ``image inspect`` short-circuit never checked the cached copy's
+    architecture, so an explicit platform was silently ignored whenever
+    any variant of the ref was already local — and the exposure/services
+    sub-scanners then reported ports and units from the wrong image.
+    """
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_mismatched_cache_is_repulled(self, mock_run, monkeypatch):
+        _only_docker(monkeypatch)
+        mock_run.side_effect = [
+            MagicMock(returncode=0),                          # image inspect: hit
+            MagicMock(returncode=0, stdout="linux/amd64\n", stderr=""),  # cached arch
+            MagicMock(returncode=0, stderr=""),               # pull --platform
+        ]
+        assert cr.pull_image(
+            "app:1", policy="if-not-present", platform="linux/arm64",
+        ) is True
+        pull = mock_run.call_args_list[-1][0][0]
+        assert "pull" in pull
+        assert pull[pull.index("--platform") + 1] == "linux/arm64"
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_matching_cache_short_circuits(self, mock_run, monkeypatch):
+        """A variant suffix must not defeat the match."""
+        _only_docker(monkeypatch)
+        mock_run.side_effect = [
+            MagicMock(returncode=0),                                      # inspect
+            MagicMock(returncode=0, stdout="linux/arm64\n", stderr=""),   # cached arch
+        ]
+        assert cr.pull_image(
+            "app:1", policy="if-not-present", platform="linux/arm64/v8",
+        ) is True
+        assert mock_run.call_count == 2  # no pull
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_cache_hit_without_explicit_platform_is_unchanged(
+        self, mock_run, monkeypatch,
+    ):
+        _only_docker(monkeypatch)
+        mock_run.side_effect = [MagicMock(returncode=0)]
+        assert cr.pull_image("app:1", policy="if-not-present") is True
+        assert mock_run.call_count == 1  # no extra arch probe
+
+
+class TestNativePreferenceIgnoresVariant:
+    """``_native_platform`` never emits a variant, so equality missed.
+
+    An arm64 host facing ``["linux/amd64", "linux/arm64/v8"]`` — the shape
+    most multi-arch images publish — fell through to ``candidates[0]`` and
+    pulled amd64, the exact opposite of "prefer this host's architecture".
+    """
+
+    def test_os_arch_drops_the_variant(self):
+        assert cr._os_arch("linux/arm64/v8") == "linux/arm64"
+        assert cr._os_arch("linux/amd64") == "linux/amd64"
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_variant_suffixed_native_platform_is_preferred(
+        self, mock_run, monkeypatch,
+    ):
+        _only_docker(monkeypatch)
+        monkeypatch.setattr(cr, "_native_platform", lambda: "linux/arm64")
+        manifest = json.dumps({"manifests": [
+            {"platform": {"os": "linux", "architecture": "amd64"}},
+            {"platform": {"os": "linux", "architecture": "arm64",
+                          "variant": "v8"}},
+        ]})
+        mock_run.side_effect = [
+            MagicMock(returncode=1),                       # image inspect
+            MagicMock(returncode=1, stderr="transient"),   # native pull
+            MagicMock(returncode=0, stdout=manifest, stderr=""),  # manifest
+            MagicMock(returncode=0, stderr=""),            # retry pull
+        ]
+        assert cr.pull_image("app:1", policy="if-not-present") is True
+        retry = mock_run.call_args_list[-1][0][0]
+        assert retry[retry.index("--platform") + 1] == "linux/arm64/v8"
+
+
+class TestManifestProbeFailureModes:
+    """The probe must degrade to "no information", never raise."""
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_oserror_is_no_information(self, mock_run, monkeypatch):
+        """A runtime binary that vanishes between which() and run()."""
+        _only_docker(monkeypatch)
+        mock_run.side_effect = OSError("binary disappeared")
+        assert cr.detect_image_platforms("app:1") == []
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_unparsable_payload_is_no_information(self, mock_run, monkeypatch):
+        _only_docker(monkeypatch)
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="not json at all", stderr="",
+        )
+        assert cr.detect_image_platforms("app:1") == []
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_non_dict_entries_are_skipped(self, mock_run, monkeypatch):
+        _only_docker(monkeypatch)
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout=json.dumps(["nonsense", 42, None]), stderr="",
+        )
+        assert cr.detect_image_platforms("app:1") == []
+
+
+class TestLocalImageArchProbe:
+    """``_local_image_os_arch`` backs the cache-hit architecture check."""
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_reads_os_and_architecture(self, mock_run, monkeypatch):
+        _only_docker(monkeypatch)
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="linux/arm64\n", stderr="",
+        )
+        assert cr._local_image_os_arch("app:1") == "linux/arm64"
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_inspect_failure_is_unknown(self, mock_run, monkeypatch):
+        _only_docker(monkeypatch)
+        mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="no such image")
+        assert cr._local_image_os_arch("app:1") is None
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_timeout_is_unknown(self, mock_run, monkeypatch):
+        """Unknown must mean "don't second-guess the cache", not a crash."""
+        import subprocess as _sp
+        _only_docker(monkeypatch)
+        mock_run.side_effect = _sp.TimeoutExpired(cmd="docker", timeout=60)
+        assert cr._local_image_os_arch("app:1") is None
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_empty_output_is_unknown(self, mock_run, monkeypatch):
+        _only_docker(monkeypatch)
+        mock_run.return_value = MagicMock(returncode=0, stdout="  \n", stderr="")
+        assert cr._local_image_os_arch("app:1") is None
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_unknown_cached_arch_keeps_the_cache_hit(self, mock_run, monkeypatch):
+        """If we cannot tell, do not throw away a usable cached image."""
+        _only_docker(monkeypatch)
+        mock_run.side_effect = [
+            MagicMock(returncode=0),                                  # inspect: hit
+            MagicMock(returncode=1, stdout="", stderr="cannot read"),  # arch: unknown
+        ]
+        assert cr.pull_image(
+            "app:1", policy="if-not-present", platform="linux/arm64",
+        ) is True
+        assert mock_run.call_count == 2  # no pull
