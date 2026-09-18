@@ -345,10 +345,21 @@ def pull_image(
             )
             rc, stderr, elapsed = _pull(chosen)
         else:
-            logger.debug(
-                "Native pull failed for %s and no platform information is "
-                "available from the registry — not retrying",
-                image,
+            # Warning, not debug. This is the branch a nerdctl user lands
+            # on for every foreign-architecture image — nerdctl has no
+            # `manifest inspect`, so there is never platform information
+            # to retry against — and at debug level they saw only "failed
+            # to pull" with no hint that one line of config fixes it. A
+            # private registry whose manifest this host cannot read
+            # reaches the same place.
+            logger.warning(
+                "Could not determine which platforms %s publishes (%s "
+                "cannot read its registry manifest), so the failed pull "
+                "was not retried. If this image is built for a different "
+                "architecture than this host, name it explicitly with "
+                "containers.platform in argus.yml or --platform on the "
+                "CLI (e.g. linux/arm64).",
+                image, rt,
             )
 
     if rc == 0:

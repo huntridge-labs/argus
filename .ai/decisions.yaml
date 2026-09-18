@@ -2909,6 +2909,16 @@ decisions:
         fails the moment the two copies diverge, which is the actual risk (a
         one-sided edit skews images_scanned and every *_count for one scan mode
         while the other stays correct, and nothing else in CI would notice).
+        RESOLVED without the extraction: the mapping moved into the summary job,
+        which already loops over the per-image artifacts. The scan jobs now forward
+        every top-level number key-agnostically (jq with_entries/type == number) and
+        publish an argus_scan_incomplete sentinel when no results file exists, so
+        images_scanned still separates \"clean\" from \"never ran\". The field names
+        appear exactly once in the workflow and the contract test asserts that count,
+        so the duplication cannot come back. Only the three-line PLATFORM_ARGS builder
+        is still duplicated, and it carries no silent-drift risk — getting it wrong
+        drops the flag, which is visible in the scan itself rather than in a skewed
+        number.
       - Consistent with ADR-007 (the user controls failure behavior) — the user chooses
         the severity threshold, but not whether an unrun scan counts as a pass.
       - Generalizes ADR-036, which established the same rule for the CodeQL severity
@@ -2963,7 +2973,14 @@ decisions:
         trying both forms. nerdctl has no manifest inspect at all and is skipped
         without a call — this runs after every failed pull, and a guaranteed-failing
         subprocess there is the cost this ADR set out to remove; containers.platform
-        must be set explicitly for it. The call is bounded by a 60s timeout, because
+        must be set explicitly for it, and the \"no platform information\" branch is a
+        WARNING naming that setting rather than a debug line, so the user is told how
+        to fix it instead of just seeing the pull fail. Closing it properly needs a
+        manifest fetch that does not go through the runtime; deliberately not done
+        here, because the bearer-token flow trusts a server-nominated realm and a
+        naive implementation would send registry credentials to a host the response
+        chose. Any future version must be anonymous-only, or bind the realm to the
+        registry host. The call is bounded by a 60s timeout, because
         a blackholed registry would otherwise hang the CLI with no job-level timeout
         to fall back on.
       - pull_image(platform=...) uses an explicit value verbatim with no fallback,

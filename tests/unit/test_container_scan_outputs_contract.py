@@ -1,30 +1,25 @@
-"""Contract test: container-scan.yml's two scan jobs must not drift apart.
+"""Contract test: container-scan.yml's count outputs have one source.
 
-``container-scan.yml`` runs the scan from two jobs — ``build-and-scan``
-(matrix, one entry per discovered Dockerfile) and ``scan-remote-image``
-(single, a pre-existing image ref). Their scan steps are character-for-
-character identical: the same ``PLATFORM_ARGS`` builder, the same argus
-invocation, and the same jq mapping from ``argus-results.json`` onto the
-per-image counts artifact that the summary job aggregates into the
-workflow's ``critical_count`` / ``images_scanned`` / ``overall_status``
-outputs.
+``container-scan.yml`` scans from two jobs — ``build-and-scan`` (matrix,
+one leg per discovered Dockerfile) and ``scan-remote-image`` (single, a
+pre-existing image ref) — and both feed the workflow's ``critical_count``
+/ ``images_scanned`` / ``overall_status`` outputs, which are a public
+contract for callers.
 
-Those outputs are a public contract for callers, and the duplication is
-load-bearing: a one-sided edit — renaming an ``argus-results.json`` key,
-or changing the images-counted-on-failure fallback — would silently skew
-every count for one scan mode while the other stayed correct. Nothing in
-CI would notice, because each mode's own run would still be internally
-consistent.
+Those two jobs each used to map ``argus-results.json``'s field names onto
+the counts artifact. The copies were identical, so a one-sided edit —
+renaming a key, or changing the images-counted-on-failure fallback —
+would silently skew every count for one scan mode while the other stayed
+correct, and nothing in CI would notice.
 
-Carrying the block once, as a composite action under ``.github/actions/``,
-is the real fix. It is deferred rather than dismissed: a reusable workflow's
-``run:`` steps execute against the *caller's* checkout, so a shared script
-in this repo would simply not exist for consumers, and a new composite
-action has to be referenced as ``huntridge-labs/argus/.github/actions/
-<name>@<tag>`` — a tag that will not contain it until release-it cuts the
-next release. It therefore has to land in the same release as its first
-use. Until then this test is the guard: it fails the moment the two copies
-stop matching.
+The mapping now lives once, in the summary job. The scan jobs forward
+every top-level number without naming a field, so there is nothing left
+for them to disagree about. These tests pin that arrangement:
+
+* the two scan steps stay character-identical (they are still duplicated
+  in the parts that carry no drift risk, e.g. the PLATFORM_ARGS builder);
+* each count field name appears exactly once in the whole workflow;
+* the scan's exit code still survives the counts bookkeeping.
 """
 
 from __future__ import annotations
@@ -83,31 +78,56 @@ def test_scan_steps_are_identical():
     )
 
 
-@pytest.mark.parametrize(
-    "fragment",
-    [
-        'PLATFORM_ARGS=()',
-        'critical: (.critical_count // 0)',
-        'high: (.high_count // 0)',
-        'medium: (.medium_count // 0)',
-        'low: (.low_count // 0)',
-        'total: (.total_count // 0)',
-        'images: 1',
-        '"images":0',
-        'exit $SCAN_EXIT',
-    ],
-)
-def test_counts_contract_present_in_both_jobs(fragment):
-    """Pin the specific pieces the workflow outputs are computed from.
+# The jq reads that pull argus-results.json's fields into the count
+# outputs. Matched as the full jq expression, not the bare field name —
+# `critical_count` also appears as a workflow output name several times
+# over, which a substring check would wrongly count as duplication.
+COUNT_READS = [
+    "jq -r '.critical_count // 0'",
+    "jq -r '.high_count // 0'",
+    "jq -r '.medium_count // 0'",
+    "jq -r '.low_count // 0'",
+    "jq -r '.total_count // 0'",
+]
 
-    `images: 1` on success and `"images":0` on a missing results file are
-    how a caller tells "clean" from "never ran" via `images_scanned`.
+
+@pytest.mark.parametrize("read", COUNT_READS)
+def test_each_count_field_is_mapped_exactly_once(read):
+    """One source of truth, enforced by count.
+
+    Two occurrences means the mapping has been duplicated back into the
+    scan jobs and can drift again; zero means an output silently lost its
+    source and will report 0 forever.
     """
+    text = WORKFLOW.read_text()
+    assert text.count(read) == 1, (
+        f"{read} appears {text.count(read)}x in container-scan.yml; "
+        "the mapping onto the workflow_call count outputs must exist in "
+        "exactly one place (the summary job)"
+    )
+
+
+def test_scan_jobs_do_not_name_count_fields():
+    """The scan jobs forward numbers generically; only the summary maps."""
     for job in SCAN_JOBS:
-        assert fragment in _scan_script(job), (
-            f"{job}'s scan step no longer contains {fragment!r} — the "
-            "workflow_call count outputs depend on it"
-        )
+        script = _scan_script(job)
+        for read in COUNT_READS:
+            assert read not in script, (
+                f"{job} performs {read} again — that is the duplication "
+                "this arrangement removed"
+            )
+
+
+def test_incomplete_scans_are_excluded_from_images_scanned():
+    """`images_scanned` is how a caller tells clean from never-ran."""
+    text = WORKFLOW.read_text()
+    assert text.count("argus_scan_incomplete") >= 3, (
+        "both scan jobs must emit the sentinel and the summary must honour it"
+    )
+    summary = _workflow()["jobs"]["container-scan-summary"]
+    agg = next(s for s in summary["steps"] if s.get("id") == "counts")["run"]
+    assert "argus_scan_incomplete" in agg
+    assert "IMAGES=$((IMAGES + 1))" in agg
 
 
 def test_scan_exit_code_is_preserved():

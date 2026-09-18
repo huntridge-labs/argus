@@ -493,26 +493,23 @@ jobs:
             cp container-reports/container-scan.md "scanner-summaries/container-${SAFE_NAME}.md"
           fi
 
-          # Publish machine-readable counts so the summary job can surface
-          # them as workflow_call outputs. Without this a caller can only
-          # observe pass/fail and has to scrape the markdown artifact.
+          # Publish this image's counts for the summary job to aggregate.
+          # The extraction is key-agnostic on purpose — it forwards every
+          # top-level number rather than naming fields. The mapping from
+          # argus-results.json onto the workflow_call outputs lives in
+          # exactly one place (the summary job), so these two scan jobs
+          # have nothing to drift apart on.
+          #
+          # No results file means the scan did not complete. The sentinel
+          # records that so images_scanned stays honest: a caller reading
+          # it can tell "scanned and clean" from "never ran".
           mkdir -p scanner-counts
           if [ -f container-reports/argus-results.json ]; then
-            jq -c '{
-              critical: (.critical_count // 0),
-              high: (.high_count // 0),
-              medium: (.medium_count // 0),
-              low: (.low_count // 0),
-              info: (.info_count // 0),
-              total: (.total_count // 0),
-              images: 1
-            }' container-reports/argus-results.json \
+            jq -c 'with_entries(select(.value | type == "number"))' \
+              container-reports/argus-results.json \
               > "scanner-counts/container-${SAFE_NAME}.json"
           else
-            # No canonical results file means the scan did not complete.
-            # images:0 keeps the aggregate honest — a caller reading
-            # images_scanned can tell "clean" from "never ran".
-            echo '{"critical":0,"high":0,"medium":0,"low":0,"info":0,"total":0,"images":0}' \
+            echo '{"argus_scan_incomplete":true}' \
               > "scanner-counts/container-${SAFE_NAME}.json"
           fi
 
@@ -620,22 +617,23 @@ jobs:
             cp container-reports/container-scan.md "scanner-summaries/container-${SAFE_NAME}.md"
           fi
 
-          # See build-and-scan — machine-readable counts for the
-          # workflow_call outputs.
+          # Publish this image's counts for the summary job to aggregate.
+          # The extraction is key-agnostic on purpose — it forwards every
+          # top-level number rather than naming fields. The mapping from
+          # argus-results.json onto the workflow_call outputs lives in
+          # exactly one place (the summary job), so these two scan jobs
+          # have nothing to drift apart on.
+          #
+          # No results file means the scan did not complete. The sentinel
+          # records that so images_scanned stays honest: a caller reading
+          # it can tell "scanned and clean" from "never ran".
           mkdir -p scanner-counts
           if [ -f container-reports/argus-results.json ]; then
-            jq -c '{
-              critical: (.critical_count // 0),
-              high: (.high_count // 0),
-              medium: (.medium_count // 0),
-              low: (.low_count // 0),
-              info: (.info_count // 0),
-              total: (.total_count // 0),
-              images: 1
-            }' container-reports/argus-results.json \
+            jq -c 'with_entries(select(.value | type == "number"))' \
+              container-reports/argus-results.json \
               > "scanner-counts/container-${SAFE_NAME}.json"
           else
-            echo '{"critical":0,"high":0,"medium":0,"low":0,"info":0,"total":0,"images":0}' \
+            echo '{"argus_scan_incomplete":true}' \
               > "scanner-counts/container-${SAFE_NAME}.json"
           fi
 
@@ -704,15 +702,27 @@ jobs:
         run: |
           set -euo pipefail
 
+          # The one place argus-results.json's field names are mapped onto
+          # the workflow_call count outputs. It used to live in both scan
+          # jobs; a one-sided edit there skewed every count for one scan
+          # mode while the other stayed correct, and nothing in CI noticed.
           CRIT=0; HIGH=0; MED=0; LOW=0; TOTAL=0; IMAGES=0
           shopt -s nullglob
           for f in scanner-counts/*.json; do
-            CRIT=$((CRIT + $(jq -r '.critical // 0' "$f")))
-            HIGH=$((HIGH + $(jq -r '.high // 0' "$f")))
-            MED=$((MED + $(jq -r '.medium // 0' "$f")))
-            LOW=$((LOW + $(jq -r '.low // 0' "$f")))
-            TOTAL=$((TOTAL + $(jq -r '.total // 0' "$f")))
-            IMAGES=$((IMAGES + $(jq -r '.images // 0' "$f")))
+            # A scan that did not complete publishes a sentinel instead of
+            # counts. It contributes nothing and must NOT increment
+            # images_scanned — that is how a caller distinguishes a clean
+            # scan from one that never ran.
+            if jq -e '.argus_scan_incomplete == true' "$f" >/dev/null 2>&1; then
+              echo "::warning title=Container scan incomplete::$f reports a scan that did not complete; it is excluded from images_scanned."
+              continue
+            fi
+            CRIT=$((CRIT + $(jq -r '.critical_count // 0' "$f")))
+            HIGH=$((HIGH + $(jq -r '.high_count // 0' "$f")))
+            MED=$((MED + $(jq -r '.medium_count // 0' "$f")))
+            LOW=$((LOW + $(jq -r '.low_count // 0' "$f")))
+            TOTAL=$((TOTAL + $(jq -r '.total_count // 0' "$f")))
+            IMAGES=$((IMAGES + 1))
           done
           shopt -u nullglob
 
