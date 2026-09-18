@@ -620,6 +620,45 @@ class TestRunSyftReportsWhetherItRan:
         assert _run_syft("app:1", tmp_path) is False
 
     def test_successful_invocation_returns_true(self, tmp_path, monkeypatch):
+        """Clean exit *and* an SBOM on disk."""
+        import subprocess
+
+        from argus.container.scanner import _run_syft
+
+        monkeypatch.setattr(
+            "argus.container.scanner.shutil.which", lambda _n: "/usr/bin/syft",
+        )
+
+        def writes_sbom(*a, **kw):
+            (tmp_path / "syft-sbom.json").write_text('{"components": []}')
+            return subprocess.CompletedProcess([], 0, "", "")
+
+        monkeypatch.setattr("subprocess.run", writes_sbom)
+        assert _run_syft("app:1", tmp_path) is True
+
+    def test_non_zero_exit_returns_false(self, tmp_path, monkeypatch):
+        """Being invoked is not succeeding.
+
+        An unpullable image or a registry auth failure exits non-zero with
+        no SBOM; counting that as "ran" let `--scanners syft` exit 0 over
+        an image syft never read.
+        """
+        import subprocess
+
+        from argus.container.scanner import _run_syft
+
+        monkeypatch.setattr(
+            "argus.container.scanner.shutil.which", lambda _n: "/usr/bin/syft",
+        )
+        monkeypatch.setattr(
+            "subprocess.run",
+            lambda *a, **kw: subprocess.CompletedProcess(
+                [], 1, "", "unauthorized: authentication required",
+            ),
+        )
+        assert _run_syft("app:1", tmp_path) is False
+
+    def test_clean_exit_without_an_sbom_returns_false(self, tmp_path, monkeypatch):
         import subprocess
 
         from argus.container.scanner import _run_syft
@@ -631,7 +670,7 @@ class TestRunSyftReportsWhetherItRan:
             "subprocess.run",
             lambda *a, **kw: subprocess.CompletedProcess([], 0, "", ""),
         )
-        assert _run_syft("app:1", tmp_path) is True
+        assert _run_syft("app:1", tmp_path) is False
 
 
 class TestSubScannerFailedPredicate:
@@ -642,3 +681,146 @@ class TestSubScannerFailedPredicate:
 
         assert _sub_scanner_failed("a string") is False
         assert _sub_scanner_failed(None) is False
+
+
+# =====================================================================
+# The invariant, end to end: every way a scan can fail to happen
+# =====================================================================
+
+class TestNoSelectionCanProduceASilentPass:
+    """Adversarial sweep over the ways a container scan does not run.
+
+    The per-comment fixes each closed one path. This sweeps the whole
+    space so a future sub-scanner cannot quietly reopen it: every entry
+    must record a failure, and the clean case must stay clean.
+    """
+
+    def _no_tools(self, monkeypatch):
+        monkeypatch.setattr(
+            "argus.container.scanner.is_image_local", lambda _r: True,
+        )
+        monkeypatch.setattr(
+            "argus.container.scanner.shutil.which", lambda _n: None,
+        )
+        monkeypatch.setattr("argus.container_runtime.is_available", lambda: False)
+
+    @pytest.mark.parametrize("scanners", [
+        ("tryvi",),
+        (),
+        ("trivy",),
+        ("grype",),
+        ("syft",),
+        ("exposure",),
+        ("services",),
+        ("exposure", "services"),
+        ("trivy", "grype", "syft", "exposure", "services"),
+    ])
+    def test_nothing_runnable_is_never_a_pass(self, scanners, monkeypatch):
+        from argus.container.scanner import ContainerScanSummary
+
+        self._no_tools(monkeypatch)
+        result = scan_image(
+            ContainerTarget(name="app", image_ref="app:1"), scanners=scanners,
+        )
+        assert result.combined_findings == []
+        assert ContainerScanSummary(results=[result]).scan_failures == 1, (
+            f"selection {scanners} reported a clean pass with nothing runnable"
+        )
+
+    def test_a_scan_that_did_run_stays_clean(self, monkeypatch):
+        """Guard against over-correction: a real clean scan must exit 0."""
+        from argus.container.scanner import ContainerScanSummary
+        from argus.scanners.container import ContainerScanner
+
+        monkeypatch.setattr(
+            "argus.container.scanner.is_image_local", lambda _r: True,
+        )
+        monkeypatch.setattr(
+            "argus.container.scanner._run_trivy", lambda *a, **k: [],
+        )
+        monkeypatch.setattr(
+            "argus.container.scanner._run_grype", lambda *a, **k: [],
+        )
+        monkeypatch.setattr(
+            "argus.container.scanner._run_syft", lambda *a, **k: True,
+        )
+        monkeypatch.setattr(
+            ContainerScanner, "_scan_exposed_ports",
+            lambda self, r, c: ([], {"execution": "local-inspect"}),
+        )
+        monkeypatch.setattr(
+            ContainerScanner, "_scan_services",
+            lambda self, r, c: ([], {"execution": "local-extract"}),
+        )
+        result = scan_image(
+            ContainerTarget(name="app", image_ref="app:1"),
+            scanners=("trivy", "grype", "syft", "exposure", "services"),
+        )
+        assert result.scanner_errors == {}
+        assert ContainerScanSummary(results=[result]).scan_failures == 0
+
+
+class TestAttackSurfaceSubScannersReportSkips:
+    """`exposure` / `services` signal "did not run" in metadata, not by raising.
+
+    ``scan_image`` discarded that metadata, so
+    ``--scanners exposure`` on a host with no runtime returned zero
+    findings, zero errors and exit 0 — the image was never opened.
+    """
+
+    @pytest.mark.parametrize("name", ["exposure", "services"])
+    def test_a_skipped_sub_scanner_is_recorded(self, name, monkeypatch):
+        from argus.scanners.container import ContainerScanner
+
+        monkeypatch.setattr(
+            "argus.container.scanner.is_image_local", lambda _r: True,
+        )
+        attr = f"_scan_{'exposed_ports' if name == 'exposure' else 'services'}"
+        monkeypatch.setattr(
+            ContainerScanner, attr,
+            lambda self, r, c: ([], {"skipped": "no container runtime available"}),
+        )
+        result = scan_image(
+            ContainerTarget(name="app", image_ref="app:1"), scanners=(name,),
+        )
+        assert name in result.scanner_errors
+        assert "runtime" in result.scanner_errors[name]
+
+
+class TestServicesDistinguishesUnreadableFromEmpty:
+    """`_extract_paths_from_image` returned {} for both "could not read the
+    image" and "the image has no such paths".
+
+    The realistic trigger is a runtime that is installed but not running:
+    ``is_available()`` is True, the pull fails, and ``services_declared: 0``
+    reads as a clean result for an image nothing ever opened.
+    """
+
+    def test_unreadable_image_is_an_error(self, monkeypatch):
+        from argus.scanners.container import ContainerScanner
+
+        monkeypatch.setattr("argus.container_runtime.is_available", lambda: True)
+        monkeypatch.setattr(
+            ContainerScanner, "_extract_paths_from_image",
+            lambda self, *a, **k: None,
+        )
+        _findings, meta = ContainerScanner()._scan_services("app:1", {})
+        assert "error" in meta
+
+    def test_image_with_genuinely_no_services_is_clean(self, monkeypatch):
+        from argus.scanners.container import ContainerScanner
+
+        monkeypatch.setattr("argus.container_runtime.is_available", lambda: True)
+        monkeypatch.setattr(
+            ContainerScanner, "_extract_paths_from_image",
+            lambda self, *a, **k: {},
+        )
+        _findings, meta = ContainerScanner()._scan_services("app:1", {})
+        assert "error" not in meta and "skipped" not in meta
+        assert meta["services_declared"] == 0
+
+    def test_no_runtime_returns_none_not_empty(self, monkeypatch):
+        from argus.scanners.container import ContainerScanner
+
+        monkeypatch.setattr("argus.container_runtime.is_available", lambda: False)
+        assert ContainerScanner()._extract_paths_from_image("app:1", ("/x",)) is None

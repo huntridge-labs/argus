@@ -722,7 +722,7 @@ class ContainerScanner:
         image_ref: str,
         paths: tuple[str, ...] | list[str],
         platform: str | None = None,
-    ) -> dict[str, bytes]:
+    ) -> dict[str, bytes] | None:
         """Pull files from a container image's filesystem without running it.
 
         Creates a stopped container from ``image_ref`` (no entrypoint
@@ -734,6 +734,14 @@ class ContainerScanner:
         ``finally`` so partial extraction never leaves dangling
         container IDs.
 
+        Returns ``None`` when the image could not be read at all — no
+        runtime, an unpullable image, or a failed ``create``. That is a
+        different fact from an empty dict ("the image genuinely has none
+        of these paths"), and conflating the two let the ``services``
+        sub-scanner report a clean ``services_declared: 0`` for an image
+        it had never opened. The daemon being installed but not running
+        is the common way to hit it.
+
         This is the read-side primitive shared by the ``services``
         sub-scanner and any future config-file walker (e.g.
         ``sshd_config`` parsing). Stdlib + container_runtime only.
@@ -744,7 +752,7 @@ class ContainerScanner:
 
         rt = container_runtime.runtime_cmd()
         if not container_runtime.is_available():
-            return {}
+            return None
 
         # Ensure the image is locally present. The container scanner's
         # trivy/grype step normally pulls already; this is the safety
@@ -755,14 +763,19 @@ class ContainerScanner:
         if not container_runtime.pull_image(
             image_ref, policy="if-not-present", platform=platform,
         ):
-            return {}
+            return None
 
         create = subprocess.run(
             [rt, "create", image_ref],
             capture_output=True, text=True,
         )
         if create.returncode != 0 or not create.stdout.strip():
-            return {}
+            logger.debug(
+                "Could not create a container from %s to read its "
+                "filesystem: %s",
+                image_ref, create.stderr.strip()[:200],
+            )
+            return None
         cid = create.stdout.strip()
 
         extracted: dict[str, bytes] = {}
@@ -858,6 +871,19 @@ class ContainerScanner:
         files = self._extract_paths_from_image(
             image_ref, _SERVICE_PATHS, platform=config.get("platform"),
         )
+        if files is None:
+            # The image was never opened — an unpullable ref, or a
+            # runtime that is installed but not running. Reporting zero
+            # services here is indistinguishable from a genuinely
+            # service-free image, which is the silent pass ADR-037
+            # forbids.
+            return [], {
+                "error": (
+                    f"could not read the filesystem of {image_ref} — "
+                    "the image could not be pulled or opened; check that "
+                    "the container runtime is running and the ref is valid"
+                ),
+            }
         if not files:
             return [], {
                 "execution": "local-extract",

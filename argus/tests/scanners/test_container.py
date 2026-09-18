@@ -800,13 +800,19 @@ class TestExtractPathsFromImage:
         # Container ALWAYS removed at the end, regardless of partial misses.
         assert any(cmd[:3] == ["docker", "rm", "-f"] for cmd in calls)
 
-    def test_no_runtime_returns_empty(self, monkeypatch):
+    def test_no_runtime_returns_none(self, monkeypatch):
+        """None, not {} — the image was never opened.
+
+        An empty dict means "the image has none of these paths", which is a
+        legitimate clean result. Returning it here made `services` report
+        `services_declared: 0` for an image it could not read at all.
+        """
         from argus import container_runtime as rt_mod
         monkeypatch.setattr(rt_mod, "is_available", lambda: False)
         scanner = ContainerScanner()
-        assert scanner._extract_paths_from_image("img", ("/x",)) == {}
+        assert scanner._extract_paths_from_image("img", ("/x",)) is None
 
-    def test_create_failure_returns_empty(self, monkeypatch):
+    def test_create_failure_returns_none(self, monkeypatch):
         import subprocess as _subprocess
         from argus import container_runtime as rt_mod
         from argus.scanners import container as container_mod
@@ -826,7 +832,7 @@ class TestExtractPathsFromImage:
         result = scanner._extract_paths_from_image(
             "private/missing", ("/etc/systemd/system",),
         )
-        assert result == {}
+        assert result is None, "a failed `create` is not an empty image"
 
 
 class TestServicesSchemaValidation:

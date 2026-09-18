@@ -13,6 +13,7 @@ from argus.scanners.container import (
     SUB_SCANNERS,
     ContainerScanner,
     _platform_args,  # re-exported: one implementation, both container paths
+    _sub_scanner_failed,
 )
 
 from .discovery import ContainerTarget
@@ -670,35 +671,43 @@ def scan_image(
 
         # Attack-surface sub-scanners. They take an image ref + a
         # config dict, run locally (no DB pulls), and return
-        # ``(findings, metadata)``. Metadata is dropped here — the
-        # canonical ``argus-results.json`` already carries per-scanner
-        # status, and these helpers don't error out: they just return
-        # zero findings when there's nothing to report.
-        if "exposure" in scanners:
-            ran.add("exposure")
+        # ``(findings, metadata)``.
+        #
+        # They signal "could not run" in that metadata rather than by
+        # raising — ``{"skipped": "no container runtime available"}`` when
+        # there is no daemon to inspect the image with. Dropping the
+        # metadata therefore turned "nothing looked at this image" into
+        # "nothing to report": ``argus scan container --scanners exposure``
+        # on a host without Docker returned zero findings, zero errors and
+        # exit 0. Raising it into ``scanner_errors`` is what makes the
+        # exit-code contract true for these two as well.
+        for name, runner in (
+            ("exposure", _parser._scan_exposed_ports),
+            ("services", _parser._scan_services),
+        ):
+            if name not in scanners:
+                continue
+            ran.add(name)
             try:
-                exposure_findings, _meta = _parser._scan_exposed_ports(
-                    target.image_ref, cfg,
-                )
+                found, meta = runner(target.image_ref, cfg)
             except Exception as exc:  # pylint: disable=broad-except
                 logger.error(
-                    "exposure scan failed for %s: %s",
-                    target.image_ref, exc,
+                    "%s scan failed for %s: %s", name, target.image_ref, exc,
                 )
-                scanner_errors["exposure"] = str(exc)
-
-        if "services" in scanners:
-            ran.add("services")
-            try:
-                services_findings, _meta = _parser._scan_services(
-                    target.image_ref, cfg,
-                )
-            except Exception as exc:  # pylint: disable=broad-except
+                scanner_errors[name] = str(exc)
+                continue
+            if _sub_scanner_failed(meta):
+                reason = meta.get("error") or meta.get("skipped")
                 logger.error(
-                    "services scan failed for %s: %s",
-                    target.image_ref, exc,
+                    "%s scan did not run for %s: %s",
+                    name, target.image_ref, reason,
                 )
-                scanner_errors["services"] = str(exc)
+                scanner_errors[name] = str(reason)
+                continue
+            if name == "exposure":
+                exposure_findings = found
+            else:
+                services_findings = found
 
         # Persist raw scanner artifacts (best-effort) before the
         # tempdir is wiped. We copy whatever files exist; missing
@@ -1387,7 +1396,7 @@ def _run_syft(
         )
 
     try:
-        subprocess.run(
+        proc = subprocess.run(
             cmd, capture_output=True, text=True, timeout=300,
             env=_subprocess_env(auth_env),
         )
@@ -1396,5 +1405,21 @@ def _run_syft(
         return False
     except FileNotFoundError:
         logger.debug("syft binary not found")
+        return False
+
+    # Being invoked is not the same as succeeding. An unpullable image or a
+    # registry auth failure exits non-zero with no SBOM written; reporting
+    # that as "ran" let ``--scanners syft`` exit 0 over an image syft never
+    # read, which is the silent pass this module exists to prevent.
+    if proc.returncode != 0:
+        logger.warning(
+            "syft failed for %s (rc=%d): %s",
+            image_ref, proc.returncode, (proc.stderr or "").strip()[:300],
+        )
+        return False
+    if not output_file.exists() or output_file.stat().st_size == 0:
+        logger.warning(
+            "syft exited cleanly but wrote no SBOM for %s", image_ref,
+        )
         return False
     return True

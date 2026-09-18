@@ -2871,6 +2871,18 @@ decisions:
       - ContainerScanner.scan flags execution_failed when every sub-scanner reported
         error or skipped, not when the metadata dict is empty — every branch writes its
         key even on failure, so the empty test could never fire.
+      - "\"Ran\" means produced a result, not \"was invoked\". Three sub-scanners
+        signalled failure in a way the orchestrator discarded: exposure and services
+        return {skipped|error} in metadata rather than raising, and scan_image dropped
+        that metadata; _run_syft returned success on any invocation, ignoring a
+        non-zero exit and a missing SBOM. And _extract_paths_from_image returned {}
+        both for \"could not read the image\" and for \"the image has none of these
+        paths\", so services reported services_declared: 0 for an image it had never
+        opened — the realistic trigger being a runtime installed but not running,
+        where is_available() is True and the pull fails. It now returns None for the
+        unreadable case. argus/tests/test_container_no_silent_pass.py sweeps every
+        selection against a toolless host and asserts each records a failure, plus the
+        converse: a scan that did run stays clean.
       - ContainerEngine validates the selection once in run(), before the target loop.
         Inside _process_target the ValueError is swallowed by the broad `except
         Exception` and rewritten to a generic "Scan failed for <ref>", discarding the
