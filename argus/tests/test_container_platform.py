@@ -229,3 +229,164 @@ class TestPlatformConfigPlumbing:
     def test_schema_accepts_the_key(self):
         """Otherwise `argus validate` warns on a key we ourselves document."""
         assert "platform" in _CONTAINERS_KEYS
+
+
+# =====================================================================
+# PR #427 review follow-ups
+# =====================================================================
+
+class TestPlatformReachesTheSdkScannerPath:
+    """``containers.platform`` must reach trivy/grype/syft on both paths.
+
+    ``argus/scanners/container.py`` read it only for the ``exposure`` and
+    ``services`` sub-scanners, so a single run mixed platform-pinned
+    attack-surface results with host-resolved CVE results for different
+    variants of the same image — while the config reference stated the
+    value "is threaded to Trivy, Grype and Syft as their native
+    ``--platform`` flag".
+    """
+
+    def _run_with_captured_argv(self, monkeypatch, scanners):
+        from argus.scanners.container import ContainerScanner
+
+        captured: list[list[str]] = []
+
+        def fake_run(cmd, *a, **kw):
+            captured.append(cmd)
+            return _completed(returncode=0)
+
+        monkeypatch.setattr(
+            "argus.scanners.container.shutil.which", lambda name: f"/usr/bin/{name}",
+        )
+        monkeypatch.setattr(
+            "argus.scanners.container.subprocess.run", fake_run,
+        )
+        ContainerScanner().scan(".", {
+            "image_ref": "app:1",
+            "platform": "linux/arm64",
+            "scanners": scanners,
+        })
+        return captured
+
+    @pytest.mark.parametrize("tool", ["trivy", "grype", "syft"])
+    def test_each_tool_receives_the_flag(self, monkeypatch, tool):
+        captured = self._run_with_captured_argv(monkeypatch, [tool])
+        argv = next(c for c in captured if c and c[0] == tool)
+        assert "--platform" in argv, f"{tool} argv: {argv}"
+        assert argv[argv.index("--platform") + 1] == "linux/arm64"
+
+    def test_no_flag_when_unset(self, monkeypatch):
+        from argus.scanners.container import ContainerScanner
+
+        captured: list[list[str]] = []
+        monkeypatch.setattr(
+            "argus.scanners.container.shutil.which", lambda name: f"/usr/bin/{name}",
+        )
+        monkeypatch.setattr(
+            "argus.scanners.container.subprocess.run",
+            lambda cmd, *a, **kw: captured.append(cmd) or _completed(0),
+        )
+        ContainerScanner().scan(
+            ".", {"image_ref": "app:1", "scanners": ["trivy"]},
+        )
+        assert all("--platform" not in c for c in captured)
+
+
+class TestSchemaValidatesPlatform:
+    """The schema half of the pairing had two gaps."""
+
+    def test_platform_must_be_os_slash_arch(self):
+        from argus.core.schema import validate_config
+
+        errors = validate_config({
+            "containers": {"images": [{"image": "a:1"}], "platform": 123},
+        })
+        assert any("platform" in e.path for e in errors), (
+            "platform: 123 validated clean and reached trivy as "
+            "`--platform 123`"
+        )
+
+    @pytest.mark.parametrize(
+        "value", ["linux/arm64", "linux/amd64", "linux/arm/v7", "windows/amd64"],
+    )
+    def test_valid_platform_strings_pass(self, value):
+        from argus.core.schema import validate_config
+
+        errors = validate_config({
+            "containers": {"images": [{"image": "a:1"}], "platform": value},
+        })
+        assert not [e for e in errors if "platform" in e.path]
+
+    @pytest.mark.parametrize("value", ["arm64", "linux/", "linux arm64", 123])
+    def test_malformed_platform_strings_fail(self, value):
+        from argus.core.schema import validate_config
+
+        errors = validate_config({
+            "containers": {"images": [{"image": "a:1"}], "platform": value},
+        })
+        assert [e for e in errors if "platform" in e.path]
+
+    @pytest.mark.parametrize("value", ["", None])
+    def test_empty_platform_means_unset_not_invalid(self, value):
+        """The schema must not reject what the runtime happily ignores.
+
+        ``_platform_args`` emits no flag for an empty value, and the
+        container-scan.yml ``platform`` input defaults to ``''``, so
+        ``platform: ""`` is a natural placeholder. Erroring on it would be
+        the same schema/runtime drift as the sub-scanner case, just in the
+        other direction.
+        """
+        from argus.core.schema import validate_config
+
+        assert _platform_args({"platform": value}) == []
+        errors = validate_config({
+            "containers": {"images": [{"image": "a:1"}], "platform": value},
+        })
+        assert not [e for e in errors if "platform" in e.path]
+
+
+class TestSchemaMatchesRuntimeNormalisation:
+    """`argus validate` must not reject a config the scanner accepts.
+
+    ``validate_sub_scanners`` lowercases and strips; the schema compared
+    the raw value, so ``scanners: [Trivy]`` errored in validation and ran
+    fine in the scan — drift in exactly the direction the paired test did
+    not cover.
+    """
+
+    @pytest.mark.parametrize("value", ["Trivy", " GRYPE ", "SyFt"])
+    def test_case_and_whitespace_are_normalised_like_the_runtime(self, value):
+        from argus.core.schema import validate_config
+        from argus.scanners.container import validate_sub_scanners
+
+        assert validate_sub_scanners([value])  # the runtime accepts it
+        errors = validate_config({
+            "containers": {"images": [{"image": "a:1"}], "scanners": [value]},
+        })
+        assert not [e for e in errors if "scanners" in e.path], (
+            f"schema rejected {value!r} but the scanner runs it"
+        )
+
+    def test_a_genuinely_unknown_name_still_fails(self):
+        from argus.core.schema import validate_config
+
+        errors = validate_config({
+            "containers": {"images": [{"image": "a:1"}], "scanners": ["tryvi"]},
+        })
+        assert [e for e in errors if "scanners" in e.path]
+
+
+class TestOnePlatformHelper:
+    """Both container paths must share one implementation, not two copies.
+
+    ``argus/container/scanner.py`` already imports ``SUB_SCANNERS`` from
+    ``argus/scanners/container.py``, so the dependency runs one way and the
+    helper can live in the lower module. Two copies kept in step by hand is
+    the drift this PR is otherwise busy removing.
+    """
+
+    def test_both_modules_expose_the_same_function(self):
+        from argus.container import scanner as upper
+        from argus.scanners import container as lower
+
+        assert upper._platform_args is lower._platform_args
