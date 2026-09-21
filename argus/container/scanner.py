@@ -585,12 +585,17 @@ def scan_image(
         the scan fails. Asking for ``exposure`` on a host with no
         container runtime and getting exit 0 is the silent pass this
         module exists to prevent.
-      - in the default set, could not run → ``degraded``, and the scan
-        continues. A precondition that is absent for a sub-scanner
-        nobody asked for is a thinner scan, not a wrong one: trivy and
-        grype scanning a registry from a daemonless runner is ordinary
-        hardened CI, and failing it would leave no way out short of
-        editing ``containers.scanners``.
+      - in the default set, with an absent *precondition*
+        (``skipped``) → ``degraded``, and the scan continues. A
+        precondition that is absent for a sub-scanner nobody asked for
+        is a thinner scan, not a wrong one: trivy and grype scanning a
+        registry from a daemonless runner is ordinary hardened CI, and
+        failing it would leave no way out short of editing
+        ``containers.scanners``.
+      - in the default set, having *tried and failed* (``error``) →
+        ``scanner_errors``, and the scan fails. The daemonless-CI
+        argument does not reach this case: the sub-scanner had what it
+        needed and still never opened the image.
 
     Pass the default set explicitly to opt into the strict reading.
     """
@@ -738,18 +743,34 @@ def scan_image(
                 continue
             if _sub_scanner_failed(meta):
                 reason = str(meta.get("error") or meta.get("skipped"))
-                if named_by_caller:
+                # ``_sub_scanner_failed`` is the union of two different
+                # facts (see its docstring): ``skipped`` is a
+                # precondition that was never there, ``error`` is a
+                # sub-scanner that had what it needed, tried, and
+                # failed. Only the first degrades.
+                #
+                # Keying the degrade on ``named_by_caller`` alone made
+                # them the same fact again in the other direction: with
+                # a runtime present and a bad image ref,
+                # ``_scan_exposed_ports`` returns ``{"error": "could
+                # not pull or locate image …"}``, the image is never
+                # opened, and a default ``argus scan container`` exited
+                # 0 — the silent pass this module exists to prevent,
+                # in a narrower window.
+                precondition_absent = "error" not in meta and "skipped" in meta
+                if named_by_caller or not precondition_absent:
                     logger.error(
                         "%s scan did not run for %s: %s",
                         name, target.image_ref, reason,
                     )
                     scanner_errors[name] = reason
                 else:
-                    # Nobody asked for this one by name, so an absent
-                    # precondition degrades the scan rather than
-                    # failing it. Warned, recorded and reported — but
-                    # it does not reach ``scan_failures`` or the exit
-                    # code. See the ``scanners`` note in the docstring.
+                    # Nobody asked for this one by name and its
+                    # precondition is absent, so the scan is degraded
+                    # rather than failed. Warned, recorded and reported
+                    # — but it does not reach ``scan_failures`` or the
+                    # exit code. See the ``scanners`` note in the
+                    # docstring.
                     logger.warning(
                         "%s scan did not run for %s: %s "
                         "(not requested by name — scan degraded, "

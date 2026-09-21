@@ -1,6 +1,9 @@
 """Tests for argus.container.scanner — results, summary, deduplication."""
 
+import pytest
+
 from argus.container import scanner as container_scanner
+from argus.scanners.container import ContainerScanner
 from argus.container.scanner import (
     ContainerScanResult,
     ContainerScanSummary,
@@ -8,6 +11,29 @@ from argus.container.scanner import (
     scan_image,
 )
 from argus.core.models import Finding, Severity
+
+
+@pytest.fixture(autouse=True)
+def _unshadow_parser():
+    """Strip instance-level shadows left on ``container_scanner._parser``.
+
+    Several tests here patch ``container_scanner._parser`` — the
+    module-level ``ContainerScanner`` — rather than the class. The
+    instance has no own attribute by those names, so ``monkeypatch``
+    records the bound method it resolves through the class and writes
+    it back *onto the instance* at teardown. From then on the instance
+    shadows the class, and any later test patching ``ContainerScanner``
+    (the correct way) is silently ignored while the real
+    implementation runs.
+
+    It passes alone and fails in company, which is the worst shape a
+    test failure takes. This closes the write side for the whole file,
+    the way ``_reset_runtime_cache`` does for ``_cached_runtime`` in
+    ``test_container_runtime.py``.
+    """
+    yield
+    for attr in ("_scan_exposed_ports", "_scan_services"):
+        container_scanner._parser.__dict__.pop(attr, None)
 
 
 def _finding(cve=None, severity=Severity.HIGH, fid="F1", scanner="trivy"):
@@ -519,7 +545,8 @@ class TestDegradedVersusFailedSubScanners:
         from argus.container.discovery import ContainerTarget
         return ContainerTarget(name="redis", image_ref="redis:7-alpine")
 
-    def _stub(self, monkeypatch):
+    def _stub(self, monkeypatch, meta=None):
+        meta = self._SKIP if meta is None else meta
         monkeypatch.setattr(
             container_scanner, "_run_trivy",
             lambda image_ref, tmp_path, local=False, **_kw: [],
@@ -532,10 +559,17 @@ class TestDegradedVersusFailedSubScanners:
             container_scanner, "_run_syft",
             lambda image_ref, tmp_path, **_kw: None,
         )
+        # Patch the class, not ``container_scanner._parser``. The
+        # instance has no own attribute by these names — they resolve
+        # through the class — so ``monkeypatch`` records the bound
+        # method it finds and writes it back onto the *instance* on
+        # teardown. That shadows the class for the rest of the session,
+        # and the next test to patch ``ContainerScanner`` (the correct
+        # way) is silently ignored and runs the real implementation.
         for attr in ("_scan_exposed_ports", "_scan_services"):
             monkeypatch.setattr(
-                container_scanner._parser, attr,
-                lambda image_ref, cfg: ([], dict(self._SKIP)),
+                ContainerScanner, attr,
+                lambda _self, image_ref, cfg, _meta=meta: ([], dict(_meta)),
             )
 
     def test_default_selection_degrades_and_still_passes(self, monkeypatch):
@@ -551,6 +585,27 @@ class TestDegradedVersusFailedSubScanners:
         summary = ContainerScanSummary(results=[result])
         assert summary.scan_failures == 0
         assert summary.degraded_scans == 1
+
+    def test_default_selection_still_fails_on_a_real_error(self, monkeypatch):
+        """``error`` is not a precondition — it fails even unnamed.
+
+        ``_sub_scanner_failed`` is the union of two facts. ``skipped``
+        means the sub-scanner never had what it needed; ``error`` means
+        it did, tried, and failed — an unpullable image ref, an
+        unparseable ``docker inspect``. Degrading on the caller's
+        wording alone let the second one exit 0 with the image never
+        opened, which is the silent pass this module is named after.
+        """
+        self._stub(
+            monkeypatch,
+            meta={"error": "could not pull or locate image redis:7-alpine"},
+        )
+
+        result = scan_image(self._target(), sbom=False)
+
+        assert set(result.scanner_errors) == {"exposure", "services"}
+        assert result.degraded == {}
+        assert ContainerScanSummary(results=[result]).scan_failures == 1
 
     def test_explicit_selection_still_fails(self, monkeypatch):
         """``--scanners exposure`` on the same host is a scan failure."""

@@ -474,14 +474,17 @@ Exit `2` covers an unknown sub-scanner name, no targets to scan, a registry auth
 
 ##### Requested versus default
 
-"Requested" above means named by you — in `containers.scanners` or `--scanners`. The distinction matters on a host with no container runtime, where `exposure` and `services` have no image to inspect:
+"Requested" above means named by you — in `containers.scanners` or `--scanners`. Only one case is forgiving, and it needs both halves: you did not name the sub-scanner, **and** what stopped it was a missing precondition rather than a failure.
 
-| You wrote | `exposure` cannot run | Exit code |
-|-----------|----------------------|-----------|
-| nothing (default selection) | reported as **degraded** | unchanged — `0` if nothing else failed |
-| `--scanners exposure` | reported as a **scan failure** | `2` |
+| You wrote | What happened to `exposure` | Reported as | Exit code |
+|-----------|-----------------------------|-------------|-----------|
+| nothing (default selection) | no container runtime — nothing to inspect | **degraded** | unchanged — `0` if nothing else failed |
+| nothing (default selection) | had a runtime, could not pull the image | **scan failure** | `2` |
+| `--scanners exposure` | either | **scan failure** | `2` |
 
-A sub-scanner in the default set whose precondition is absent makes the scan thinner, not wrong: Trivy and Grype installed as local binaries scan a registry perfectly well from a daemonless runner, and that is ordinary hardened CI. Failing it would leave no way out short of editing `containers.scanners`. Naming the sub-scanner yourself and getting `0` back would be the silent pass this contract exists to prevent, so that case still fails.
+A sub-scanner in the default set whose precondition is absent makes the scan thinner, not wrong: Trivy and Grype installed as local binaries scan a registry perfectly well from a daemonless runner, and that is ordinary hardened CI. Failing it would leave no way out short of editing `containers.scanners`.
+
+That argument does not reach the second row. There the sub-scanner had everything it needed, tried, and never opened the image — so exiting `0` would be the same silent pass whether or not you had typed its name. Naming it yourself always fails, for the same reason.
 
 Degraded sub-scanners are always reported — a `Degraded scans:` line in the terminal summary, a `degraded` key on the result metadata in `argus-results.json`, and a `::notice::` annotation in GitHub Actions. To make them fatal, name them explicitly.
 
