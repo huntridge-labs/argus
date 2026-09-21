@@ -3076,6 +3076,15 @@ decisions:
       - ContainerEngine._scanners() returns None when containers.scanners is
         unset, for the same reason. The CLI only sets config["scanners"] from
         --scanners or the config file, so an unset key genuinely means unnamed.
+      - Both container paths answer this the same way, or the exit-code
+        contract would depend on which entry point you used.
+        ContainerScanner.scan (the Scanner-protocol path) had the mirror gap:
+        its gate was "did EVERY sub-scanner fail", so `scanners:
+        "trivy,exposure"` on a daemonless host — trivy succeeds, exposure skips
+        — was clean even though exposure was named. It now fails on any NAMED
+        sub-scanner that could not run, and keeps the all-failed gate for the
+        case where nobody named anything and nothing ran; neither check
+        subsumes the other.
       - ContainerScanResult.degraded holds the unrequested skips, parallel to
         scanner_errors. Only scanner_errors feeds ContainerScanSummary.
         scan_failures and the exit code; degraded feeds the reporting-only

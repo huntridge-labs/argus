@@ -556,18 +556,78 @@ class TestSdkScannerUnrunnableIsNotAPass:
     engine reported PASS.
     """
 
-    def test_all_sub_scanners_failing_sets_execution_failed(self, monkeypatch):
+    def _no_tools(self, monkeypatch):
         monkeypatch.setattr(
             "argus.scanners.container.shutil.which", lambda _n: None,
         )
         monkeypatch.setattr(
             "argus.container_runtime.is_available", lambda: False,
         )
+
+    def test_all_sub_scanners_failing_sets_execution_failed(self, monkeypatch):
+        self._no_tools(monkeypatch)
         result = ContainerScanner().scan(
             ".", {"image_ref": "app:latest", "scanners": ["trivy", "grype"]},
         )
         assert result.metadata.get("execution_failed") is True
-        assert "could be executed" in result.metadata["error"]
+        assert "trivy" in result.metadata["error"]
+        assert "grype" in result.metadata["error"]
+
+    def test_unnamed_selection_with_nothing_runnable_still_fails(
+        self, monkeypatch,
+    ):
+        """No ``scanners`` key at all, and nothing could run.
+
+        The named-sub-scanner check cannot fire here — nobody named
+        anything — so the "all of them failed" gate is what catches it.
+        Both are needed; neither subsumes the other.
+        """
+        self._no_tools(monkeypatch)
+        result = ContainerScanner().scan(".", {"image_ref": "app:latest"})
+        assert result.metadata.get("execution_failed") is True
+
+    def test_a_named_sub_scanner_that_skips_fails_the_scan(self, monkeypatch):
+        """The parity case with argus/container/scanner.py (ADR-039).
+
+        ``scanners: "trivy,exposure"`` on a host with no container
+        runtime: trivy succeeds, exposure skips. ``all(...)`` is False,
+        so the all-failed gate stays quiet — and the run used to be
+        clean, which is the silent pass the orchestrator path was fixed
+        for. Whichever container entry point you use, naming a
+        sub-scanner that cannot run must fail the scan.
+        """
+        scanner = ContainerScanner()
+        monkeypatch.setattr(
+            scanner, "_run_sub_scanner",
+            lambda **_kwargs: ([], {"returncode": 0, "execution": "local"}),
+        )
+        monkeypatch.setattr(
+            scanner, "_scan_exposed_ports",
+            lambda image_ref, cfg: ([], {"skipped": "no container runtime"}),
+        )
+        result = scanner.scan(
+            ".", {"image_ref": "app:latest", "scanners": ["trivy", "exposure"]},
+        )
+        assert result.metadata.get("execution_failed") is True
+        assert "exposure" in result.metadata["error"]
+
+    def test_an_unnamed_sub_scanner_that_skips_does_not_fail_the_scan(
+        self, monkeypatch,
+    ):
+        """The other half of ADR-039 — a default scan on a daemonless host."""
+        scanner = ContainerScanner()
+        monkeypatch.setattr(
+            scanner, "_run_sub_scanner",
+            lambda **_kwargs: ([], {"returncode": 0, "execution": "local"}),
+        )
+        for attr in ("_scan_exposed_ports", "_scan_services"):
+            monkeypatch.setattr(
+                scanner, attr,
+                lambda image_ref, cfg: ([], {"skipped": "no container runtime"}),
+                raising=False,
+            )
+        result = scanner.scan(".", {"image_ref": "app:latest"})
+        assert result.metadata.get("execution_failed") is not True
 
     def test_a_succeeding_sub_scanner_keeps_the_scan_clean(self):
         from argus.scanners.container import _sub_scanner_failed

@@ -2952,9 +2952,17 @@ def _write_container_json(summary, output_dir) -> None:
                 "low": r.low_count,
                 "total": r.total_count,
                 "unique": r.unique_count,
+                # Both reasons a row's counts may be thinner than the
+                # image really is. Without them a failed or degraded
+                # scan renders here as an ordinary clean row, which is
+                # the shape of silent pass this file's counts feed.
+                "scanner_errors": dict(getattr(r, "scanner_errors", {})),
+                "degraded": dict(getattr(r, "degraded", {})),
             }
             for r in summary.results
         ],
+        "scan_failures": getattr(summary, "scan_failures", 0),
+        "degraded_scans": getattr(summary, "degraded_scans", 0),
     }
     filepath = dest / "container-scan.json"
     filepath.write_text(json.dumps(data, indent=2))

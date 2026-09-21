@@ -496,11 +496,51 @@ class ContainerScanner:
                 all_findings.extend(services_findings)
                 metadata["services"] = services_meta
 
+            # A sub-scanner the operator NAMED that could not run is a
+            # failed scan on its own, whatever the others managed. The
+            # "all of them failed" test below cannot see this: with
+            # ``scanners: "trivy,exposure"`` on a host with no container
+            # runtime, trivy succeeds, exposure reports ``{"skipped":
+            # ...}``, ``all(...)`` is False, and the run is clean —
+            # exactly the silent pass the orchestrator path
+            # (``argus/container/scanner.py``) was fixed for. Both
+            # container paths have to answer this the same way or the
+            # exit-code contract depends on which entry point you used.
+            #
+            # Only an explicit request counts, for the reason set out in
+            # ADR-039: exposure and services are in the default set and
+            # skip on every daemonless runner, so failing on those would
+            # fail every default scan on ordinary hardened CI.
+            named = "scanners" in config
+            unrunnable_named = sorted(
+                name for name in enabled
+                if named and _sub_scanner_failed(metadata.get(name))
+            )
+            if unrunnable_named:
+                reasons = "; ".join(
+                    f"{name}: "
+                    f"{metadata[name].get('error') or metadata[name].get('skipped')}"
+                    for name in unrunnable_named
+                )
+                metadata["error"] = (
+                    "Sub-scanner(s) you requested could not be executed "
+                    f"({', '.join(unrunnable_named)}): {reasons}. They were "
+                    "named in scanners.container.scanners, so this is a "
+                    "failed scan rather than reduced coverage — drop them "
+                    "from the list to make their absence non-fatal."
+                )
+                metadata["execution_failed"] = True
+
             # Every requested sub-scanner is a valid name (validated
             # above) yet none of them actually executed. That is a scan
             # that did not happen, not a scan that found nothing — flag
             # it as an execution failure so the engine's "did not run
             # cleanly" bucket and ``--fail-on-scanner-error`` both see it.
+            #
+            # Still needed alongside the check above, which only fires
+            # for an explicit selection: with no ``scanners`` key at all
+            # and neither trivy, grype nor a container runtime present,
+            # nothing ran and nobody named anything.
             #
             # The test is "did any sub-scanner succeed", not "is metadata
             # empty". Every branch above writes its metadata key even when
@@ -508,7 +548,7 @@ class ContainerScanner:
             # ``{"error": ...}`` rather than nothing — so a ``not metadata``
             # test could never fire, and a host with no trivy, no grype and
             # no container runtime reported a clean PASS.
-            if all(_sub_scanner_failed(m) for m in metadata.values()):
+            elif all(_sub_scanner_failed(m) for m in metadata.values()):
                 reasons = "; ".join(
                     f"{name}: {m.get('error') or m.get('skipped')}"
                     for name, m in sorted(metadata.items())
