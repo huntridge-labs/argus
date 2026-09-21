@@ -1061,6 +1061,65 @@ class TestPullImage:
         ]
         assert len(platform_calls) == 1
 
+    def _retry_platform_for(self, monkeypatch, published):
+        """Run the retry path and return the ``--platform`` it chose."""
+        engine = self._make_engine(pull_policy="always")
+        calls = []
+
+        def mock_run(cmd, **kwargs):
+            calls.append(cmd)
+            if "pull" in cmd and "--platform" not in cmd:
+                return subprocess.CompletedProcess(
+                    args=cmd, returncode=1, stdout="", stderr="something odd",
+                )
+            if "--platform" in cmd:
+                return subprocess.CompletedProcess(
+                    args=cmd, returncode=0, stdout="Pulled\n", stderr="",
+                )
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="sha256:abc\n",
+            )
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+        monkeypatch.setattr(
+            "argus.container_runtime.detect_image_platforms",
+            lambda image: published,
+        )
+        monkeypatch.setattr(
+            "argus.container_runtime._native_platform",
+            lambda: "linux/amd64",
+        )
+        engine._pull_image("myimage:latest")
+        retry = next(c for c in calls if "--platform" in c)
+        return retry[retry.index("--platform") + 1]
+
+    def test_retry_prefers_the_host_architecture(self, monkeypatch):
+        chosen = self._retry_platform_for(
+            monkeypatch, ["linux/amd64", "linux/arm64"],
+        )
+        assert chosen == "linux/amd64"
+
+    def test_retry_uses_a_published_platform_when_native_is_absent(
+        self, monkeypatch,
+    ):
+        """An arm64-only image must not be retried as linux/amd64.
+
+        The manifest was already read; retrying against a platform it
+        says the image does not publish is a guaranteed second failure,
+        and the log line prints the chosen platform next to a published
+        list that contradicts it. A host with binfmt configured can run
+        the foreign variant.
+        """
+        chosen = self._retry_platform_for(monkeypatch, ["linux/arm64"])
+        assert chosen == "linux/arm64"
+
+    def test_retry_falls_back_to_amd64_when_manifest_unreadable(
+        self, monkeypatch,
+    ):
+        """Empty published list keeps the amd64-only-upstream heuristic."""
+        chosen = self._retry_platform_for(monkeypatch, [])
+        assert chosen == "linux/amd64"
+
 
 class TestRunInContainer:
     """Test _run_in_container() Docker execution path."""

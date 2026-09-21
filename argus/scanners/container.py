@@ -247,6 +247,22 @@ SUB_SCANNERS: tuple[str, ...] = (
     "services",
 )
 
+# The selection used when a caller names none. Kept beside
+# ``SUB_SCANNERS`` because the two are read together: this is the
+# subset that runs by default, and anything in it is therefore *not*
+# something the operator asked for by name. ``scan_image`` and
+# ``ContainerEngine`` both resolve their default from here so the
+# "did the caller name it?" question has one answer.
+#
+# ``syft`` is absent deliberately — it is driven by the ``sbom`` flag,
+# not by selection.
+DEFAULT_SUB_SCANNERS: tuple[str, ...] = (
+    "trivy",
+    "grype",
+    "exposure",
+    "services",
+)
+
 
 def validate_sub_scanners(
     names: "str | list[str] | tuple[str, ...]", source: str = "scanners",

@@ -935,9 +935,21 @@ class ArgusEngine:
                     plat for plat in detect_image_platforms(image)
                     if plat.startswith("linux/")
                 ]
+                # When the registry named the published platforms and
+                # none is this host's, take the first published one
+                # rather than linux/amd64: retrying with a platform the
+                # manifest says the image does not publish is a
+                # guaranteed second failure, and the log line below
+                # would print the chosen platform next to a published
+                # list that contradicts it. A host with binfmt/QEMU
+                # configured can run the foreign variant; one without
+                # it fails either way, but with an honest error.
+                # linux/amd64 stays the fallback for the *empty* case,
+                # where the manifest could not be read at all and the
+                # amd64-only upstream is the likeliest shape.
                 target_platform = next(
                     (plat for plat in published if _os_arch(plat) == native),
-                    "linux/amd64",
+                    published[0] if published else "linux/amd64",
                 )
                 # Deliberately still retries even when the chosen
                 # platform is this host's own. It re-runs a command that

@@ -587,6 +587,49 @@ class TestCachedImageRespectsPlatform:
         assert cr.pull_image("app:1", policy="if-not-present") is True
         assert mock_run.call_count == 1  # no extra arch probe
 
+    @patch("argus.container_runtime.subprocess.run")
+    def test_unpullable_ref_falls_back_to_the_cached_variant(
+        self, mock_run, monkeypatch, caplog,
+    ):
+        """A locally-built image must survive an explicit platform.
+
+        ``docker build`` on an arm64 Mac with ``containers.platform:
+        linux/amd64`` produces a cache hit of the wrong arch for a ref
+        that was never pushed. Re-pulling it can only fail, and
+        returning False there turns a working scan into "could not
+        pull or locate image". The mismatch rule exists to stop a
+        *silent* substitution, so the fallback is loud.
+        """
+        _only_docker(monkeypatch)
+        mock_run.side_effect = [
+            MagicMock(returncode=0),                                     # inspect: hit
+            MagicMock(returncode=0, stdout="linux/arm64\n", stderr=""),  # cached arch
+            MagicMock(                                                   # pull fails
+                returncode=1, stderr="pull access denied for myapp",
+            ),
+        ]
+        with caplog.at_level("WARNING"):
+            assert cr.pull_image(
+                "myapp:local", policy="if-not-present",
+                platform="linux/amd64",
+            ) is True
+        assert "falling back" in caplog.text
+        assert "linux/arm64" in caplog.text
+
+    @patch("argus.container_runtime.subprocess.run")
+    def test_no_cache_hit_still_fails_on_pull_error(
+        self, mock_run, monkeypatch,
+    ):
+        """The fallback needs a local copy — it does not invent one."""
+        _only_docker(monkeypatch)
+        mock_run.side_effect = [
+            MagicMock(returncode=1),                       # inspect: miss
+            MagicMock(returncode=1, stderr="not found"),   # pull fails
+        ]
+        assert cr.pull_image(
+            "app:1", policy="if-not-present", platform="linux/amd64",
+        ) is False
+
 
 class TestNativePreferenceIgnoresVariant:
     """``_native_platform`` never emits a variant, so equality missed.

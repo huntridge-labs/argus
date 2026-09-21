@@ -144,6 +144,15 @@ def run(
         for tool, err in result.scanner_errors.items():
             print(f"::warning::{tool} sub-scanner error for {image_name}: {err}", file=sys.stderr)
 
+    for tool, why in getattr(result, "degraded", {}).items():
+        # A default sub-scanner whose precondition was absent. Visible,
+        # but not an error: this leg scanned the image, with fewer
+        # tools than usual.
+        print(
+            f"::notice::{tool} sub-scanner skipped for {image_name}: {why}",
+            file=sys.stderr,
+        )
+
     return result
 
 

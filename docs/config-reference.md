@@ -472,6 +472,19 @@ This is deliberately fatal rather than a warning. Both dispatch paths select sub
 
 Exit `2` covers an unknown sub-scanner name, no targets to scan, a registry authentication failure, and any requested sub-scanner that could not run — an unpullable image, a tool with neither a local binary nor a container runtime to fall back on, a timeout, or output that could not be parsed. **"Nothing could be scanned" never exits `0`.**
 
+##### Requested versus default
+
+"Requested" above means named by you — in `containers.scanners` or `--scanners`. The distinction matters on a host with no container runtime, where `exposure` and `services` have no image to inspect:
+
+| You wrote | `exposure` cannot run | Exit code |
+|-----------|----------------------|-----------|
+| nothing (default selection) | reported as **degraded** | unchanged — `0` if nothing else failed |
+| `--scanners exposure` | reported as a **scan failure** | `2` |
+
+A sub-scanner in the default set whose precondition is absent makes the scan thinner, not wrong: Trivy and Grype installed as local binaries scan a registry perfectly well from a daemonless runner, and that is ordinary hardened CI. Failing it would leave no way out short of editing `containers.scanners`. Naming the sub-scanner yourself and getting `0` back would be the silent pass this contract exists to prevent, so that case still fails.
+
+Degraded sub-scanners are always reported — a `Degraded scans:` line in the terminal summary, a `degraded` key on the result metadata in `argus-results.json`, and a `::notice::` annotation in GitHub Actions. To make them fatal, name them explicitly.
+
 ### Scanning a foreign architecture
 
 Vulnerability scanners read image layers; they never execute them. An `arm64`-only image is therefore perfectly scannable from an `amd64` runner.
@@ -502,6 +515,8 @@ argus scan container --image arm64v8/alpine:3.18 --platform linux/arm64
 The value must be `os/arch` or `os/arch/variant` (e.g. `linux/arm64`, `linux/arm/v7`); anything else is rejected at config-validation time rather than passed through to the scanners. An empty value means "unset" — no flag is emitted, so `platform: ""` is a valid placeholder.
 
 It is threaded to Trivy, Grype and Syft as their native `--platform` flag on both container paths, and to the `exposure` and `services` sub-scanners as the pull platform. An explicit value also defeats the local-image cache: if a copy of the ref is already present for a different architecture, the requested platform is pulled rather than the cached one being reused. No QEMU or `binfmt` emulation is involved.
+
+If that pull cannot succeed — the ref was built locally or `docker load`ed and was never pushed anywhere — the cached copy is used after all, with a warning naming the architecture you actually got. The rule exists to stop a foreign variant being substituted *silently*, not to make locally-built and air-gapped images unscannable.
 
 ### Per-registry credentials
 

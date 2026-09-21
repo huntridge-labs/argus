@@ -10,6 +10,7 @@ from pathlib import Path
 
 from argus.core.models import Finding, Severity
 from argus.scanners.container import (
+    DEFAULT_SUB_SCANNERS,
     SUB_SCANNERS,
     ContainerScanner,
     _platform_args,  # re-exported: one implementation, both container paths
@@ -436,6 +437,11 @@ class ContainerScanResult:
     build_success: bool = True
     scan_error: str = ""
     scanner_errors: dict[str, str] = field(default_factory=dict)
+    # Sub-scanners that could not run but were never asked for by
+    # name. Separate from ``scanner_errors`` because it carries a
+    # different fact: the scan is thinner than usual, not wrong. Only
+    # ``scanner_errors`` feeds ``scan_failures`` and the exit code.
+    degraded: dict[str, str] = field(default_factory=dict)
 
     @property
     def critical_count(self) -> int:
@@ -523,12 +529,20 @@ class ContainerScanSummary:
     def scan_failures(self) -> int:
         return sum(1 for r in self.results if r.scanner_errors)
 
+    @property
+    def degraded_scans(self) -> int:
+        """Images where a default sub-scanner could not run.
+
+        Deliberately not folded into ``scan_failures``: these images
+        were scanned, just by fewer tools than usual. Reported so the
+        thinner coverage is visible, never gating.
+        """
+        return sum(1 for r in self.results if getattr(r, "degraded", None))
+
 
 def scan_image(
     target: ContainerTarget,
-    scanners: tuple[str, ...] = (
-        "trivy", "grype", "exposure", "services",
-    ),
+    scanners: tuple[str, ...] | None = None,
     sbom: bool = True,
     raw_output_dir: Path | None = None,
     config: dict | None = None,
@@ -562,10 +576,35 @@ def scan_image(
     so config knobs (``expose_warn_ports``, ``expose_ignore_ports``,
     ``services_warn``, ``services_ignore``) take effect. Ignored by
     trivy / grype / syft, which have no equivalent knobs at this layer.
+
+    ``scanners``: the sub-scanners to run. ``None`` — the default —
+    runs ``DEFAULT_SUB_SCANNERS`` and records that the caller named
+    nothing, which changes how an unrunnable sub-scanner is reported:
+
+      - named by the caller, could not run → ``scanner_errors``, and
+        the scan fails. Asking for ``exposure`` on a host with no
+        container runtime and getting exit 0 is the silent pass this
+        module exists to prevent.
+      - in the default set, could not run → ``degraded``, and the scan
+        continues. A precondition that is absent for a sub-scanner
+        nobody asked for is a thinner scan, not a wrong one: trivy and
+        grype scanning a registry from a daemonless runner is ordinary
+        hardened CI, and failing it would leave no way out short of
+        editing ``containers.scanners``.
+
+    Pass the default set explicitly to opt into the strict reading.
     """
     import shutil as _shutil  # local import to avoid shadowing the
                               # module-level ``shutil`` reference used
                               # by ``shutil.which`` checks below.
+
+    # ``None`` means "caller named nothing" — see the docstring. Keep
+    # the two facts separate; ``scanners`` alone cannot carry it, since
+    # the default set and an explicit request for the same four names
+    # are the same tuple.
+    named_by_caller = scanners is not None
+    if scanners is None:
+        scanners = DEFAULT_SUB_SCANNERS
 
     cfg = config or {}
     trivy_findings: list[Finding] = []
@@ -573,6 +612,7 @@ def scan_image(
     exposure_findings: list[Finding] = []
     services_findings: list[Finding] = []
     scanner_errors: dict[str, str] = {}
+    degraded: dict[str, str] = {}
     # Sub-scanners that were actually dispatched, as opposed to
     # merely selected. The gate at the end of this function keys off
     # this rather than off ``scanners``: a name can be valid, pass
@@ -697,12 +737,26 @@ def scan_image(
                 scanner_errors[name] = str(exc)
                 continue
             if _sub_scanner_failed(meta):
-                reason = meta.get("error") or meta.get("skipped")
-                logger.error(
-                    "%s scan did not run for %s: %s",
-                    name, target.image_ref, reason,
-                )
-                scanner_errors[name] = str(reason)
+                reason = str(meta.get("error") or meta.get("skipped"))
+                if named_by_caller:
+                    logger.error(
+                        "%s scan did not run for %s: %s",
+                        name, target.image_ref, reason,
+                    )
+                    scanner_errors[name] = reason
+                else:
+                    # Nobody asked for this one by name, so an absent
+                    # precondition degrades the scan rather than
+                    # failing it. Warned, recorded and reported — but
+                    # it does not reach ``scan_failures`` or the exit
+                    # code. See the ``scanners`` note in the docstring.
+                    logger.warning(
+                        "%s scan did not run for %s: %s "
+                        "(not requested by name — scan degraded, "
+                        "not failed)",
+                        name, target.image_ref, reason,
+                    )
+                    degraded[name] = reason
                 continue
             if name == "exposure":
                 exposure_findings = found
@@ -795,6 +849,7 @@ def scan_image(
         services_findings=services_findings,
         combined_findings=combined,
         scanner_errors=scanner_errors,
+        degraded=degraded,
     )
 
 

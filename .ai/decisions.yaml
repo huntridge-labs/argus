@@ -2986,7 +2986,14 @@ decisions:
       - pull_image(platform=...) uses an explicit value verbatim with no fallback,
         including against the local cache: an `if-not-present` hit is only a hit when
         the cached copy's own architecture matches, otherwise the requested platform
-        is pulled. Without an explicit platform, a failed pull retries against a
+        is pulled. If that pull then fails and a local copy did exist, the cached
+        variant is used after all, with a WARNING naming the architecture the caller
+        actually got. A ref that was built locally or `docker load`ed was never
+        pushed, so re-pulling it can only fail — returning False there turned a
+        working scan of a locally-built image into "could not pull or locate image"
+        the moment containers.platform was set, and hit air-gapped runners
+        identically. The rule guards against a *silent* substitution, which a loud
+        warning satisfies. Without an explicit platform, a failed pull retries against a
         published platform, preferring the host's own architecture when the image
         publishes it. That comparison is on os/arch only — _native_platform() never
         emits a variant, so an exact match missed every image published as
@@ -3004,10 +3011,86 @@ decisions:
         direction.
       - ScanEngine._pull_image (argus/core/engine.py) is the second pull path and
         pulls images that are *executed*, not merely read, so its retry prefers this
-        host's architecture from the same manifest read and keeps linux/amd64 only as
-        the fallback for upstreams that ship amd64 only. Sharing
+        host's architecture from the same manifest read and falls back to the first
+        published platform when the manifest names some and none is the host's —
+        linux/amd64 is the fallback only for the *empty* case, where the manifest
+        could not be read and an amd64-only upstream is the likeliest shape. Choosing
+        linux/amd64 against a non-empty list that lacks it is a guaranteed second
+        failure, and the log line prints the chosen platform beside a published list
+        that would contradict it. Sharing
         detect_image_platforms keeps the two paths from drifting. It still retries
         even when the chosen platform is the host's own and the command is therefore
         identical to the one that just failed: `unclassified` is one of only two
         retryable categories, and a plain second attempt is the one thing that
         rescues a transient failure on the path that fetches every scanner image.
+
+  ADR-039:
+    title: A sub-scanner that was not asked for degrades the scan; a named one fails it
+    date: '2026-09-21'
+    status: accepted
+    context: |-
+      ADR-038's companion rule — "a scan that did not run is never a pass" — was
+      implemented by routing every sub-scanner that reported an absent
+      precondition into scanner_errors, which feeds scan_failures and the exit
+      code. exposure and services report `{"skipped": "no container runtime
+      available"}` on a host with no daemon, and both are in the default
+      selection. Every default container scan on such a host therefore went from
+      exit 0 to exit 2 — including the ordinary hardened-CI case of trivy and
+      grype installed as local binaries scanning a remote registry, which needs
+      no daemon at all. There was no way out short of editing
+      containers.scanners.
+    decision: |-
+      Split "could not run" by who asked. A sub-scanner the caller named and that
+      could not run is a scan failure: getting exit 0 back from `--scanners
+      exposure` on a daemonless host is the silent pass the contract exists to
+      prevent. A sub-scanner that only ran because it is in the default set, and
+      whose precondition is absent, is a degradation: the image was scanned, by
+      fewer tools than usual. Degradations are always reported and never gate.
+    alternatives_considered:
+    - name: Keep collapsing skipped and error into scanner_errors
+      rejected_because: Fails every default scan on a daemonless runner, which is a
+        supported and common configuration. A gate that cannot be satisfied without
+        editing config is one users will disable wholesale.
+    - name: Treat `skipped` as never fatal, whoever asked
+      rejected_because: Restores the original silent pass for `--scanners exposure`,
+        which is the bug this branch exists to close.
+    - name: Drop exposure and services from the default selection
+      rejected_because: Loses attack-surface signal for everyone to accommodate one
+        host shape, and breaks the deliberate parity between the two container paths
+        established when they were added.
+    consequences:
+      positive:
+      - Default scans work on daemonless and rootless runners again.
+      - An explicitly requested sub-scanner that cannot run still exits non-zero.
+      - Thinner coverage is visible rather than inferred from a missing section.
+      negative:
+      - Two shapes of "did not run" now exist, and a reader has to know which one a
+        given sub-scanner produced. Mitigated by the distinction being drawn once,
+        in scan_image, off a single input.
+    implementation: |-
+      - scan_image(scanners=None) is the signal, not a default tuple. None means
+        the caller named nothing; the selection then comes from
+        DEFAULT_SUB_SCANNERS. A caller can opt into the strict reading by passing
+        the same four names explicitly. The default tuple could not carry this —
+        "unset" and "explicitly the default four" are the same value.
+      - ContainerEngine._scanners() returns None when containers.scanners is
+        unset, for the same reason. The CLI only sets config["scanners"] from
+        --scanners or the config file, so an unset key genuinely means unnamed.
+      - ContainerScanResult.degraded holds the unrequested skips, parallel to
+        scanner_errors. Only scanner_errors feeds ContainerScanSummary.
+        scan_failures and the exit code; degraded feeds the reporting-only
+        degraded_scans. A raised exception is still a scanner_error whoever asked
+        — that is a tool that broke, not a precondition that was absent.
+      - Surfaced as a `Degraded scans:` line and a per-image `(skipped)` note in
+        the terminal summary, a `degraded` key on ScanResult.metadata in
+        argus-results.json, and a `::notice::` from scripts/ci/
+        render_container_summary.py.
+      - container-scan.yml's aggregation is the workflow half of the same
+        contract and had the mirror-image bug: the argus_scan_incomplete sentinel
+        was parsed, warned about, and then had no effect on overall_status. The
+        corrective guard was `OVERALL = success && IMAGES -eq 0`, which only
+        catches a run where *every* leg failed; one clean leg made IMAGES 1 and a
+        run containing a completely unscanned image reported success. An
+        INCOMPLETE flag now forces overall_status=failure. Pinned by tests that
+        execute the aggregation script rather than inspecting its text — the
+        structural checks passed throughout the bug's lifetime.

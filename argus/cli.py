@@ -174,6 +174,12 @@ def _canonical_container_metadata(result) -> dict:
         metadata["context_path"] = result.context
     if getattr(result, "scanner_errors", None):
         metadata["scanner_errors"] = dict(result.scanner_errors)
+    if getattr(result, "degraded", None):
+        # Kept under its own key rather than merged into
+        # ``scanner_errors``: consumers gate on that one, and a
+        # sub-scanner nobody asked for skipping a precondition must
+        # not read as a failed scan.
+        metadata["degraded"] = dict(result.degraded)
     if getattr(result, "scan_error", None):
         metadata["scan_error"] = result.scan_error
     return metadata
@@ -2897,6 +2903,9 @@ def _print_container_terminal(summary) -> None:
     scan_failures = getattr(summary, "scan_failures", 0)
     if scan_failures:
         print(f"Scanner failures:    {scan_failures}")
+    degraded_scans = getattr(summary, "degraded_scans", 0)
+    if degraded_scans:
+        print(f"Degraded scans:      {degraded_scans}")
     print(f"Total findings:      {summary.total_count}")
     print(f"Unique findings:     {summary.unique_count}")
     print()
@@ -2906,6 +2915,9 @@ def _print_container_terminal(summary) -> None:
         elif getattr(r, "scanner_errors", {}):
             failed = ", ".join(r.scanner_errors.keys())
             status = f"SCAN FAILED ({failed})"
+        elif getattr(r, "degraded", {}):
+            skipped = ", ".join(r.degraded.keys())
+            status = f"{r.total_count} findings (degraded: {skipped})"
         else:
             status = f"{r.total_count} findings"
         print(f"  {r.name:<20} {status}")
@@ -2913,6 +2925,9 @@ def _print_container_terminal(summary) -> None:
             # Truncate long error messages for terminal readability
             short = err[:120] + "..." if len(err) > 120 else err
             print(f"    {tool}: {short}")
+        for tool, why in getattr(r, "degraded", {}).items():
+            short = why[:120] + "..." if len(why) > 120 else why
+            print(f"    {tool} (skipped): {short}")
     print()
 
 

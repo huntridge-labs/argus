@@ -287,14 +287,24 @@ class ContainerEngine:
 
         return targets
 
-    def _scanners(self) -> tuple[str, ...]:
+    def _scanners(self) -> tuple[str, ...] | None:
         """Get enabled sub-scanners from config.
 
-        The default set matches the SDK Scanner-protocol path
+        Returns ``None`` when ``containers.scanners`` is unset, which
+        is how ``scan_image`` learns the operator named nothing: a
+        sub-scanner in the default set whose precondition is absent
+        (``exposure`` on a daemonless runner) then degrades the scan
+        instead of failing it. Returning the default set here instead
+        would make that indistinguishable from an explicit request for
+        the same four names, and every default scan on a host without
+        a container runtime would exit non-zero.
+
+        The default itself lives in ``DEFAULT_SUB_SCANNERS`` and
+        matches the SDK Scanner-protocol path
         (``argus/scanners/container.py``) so ``argus scan container
         --image`` and ``argus scan --config argus.yml`` produce the
         same attack-surface signal. ``syft`` is implicit (driven by
-        the ``sbom`` flag) and is not listed here.
+        the ``sbom`` flag) and is not in it.
 
         Raises ``ValueError`` on an unknown or empty selection. The
         dispatch in ``scan_image`` is a membership test, so an
@@ -305,9 +315,9 @@ class ContainerEngine:
         """
         if self._scanner_selection is not None:
             return self._scanner_selection
-        raw = self.config.get(
-            "scanners", ["trivy", "grype", "exposure", "services"],
-        )
+        raw = self.config.get("scanners")
+        if raw is None:
+            return None
         if isinstance(raw, str):
             raw = raw.split(",")
         self._scanner_selection = tuple(

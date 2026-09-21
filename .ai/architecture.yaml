@@ -218,7 +218,15 @@ components:
         a clean pass over an unscanned image. An unknown or empty selection is a hard
         error, and a sub-scanner that cannot run (no binary + no container runtime, or a
         timeout) raises so the orchestrator records it under scanner_errors rather than
-        returning zero findings — see ADR-037. Every name in SUB_SCANNERS must have a
+        returning zero findings — see ADR-037. Which of the two "did not run" shapes it
+        gets depends on who asked: a sub-scanner the caller NAMED goes to scanner_errors
+        and fails the scan, one that only ran because it is in DEFAULT_SUB_SCANNERS and
+        whose precondition is absent goes to ContainerScanResult.degraded and is reported
+        without gating. scan_image(scanners=None) — not a default tuple — is what carries
+        "the caller named nothing"; ContainerEngine._scanners() returns None for an unset
+        containers.scanners for the same reason. Without the split, every default scan on
+        a daemonless runner exited non-zero, because exposure and services skip there —
+        see ADR-039. Every name in SUB_SCANNERS must have a
         dispatch branch at BOTH sites; the backstop keys off what actually ran, not off
         the selection, because a valid-but-undispatched name (syft, before it got a branch)
         would otherwise satisfy it while scanning nothing. Image architecture is data, not

@@ -706,7 +706,7 @@ jobs:
           # the workflow_call count outputs. It used to live in both scan
           # jobs; a one-sided edit there skewed every count for one scan
           # mode while the other stayed correct, and nothing in CI noticed.
-          CRIT=0; HIGH=0; MED=0; LOW=0; TOTAL=0; IMAGES=0
+          CRIT=0; HIGH=0; MED=0; LOW=0; TOTAL=0; IMAGES=0; INCOMPLETE=0
           shopt -s nullglob
           for f in scanner-counts/*.json; do
             # A scan that did not complete publishes a sentinel instead of
@@ -715,6 +715,7 @@ jobs:
             # scan from one that never ran.
             if jq -e '.argus_scan_incomplete == true' "$f" >/dev/null 2>&1; then
               echo "::warning title=Container scan incomplete::$f reports a scan that did not complete; it is excluded from images_scanned."
+              INCOMPLETE=1
               continue
             fi
             CRIT=$((CRIT + $(jq -r '.critical_count // 0' "$f")))
@@ -740,7 +741,18 @@ jobs:
               *) OVERALL=failure ;;
             esac
           done
-          if [ "$OVERALL" = "success" ] && [ "$IMAGES" -eq 0 ]; then
+          if [ "$INCOMPLETE" -eq 1 ]; then
+            # At least one image published the incomplete sentinel. The
+            # job-result loop above cannot see this: a matrix leg whose
+            # argus run died without writing argus-results.json can still
+            # report "success", and with any other leg scanning cleanly
+            # the IMAGES -eq 0 guard below never fires either. Without
+            # this, a run containing a completely unscanned image is
+            # reported clean — the exact silent pass the sentinel was
+            # added to expose.
+            echo "::error title=Container scan incomplete::At least one image did not complete its scan; overall_status is failure."
+            OVERALL=failure
+          elif [ "$OVERALL" = "success" ] && [ "$IMAGES" -eq 0 ]; then
             # Nothing failed but nothing ran either. Reported as "skipped"
             # rather than "success" so a caller gating on this output is
             # never told an unscanned image is clean.

@@ -1162,3 +1162,47 @@ errors:
       verification: 'A did-not-run scan must produce a "CodeQL analysis did not complete" summary banner and, when fail_on_severity is set, a failing `Check severity threshold` step.'
       reference: .ai/decisions.yaml ADR-036 + .github/actions/scanner-codeql/README.md
     symptom: "generate_summary.py: error: argument --critical: invalid int value: ''"
+  CONTAINER_SCAN_EXITS_2_ON_A_HOST_WITH_NO_CONTAINER_RUNTIME:
+    category: container
+    context: 'A default ``argus scan container`` on a runner with trivy and grype
+
+      installed as local binaries but no Docker/Podman/nerdctl daemon — rootless
+
+      or hardened CI, and the plain remote-registry case, which needs no daemon.
+
+      '
+    root_cause: '``exposure`` and ``services`` are in DEFAULT_SUB_SCANNERS and report
+
+      ``{"skipped": "no container runtime available"}`` when there is no daemon to
+
+      inspect the image with. Routing every "did not run" into scanner_errors made
+
+      scan_failures 2 and the exit code non-zero, for two sub-scanners the operator
+
+      never asked for. There was no way out short of editing containers.scanners.
+
+      '
+    solution:
+      status: 'RESOLVED — an unrequested sub-scanner whose precondition is absent is
+
+        now a degradation (ContainerScanResult.degraded, reported, non-gating). One
+
+        the caller NAMED still fails the scan.
+
+        '
+      steps:
+      - 'Check whether the scan really is degraded rather than broken: ``Degraded scans:``
+        in the terminal summary, or the ``degraded`` key on the result metadata in
+        argus-results.json, names each sub-scanner and why.'
+      - 'If you want those sub-scanners to run, install a container runtime — they read
+        the image through it and have no registry-only mode.'
+      - 'If you want their absence to FAIL the run, name them: ``--scanners
+        trivy,grype,exposure,services`` or the equivalent containers.scanners. Naming
+        them is what turns the skip back into a scan failure.'
+      - 'Do not fix this by treating skipped as never-fatal. ``--scanners exposure``
+        returning exit 0 on a daemonless host is the silent pass the split exists to
+        keep closed. See ADR-039.'
+      verification: 'A daemonless default scan exits 0 with a degraded line; the same
+        host with ``--scanners exposure`` exits 2.'
+      reference: .ai/decisions.yaml ADR-039 + docs/config-reference.md (Exit codes → Requested versus default)
+    symptom: 'exit 2 with scanner_errors {exposure, services}: no container runtime available — install Docker, Podman, or nerdctl'

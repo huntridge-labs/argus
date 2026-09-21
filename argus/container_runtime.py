@@ -263,6 +263,9 @@ def pull_image(
     """
     rt = runtime_cmd()
     inspect_cmd = [rt, "image", "inspect", image]
+    # Set when ``if-not-present`` found a copy of the wrong
+    # architecture and chose to pull anyway — see below.
+    cached_fallback: str | None = None
 
     if policy == "never":
         result = subprocess.run(inspect_cmd, capture_output=True)  # nosec B603
@@ -288,6 +291,16 @@ def pull_image(
                     "pulling the requested platform",
                     image, cached, platform,
                 )
+                # Remember that a usable copy is already here. The pull
+                # below cannot succeed for a ref that was never pushed
+                # — a locally-built ``myapp:local``, or an image put in
+                # the daemon with ``docker load`` on an air-gapped
+                # runner — and returning False there would turn a
+                # working scan into "could not pull or locate image".
+                # The mismatch rule exists to stop the *silent*
+                # substitution of a foreign variant, so falling back to
+                # this copy with a loud warning keeps the property.
+                cached_fallback = cached
             else:
                 logger.debug("Image '%s' found locally — skipping pull", image)
                 return True
@@ -307,12 +320,24 @@ def pull_image(
         rc, stderr, elapsed = _pull(platform)
         if rc == 0:
             logger.info("Pulled %s (%s) in %dms", image, platform, elapsed)
-        else:
-            logger.error(
-                "Failed to pull %s for platform %s after %dms: %s",
-                image, platform, elapsed, stderr.strip()[:300],
+            return True
+        if cached_fallback:
+            logger.warning(
+                "Could not pull %s for platform %s (%s) — falling back to "
+                "the copy already in the local daemon, which is %s. "
+                "Findings for this image describe %s, not %s. This is "
+                "normal for a locally-built or 'docker load'ed image that "
+                "was never pushed to a registry; if you need %s, build or "
+                "load that variant.",
+                image, platform, stderr.strip()[:200] or "no output",
+                cached_fallback, cached_fallback, platform, platform,
             )
-        return rc == 0
+            return True
+        logger.error(
+            "Failed to pull %s for platform %s after %dms: %s",
+            image, platform, elapsed, stderr.strip()[:300],
+        )
+        return False
 
     logger.info("Pulling container image: %s (this may take a moment)", image)
     rc, stderr, elapsed = _pull(None)

@@ -142,3 +142,125 @@ def test_scan_exit_code_is_preserved():
         script = _scan_script(job)
         assert "|| SCAN_EXIT=$?" in script
         assert script.rstrip().endswith("exit $SCAN_EXIT")
+
+
+# ── The aggregation script, executed ────────────────────────────────
+#
+# The tests above pin the shape of container-scan.yml. These run the
+# summary job's `counts` script for real, because the bug they guard
+# against was invisible to a structural check: the incomplete sentinel
+# was parsed, warned about, and then had no effect on `overall_status`.
+# A run with one clean image and one that never scanned reported
+# `success`.
+
+import json
+import os
+import shutil
+import subprocess
+
+
+def _aggregation_script() -> str:
+    summary = _workflow()["jobs"]["container-scan-summary"]
+    return next(
+        s for s in summary["steps"] if s.get("id") == "counts"
+    )["run"]
+
+
+def _run_aggregation(tmp_path, counts: list[dict], **job_results) -> dict:
+    """Execute the counts script over ``counts`` and return its outputs.
+
+    ``counts`` is one dict per published artifact — real count payloads
+    or the ``{"argus_scan_incomplete": true}`` sentinel. ``job_results``
+    override the four job-result env vars, which default to success.
+    """
+    counts_dir = tmp_path / "scanner-counts"
+    counts_dir.mkdir()
+    for i, payload in enumerate(counts):
+        (counts_dir / f"leg-{i}.json").write_text(json.dumps(payload))
+
+    github_output = tmp_path / "github_output"
+    github_output.touch()
+    env = {
+        **os.environ,
+        "GITHUB_OUTPUT": str(github_output),
+        "BUILD_SCAN_RESULT": job_results.get("build", "success"),
+        "REMOTE_SCAN_RESULT": job_results.get("remote", "skipped"),
+        "VALIDATE_RESULT": job_results.get("validate", "success"),
+        "DISCOVER_RESULT": job_results.get("discover", "success"),
+    }
+    proc = subprocess.run(
+        ["bash", "-c", _aggregation_script()],
+        cwd=tmp_path, env=env, capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    return dict(
+        line.split("=", 1)
+        for line in github_output.read_text().splitlines()
+        if "=" in line
+    )
+
+
+jq_required = pytest.mark.skipif(
+    shutil.which("jq") is None, reason="aggregation script needs jq",
+)
+
+
+@jq_required
+def test_clean_run_reports_success(tmp_path):
+    out = _run_aggregation(
+        tmp_path, [{"critical_count": 0, "total_count": 0}],
+    )
+    assert out["overall_status"] == "success"
+    assert out["images_scanned"] == "1"
+
+
+@jq_required
+def test_one_incomplete_leg_among_clean_ones_is_not_success(tmp_path):
+    """The mixed case — the common one, and the one that was silent.
+
+    `IMAGES -eq 0` only catches a run where *every* leg failed. With one
+    image scanning cleanly, IMAGES is 1, that guard never fires, and a
+    caller gating on `overall_status` was told a run containing a
+    completely unscanned image was clean.
+    """
+    out = _run_aggregation(
+        tmp_path,
+        [
+            {"critical_count": 0, "total_count": 0},
+            {"argus_scan_incomplete": True},
+        ],
+    )
+    assert out["overall_status"] == "failure"
+    assert out["images_scanned"] == "1", (
+        "the incomplete leg must still be excluded from images_scanned"
+    )
+
+
+@jq_required
+def test_every_leg_incomplete_is_not_success(tmp_path):
+    out = _run_aggregation(tmp_path, [{"argus_scan_incomplete": True}])
+    assert out["overall_status"] == "failure"
+    assert out["images_scanned"] == "0"
+
+
+@jq_required
+def test_no_counts_at_all_reports_skipped(tmp_path):
+    """Nothing failed, nothing ran — still never `success`."""
+    out = _run_aggregation(tmp_path, [])
+    assert out["overall_status"] == "skipped"
+
+
+@jq_required
+def test_counts_are_summed_across_legs(tmp_path):
+    out = _run_aggregation(
+        tmp_path,
+        [
+            {"critical_count": 1, "high_count": 2, "total_count": 3},
+            {"critical_count": 4, "high_count": 0, "total_count": 4},
+        ],
+    )
+    assert out["critical_count"] == "5"
+    assert out["high_count"] == "2"
+    assert out["total_count"] == "7"
+    assert out["images_scanned"] == "2"
+    assert out["vulnerabilities_found"] == "true"

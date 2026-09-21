@@ -170,8 +170,19 @@ class TestEngineRejectsUnknownNames:
         assert engine._scanners() == ("trivy", "exposure")
 
     def test_default_selection_is_valid(self):
-        """The built-in default must itself pass the gate."""
-        assert ContainerEngine({})._scanners()
+        """The built-in default must itself pass the gate.
+
+        ``_scanners()`` returns None for an unset key — "the operator
+        named nothing" — so the value under test is the constant that
+        ``scan_image`` falls back to.
+        """
+        from argus.scanners.container import (
+            DEFAULT_SUB_SCANNERS,
+            validate_sub_scanners,
+        )
+
+        assert ContainerEngine({})._scanners() is None
+        assert validate_sub_scanners(list(DEFAULT_SUB_SCANNERS))
 
 
 class TestScanImageBackstop:

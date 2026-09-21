@@ -498,3 +498,95 @@ class TestScanImageSubScannerWiring:
 
         assert seen["exposure"] == cfg
         assert seen["services"] == cfg
+
+
+class TestDegradedVersusFailedSubScanners:
+    """A default sub-scanner that cannot run degrades; a named one fails.
+
+    ``exposure`` and ``services`` report an absent precondition as
+    ``{"skipped": ...}``. Collapsing that into ``scanner_errors``
+    unconditionally made every default container scan exit non-zero on
+    a host with no container runtime — trivy + grype as local binaries
+    scanning a registry, which is ordinary hardened CI — with no way
+    out short of editing ``containers.scanners``. Naming the
+    sub-scanner explicitly still fails, because then the caller asked
+    for the thing that could not run.
+    """
+
+    _SKIP = {"skipped": "no container runtime available"}
+
+    def _target(self):
+        from argus.container.discovery import ContainerTarget
+        return ContainerTarget(name="redis", image_ref="redis:7-alpine")
+
+    def _stub(self, monkeypatch):
+        monkeypatch.setattr(
+            container_scanner, "_run_trivy",
+            lambda image_ref, tmp_path, local=False, **_kw: [],
+        )
+        monkeypatch.setattr(
+            container_scanner, "_run_grype",
+            lambda image_ref, tmp_path, local=False, **_kw: [],
+        )
+        monkeypatch.setattr(
+            container_scanner, "_run_syft",
+            lambda image_ref, tmp_path, **_kw: None,
+        )
+        for attr in ("_scan_exposed_ports", "_scan_services"):
+            monkeypatch.setattr(
+                container_scanner._parser, attr,
+                lambda image_ref, cfg: ([], dict(self._SKIP)),
+            )
+
+    def test_default_selection_degrades_and_still_passes(self, monkeypatch):
+        """No runtime + no explicit selection → exit-code-clean scan."""
+        self._stub(monkeypatch)
+
+        result = scan_image(self._target(), sbom=False)
+
+        assert result.scanner_errors == {}
+        assert set(result.degraded) == {"exposure", "services"}
+        assert "no container runtime" in result.degraded["exposure"]
+
+        summary = ContainerScanSummary(results=[result])
+        assert summary.scan_failures == 0
+        assert summary.degraded_scans == 1
+
+    def test_explicit_selection_still_fails(self, monkeypatch):
+        """``--scanners exposure`` on the same host is a scan failure."""
+        self._stub(monkeypatch)
+
+        result = scan_image(
+            self._target(), scanners=("exposure",), sbom=False,
+        )
+
+        assert "exposure" in result.scanner_errors
+        assert result.degraded == {}
+        assert ContainerScanSummary(results=[result]).scan_failures == 1
+
+    def test_passing_the_default_set_by_name_is_explicit(self, monkeypatch):
+        """The strict reading is opt-in-able by naming the default four."""
+        self._stub(monkeypatch)
+
+        result = scan_image(
+            self._target(),
+            scanners=("trivy", "grype", "exposure", "services"),
+            sbom=False,
+        )
+
+        assert set(result.scanner_errors) == {"exposure", "services"}
+        assert result.degraded == {}
+
+    def test_engine_reports_no_selection_when_config_omits_it(self):
+        """``ContainerEngine._scanners()`` returns None for an unset key.
+
+        That ``None`` is the whole signal — returning the default tuple
+        here would make an unset ``containers.scanners`` indis-
+        tinguishable from an explicit request for the same names.
+        """
+        from argus.container.engine import ContainerEngine
+
+        assert ContainerEngine({})._scanners() is None
+        assert ContainerEngine(
+            {"scanners": ["trivy"]},
+        )._scanners() == ("trivy",)
