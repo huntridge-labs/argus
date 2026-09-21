@@ -426,7 +426,7 @@ class TestSyftIsADispatchedSubScanner:
         self._local_image(monkeypatch)
         monkeypatch.setattr(
             "argus.container.scanner._run_syft",
-            lambda ref, path, **kw: calls.append(ref) or True,
+            lambda ref, path, **kw: (calls.append(ref) or True, None),
         )
         scan_image(
             ContainerTarget(name="app", image_ref="app:latest"),
@@ -437,7 +437,7 @@ class TestSyftIsADispatchedSubScanner:
     def test_explicitly_requested_syft_satisfies_the_gate(self, monkeypatch):
         self._local_image(monkeypatch)
         monkeypatch.setattr(
-            "argus.container.scanner._run_syft", lambda *a, **kw: True,
+            "argus.container.scanner._run_syft", lambda *a, **kw: (True, None),
         )
         result = scan_image(
             ContainerTarget(name="app", image_ref="app:latest"),
@@ -449,7 +449,8 @@ class TestSyftIsADispatchedSubScanner:
         """An SBOM that could not be produced is not a pass."""
         self._local_image(monkeypatch)
         monkeypatch.setattr(
-            "argus.container.scanner._run_syft", lambda *a, **kw: False,
+            "argus.container.scanner._run_syft",
+            lambda *a, **kw: (False, "no local syft binary"),
         )
         result = scan_image(
             ContainerTarget(name="app", image_ref="app:latest"),
@@ -463,7 +464,7 @@ class TestSyftIsADispatchedSubScanner:
         self._local_image(monkeypatch)
         monkeypatch.setattr(
             "argus.container.scanner._run_syft",
-            lambda ref, path, **kw: calls.append(ref) or True,
+            lambda ref, path, **kw: (calls.append(ref) or True, None),
         )
         monkeypatch.setattr(
             "argus.container.scanner._run_trivy", lambda *a, **kw: [],
@@ -491,7 +492,7 @@ class TestBackstopFiresOnTheDefaultPath:
             "argus.container.scanner.is_image_local", lambda _ref: True,
         )
         monkeypatch.setattr(
-            "argus.container.scanner._run_syft", lambda *a, **kw: True,
+            "argus.container.scanner._run_syft", lambda *a, **kw: (True, None),
         )
         result = scan_image(
             ContainerTarget(name="app", image_ref="app:latest"),
@@ -508,7 +509,7 @@ class TestBackstopFiresOnTheDefaultPath:
             "argus.container.scanner.is_image_local", lambda _ref: True,
         )
         monkeypatch.setattr(
-            "argus.container.scanner._run_syft", lambda *a, **kw: True,
+            "argus.container.scanner._run_syft", lambda *a, **kw: (True, None),
         )
         result = scan_image(
             ContainerTarget(name="app", image_ref="app:latest"),
@@ -648,7 +649,9 @@ class TestRunSyftReportsWhetherItRan:
             "argus.container.scanner.shutil.which", lambda _n: None,
         )
         monkeypatch.setattr("argus.container_runtime.is_available", lambda: False)
-        assert _run_syft("app:1", tmp_path) is False
+        produced, reason = _run_syft("app:1", tmp_path)
+        assert produced is False
+        assert reason
 
     def test_failed_image_pull_returns_false(self, tmp_path, monkeypatch):
         from argus.container.scanner import _run_syft
@@ -660,7 +663,9 @@ class TestRunSyftReportsWhetherItRan:
         monkeypatch.setattr(
             "argus.container_runtime.pull_image", lambda *a, **kw: False,
         )
-        assert _run_syft("app:1", tmp_path) is False
+        produced, reason = _run_syft("app:1", tmp_path)
+        assert produced is False
+        assert reason
 
     def test_missing_binary_at_exec_time_returns_false(self, tmp_path, monkeypatch):
         from argus.container.scanner import _run_syft
@@ -673,7 +678,9 @@ class TestRunSyftReportsWhetherItRan:
             raise FileNotFoundError("syft")
 
         monkeypatch.setattr("subprocess.run", boom)
-        assert _run_syft("app:1", tmp_path) is False
+        produced, reason = _run_syft("app:1", tmp_path)
+        assert produced is False
+        assert reason
 
     def test_timeout_returns_false(self, tmp_path, monkeypatch):
         import subprocess
@@ -688,7 +695,9 @@ class TestRunSyftReportsWhetherItRan:
             raise subprocess.TimeoutExpired(cmd="syft", timeout=300)
 
         monkeypatch.setattr("subprocess.run", slow)
-        assert _run_syft("app:1", tmp_path) is False
+        produced, reason = _run_syft("app:1", tmp_path)
+        assert produced is False
+        assert reason
 
     def test_successful_invocation_returns_true(self, tmp_path, monkeypatch):
         """Clean exit *and* an SBOM on disk."""
@@ -705,7 +714,9 @@ class TestRunSyftReportsWhetherItRan:
             return subprocess.CompletedProcess([], 0, "", "")
 
         monkeypatch.setattr("subprocess.run", writes_sbom)
-        assert _run_syft("app:1", tmp_path) is True
+        produced, reason = _run_syft("app:1", tmp_path)
+        assert produced is True
+        assert reason is None
 
     def test_non_zero_exit_returns_false(self, tmp_path, monkeypatch):
         """Being invoked is not succeeding.
@@ -727,7 +738,9 @@ class TestRunSyftReportsWhetherItRan:
                 [], 1, "", "unauthorized: authentication required",
             ),
         )
-        assert _run_syft("app:1", tmp_path) is False
+        produced, reason = _run_syft("app:1", tmp_path)
+        assert produced is False
+        assert reason
 
     def test_clean_exit_without_an_sbom_returns_false(self, tmp_path, monkeypatch):
         import subprocess
@@ -741,7 +754,9 @@ class TestRunSyftReportsWhetherItRan:
             "subprocess.run",
             lambda *a, **kw: subprocess.CompletedProcess([], 0, "", ""),
         )
-        assert _run_syft("app:1", tmp_path) is False
+        produced, reason = _run_syft("app:1", tmp_path)
+        assert produced is False
+        assert reason
 
 
 class TestSubScannerFailedPredicate:
@@ -813,7 +828,7 @@ class TestNoSelectionCanProduceASilentPass:
             "argus.container.scanner._run_grype", lambda *a, **k: [],
         )
         monkeypatch.setattr(
-            "argus.container.scanner._run_syft", lambda *a, **k: True,
+            "argus.container.scanner._run_syft", lambda *a, **k: (True, None),
         )
         monkeypatch.setattr(
             ContainerScanner, "_scan_exposed_ports",
@@ -895,3 +910,53 @@ class TestServicesDistinguishesUnreadableFromEmpty:
 
         monkeypatch.setattr("argus.container_runtime.is_available", lambda: False)
         assert ContainerScanner()._extract_paths_from_image("app:1", ("/x",)) is None
+
+
+class TestNoRuntimeHasOneReportingShape:
+    """The same condition must not produce two different facts.
+
+    ``exposure`` and ``services`` each check for a container runtime,
+    and ``_extract_paths_from_image`` checks it again as its own first
+    statement. The inner one returned ``None``, which the caller
+    rewrote into ``{"error": ...}``, while the outer ones returned
+    ``{"skipped": ...}`` — so which an operator saw depended on which
+    check was reached first, and the two drifted independently.
+
+    ADR-039 settles it: an absent runtime is a precondition that was
+    never met, which is ``skipped``. ``error`` means "tried and
+    failed". The distinction is load-bearing — ``skipped`` on an
+    unnamed sub-scanner degrades the scan, ``error`` fails it — so a
+    missing daemon reporting as ``error`` would fail every default
+    container scan on a daemonless host all over again.
+    """
+
+    def _no_runtime(self, monkeypatch):
+        monkeypatch.setattr(
+            "argus.container_runtime.is_available", lambda: False,
+        )
+        monkeypatch.setattr(
+            "argus.container_runtime.runtime_cmd", lambda: "docker",
+        )
+
+    def test_exposure_reports_skipped_not_error(self, monkeypatch):
+        self._no_runtime(monkeypatch)
+        _findings, meta = ContainerScanner()._scan_exposed_ports("app:1", {})
+        assert "skipped" in meta
+        assert "error" not in meta
+
+    def test_services_reports_skipped_not_error(self, monkeypatch):
+        self._no_runtime(monkeypatch)
+        _findings, meta = ContainerScanner()._scan_services("app:1", {})
+        assert "skipped" in meta
+        assert "error" not in meta
+
+    def test_both_name_the_same_remedy(self, monkeypatch):
+        """One builder, so the advice cannot drift between the two."""
+        self._no_runtime(monkeypatch)
+        scanner = ContainerScanner()
+        _f1, exposure = scanner._scan_exposed_ports("app:1", {})
+        _f2, services = scanner._scan_services("app:1", {})
+        for meta in (exposure, services):
+            assert "install Docker, Podman, or nerdctl" in meta["skipped"]
+        # Same condition, same prefix, different capability named.
+        assert exposure["skipped"] != services["skipped"]

@@ -78,7 +78,17 @@ def is_available() -> bool:
 # then never answers — proxy blackhole, stale DNS behind a firewall —
 # would otherwise hang ``argus scan container`` forever. There is no
 # job-level timeout to fall back on in local CLI use.
+#
+# An unrecognised ``ARGUS_CONTAINER_RUNTIME`` makes two attempts, so the
+# real worst case for ``detect_image_platforms`` is twice this.
 _MANIFEST_TIMEOUT = 60
+
+# ``docker image inspect`` reads the local daemon and never touches a
+# network, so it gets its own, much shorter bound. Sharing
+# _MANIFEST_TIMEOUT let a wedged daemon stall the cache-hit check — the
+# fast path of ``pull_image`` — for a full minute on a call that should
+# answer in milliseconds.
+_LOCAL_INSPECT_TIMEOUT = 10
 
 
 def _platform_blocks(data: object) -> list[dict]:
@@ -153,13 +163,16 @@ def detect_image_platforms(image: str) -> list[str]:
     # Docker needs --verbose to emit a platform block; Podman rejects the
     # flag outright. Branch on the runtime rather than probing twice, so
     # the common path costs exactly one call. An unrecognised runtime
-    # (ARGUS_CONTAINER_RUNTIME can name anything on PATH) gets the Docker
-    # form first and one retry without the flag.
-    attempts = [[rt, "manifest", "inspect", image]]
-    if "podman" not in name:
-        attempts.insert(0, [rt, "manifest", "inspect", "--verbose", image])
-        if "docker" in name:
-            attempts.pop()  # docker: --verbose only, no second guess
+    # (ARGUS_CONTAINER_RUNTIME can name anything on PATH) is the only
+    # case that guesses, and it tries both forms.
+    verbose = [rt, "manifest", "inspect", "--verbose", image]
+    plain = [rt, "manifest", "inspect", image]
+    if "docker" in name:
+        attempts = [verbose]
+    elif "podman" in name:
+        attempts = [plain]
+    else:
+        attempts = [verbose, plain]
 
     stdout = ""
     for argv in attempts:
@@ -227,7 +240,7 @@ def _local_image_os_arch(image: str) -> str | None:
     try:
         result = subprocess.run(  # nosec B603 — argv list, no shell; see module header
             [rt, "image", "inspect", "--format", "{{.Os}}/{{.Architecture}}", image],
-            capture_output=True, text=True, timeout=_MANIFEST_TIMEOUT,
+            capture_output=True, text=True, timeout=_LOCAL_INSPECT_TIMEOUT,
         )
     except (subprocess.TimeoutExpired, OSError):
         return None
@@ -378,12 +391,15 @@ def pull_image(
             # private registry whose manifest this host cannot read
             # reaches the same place.
             logger.warning(
-                "Could not determine which platforms %s publishes (%s "
-                "cannot read its registry manifest), so the failed pull "
-                "was not retried. If this image is built for a different "
-                "architecture than this host, name it explicitly with "
-                "containers.platform in argus.yml or --platform on the "
-                "CLI (e.g. linux/arm64).",
+                "No platform information for %s, so the failed pull was "
+                "not retried. Either %s cannot read the registry manifest "
+                "(nerdctl has no 'manifest inspect'; a private registry "
+                "may need credentials), or the manifest carries no "
+                "platform block — podman reports one only for multi-arch "
+                "manifest lists, not for a plain single-arch image. If "
+                "this image is built for a different architecture than "
+                "this host, name it explicitly with containers.platform "
+                "in argus.yml or --platform on the CLI (e.g. linux/arm64).",
                 image, rt,
             )
 

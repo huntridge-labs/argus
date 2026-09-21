@@ -383,6 +383,8 @@ class TestScanImageRawOutputPersistence:
         def fake_syft(image_ref, tmp_path, **_kwargs):
             if "syft" in write_files:
                 (tmp_path / "syft-sbom.json").write_text('{"artifacts": []}')
+                return True, None
+            return False, "syft not stubbed for this case"
 
         monkeypatch.setattr(scanner_mod, "_run_trivy", fake_trivy)
         monkeypatch.setattr(scanner_mod, "_run_grype", fake_grype)
@@ -465,7 +467,9 @@ class TestScanImageRawOutputPersistence:
 
         monkeypatch.setattr(scanner_mod, "_run_trivy", fake_trivy)
         monkeypatch.setattr(scanner_mod, "_run_grype", lambda *a, **kw: [])
-        monkeypatch.setattr(scanner_mod, "_run_syft", lambda *a, **kw: None)
+        monkeypatch.setattr(
+            scanner_mod, "_run_syft", lambda *a, **kw: (False, "stubbed off"),
+        )
         monkeypatch.setattr(scanner_mod, "is_image_local", lambda ref: False)
 
         raw_dir = tmp_path / "raw" / "app"

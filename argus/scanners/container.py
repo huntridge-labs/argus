@@ -324,11 +324,57 @@ def _platform_args(config: dict | None) -> list[str]:
     ``exposure`` and ``services`` sub-scanners honoured it — one run
     could mix platform-pinned attack-surface results with
     host-resolved CVE results for different variants of the same image.
+
+    The value is stripped here because the schema validates
+    ``_PLATFORM_RE.match(plat.strip())`` — so ``platform: " linux/arm64 "``
+    passes ``argus validate`` — while the raw value used to flow on
+    verbatim and reach trivy as ``--platform ' linux/arm64 '``, which it
+    rejects. ``_os_arch`` likewise never matched a cached
+    ``linux/arm64``, forcing a re-pull on every cache hit. Normalising on
+    the runtime side means the value the schema approved is the value
+    that runs.
     """
-    platform = (config or {}).get("platform")
+    platform = _platform_value(config)
     if not platform:
         return []
-    return ["--platform", str(platform)]
+    return ["--platform", platform]
+
+
+def _platform_value(config: dict | None) -> str | None:
+    """Return the configured platform, normalised, or None when unset.
+
+    One reader for every consumer of ``containers.platform``: the
+    ``--platform`` flag built above, and the ``pull_image(platform=...)``
+    calls in the exposure and services sub-scanners. They previously
+    read the raw value independently, so a fix to one left the others
+    holding the unnormalised string.
+    """
+    return str((config or {}).get("platform") or "").strip() or None
+
+
+def _no_runtime_meta(capability: str) -> dict:
+    """The single "no container runtime" result shape.
+
+    ``exposure`` and ``services`` both need a daemon to open the image,
+    and ``_extract_paths_from_image`` checks the same condition again as
+    its own first statement. With three sites there were two shapes:
+    these callers returned ``skipped`` while the inner ``None`` was
+    rewritten by the caller into ``error`` — so which message an
+    operator saw for a missing runtime depended on which check ran
+    first, and an edit to one was invisible to the others.
+
+    ADR-039 settles which shape is right: an absent container runtime is
+    a precondition that was never met, so it is ``skipped`` — reported
+    as a degradation when the sub-scanner was not named, and as a
+    failure when it was. ``error`` stays for "we tried and it failed",
+    which is what an unpullable image is.
+    """
+    return {
+        "skipped": (
+            "no container runtime available — install Docker, Podman, or "
+            f"nerdctl to enable {capability}"
+        ),
+    }
 
 
 def _sub_scanner_failed(meta: object) -> bool:
@@ -652,10 +698,7 @@ class ContainerScanner:
 
         rt = container_runtime.runtime_cmd()
         if not container_runtime.is_available():
-            return [], {
-                "skipped": "no container runtime available — install Docker, "
-                           "Podman, or nerdctl to enable exposed-port discovery",
-            }
+            return [], _no_runtime_meta("exposed-port discovery")
 
         # Ensure the image is present locally before inspecting.
         # ``if-not-present`` is a fast cache hit when trivy/grype/syft
@@ -671,7 +714,7 @@ class ContainerScanner:
         if not container_runtime.pull_image(
             image_ref,
             policy="if-not-present",
-            platform=config.get("platform"),
+            platform=_platform_value(config),
         ):
             return [], {
                 "error": f"could not pull or locate image {image_ref} for inspection",
@@ -808,6 +851,17 @@ class ContainerScanner:
 
         rt = container_runtime.runtime_cmd()
         if not container_runtime.is_available():
+            # Defence in depth for a direct API caller. Both
+            # sub-scanners that use this helper check the same condition
+            # first and report it as ``skipped`` via
+            # ``_no_runtime_meta`` — reaching here means nobody did, and
+            # the caller gets the generic "could not read the
+            # filesystem" shape. Logged so the real cause is not lost in
+            # that generalisation.
+            logger.debug(
+                "No container runtime available — cannot extract paths "
+                "from %s", image_ref,
+            )
             return None
 
         # Ensure the image is locally present. The container scanner's
@@ -919,13 +973,10 @@ class ContainerScanner:
         from argus import container_runtime
 
         if not container_runtime.is_available():
-            return [], {
-                "skipped": "no container runtime available — install Docker, "
-                           "Podman, or nerdctl to enable service enumeration",
-            }
+            return [], _no_runtime_meta("service enumeration")
 
         files = self._extract_paths_from_image(
-            image_ref, _SERVICE_PATHS, platform=config.get("platform"),
+            image_ref, _SERVICE_PATHS, platform=_platform_value(config),
         )
         if files is None:
             # The image was never opened — an unpullable ref, or a
@@ -1173,10 +1224,34 @@ class ContainerScanner:
             if container_output.exists() and container_output != output_file:
                 container_output.rename(output_file)
 
-        if output_file.exists():
+        # "A file exists at the output path" is not success. syft can
+        # exit non-zero having already created the file — `unauthorized:
+        # authentication required` against a private image leaves a
+        # zero-length or truncated syft-sbom.json behind. With only the
+        # existence check, meta carried returncode: 1 and no `error`
+        # key, `_sub_scanner_failed` returned False, and
+        # `scanners.container.scanners: [syft]` reported PASS over an
+        # SBOM that was never produced.
+        #
+        # argus/container/scanner.py's `_run_syft` gained these two
+        # guards; this is the other syft implementation, and the two
+        # have to agree on what a completed SBOM is.
+        if (
+            output_file.exists()
+            and result.returncode == 0
+            and output_file.stat().st_size > 0
+        ):
             meta["sbom_path"] = str(output_file)
         else:
-            meta["error"] = result.stderr.strip() or "No output produced"
+            meta["error"] = (
+                result.stderr.strip()
+                or (
+                    f"syft exited {result.returncode} and produced no "
+                    "usable SBOM"
+                    if result.returncode != 0
+                    else "No output produced"
+                )
+            )
 
         return meta
 

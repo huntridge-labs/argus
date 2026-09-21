@@ -496,8 +496,19 @@ Set `platform` explicitly when this host cannot read that manifest — typically
 | Runtime | Manifest read | Automatic retry |
 |---------|---------------|-----------------|
 | Docker | `manifest inspect --verbose` | Yes |
-| Podman | `manifest inspect` (OCI index) | Yes |
+| Podman | `manifest inspect` (OCI index) | Multi-arch images only — set `platform` for a single-arch one |
 | nerdctl | not supported | No — set `platform` |
+
+The Podman caveat is a property of the payload, not a gap in Argus.
+`podman manifest inspect` on a manifest list returns an OCI index whose
+entries carry a `platform` block; on a plain single-arch image it
+returns that image's own manifest — `schemaVersion`, `config`, `layers`
+— which names no architecture anywhere. The architecture lives in the
+config blob, which is a second registry fetch Argus does not make on
+the pull-failure path. So `arm64v8/alpine:3.18` under Podman on an
+amd64 host has no platform to retry against and needs `platform` set
+explicitly. Docker's `--verbose` form reports a `Descriptor.platform`
+for both shapes, which is why it needs no such caveat.
 
 ```yaml
 containers:

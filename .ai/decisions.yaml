@@ -3094,6 +3094,19 @@ decisions:
         the terminal summary, a `degraded` key on ScanResult.metadata in
         argus-results.json, and a `::notice::` from scripts/ci/
         render_container_summary.py.
+      - The duplicated scan step in container-scan.yml's two scan jobs is
+        deliberately NOT extracted into a composite action. A reusable
+        workflow consumed cross-repo cannot reference a local action by
+        `./` path — that resolves against the CALLER's checkout — so it
+        would have to be `huntridge-labs/argus/.github/actions/<x>@<tag>`,
+        which does not exist until release-it publishes the tag. The
+        extraction would therefore be unverifiable on the PR that makes
+        it, on a workflow whose whole job is refusing to report a scan it
+        did not run. The count mapping, which was the part that could
+        drift silently into wrong numbers, already lives once in the
+        summary job; what remains duplicated is the argus invocation, and
+        `test_scan_steps_are_identical` fails on any one-sided edit to it.
+        Revisit when there is a released tag to point at.
       - container-scan.yml's aggregation is the workflow half of the same
         contract and had the mirror-image bug: the argus_scan_incomplete sentinel
         was parsed, warned about, and then had no effect on overall_status. The

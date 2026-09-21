@@ -698,15 +698,15 @@ def scan_image(
         # satisfy the "something actually ran" gate below.
         syft_requested = "syft" in scanners
         if sbom or syft_requested:
-            produced = _run_syft(
+            produced, syft_reason = _run_syft(
                 target.image_ref, tmp_path, local=is_local, config=cfg,
             )
             if syft_requested:
                 ran.add("syft")
                 if not produced:
                     scanner_errors["syft"] = (
-                        "syft was requested but could not run: no local "
-                        "binary and no container runtime available"
+                        "syft was requested but produced no SBOM: "
+                        f"{syft_reason or 'reason unknown'}"
                     )
 
         # Attack-surface sub-scanners. They take an image ref + a
@@ -1390,16 +1390,24 @@ def _run_grype(
 def _run_syft(
     image_ref: str, tmp_path: Path,
     local: bool = False, config: dict | None = None,
-) -> bool:
+) -> tuple[bool, str | None]:
     """Run syft to generate an SBOM (best-effort).
 
     Tries local binary first, falls back to Docker container image.
 
-    Returns True when syft was actually invoked, False when neither a
-    local binary nor a container runtime was available to run it. An
+    Returns ``(produced, reason)``: True with ``None`` when syft wrote a
+    usable SBOM, False with a one-line reason when it did not. An
     implicit SBOM (``sbom=True``) ignores the result — it has always
     been best-effort — but a caller who named ``syft`` in ``scanners``
     is owed an error rather than a clean, empty pass.
+
+    The reason is returned rather than only logged because there are six
+    distinct ways to get False — no binary and no runtime, an unpullable
+    scanner image, a timeout, a missing binary at exec, a non-zero exit
+    (auth failure, unpullable target), and a clean exit that wrote
+    nothing. The caller used to report all six as "no local binary and
+    no container runtime available", sending an operator hunting for a
+    dead daemon when the real cause was a 401.
     """
     import subprocess
 
@@ -1416,11 +1424,15 @@ def _run_syft(
 
         image = _resolve_sub_scanner_image(get_image("syft"), config)
         if not image or not container_runtime.is_available():
-            logger.debug("syft not available (local or container) — skipping SBOM")
-            return False
+            reason = (
+                "no local syft binary and no container runtime available"
+            )
+            logger.debug("%s — skipping SBOM", reason)
+            return False, reason
         if not container_runtime.pull_image(image):
-            logger.debug("Failed to pull syft image — skipping SBOM")
-            return False
+            reason = f"could not pull the syft image {image}"
+            logger.debug("%s — skipping SBOM", reason)
+            return False, reason
 
         logger.info("Running syft via container: %s", image)
         rt = container_runtime.runtime_cmd()
@@ -1456,25 +1468,30 @@ def _run_syft(
             env=_subprocess_env(auth_env),
         )
     except subprocess.TimeoutExpired:
-        logger.warning("syft timed out generating SBOM for %s", image_ref)
-        return False
+        reason = "syft timed out after 300s"
+        logger.warning("%s generating SBOM for %s", reason, image_ref)
+        return False, reason
     except FileNotFoundError:
-        logger.debug("syft binary not found")
-        return False
+        reason = "the syft binary disappeared before it could be run"
+        logger.debug(reason)
+        return False, reason
 
     # Being invoked is not the same as succeeding. An unpullable image or a
     # registry auth failure exits non-zero with no SBOM written; reporting
     # that as "ran" let ``--scanners syft`` exit 0 over an image syft never
     # read, which is the silent pass this module exists to prevent.
     if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip()
         logger.warning(
             "syft failed for %s (rc=%d): %s",
-            image_ref, proc.returncode, (proc.stderr or "").strip()[:300],
+            image_ref, proc.returncode, stderr[:300],
         )
-        return False
+        return False, (
+            f"syft exited {proc.returncode}: {stderr[:200]}"
+            if stderr else f"syft exited {proc.returncode}"
+        )
     if not output_file.exists() or output_file.stat().st_size == 0:
-        logger.warning(
-            "syft exited cleanly but wrote no SBOM for %s", image_ref,
-        )
-        return False
-    return True
+        reason = "syft exited cleanly but wrote no SBOM"
+        logger.warning("%s for %s", reason, image_ref)
+        return False, reason
+    return True, None

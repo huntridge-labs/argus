@@ -8,6 +8,24 @@ import pytest
 import argus.container_runtime as cr
 
 
+@pytest.fixture(autouse=True)
+def _reset_runtime_cache(monkeypatch):
+    """Keep ``_cached_runtime`` from leaking between tests, both ways.
+
+    The ``_only_*`` helpers below reset the global on entry but never
+    restore it, so whichever ran last left ``podman``/``nerdctl``/
+    ``mystery`` behind for any later test that calls ``runtime_cmd()``
+    without its own reset — and that test's ``shutil.which`` stub is
+    then silently ignored. It passes or fails depending on collection
+    order, which is the worst kind of flake: green in CI, red on
+    someone's ``-k`` run, or the reverse.
+
+    ``monkeypatch`` restores on teardown, so this closes the write side
+    as well as the read side.
+    """
+    monkeypatch.setattr(cr, "_cached_runtime", None)
+
+
 def _only_docker(monkeypatch):
     """Make ``docker`` the sole runtime on PATH.
 
