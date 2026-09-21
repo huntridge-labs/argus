@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 
@@ -47,7 +48,19 @@ def _bash4() -> str | None:
     skips locally and executes in CI rather than forcing the workflow
     to avoid associative arrays for a shell it never runs on.
     """
-    for candidate in ("bash", "/opt/homebrew/bin/bash", "/usr/local/bin/bash"):
+    candidates = [
+        # An explicit override first: on a machine whose system bash is
+        # 3.2 and whose package manager belongs to another account,
+        # pointing at a locally built bash is the only way to run these
+        # without changing the machine.
+        os.environ.get("ARGUS_TEST_BASH", ""),
+        "bash",
+        "/opt/homebrew/bin/bash",
+        "/usr/local/bin/bash",
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
         path = shutil.which(candidate) if "/" not in candidate else candidate
         if not path or not os.path.exists(path):
             continue
@@ -69,18 +82,55 @@ bash_required = pytest.mark.skipif(
 )
 
 
-def _resolve_script() -> str:
+def _resolve_script(workflow_inputs: dict[str, str]) -> str:
+    """The step's `run:` body with its `${{ inputs.x }}` expressions filled.
+
+    The step reads most of its configuration from `env:`, but one value
+    — `enable_code_security` — is interpolated straight into the script
+    body, which bash cannot parse. Substituting here keeps the test
+    running the real logic instead of a copy. Anything left
+    unsubstituted is an error rather than a silent empty string, so a
+    future expression added to this script cannot quietly change what
+    these tests exercise.
+    """
     workflow = yaml.safe_load(WORKFLOW.read_text())
     steps = workflow["jobs"]["scan-coordinator"]["steps"]
-    return next(s for s in steps if s.get("id") == "resolve")["run"]
+    script = next(s for s in steps if s.get("id") == "resolve")["run"]
+
+    for name, value in workflow_inputs.items():
+        script = re.sub(
+            r"\$\{\{\s*inputs\." + re.escape(name) + r"\s*\}\}",
+            value,
+            script,
+        )
+
+    leftover = re.findall(r"\$\{\{[^}]*\}\}", script)
+    assert not leftover, (
+        f"unsubstituted workflow expression(s) in the resolve script: "
+        f"{sorted(set(leftover))}. Add them to _resolve()'s inputs so the "
+        f"test states a value instead of blanking one."
+    )
+    return script
 
 
-def _resolve(tmp_path, scanners: str = "", scan_type: str = ""):
-    """Run the step and return ``(returncode, outputs, combined log)``."""
+def _resolve(
+    tmp_path,
+    scanners: str = "",
+    scan_type: str = "",
+    enable_code_security: str = "true",
+):
+    """Run the step and return ``(returncode, outputs, combined log)``.
+
+    ``enable_code_security`` defaults to ``true`` here, unlike the
+    workflow input's ``false``, so a test that says nothing about
+    CodeQL is testing selection rather than the Code Security gate.
+    The gate itself has its own test below.
+    """
     github_output = tmp_path / "github_output"
     github_output.touch()
+    script = _resolve_script({"enable_code_security": enable_code_security})
     proc = subprocess.run(
-        [BASH4, "-c", _resolve_script()],
+        [BASH4, "-c", script],
         cwd=tmp_path,
         env={
             **os.environ,
@@ -188,3 +238,21 @@ def test_scanners_input_wins_over_scan_type(tmp_path):
     )
     assert rc == 0, log
     assert _selected(outputs) == {"bandit"}
+
+
+@bash_required
+def test_codeql_is_dropped_when_code_security_is_off(tmp_path):
+    """The gate that made `enable_code_security` worth substituting.
+
+    CodeQL needs GitHub Code Security. When it is off, RUN[codeql] has
+    to be finalized to false *before* the emit loop, or a stale
+    run_codeql=true reaches $GITHUB_OUTPUT and the scanner-codeql job
+    triggers anyway behind a "skipped" warning.
+    """
+    rc, outputs, log = _resolve(
+        tmp_path, scanners="codeql", enable_code_security="false",
+    )
+    assert rc == 0, log
+    assert outputs["run_codeql"] == "false"
+    assert outputs["run_any"] == "false"
+    assert "CodeQL Disabled" in log
