@@ -426,14 +426,25 @@ jobs:
             infrastructure-only) SCANNERS_RAW='infrastructure' ;;
             full|'') SCANNERS_RAW='all' ;;
             *)
-              # Same rule as the unknown-scanner refusal below: falling
-              # back to 'all' meant `scan_type: container_only` (an
-              # underscore typo of container-only) ran codeql, opengrep,
-              # bandit, gitleaks, checkov, trivy-iac and sbom instead of
-              # the container scan that was asked for, then reported
-              # green over a request nobody had made.
-              echo "::error title=Unknown scan type::Scan type '$SCAN_TYPE_RAW' is not recognized. Valid values: codeql-only, sast-only, container-only, infrastructure-only, full. Nothing was run."
-              exit 1
+              # Not one of the five legacy spellings — hand it to the
+              # token loop below rather than refusing it here. Every
+              # other name this step understands is defined in exactly
+              # one place (apply_token), and a second hardcoded list
+              # here rejected values that list accepts: `scan_type:
+              # secrets-only` is documented on the `scanners` input and
+              # handled by `secrets|secrets-only`, yet it failed with
+              # "Unknown scan type. Nothing was run."
+              #
+              # Still fail-closed. An unrecognised value reaches
+              # UNKNOWN_TOKENS below and exits 1 there, so falling back
+              # to 'all' — running codeql, opengrep, bandit, gitleaks,
+              # checkov, trivy-iac and sbom over a request nobody made,
+              # then reporting it green — remains impossible. The
+              # refusal just names the token and lists the valid ones.
+              #
+              # A typo like `container_only` never arrives here at all:
+              # normalize() rewrote the underscore before the case.
+              SCANNERS_RAW="$SCAN_TYPE_RAW"
               ;;
           esac
         fi
