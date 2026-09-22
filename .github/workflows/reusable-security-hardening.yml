@@ -531,7 +531,7 @@ jobs:
     name: Code Quality & Linting
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_lint == 'true'
-    uses: huntridge-labs/argus/.github/workflows/linting.yml@1.12.5
+    uses: huntridge-labs/argus/.github/workflows/linting.yml@1.12.6
     with:
       post_pr_comment: false
     permissions:
@@ -545,7 +545,7 @@ jobs:
     name: CodeQL Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_codeql == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-codeql.yml@1.12.5
+    uses: huntridge-labs/argus/.github/workflows/scanner-codeql.yml@1.12.6
     with:
       allow_failure: ${{ inputs.allow_failure }}
       codeql_languages: ${{ inputs.codeql_languages }}
@@ -564,7 +564,7 @@ jobs:
     name: OpenGrep Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_opengrep == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-opengrep.yml@1.12.5
+    uses: huntridge-labs/argus/.github/workflows/scanner-opengrep.yml@1.12.6
     with:
       allow_failure: ${{ inputs.allow_failure }}
       post_pr_comment: false
@@ -581,7 +581,7 @@ jobs:
     name: Bandit Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_bandit == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-bandit.yml@1.12.5
+    uses: huntridge-labs/argus/.github/workflows/scanner-bandit.yml@1.12.6
     with:
       allow_failure: ${{ inputs.allow_failure }}
       post_pr_comment: false
@@ -599,7 +599,7 @@ jobs:
     name: Gitleaks Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_gitleaks == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-gitleaks.yml@1.12.5
+    uses: huntridge-labs/argus/.github/workflows/scanner-gitleaks.yml@1.12.6
     with:
       allow_failure: ${{ inputs.allow_failure }}
       post_pr_comment: false
@@ -622,7 +622,7 @@ jobs:
     name: ClamAV Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_clamav == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-clamav.yml@1.12.5
+    uses: huntridge-labs/argus/.github/workflows/scanner-clamav.yml@1.12.6
     with:
       allow_failure: ${{ inputs.allow_failure }}
       post_pr_comment: false
@@ -640,7 +640,7 @@ jobs:
     name: Container Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_container == 'true'
-    uses: huntridge-labs/argus/.github/workflows/container-scan.yml@1.12.5
+    uses: huntridge-labs/argus/.github/workflows/container-scan.yml@1.12.6
     with:
       post_pr_comment: false
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -658,7 +658,7 @@ jobs:
     name: SBOM Generator
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_sbom == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-syft.yml@1.12.5
+    uses: huntridge-labs/argus/.github/workflows/scanner-syft.yml@1.12.6
     with:
       allow_failure: ${{ inputs.allow_failure }}
       enable_code_security: ${{ inputs.enable_code_security }}
@@ -674,7 +674,7 @@ jobs:
     name: Trivy IaC Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_trivy_iac == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-iac.yml@1.12.5
+    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-iac.yml@1.12.6
     with:
       allow_failure: ${{ inputs.allow_failure }}
       iac_path: ${{ inputs.iac_path }}
@@ -692,7 +692,7 @@ jobs:
     name: Checkov Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_checkov == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-checkov.yml@1.12.5
+    uses: huntridge-labs/argus/.github/workflows/scanner-checkov.yml@1.12.6
     with:
       allow_failure: ${{ inputs.allow_failure }}
       iac_path: ${{ inputs.iac_path }}
@@ -710,7 +710,7 @@ jobs:
     name: Trivy Container Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_trivy_container == 'true' && inputs.container_image_ref != ''
-    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-container.yml@1.12.5
+    uses: huntridge-labs/argus/.github/workflows/scanner-trivy-container.yml@1.12.6
     with:
       allow_failure: ${{ inputs.allow_failure }}
       image_ref: ${{ inputs.container_image_ref }}
@@ -729,7 +729,7 @@ jobs:
     name: Grype Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_grype == 'true' && inputs.container_image_ref != ''
-    uses: huntridge-labs/argus/.github/workflows/scanner-grype.yml@1.12.5
+    uses: huntridge-labs/argus/.github/workflows/scanner-grype.yml@1.12.6
     with:
       allow_failure: ${{ inputs.allow_failure }}
       image_ref: ${{ inputs.container_image_ref }}
@@ -748,7 +748,7 @@ jobs:
     name: ZAP (DAST) Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_zap == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-zap.yml@1.12.5
+    uses: huntridge-labs/argus/.github/workflows/scanner-zap.yml@1.12.6
     with:
       allow_failure: ${{ inputs.allow_failure }}
       scan_mode: ${{ inputs.zap_scan_mode }}
@@ -773,7 +773,7 @@ jobs:
     name: OSV Dependency Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_osv == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-osv.yml@1.12.5
+    uses: huntridge-labs/argus/.github/workflows/scanner-osv.yml@1.12.6
     with:
       allow_failure: ${{ inputs.allow_failure }}
       post_pr_comment: false
@@ -793,7 +793,7 @@ jobs:
     name: Dependency Review Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_dependency_review == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-dependency-review.yml@1.12.5
+    uses: huntridge-labs/argus/.github/workflows/scanner-dependency-review.yml@1.12.6
     with:
       allow_failure: ${{ inputs.allow_failure }}
       post_pr_comment: false
@@ -814,7 +814,7 @@ jobs:
     name: Supply Chain Scanner
     needs: scan-coordinator
     if: needs.scan-coordinator.outputs.run_supply_chain == 'true'
-    uses: huntridge-labs/argus/.github/workflows/scanner-supply-chain.yml@1.12.5
+    uses: huntridge-labs/argus/.github/workflows/scanner-supply-chain.yml@1.12.6
     with:
       allow_failure: ${{ inputs.allow_failure }}
       post_pr_comment: false
@@ -871,7 +871,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: huntridge-labs/argus
-          ref: 1.12.5
+          ref: 1.12.6
           path: .argus-actions
 
       - name: Aggregate scanner results

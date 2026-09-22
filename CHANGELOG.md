@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.12.6](https://github.com/huntridge-labs/argus/compare/1.12.5...1.12.6) (2026-09-22)
+
+### Bug Fixes
+
+* **container:** a scan that did not run is never a pass ([#427](https://github.com/huntridge-labs/argus/issues/427)) ([99c0166](https://github.com/huntridge-labs/argus/commit/99c01660954aa2106165edad7b6724eb437aa460))
+* **containers:** re-pin clamav 1.5.4 digest after weekly re-push ([#434](https://github.com/huntridge-labs/argus/issues/434)) ([9ba6f13](https://github.com/huntridge-labs/argus/commit/9ba6f13fbd03ea7e8b2d891abadae5b694d5737c)), references [#426](https://github.com/huntridge-labs/argus/issues/426)
+
+### Security Tools
+
+* **deps:** Update dependency zizmor to v1.30.1 ([#431](https://github.com/huntridge-labs/argus/issues/431)) ([32e1f51](https://github.com/huntridge-labs/argus/commit/32e1f51f3330ebd418a4d0c62f8d06d6870b1910))
+
+### Dependencies
+
+* **deps:** bump the npm-minor-patch group across 1 directory with 2 updates ([#432](https://github.com/huntridge-labs/argus/issues/432)) ([0d2b932](https://github.com/huntridge-labs/argus/commit/0d2b932c4a3e70448ce70bd9d16da441c368a300))
+* **deps:** bump the pip-all group across 1 directory with 2 updates ([#433](https://github.com/huntridge-labs/argus/issues/433)) ([11c55cf](https://github.com/huntridge-labs/argus/commit/11c55cfb25cc6490da52220fa7aabb9f9f905dc5))
+* **deps:** Update container-images ([#430](https://github.com/huntridge-labs/argus/issues/430)) ([aed9782](https://github.com/huntridge-labs/argus/commit/aed97826ab1f12f8aecd3191420cfb641bfd8265))
+
+
 ## [1.12.5](https://github.com/huntridge-labs/argus/compare/1.12.4...1.12.5) (2026-09-15)
 
 ### Bug Fixes
