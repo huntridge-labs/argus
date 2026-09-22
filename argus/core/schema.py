@@ -8,6 +8,7 @@ No external dependencies — pure Python stdlib.
 """
 
 import logging
+import re
 from typing import Any
 
 from argus.core.secrets import (
@@ -116,13 +117,27 @@ _EXECUTION_KEYS = {
 }
 
 # Top-level containers block keys
-_CONTAINERS_KEYS = {"images", "discover", "search_paths", "scanners", "vex"}
+_CONTAINERS_KEYS = {
+    "images", "discover", "search_paths", "scanners", "vex", "platform",
+}
 
 # Per-image entry keys (under containers.images[*])
 _CONTAINER_IMAGE_KEYS = {"image", "dockerfile", "context", "name", "cleanup"}
 
-# Sub-scanners argus scan container can dispatch to
+# Sub-scanners argus scan container can dispatch to. Must stay in sync
+# with ``argus.scanners.container.SUB_SCANNERS``, the runtime validator's
+# source of truth — a disagreement would mean one of the two accepts a
+# name that dispatches to nothing, which is the silent-green-scan bug
+# ``validate_sub_scanners`` exists to prevent. Duplicated rather than
+# imported to keep ``argus.core`` free of a dependency on
+# ``argus.scanners``; ``test_schema_matches_runtime_sub_scanners`` pins
+# the two together.
 _CONTAINER_SUB_SCANNERS = {"trivy", "grype", "syft", "exposure", "services"}
+
+# ``containers.platform`` shape: OCI ``os/arch[/variant]``. Deliberately
+# not an allow-list of architectures — new ones ship regularly and a
+# stale list would reject a platform the runtime handles fine.
+_PLATFORM_RE = re.compile(r"^[a-z0-9]+/[a-z0-9_]+(/[a-z0-9_.]+)?$")
 
 
 class ConfigError:
@@ -698,12 +713,40 @@ def _validate_containers(path: str, data: Any) -> list[ConfigError]:
             ))
         else:
             for i, s in enumerate(sc):
-                if s not in _CONTAINER_SUB_SCANNERS:
+                # Normalise the way ``validate_sub_scanners`` does before
+                # comparing. It lowercases and strips; comparing the raw
+                # value here made ``scanners: [Trivy]`` an ``argus
+                # validate`` error on a config the scanner itself accepts
+                # and runs — the two halves disagreeing is exactly the
+                # drift this pairing exists to prevent.
+                normalised = str(s).strip().lower()
+                if normalised not in _CONTAINER_SUB_SCANNERS:
                     errors.append(ConfigError(
                         f"{path}.scanners[{i}]",
                         f"Unknown container sub-scanner '{s}'. "
                         f"Valid values: {', '.join(sorted(_CONTAINER_SUB_SCANNERS))}",
                     ))
+
+    # platform: an os/arch[/variant] string, passed through to trivy,
+    # grype, syft and the image pull. Only key membership was checked
+    # before, so ``platform: 123`` validated clean and then reached the
+    # scanners as a literal ``--platform 123``.
+    if "platform" in data:
+        plat = data["platform"]
+        # An empty or None value means "unset" — `_platform_args` emits no
+        # flag for it, and the container-scan.yml `platform` input defaults
+        # to '', so `platform: ""` is a natural placeholder in a config.
+        # Erroring on it would make `argus validate` reject a config the
+        # scanner runs happily, which is the same schema/runtime drift the
+        # sub-scanner normalisation above exists to prevent.
+        if plat not in (None, "") and (
+            not isinstance(plat, str) or not _PLATFORM_RE.match(plat.strip())
+        ):
+            errors.append(ConfigError(
+                f"{path}.platform",
+                f"Must be an 'os/arch' or 'os/arch/variant' string "
+                f"(e.g. linux/arm64, linux/arm/v7), got {plat!r}",
+            ))
 
     return errors
 

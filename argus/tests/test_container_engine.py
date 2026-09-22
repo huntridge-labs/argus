@@ -68,14 +68,23 @@ class TestScanners:
     """Test _scanners parsing."""
 
     def test_default_scanners(self):
-        """Default mirrors the SDK Scanner path (argus/scanners/container.py).
+        """An unset key returns None, and the default it stands for.
 
-        Both code paths must run the same attack-surface sub-scanners
-        so ``argus scan container --image`` produces identical signal
-        to ``argus scan --config argus.yml`` with ``scanners: [container]``.
+        ``None`` is the signal that the operator named nothing, which
+        is what lets ``scan_image`` treat an absent precondition in the
+        default set as a degradation rather than a scan failure.
+        Returning the tuple here would erase that distinction.
+
+        ``DEFAULT_SUB_SCANNERS`` itself mirrors the SDK Scanner path
+        (``argus/scanners/container.py``) so ``argus scan container
+        --image`` produces identical signal to ``argus scan --config
+        argus.yml`` with ``scanners: [container]``.
         """
+        from argus.scanners.container import DEFAULT_SUB_SCANNERS
+
         engine = ContainerEngine({})
-        assert engine._scanners() == (
+        assert engine._scanners() is None
+        assert DEFAULT_SUB_SCANNERS == (
             "trivy", "grype", "exposure", "services",
         )
 

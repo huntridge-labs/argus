@@ -174,6 +174,12 @@ def _canonical_container_metadata(result) -> dict:
         metadata["context_path"] = result.context
     if getattr(result, "scanner_errors", None):
         metadata["scanner_errors"] = dict(result.scanner_errors)
+    if getattr(result, "degraded", None):
+        # Kept under its own key rather than merged into
+        # ``scanner_errors``: consumers gate on that one, and a
+        # sub-scanner nobody asked for skipping a precondition must
+        # not read as a failed scan.
+        metadata["degraded"] = dict(result.degraded)
     if getattr(result, "scan_error", None):
         metadata["scan_error"] = result.scan_error
     return metadata
@@ -1099,6 +1105,16 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction, parent: argparse.
         help="Sub-scanners for container scanning: trivy,grype,syft (default: trivy,grype)",
     )
     container_group.add_argument(
+        "--platform",
+        default=None,
+        metavar="OS/ARCH",
+        help="Image platform to scan, e.g. linux/arm64. Scanners read "
+             "image layers rather than execute them, so a foreign "
+             "architecture is scannable from any runner; set this when "
+             "the image's platform cannot be read from the registry "
+             "manifest. Overrides containers.platform in the config file.",
+    )
+    container_group.add_argument(
         "--vex",
         action="append",
         dest="vex",
@@ -1819,11 +1835,31 @@ def _load_container_config(args: argparse.Namespace) -> dict:
         config["search_paths"] = [args.discover]
     if getattr(args, "scanners", None):
         config["scanners"] = [s.strip() for s in args.scanners.split(",")]
+    if getattr(args, "platform", None):
+        config["platform"] = args.platform
     if getattr(args, "vex", None):
         # CLI --vex overrides containers.vex. Stored as a list so trivy /
         # grype receive every document; a single --vex still arrives as a
         # one-element list from argparse ``action="append"``.
         config["vex"] = args.vex
+
+    # Reject unknown sub-scanner names before any target is resolved or
+    # any image is pulled. Both dispatch sites (ContainerScanner.scan and
+    # container.scanner.scan_image) test membership, so a typo such as
+    # ``--scanners tryvi`` used to match no branch, run nothing, and exit
+    # 0 — a green security gate over an image nothing had looked at.
+    # Raised as ValueError so the dispatcher's existing handler prints it
+    # on stderr and returns EXIT_ERROR.
+    if "scanners" in config:
+        from argus.scanners.container import validate_sub_scanners
+        source = (
+            "--scanners"
+            if getattr(args, "scanners", None)
+            else "containers.scanners"
+        )
+        config["scanners"] = validate_sub_scanners(
+            config["scanners"], source=source,
+        )
 
     return config
 
@@ -2867,6 +2903,9 @@ def _print_container_terminal(summary) -> None:
     scan_failures = getattr(summary, "scan_failures", 0)
     if scan_failures:
         print(f"Scanner failures:    {scan_failures}")
+    degraded_scans = getattr(summary, "degraded_scans", 0)
+    if degraded_scans:
+        print(f"Degraded scans:      {degraded_scans}")
     print(f"Total findings:      {summary.total_count}")
     print(f"Unique findings:     {summary.unique_count}")
     print()
@@ -2876,6 +2915,9 @@ def _print_container_terminal(summary) -> None:
         elif getattr(r, "scanner_errors", {}):
             failed = ", ".join(r.scanner_errors.keys())
             status = f"SCAN FAILED ({failed})"
+        elif getattr(r, "degraded", {}):
+            skipped = ", ".join(r.degraded.keys())
+            status = f"{r.total_count} findings (degraded: {skipped})"
         else:
             status = f"{r.total_count} findings"
         print(f"  {r.name:<20} {status}")
@@ -2883,6 +2925,9 @@ def _print_container_terminal(summary) -> None:
             # Truncate long error messages for terminal readability
             short = err[:120] + "..." if len(err) > 120 else err
             print(f"    {tool}: {short}")
+        for tool, why in getattr(r, "degraded", {}).items():
+            short = why[:120] + "..." if len(why) > 120 else why
+            print(f"    {tool} (skipped): {short}")
     print()
 
 
@@ -2907,9 +2952,17 @@ def _write_container_json(summary, output_dir) -> None:
                 "low": r.low_count,
                 "total": r.total_count,
                 "unique": r.unique_count,
+                # Both reasons a row's counts may be thinner than the
+                # image really is. Without them a failed or degraded
+                # scan renders here as an ordinary clean row, which is
+                # the shape of silent pass this file's counts feed.
+                "scanner_errors": dict(getattr(r, "scanner_errors", {})),
+                "degraded": dict(getattr(r, "degraded", {})),
             }
             for r in summary.results
         ],
+        "scan_failures": getattr(summary, "scan_failures", 0),
+        "degraded_scans": getattr(summary, "degraded_scans", 0),
     }
     filepath = dest / "container-scan.json"
     filepath.write_text(json.dumps(data, indent=2))

@@ -25,6 +25,12 @@ components:
       cli.py: argparse CLI with scan, cache, and report subcommands
       init.py: argus init project bootstrap and banner rendering from img/argus_logo.txt
       containers.py: Container image manifest, version enforcement, and DB cache volume mounts (CACHE_MOUNTS)
+      container_runtime.py: 'Shared Docker/Podman/nerdctl helpers — detect_runtime, pull_image,
+        run_container. pull_image(platform=...) uses an explicit platform verbatim; without one a
+        failed pull reads the image''s published platforms via detect_image_platforms
+        (`manifest inspect --verbose`, skipping buildx unknown/unknown attestation entries) and
+        retries against one, preferring this host''s architecture when the image publishes it.
+        Replaces an unconditional --platform linux/amd64 retry — see ADR-038.'
       core/models.py: Severity enum, Finding/ScanResult/ScanSummary dataclasses
       core/scanner.py: Scanner Protocol definition (capability flags supports_sbom / supports_vex)
       core/vex.py: Shared OpenVEX resolution (resolve_vex_documents / vex_container_mounts / vex_cli_flags) consumed by every supports_vex scanner (grype, trivy, container) — add a VEX-capable scanner by setting supports_vex and calling these helpers, no engine change
@@ -205,7 +211,29 @@ components:
         matching, no silent fallback when a matched entry''s env var is unset — see ADR-028). Resolved
         credentials are forwarded to Trivy / Grype / Syft via their native env-var names on both the local-binary
         and container-fallback paths; Grype remote refs are auto-prefixed with registry: so the registry
-        source provider is used inside the anchore/grype container.'
+        source provider is used inside the anchore/grype container.
+        Sub-scanner selection is validated up front by validate_sub_scanners() against
+        SUB_SCANNERS (trivy, grype, syft, exposure, services): both dispatch sites are
+        membership tests, so an unrecognised name would otherwise run nothing and report
+        a clean pass over an unscanned image. An unknown or empty selection is a hard
+        error, and a sub-scanner that cannot run (no binary + no container runtime, or a
+        timeout) raises so the orchestrator records it under scanner_errors rather than
+        returning zero findings — see ADR-037. Which of the two "did not run" shapes it
+        gets depends on who asked: a sub-scanner the caller NAMED goes to scanner_errors
+        and fails the scan, one that only ran because it is in DEFAULT_SUB_SCANNERS and
+        whose precondition is absent goes to ContainerScanResult.degraded and is reported
+        without gating. scan_image(scanners=None) — not a default tuple — is what carries
+        "the caller named nothing"; ContainerEngine._scanners() returns None for an unset
+        containers.scanners for the same reason. Without the split, every default scan on
+        a daemonless runner exited non-zero, because exposure and services skip there —
+        see ADR-039. Every name in SUB_SCANNERS must have a
+        dispatch branch at BOTH sites; the backstop keys off what actually ran, not off
+        the selection, because a valid-but-undispatched name (syft, before it got a branch)
+        would otherwise satisfy it while scanning nothing. Image architecture is data, not
+        a property of the runner: containers.platform / --platform threads --platform to
+        trivy, grype, syft and the two daemon-backed sub-scanners on both container paths,
+        and an unset value is resolved from the registry manifest on a failed pull —
+        Docker and Podman manifest shapes are both parsed, nerdctl has none — see ADR-038.'
       linters/: Linter modules implementing Scanner protocol (LINTER_REGISTRY auto-merges into SCANNER_REGISTRY)
       reporters/: Output reporters (terminal, markdown, container_markdown, sarif, json, github, gitlab,
         junit, openvex). openvex emits a consolidated OpenVEX v0.2.0 document from CVE-mapped component findings (container/SCA only). Discovered via the ``argus.reporters`` Python entry-point group (built-ins declared in

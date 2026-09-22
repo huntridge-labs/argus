@@ -201,8 +201,10 @@ class TestScanExposedPorts:
 
         monkeypatch.setattr(rt_mod, "is_available", lambda: True)
         monkeypatch.setattr(rt_mod, "runtime_cmd", lambda: "docker")
-        monkeypatch.setattr(rt_mod, "pull_image",
-                            lambda image, policy="if-not-present": pull_ok)
+        monkeypatch.setattr(
+            rt_mod, "pull_image",
+            lambda image, policy="if-not-present", platform=None: pull_ok,
+        )
 
         if inspect_stdout is None:
             import json as _json
@@ -547,7 +549,7 @@ class TestScanServices:
         scanner = ContainerScanner()
         monkeypatch.setattr(
             scanner, "_extract_paths_from_image",
-            lambda image_ref, paths: files,
+            lambda image_ref, paths, platform=None: files,
         )
         return scanner
 
@@ -744,7 +746,7 @@ class TestExtractPathsFromImage:
         monkeypatch.setattr(rt_mod, "is_available", lambda: True)
         monkeypatch.setattr(rt_mod, "runtime_cmd", lambda: "docker")
         monkeypatch.setattr(rt_mod, "pull_image",
-                            lambda image, policy="if-not-present": True)
+                            lambda image, policy="if-not-present", platform=None: True)
 
         # Build a tar archive matching what ``docker cp <cid>:/etc/systemd/system -``
         # would emit: a top-level directory entry plus files inside it.
@@ -798,13 +800,19 @@ class TestExtractPathsFromImage:
         # Container ALWAYS removed at the end, regardless of partial misses.
         assert any(cmd[:3] == ["docker", "rm", "-f"] for cmd in calls)
 
-    def test_no_runtime_returns_empty(self, monkeypatch):
+    def test_no_runtime_returns_none(self, monkeypatch):
+        """None, not {} — the image was never opened.
+
+        An empty dict means "the image has none of these paths", which is a
+        legitimate clean result. Returning it here made `services` report
+        `services_declared: 0` for an image it could not read at all.
+        """
         from argus import container_runtime as rt_mod
         monkeypatch.setattr(rt_mod, "is_available", lambda: False)
         scanner = ContainerScanner()
-        assert scanner._extract_paths_from_image("img", ("/x",)) == {}
+        assert scanner._extract_paths_from_image("img", ("/x",)) is None
 
-    def test_create_failure_returns_empty(self, monkeypatch):
+    def test_create_failure_returns_none(self, monkeypatch):
         import subprocess as _subprocess
         from argus import container_runtime as rt_mod
         from argus.scanners import container as container_mod
@@ -812,7 +820,7 @@ class TestExtractPathsFromImage:
         monkeypatch.setattr(rt_mod, "is_available", lambda: True)
         monkeypatch.setattr(rt_mod, "runtime_cmd", lambda: "docker")
         monkeypatch.setattr(rt_mod, "pull_image",
-                            lambda image, policy="if-not-present": True)
+                            lambda image, policy="if-not-present", platform=None: True)
 
         def fake_run(cmd, **kwargs):
             return _subprocess.CompletedProcess(
@@ -824,7 +832,7 @@ class TestExtractPathsFromImage:
         result = scanner._extract_paths_from_image(
             "private/missing", ("/etc/systemd/system",),
         )
-        assert result == {}
+        assert result is None, "a failed `create` is not an empty image"
 
 
 class TestServicesSchemaValidation:

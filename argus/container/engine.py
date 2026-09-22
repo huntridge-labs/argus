@@ -22,6 +22,8 @@ from .resources import (
     prune_docker_build_cache,
     remove_docker_image,
 )
+from argus.scanners.container import validate_sub_scanners
+
 from .scanner import (
     ContainerScanResult,
     ContainerScanSummary,
@@ -60,6 +62,10 @@ class ContainerEngine:
         self.config = config
         self._cleanup = config.get("cleanup", True)
         self._built_images: list[str] = []
+        # Memoised, validated sub-scanner selection. Populated on the
+        # first ``_scanners()`` call so the selection is validated once
+        # per run rather than once per target.
+        self._scanner_selection: tuple[str, ...] | None = None
         # Progress callback signature: (idx, total, name, phase, elapsed_ms).
         # Default is a no-op so engine code can call ``self._progress(...)``
         # unconditionally without checking. The CLI installs a callback
@@ -82,6 +88,14 @@ class ContainerEngine:
         4. Final cleanup (dangling images, build cache)
         5. Return aggregated summary
         """
+        # Validate the sub-scanner selection before any target work.
+        # Called from inside ``_process_target`` the ValueError is caught
+        # by that method's broad ``except Exception`` and rewritten to a
+        # generic "Scan failed for <ref>", discarding both the offending
+        # token and the list of valid names — which is most of what the
+        # message is for. Raising here reaches the CLI's handler intact.
+        self._scanners()
+
         targets = self._resolve_targets()
         if not targets:
             logger.warning("No container targets found")
@@ -273,21 +287,43 @@ class ContainerEngine:
 
         return targets
 
-    def _scanners(self) -> tuple[str, ...]:
+    def _scanners(self) -> tuple[str, ...] | None:
         """Get enabled sub-scanners from config.
 
-        The default set matches the SDK Scanner-protocol path
+        Returns ``None`` when ``containers.scanners`` is unset, which
+        is how ``scan_image`` learns the operator named nothing: a
+        sub-scanner in the default set whose precondition is absent
+        (``exposure`` on a daemonless runner) then degrades the scan
+        instead of failing it. Returning the default set here instead
+        would make that indistinguishable from an explicit request for
+        the same four names, and every default scan on a host without
+        a container runtime would exit non-zero.
+
+        The default itself lives in ``DEFAULT_SUB_SCANNERS`` and
+        matches the SDK Scanner-protocol path
         (``argus/scanners/container.py``) so ``argus scan container
         --image`` and ``argus scan --config argus.yml`` produce the
         same attack-surface signal. ``syft`` is implicit (driven by
-        the ``sbom`` flag) and is not listed here.
+        the ``sbom`` flag) and is not in it.
+
+        Raises ``ValueError`` on an unknown or empty selection. The
+        dispatch in ``scan_image`` is a membership test, so an
+        unrecognised name would otherwise run nothing and report a
+        clean scan over an image nothing looked at. The CLI validates
+        the same value before the engine starts; this call is the
+        backstop for direct API callers.
         """
-        raw = self.config.get(
-            "scanners", ["trivy", "grype", "exposure", "services"],
-        )
+        if self._scanner_selection is not None:
+            return self._scanner_selection
+        raw = self.config.get("scanners")
+        if raw is None:
+            return None
         if isinstance(raw, str):
-            return tuple(s.strip().lower() for s in raw.split(",") if s.strip())
-        return tuple(s.strip().lower() for s in raw if s.strip())
+            raw = raw.split(",")
+        self._scanner_selection = tuple(
+            validate_sub_scanners(raw, source="containers.scanners")
+        )
+        return self._scanner_selection
 
     def _sbom_enabled(self) -> bool:
         """Check if SBOM generation is enabled."""

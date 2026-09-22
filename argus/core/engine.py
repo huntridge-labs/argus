@@ -913,15 +913,90 @@ class ArgusEngine:
             stderr = result.stderr.strip()
             category, retryable = _classify_pull_error(stderr)
             if retryable:
-                logger.info(
-                    "%s: native pull failed (%dms, %s) — retrying with "
-                    "--platform linux/amd64 (common for upstreams "
-                    "without arm64 builds). stderr: %s",
-                    image, elapsed, category, stderr[:200],
-                )
+                # Only `platform-mismatch` pays for a manifest read.
+                #
+                # `unclassified` is the catch-all retryable category — a
+                # Docker error string we don't recognise, a proxy 502,
+                # partially-blocked egress — and for those the manifest
+                # tells us nothing we can act on. Reading it anyway put a
+                # subprocess bounded at _MANIFEST_TIMEOUT (60s) in front
+                # of every such retry, on the path that pre-warms the
+                # scanner images every run depends on: behind a
+                # filtering proxy that accepts the connection and
+                # stalls, each of N concurrently pre-warmed images added
+                # up to a minute before its retry even started. ADR-038
+                # is explicit about keeping the pull-failure path cheap,
+                # which is also why nerdctl is skipped outright.
+                #
+                # So: a plain second attempt for `unclassified` (the one
+                # thing that rescues a transient failure, at zero extra
+                # cost), and the manifest read only where a platform
+                # mismatch is what the registry actually reported.
+                target_platform: str | None = None
+                published: list[str] = []
+                if category == "platform-mismatch":
+                    # Unlike the scanner-image pulls in
+                    # ``argus.container_runtime``, the images pulled here
+                    # are *executed*, not read — so the retry wants a
+                    # variant this host can actually run. Reusing
+                    # ``detect_image_platforms`` keeps this path and
+                    # ``container_runtime.pull_image`` reading the same
+                    # manifest rather than drifting apart.
+                    from argus.container_runtime import (
+                        _native_platform,
+                        _os_arch,
+                        detect_image_platforms,
+                    )
+
+                    native = _native_platform()
+                    published = [
+                        plat for plat in detect_image_platforms(image)
+                        if plat.startswith("linux/")
+                    ]
+                    # When the registry named the published platforms
+                    # and none is this host's, take the first published
+                    # one rather than linux/amd64: retrying with a
+                    # platform the manifest says the image does not
+                    # publish is a guaranteed second failure, and the
+                    # log line below would print the chosen platform
+                    # next to a published list that contradicts it. A
+                    # host with binfmt/QEMU configured can run the
+                    # foreign variant; one without it fails either way,
+                    # but with an honest error. linux/amd64 stays the
+                    # fallback for the *empty* case, where the manifest
+                    # could not be read at all and the amd64-only
+                    # upstream is the likeliest shape.
+                    target_platform = next(
+                        (plat for plat in published if _os_arch(plat) == native),
+                        published[0] if published else "linux/amd64",
+                    )
+
+                if target_platform:
+                    logger.info(
+                        "%s: native pull failed (%dms, %s) — retrying with "
+                        "--platform %s (published: %s). stderr: %s",
+                        image, elapsed, category, target_platform,
+                        ", ".join(published) or "unknown", stderr[:200],
+                    )
+                    retry_cmd = [
+                        self._runtime, "pull",
+                        "--platform", target_platform, image,
+                    ]
+                else:
+                    # Re-runs a command that just failed, which looks
+                    # wasteful, but a plain second attempt is the one
+                    # thing that rescues a transient failure, and it
+                    # costs nothing beyond the pull itself.
+                    logger.info(
+                        "%s: pull failed (%dms, %s) — retrying once. "
+                        "stderr: %s",
+                        image, elapsed, category, stderr[:200],
+                    )
+                    retry_cmd = [self._runtime, "pull", image]
+
                 start = time.monotonic()
                 result = subprocess.run(
-                    [self._runtime, "pull", "--platform", "linux/amd64", image],
+                    retry_cmd,
                     capture_output=True,
                     text=True,
                 )
