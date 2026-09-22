@@ -8,12 +8,12 @@
     "@commitlint/cli": "^21.2.2",
     "@commitlint/config-conventional": "^21.2.2",
     "@j-ulrich/release-it-regex-bumper": "^5.6.0",
-    "@release-it/conventional-changelog": "^12.0.0",
+    "@release-it/conventional-changelog": "^12.0.2",
     "commitizen": "^4.3.2",
     "cz-conventional-changelog": "^3.3.0",
     "husky": "^9.1.7",
     "is-ci": "^4.1.0",
-    "release-it": "^21.0.2"
+    "release-it": "^21.0.3"
   },
   "dependencies": {
     "@digitalroute/cz-conventional-changelog-for-jira": "^8.0.1",
