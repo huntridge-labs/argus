@@ -1,3 +1,7 @@
+# Argus's own actions below pin a release tag, not a SHA. Releases in this repo
+# are immutable (a published tag can't be moved), and the release commit that
+# bumps these refs can't know its own SHA, so each line carries a nosemgrep
+# for the mutable-tag rule. Third-party actions stay SHA-pinned.
 name: FedRAMP SCN Detection - Complete Examples
 
 # This workflow demonstrates all the different ways to use the SCN detector
@@ -31,7 +35,7 @@ jobs:
           fetch-depth: 0
 
       - name: SCN Analysis
-        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6
+        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -52,7 +56,7 @@ jobs:
           fetch-depth: 0
 
       - name: SCN Analysis with AI
-        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6
+        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -74,7 +78,7 @@ jobs:
           fetch-depth: 0
 
       - name: SCN Analysis with Custom Profile
-        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6
+        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -97,7 +101,7 @@ jobs:
           fetch-depth: 0
 
       - name: SCN Analysis with Separate Configs
-        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6
+        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -121,7 +125,7 @@ jobs:
           fetch-depth: 0
 
       - name: SCN Analysis with OpenAI
-        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6
+        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -145,7 +149,7 @@ jobs:
           fetch-depth: 0
 
       - name: Frontend SCN Analysis
-        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6
+        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -166,7 +170,7 @@ jobs:
           fetch-depth: 0
 
       - name: Backend SCN Analysis
-        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6
+        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -191,7 +195,7 @@ jobs:
 
       - name: SCN Analysis
         id: scn
-        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6
+        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

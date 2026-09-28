@@ -1,3 +1,7 @@
+# Argus's own actions below pin a release tag, not a SHA. Releases in this repo
+# are immutable (a published tag can't be moved), and the release commit that
+# bumps these refs can't know its own SHA, so each line carries a nosemgrep
+# for the mutable-tag rule. Third-party actions stay SHA-pinned.
 name: ZAP DAST - Full Input Exercise
 
 # Exercises every input on the current scanner-zap composite action.
@@ -110,7 +114,7 @@ jobs:
           sleep 2
 
       - name: Run ZAP scanner (current input set)
-        uses: huntridge-labs/argus/.github/actions/scanner-zap@1.12.6
+        uses: huntridge-labs/argus/.github/actions/scanner-zap@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
