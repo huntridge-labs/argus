@@ -246,6 +246,11 @@ workflows:
       note: Only required if `argus scan` cannot pull custom ghcr.io/huntridge-labs/argus images.
     - action: Run tests to verify setup
       command: pytest
+    - action: Git hooks (husky + pre-commit)
+      note: 'pre-commit checks only the staged files; pre-push runs the full test suite
+        when pytest is on PATH. The whole-repo pre-commit run is enforced in CI by
+        .github/workflows/pre-commit.yml, so run it locally before a sweeping change.'
+      command: pre-commit run --all-files
     alternative: Use Dev Container (recommended)
     devcontainer_steps:
     - Open in VS Code
@@ -444,6 +449,7 @@ quick_reference:
   cache_info: argus cache info
   cache_clean: argus cache clean
   lint: npm run lint
+  pre_commit_all: pre-commit run --all-files
   release: npm run release
   format: npm run format
   build_custom_images: docker build -f docker/Dockerfile.bandit -t ghcr.io/huntridge-labs/argus/scanner-bandit:1.0.0

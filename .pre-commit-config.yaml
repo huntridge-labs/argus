@@ -30,7 +30,10 @@ repos:
         # verbatim from `argus scan`; re-emitting them through
         # json.dump(ensure_ascii=True) escapes em-dashes / non-ASCII
         # and makes them diverge from real argus output.
-        exclude: ^(docs/images/.*\.json|tests/invalid\.json)$
+        # .vex/*.json are OpenVEX documents kept in a compact, one-line-per-
+        # field layout for review; the same ensure_ascii re-emit would also
+        # escape their em-dashes. check-json still validates them.
+        exclude: ^(docs/images/.*\.json|tests/invalid\.json|\.vex/.*\.json)$
   # renovate: datasource=github-tags depName=pre-commit/pygrep-hooks versioning=semver
   - repo: https://github.com/pre-commit/pygrep-hooks
     rev: v1.10.0  # Use the ref you want to point at
@@ -97,5 +100,13 @@ repos:
         name: Check CLI docs are up to date
         entry: python -m scripts.ci.check_cli_docs
         language: python
+        # The check imports the argus CLI, so its hook env needs the package's
+        # runtime deps. Declared here (pinned) so the hook works in any
+        # checkout, worktree, or fresh clone, not only inside a dev venv.
+        additional_dependencies:
+          - PyYAML==6.0.3
+          - packaging==26.3
+          - yamllint==1.38.0
+          - flake8==7.3.0
         pass_filenames: false
         files: ^(argus/cli\.py|docs/cli-reference\.md)$

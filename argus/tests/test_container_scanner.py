@@ -592,7 +592,7 @@ class TestDegradedVersusFailedSubScanners:
         ``_sub_scanner_failed`` is the union of two facts. ``skipped``
         means the sub-scanner never had what it needed; ``error`` means
         it did, tried, and failed — an unpullable image ref, an
-        unparseable ``docker inspect``. Degrading on the caller's
+        unparsable ``docker inspect``. Degrading on the caller's
         wording alone let the second one exit 0 with the image never
         opened, which is the silent pass this module is named after.
         """
