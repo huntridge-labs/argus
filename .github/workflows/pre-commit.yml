@@ -1,0 +1,35 @@
+# Pre-commit, enforced.
+#
+# The local hook checks only staged files, so drift in untouched files can't
+# block anyone's commit. This workflow is where the whole repository is checked,
+# on every pull request and every push to main, so drift can't land either.
+name: Pre-commit
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pre-commit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pre-commit:
+    name: Pre-commit (all files)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.14'
+      - name: Install pre-commit
+        run: python -m pip install pre-commit==4.6.2
+      - name: Run pre-commit on all files
+        run: pre-commit run --all-files --show-diff-on-failure

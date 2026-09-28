@@ -11,7 +11,9 @@ fi
 # Tests run in pre-push hook instead
 if command -v pre-commit >/dev/null 2>&1; then
   echo "Running formatting and linting checks..."
-  if ! pre-commit run --all-files --show-diff-on-failure; then
+  # Staged files only: a commit is checked on what it changes, and never edits
+  # files it didn't touch. The whole-repo run happens in CI (pre-commit.yml).
+  if ! pre-commit run --show-diff-on-failure; then
     exit 1
   fi
 else
