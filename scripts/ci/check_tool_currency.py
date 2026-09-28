@@ -96,6 +96,9 @@ ARG_RE = re.compile(r"^ARG (?P<name>[A-Z0-9_]+)_VERSION=(?P<version>[\w.-]+)", r
 # A 404 means the repo was renamed or deleted, so retrying only burns quota;
 # that one surfaces on the first attempt so the rename gets fixed here.
 RETRYABLE_STATUS: frozenset[int] = frozenset({403, 429, 500, 502, 503, 504})
+# A GitHub owner/repo slug, interpolated into the releases URL. Anything else
+# (a path, query, fragment, or userinfo) could re-target the request.
+REPO_SLUG = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 FETCH_ATTEMPTS = 3
 BACKOFF_BASE_SECONDS = 2.0
 MAX_BACKOFF_SECONDS = 30.0
@@ -219,6 +222,8 @@ def fetch_releases(
     so the run silently under-stated how many pins were behind. Retrying is
     what makes "not checked" mean the upstream is genuinely unreachable.
     """
+    if not REPO_SLUG.fullmatch(repo) or ".." in repo.split("/"):
+        raise ValueError(f"not a GitHub owner/repo slug: {repo!r}")
     url = f"https://api.github.com/repos/{repo}/releases?per_page=30"
     # Resolved once: _gh_token() may shell out to `gh auth token`, which has no
     # business running per attempt.
@@ -231,7 +236,8 @@ def fetch_releases(
         if token:
             request.add_header("Authorization", f"Bearer {token}")
         try:
-            with urllib.request.urlopen(request, timeout=20) as response:
+            # Fixed https://api.github.com URL over a validated slug (see REPO_SLUG).
+            with urllib.request.urlopen(request, timeout=20) as response:  # nosec B310  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
                 return json.load(response)
         except urllib.error.HTTPError as exc:
             # HTTPError subclasses URLError subclasses OSError, so it must be

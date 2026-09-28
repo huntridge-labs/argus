@@ -180,11 +180,16 @@ def _default_http_get(url: str) -> object | None:
     """GET ``url`` and parse JSON; return ``None`` on any failure.
 
     Best-effort by contract: network errors, timeouts, and non-JSON bodies
-    all degrade to ``None`` so enrichment never breaks triage.
+    all degrade to ``None`` so enrichment never breaks triage. Only ``https``
+    URLs are opened: the EPSS and KEV feeds are TLS endpoints, and a
+    ``file:`` or plain-``http`` URL is refused rather than read.
     """
+    if urllib.parse.urlsplit(url).scheme != "https":
+        return None
     try:
         request = urllib.request.Request(url, headers={"User-Agent": "argus-enrichment"})
-        with urllib.request.urlopen(request, timeout=_DEFAULT_TIMEOUT) as resp:  # noqa: S310
+        # https-only is enforced above, which is what B310 / dynamic-urllib guard against.
+        with urllib.request.urlopen(request, timeout=_DEFAULT_TIMEOUT) as resp:  # noqa: S310  # nosec B310  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
             return json.loads(resp.read().decode("utf-8"))
     except Exception:
         return None
