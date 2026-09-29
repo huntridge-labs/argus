@@ -1,3 +1,7 @@
+# Argus's own actions below pin a release tag, not a SHA. Releases in this repo
+# are immutable (a published tag can't be moved), and the release commit that
+# bumps these refs can't know its own SHA, so each line carries a nosemgrep
+# for the mutable-tag rule. Third-party actions stay SHA-pinned.
 # DAST (Dynamic Application Security Testing) for GitHub Enterprise Server
 #
 # This workflow runs ZAP security scans against running web applications.
@@ -48,7 +52,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run ZAP Scan
-        uses: huntridge-labs/argus/.github/actions/scanner-zap@1.12.6
+        uses: huntridge-labs/argus/.github/actions/scanner-zap@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         with:
           target_url: ${{ github.event.inputs.target_url }}
           scan_type: ${{ github.event.inputs.scan_type }}
@@ -87,7 +91,7 @@ jobs:
           echo "Application is ready"
 
       - name: Run ZAP Baseline Scan
-        uses: huntridge-labs/argus/.github/actions/scanner-zap@1.12.6
+        uses: huntridge-labs/argus/.github/actions/scanner-zap@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         with:
           target_url: 'http://localhost:8080'
           scan_type: 'baseline'
@@ -113,7 +117,7 @@ jobs:
           sleep 10
 
       - name: Run ZAP API Scan
-        uses: huntridge-labs/argus/.github/actions/scanner-zap@1.12.6
+        uses: huntridge-labs/argus/.github/actions/scanner-zap@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         with:
           target_url: 'http://localhost:8080'
           scan_type: 'api'
