@@ -426,7 +426,7 @@ Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ```bash
 # Install dependencies
-npm install
+corepack enable && pnpm install --frozen-lockfile
 pip install -r .devcontainer/requirements.txt
 
 # Run tests

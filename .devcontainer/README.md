@@ -35,7 +35,7 @@ If you prefer not to use containers, install manually:
 brew install node python ruby rbenv
 
 # Install packages
-npm ci
+corepack enable && pnpm install --frozen-lockfile
 pip install pytest pytest-cov pyyaml pre-commit
 gem install bashcov simplecov-cobertura
 

@@ -3,9 +3,11 @@ set -e
 
 echo "Setting up development environment..."
 
-# Install Node dependencies
+# Install Node dependencies (pnpm-lock.yaml; the version comes from
+# package.json's packageManager field via corepack)
 echo "Installing Node.js dependencies..."
-npm ci
+corepack enable
+pnpm install --frozen-lockfile
 
 # Create Python virtual environment
 echo "Setting up Python virtual environment..."
