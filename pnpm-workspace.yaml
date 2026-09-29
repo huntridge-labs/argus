@@ -13,6 +13,6 @@ allowBuilds:
 # ids). Remove an entry once the parent dep's own range moves past it.
 overrides:
   "brace-expansion@<1.1.18": 1.1.18 # GHSA-3jxr-9vmj-r5cp / -mh99 / -rgw5 (DoS)
-  "fast-uri@<3.1.5": 3.1.5 # GHSA-7p8r-x3mc-p8w7, GHSA-v2hh-gcrm-f6hx
+  "fast-uri@<3.1.6": 3.1.6 # GHSA-7p8r-x3mc-p8w7, GHSA-v2hh-gcrm-f6hx, GHSA-5jgf-p345-68v8, GHSA-f65p-4m7j-42xc, GHSA-fph4-wmhf-6fwf, GHSA-jqff-g426-hqxp
   "ip-address@<10.3.1": 10.3.1 # GHSA-mwp4-54f8-5fhr (+ 2 moderate)
-  "js-yaml@>=4.0.0 <4.3.1": 4.3.1 # GHSA-52cp-r559-cp3m, GHSA-5p4m-2wfm-xmqj
+  "js-yaml@>=4.0.0 <4.3.2": 4.3.2 # GHSA-52cp-r559-cp3m, GHSA-5p4m-2wfm-xmqj, GHSA-2883-xcg3-v3hh
