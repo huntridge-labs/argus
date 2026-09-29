@@ -94,10 +94,60 @@ class TestBuildExclusionSet:
         (tmp_path / ".gitignore").write_text("*.log\n")
         (tmp_path / ".dockerignore").write_text("*.tar\n")
         (tmp_path / ".semgrepignore").write_text("generated/\n")
-        patterns = build_exclusion_set(scan_path=str(tmp_path))
+        patterns = build_exclusion_set(scan_path=str(tmp_path), scanner="opengrep")
         assert "*.log" in patterns
         assert "*.tar" in patterns
         assert "generated" in patterns
+
+
+class TestIgnoreFileScope:
+    """A tool's own ignore file applies to that tool only.
+
+    Regression: every ignore file used to be merged into one set applied to
+    every scanner, so a ``.semgrepignore`` line like ``**/*.json`` silently
+    dropped all of OSV's lockfile findings (package-lock.json) and ``*.txt``
+    dropped requirements.txt.
+    """
+
+    def test_semgrepignore_applies_to_opengrep(self, tmp_path):
+        (tmp_path / ".semgrepignore").write_text("**/*.json\n")
+        assert "**/*.json" in build_exclusion_set(scan_path=str(tmp_path), scanner="opengrep")
+
+    @pytest.mark.parametrize("scanner", ["osv", "bandit", "trivy", "gitleaks", "zizmor", None])
+    def test_semgrepignore_does_not_reach_other_scanners(self, tmp_path, scanner):
+        (tmp_path / ".semgrepignore").write_text("**/*.json\n**/*.txt\n.github/\n")
+        patterns = build_exclusion_set(scan_path=str(tmp_path), scanner=scanner)
+        assert "**/*.json" not in patterns
+        assert "**/*.txt" not in patterns
+        assert ".github" not in patterns
+
+    def test_osv_keeps_lockfile_findings_under_a_json_semgrepignore(self, tmp_path):
+        (tmp_path / ".semgrepignore").write_text("**/*.json\n**/*.txt\n")
+        findings = [
+            Finding(id="1", severity=Severity.HIGH, title="lock", location="package-lock.json"),
+            Finding(id="2", severity=Severity.LOW, title="req", location="requirements.txt"),
+        ]
+        kept, excluded = filter_findings(
+            findings, build_exclusion_set(scan_path=str(tmp_path), scanner="osv"),
+        )
+        assert excluded == 0
+        assert [f.id for f in kept] == ["1", "2"]
+
+    @pytest.mark.parametrize("ignore_file,owners", [
+        (".trivyignore", ["trivy", "trivy-iac"]),
+        (".gitleaksignore", ["gitleaks"]),
+    ])
+    def test_tool_ignore_files_apply_to_their_tools_only(self, tmp_path, ignore_file, owners):
+        (tmp_path / ignore_file).write_text("vendored\n")
+        for owner in owners:
+            assert "vendored" in build_exclusion_set(scan_path=str(tmp_path), scanner=owner)
+        assert "vendored" not in build_exclusion_set(scan_path=str(tmp_path), scanner="osv")
+
+    @pytest.mark.parametrize("ignore_file", [".gitignore", ".dockerignore"])
+    @pytest.mark.parametrize("scanner", ["osv", "opengrep", "bandit", None])
+    def test_repo_wide_ignore_files_apply_to_every_scanner(self, tmp_path, ignore_file, scanner):
+        (tmp_path / ignore_file).write_text("secrets/\n")
+        assert "secrets" in build_exclusion_set(scan_path=str(tmp_path), scanner=scanner)
 
     def test_missing_ignore_files_no_error(self):
         patterns = build_exclusion_set(scan_path="/nonexistent/path")

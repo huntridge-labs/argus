@@ -2,7 +2,11 @@
 
 Argus automatically respects .gitignore, .dockerignore, and tool-specific
 ignore files. Combined with --exclude CLI patterns and argus.yml config,
-this produces a single exclusion set applied pre-scan and post-scan.
+this produces the exclusion set applied pre-scan and post-scan.
+
+A tool-specific ignore file applies to its own tool only. ``.semgrepignore``
+is written for opengrep; a ``**/*.json`` line there must not drop OSV's
+package-lock.json findings, and ``tests/`` must not hide bandit's.
 """
 
 import logging
@@ -11,14 +15,19 @@ from pathlib import Path
 
 logger = logging.getLogger("argus")
 
-# Ignore files read automatically, in order of precedence
+# Ignore files read automatically, in order of precedence. Repo-wide ones
+# apply to every scanner.
 _IGNORE_FILES = [
     ".gitignore",
     ".dockerignore",
-    ".semgrepignore",
-    ".trivyignore",
-    ".gitleaksignore",
 ]
+
+# Tool-specific ignore files, and the only scanners they apply to.
+_SCANNER_IGNORE_FILES = {
+    ".semgrepignore": ("opengrep",),
+    ".trivyignore": ("trivy", "trivy-iac"),
+    ".gitleaksignore": ("gitleaks",),
+}
 
 # Paths always excluded (build artifacts, dependencies, caches).
 #
@@ -53,13 +62,16 @@ def build_exclusion_set(
     cli_excludes: str = "",
     config_excludes: str = "",
     use_defaults: bool = True,
+    scanner: str | None = None,
 ) -> list[str]:
-    """Build unified exclusion patterns from all sources.
+    """Build exclusion patterns from all sources, for one scanner.
 
     Sources (merged in this order; all are additive unless
     ``use_defaults=False`` suppresses 1 and 2):
       1. Built-in defaults (node_modules, .git, __pycache__, etc.)
-      2. Ignore files (.gitignore, .dockerignore, etc.)
+      2. Ignore files: .gitignore and .dockerignore for every scanner, plus
+         the tool-specific file for ``scanner`` (e.g. .semgrepignore for
+         opengrep). ``scanner=None`` gets the repo-wide files only.
       3. argus.yml scanner-level exclude config
       4. --exclude CLI flag
 
@@ -69,7 +81,7 @@ def build_exclusion_set(
 
     if use_defaults:
         root = Path(scan_path)
-        for ignore_file in _IGNORE_FILES:
+        for ignore_file in ignore_files_for(scanner):
             path = root / ignore_file
             if path.is_file():
                 file_patterns = _parse_ignore_file(path)
@@ -100,6 +112,15 @@ def build_exclusion_set(
             unique.append(p)
 
     return unique
+
+
+def ignore_files_for(scanner: str | None) -> list[str]:
+    """The ignore files that apply to ``scanner``, in precedence order."""
+    own = [
+        name for name, owners in _SCANNER_IGNORE_FILES.items()
+        if scanner is not None and scanner in owners
+    ]
+    return [*_IGNORE_FILES, *own]
 
 
 def log_exclusion_set(patterns: list[str]) -> None:

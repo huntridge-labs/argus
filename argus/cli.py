@@ -2428,6 +2428,23 @@ def _dry_run(engine, config, args) -> int:
     print(f"Exclusion patterns ({len(patterns)}, use_defaults={use_defaults}):")
     for p in patterns:
         print(f"  - {p}")
+    # Tool-specific ignore files reach their own scanner only.
+    if use_defaults:
+        from argus.core.exclusions import ignore_files_for
+        for name in scanner_names:
+            own = [
+                f for f in ignore_files_for(name)
+                if f not in ignore_files_for(None) and (Path(args.path) / f).is_file()
+            ]
+            if own:
+                extra = [
+                    p for p in build_exclusion_set(
+                        scan_path=args.path,
+                        cli_excludes=getattr(args, "exclude", ""),
+                        scanner=name,
+                    ) if p not in patterns
+                ]
+                print(f"  + {name} only ({', '.join(own)}): {', '.join(extra) or '(none)'}")
     print()
 
     # Per-scanner config resolution

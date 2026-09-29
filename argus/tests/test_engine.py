@@ -2424,6 +2424,22 @@ class TestEngineSbomMode:
 
     # --- Exclusion filter bypass tests ---
 
+    def test_semgrepignore_filters_opengrep_but_not_osv(self, tmp_path):
+        """Regression: a `.semgrepignore` `**/*.json` dropped OSV's lockfile findings."""
+        (tmp_path / ".semgrepignore").write_text("**/*.json\n")
+        engine = self._make_engine({"osv": {"enabled": True}, "opengrep": {"enabled": True}})
+        engine.register_scanner(MockScanner("osv", findings=[
+            Finding(id="1", severity=Severity.HIGH, title="lock vuln", location="package-lock.json"),
+        ]))
+        engine.register_scanner(MockScanner("opengrep", findings=[
+            Finding(id="2", severity=Severity.LOW, title="json rule", location="config/settings.json"),
+        ]))
+
+        summary = engine.run(path=str(tmp_path), parallel=False)
+
+        counts = {r.scanner: r.total_count for r in summary.results}
+        assert counts == {"osv": 1, "opengrep": 0}
+
     def test_exclusion_filter_skipped_in_sbom_mode(self, tmp_path, monkeypatch):
         """Exclusion filter should NOT be invoked when sbom_path is set."""
         from unittest.mock import MagicMock
