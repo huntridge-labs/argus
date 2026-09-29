@@ -473,14 +473,24 @@ class ArgusEngine:
                 )
             resolutions.append(resolution)
 
-            # Merge per-scanner excludes with global exclusion set
+            # Per-scanner set: repo-wide ignore files + this scanner's own
+            # ignore file (.semgrepignore reaches opengrep only) + its
+            # argus.yml excludes + the CLI --exclude.
             scanner_exclude = config_dict.get("exclude", "")
             combined_patterns = build_exclusion_set(
                 scan_path=scan_path,
                 cli_excludes=exclude,
                 config_excludes=scanner_exclude,
                 use_defaults=use_defaults,
-            ) if scanner_exclude else exclusion_patterns
+                scanner=name,
+            )
+            extra = [p for p in combined_patterns if p not in exclusion_patterns]
+            if extra:
+                logger.info(
+                    "'%s' also excludes %d pattern(s) from its own ignore "
+                    "file / config: %s",
+                    name, len(extra), ", ".join(extra[:10]),
+                )
 
             if combined_patterns:
                 config_dict["exclude"] = ",".join(combined_patterns)
