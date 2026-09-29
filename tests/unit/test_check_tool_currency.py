@@ -20,6 +20,7 @@ import datetime as dt
 import io
 import json
 import urllib.error
+import urllib.parse
 
 import pytest
 
@@ -269,6 +270,34 @@ class TestFetchReleasesRetry:
         ctc.fetch_releases("anchore/grype", sleep=lambda _: None)
 
         assert len(token_calls) == 1
+
+    @pytest.mark.parametrize(
+        "slug",
+        [
+            "owner",
+            "owner/repo/../../x",
+            "owner/..",
+            "owner/repo?per_page=1",
+            "owner@evil.example/repo",
+            "owner/repo#x",
+        ],
+    )
+    def test_rejects_a_slug_that_could_retarget_the_url(self, monkeypatch, slug):
+        """The slug is interpolated into the request URL; only a plain owner/repo may pass."""
+        calls = self._patch_urlopen(monkeypatch, [])
+
+        with pytest.raises(ValueError):
+            ctc.fetch_releases(slug, sleep=lambda _: None)
+
+        assert calls == []
+
+    def test_only_requests_the_github_api_over_https(self, monkeypatch):
+        calls = self._patch_urlopen(monkeypatch, [[]])
+
+        ctc.fetch_releases("aquasecurity/trivy", sleep=lambda _: None)
+
+        parts = urllib.parse.urlsplit(calls[0].full_url)
+        assert (parts.scheme, parts.netloc) == ("https", "api.github.com")
 
 
 class TestRetryDelay:

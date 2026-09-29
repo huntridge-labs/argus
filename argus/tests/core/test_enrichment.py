@@ -12,6 +12,7 @@ import json
 
 import pytest
 
+from argus.core import enrichment
 from argus.core.enrichment import (
     EPSS_API,
     KEV_FEED,
@@ -206,3 +207,37 @@ class TestEnrichmentService:
         svc.enrich(["CVE-9-9"])
         cached = json.loads((tmp_path / "kev.json").read_text())
         assert any(v["cveID"] == "CVE-9-9" for v in cached["vulnerabilities"])
+
+
+class TestDefaultHttpGet:
+    """The real HTTP getter: TLS only, and never raises."""
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://api.first.org/data/v1/epss?cve=CVE-2024-0001",
+            "file:///etc/passwd",
+            "ftp://example.com/feed.json",
+        ],
+    )
+    def test_non_https_urls_are_never_opened(self, monkeypatch, url):
+        opened: list[object] = []
+        monkeypatch.setattr(enrichment.urllib.request, "urlopen", lambda *a, **k: opened.append(a))
+
+        assert enrichment._default_http_get(url) is None
+        assert opened == []
+
+    def test_https_urls_are_fetched_and_parsed(self, monkeypatch):
+        class _Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self):
+                return b'{"data": []}'
+
+        monkeypatch.setattr(enrichment.urllib.request, "urlopen", lambda *a, **k: _Response())
+
+        assert enrichment._default_http_get(f"{EPSS_API}?cve=CVE-2024-0001") == {"data": []}
