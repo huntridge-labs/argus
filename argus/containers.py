@@ -27,11 +27,11 @@ from pathlib import Path
 # segment in a single PR.
 OFFICIAL_IMAGES = {
     "trivy": "aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969",
-    "grype": "anchore/grype:v0.118.0@sha256:8a93fc48da96bd6ec5981279d099b69de11541dc68fdf222fb9161f8ff284af7",
-    "syft": "anchore/syft:v1.51.1@sha256:95fe0835e5bebc6f8b1f8acef68d47d63d594ef4c0f25c097ff853b23cbac74c",
+    "grype": "anchore/grype:v0.119.0@sha256:8c2c9234a345577a6d321a4753aa3ee1276d8975c8452d2344a56b57733ecad3",
+    "syft": "anchore/syft:v1.52.0@sha256:500e2d872ac019436926e8322b4fc1f39441d94d21f6f4046c6ff29b30e8cb02",
     "gitleaks": "zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f",
     "clamav": "clamav/clamav:1.5.4@sha256:ebec5bc138401b36ae987caa1a3fa3c3b2a21ed3d51f0bfa5852825e663e67b0",
-    "checkov": "bridgecrew/checkov:3.3.17@sha256:41c4701c6a56d8952e5aba7a420f871c8b70b57da94eb4f142dcdf7295bb0be3",
+    "checkov": "bridgecrew/checkov:3.3.19@sha256:d3e96adafdb315ca82e792ca8708c01adae85292800fb064c8b309b3d0cb7b80",
     # KICS (Checkmarx) multi-format IaC scanner. The upstream
     # ``checkmarx/kics`` repo tags ``:latest`` mutably (no semver release
     # tag per build), so the digest pin below is the content-hash gate
@@ -59,7 +59,7 @@ OFFICIAL_IMAGES = {
     "gosec": "securego/gosec:latest@sha256:2cf71ea78210c496c65e3a987576a9c8317b68e20f2960520b3f6f8f9f539be5",
     # lint-terraform docker fallbacks. terraform fmt/validate run via
     # the official Hashicorp image; tflint via its official image.
-    "terraform": "hashicorp/terraform:1.16.2@sha256:c3308fcbb530627c102c4c4b993e226b202429084328c3cc505cc2a69342e883",
+    "terraform": "hashicorp/terraform:1.16.4@sha256:985cdc6c1d9b0a65b83377f666efd2f740b47f02ac55be1ced3d18f7d3b0e829",
     "tflint": "ghcr.io/terraform-linters/tflint:v0.64.0@sha256:1c595f42d794c32c45a6ea8b58655fd66433d4ca3b1bc631c574a48d120bd19f",
     # lint-javascript via eslint. pipelinecomponents/eslint is the most
     # widely-used multi-arch eslint image. The upstream tags by commit
