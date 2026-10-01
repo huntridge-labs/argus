@@ -643,7 +643,7 @@ errors:
       - Verify action path matches exactly
       example: '# Correct
 
-        uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.12.6
+        uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.12.7
 
 
         # Wrong - missing .github prefix

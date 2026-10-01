@@ -1,6 +1,6 @@
-# Argus CLI Reference (v1.12.6)
+# Argus CLI Reference (v1.12.7)
 
-> Auto-generated from argparse definitions on 2026-09-22.
+> Auto-generated from argparse definitions on 2026-10-01.
 > Do not edit manually — run `python -m scripts.ci.gen_cli_docs` to regenerate.
 
 Argus Security Scanner — comprehensive security scanning for your codebase

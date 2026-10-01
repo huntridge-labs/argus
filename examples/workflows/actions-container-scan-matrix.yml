@@ -61,7 +61,7 @@ jobs:
 
       - name: Parse container config
         id: parse
-        uses: huntridge-labs/argus/.github/actions/parse-container-config@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/parse-container-config@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         with:
           config_file: container-config.yml
 
@@ -85,7 +85,7 @@ jobs:
       matrix: ${{ fromJson(needs.setup.outputs.scan_matrix) }}
     steps:
       - name: Run ${{ matrix.scanner }} scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-container@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scanner-container@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         with:
           image_ref: ${{ matrix.image }}
           container_name: ${{ matrix.name }}
@@ -105,7 +105,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Generate combined summary
-        uses: huntridge-labs/argus/.github/actions/security-summary@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/security-summary@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         with:
           summary_pattern: 'scanner-summary-container-*'
           title: '🐳 Container Security Scan Results'

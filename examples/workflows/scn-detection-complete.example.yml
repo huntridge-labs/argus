@@ -35,7 +35,7 @@ jobs:
           fetch-depth: 0
 
       - name: SCN Analysis
-        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -56,7 +56,7 @@ jobs:
           fetch-depth: 0
 
       - name: SCN Analysis with AI
-        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -78,7 +78,7 @@ jobs:
           fetch-depth: 0
 
       - name: SCN Analysis with Custom Profile
-        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -101,7 +101,7 @@ jobs:
           fetch-depth: 0
 
       - name: SCN Analysis with Separate Configs
-        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -125,7 +125,7 @@ jobs:
           fetch-depth: 0
 
       - name: SCN Analysis with OpenAI
-        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -149,7 +149,7 @@ jobs:
           fetch-depth: 0
 
       - name: Frontend SCN Analysis
-        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -170,7 +170,7 @@ jobs:
           fetch-depth: 0
 
       - name: Backend SCN Analysis
-        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -195,7 +195,7 @@ jobs:
 
       - name: SCN Analysis
         id: scn
-        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scn-detector@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

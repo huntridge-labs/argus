@@ -52,7 +52,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
-      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         with:
           fail_on_severity: 'high'
           post_pr_comment: false  # Let security-summary handle comments
@@ -68,7 +68,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         with:
           fail_on_severity: 'high'
           post_pr_comment: false
@@ -80,7 +80,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: huntridge-labs/argus/.github/actions/scanner-codeql@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+      - uses: huntridge-labs/argus/.github/actions/scanner-codeql@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         with:
           language: 'python'  # Adjust: python, javascript, java, go, etc.
           fail_on_severity: 'high'
@@ -94,7 +94,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: huntridge-labs/argus/.github/actions/scanner-opengrep@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+      - uses: huntridge-labs/argus/.github/actions/scanner-opengrep@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         with:
           config: 'auto'
           fail_on_severity: 'high'
@@ -109,7 +109,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: huntridge-labs/argus/.github/actions/scanner-clamav@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+      - uses: huntridge-labs/argus/.github/actions/scanner-clamav@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         with:
           scan_path: '.'
           fail_on_severity: 'high'
@@ -131,7 +131,7 @@ jobs:
           docker build -t my-app:${{ github.sha }} .
           echo "✅ Built image: my-app:${{ github.sha }}"
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-container@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+      - uses: huntridge-labs/argus/.github/actions/scanner-container@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         with:
           image_ref: 'my-app:${{ github.sha }}'
           container_name: 'my-app'
@@ -165,7 +165,7 @@ jobs:
           docker logs my-app
           exit 1
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-zap@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+      - uses: huntridge-labs/argus/.github/actions/scanner-zap@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         with:
           target_url: 'http://localhost:8080'
           scan_name: 'my-app'
@@ -197,7 +197,7 @@ jobs:
           merge-multiple: true
         continue-on-error: true
 
-      - uses: huntridge-labs/argus/.github/actions/security-summary@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+      - uses: huntridge-labs/argus/.github/actions/security-summary@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         with:
           title: '🔒 Security Pipeline Summary'
           post_pr_comment: 'true'

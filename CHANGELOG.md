@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.12.7](https://github.com/huntridge-labs/argus/compare/1.12.6...1.12.7) (2026-10-01)
+
+### Bug Fixes
+
+* **core:** apply each tool's ignore file to that tool only ([#447](https://github.com/huntridge-labs/argus/issues/447)) ([9105252](https://github.com/huntridge-labs/argus/commit/91052528bbed7662b54e239245d84f3706bb0123))
+* **deps:** raise fast-uri and js-yaml override floors ([#442](https://github.com/huntridge-labs/argus/issues/442)) ([01ac364](https://github.com/huntridge-labs/argus/commit/01ac3642f7a4554e23619962de62a33b39643322))
+* **deps:** raise fast-uri, ip-address and undici override floors ([#445](https://github.com/huntridge-labs/argus/issues/445)) ([bb6aced](https://github.com/huntridge-labs/argus/commit/bb6aced744866fe254c0d356c554b03e88800fc9))
+* **examples:** pin third-party actions; annotate Argus self-references ([#444](https://github.com/huntridge-labs/argus/issues/444)) ([9f57eda](https://github.com/huntridge-labs/argus/commit/9f57eda658e27447f6242439723495a5c111738c))
+* **security:** only open https URLs in enrichment and tool-currency fetches ([#443](https://github.com/huntridge-labs/argus/issues/443)) ([2d6d0f2](https://github.com/huntridge-labs/argus/commit/2d6d0f2ff25b445458b91cec241041357160081f))
+
+### Security Tools
+
+* **deps:** update grype, syft, checkov and terraform pins ([#450](https://github.com/huntridge-labs/argus/issues/450)) ([3f52427](https://github.com/huntridge-labs/argus/commit/3f5242718f61dc6a678bd4309a69205cfc398021)), references [#449](https://github.com/huntridge-labs/argus/issues/449) [#448](https://github.com/huntridge-labs/argus/issues/448)
+
+### Dependencies
+
+* **deps:** bump the docker-all group across 1 directory with 2 updates ([#451](https://github.com/huntridge-labs/argus/issues/451)) ([1779318](https://github.com/huntridge-labs/argus/commit/1779318615646e1793459db394bb022002ad541d))
+* **deps:** bump the npm-minor-patch group across 1 directory with 3 updates ([#438](https://github.com/huntridge-labs/argus/issues/438)) ([0c231fa](https://github.com/huntridge-labs/argus/commit/0c231faeb8df371b5f0913b1725653e5973f3678))
+* **deps:** Update github-actions-minor-patch ([#435](https://github.com/huntridge-labs/argus/issues/435)) ([98456e0](https://github.com/huntridge-labs/argus/commit/98456e043b180c31ec7691bdb17d900c3f596ebd))
+* **deps:** update python-slugify requirement ([#440](https://github.com/huntridge-labs/argus/issues/440)) ([a50e85b](https://github.com/huntridge-labs/argus/commit/a50e85ba5bd6cc5b513705a955836e2cd7e11c88))
+
+
+### Continuous Integration
+
+* **pre-commit:** enforce hooks in CI; local hook checks staged files only ([#441](https://github.com/huntridge-labs/argus/issues/441)) ([514fd0b](https://github.com/huntridge-labs/argus/commit/514fd0bbbef68bd059602571d8519086b9589cbb))
+
 ## [1.12.6](https://github.com/huntridge-labs/argus/compare/1.12.5...1.12.6) (2026-09-22)
 
 ### Bug Fixes

@@ -114,7 +114,7 @@ jobs:
           sleep 2
 
       - name: Run ZAP scanner (current input set)
-        uses: huntridge-labs/argus/.github/actions/scanner-zap@1.12.6 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scanner-zap@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
