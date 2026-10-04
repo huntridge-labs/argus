@@ -8,12 +8,8 @@
 allowBuilds:
   core-js-pure: false
 
-# Security floors for transitive deps of the release tooling — each pins
-# the minimum patched version for a published advisory (see the GHSA ids).
-# Only add one when the parent's declared range excludes the fix. If the
-# range already allows it, refresh the lockfile instead
-# (`pnpm update <pkg> --depth Infinity`). Remove an entry once the parent
-# dep's own range allows the patched version.
-# undici: release-it 21.1.0 (latest) pins exactly 7.29.0.
-overrides:
-  "undici@>=7.28.0 <7.29.1": 7.29.1 # GHSA-3wwx-pv8p-q78v (DoS)
+# No security overrides (ADR-040). Don't force a transitive version the
+# parent tool doesn't declare. If the parent's range already allows the
+# fix, refresh the lockfile (`pnpm update <pkg> --depth Infinity
+# --lockfile-only`). If it doesn't, risk-accept the finding with an expiry
+# and wait for the parent to move.

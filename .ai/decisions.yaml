@@ -3141,8 +3141,12 @@ decisions:
     consequences:
       - Removed the brace-expansion, fast-uri, ip-address and js-yaml
         overrides. Locked versions stay at or above each fix.
-      - The undici override stays for now. release-it 21.1.0 (latest) pins
-        undici 7.29.0 exactly, so it is the one remaining forced version and
-        is up for review under this rule.
+      - Removed the undici override too. release-it 21.1.0 (latest) pins
+        undici 7.29.0 exactly, so 7.29.1 was forced against the tool. The
+        advisory (GHSA-3wwx-pv8p-q78v, moderate) is in the WebSocket
+        permessage-deflate path, which release-it does not use; it is risk
+        accepted in Argus Cloud until release-it moves.
+      - pnpm-workspace.yaml now carries no overrides block, only a comment
+        pointing here.
       - basic-ftp (GHSA-c475-qrg2-pj4r) is fixed only in 6.x while get-uri
         declares ^5.3.1, so it is risk accepted in Argus Cloud, not overridden.
