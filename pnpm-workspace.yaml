@@ -12,7 +12,6 @@ allowBuilds:
 # the minimum patched version for a published advisory (see the GHSA ids).
 # Remove an entry once the parent dep's own range moves past it.
 overrides:
-  "brace-expansion@<1.1.18": 1.1.18 # GHSA-3jxr-9vmj-r5cp / -mh99 / -rgw5 (DoS)
   "fast-uri@<3.1.7": 3.1.7 # GHSA-7p8r-x3mc-p8w7, GHSA-v2hh-gcrm-f6hx, GHSA-5jgf-p345-68v8, GHSA-f65p-4m7j-42xc, GHSA-fph4-wmhf-6fwf, GHSA-jqff-g426-hqxp, GHSA-58mr-gqgx-xq4g, GHSA-qw65-cvwx-89v3
   "ip-address@<10.5.1": 10.5.1 # GHSA-mwp4-54f8-5fhr (+ 2 moderate), GHSA-2vr4-cq9g-pvrc, GHSA-rpw4-54j3-4h4q
   "undici@>=7.28.0 <7.29.1": 7.29.1 # GHSA-3wwx-pv8p-q78v (DoS)
