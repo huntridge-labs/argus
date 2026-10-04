@@ -3116,3 +3116,42 @@ decisions:
         INCOMPLETE flag now forces overall_status=failure. Pinned by tests that
         execute the aggregation script rather than inspecting its text — the
         structural checks passed throughout the bug's lifetime.
+  ADR-040:
+    title: Don't force a transitive version the parent tool doesn't declare
+    date: '2026-10-04'
+    status: accepted
+    context: |-
+      pnpm-workspace.yaml carried five security overrides for transitive deps
+      of the release tooling. Four of them (brace-expansion, fast-uri,
+      ip-address, js-yaml) pinned versions the parent's own declared range
+      already allowed, so they did nothing a lockfile refresh could not. The
+      brace-expansion one was worse than redundant: pnpm matched its
+      `<1.1.18` selector against minimatch's `^1.1.7` spec and held the
+      lockfile at 1.1.18, which is still exposed to GHSA-6j4f-fj2g-mc7p and
+      GHSA-qhr7-859c-m2p7. Overriding a dependency outside what a tool
+      declares also means shipping a combination the tool's authors never
+      tested, which erodes trust in the tool.
+    decision: |-
+      Only override when the parent pins or ranges out the patched version.
+      If the range already allows the fix, refresh the lockfile
+      (`pnpm update <pkg> --depth Infinity --lockfile-only`) instead. When the
+      fix needs a version the parent doesn't declare (e.g. a major bump), don't
+      force it: record the finding as risk accepted with an expiry and wait
+      for the parent to move.
+    consequences:
+      positive:
+        - Removed all five overrides (brace-expansion, fast-uri, ip-address,
+          js-yaml, undici). Every tool now runs the dependency versions it
+          declares.
+        - The brace-expansion override was holding 1.1.18; without it the
+          patched 1.1.21 resolves, clearing GHSA-6j4f-fj2g-mc7p and
+          GHSA-qhr7-859c-m2p7. fast-uri, ip-address and js-yaml stay at their
+          patched versions inside the parents' ranges.
+      negative:
+        - undici drops back to 7.29.0, which release-it 21.1.0 (latest) pins
+          exactly. GHSA-3wwx-pv8p-q78v (moderate) is in the WebSocket
+          permessage-deflate path, which release-it does not use; it is risk
+          accepted in Argus Cloud until release-it moves.
+        - basic-ftp (GHSA-c475-qrg2-pj4r) is fixed only in 6.x while get-uri
+          declares ^5.3.1, so it is risk accepted in Argus Cloud, not
+          overridden.
