@@ -3139,14 +3139,19 @@ decisions:
       force it: record the finding as risk accepted with an expiry and wait
       for the parent to move.
     consequences:
-      - Removed the brace-expansion, fast-uri, ip-address and js-yaml
-        overrides. Locked versions stay at or above each fix.
-      - Removed the undici override too. release-it 21.1.0 (latest) pins
-        undici 7.29.0 exactly, so 7.29.1 was forced against the tool. The
-        advisory (GHSA-3wwx-pv8p-q78v, moderate) is in the WebSocket
-        permessage-deflate path, which release-it does not use; it is risk
-        accepted in Argus Cloud until release-it moves.
-      - pnpm-workspace.yaml now carries no overrides block, only a comment
-        pointing here.
-      - basic-ftp (GHSA-c475-qrg2-pj4r) is fixed only in 6.x while get-uri
-        declares ^5.3.1, so it is risk accepted in Argus Cloud, not overridden.
+      positive:
+        - Removed all five overrides (brace-expansion, fast-uri, ip-address,
+          js-yaml, undici). Every tool now runs the dependency versions it
+          declares.
+        - The brace-expansion override was holding 1.1.18; without it the
+          patched 1.1.21 resolves, clearing GHSA-6j4f-fj2g-mc7p and
+          GHSA-qhr7-859c-m2p7. fast-uri, ip-address and js-yaml stay at their
+          patched versions inside the parents' ranges.
+      negative:
+        - undici drops back to 7.29.0, which release-it 21.1.0 (latest) pins
+          exactly. GHSA-3wwx-pv8p-q78v (moderate) is in the WebSocket
+          permessage-deflate path, which release-it does not use; it is risk
+          accepted in Argus Cloud until release-it moves.
+        - basic-ftp (GHSA-c475-qrg2-pj4r) is fixed only in 6.x while get-uri
+          declares ^5.3.1, so it is risk accepted in Argus Cloud, not
+          overridden.
