@@ -3116,3 +3116,33 @@ decisions:
         INCOMPLETE flag now forces overall_status=failure. Pinned by tests that
         execute the aggregation script rather than inspecting its text — the
         structural checks passed throughout the bug's lifetime.
+  ADR-040:
+    title: Don't force a transitive version the parent tool doesn't declare
+    date: '2026-10-04'
+    status: accepted
+    context: |-
+      pnpm-workspace.yaml carried five security overrides for transitive deps
+      of the release tooling. Four of them (brace-expansion, fast-uri,
+      ip-address, js-yaml) pinned versions the parent's own declared range
+      already allowed, so they did nothing a lockfile refresh could not. The
+      brace-expansion one was worse than redundant: pnpm matched its
+      `<1.1.18` selector against minimatch's `^1.1.7` spec and held the
+      lockfile at 1.1.18, which is still exposed to GHSA-6j4f-fj2g-mc7p and
+      GHSA-qhr7-859c-m2p7. Overriding a dependency outside what a tool
+      declares also means shipping a combination the tool's authors never
+      tested, which erodes trust in the tool.
+    decision: |-
+      Only override when the parent pins or ranges out the patched version.
+      If the range already allows the fix, refresh the lockfile
+      (`pnpm update <pkg> --depth Infinity --lockfile-only`) instead. When the
+      fix needs a version the parent doesn't declare (e.g. a major bump), don't
+      force it: record the finding as risk accepted with an expiry and wait
+      for the parent to move.
+    consequences:
+      - Removed the brace-expansion, fast-uri, ip-address and js-yaml
+        overrides. Locked versions stay at or above each fix.
+      - The undici override stays for now. release-it 21.1.0 (latest) pins
+        undici 7.29.0 exactly, so it is the one remaining forced version and
+        is up for review under this rule.
+      - basic-ftp (GHSA-c475-qrg2-pj4r) is fixed only in 6.x while get-uri
+        declares ^5.3.1, so it is risk accepted in Argus Cloud, not overridden.

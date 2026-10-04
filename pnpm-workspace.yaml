@@ -10,9 +10,10 @@ allowBuilds:
 
 # Security floors for transitive deps of the release tooling — each pins
 # the minimum patched version for a published advisory (see the GHSA ids).
-# Remove an entry once the parent dep's own range moves past it.
+# Only add one when the parent's declared range excludes the fix. If the
+# range already allows it, refresh the lockfile instead
+# (`pnpm update <pkg> --depth Infinity`). Remove an entry once the parent
+# dep's own range allows the patched version.
+# undici: release-it 21.1.0 (latest) pins exactly 7.29.0.
 overrides:
-  "fast-uri@<3.1.7": 3.1.7 # GHSA-7p8r-x3mc-p8w7, GHSA-v2hh-gcrm-f6hx, GHSA-5jgf-p345-68v8, GHSA-f65p-4m7j-42xc, GHSA-fph4-wmhf-6fwf, GHSA-jqff-g426-hqxp, GHSA-58mr-gqgx-xq4g, GHSA-qw65-cvwx-89v3
-  "ip-address@<10.5.1": 10.5.1 # GHSA-mwp4-54f8-5fhr (+ 2 moderate), GHSA-2vr4-cq9g-pvrc, GHSA-rpw4-54j3-4h4q
   "undici@>=7.28.0 <7.29.1": 7.29.1 # GHSA-3wwx-pv8p-q78v (DoS)
-  "js-yaml@>=4.0.0 <4.3.2": 4.3.2 # GHSA-52cp-r559-cp3m, GHSA-5p4m-2wfm-xmqj, GHSA-2883-xcg3-v3hh
