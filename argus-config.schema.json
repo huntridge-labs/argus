@@ -97,7 +97,11 @@
         },
         "skip_check": {
           "type": "string",
-          "description": "Specific check ID(s) to skip (scanner-dependent)."
+          "description": "Comma-separated rule ID(s) to drop from results. Works for every scanner: passed to the tool when it has a skip flag (bandit, checkov), filtered after the scan otherwise (e.g. trivy-iac accepts AWS-0017 or AVD-AWS-0017)."
+        },
+        "ignore_file": {
+          "type": "string",
+          "description": "Native ID ignore file passed to the tool (trivy, trivy-iac: --ignorefile). Defaults to .trivyignore / .trivyignore.yaml at the scan root."
         },
         "config": {
           "type": "string",

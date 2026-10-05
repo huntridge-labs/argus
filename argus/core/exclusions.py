@@ -1,8 +1,9 @@
 """Path exclusion handling — reads ignore files and builds unified exclude set.
 
 Argus automatically respects .gitignore, .dockerignore, and tool-specific
-ignore files. Combined with --exclude CLI patterns and argus.yml config,
-this produces the exclusion set applied pre-scan and post-scan.
+path ignore files (.semgrepignore). Combined with --exclude CLI patterns and
+argus.yml config, this produces the exclusion set applied pre-scan and
+post-scan.
 
 A tool-specific ignore file applies to its own tool only. ``.semgrepignore``
 is written for opengrep; a ``**/*.json`` line there must not drop OSV's
@@ -10,6 +11,7 @@ package-lock.json findings, and ``tests/`` must not hide bandit's.
 """
 
 import logging
+from collections.abc import Callable
 from fnmatch import fnmatch
 from pathlib import Path
 
@@ -22,11 +24,12 @@ _IGNORE_FILES = [
     ".dockerignore",
 ]
 
-# Tool-specific ignore files, and the only scanners they apply to.
+# Tool-specific ignore files that list PATHS, and the only scanners they
+# apply to. ``.trivyignore`` and ``.gitleaksignore`` are not here on
+# purpose: they list rule/CVE IDs and finding fingerprints, which the tools
+# apply themselves (see ``tool_config.IGNORE_FILE_RULES``).
 _SCANNER_IGNORE_FILES = {
     ".semgrepignore": ("opengrep",),
-    ".trivyignore": ("trivy", "trivy-iac"),
-    ".gitleaksignore": ("gitleaks",),
 }
 
 # Paths always excluded (build artifacts, dependencies, caches).
@@ -228,6 +231,29 @@ def filter_findings(findings: list, patterns: list[str]) -> tuple[list, int]:
             kept.append(finding)
 
     return kept, excluded
+
+
+def filter_skipped_rules(
+    findings: list,
+    skip_ids: list[str],
+    rule_ids: Callable[[object], set[str]] | None = None,
+) -> tuple[list, int]:
+    """Drop findings whose rule ID is listed in ``skip_check``.
+
+    Lets ``skip_check`` in argus.yml work for every scanner, including tools
+    with no skip-by-ID flag (Trivy). Matching is case-insensitive.
+    ``rule_ids`` lets a scanner offer aliases (Trivy's ``AWS-0017`` is also
+    ``AVD-AWS-0017``). Returns (kept_findings, skipped_count).
+    """
+    if not skip_ids:
+        return findings, 0
+    skip = {s.upper() for s in skip_ids}
+    ids_for = rule_ids or (lambda finding: {finding.id})
+    kept = [
+        f for f in findings
+        if not {i.upper() for i in ids_for(f) if i} & skip
+    ]
+    return kept, len(findings) - len(kept)
 
 
 def _parse_ignore_file(path: Path) -> list[str]:

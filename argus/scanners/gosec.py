@@ -15,7 +15,7 @@ from pathlib import Path
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
 from argus.core.redact import redact_secret, redact_secret_in_message
-from argus.core.scanner_template import ScanPaths, run_subprocess_scan
+from argus.core.scanner_template import ScanPaths, run_subprocess_scan, workspace_file
 from argus.core.version import parse_tool_version
 
 
@@ -74,13 +74,7 @@ class GosecScanner:
         ]
         config_file = config.get("config_file")
         if config_file:
-            # Local: caller passes the host path; container: prefix the
-            # workspace mount since the file is mounted there.
-            resolved = (
-                config_file if "/" in config_file
-                else f"{paths.workspace}/{config_file}"
-            )
-            args.extend(["-conf", resolved])
+            args.extend(["-conf", workspace_file(paths.workspace, config_file)])
         exclude = config.get("exclude")
         if exclude:
             # gosec's -exclude takes RULE IDs (G101, G404, …); directory

@@ -66,7 +66,7 @@ class ConfigOption:
 class NativeIgnore:
     """A scanner's *native* suppression mechanism, when Argus has no direct knob.
 
-    e.g. Trivy respects a ``.trivyignore`` file and ``# trivy:skip=<id>`` comments.
+    e.g. Trivy respects a ``.trivyignore`` file and ``#trivy:ignore:<id>`` comments.
     A UI uses this to tell a user exactly how to ignore a finding at the source
     even when there's no ``argus.yml`` key for it.
     """
@@ -104,6 +104,15 @@ BASE_OPTIONS: tuple[ConfigOption, ...] = (
         "Comma-separated paths/globs to skip.",
         ignore=True,
         example="tests,docs,*.min.js",
+    ),
+    ConfigOption(
+        "skip_check",
+        "Skip rules",
+        "rule_ids",
+        "Comma-separated rule IDs to drop from results. Passed to the tool "
+        "when it has a skip flag; filtered after the scan otherwise.",
+        ignore=True,
+        example="AVD-AWS-0017,CKV_AWS_1",
     ),
 )
 
@@ -152,6 +161,18 @@ _SCANNER_EXTRAS: dict[str, tuple[ConfigOption, ...]] = {
             "OpenVEX document(s) — path or list — to drop not_affected / fixed "
             "findings via trivy --vex.", ignore=True, example=".vex/argus.openvex.json",
         ),
+        ConfigOption(
+            "ignore_file", "Ignore file", "config_file",
+            "Trivy ignore file. Defaults to .trivyignore / .trivyignore.yaml "
+            "at the scan root.", ignore=True, example=".trivyignore",
+        ),
+    ),
+    "trivy-iac": (
+        ConfigOption(
+            "ignore_file", "Ignore file", "config_file",
+            "Trivy ignore file. Defaults to .trivyignore / .trivyignore.yaml "
+            "at the scan root.", ignore=True, example=".trivyignore",
+        ),
     ),
     "container": (
         ConfigOption("image_ref", "Image", "string", "Container image to scan.", example="myapp:latest"),
@@ -195,9 +216,9 @@ _NATIVE_IGNORE: dict[str, NativeIgnore] = {
     "bandit": NativeIgnore(file="pyproject.toml ([tool.bandit] skips)", comment="# nosec: B101", help="Bandit skips via native config or inline # nosec."),
     "gitleaks": NativeIgnore(file="gitleaks.toml (allowlist) / .gitleaksignore", comment="#gitleaks:allow"),
     "opengrep": NativeIgnore(comment="# nosem: <rule-id>"),
-    "osv": NativeIgnore(file=".osv-scanner.toml (IgnoredVulns)", help="Ignore a CVE by id in the OSV config."),
+    "osv": NativeIgnore(file="osv-scanner.toml (IgnoredVulns)", help="Ignore a CVE by id in the OSV config."),
     "checkov": NativeIgnore(comment="# checkov:skip=CKV_AWS_1:reason"),
-    "trivy-iac": NativeIgnore(file=".trivyignore", comment="# trivy:skip=<AVD-id>"),
+    "trivy-iac": NativeIgnore(file=".trivyignore", comment="#trivy:ignore:AVD-AWS-0017"),
     "trivy": NativeIgnore(file=".trivyignore", help="Ignore CVE ids, one per line."),
     "grype": NativeIgnore(file=".grype.yaml (ignore rules)"),
     "container": NativeIgnore(file=".trivyignore / .grype.yaml", help="Image-layer CVEs use the underlying tools' ignore files."),

@@ -6,7 +6,12 @@ from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
-from argus.core.scanner_template import ScanPaths, run_subprocess_scan
+from argus.core.scanner_template import (
+    ScanPaths,
+    id_list,
+    run_subprocess_scan,
+    workspace_file,
+)
 from argus.core.version import parse_tool_version
 
 
@@ -46,12 +51,17 @@ class CheckovScanner:
         framework = config.get("framework")
         if framework:
             args.extend(["--framework", framework])
-        check = config.get("check")
+        check = id_list(config.get("check"))
         if check:
-            args.extend(["--check", check])
-        skip_check = config.get("skip_check")
+            args.extend(["--check", ",".join(check)])
+        skip_check = id_list(config.get("skip_check"))
         if skip_check:
-            args.extend(["--skip-check", skip_check])
+            args.extend(["--skip-check", ",".join(skip_check)])
+        # Checkov finds a .checkov.yaml at the -d root on its own, but an
+        # explicit config_file anywhere else is only read via the flag.
+        config_file = config.get("config_file")
+        if config_file:
+            args.extend(["--config-file", workspace_file(paths.workspace, config_file)])
         return args
 
     def is_available(self) -> bool:

@@ -8,7 +8,12 @@ from pathlib import Path
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
 from argus.core.redact import REDACTED_PLACEHOLDER
-from argus.core.scanner_template import ScanPaths, run_subprocess_scan
+from argus.core.scanner_template import (
+    ScanPaths,
+    id_list,
+    run_subprocess_scan,
+    workspace_file,
+)
 from argus.core.version import parse_tool_version
 
 
@@ -59,9 +64,7 @@ class BanditScanner:
         ]
         config_file = config.get("config_file")
         if config_file:
-            # Local: caller passes the host path; container: prefix
-            # /workspace/ since the file is mounted there.
-            args.extend(["-c", config_file if "/" in config_file else f"{paths.workspace}/{config_file}"])
+            args.extend(["-c", workspace_file(paths.workspace, config_file)])
         exclude = config.get("exclude")
         if exclude:
             args.extend(["--exclude", exclude])
@@ -69,12 +72,12 @@ class BanditScanner:
         # bandit and checkov alike; bandit spells them --tests / --skip
         # (comma-separated test IDs). Issue #385: these were silently
         # dropped, so a repo-committed skip policy never took effect.
-        check = config.get("check")
+        check = id_list(config.get("check"))
         if check:
-            args.extend(["--tests", check])
-        skip_check = config.get("skip_check")
+            args.extend(["--tests", ",".join(check)])
+        skip_check = id_list(config.get("skip_check"))
         if skip_check:
-            args.extend(["--skip", skip_check])
+            args.extend(["--skip", ",".join(skip_check)])
         return args
 
     def is_available(self) -> bool:

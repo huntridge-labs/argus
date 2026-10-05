@@ -72,6 +72,12 @@ _SCANNER_KNOWN_KEYS = {
     # Scanner-specific keys that are valid in extra
     "image_ref", "target_url", "scanners", "scan_type",
     "framework", "check", "skip_check", "config",
+    "ignore_file",  # native ID ignore file (.trivyignore), passed to the tool
+    "vex", "lockfile", "recursive",
+    # supply-chain (zizmor / actionlint)
+    "persona", "zizmor_config", "run_actionlint",
+    # lint-python (flake8) and lint-terraform (tflint)
+    "ignore", "max_line_length", "run_tflint", "tflint_config",
     # Credential fields (either form: literal or <field>_env)
     "registry_username", "registry_password",
     "registry_username_env", "registry_password_env",

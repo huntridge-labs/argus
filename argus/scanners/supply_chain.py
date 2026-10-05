@@ -2,6 +2,7 @@
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -9,6 +10,7 @@ from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
+from argus.core.scanner_template import workspace_file
 from argus.core.version import parse_tool_version
 
 # zizmor security-severity score thresholds
@@ -49,9 +51,23 @@ class SupplyChainScanner:
 
         The semicolon between zizmor and actionlint ensures actionlint
         runs even if zizmor exits non-zero (findings found).
+
+        zizmor finds ``.github/zizmor.yml`` on its own; a ``zizmor_config``
+        somewhere else (repo-relative) and ``persona`` need the flags. Both
+        values come from argus.yml and land in a shell string, so they are
+        quoted.
         """
+        config = config or {}
+        zizmor_flags = ""
+        persona = config.get("persona")
+        if persona:
+            zizmor_flags += f" --persona {shlex.quote(str(persona))}"
+        zizmor_config = config.get("zizmor_config")
+        if zizmor_config and not Path(zizmor_config).is_absolute():
+            mounted = workspace_file("/workspace", str(zizmor_config))
+            zizmor_flags += f" --config {shlex.quote(mounted)}"
         return [
-            "zizmor --format sarif /workspace/.github/ > /output/zizmor.json 2>/dev/null; "
+            f"zizmor --format sarif{zizmor_flags} /workspace/.github/ > /output/zizmor.json 2>/dev/null; "
             "actionlint -format '{{json .}}' /workspace/.github/workflows/ > /output/actionlint.json 2>/dev/null || true",
         ]
 

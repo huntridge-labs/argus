@@ -133,15 +133,14 @@ class TestIgnoreFileScope:
         assert excluded == 0
         assert [f.id for f in kept] == ["1", "2"]
 
-    @pytest.mark.parametrize("ignore_file,owners", [
-        (".trivyignore", ["trivy", "trivy-iac"]),
-        (".gitleaksignore", ["gitleaks"]),
+    @pytest.mark.parametrize("ignore_file,scanner", [
+        (".trivyignore", "trivy-iac"),
+        (".gitleaksignore", "gitleaks"),
     ])
-    def test_tool_ignore_files_apply_to_their_tools_only(self, tmp_path, ignore_file, owners):
+    def test_id_ignore_files_are_not_path_patterns(self, tmp_path, ignore_file, scanner):
+        # These list rule IDs / fingerprints; the tool applies them itself.
         (tmp_path / ignore_file).write_text("vendored\n")
-        for owner in owners:
-            assert "vendored" in build_exclusion_set(scan_path=str(tmp_path), scanner=owner)
-        assert "vendored" not in build_exclusion_set(scan_path=str(tmp_path), scanner="osv")
+        assert "vendored" not in build_exclusion_set(scan_path=str(tmp_path), scanner=scanner)
 
     @pytest.mark.parametrize("ignore_file", [".gitignore", ".dockerignore"])
     @pytest.mark.parametrize("scanner", ["osv", "opengrep", "bandit", None])

@@ -28,7 +28,7 @@ from pathlib import Path
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
 from argus.core.redact import redact_secret
-from argus.core.scanner_template import ScanPaths
+from argus.core.scanner_template import ScanPaths, workspace_file
 from argus.core.version import parse_tool_version
 
 
@@ -136,12 +136,7 @@ class KICSScanner:
         ]
         config_file = config.get("config_file")
         if config_file:
-            # Local: caller passes the host path; container: prefix the
-            # workspace mount since the file is mounted there.
-            args.extend([
-                "--config",
-                config_file if "/" in config_file else f"{paths.workspace}/{config_file}",
-            ])
+            args.extend(["--config", workspace_file(paths.workspace, config_file)])
         exclude = config.get("exclude")
         if exclude:
             args.extend(["--exclude-paths", exclude])

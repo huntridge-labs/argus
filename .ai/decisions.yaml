@@ -3155,3 +3155,39 @@ decisions:
         - basic-ftp (GHSA-c475-qrg2-pj4r) is fixed only in 6.x while get-uri
           declares ^5.3.1, so it is risk accepted in Argus Cloud, not
           overridden.
+  ADR-041:
+    title: Native config and ignore files travel as flags; skip_check works for every scanner
+    date: '2026-10-05'
+    status: accepted
+    context: |-
+      Argus auto-discovered trivy.yaml and .checkov.yaml and wrote the path
+      into config_file, but several build_args never read it. Tools that
+      only look in their working directory (Trivy for .trivyignore and
+      trivy.yaml, Grype, yamllint, flake8) never find a file under
+      /workspace on their own, because the official images run from "/".
+      A repo-root .trivyignore was silently ignored in Docker mode. Exclusions
+      also read .trivyignore and .gitleaksignore as path patterns, which
+      they are not, and the "Loaded N exclusion pattern(s)" log line made it
+      look like the file was honoured. Separately, skip_check only worked for
+      bandit and checkov; Trivy has no skip-by-ID flag at all.
+    decision: |-
+      Every resolved file goes to the tool through its own flag
+      (scanner_template.workspace_file joins the scan-root-relative path to
+      the workspace). ID ignore files get their own discovery table
+      (tool_config.IGNORE_FILE_RULES) and an explicit `ignore_file:` key.
+      skip_check is filtered by the engine after every scan, so it works for
+      any scanner; scanners may expose `rule_ids(finding)` for aliases
+      (trivy-iac matches both AWS-0017 and AVD-AWS-0017). Tools with a
+      native skip flag still get it, so the post-filter is a no-op there.
+      .trivyignore and .gitleaksignore are no longer read as path excludes.
+    consequences:
+      positive:
+        - A user can suppress through the tool's own file or through
+          argus.yml, and both work the same in local and Docker mode.
+        - Explicit config files outside the scan root (checkov
+          --config-file, nested bandit/gitleaks paths) now reach the tool.
+      negative:
+        - A post-filtered skip_check still costs the scan time for the
+          skipped rule; only the native flags avoid running it.
+        - The container scanner's bundled trivy/grype image scans do not yet
+          pick up .trivyignore / .grype.yaml (VEX is the supported path there).

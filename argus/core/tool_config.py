@@ -75,6 +75,15 @@ DISCOVERY_RULES: dict[str, list[ConfigCandidate]] = {
         ConfigCandidate("trivy.yaml"),
         ConfigCandidate("trivy.yml"),
     ],
+    "trivy": [
+        ConfigCandidate("trivy.yaml"),
+        ConfigCandidate("trivy.yml"),
+    ],
+    "grype": [
+        ConfigCandidate(".grype.yaml"),
+        ConfigCandidate(".grype.yml"),
+        ConfigCandidate(".grype/config.yaml"),
+    ],
     "checkov": [
         ConfigCandidate(".checkov.yaml"),
         ConfigCandidate(".checkov.yml"),
@@ -88,6 +97,26 @@ DISCOVERY_RULES: dict[str, list[ConfigCandidate]] = {
         ConfigCandidate(".semgrep.yml"),
         ConfigCandidate(".semgrep.yaml"),
     ],
+    "lint-yaml": [
+        ConfigCandidate(".yamllint"),
+        ConfigCandidate(".yamllint.yaml"),
+        ConfigCandidate(".yamllint.yml"),
+    ],
+}
+
+# Native ignore files that take IDs (not paths), resolved like config files
+# but passed through a separate flag. Trivy only looks in its working
+# directory, which is ``/`` inside the container, so it never finds one
+# under ``/workspace`` unless we pass ``--ignorefile``. Explicit
+# ``ignore_file:`` in argus.yml wins.
+_TRIVY_IGNORE = [
+    ConfigCandidate(".trivyignore"),
+    ConfigCandidate(".trivyignore.yaml"),
+    ConfigCandidate(".trivyignore.yml"),
+]
+IGNORE_FILE_RULES: dict[str, list[ConfigCandidate]] = {
+    "trivy-iac": _TRIVY_IGNORE,
+    "trivy": _TRIVY_IGNORE,
 }
 
 
@@ -95,11 +124,14 @@ def resolve_config(
     scanner_name: str,
     scan_root: str,
     explicit: str | None,
+    rules: dict[str, list[ConfigCandidate]] | None = None,
 ) -> ConfigResolution:
     """Resolve a scanner's config file path using the precedence rules.
 
     Returns a ConfigResolution describing the outcome. Callers read
     ``.path`` to decide whether to pass ``-c``/``--config`` to the tool.
+    ``rules`` defaults to :data:`DISCOVERY_RULES`; pass
+    :data:`IGNORE_FILE_RULES` to resolve a native ignore file instead.
     """
     if explicit:
         return ConfigResolution(
@@ -108,10 +140,10 @@ def resolve_config(
             path=explicit,
         )
 
-    rules = DISCOVERY_RULES.get(scanner_name, [])
+    candidates = (DISCOVERY_RULES if rules is None else rules).get(scanner_name, [])
     root = Path(scan_root)
     tried: list[str] = []
-    for candidate in rules:
+    for candidate in candidates:
         tried.append(candidate.filename)
         target = root / candidate.filename
         if not target.is_file():

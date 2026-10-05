@@ -1206,3 +1206,24 @@ errors:
         host with ``--scanners exposure`` exits 2.'
       reference: .ai/decisions.yaml ADR-039 + docs/config-reference.md (Exit codes → Requested versus default)
     symptom: 'exit 2 with scanner_errors {exposure, services}: no container runtime available — install Docker, Podman, or nerdctl'
+  NATIVE_CONFIG_OR_IGNORE_FILE_NOT_APPLIED:
+    category: configuration
+    context: A finding listed in .trivyignore, trivy.yaml, or argus.yml skip_check still
+      shows up, usually only when scanning through Docker
+    root_cause: The official tool images run from "/". Tools that look for their config or
+      ignore file in the working directory never see one under /workspace, so the file
+      has to be passed with the tool's flag. Before ADR-041 trivy-iac dropped both, and
+      skip_check only reached bandit and checkov.
+    solution:
+      steps:
+      - Run with -v and read the 'Scanner config resolution' lines. Each discovered or
+        explicit file is listed, including '<scanner> ignore file'.
+      - Put the file at the scan root, or set config_file / ignore_file in argus.yml
+        (paths relative to the repo root).
+      - For trivy-iac, skip_check accepts AWS-0017 or AVD-AWS-0017. Inline suppression is
+        '#trivy:ignore:AVD-AWS-0017' on the line above the resource.
+      verification: The resolution log names the file and the finding is gone from
+        argus-results.json
+    reference: argus/core/tool_config.py (DISCOVERY_RULES, IGNORE_FILE_RULES), argus/core/scanner_template.py
+      (workspace_file), .ai/decisions.yaml ADR-041
+    symptom: .trivyignore ignored / skip_check has no effect for trivy-iac

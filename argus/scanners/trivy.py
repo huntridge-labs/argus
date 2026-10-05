@@ -16,6 +16,7 @@ from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
+from argus.core.scanner_template import workspace_file
 from argus.core.version import parse_tool_version
 
 from argus.scanners._vuln_parsers import parse_trivy_vuln
@@ -54,6 +55,7 @@ class TrivyScanner:
             "--format", "json",
             "--output", "/output/results.json",
             *vex_cli_flags(config, in_container=True),
+            *_native_file_flags(config, "/workspace"),
             mount,
         ]
 
@@ -88,6 +90,7 @@ class TrivyScanner:
                 "--format", "json",
                 "--output", str(output_file),
                 *vex_cli_flags(config, in_container=False),
+                *_native_file_flags(config, path),
                 str(sbom_path),
             ]
             result = subprocess.run(cmd, capture_output=True, text=True)
@@ -134,3 +137,18 @@ class TrivyScanner:
             for v in r.get("Vulnerabilities") or []:
                 findings.append(parse_trivy_vuln(v, scanner_name=self.name))
         return findings
+
+
+def _native_file_flags(config: dict, workspace: str) -> list[str]:
+    """``--config`` / ``--ignorefile`` for a resolved trivy.yaml / .trivyignore.
+
+    Trivy only checks its working directory for these, and the official
+    image runs from ``/``, so a file at the scan root is never found
+    without the flag.
+    """
+    flags: list[str] = []
+    if config.get("config_file"):
+        flags.extend(["--config", workspace_file(workspace, config["config_file"])])
+    if config.get("ignore_file"):
+        flags.extend(["--ignorefile", workspace_file(workspace, config["ignore_file"])])
+    return flags

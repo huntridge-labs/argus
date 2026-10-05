@@ -6,7 +6,7 @@ from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
-from argus.core.scanner_template import ScanPaths, run_subprocess_scan
+from argus.core.scanner_template import ScanPaths, run_subprocess_scan, workspace_file
 from argus.core.version import parse_tool_version
 
 
@@ -39,6 +39,12 @@ class OpengrepScanner:
         rules_config = config.get("config")
         if rules_config:
             args.extend(["--config", rules_config])
+        # A discovered semgrep.yml / .semgrep.yml (or explicit config_file)
+        # is a rules file. Opengrep accepts repeated --config, so it adds to
+        # any registry ruleset named in ``config``.
+        config_file = config.get("config_file")
+        if config_file:
+            args.extend(["--config", workspace_file(paths.workspace, config_file)])
         args.append(paths.workspace)
         return args
 
