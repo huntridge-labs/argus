@@ -1229,17 +1229,17 @@ def cmd_classify(args: argparse.Namespace) -> int:
     import subprocess as _subprocess
 
     try:
-        from argus.scn import ChangeClassifier, load_scn_config, generate_report
+        from argus.scn import ChangeClassifier, validate_scn_config, generate_report
         from argus.scn.diff import analyze_iac_changes
     except ImportError as exc:
         print(f"Error: failed to import SCN modules: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
-    # Load config
+    # Validate explicit configs before diff analysis, including empty diffs.
     config = {}
     if args.config:
         try:
-            config = load_scn_config(args.config)
+            config = validate_scn_config(args.config)
         except Exception as exc:
             print(f"Error: failed to load SCN config: {exc}", file=sys.stderr)
             return EXIT_ERROR

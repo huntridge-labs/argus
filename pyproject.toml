@@ -181,6 +181,8 @@ exclude = [
 [tool.setuptools.package-data]
 # Include schema files and logo
 argus = ["../argus-config.schema.json", "../img/argus_logo.txt"]
+# Required by validate_scn_config when classify runs from an installed package.
+"argus.scn.schemas" = ["scn-config.schema.json"]
 # Web UI templates and static assets live next to the Python package but
 # aren't .py files; setuptools won't pick them up automatically. Listing
 # them here ships them inside the built wheel.
