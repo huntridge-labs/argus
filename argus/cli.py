@@ -880,8 +880,12 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction, parent: argparse.
         pass
     scan_parser.add_argument(
         "--path", "-p",
-        default=".",
-        help="Path to scan (default: current directory)",
+        default=None,
+        help=(
+            "Path to scan for every scanner. Overrides per-scanner path: "
+            "in argus.yml (default: each scanner's path:, else the "
+            "current directory)"
+        ),
     )
     scan_parser.add_argument(
         "--config", "-c",
@@ -1964,7 +1968,7 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
 
     manifest = create_manifest(
         config_path=args.config,
-        scan_targets=[args.path],
+        scan_targets=[args.path or "."],
     )
     manifest.execution_backend = config.execution.backend
 
@@ -2417,14 +2421,23 @@ def _dry_run(engine, config, args) -> int:
             print(f"SBOM batch:  {len(sbom_files)} files under {sbom_path}")
             for info in sbom_files:
                 print(f"  - {info.path} ({info.display_format})")
-    print(f"Scan path:   {args.path}")
+    # --path overrides every scanner; otherwise each uses its own path:.
+    root = args.path or "."
+    scanner_paths = {
+        name: args.path or config.get_scanner_config(name).path
+        for name in scanner_names
+    }
+    print(f"Scan path:   {root}")
+    for name, scanner_path in scanner_paths.items():
+        if scanner_path != root:
+            print(f"  {name}: {scanner_path} (from argus.yml)")
     print(f"Backend:     {config.execution.backend}")
     print(f"Scanners:    {', '.join(scanner_names) if scanner_names else '(none)'}")
     print()
 
     # Exclusion set with the same inputs a real run would use
     patterns = build_exclusion_set(
-        scan_path=args.path,
+        scan_path=root,
         cli_excludes=getattr(args, "exclude", ""),
         use_defaults=use_defaults,
     )
@@ -2437,12 +2450,13 @@ def _dry_run(engine, config, args) -> int:
         for name in scanner_names:
             own = [
                 f for f in ignore_files_for(name)
-                if f not in ignore_files_for(None) and (Path(args.path) / f).is_file()
+                if f not in ignore_files_for(None)
+                and (Path(scanner_paths[name]) / f).is_file()
             ]
             if own:
                 extra = [
                     p for p in build_exclusion_set(
-                        scan_path=args.path,
+                        scan_path=scanner_paths[name],
                         cli_excludes=getattr(args, "exclude", ""),
                         scanner=name,
                     ) if p not in patterns
@@ -2455,9 +2469,9 @@ def _dry_run(engine, config, args) -> int:
     for name in scanner_names:
         scanner_config = config.get_scanner_config(name)
         explicit = scanner_config.config_file
-        resolutions.append(resolve_config(name, args.path, explicit))
+        resolutions.append(resolve_config(name, scanner_paths[name], explicit))
         ignore = resolve_config(
-            name, args.path, scanner_config.extra.get("ignore_file"),
+            name, scanner_paths[name], scanner_config.extra.get("ignore_file"),
             rules=IGNORE_FILE_RULES,
         )
         if ignore.path:

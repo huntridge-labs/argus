@@ -10,6 +10,7 @@ from argus.init import (
     _extract_enabled_scanners,
     _check_local_readiness,
     _guess_iac_path,
+    _guess_terraform_path,
 )
 
 
@@ -194,6 +195,52 @@ class TestGuessIacPath:
 
     def test_guess_no_iac_signals(self):
         assert _guess_iac_path({}) == "."
+
+    def test_guess_uses_where_tf_files_live(self, tmp_path):
+        # Terraform under infra/ plus K8s under deploy/: trivy-iac and
+        # checkov must cover both, lint-terraform only needs infra/.
+        (tmp_path / "infra").mkdir()
+        (tmp_path / "infra" / "main.tf").write_text("")
+        (tmp_path / "deploy").mkdir()
+        (tmp_path / "deploy" / "app.yaml").write_text("kind: Deployment\n")
+        signals = detect_project(tmp_path)
+        assert _guess_iac_path(signals) == "."
+        assert _guess_terraform_path(signals) == "infra"
+
+    def test_guess_sees_every_tf_location(self, tmp_path):
+        # More .tf files under one dir than the old evidence cap must not
+        # hide a second Terraform root.
+        (tmp_path / "terraform").mkdir()
+        for i in range(8):
+            (tmp_path / "terraform" / f"m{i}.tf").write_text("")
+        (tmp_path / "modules").mkdir()
+        (tmp_path / "modules" / "x.tf").write_text("")
+        assert _guess_terraform_path(detect_project(tmp_path)) == "."
+
+    def test_guess_infra_dir_name(self):
+        assert _guess_iac_path({"iac": ["infra/main.tf", "infra"]}) == "infra"
+
+    def test_terraform_path_falls_back_without_tf(self):
+        assert _guess_terraform_path({"iac": ["k8s"]}) == "k8s"
+
+    def test_generated_config_paths(self, tmp_path):
+        (tmp_path / "infra").mkdir()
+        (tmp_path / "infra" / "main.tf").write_text("")
+        (tmp_path / "deploy").mkdir()
+        config = generate_config(detect_project(tmp_path))
+        trivy_block = config.split("  trivy-iac:")[1].split("\n\n")[0]
+        lint_block = config.split("  lint-terraform:")[1].split("\n\n")[0]
+        assert 'path: "."' in trivy_block
+        assert 'path: "infra"' in lint_block
+
+
+class TestContainersTemplateComment:
+    def test_discover_is_a_boolean(self, tmp_path):
+        (tmp_path / "Dockerfile").write_text("FROM scratch\n")
+        config = generate_config(detect_project(tmp_path))
+        assert "#   discover: true" in config
+        assert '#   search_paths: ["."]' in config
+        assert 'discover: "."' not in config
 
 
 class TestRunInit:

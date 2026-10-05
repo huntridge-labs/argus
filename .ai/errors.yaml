@@ -1227,3 +1227,18 @@ errors:
     reference: argus/core/tool_config.py (DISCOVERY_RULES, IGNORE_FILE_RULES), argus/core/scanner_template.py
       (workspace_file), .ai/decisions.yaml ADR-041
     symptom: .trivyignore ignored / skip_check has no effect for trivy-iac
+  SCANNER_PATH_IGNORED:
+    category: configuration
+    context: scanners.<name>.path in argus.yml has no effect; the log shows "(path=.)"
+    root_cause: Before ADR-042 `argus scan --path` defaulted to "." and always overrode the
+      per-scanner path.
+    solution:
+      steps:
+      - Upgrade, then run `argus scan --dry-run`. Each scanner whose path differs from
+        the scan root is listed under "Scan path".
+      - Don't pass --path if you want the per-scanner values; --path overrides all of
+        them.
+      verification: The scanner start log shows "(path=<your path>)" and finding
+        locations carry that prefix
+    reference: argus/cli.py (scan --path), argus/core/engine.py (_rebase_locations), .ai/decisions.yaml ADR-042
+    symptom: per-scanner path ignored
