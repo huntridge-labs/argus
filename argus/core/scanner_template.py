@@ -72,6 +72,34 @@ class ScanPaths:
     output: str
 
 
+def workspace_file(workspace: str, rel_path: str) -> str:
+    """Resolve a scan-root-relative file (e.g. ``config_file``) for the tool.
+
+    The engine stores discovered and explicit config / ignore files relative
+    to the scan root, so they work both on the host and under the container's
+    ``/workspace`` mount. Absolute paths pass through unchanged.
+
+    Tools that only look in their working directory (Trivy, yamllint, and
+    flake8 among them) never find a file under ``/workspace`` on their own,
+    because the official images run from ``/``. The flag has to carry the
+    joined path.
+    """
+    if Path(rel_path).is_absolute():
+        return rel_path
+    return f"{workspace.rstrip('/')}/{rel_path}"
+
+
+def id_list(value: str | list | tuple | None) -> list[str]:
+    """Normalise a ``check`` / ``skip_check`` value to a list of IDs.
+
+    argus.yml accepts either ``"B311,B404"`` or a YAML list.
+    """
+    if not value:
+        return []
+    parts = value.split(",") if isinstance(value, str) else [str(v) for v in value]
+    return [p.strip() for p in parts if p.strip()]
+
+
 class _SubprocessScanner(Protocol):
     """Structural protocol the template expects of the scanner argument."""
 

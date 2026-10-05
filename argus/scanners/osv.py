@@ -6,7 +6,7 @@ from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
-from argus.core.scanner_template import ScanPaths, run_subprocess_scan
+from argus.core.scanner_template import ScanPaths, run_subprocess_scan, workspace_file
 from argus.core.version import parse_tool_version
 
 
@@ -81,7 +81,7 @@ class OsvScanner:
                 args.append("--recursive")
             args.append(paths.workspace)
         if config.get("config_file"):
-            args.extend(["--config", f"{paths.workspace}/{config['config_file']}"])
+            args.extend(["--config", workspace_file(paths.workspace, config["config_file"])])
         return args
 
     def is_available(self) -> bool:

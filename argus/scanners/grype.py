@@ -18,6 +18,7 @@ from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
+from argus.core.scanner_template import workspace_file
 
 from argus.scanners._vuln_parsers import parse_grype_match
 
@@ -56,6 +57,7 @@ class GrypeScanner:
             "-o", "json",
             "--file", "/output/results.json",
             *vex_cli_flags(config, in_container=True),
+            *_config_flags(config, "/workspace"),
         ]
 
     def container_mounts(self, config: dict | None = None) -> list[tuple[str, str]]:
@@ -94,6 +96,7 @@ class GrypeScanner:
                 "-o", "json",
                 "--file", str(output_file),
                 *vex_cli_flags(config, in_container=False),
+                *_config_flags(config, path),
             ]
             result = subprocess.run(cmd, capture_output=True, text=True)
             if not output_file.exists():
@@ -168,3 +171,14 @@ class GrypeScanner:
             )
         findings = [parse_grype_match(m, scanner_name=self.name) for m in matches]
         return (findings, extra) if extra else findings
+
+
+def _config_flags(config: dict, workspace: str) -> list[str]:
+    """``-c`` for a resolved ``.grype.yaml``.
+
+    Grype looks for its config in the working directory, which is ``/``
+    in the official image, so a file at the scan root needs the flag.
+    """
+    if not config.get("config_file"):
+        return []
+    return ["-c", workspace_file(workspace, config["config_file"])]

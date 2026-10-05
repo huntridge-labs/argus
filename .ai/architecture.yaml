@@ -47,7 +47,7 @@ components:
       core/prewarm.py: 'ImagePrewarmer — best-effort background container image pulls. Dedup''d by image
         ref, capped concurrency (execution.prewarm_workers, default 4), opt-out via execution.prewarm_images:
         false. Skipped when pull_policy=never. Pre-warm failure falls back to inline pull in _run_in_container.'
-      core/exclusions.py: Path exclusion set per scanner (builtins + .gitignore/.dockerignore for all + a tool's own ignore file for that tool only, e.g. .semgrepignore to opengrep + config + CLI), ``**``-glob matcher
+      core/exclusions.py: Path exclusion set per scanner (builtins + .gitignore/.dockerignore for all + a tool's own path ignore file for that tool only, e.g. .semgrepignore to opengrep + config + CLI), ``**``-glob matcher, and the engine's universal skip_check rule-ID filter (filter_skipped_rules)
       core/schema.py: argus.yml schema validator. Validates structure, types, allowed values, credential-field
         shapes, and ZAP's nested ``auth`` sub-block; emits ConfigError objects (ERROR / WARNING) that
         ``argus validate`` reports. Catches typos, malformed PORT/PROTO entries, and vendor-shaped literal
@@ -68,7 +68,8 @@ components:
         backstop for scanners that get added without the per-scanner audit; conservative vendor-prefix-only
         pattern set (gh*, AKIA, AIza, glpat-, sk_live_, npm_, xox*-, JWT, PEM) — no high-entropy heuristics.
       core/tool_config.py: Auto-discovery of per-scanner canonical config files (.bandit, .checkov.yaml,
-        trivy.yaml, osv-scanner.toml, semgrep.yml)
+        trivy.yaml, osv-scanner.toml, semgrep.yml, .grype.yaml, .yamllint) and ID ignore files
+        (.trivyignore for trivy / trivy-iac). Scanners pass each one via the tool's flag (ADR-041)
       core/sbom.py: SBOM format detection (CycloneDX JSON/XML, SPDX JSON/tag-value, Syft JSON) for ``argus
         scan --sbom``
       core/secrets.py: 'Credential resolution for any scanner config field. resolve_secret(config, field,
@@ -746,7 +747,7 @@ docsite:
       core/prewarm.py: 'ImagePrewarmer — best-effort background container image pulls. Dedup''d by image
         ref, capped concurrency (execution.prewarm_workers, default 4), opt-out via execution.prewarm_images:
         false. Skipped when pull_policy=never. Pre-warm failure falls back to inline pull in _run_in_container.'
-      core/exclusions.py: Path exclusion set per scanner (builtins + .gitignore/.dockerignore for all + a tool's own ignore file for that tool only, e.g. .semgrepignore to opengrep + config + CLI), ``**``-glob matcher
+      core/exclusions.py: Path exclusion set per scanner (builtins + .gitignore/.dockerignore for all + a tool's own path ignore file for that tool only, e.g. .semgrepignore to opengrep + config + CLI), ``**``-glob matcher, and the engine's universal skip_check rule-ID filter (filter_skipped_rules)
       core/schema.py: argus.yml schema validator. Validates structure, types, allowed values, credential-field
         shapes, and ZAP's nested ``auth`` sub-block; emits ConfigError objects (ERROR / WARNING) that
         ``argus validate`` reports. Catches typos, malformed PORT/PROTO entries, and vendor-shaped literal
@@ -767,7 +768,8 @@ docsite:
         backstop for scanners that get added without the per-scanner audit; conservative vendor-prefix-only
         pattern set (gh*, AKIA, AIza, glpat-, sk_live_, npm_, xox*-, JWT, PEM) — no high-entropy heuristics.
       core/tool_config.py: Auto-discovery of per-scanner canonical config files (.bandit, .checkov.yaml,
-        trivy.yaml, osv-scanner.toml, semgrep.yml)
+        trivy.yaml, osv-scanner.toml, semgrep.yml, .grype.yaml, .yamllint) and ID ignore files
+        (.trivyignore for trivy / trivy-iac). Scanners pass each one via the tool's flag (ADR-041)
       core/sbom.py: SBOM format detection (CycloneDX JSON/XML, SPDX JSON/tag-value, Syft JSON) for ``argus
         scan --sbom``
       core/secrets.py: 'Credential resolution for any scanner config field. resolve_secret(config, field,

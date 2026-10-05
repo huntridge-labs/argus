@@ -2366,8 +2366,11 @@ def _dry_run(engine, config, args) -> int:
     "is my .bandit being picked up?" investigations don't require an
     actual scan cycle.
     """
+    from dataclasses import replace
+
     from argus.core.exclusions import build_exclusion_set
     from argus.core.tool_config import (
+        IGNORE_FILE_RULES,
         format_resolutions_for_display,
         resolve_config,
     )
@@ -2453,6 +2456,12 @@ def _dry_run(engine, config, args) -> int:
         scanner_config = config.get_scanner_config(name)
         explicit = scanner_config.config_file
         resolutions.append(resolve_config(name, args.path, explicit))
+        ignore = resolve_config(
+            name, args.path, scanner_config.extra.get("ignore_file"),
+            rules=IGNORE_FILE_RULES,
+        )
+        if ignore.path:
+            resolutions.append(replace(ignore, scanner=f"{name} ignore file"))
     print(format_resolutions_for_display(resolutions))
 
     return EXIT_SUCCESS

@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from .config import ArgusConfig
@@ -415,7 +416,7 @@ class ArgusEngine:
     ) -> list[tuple]:
         """Build (scanner, scan_path, config_dict, patterns) tuples."""
         from .exclusions import build_exclusion_set
-        from .tool_config import resolve_config
+        from .tool_config import IGNORE_FILE_RULES, resolve_config
 
         use_defaults = getattr(self, "_use_default_excludes", True)
 
@@ -473,6 +474,21 @@ class ArgusEngine:
                 )
             resolutions.append(resolution)
 
+            # Native ignore files that list IDs (.trivyignore) go to the
+            # tool via its own flag. Same precedence: explicit
+            # `ignore_file:` wins over discovery at the scan root.
+            ignore_resolution = resolve_config(
+                name, scan_path, config_dict.get("ignore_file"),
+                rules=IGNORE_FILE_RULES,
+            )
+            if ignore_resolution.path:
+                config_dict["ignore_file"] = _relativize_config_path(
+                    ignore_resolution.path, scan_path,
+                )
+                resolutions.append(
+                    replace(ignore_resolution, scanner=f"{name} ignore file"),
+                )
+
             # Per-scanner set: repo-wide ignore files + this scanner's own
             # ignore file (.semgrepignore reaches opengrep only) + its
             # argus.yml excludes + the CLI --exclude.
@@ -528,6 +544,10 @@ class ArgusEngine:
             version = self._get_tool_version(scanner)
             if version:
                 result.metadata["tool_version"] = version
+
+        # skip_check works for every scanner. Tools with a native flag
+        # (bandit, checkov) already dropped these; this catches the rest.
+        result = _drop_skipped_rules(scanner, result, config_dict)
 
         # Skip exclusion filter in SBOM mode — findings reference SBOM path, not source
         if exclusion_patterns and result.findings and not config_dict.get("sbom_path"):
@@ -1751,6 +1771,26 @@ class ArgusEngine:
         if scanner_config.extra:
             config_dict.update(scanner_config.extra)
         return config_dict
+
+
+def _drop_skipped_rules(scanner, result: ScanResult, config_dict: dict) -> ScanResult:
+    """Remove findings whose rule ID is in the scanner's ``skip_check``."""
+    from .exclusions import filter_skipped_rules
+    from .scanner_template import id_list
+
+    skip_ids = id_list(config_dict.get("skip_check"))
+    if not skip_ids or not result.findings:
+        return result
+    kept, skipped = filter_skipped_rules(
+        result.findings, skip_ids, getattr(scanner, "rule_ids", None),
+    )
+    if not skipped:
+        return result
+    logger.info(
+        "Skipped %d finding(s) listed in skip_check for '%s'",
+        skipped, scanner.name,
+    )
+    return replace(result, findings=kept)
 
 
 def _relativize_config_path(config_path: str, scan_path: str) -> str:

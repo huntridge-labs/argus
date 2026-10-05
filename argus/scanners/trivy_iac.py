@@ -8,7 +8,7 @@ from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
-from argus.core.scanner_template import ScanPaths
+from argus.core.scanner_template import ScanPaths, workspace_file
 from argus.core.version import parse_tool_version
 
 
@@ -51,14 +51,15 @@ class TrivyIacScanner:
                     },
                 )
 
-            # SARIF scan — best-effort, non-blocking
-            sarif_args = [
-                "trivy", "config",
-                "--format", "sarif",
-                "--output", str(sarif_output),
-                path,
-            ]
-            subprocess.run(sarif_args, capture_output=True, text=True)
+            # SARIF scan — best-effort, non-blocking. Same flags as the
+            # JSON pass so the SARIF report honours the same config and
+            # ignore file.
+            sarif_paths = ScanPaths(workspace=path, output=str(sarif_output))
+            subprocess.run(
+                self._trivy_args(sarif_paths, config or {}, "sarif"),
+                capture_output=True,
+                text=True,
+            )
 
             findings = self.parse_results(json_output) if json_output.exists() else []
 
@@ -76,12 +77,41 @@ class TrivyIacScanner:
         ENTRYPOINT, so the same method works for both local and
         container execution.
         """
-        return [
+        return self._trivy_args(paths, config, "json")
+
+    @staticmethod
+    def _trivy_args(paths: ScanPaths, config: dict, output_format: str) -> list[str]:
+        """``trivy config`` argv for one output format.
+
+        ``config_file`` (``trivy.yaml``) and ``ignore_file``
+        (``.trivyignore``) arrive scan-root-relative from the engine. Trivy
+        only looks for them in its working directory, which is ``/`` in the
+        official image, so both have to be passed explicitly.
+        """
+        args = [
             "trivy", "config",
-            "--format", "json",
+            "--format", output_format,
             "--output", paths.output,
-            paths.workspace,
         ]
+        config_file = config.get("config_file")
+        if config_file:
+            args.extend(["--config", workspace_file(paths.workspace, config_file)])
+        ignore_file = config.get("ignore_file")
+        if ignore_file:
+            args.extend(["--ignorefile", workspace_file(paths.workspace, ignore_file)])
+        args.append(paths.workspace)
+        return args
+
+    @staticmethod
+    def rule_ids(finding: Finding) -> set[str]:
+        """IDs a ``skip_check`` entry may use for this finding.
+
+        Trivy 0.6x reported ``AVD-AWS-0017``; current releases report
+        ``AWS-0017``. Docs and older ``.trivyignore`` files use either, so
+        accept both spellings.
+        """
+        short = finding.id.removeprefix("AVD-")
+        return {short, f"AVD-{short}"}
 
     def is_available(self) -> bool:
         """Check if Trivy is installed."""

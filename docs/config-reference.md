@@ -95,7 +95,7 @@ Every scanner accepts these common properties:
 | `enabled` | boolean | `true` | Whether this scanner is active. Disabled scanners are skipped. |
 | `path` | string | `"."` | Path to scan, relative to the repository root. |
 | `severity_threshold` | [severity](#severity-levels) | *(inherit)* | Per-scanner severity threshold. Overrides the global `reporting.severity_threshold`. |
-| `config_file` | string | | Path to a scanner-specific config file (e.g. `pyproject.toml` for Bandit). |
+| `config_file` | string | | Path to the tool's own config file (e.g. `pyproject.toml` for Bandit), relative to the repo root. When unset, Argus looks at the scan root for: `pyproject.toml` (with `[tool.bandit]`), `.bandit`, `bandit.yaml` (bandit); `trivy.yaml` (trivy, trivy-iac); `.checkov.yaml` (checkov); `osv-scanner.toml` (osv); `semgrep.yml`, `.semgrep.yml` (opengrep); `.grype.yaml` (grype); `.yamllint` (lint-yaml). The file is passed to the tool with its config flag, so it works in Docker too. |
 | `exclude` | string | | Comma-separated paths or patterns to exclude from analysis. |
 
 ### Scanner-Specific Properties
@@ -122,7 +122,8 @@ Some scanners accept additional properties, passed through as extra configuratio
 | `auth` | mapping | `zap` | Web-app authentication block — see [Web-app authentication](#web-app-authentication-zap) below. |
 | `framework` | string | `checkov` | Framework filter (e.g. `terraform`, `kubernetes`). |
 | `check` | string | `checkov`, `bandit` | Specific check IDs to run. |
-| `skip_check` | string | `checkov`, `bandit` | Specific check IDs to skip. |
+| `skip_check` | string \| list[string] | *(any)* | Rule IDs to drop from results. Passed to the tool when it has a skip flag (`checkov --skip-check`, `bandit --skip`); filtered after the scan for every other scanner. `trivy-iac` accepts both `AWS-0017` and `AVD-AWS-0017`. |
+| `ignore_file` | string | `trivy`, `trivy-iac` | Trivy ignore file, passed as `--ignorefile`. Defaults to `.trivyignore`, `.trivyignore.yaml`, or `.trivyignore.yml` at the scan root. |
 | `config` | string | *(any)* | Inline scanner configuration string. |
 | `registry_username` | string | `container`, `zap` | Username for private registry auth. Prefer `registry_username_env` (see [Credential fields](#credential-fields)). |
 | `registry_password` | string | `container`, `zap` | Password/token for private registry auth. Prefer `registry_password_env`. |

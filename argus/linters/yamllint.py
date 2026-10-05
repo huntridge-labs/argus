@@ -6,6 +6,7 @@ import subprocess
 import sys
 
 from argus.core.models import Finding, ScanResult, Severity
+from argus.core.scanner_template import workspace_file
 
 
 logger = logging.getLogger("argus.scanner")
@@ -193,7 +194,9 @@ class YamllintLinter:
 
         config_file = config.get("config_file")
         if config_file:
-            cmd.extend(["-c", config_file])
+            # Engine passes it scan-root-relative; yamllint resolves
+            # relative paths against the cwd, so join it to the scan root.
+            cmd.extend(["-c", workspace_file(path, config_file)])
 
         cmd.append(path)
         return cmd

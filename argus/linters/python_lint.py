@@ -4,6 +4,7 @@ import shutil
 import subprocess
 
 from argus.core.models import Finding, ScanResult, Severity
+from argus.core.scanner_template import workspace_file
 
 
 class PythonLinter:
@@ -70,7 +71,9 @@ class PythonLinter:
 
         config_file = config.get("config_file")
         if config_file:
-            cmd.append(f"--config={config_file}")
+            # Engine passes it scan-root-relative; flake8 resolves relative
+            # paths against the cwd, so join it to the scan root.
+            cmd.append(f"--config={workspace_file(path, config_file)}")
 
         return cmd
 
