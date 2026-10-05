@@ -92,11 +92,23 @@
           "description": "Framework filter for Checkov (e.g. 'terraform', 'kubernetes')."
         },
         "check": {
-          "type": "string",
+          "type": [
+            "string",
+            "array"
+          ],
+          "items": {
+            "type": "string"
+          },
           "description": "Specific check ID(s) to run (scanner-dependent)."
         },
         "skip_check": {
-          "type": "string",
+          "type": [
+            "string",
+            "array"
+          ],
+          "items": {
+            "type": "string"
+          },
           "description": "Comma-separated rule ID(s) to drop from results. Works for every scanner: passed to the tool when it has a skip flag (bandit, checkov), filtered after the scan otherwise (e.g. trivy-iac accepts AWS-0017 or AVD-AWS-0017)."
         },
         "ignore_file": {

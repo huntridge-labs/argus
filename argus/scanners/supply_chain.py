@@ -53,9 +53,10 @@ class SupplyChainScanner:
         runs even if zizmor exits non-zero (findings found).
 
         zizmor finds ``.github/zizmor.yml`` on its own; a ``zizmor_config``
-        somewhere else (repo-relative) and ``persona`` need the flags. Both
-        values come from argus.yml and land in a shell string, so they are
-        quoted.
+        somewhere else and ``persona`` need the flags. A repo-relative config
+        is already under ``/workspace``; an absolute one is bind-mounted by
+        :meth:`container_mounts`. Both values come from argus.yml and land in
+        a shell string, so they are quoted.
         """
         config = config or {}
         zizmor_flags = ""
@@ -63,13 +64,19 @@ class SupplyChainScanner:
         if persona:
             zizmor_flags += f" --persona {shlex.quote(str(persona))}"
         zizmor_config = config.get("zizmor_config")
-        if zizmor_config and not Path(zizmor_config).is_absolute():
-            mounted = workspace_file("/workspace", str(zizmor_config))
-            zizmor_flags += f" --config {shlex.quote(mounted)}"
+        if zizmor_config:
+            zizmor_flags += f" --config {shlex.quote(_container_zizmor_config(zizmor_config))}"
         return [
             f"zizmor --format sarif{zizmor_flags} /workspace/.github/ > /output/zizmor.json 2>/dev/null; "
             "actionlint -format '{{json .}}' /workspace/.github/workflows/ > /output/actionlint.json 2>/dev/null || true",
         ]
+
+    def container_mounts(self, config: dict | None = None) -> list[tuple[str, str]]:
+        """Bind-mount an absolute ``zizmor_config`` that lives outside the repo."""
+        zizmor_config = (config or {}).get("zizmor_config")
+        if zizmor_config and Path(zizmor_config).is_absolute():
+            return [(str(zizmor_config), _MOUNTED_ZIZMOR_CONFIG)]
+        return []
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run zizmor and actionlint against the given path.
@@ -355,3 +362,14 @@ class SupplyChainScanner:
                 "column": item.get("column", 0),
             },
         )
+
+
+# Where an absolute ``zizmor_config`` is mounted inside the container.
+_MOUNTED_ZIZMOR_CONFIG = "/argus-config/zizmor.yml"
+
+
+def _container_zizmor_config(zizmor_config: str) -> str:
+    """Container path for ``zizmor_config``: mounted file or under /workspace."""
+    if Path(zizmor_config).is_absolute():
+        return _MOUNTED_ZIZMOR_CONFIG
+    return workspace_file("/workspace", str(zizmor_config))

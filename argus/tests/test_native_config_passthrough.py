@@ -190,6 +190,17 @@ class TestOtherScannerArgs:
         assert "--persona pedantic" in script
         assert "--config '/workspace/ci/zizmor; rm -rf.yml'" in script
 
+    def test_supply_chain_absolute_zizmor_config_is_mounted(self):
+        scanner = SupplyChainScanner()
+        config = {"zizmor_config": "/etc/argus/zizmor.yml"}
+        assert "--config /argus-config/zizmor.yml" in scanner.container_args(config)[0]
+        assert scanner.container_mounts(config) == [
+            ("/etc/argus/zizmor.yml", "/argus-config/zizmor.yml"),
+        ]
+
+    def test_supply_chain_relative_zizmor_config_needs_no_mount(self):
+        assert SupplyChainScanner().container_mounts({"zizmor_config": "ci/z.yml"}) == []
+
     def test_supply_chain_container_default_unchanged(self):
         script = SupplyChainScanner().container_args({})[0]
         assert script.startswith("zizmor --format sarif /workspace/.github/ ")
