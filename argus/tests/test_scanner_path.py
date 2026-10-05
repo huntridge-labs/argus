@@ -68,7 +68,7 @@ class TestLocationRebase:
 
     def test_rebase_leaves_rooted_locations_alone(self):
         for loc in ("infra/main.tf:1", "/abs/main.tf:1", "C:\\\\x\\\\main.tf:1",
-                    "https://app/login", None, ""):
+                    "infra\\main.tf:1", "https://app/login", None, ""):
             assert _rebase_location(loc, "infra") == loc
 
 
@@ -82,3 +82,24 @@ class TestDryRunShowsScannerPaths:
         with pytest.raises(SystemExit):
             main(["scan", "trivy-iac", "--config", "argus.yml", "--dry-run"])
         assert "trivy-iac: infra (from argus.yml)" in capsys.readouterr().out
+
+
+class TestManifestScanTargets:
+    def _config(self):
+        return ArgusConfig.from_dict({"scanners": {
+            "trivy-iac": {"enabled": True, "path": "infra"},
+            "bandit": {"enabled": True, "path": "src"},
+            "checkov": {"enabled": False, "path": "ops"},
+        }})
+
+    def test_per_scanner_paths_without_cli_path(self):
+        from argus.cli import _scan_targets
+
+        args = build_parser().parse_args(["scan"])
+        assert _scan_targets(args, self._config()) == ["infra", "src"]
+
+    def test_cli_path_wins(self):
+        from argus.cli import _scan_targets
+
+        args = build_parser().parse_args(["scan", "--path", "app"])
+        assert _scan_targets(args, self._config()) == ["app"]

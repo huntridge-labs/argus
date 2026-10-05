@@ -1833,7 +1833,9 @@ def _rebase_location(location: str | None, prefix: str) -> str | None:
     if location.startswith("/workspace/"):
         return f"{prefix}/{location.removeprefix('/workspace/')}"
     already_rooted = (
-        location.startswith(("/", f"{prefix}/"))
+        location.startswith("/")
+        # Windows local runs may already emit ``infra\main.tf``.
+        or location.replace("\\", "/").startswith(f"{prefix}/")
         or "://" in location  # DAST URLs
         or _WINDOWS_ABS.match(location)
     )

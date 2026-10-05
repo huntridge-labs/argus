@@ -1968,7 +1968,7 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
 
     manifest = create_manifest(
         config_path=args.config,
-        scan_targets=[args.path or "."],
+        scan_targets=_scan_targets(args, config),
     )
     manifest.execution_backend = config.execution.backend
 
@@ -2479,6 +2479,18 @@ def _dry_run(engine, config, args) -> int:
     print(format_resolutions_for_display(resolutions))
 
     return EXIT_SUCCESS
+
+
+def _scan_targets(args: argparse.Namespace, config) -> list[str]:
+    """Paths this run scans, for the audit manifest.
+
+    ``--path`` covers every scanner. Without it, each enabled scanner
+    scans its own ``path:`` from argus.yml.
+    """
+    if args.path:
+        return [args.path]
+    paths = {sc.path for sc in config.scanners.values() if sc.enabled}
+    return sorted(paths) or ["."]
 
 
 def _merge_sbom_summaries(per_file_summaries, severity_threshold):
