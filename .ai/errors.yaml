@@ -94,6 +94,18 @@ scn_detector_errors:
     verification: Engine strips argv[0] for ENTRYPOINT-based images, so build_args
       may keep the bare name
   reference: "argus/scanners/osv.py \u2014 see container_entrypoint = '/osv-scanner'"
+- pattern: 'File not found: opengrep|opengrep opengrep'
+  category: scanner-execution
+  context: OpenGrep container receives its executable name as a scan target
+  root_cause: The image declares ENTRYPOINT ["opengrep"], but missing scanner
+    entrypoint metadata leaves the executable in the arguments appended to the image.
+  solution:
+    steps:
+    - Set container_entrypoint to opengrep on OpengrepScanner so the engine strips argv[0]
+    - Keep the executable in build_args for local execution
+    verification: Test the engine's container command and result parsing, and verify
+      that local execution retains the executable and config values remain single arguments.
+  reference: argus/scanners/opengrep.py; https://github.com/huntridge-labs/argus/issues/453
 - pattern: yamllint.*PASS.*0 findings|lint-yaml.*passes despite errors
   category: scanner-execution
   context: 'Linter exits non-zero but reports zero findings and Status: PASS'
