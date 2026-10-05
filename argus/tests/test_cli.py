@@ -26,7 +26,7 @@ class TestScanSubcommand:
         args = parser.parse_args(["scan"])
         assert args.command == "scan"
         assert args.scanner is None
-        assert args.path == "."
+        assert args.path is None  # per-scanner path: applies unless --path is given
         assert args.config is None
         assert args.output_dir is None
         assert args.severity_threshold is None

@@ -1,6 +1,6 @@
 # Argus CLI Reference (v1.12.7)
 
-> Auto-generated from argparse definitions on 2026-10-01.
+> Auto-generated from argparse definitions on 2026-10-05.
 > Do not edit manually — run `python -m scripts.ci.gen_cli_docs` to regenerate.
 
 Argus Security Scanner — comprehensive security scanning for your codebase
@@ -96,7 +96,7 @@ argus scan [-h] [--no-update-check] [--path PATH] [--config CONFIG]
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--no-update-check` | Skip the once-per-day check for a newer argus release. The check runs in the background (zero latency cost) and prints a soft notice at the end of the command when an upgrade is available. Also disabled by setting the ARGUS_NO_UPDATE_CHECK environment variable, which is the right move for CI / air-gapped environments. Override the PyPI URL via ARGUS_UPDATE_CHECK_URL for TestPyPI or private mirrors. | `false` |
-| `--path`, `-p` | Path to scan (default: current directory) | `.` |
+| `--path`, `-p` | Path to scan for every scanner. Overrides per-scanner path: in argus.yml (default: each scanner's path:, else the current directory) |  |
 | `--config`, `-c` | Path to argus.yml config file |  |
 | `--output-dir`, `-o` | Output directory for results (default: ./argus-results) |  |
 | `--severity-threshold`, `-s` | Fail threshold severity level (default: from config) (critical, high, medium, low, none) |  |

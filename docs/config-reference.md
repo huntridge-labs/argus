@@ -93,7 +93,7 @@ Every scanner accepts these common properties:
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `enabled` | boolean | `true` | Whether this scanner is active. Disabled scanners are skipped. |
-| `path` | string | `"."` | Path to scan, relative to the repository root. |
+| `path` | string | `"."` | Path to scan, relative to the repository root. `argus scan --path` overrides it for every scanner. Finding locations are reported relative to the repository root either way (e.g. `infra/main.tf:4`). |
 | `severity_threshold` | [severity](#severity-levels) | *(inherit)* | Per-scanner severity threshold. Overrides the global `reporting.severity_threshold`. |
 | `config_file` | string | | Path to the tool's own config file (e.g. `pyproject.toml` for Bandit), relative to the repo root. When unset, Argus looks at the scan root for: `pyproject.toml` (with `[tool.bandit]`), `.bandit`, `bandit.yaml` (bandit); `trivy.yaml` (trivy, trivy-iac); `.checkov.yaml` (checkov); `osv-scanner.toml` (osv); `semgrep.yml`, `.semgrep.yml` (opengrep); `.grype.yaml` (grype); `.yamllint` (lint-yaml). The file is passed to the tool with its config flag, so it works in Docker too. |
 | `exclude` | string | | Comma-separated paths or patterns to exclude from analysis. |

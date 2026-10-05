@@ -3191,3 +3191,30 @@ decisions:
           skipped rule; only the native flags avoid running it.
         - The container scanner's bundled trivy/grype image scans do not yet
           pick up .trivyignore / .grype.yaml (VEX is the supported path there).
+  ADR-042:
+    title: Per-scanner path applies unless --path is given; locations stay repo-relative
+    date: '2026-10-05'
+    status: accepted
+    context: |-
+      `argus scan` defaulted --path to "." and always passed it, and the
+      engine prefers the CLI value, so `scanners.<name>.path` in argus.yml
+      never applied. Scanners that did run on a subdir (via --path) report
+      locations relative to that subdir, or under the /workspace mount.
+    decision: |-
+      --path defaults to None. The engine uses each scanner's path: unless
+      --path is set, which overrides every scanner. When a scanner runs on
+      a subdir of the run root, the engine rebases relative and /workspace
+      locations onto the run root (main.tf:4 becomes infra/main.tf:4) before
+      excludes and reporters see them. Absolute host paths and URLs are left
+      alone. `argus init` now picks IaC paths from where the .tf files live:
+      trivy-iac / checkov get the common top-level dir of all IaC evidence
+      (or "."), lint-terraform gets the common dir of the .tf files.
+    consequences:
+      positive:
+        - argus.yml path settings do what they say, and SARIF / baselines
+          keep repo-relative locations.
+      negative:
+        - 'Configs that set a per-scanner path but relied on it being ignored
+          now scan less. `argus init` used to write `path: "deploy"` for repos
+          with Terraform elsewhere, so those configs should be re-checked with
+          `argus scan --dry-run`, which lists each scanner path.'

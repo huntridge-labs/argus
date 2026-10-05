@@ -3,6 +3,7 @@
 import logging
 import os
 import platform
+import re
 import shutil
 import subprocess
 import tempfile
@@ -337,6 +338,7 @@ class ArgusEngine:
 
         # Build unified exclusion set from ignore files + config + CLI
         scan_root = path or "."
+        self._run_root = scan_root
         exclusion_patterns = build_exclusion_set(
             scan_path=scan_root,
             cli_excludes=exclude,
@@ -548,6 +550,14 @@ class ArgusEngine:
         # skip_check works for every scanner. Tools with a native flag
         # (bandit, checkov) already dropped these; this catches the rest.
         result = _drop_skipped_rules(scanner, result, config_dict)
+
+        # A scanner with its own `path:` reports locations relative to that
+        # subdir. Rebase them onto the run root so reports, excludes and
+        # SARIF all see repo-relative paths.
+        if not config_dict.get("sbom_path"):
+            result = _rebase_locations(
+                result, scan_path, getattr(self, "_run_root", "."),
+            )
 
         # Skip exclusion filter in SBOM mode — findings reference SBOM path, not source
         if exclusion_patterns and result.findings and not config_dict.get("sbom_path"):
@@ -1791,6 +1801,45 @@ def _drop_skipped_rules(scanner, result: ScanResult, config_dict: dict) -> ScanR
         skipped, scanner.name,
     )
     return replace(result, findings=kept)
+
+
+_WINDOWS_ABS = re.compile(r"^[A-Za-z]:[\\/]")
+
+
+def _rebase_locations(result: ScanResult, scan_path: str, run_root: str) -> ScanResult:
+    """Prefix ``scan_path`` onto locations a subdir scan reported.
+
+    ``/workspace/app.py`` (container mount) and ``app.py`` (relative) both
+    become ``src/app.py`` when the scanner ran on ``src``. Absolute host
+    paths and locations that already carry the prefix are left alone.
+    """
+    try:
+        prefix = Path(scan_path).resolve().relative_to(Path(run_root).resolve())
+    except (ValueError, OSError):
+        return result
+    if prefix == Path(".") or not result.findings:
+        return result
+    prefix_str = prefix.as_posix()
+    rebased = [
+        replace(f, location=_rebase_location(f.location, prefix_str))
+        for f in result.findings
+    ]
+    return replace(result, findings=rebased)
+
+
+def _rebase_location(location: str | None, prefix: str) -> str | None:
+    if not location:
+        return location
+    if location.startswith("/workspace/"):
+        return f"{prefix}/{location.removeprefix('/workspace/')}"
+    already_rooted = (
+        location.startswith("/")
+        # Windows local runs may already emit ``infra\main.tf``.
+        or location.replace("\\", "/").startswith(f"{prefix}/")
+        or "://" in location  # DAST URLs
+        or _WINDOWS_ABS.match(location)
+    )
+    return location if already_rooted else f"{prefix}/{location}"
 
 
 def _relativize_config_path(config_path: str, scan_path: str) -> str:

@@ -15,6 +15,12 @@ _BANNER_FALLBACK = (
     "\033[90m                          Perception is Protection\033[0m\n"
 )
 
+# Directory names that hint at infrastructure-as-code even without a .tf file
+# (Kubernetes manifests, Helm charts).
+_IAC_DIR_NAMES = ("infra", "infrastructure", "terraform", "k8s", "kubernetes", "deploy")
+# Cap on .tf files walked when finding where Terraform lives.
+_TF_SCAN_LIMIT = 500
+
 
 def _load_banner() -> str:
     """Load banner art from img/argus_logo.txt with a safe fallback."""
@@ -205,13 +211,17 @@ def detect_project(root: Path) -> dict[str, list[str]]:
         signals["container"] = [_rel(p) for p in (dockerfiles + compose_files)[:5]]
 
     # ── Infrastructure as code ─────────────────────────────
-    tf_files = _rglob_safe("*.tf")
+    # One .tf file per top-level location, so the path guess sees every
+    # place Terraform lives (not just the first few files rglob returns).
+    tf_by_top: dict[str, Path] = {}
+    for tf in _rglob_safe("*.tf", limit=_TF_SCAN_LIMIT):
+        tf_by_top.setdefault(_top_dir(_rel(tf), is_file=True), tf)
     k8s_dirs = [
         d for d in root.iterdir()
-        if d.is_dir() and d.name in ("infrastructure", "terraform", "k8s", "kubernetes", "deploy")
+        if d.is_dir() and d.name in _IAC_DIR_NAMES
     ]
-    if tf_files or k8s_dirs:
-        evidence = [_rel(p) for p in tf_files[:3]]
+    if tf_by_top or k8s_dirs:
+        evidence = [_rel(p) for p in list(tf_by_top.values())[:5]]
         evidence.extend(_rel(d) for d in k8s_dirs)
         signals["iac"] = evidence
 
@@ -424,7 +434,7 @@ def generate_config(signals: dict[str, list[str]]) -> str:
     if "iac" in signals:
         lines.append("  lint-terraform:")
         lines.append("    enabled: true")
-        lines.append(f'    path: "{_guess_iac_path(signals)}"')
+        lines.append(f'    path: "{_guess_terraform_path(signals)}"')
         lines.append("")
 
     lines.append("  lint-yaml:")
@@ -446,7 +456,8 @@ def generate_config(signals: dict[str, list[str]]) -> str:
         lines.append("# Container sources for `scanners.container.enabled: true`.")
         lines.append("# Uncomment ONE (or both) — argus needs at least one to scan.")
         lines.append("# containers:")
-        lines.append("#   discover: \".\"            # find Dockerfiles under this path")
+        lines.append("#   discover: true             # find Dockerfiles and build them")
+        lines.append("#   search_paths: [\".\"]       # where to look (default: scan root)")
         lines.append("#   # OR")
         lines.append("#   images:")
         lines.append("#     - name: myapp")
@@ -479,16 +490,33 @@ def generate_config(signals: dict[str, list[str]]) -> str:
     return "\n".join(lines)
 
 
+def _top_dir(path_str: str, is_file: bool) -> str:
+    """Top-level directory of a repo-relative path; ``.`` for a root file."""
+    parts = Path(path_str).parts
+    if not parts or (is_file and len(parts) == 1):
+        return "."
+    return parts[0]
+
+
+def _common_top_dir(path_strs: list[str]) -> str:
+    """The one top-level dir every path shares, or ``.`` when they differ."""
+    tops = {_top_dir(p, is_file=p.endswith(".tf")) for p in path_strs}
+    return tops.pop() if len(tops) == 1 else "."
+
+
 def _guess_iac_path(signals: dict[str, list[str]]) -> str:
-    """Guess the IaC root path from detected signals."""
-    iac_evidence = signals.get("iac", [])
-    for path_str in iac_evidence:
-        parts = Path(path_str).parts
-        if parts and parts[0] in (
-            "infrastructure", "terraform", "k8s", "kubernetes", "deploy"
-        ):
-            return parts[0]
-    return "."
+    """Guess the scan root for trivy-iac / checkov (Terraform AND K8s).
+
+    Terraform under ``infra/`` plus manifests under ``deploy/`` has to scan
+    from ``.``, or one of the two is silently skipped.
+    """
+    return _common_top_dir(signals.get("iac", []))
+
+
+def _guess_terraform_path(signals: dict[str, list[str]]) -> str:
+    """Guess the scan root for lint-terraform from where the .tf files are."""
+    tf_files = [p for p in signals.get("iac", []) if p.endswith(".tf")]
+    return _common_top_dir(tf_files) if tf_files else _guess_iac_path(signals)
 
 
 def _print_summary(
