@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `argus classify --config` validates the supplied SCN configuration before analyzing
+  changes. Invalid configurations now exit with code 2 and validation details instead
+  of silently using defaults, including when the diff contains no IaC changes.
+  Omitting `--config` still uses the built-in defaults. ([#428](https://github.com/huntridge-labs/argus/issues/428))
+- Include the SCN configuration schema in built packages so validation also works
+  when Argus is installed from a wheel.
+
 
 
 ## [1.12.7](https://github.com/huntridge-labs/argus/compare/1.12.6...1.12.7) (2026-10-01)

@@ -22,6 +22,18 @@ debugging:
       \ .github/actions/scanner-bandit/scripts/parse-results.py counts - | \\\n  python\
       \ -m json.tool\n"
 scn_detector_errors:
+- pattern: 'failed to load SCN config: Config validation failed'
+  category: scn-detector
+  context: argus classify rejects an explicitly supplied invalid SCN configuration
+  root_cause: The supplied file does not satisfy the existing SCN configuration
+    validator, such as missing version or rules fields or malformed rules.
+  solution:
+    steps:
+    - Correct the fields named in the validation error before rerunning classify
+    - Omit --config to use the built-in default rules without a profile file
+    note: Explicit invalid configurations now exit 2 before diff analysis, even
+      when there are no IaC changes. They no longer silently fall back to defaults.
+  reference: argus/cli.py; https://github.com/huntridge-labs/argus/issues/428
 - pattern: AI fallback requested but ANTHROPIC_API_KEY not set
   category: scn-detector
   context: 'SCN detector with enable_ai_fallback: true'
