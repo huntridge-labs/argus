@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.12.8](https://github.com/huntridge-labs/argus/compare/1.12.7...1.12.8) (2026-10-05)
+
+### Bug Fixes
+
+* **cli:** apply per-scanner path and keep locations repo-relative ([#459](https://github.com/huntridge-labs/argus/issues/459)) ([d3c20f4](https://github.com/huntridge-labs/argus/commit/d3c20f469dca37e6df99e239816652e0574f72ca)), closes [#458](https://github.com/huntridge-labs/argus/issues/458)
+* **deps:** remove all pnpm overrides; don't force versions tools don't declare ([#452](https://github.com/huntridge-labs/argus/issues/452)) ([bb568f6](https://github.com/huntridge-labs/argus/commit/bb568f66f14b66ace428828db0c7f86b61b9bf10))
+* **scanners:** pass native config and ignore files to the tool ([#457](https://github.com/huntridge-labs/argus/issues/457)) ([7d01d61](https://github.com/huntridge-labs/argus/commit/7d01d61deabd646b5d6e73a3d16eca6f9a0330f0))
+
+### Dependencies
+
+* **deps:** bump node ([#460](https://github.com/huntridge-labs/argus/issues/460)) ([5deab88](https://github.com/huntridge-labs/argus/commit/5deab88cd98d85a41ed6259508629fa68fe10e9a))
+* **deps:** bump the pip-all group with 2 updates ([#461](https://github.com/huntridge-labs/argus/issues/461)) ([6eda535](https://github.com/huntridge-labs/argus/commit/6eda535b54513cdb86b54a17a75e34660cfdfbc0))
+
+
 ## [1.12.7](https://github.com/huntridge-labs/argus/compare/1.12.6...1.12.7) (2026-10-01)
 
 ### Bug Fixes

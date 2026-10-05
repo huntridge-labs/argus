@@ -40,7 +40,7 @@ jobs:
       # Bandit - Python Security Linter
       # ----------------------------------------
       - name: Run Bandit (Python)
-        uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.12.8 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         with:
           post_pr_comment: 'true'
           enable_code_security: 'true'
@@ -51,7 +51,7 @@ jobs:
       # OpenGrep - Multi-language Static Analysis
       # ----------------------------------------
       - name: Run OpenGrep
-        uses: huntridge-labs/argus/.github/actions/scanner-opengrep@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scanner-opengrep@1.12.8 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         with:
           enable_code_security: 'true'
           fail_on_severity: 'high'
@@ -62,7 +62,7 @@ jobs:
       # Gitleaks - Secrets Detection
       # ----------------------------------------
       - name: Run Gitleaks
-        uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.12.8 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }} # Optional: for organizations

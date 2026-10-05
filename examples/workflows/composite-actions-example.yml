@@ -55,7 +55,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Bandit Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.12.8 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -78,7 +78,7 @@ jobs:
           fetch-depth: 0  # Full history for comprehensive secrets scanning
 
       - name: Run Gitleaks Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.12.8 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Optional: for org features
@@ -99,7 +99,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run CodeQL Scanner (Python)
-        uses: huntridge-labs/argus/.github/actions/scanner-codeql@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scanner-codeql@1.12.8 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -120,7 +120,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run OpenGrep Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-opengrep@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scanner-opengrep@1.12.8 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -141,7 +141,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Trivy IaC Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scanner-trivy-iac@1.12.8 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -162,7 +162,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Checkov Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-checkov@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scanner-checkov@1.12.8 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -184,7 +184,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run ClamAV Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-clamav@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scanner-clamav@1.12.8 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -214,7 +214,7 @@ jobs:
       #     sleep 10
 
       - name: Run ZAP Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-zap@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scanner-zap@1.12.8 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -243,7 +243,7 @@ jobs:
       #   run: docker build -t myapp:test .
 
       - name: Run Container Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-container@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scanner-container@1.12.8 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -261,7 +261,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run OSV-Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-osv@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scanner-osv@1.12.8 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -280,7 +280,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Dependency Review
-        uses: huntridge-labs/argus/.github/actions/scanner-dependency-review@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scanner-dependency-review@1.12.8 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -302,7 +302,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Supply Chain Scanner
-        uses: huntridge-labs/argus/.github/actions/scanner-supply-chain@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/scanner-supply-chain@1.12.8 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           scan_path: '.'
@@ -319,7 +319,7 @@ jobs:
 
     steps:
       - name: Generate Combined Security Summary
-        uses: huntridge-labs/argus/.github/actions/security-summary@1.12.7 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+        uses: huntridge-labs/argus/.github/actions/security-summary@1.12.8 # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
