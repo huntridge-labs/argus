@@ -30,7 +30,7 @@ OFFICIAL_IMAGES = {
     "grype": "anchore/grype:v0.120.1@sha256:e4a44ef45d285b829ce6efe2642980329661bd2d18eab5fc539138d4adaebbbe",
     "syft": "anchore/syft:v1.54.1@sha256:3eb5379ba7b409c3f4069b686110527af0c47df993fa5c10d13e7cf34f49b1aa",
     "gitleaks": "zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f",
-    "clamav": "clamav/clamav:1.5.4@sha256:ebec5bc138401b36ae987caa1a3fa3c3b2a21ed3d51f0bfa5852825e663e67b0",
+    "clamav": "clamav/clamav:1.5.4@sha256:638d90201ee7ee6a82d249a2fc23b132e578673b5f1f2766852b127676ca1ef6",
     "checkov": "bridgecrew/checkov:3.3.26@sha256:8e63f217cb084f1c1a067326a9cf6e37d54bdc82e5822210d50ca4e2f647dd93",
     # KICS (Checkmarx) multi-format IaC scanner. The upstream
     # ``checkmarx/kics`` repo tags ``:latest`` mutably (no semver release
@@ -67,7 +67,7 @@ OFFICIAL_IMAGES = {
     # SHA + ``:latest`` + ``:edge``, not semver, so the ``:latest`` tag
     # is mutable — the digest pin below is the content-hash gate that
     # protects us between Renovate-driven bumps.
-    "eslint": "pipelinecomponents/eslint:latest@sha256:0927aae5ab372691f2ba100ad56bd026b297b263c2fa19287547c33ee74013dd",
+    "eslint": "pipelinecomponents/eslint:latest@sha256:7dbb5afec3be359fa1024a4cc76efc243fb6ce1333a9c5ab216b2d5a9039203a",
 }
 
 # Custom images built and published by Argus to ghcr.io/huntridge-labs/argus/
