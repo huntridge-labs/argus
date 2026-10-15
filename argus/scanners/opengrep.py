@@ -18,6 +18,7 @@ class OpengrepScanner:
     category = "sast"
     languages = ["python", "javascript", "typescript", "go", "java", "ruby", "c", "cpp"]
     container_image = get_image("semgrep")
+    container_entrypoint = "opengrep"
 
     def scan(self, path: str, config: dict | None = None) -> ScanResult:
         """Run OpenGrep against the given path and return results."""
@@ -26,10 +27,8 @@ class OpengrepScanner:
     def build_args(self, paths: ScanPaths, config: dict) -> list[str]:
         """Build the full argv (including the binary name).
 
-        Note: local execution uses the ``opengrep`` binary; container
-        execution (semgrep image) uses ``semgrep scan`` — if you need
-        the semgrep image to work, override ``container_args`` or set
-        the container image to one that ships the ``opengrep`` binary.
+        Local execution uses the full argv. The container engine strips
+        the binary name because the image uses ``opengrep`` as its entrypoint.
         """
         args = [
             "opengrep",
