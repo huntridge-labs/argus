@@ -26,6 +26,7 @@ REQUIRED_PATTERNS = [
     "argus/scanners/__init__.py",
     "argus/linters/__init__.py",
     "argus/scn/__init__.py",
+    "argus/scn/schemas/scn-config.schema.json",
     "argus/reporters/__init__.py",
 ]
 
