@@ -103,6 +103,8 @@ jobs:
   publish-testpypi:
     name: Publish to TestPyPI
     needs: [build, test-install]
+    # Fork PRs never get an OIDC token, so trusted publishing can't work there.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     environment: testpypi
 
