@@ -144,7 +144,7 @@ runs:
         exit $SCAN_EXIT
 
     - name: Upload ClamAV artifacts
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
       with:
         name: clamav-reports-${{ inputs.job_id }}
         path: clamav-reports/
@@ -160,7 +160,7 @@ runs:
 
     - name: Upload ClamAV summary section
       if: always()
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
       with:
         name: scanner-summary-clamav-${{ inputs.job_id }}
         path: ${{ steps.scan.outputs.summary_file }}
