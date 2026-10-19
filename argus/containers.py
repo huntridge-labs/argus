@@ -30,7 +30,7 @@ OFFICIAL_IMAGES = {
     "grype": "anchore/grype:v0.120.1@sha256:e4a44ef45d285b829ce6efe2642980329661bd2d18eab5fc539138d4adaebbbe",
     "syft": "anchore/syft:v1.54.1@sha256:3eb5379ba7b409c3f4069b686110527af0c47df993fa5c10d13e7cf34f49b1aa",
     "gitleaks": "zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f",
-    "clamav": "clamav/clamav:1.5.4@sha256:638d90201ee7ee6a82d249a2fc23b132e578673b5f1f2766852b127676ca1ef6",
+    "clamav": "clamav/clamav:1.5.4@sha256:e19130cdebaeacc71fa46eab3ed6f69941f2f22aa5e08d55e9197f8edf43ce5e",
     "checkov": "bridgecrew/checkov:3.3.26@sha256:8e63f217cb084f1c1a067326a9cf6e37d54bdc82e5822210d50ca4e2f647dd93",
     # KICS (Checkmarx) multi-format IaC scanner. The upstream
     # ``checkmarx/kics`` repo tags ``:latest`` mutably (no semver release
@@ -39,11 +39,14 @@ OFFICIAL_IMAGES = {
     # the eslint entry.
     "kics": "checkmarx/kics:latest@sha256:3e5a268eb8adda2e5a483c9359ddfc4cd520ab856a7076dc0b1d8784a37e2602",
     "osv-scanner": "ghcr.io/google/osv-scanner:v2.5.1@sha256:8108ae94eadea5a02c9bec6e646909d5b790b44bd62d7f5b7f0b1d6d0ffc7734",
-    # Upstream re-pushes the 2.17.0 tag on rebuilds (2026-08, 2026-10);
-    # the old index digest then no longer verifies against the tag.
-    # Pin refreshed to the tag's current index digest, verified via
-    # `docker manifest inspect`.
-    "zap": "ghcr.io/zaproxy/zaproxy:2.17.0@sha256:7aaa659b0d43078febd82e29bad112285c370727e86ab8340444220e17d9f0d2",
+    # Upstream re-pushes the 2.17.0 tag on rebuilds (2026-08, 2026-10 twice),
+    # so `manifest inspect` of tag@digest stops verifying even though the
+    # pinned digest still pulls. check_container_images flags that on
+    # purpose (confirm the vendor pushed it, then re-pin); platform reads
+    # go through `container_runtime.manifest_ref` and ask about the digest
+    # alone. Re-pinned 2026-10-19 to the 2026-10-16 "Release Main Docker"
+    # rebuild (dispatched by maintainer thc202; same amd64/arm64 set).
+    "zap": "ghcr.io/zaproxy/zaproxy:2.17.0@sha256:5ccfff9a411743ab2615136a2edd7416bec9ce41572fa94e935df38c14adb2b6",
     # promptfoo LLM red-team / eval. Opt-in scanner; requires provider
     # API keys + network at scan time. Pinned to an immutable version tag
     # + digest (Renovate-managed), like every other image here — the
