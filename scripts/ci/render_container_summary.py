@@ -41,6 +41,7 @@ from typing import Sequence
 
 from argus.container import ContainerTarget, scan_image
 from argus.container.scanner import ContainerScanResult
+from argus.core.vex import unapplied_statements
 from argus.reporters import get_reporter
 from argus.reporters.container_markdown import ContainerMarkdownReporter
 
@@ -156,6 +157,28 @@ def run(
     return result
 
 
+def report_unapplied_vex(result: ContainerScanResult, vex: list[str] | None) -> bool:
+    """Emit a CI error for each VEX statement the scanners failed to apply.
+
+    Returns True when every statement that names a reported finding was
+    honoured. A miss means the PR comment still counts a finding we have
+    already declared not_affected, so the document needs fixing.
+    """
+    if not vex:
+        return True
+    findings = [*result.trivy_findings, *result.grype_findings]
+    misses = unapplied_statements(findings, {"vex": vex})
+    for miss in misses:
+        print(
+            f"::error::VEX statement for {miss.vulnerability} did not apply in "
+            f"{miss.tool}: the statement names {miss.statement_product} but the "
+            f"scanner reports {miss.reported_purl}. Add that PURL spelling to "
+            "the statement's products.",
+            file=sys.stderr,
+        )
+    return not misses
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Scan a built container image with the Argus SDK and "
@@ -194,7 +217,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     # A sub-scanner failure means the summary is incomplete — exit
     # non-zero so the caller can gate rather than silently trusting a
     # partial result.
-    return 1 if result.scanner_errors else 0
+    vex_applied = report_unapplied_vex(result, args.vex)
+    return 1 if result.scanner_errors or not vex_applied else 0
 
 
 if __name__ == "__main__":  # pragma: no cover

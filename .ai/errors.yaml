@@ -1037,6 +1037,28 @@ errors:
         '
       reference: argus/containers.py + scripts/ci/check_container_images.py + .github/renovate.json (customManagers, container-images group)
     symptom: manifest verification failed for digest|N image(s) failed manifest check|Unit Tests red on main with no relevant diff
+  VEX_STATEMENT_NOT_APPLIED_PURL_SPELLING:
+    category: ci
+    context: 'A finding covered by a not_affected statement in
+      .vex/argus-cli.openvex.json still shows in the container PR comment, or
+      the container scan fails with "VEX statement for <id> did not apply".
+
+      '
+    root_cause: 'trivy and grype drop a finding only when the statement''s
+      product PURL matches theirs exactly, and report nothing when it does not.
+      They spell Go toolchain versions differently: trivy
+      pkg:golang/stdlib@v1.24.11, grype pkg:golang/stdlib@1.24.11, govulncheck
+      go1.24.11. The CLI VEX used go1.24.11 from July to 2026-10-19, so its two
+      stdlib criticals were never suppressed.
+
+      '
+    solution:
+      steps:
+      - Read the error line. It names the statement's PURL and the one the scanner reported.
+      - Add the scanner's spelling to that statement's products (stdlib statements list both v1.x and 1.x).
+      - Run pytest tests/unit/test_cli_vex_document.py, then re-run the container scan.
+      reference: argus/core/vex.py (unapplied_statements) + scripts/ci/render_container_summary.py + .vex/README.md
+    symptom: VEX statement for .* did not apply|VEX'd CVE still in container PR comment
   GHCR_PRUNE_ABORTS_ON_PACKAGE_NOT_FOUND_HTTP_404:
     category: ci
     context: 'The scheduled GHCR Cleanup workflow fails with

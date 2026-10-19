@@ -1,69 +1,67 @@
-# CLI container VEX — evidence & justification (DRAFT — needs sign-off)
+# CLI container VEX: evidence and justification
 
-Scope: the CLI container's CRITICAL findings that are **not attributable to
-Argus's own code** — every one lives in a vendored Go dependency inside a
-**bundled third-party security-tool binary**, not in the Argus Python package.
-Evidence below is from the GitHub code-scanning alerts for category
-`container-cli` (SARIF emitted by the container scan), which carry per-finding
-binary attribution (`location.path`).
+`argus-cli.openvex.json` declares `not_affected` for vulnerabilities in Go code
+compiled into the **gitleaks** binary we bundle in the CLI image
+(`usr/local/bin/gitleaks`, gitleaks v8.30.1, built with Go 1.24.11 and
+vendoring `golang.org/x/crypto` v0.35.0). None of it is Argus's own code.
+gitleaks' latest upstream release is still v8.30.1, so there is no rebuilt
+version to move to yet.
 
-## Binary attribution (evidence)
+It is applied in two places:
 
-| Vulnerable component | Bundled binary | Source |
+- `.github/workflows/build-containers.yml` passes `--vex` to the CI container
+  scan that renders the PR comment and the `container-cli` SARIF.
+- `argus.yml` (`containers.vex`) applies it to `argus scan container` runs.
+
+Sign-off is the approving review on the PR that changes this document. A
+statement change without that review should not merge.
+
+## What is covered
+
+| Statements | Component | Affected code |
 |---|---|---|
-| `golang.org/x/crypto@v0.35.0` (CVE-2025-47913 / -47914 / -58181 + Grype GHSA/GO aliases) | `usr/local/bin/gitleaks` | code-scanning alert `location.path` |
-| `stdlib@go1.24.11` (CVE-2025-68121 / GO-2026-4337) | `usr/local/bin/gitleaks` | code-scanning alert `location.path` |
-| `stdlib@go1.26.1` (highs) | `usr/local/bin/actionlint` | " |
-| `stdlib@go1.26.3` (highs) | `usr/local/bin/grype`, `usr/local/bin/syft` | " |
+| CVE-2025-47913, CVE-2025-47914, CVE-2025-58181, GO-2026-5005, GO-2026-5019, GO-2026-5020 and their GHSA aliases | `golang.org/x/crypto@v0.35.0` | `x/crypto/ssh` and `x/crypto/ssh/agent` |
+| CVE-2025-68121 / GO-2026-4337 | Go stdlib 1.24.11 | `crypto/tls` handshake (session resumption) |
 
-The 12 CRITICALs collapse to two root causes, both in **gitleaks** (an old
-build — `zricethezav/gitleaks:v8.30.1`, compiled with Go 1.24.11 and vendoring
-`x/crypto` v0.35.0):
+## Evidence (2026-10-19)
 
-1. **`golang.org/x/crypto` v0.35.0** — the `x/crypto/ssh` advisory cluster
-   (Grype rates CRITICAL; Trivy rates the same CVEs HIGH).
-2. **Go stdlib 1.24.11** — CVE-2025-68121.
+Run with govulncheck v1.1.4 in source mode against the gitleaks v8.30.1 tag
+(`GOTOOLCHAIN=go1.24.11 govulncheck -show traces ./...`), so the call graph is
+gitleaks' own code with the toolchain the shipped binary was built with:
 
-## Justification: `not_affected` / `vulnerable_code_not_in_execute_path`
+- **x/crypto:** no call path from gitleaks code to any of the x/crypto
+  vulnerabilities above. govulncheck lists them only under "packages you
+  import ... your code doesn't appear to call". `x/crypto` is an indirect
+  dependency in gitleaks' `go.mod`.
+- **crypto/tls (GO-2026-4337):** the only call path is
+  `cmd/diagnostics.go` `StartHttpHandler`, the profiling server behind
+  `--diagnostics=http`. A second trace through `sources/git.go`
+  `blobReader.Close` reaches `tls.Conn.Read` only through `io.Reader`
+  interface dispatch; at runtime that reader is the `git` subprocess pipe, not
+  a TLS connection.
 
-Argus invokes gitleaks as a **one-shot, offline secret scanner over the
-already-checked-out local working tree**. It does not open a network listener,
-serve requests, or initiate SSH connections. The `x/crypto/ssh` handshake code
-(the affected path for the x/crypto cluster) and the stdlib path for
-CVE-2025-68121 are therefore never reached in Argus's usage.
+Argus runs gitleaks as `gitleaks detect --source <workspace> --report-format
+json ...` (`argus/scanners/gitleaks.py`). It never passes `--diagnostics`,
+never points gitleaks at a remote, and makes no SSH or TLS connection through
+it. That is the basis for `vulnerable_code_not_in_execute_path`.
 
-⚠️ **Per-CVE reachability must be confirmed before this is treated as final.**
-Each `x/crypto` CVE's specific affected function should be checked against
-gitleaks' actual call graph (gitleaks *can* clone remote repos, which would
-exercise SSH — Argus's pipeline scans the local checkout, so it does not, but
-that is a usage assumption worth pinning). This draft encodes the assumption;
-sign-off = confirming it holds for your invocation.
+Static call graphs miss reflection and cgo paths, so this is evidence for the
+usage claim, not proof of it (see ADR-035). If Argus ever starts passing
+gitleaks a remote URL or `--diagnostics`, these statements stop being true.
 
-## ⭐ Recommended first: fix, don't suppress
+## Keeping it honest
 
-These are **fixable by bumping the bundled tool**, which is better than a VEX:
-
-- Bump **gitleaks** in `docker/Dockerfile.cli` / `argus/containers.py` to a
-  release built against Go ≥ 1.24.13 and `x/crypto` ≥ 0.52.0 — that clears the
-  x/crypto cluster **and** CVE-2025-68121 outright (10 of the 12 criticals).
-- Bump **actionlint** / confirm **grype**/**syft** are on current builds for
-  the stdlib highs.
-
-VEX should cover only the residue that has **no** rebuilt upstream release yet.
-If a gitleaks bump clears these, this document is unnecessary.
-
-## How to apply (once signed off)
-
-Commit as `.vex/argus-cli.openvex.json` and point the scan at it:
-
-```yaml
-# argus.yml
-containers:
-  vex: .vex/argus-cli.openvex.json          # container-lifecycle scan
-scanners:
-  grype: { vex: .vex/argus-cli.openvex.json }   # source/SBOM scans (PR #365)
-  trivy: { vex: .vex/argus-cli.openvex.json }
-```
-
-Both Trivy and Grype resolve CVE↔GHSA↔GO aliases, but statements are included
-under all three ID schemes for belt-and-suspenders matching.
+- **Remove statements when gitleaks ships a rebuild.** A gitleaks release
+  built with Go >= 1.24.13 and `x/crypto` >= 0.52.0 clears every finding here,
+  and this document should then be deleted, not carried forward.
+- **PURL spelling must match the scanners.** trivy and grype only drop a
+  finding when the product PURL is an exact match, and say nothing when it is
+  not. For the Go toolchain trivy reports `pkg:golang/stdlib@v1.24.11` and
+  grype `pkg:golang/stdlib@1.24.11`, so stdlib statements list both. The
+  `go1.24.11` spelling (govulncheck's) matches neither, which is why the two
+  stdlib criticals stayed visible until 2026-10-19.
+- `tests/unit/test_cli_vex_document.py` lints the spellings, and
+  `scripts/ci/render_container_summary.py` fails the container scan when a
+  statement names a reported finding that the scanners still returned.
+- Statements are listed under CVE, GHSA and GO IDs because trivy and grype key
+  findings on different ID schemes.

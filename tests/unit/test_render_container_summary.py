@@ -247,3 +247,46 @@ def test_main_forwards_vex_flag(tmp_path: Path, monkeypatch):
         "--vex", "b.json",
     ])
     assert captured["config"] == {"vex": ["a.json", "b.json"]}
+
+
+def test_main_exit_nonzero_when_vex_statement_did_not_apply(tmp_path: Path, monkeypatch, capsys):
+    """A VEX statement the scanners silently failed to match must fail CI.
+
+    The CLI VEX spelled Go's version ``go1.24.11``; trivy reports
+    ``v1.24.11`` and grype ``1.24.11``, so two criticals the document
+    covers stayed in every PR comment for months with nothing going red.
+    """
+    vex = tmp_path / "vex.json"
+    vex.write_text(json.dumps({
+        "statements": [{
+            "vulnerability": {"name": "CVE-2025-68121"},
+            "products": [{"@id": "pkg:golang/stdlib@go1.24.11"}],
+            "status": "not_affected",
+            "justification": "vulnerable_code_not_in_execute_path",
+        }],
+    }))
+
+    def scan_with_unmatched_vex(target, scanners, sbom, config=None):
+        hit = Finding(
+            id="CVE-2025-68121", severity=Severity.CRITICAL, title="tls",
+            cve="CVE-2025-68121", scanner="container",
+            metadata={"tool": "trivy", "purl": "pkg:golang/stdlib@v1.24.11"},
+        )
+        return ContainerScanResult(
+            name="cli", image_ref="ref:tag",
+            trivy_findings=[hit], grype_findings=[],
+            combined_findings=[hit],
+        )
+
+    monkeypatch.setattr(rcs, "scan_image", scan_with_unmatched_vex)
+    rc = rcs.main([
+        "--image-name", "cli",
+        "--image-ref", "ref:tag",
+        "--out-dir", str(tmp_path / "out"),
+        "--vex", str(vex),
+    ])
+
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "CVE-2025-68121" in err
+    assert "pkg:golang/stdlib@go1.24.11" in err
