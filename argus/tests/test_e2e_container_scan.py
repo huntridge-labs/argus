@@ -45,20 +45,22 @@ class TestContainerScanDockerFallback:
 
     def test_trivy_image_resolves(self):
         """The pinned trivy image must exist on the registry."""
+        from argus.container_runtime import manifest_ref
         from argus.containers import OFFICIAL_IMAGES
         image = OFFICIAL_IMAGES["trivy"]
         result = subprocess.run(
-            ["docker", "manifest", "inspect", image],
+            ["docker", "manifest", "inspect", manifest_ref(image)],
             capture_output=True, timeout=30,
         )
         assert result.returncode == 0, f"trivy image not found: {image}"
 
     def test_grype_image_resolves(self):
         """The pinned grype image must exist on the registry."""
+        from argus.container_runtime import manifest_ref
         from argus.containers import OFFICIAL_IMAGES
         image = OFFICIAL_IMAGES["grype"]
         result = subprocess.run(
-            ["docker", "manifest", "inspect", image],
+            ["docker", "manifest", "inspect", manifest_ref(image)],
             capture_output=True, timeout=30,
         )
         assert result.returncode == 0, f"grype image not found: {image}"

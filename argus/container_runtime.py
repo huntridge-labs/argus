@@ -127,6 +127,27 @@ def _platform_blocks(data: object) -> list[dict]:
     return blocks
 
 
+def manifest_ref(image: str) -> str:
+    """Return ``image`` with its tag dropped when a digest pins it.
+
+    ``manifest inspect repo:tag@sha256:...`` resolves the TAG and then
+    checks the digest against it, so it fails the moment upstream
+    re-pushes the tag, even though the pinned digest still exists and
+    still pulls. Upstreams do this on routine rebuilds
+    (ghcr.io/zaproxy/zaproxy:2.17.0 moved three times in 2026). The
+    digest is the identity we pinned; the tag is only a label for
+    humans, so the registry is asked about the digest alone.
+    """
+    name, sep, digest = image.partition("@")
+    if not sep:
+        return image
+    slash = name.rfind("/")
+    colon = name.rfind(":")
+    if colon > slash:
+        name = name[:colon]
+    return f"{name}@{digest}"
+
+
 def detect_image_platforms(image: str) -> list[str]:
     """Return the platforms ``image`` publishes, e.g. ``["linux/arm64"]``.
 
@@ -165,8 +186,9 @@ def detect_image_platforms(image: str) -> list[str]:
     # the common path costs exactly one call. An unrecognised runtime
     # (ARGUS_CONTAINER_RUNTIME can name anything on PATH) is the only
     # case that guesses, and it tries both forms.
-    verbose = [rt, "manifest", "inspect", "--verbose", image]
-    plain = [rt, "manifest", "inspect", image]
+    ref = manifest_ref(image)
+    verbose = [rt, "manifest", "inspect", "--verbose", ref]
+    plain = [rt, "manifest", "inspect", ref]
     if "docker" in name:
         attempts = [verbose]
     elif "podman" in name:

@@ -63,10 +63,11 @@ class TestZapImageResolution:
     """Verify the pinned ZAP image exists."""
 
     def test_zap_image_resolves(self):
+        from argus.container_runtime import manifest_ref
         from argus.containers import OFFICIAL_IMAGES
         image = OFFICIAL_IMAGES["zap"]
         result = subprocess.run(
-            ["docker", "manifest", "inspect", image],
+            ["docker", "manifest", "inspect", manifest_ref(image)],
             capture_output=True, timeout=30,
         )
         assert result.returncode == 0, f"ZAP image not found: {image}"

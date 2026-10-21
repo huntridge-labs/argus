@@ -334,6 +334,39 @@ class TestDetectImagePlatforms:
         mock_run.return_value = MagicMock(returncode=0, stdout="not json", stderr="")
         assert cr.detect_image_platforms("app:1") == []
 
+    @patch("argus.container_runtime.subprocess.run")
+    def test_pinned_ref_is_read_by_digest_alone(self, mock_run, monkeypatch):
+        """A moved tag must not hide the platforms of a still-valid pin.
+
+        ``docker manifest inspect repo:tag@digest`` fetches by tag and
+        then verifies the digest, so it fails once upstream re-pushes
+        the tag (ghcr.io/zaproxy/zaproxy:2.17.0, three times in 2026).
+        """
+        _only_docker(monkeypatch)
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=json.dumps(
+                {"Descriptor": {"platform": {"os": "linux", "architecture": "amd64"}}}
+            ),
+            stderr="",
+        )
+        cr.detect_image_platforms("ghcr.io/zaproxy/zaproxy:2.17.0@sha256:abc")
+        assert mock_run.call_args.args[0][-1] == "ghcr.io/zaproxy/zaproxy@sha256:abc"
+
+
+class TestManifestRef:
+    """``manifest_ref`` drops the tag from a digest-pinned image ref."""
+
+    @pytest.mark.parametrize(("image", "expected"), [
+        ("ghcr.io/zaproxy/zaproxy:2.17.0@sha256:abc", "ghcr.io/zaproxy/zaproxy@sha256:abc"),
+        ("localhost:5000/app:1@sha256:abc", "localhost:5000/app@sha256:abc"),
+        ("app@sha256:abc", "app@sha256:abc"),
+        ("app:1", "app:1"),
+        ("localhost:5000/app", "localhost:5000/app"),
+    ])
+    def test_manifest_ref(self, image, expected):
+        assert cr.manifest_ref(image) == expected
+
 
 class TestRunContainer:
     """``run_container`` builds the argv for a one-shot container run.
