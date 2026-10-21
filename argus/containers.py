@@ -32,12 +32,10 @@ OFFICIAL_IMAGES = {
     "gitleaks": "zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f",
     "clamav": "clamav/clamav:1.5.4@sha256:e19130cdebaeacc71fa46eab3ed6f69941f2f22aa5e08d55e9197f8edf43ce5e",
     "checkov": "bridgecrew/checkov:3.3.26@sha256:8e63f217cb084f1c1a067326a9cf6e37d54bdc82e5822210d50ca4e2f647dd93",
-    # KICS (Checkmarx) multi-format IaC scanner. The upstream
-    # ``checkmarx/kics`` repo tags ``:latest`` mutably (no semver release
-    # tag per build), so the digest pin below is the content-hash gate
-    # that protects us between Renovate-driven bumps — same pattern as
-    # the eslint entry.
-    "kics": "checkmarx/kics:latest@sha256:3e5a268eb8adda2e5a483c9359ddfc4cd520ab856a7076dc0b1d8784a37e2602",
+    # KICS (Checkmarx) multi-format IaC scanner. Pinned to a semver tag:
+    # ``:latest`` moves on every upstream push (2026-10-21), which breaks
+    # the tag@digest manifest check even when the digest is unchanged.
+    "kics": "checkmarx/kics:v2.1.20@sha256:3e5a268eb8adda2e5a483c9359ddfc4cd520ab856a7076dc0b1d8784a37e2602",
     "osv-scanner": "ghcr.io/google/osv-scanner:v2.5.1@sha256:8108ae94eadea5a02c9bec6e646909d5b790b44bd62d7f5b7f0b1d6d0ffc7734",
     # Upstream re-pushes the 2.17.0 tag on rebuilds (2026-08, 2026-10 twice),
     # so `manifest inspect` of tag@digest stops verifying even though the
