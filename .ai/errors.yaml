@@ -1011,6 +1011,15 @@ errors:
       <tag>@<digest> reference — docker resolves the tag, then verifies the
       result against the pinned digest, and the two now disagree. Hence
       "manifest verification failed for digest", not "manifest unknown".
+      ghcr.io/zaproxy/zaproxy:2.17.0 does the same on maintainer-dispatched
+      "Release Main Docker" rebuilds.
+
+      Only check_container_images (and the release gate) should trip on
+      this; it is a deliberate supply-chain tripwire. Runtime manifest reads
+      (container_runtime.detect_image_platforms) and the E2E "image resolves"
+      tests go through container_runtime.manifest_ref, which drops the tag
+      and asks about the pinned digest alone, so a moved tag no longer
+      breaks platform detection for users.
 
       Renovate does re-pin digests via the containers.py custom manager
       (.github/renovate.json customManagers[0], group container-images), and it
