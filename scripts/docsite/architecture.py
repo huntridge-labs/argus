@@ -187,7 +187,7 @@ def load_inputs(repo_root: Path) -> dict[str, Any]:
     """
     return {
         "architecture": _load_yaml(repo_root / ".ai" / "architecture.yaml"),
-        "decisions": _load_yaml(repo_root / ".ai" / "decisions.yaml"),
+        "decisions": _load_decisions(repo_root / ".ai"),
         "context": _load_yaml(repo_root / ".ai" / "context.yaml"),
         "config_schema": _load_json(repo_root / "argus-config.schema.json"),
         "version": _load_version_yaml(repo_root / "version.yaml"),
@@ -200,6 +200,27 @@ def _load_yaml(path: Path) -> dict[str, Any]:
     with path.open(encoding="utf-8") as fh:
         data = yaml.safe_load(fh) or {}
     return data if isinstance(data, dict) else {}
+
+
+def _load_decisions(ai_dir: Path) -> dict[str, Any]:
+    """Read legacy ``decisions.yaml`` plus issue-keyed ``decisions/ADR-*.yaml``.
+
+    ADR-001..ADR-044 live in ``decisions.yaml``; newer ADRs are one file
+    each under ``decisions/`` (ADR-483). Merge them into the same
+    ``decisions`` map so a pinned ID resolves wherever it lives.
+    """
+    legacy = _load_yaml(ai_dir / "decisions.yaml")
+    records_dir = ai_dir / "decisions"
+    if not records_dir.is_dir():
+        return legacy
+    records = {}
+    for path in sorted(records_dir.glob("ADR-*.yaml")):
+        body = _load_yaml(path)
+        if body:
+            records[str(body.get("id") or path.stem)] = body
+    bucket = legacy.get("decisions")
+    merged = {**bucket, **records} if isinstance(bucket, dict) else records
+    return {**legacy, "decisions": merged}
 
 
 def _load_json(path: Path) -> dict[str, Any]:

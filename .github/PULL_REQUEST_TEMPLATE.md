@@ -1,3 +1,6 @@
+Closes #
+<!-- Every PR starts from an issue. Use "Refs #N" instead if this PR is only part of the work. -->
+
 ## Description
 Briefly describe the changes in this pull request.
 
@@ -36,13 +39,14 @@ If this PR changes project structure, commands, or behavior, update the relevant
 
 - [ ] `.ai/architecture.yaml` updated (if components/structure changed)
 - [ ] `.ai/workflows.yaml` updated (if commands/tasks changed)
-- [ ] `.ai/decisions.yaml` updated (if design decision made)
+- [ ] New ADR added as `.ai/decisions/ADR-<issue>.yaml` (if design decision made; never append to `.ai/decisions.yaml`)
 - [ ] `.ai/errors.yaml` updated (if common error addressed)
 - [ ] N/A - No .ai/ updates needed
 
-See the `.ai/` maintenance table in `CLAUDE.md` for guidance.
+See the `.ai/` maintenance table in `AGENTS.md` for guidance.
 
 ## Checklist
+- [ ] Branch is named `<prefix>/<issue>-<description>` with this PR's issue number (see `AGENTS.md`, "Issues, branches, and records")
 - [ ] Code follows project style guidelines
 - [ ] Documentation updated (if applicable)
 - [ ] Changelog updated (if applicable)
@@ -60,7 +64,7 @@ See the `.ai/` maintenance table in `CLAUDE.md` for guidance.
 - [ ] No breaking changes to existing scanners
 
 ## Related Issues
-Closes # (issue number)
+Other related issues or PRs (the issue this PR closes goes on the first line).
 
 ## Screenshots/Logs (if applicable)
 Add any relevant screenshots, logs, or other evidence of the changes.
