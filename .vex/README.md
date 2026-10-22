@@ -1,27 +1,32 @@
-# CLI container VEX: evidence and justification
+# CLI container ignore rules: evidence and justification
 
-`argus-cli.openvex.json` declares `not_affected` for vulnerabilities in Go code
-compiled into the **gitleaks** binary we bundle in the CLI image
-(`usr/local/bin/gitleaks`, gitleaks v8.30.1, built with Go 1.24.11 and
-vendoring `golang.org/x/crypto` v0.35.0). None of it is Argus's own code.
-gitleaks' latest upstream release is still v8.30.1, so there is no rebuilt
-version to move to yet.
+`argus-cli.trivyignore.yaml` (trivy) and `argus-cli.grype.yaml` (grype)
+ignore vulnerabilities in Go code compiled into the **gitleaks** binary we
+bundle in the CLI image (`usr/local/bin/gitleaks`, gitleaks v8.30.1, built
+with Go 1.24.11 and vendoring `golang.org/x/crypto` v0.35.0). None of it is
+Argus's own code. gitleaks' latest upstream release is still v8.30.1, so
+there is no rebuilt version to move to yet.
 
-It is applied in two places:
+Every rule is scoped to that one path. The same CVE in any other binary in
+the image stays visible.
 
-- `.github/workflows/build-containers.yml` passes `--vex` to the CI container
-  scan that renders the PR comment and the `container-cli` SARIF.
-- `argus.yml` (`containers.vex`) applies it to `argus scan container` runs.
+They are applied in two places:
 
-Sign-off is the approving review on the PR that changes this document. A
-statement change without that review should not merge.
+- `.github/workflows/build-containers.yml` passes `--trivy-ignore-file` and
+  `--grype-config-file` to the CI container scan of the `cli` image only.
+  That scan renders the PR comment and the `container-cli` SARIF.
+- `argus.yml` (`containers.trivy_ignore_file` / `containers.grype_config_file`)
+  applies them to `argus scan container` runs.
+
+Sign-off is the approving review on the PR that changes this document or
+either rule file. A rule change without that review should not merge.
 
 ## What is covered
 
-| Statements | Component | Affected code |
-|---|---|---|
-| CVE-2025-47913, CVE-2025-47914, CVE-2025-58181, GO-2026-5005, GO-2026-5019, GO-2026-5020 and their GHSA aliases | `golang.org/x/crypto@v0.35.0` | `x/crypto/ssh` and `x/crypto/ssh/agent` |
-| CVE-2025-68121 / GO-2026-4337 | Go stdlib 1.24.11 | `crypto/tls` handshake (session resumption) |
+| trivy rule | grype rule | Component | Affected code |
+|---|---|---|---|
+| CVE-2025-47913, CVE-2025-47914, CVE-2025-58181 | none (grype does not report x/crypto in gitleaks) | `golang.org/x/crypto@v0.35.0` | `x/crypto/ssh` and `x/crypto/ssh/agent` |
+| CVE-2025-68121 | GO-2026-4337 | Go stdlib 1.24.11 | `crypto/tls` handshake (session resumption) |
 
 ## Evidence (2026-10-19)
 
@@ -43,36 +48,39 @@ gitleaks' own code with the toolchain the shipped binary was built with:
 Argus runs gitleaks as `gitleaks detect --source <workspace> --report-format
 json ...` (`argus/scanners/gitleaks.py`). It never passes `--diagnostics`,
 never points gitleaks at a remote, and makes no SSH or TLS connection through
-it. That is the basis for `vulnerable_code_not_in_execute_path`.
+it. That is the basis for treating these as not reachable.
 
 Static call graphs miss reflection and cgo paths, so this is evidence for the
 usage claim, not proof of it (see ADR-035). If Argus ever starts passing
-gitleaks a remote URL or `--diagnostics`, these statements stop being true.
+gitleaks a remote URL or `--diagnostics`, these rules stop being true.
 
 ## Keeping it honest
 
-- **Remove statements when gitleaks ships a rebuild.** A gitleaks release
-  built with Go >= 1.24.13 and `x/crypto` >= 0.52.0 clears every finding here,
-  and this document should then be deleted, not carried forward.
-- **These statements are not scoped to gitleaks.** CI passes this document
-  to every image it builds, and each statement names only the component
-  (`pkg:golang/stdlib@1.24.11`, `pkg:golang/golang.org/x/crypto@v0.35.0`).
-  Any Go binary built with those versions has the same findings hidden, even
-  though the evidence above covers gitleaks alone. As of 2026-10-22 gitleaks
-  is the only binary in the CLI image on either version (trivy, grype, syft
-  and actionlint are on Go 1.26).
-  Neither trivy nor grype can scope an OpenVEX statement to one binary, so
-  check that before bumping any bundled Go tool. Moving these to path-scoped
-  `.trivyignore.yaml` / `.grype.yaml` rules on `usr/local/bin/gitleaks` is
-  tracked as a follow-up.
-- **PURL spelling must match the scanners.** trivy and grype only drop a
-  finding when the product PURL is an exact match, and say nothing when it is
-  not. For the Go toolchain trivy reports `pkg:golang/stdlib@v1.24.11` and
-  grype `pkg:golang/stdlib@1.24.11`, so stdlib statements list both. The
-  `go1.24.11` spelling (govulncheck's) matches neither, which is why the two
-  stdlib criticals stayed visible until 2026-10-19.
-- `tests/unit/test_cli_vex_document.py` lints the spellings, and
-  `scripts/ci/render_container_summary.py` fails the container scan when a
-  statement names a reported finding that the scanners still returned.
-- Statements are listed under CVE, GHSA and GO IDs because trivy and grype key
-  findings on different ID schemes.
+- **Delete the rules when gitleaks ships a rebuild.** A gitleaks release
+  built with Go >= 1.24.13 and `x/crypto` >= 0.52.0 clears every finding here.
+  The rule files and this document should then be deleted, not carried
+  forward.
+- **Scoped to gitleaks, not to a Go version.** These used to be OpenVEX
+  statements in `argus-cli.openvex.json`. OpenVEX names only a component
+  (`pkg:golang/stdlib@1.24.11`), and neither trivy nor grype can tie a
+  statement to one binary, so the statements hid the same CVEs in any Go
+  binary built with those versions. The trivy `paths` and grype
+  `package.location` fields scope each rule to `usr/local/bin/gitleaks`.
+  Checked 2026-10-22 against `ghcr.io/huntridge-labs/argus/cli:1.12.8`: the
+  same rules pointed at `usr/local/bin/actionlint` leave the gitleaks
+  findings visible.
+- **Path spelling differs per tool.** trivy `paths` have no leading slash
+  (`usr/local/bin/gitleaks`); grype `location` has one
+  (`/usr/local/bin/gitleaks`). A rule with the wrong spelling matches
+  nothing.
+- **ID scheme differs per tool.** trivy reports Go findings by CVE ID. grype
+  reports them by GO- (or GHSA-) ID and lists the CVE only as a related
+  vulnerability; a grype rule on the CVE ID does not match.
+- **Ignored findings stay visible.** trivy runs with `--show-suppressed` and
+  grype lists `ignoredMatches`, so the PR comment shows each ignored finding,
+  with the reason from these files, in an "Ignored" table that does not count
+  toward the totals.
+- `tests/unit/test_cli_ignore_files.py` lints the scoping and spellings, and
+  `scripts/ci/render_container_summary.py` fails the CLI container scan when
+  a rule matched nothing, so a stale or misspelled rule cannot sit there
+  doing nothing.

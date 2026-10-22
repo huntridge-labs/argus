@@ -1048,9 +1048,10 @@ errors:
     symptom: manifest verification failed for digest|N image(s) failed manifest check|Unit Tests red on main with no relevant diff
   VEX_STATEMENT_NOT_APPLIED_PURL_SPELLING:
     category: ci
-    context: 'A finding covered by a not_affected statement in
-      .vex/argus-cli.openvex.json still shows in the container PR comment, or
-      the container scan fails with "VEX statement for <id> did not apply".
+    context: 'A finding covered by a not_affected statement in a VEX document
+      passed to the container scan (--vex / containers.vex) still shows in the
+      container PR comment, or the container scan fails with "VEX statement for
+      <id> did not apply".
 
       '
     root_cause: 'trivy and grype drop a finding only when the statement''s
@@ -1065,9 +1066,33 @@ errors:
       steps:
       - Read the error line. It names the statement's PURL and the one the scanner reported.
       - Add the scanner's spelling to that statement's products (stdlib statements list both v1.x and 1.x).
-      - Run pytest tests/unit/test_cli_vex_document.py, then re-run the container scan.
-      reference: argus/core/vex.py (unapplied_statements) + scripts/ci/render_container_summary.py + .vex/README.md
+      - Re-run the container scan.
+      - If the statement is meant for one binary, use a path-scoped trivy / grype ignore rule instead (ADR-043).
+      reference: argus/core/vex.py (unapplied_statements) + scripts/ci/render_container_summary.py
     symptom: VEX statement for .* did not apply|VEX'd CVE still in container PR comment
+  CONTAINER_IGNORE_RULE_MATCHED_NOTHING:
+    category: ci
+    context: 'The CLI container scan in build-containers.yml fails with
+      "::error::<trivy|grype> ignore rule for <id> at <path> in
+      .vex/argus-cli.<tool>.yaml matched nothing", or argus scan container
+      prints "Warning: ... ignore rule ... matched nothing".
+
+      '
+    root_cause: 'No ignored finding came from that rule. Either the finding is
+      gone (gitleaks or another bundled tool was rebuilt on a fixed Go / module
+      version) or the rule is spelled wrong. Common misspellings: a leading
+      slash on a trivy path (trivy uses usr/local/bin/x, grype uses
+      /usr/local/bin/x), or a grype rule on the CVE ID (grype keys Go findings
+      on GO- / GHSA- IDs and lists the CVE only as related).
+
+      '
+    solution:
+      steps:
+      - Check whether the finding still exists in the image (run the scan without the ignore file).
+      - If it is fixed, delete the rule, and delete the file and its wiring once it is empty (.vex/README.md).
+      - If it still exists, fix the ID or path to what that tool reports, then run pytest tests/unit/test_cli_ignore_files.py.
+      reference: argus/container/ignores.py (unmatched_ignore_rules) + scripts/ci/render_container_summary.py + .vex/README.md + ADR-043
+    symptom: ignore rule for .* matched nothing
   GHCR_PRUNE_ABORTS_ON_PACKAGE_NOT_FOUND_HTTP_404:
     category: ci
     context: 'The scheduled GHCR Cleanup workflow fails with

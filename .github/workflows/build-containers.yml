@@ -171,14 +171,26 @@ jobs:
       # "No vulnerabilities detected by Grype" for every image regardless
       # of what Grype found (a false negative), and the combined counts
       # dropped every Grype-only CVE. See scripts/ci/render_container_summary.py.
+      #
+      # The CLI image gets path-scoped trivy / grype ignore rules for the
+      # gitleaks binary it bundles (.vex/README.md). They are passed for that
+      # image only: the script fails the job when a rule matches nothing, and
+      # the other images do not ship gitleaks.
       - name: Scan image & render summary (Argus SDK)
         run: |
+          ignore_args=()
+          if [ "$IMAGE_NAME" = "cli" ]; then
+            ignore_args=(
+              --trivy-ignore-file .vex/argus-cli.trivyignore.yaml
+              --grype-config-file .vex/argus-cli.grype.yaml
+            )
+          fi
           python -m scripts.ci.render_container_summary \
             --image-name "$IMAGE_NAME" \
             --image-ref "ghcr.io/huntridge-labs/argus/${IMAGE_NAME}:${IMAGE_TAG}" \
             --out-dir scanner-summaries \
             --sarif-dir sarif-out \
-            --vex .vex/argus-cli.openvex.json
+            "${ignore_args[@]}"
         env:
           IMAGE_NAME: ${{ matrix.image }}
           IMAGE_TAG: ${{ github.sha }}

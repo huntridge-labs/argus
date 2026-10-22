@@ -1,0 +1,38 @@
+# trivy ignore rules for the CLI image (passed as --ignorefile).
+#
+# Each rule is scoped to the gitleaks binary we bundle, so the same CVE in
+# any other binary in the image stays visible. trivy paths have no leading
+# slash. Evidence and sign-off rules: .vex/README.md.
+#
+# trivy reports Go findings by CVE ID. Every rule here must match a finding
+# in the CLI scan; CI fails on a rule that matched nothing
+# (scripts/ci/render_container_summary.py).
+vulnerabilities:
+  - id: CVE-2025-68121
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib 1.24.11 crypto/tls in gitleaks v8.30.1. govulncheck finds a
+      call path only through gitleaks' --diagnostics=http profiling server;
+      Argus runs `gitleaks detect --source <workspace>` without --diagnostics,
+      so no TLS connection is made. Fixed in Go 1.24.13+; awaiting an upstream
+      gitleaks rebuild.
+
+  - id: CVE-2025-47913
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: &xcrypto >-
+      golang.org/x/crypto v0.35.0 in gitleaks v8.30.1. The affected code is
+      x/crypto/ssh; govulncheck finds no call path from gitleaks to it, and
+      Argus runs gitleaks offline against the checked-out workspace, so no SSH
+      handshake happens. Awaiting a gitleaks release on x/crypto >= 0.52.0.
+
+  - id: CVE-2025-47914
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: *xcrypto
+
+  - id: CVE-2025-58181
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: *xcrypto
