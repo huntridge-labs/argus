@@ -251,4 +251,8 @@ exclude_dirs = [
     "venv",
     "node_modules",
 ]
-skips = ["B101", "B601"]
+# B404/B603/B607 flag every subprocess call, safe or not: the import, any
+# call without a shell, and tools resolved on PATH. Argus runs scanners by
+# calling CLI tools with fixed argv lists on purpose, so these are noise.
+# B602 (shell=True), B605 and B606 stay on to catch the risky calls.
+skips = ["B101", "B601", "B404", "B603", "B607"]
