@@ -126,9 +126,13 @@ def _purl_key(purl: str) -> tuple[str, str]:
     spelling silently matches nothing. Normalising here lets us spot that.
     """
     base = purl.split("#", 1)[0].split("?", 1)[0]
-    name, _, version = base.rpartition("@")
-    if not name:
+    # The version separator is the "@" in the last path segment; a scoped
+    # npm namespace (pkg:npm/@babel/core) carries an "@" that is not one.
+    namespace, slash, last = base.rpartition("/")
+    package, at, version = last.partition("@")
+    if not at:
         return base, ""
+    name = f"{namespace}{slash}{package}"
     for prefix in ("go", "v"):
         if version.startswith(prefix) and version[len(prefix):][:1].isdigit():
             version = version[len(prefix):]

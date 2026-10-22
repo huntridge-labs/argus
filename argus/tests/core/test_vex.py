@@ -267,3 +267,32 @@ def test_unapplied_flags_old_spelling_on_scan_image_findings(tmp_path):
     misses = unapplied_statements(_scan_image_findings(tmp_path), {"vex": str(doc)})
 
     assert sorted(m.tool for m in misses) == ["grype", "trivy"]
+
+
+# --------------------------------------------------------------------- #
+# _purl_key                                                             #
+# --------------------------------------------------------------------- #
+
+
+def test_purl_key_strips_go_version_prefixes():
+    from argus.core.vex import _purl_key
+
+    assert _purl_key("pkg:golang/stdlib@go1.24.11") == ("pkg:golang/stdlib", "1.24.11")
+    assert _purl_key("pkg:golang/stdlib@v1.24.11") == ("pkg:golang/stdlib", "1.24.11")
+    assert _purl_key("pkg:golang/stdlib@1.24.11") == ("pkg:golang/stdlib", "1.24.11")
+
+
+def test_purl_key_keeps_scoped_npm_namespace():
+    from argus.core.vex import _purl_key
+
+    assert _purl_key("pkg:npm/@babel/core@7.26.0") == ("pkg:npm/@babel/core", "7.26.0")
+
+
+def test_purl_key_versionless_purls_have_empty_version():
+    """A scoped npm namespace carries an ``@`` that is not the version
+    separator, so a versionless purl must not split on it."""
+    from argus.core.vex import _purl_key
+
+    assert _purl_key("pkg:npm/@babel/core") == ("pkg:npm/@babel/core", "")
+    assert _purl_key("pkg:golang/stdlib") == ("pkg:golang/stdlib", "")
+    assert _purl_key("pkg:npm/@babel/core?repository_url=x#sub") == ("pkg:npm/@babel/core", "")
