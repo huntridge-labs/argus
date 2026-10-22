@@ -1,3 +1,7 @@
+# ADR-001 to ADR-044. Closed to new entries: a new ADR is its own file,
+# .ai/decisions/ADR-<issue>.yaml, keyed to its GitHub issue (ADR-483).
+# Existing entries keep their numbers and can still be edited.
+# See AGENTS.md, "Issues, branches, and records".
 version: '2.0'
 decisions:
   ADR-001:
@@ -659,7 +663,7 @@ decisions:
       \ conversation\nin the golden-path repo. Each bug ended the same way: the aggregator\nreported \"\
       ✅ Excellent! No security issues detected\" while a scanner\njob had actually crashed or been skipped\
       \ by configuration. A pipeline\nthat cannot distinguish success from failure cannot be trusted to\
-      \ gate\nmerges, which contradicts CLAUDE.md's core principle 4: \"Trust is\neverything.\"\n\nSecondary\
+      \ gate\nmerges, which contradicts AGENTS.md's core principle 4: \"Trust is\neverything.\"\n\nSecondary\
       \ issues the refactor addresses:\n- 17 per-pattern `actions/download-artifact` steps in the reusable\n\
       \  workflow, one per scanner artifact naming convention, with\n  `continue-on-error: true` — any\
       \ one silently fails without signal.\n- `allow_failure: true` as the default: the reusable workflow\
@@ -1127,7 +1131,7 @@ decisions:
       \ CodeQL via argus go through the action.\n* .github/actions/scanner-dependency-review/ — same.\n\
       \nNeither will gain argus.scanners.codeql.py or\nargus.scanners.dependency_review.py modules. The\
       \ two\ncomposite actions' README.md files carry the rationale\ninline so a contributor browsing\
-      \ the action sees it before\nfiling an SDK-port issue.\n\nCLAUDE.md's \"Adding a New Scanner\" section\
+      \ the action sees it before\nfiling an SDK-port issue.\n\nAGENTS.md's \"Adding a New Scanner\" section\
       \ was updated with\na one-paragraph carve-out pointing at this ADR, so the\ndefault (\"SDK-first\"\
       ) guidance has the carve-out attached\nto it instead of having to be discovered separately.\n"
     alternatives_considered:
@@ -1174,7 +1178,7 @@ decisions:
 
         and the rule for adding more is a single sentence. A
 
-        paragraph in CLAUDE.md + this ADR + a callout in each
+        paragraph in AGENTS.md + this ADR + a callout in each
 
         composite action''s README is enough scaffolding. If we
 
@@ -1185,7 +1189,7 @@ decisions:
       positive:
       - 'Roadmap item ``#206 (codeql.py + dependency_review.py)`` closed: composite-only by design, never
         an SDK port.'
-      - Future contributors filing 'add SDK module for <X>' issues hit the boundary rule in CLAUDE.md
+      - Future contributors filing 'add SDK module for <X>' issues hit the boundary rule in AGENTS.md
         and the per-action README before opening the issue. Reduces the chance of a partially-implemented
         SDK port that later gets ripped out.
       - Two existing composite actions are explicitly paved cowpaths, not omissions waiting to be filled

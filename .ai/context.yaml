@@ -78,6 +78,7 @@ context_modules:
   architecture: architecture.yaml
   workflows: workflows.yaml
   decisions: decisions.yaml
+  decision_records: decisions/
   errors: errors.yaml
 glossary:
   SARIF: Static Analysis Results Interchange Format - JSON standard for findings
