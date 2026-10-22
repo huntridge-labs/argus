@@ -926,7 +926,7 @@ Every composite action must include:
 
 ## Pull Request Process
 
-Every change starts from a GitHub issue, one issue per PR. Name the branch `<prefix>/<issue>-<description>` (for example `feat/483-issue-keyed-records`), open a draft PR as soon as work starts, and put `Closes #<issue>` in its body. New ADRs go in `.ai/decisions/ADR-<issue>.yaml`. The full rules, including what to do when the ADR Records check fails, are in [`AGENTS.md`, "Issues, branches, and records"](AGENTS.md#issues-branches-and-records).
+Every change starts from a GitHub issue, one issue per PR. Name the branch `<prefix>/<issue>-<description>` (for example `feat/483-issue-keyed-records`), open a draft PR as soon as work starts, and put `Closes #<issue>` in its body. New ADRs go in `.ai/decisions/ADR-<issue>.yaml`. The full rules, including what to do when the ADR Records check fails, are in [`AGENTS.md`, "Issues, branches, and records"](https://github.com/huntridge-labs/argus/blob/main/AGENTS.md#issues-branches-and-records).
 
 ### Before Submitting
 
