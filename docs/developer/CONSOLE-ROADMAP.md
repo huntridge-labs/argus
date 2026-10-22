@@ -443,7 +443,7 @@ the deep/risky tail and ship as foundations.
 - **Bare-`argus` default change** (Phase 4): ✅ decided — bare `argus`
   opens the Console, gated on stdout+stdin both being a TTY so headless /
   CI / piped use is untouched (no deprecation window needed). Still worth a
-  formal ADR entry in `.ai/decisions.yaml`, and an opt-out env var
+  formal ADR (`.ai/decisions/ADR-<issue>.yaml`), and an opt-out env var
   (`ARGUS_NO_TUI`) could be added if a user wants help even interactively.
 - **Local-model support depth** (Phase 1 Tier 2): how far to validate Ollama
   / OpenAI-compatible local endpoints so a cloud API key is never *required*.

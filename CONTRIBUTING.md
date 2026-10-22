@@ -436,7 +436,7 @@ class TestMyLinter:
 ### Step 4: Update Documentation
 
 1. Update `.ai/architecture.yaml` (linters list)
-2. Update `CLAUDE.md` if the linter introduces a new category
+2. Update `AGENTS.md` if the linter introduces a new category
 
 ### Validation Checklist (Linters)
 
@@ -926,8 +926,11 @@ Every composite action must include:
 
 ## Pull Request Process
 
+Every change starts from a GitHub issue, one issue per PR. Name the branch `<prefix>/<issue>-<description>` (for example `feat/483-issue-keyed-records`), open a draft PR as soon as work starts, and put `Closes #<issue>` in its body. New ADRs go in `.ai/decisions/ADR-<issue>.yaml`. The full rules, including what to do when the ADR Records check fails, are in [`AGENTS.md`, "Issues, branches, and records"](AGENTS.md#issues-branches-and-records).
+
 ### Before Submitting
 
+- [ ] Branch carries the issue number and the PR body links the issue
 - [ ] Manual testing complete
 - [ ] Documentation complete
 - [ ] SDK scanner tests added in `argus/tests/scanners/` (if SDK scanner)
@@ -1027,7 +1030,7 @@ Brief description of the scanner.
 
 - 📋 See `argus/scanners/bandit.py` for the SDK reference implementation
 - 📋 Check existing composite actions for action-level patterns
-- 📖 Review `CLAUDE.md` for architecture
+- 📖 Review `AGENTS.md` for architecture
 - 📝 See `tests/TODO.md` for testing
 - 💬 Open a [Discussion](https://github.com/huntridge-labs/argus/discussions)
 - 🐛 Report via [Issues](https://github.com/huntridge-labs/argus/issues)

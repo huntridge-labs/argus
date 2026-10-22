@@ -219,6 +219,29 @@ workflows:
       without_activating_venv: uv run --locked pytest
     coverage_targets:
       overall: 80%
+  start_change_from_issue:
+    description: Start a change from a GitHub issue, name the branch after it, and record any ADR under
+      the issue number (ADR-483; AGENTS.md "Issues, branches, and records")
+    category: process
+    steps:
+    - action: Check nobody has the issue (no linked open PR, no branch named for it)
+      command: gh issue view <issue> --json closedByPullRequestsReferences && git ls-remote --heads origin
+        "*/<issue>-*"
+    - action: Branch from main with the issue number right after an allowed prefix (feat, fix, chore, docs, ...)
+      command: git switch -c feat/<issue>-<short-description> origin/main
+    - action: Push the first commit and open a draft PR whose body says "Closes #<issue>" (or "Refs #<issue>")
+      command: gh pr create --draft
+    - action: Record a new ADR as its own file keyed to the issue
+      command: python -m scripts.ci.adr_records new --title "Short decision title"
+      file: .ai/decisions/ADR-<issue>.yaml
+    - action: List every ADR (legacy and issue-keyed); there is no index file to edit
+      command: python -m scripts.ci.adr_records list
+    - action: Run the CI check locally
+      command: python -m scripts.ci.adr_records check --branch "$(git branch --show-current)" --base origin/main
+    notes:
+    - Never add entries to .ai/decisions.yaml (closed at ADR-044) and never renumber an ADR
+    - Never rename a PR's head branch on GitHub (it closes the PR); push a new branch and open a new PR
+    reference: AGENTS.md "Issues, branches, and records", .ai/decisions/ADR-483.yaml
   python_dependencies:
     description: Install, add or update this repo's Python dependencies (uv.lock, ADR-043)
     category: maintenance
@@ -299,7 +322,7 @@ workflows:
           boilerplate into one line. Only fall back to custom parsing when the tool emits structured output
           (JSON, etc.) — see grype.py
         secret_redaction: If raw output ever contains source-code literals (passwords, code excerpts),
-          use argus.core.redact helpers and add a regression test (see CLAUDE.md → secret leak audit)
+          use argus.core.redact helpers and add a regression test (see AGENTS.md → secret leak audit)
     - action: Register in SCANNER_REGISTRY
       location: argus/scanners/__init__.py
       purpose: 'Add one line: "{name}": {Name}Scanner — wires the scanner into CLI, MCP, and docs auto-generation'
@@ -316,7 +339,7 @@ workflows:
       - test_is_available_when_missing
       - test_scan_parses_findings (against fixture output)
       - test_install_command
-      - test_no_secret_leakage (if scanner output ever contains source-code excerpts — see CLAUDE.md →
+      - test_no_secret_leakage (if scanner output ever contains source-code excerpts — see AGENTS.md →
         secret leak audit)
     - action: Verify registration
       command: argus scan {name} --path . --severity-threshold none
