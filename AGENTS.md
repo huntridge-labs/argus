@@ -81,15 +81,16 @@ python -m argus scan --config argus.yml
 ### For Contributors (Developing)
 
 ```bash
-# Clone and install
+# Clone and install (Python deps are pinned in uv.lock; needs uv)
 git clone <repo>
-pip install -r requirements.txt
+uv sync --locked --all-extras      # package + every extra + dev group
+uv sync --locked --all-extras --group hooks   # also pre-commit
 
 # Dev container (recommended)
 # Open in VS Code → "Reopen in Container"
 
-# Or manual setup
-pip install -r .devcontainer/requirements.txt
+# After changing any dependency range in pyproject.toml
+uv lock
 ```
 
 ---

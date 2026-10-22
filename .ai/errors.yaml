@@ -63,7 +63,7 @@ scn_detector_errors:
     '
   solution:
     steps:
-    - 'Install dependencies: pip install -r requirements.txt'
+    - 'Install dependencies: uv sync --locked --all-extras'
     - The conftest.py import warnings are informational only
     note: Scripts with import errors appear at 0% coverage but are still measured
 - pattern: Classification failed.*MANUAL_REVIEW
@@ -683,8 +683,8 @@ errors:
     solution:
       steps:
       - 'Install Python 3.11+: https://python.org/ or ''brew install python'''
-      - 'Install dependencies: pip install -r requirements.txt'
-      - 'Run tests: pytest'
+      - 'Install dependencies: uv sync --locked --all-extras'
+      - 'Run tests: pytest (or uv run pytest without activating .venv)'
       alternative: Use Dev Container (recommended)
     symptom: pytest.*command not found
   MODULENOTFOUNDERROR__PYTEST:
@@ -693,8 +693,8 @@ errors:
     root_cause: pytest or dependencies not installed
     solution:
       steps:
-      - 'Install: pip install -r requirements.txt'
-      - 'Or: pip install pytest pytest-cov pyyaml jsonschema'
+      - 'Install: uv sync --locked --all-extras'
+      - 'Then activate .venv (source .venv/bin/activate) or prefix commands with uv run'
     symptom: ModuleNotFoundError.*pytest
   WORKFLOW_CALL__NOT_SUPPORTED:
     category: ghes
@@ -1297,3 +1297,22 @@ errors:
         locations carry that prefix
     reference: argus/cli.py (scan --path), argus/core/engine.py (_rebase_locations), .ai/decisions.yaml ADR-042
     symptom: per-scanner path ignored
+  UV_SYNC_LOCKED_LOCKFILE_OUT_OF_DATE:
+    category: ci
+    context: '`uv sync --locked` (CI install step, devcontainer setup) or `uv lock --check`
+      fails before any test runs.'
+    root_cause: A dependency range in pyproject.toml ([project].dependencies, an extra, or a
+      [dependency-groups] entry) changed without regenerating uv.lock, so the lock no longer
+      satisfies the declared ranges. --locked refuses to update it on the fly; that is the point,
+      CI installs only what was reviewed in the lock (ADR-043).
+    solution:
+      steps:
+      - Run `uv lock` and commit the updated uv.lock with the pyproject.toml change.
+      - Don't run `uv lock --upgrade` to fix this; it re-resolves everything. Plain `uv lock`
+        keeps every existing pin it can and only moves what the edited range forces.
+      - If `uv lock` then reports no version satisfies the edit, the release you need is probably
+        younger than 7 days; `[tool.uv] exclude-newer = "7 days"` hides it on purpose. Wait out the
+        window, or widen the range so an older release fits.
+      verification: '`uv lock --check` exits 0'
+    reference: pyproject.toml, uv.lock, .github/workflows/test-unit.yml, .ai/decisions.yaml ADR-043
+    symptom: 'The lockfile at `uv.lock` needs to be updated, but `--locked` was provided|needs to be updated, but `--check` was provided'

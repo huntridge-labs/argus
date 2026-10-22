@@ -1,12 +1,13 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Renovate configuration. Dependabot handles npm, pip, and Dockerfile FROM. Renovate handles GitHub Actions (workflows + composite actions), image tags pinned in Python source, and tool versions in Dockerfiles / composite actions. GitHub Actions moved here from Dependabot (see #196): Dependabot's per-directory updater timed out scanning the composite-action directories and, with a cooldown set, skipped frequently-released actions (dependabot-core #11645 / #13691); Renovate scans actions repo-wide in one pass. PACING: runs every weekday morning, not once a week. A single narrow weekly window means one missed run costs seven days, and internalChecksFilter is 'flexible' so a fast-moving image inside its cooling window cannot hold back groupmates that already cleared the gate. Neither setting shortens the 7-day wait itself. SUPPLY CHAIN POLICY: all updates wait 7 days after release (see Trivy supply chain attack GHSA-69fq-xp46-6x23, March 2026) so a compromised release has time to be caught before we propose it.",
+  "description": "Renovate configuration. Dependabot handles npm and Dockerfile FROM. Renovate handles Python dependencies (pyproject.toml + uv.lock, ADR-043), GitHub Actions (workflows + composite actions), image tags pinned in Python source, and tool versions in Dockerfiles / composite actions. Python moved here from Dependabot for the same reasons as Actions plus one more: Dependabot's pip ecosystem never updates transitive-only deps, while Renovate's lockFileMaintenance refreshes uv.lock weekly. GitHub Actions moved here from Dependabot (see #196): Dependabot's per-directory updater timed out scanning the composite-action directories and, with a cooldown set, skipped frequently-released actions (dependabot-core #11645 / #13691); Renovate scans actions repo-wide in one pass. PACING: runs every weekday morning, not once a week. A single narrow weekly window means one missed run costs seven days, and internalChecksFilter is 'flexible' so a fast-moving image inside its cooling window cannot hold back groupmates that already cleared the gate. Neither setting shortens the 7-day wait itself. SUPPLY CHAIN POLICY: all updates wait 7 days after release (see Trivy supply chain attack GHSA-69fq-xp46-6x23, March 2026) so a compromised release has time to be caught before we propose it.",
   "extends": [
     "config:recommended"
   ],
   "enabledManagers": [
     "custom.regex",
-    "github-actions"
+    "github-actions",
+    "pep621"
   ],
   "dependencyDashboard": true,
   "labels": [
@@ -19,6 +20,15 @@
   ],
   "timezone": "America/New_York",
   "minimumReleaseAge": "7 days",
+  "lockFileMaintenance": {
+    "description": "Weekly uv.lock refresh (uv lock --upgrade) so transitive Python deps move forward even when no direct dep changes. minimumReleaseAge does not gate this run; the relative [tool.uv] exclude-newer = \"7 days\" in pyproject.toml enforces the same 7-day window inside uv itself (ADR-043).",
+    "enabled": true,
+    "schedule": [
+      "after 6am and before 9am on monday"
+    ],
+    "commitMessageAction": "Refresh",
+    "commitMessageTopic": "Python lockfile (uv.lock)"
+  },
   "customManagers": [
     {
       "customType": "regex",
@@ -150,6 +160,19 @@
     },
     {
       "customType": "regex",
+      "description": "pip version in Dockerfiles (PyPI). pip vendors certifi, so the pinned pip decides the CA bundle in every Python-based image. check_tool_currency.py fails if the Dockerfiles disagree.",
+      "managerFilePatterns": [
+        "docker/Dockerfile.*"
+      ],
+      "matchStrings": [
+        "ARG PIP_VERSION=(?<currentValue>[\\d.]+)"
+      ],
+      "depNameTemplate": "pip",
+      "packageNameTemplate": "pip",
+      "datasourceTemplate": "pypi"
+    },
+    {
+      "customType": "regex",
       "description": "Opengrep version pinned in composite actions",
       "managerFilePatterns": [
         ".github/actions/*/action.yml"
@@ -223,6 +246,25 @@
       ],
       "groupName": "tool-versions",
       "automerge": false
+    },
+    {
+      "description": "Python dependencies (pyproject.toml + uv.lock, ADR-043). update-lockfile moves the locked version and leaves the published ranges alone (argus-security must not pin its users); a release outside a range falls back to a range bump. One grouped PR, like the other groups.",
+      "matchManagers": [
+        "pep621"
+      ],
+      "rangeStrategy": "update-lockfile",
+      "groupName": "python-deps",
+      "automerge": false
+    },
+    {
+      "description": "requires-python stays an uncapped floor (>=3.11); new Python versions are adopted by adding them to the CI matrices, never by rewriting this range.",
+      "matchManagers": [
+        "pep621"
+      ],
+      "matchDepTypes": [
+        "requires-python"
+      ],
+      "enabled": false
     },
     {
       "description": "GitHub Actions: keep SHA-pinned (@sha + # vX comment), group minor/patch/digest bumps. Replaces the Dependabot github-actions ecosystem, which timed out scanning the composite-action directories (dependabot-core #11645) and skipped frequently-released actions under cooldown (dependabot-core #13691).",
