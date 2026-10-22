@@ -1067,7 +1067,7 @@ errors:
       - Read the error line. It names the statement's PURL and the one the scanner reported.
       - Add the scanner's spelling to that statement's products (stdlib statements list both v1.x and 1.x).
       - Re-run the container scan.
-      - If the statement is meant for one binary, use a path-scoped trivy / grype ignore rule instead (ADR-043).
+      - If the statement is meant for one binary, use a path-scoped trivy / grype ignore rule instead (ADR-044).
       reference: argus/core/vex.py (unapplied_statements) + scripts/ci/render_container_summary.py
     symptom: VEX statement for .* did not apply|VEX'd CVE still in container PR comment
   CONTAINER_IGNORE_RULE_MATCHED_NOTHING:
@@ -1091,7 +1091,7 @@ errors:
       - Check whether the finding still exists in the image (run the scan without the ignore file).
       - If it is fixed, delete the rule, and delete the file and its wiring once it is empty (.vex/README.md).
       - If it still exists, fix the ID or path to what that tool reports, then run pytest tests/unit/test_cli_ignore_files.py.
-      reference: argus/container/ignores.py (unmatched_ignore_rules) + scripts/ci/render_container_summary.py + .vex/README.md + ADR-043
+      reference: argus/container/ignores.py (unmatched_ignore_rules) + scripts/ci/render_container_summary.py + .vex/README.md + ADR-044
     symptom: ignore rule for .* matched nothing
   GHCR_PRUNE_ABORTS_ON_PACKAGE_NOT_FOUND_HTTP_404:
     category: ci

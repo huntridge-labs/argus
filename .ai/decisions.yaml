@@ -3218,7 +3218,7 @@ decisions:
           now scan less. `argus init` used to write `path: "deploy"` for repos
           with Terraform elsewhere, so those configs should be re-checked with
           `argus scan --dry-run`, which lists each scanner path.'
-  ADR-043:
+  ADR-044:
     title: Path-scoped native ignores instead of OpenVEX for per-binary suppression
     date: '2026-10-22'
     status: accepted
