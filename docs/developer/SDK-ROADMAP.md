@@ -110,9 +110,10 @@ once the work landed.
 - Version-aware `GITHUB_BLOB` rewrite (`scripts/docsite/config.py` + `--ref` flag) so
   versioned doc URLs at `/argus/vX.Y.Z/` link to matching `/blob/vX.Y.Z/` blob URLs and
   PR-preview builds link to the PR's own SHA.
-- Dependency maintenance: Dependabot for GitHub Actions / npm / pip / Docker; Renovate for
-  Python `containers.py` image tags and Dockerfile / action.yml tool-version refs;
-  `check_version_refs.py` as the cross-file consistency gate.
+- Dependency maintenance: Dependabot for npm / Docker; Renovate for GitHub Actions,
+  Python (`pyproject.toml` + `uv.lock`, ADR-043), `containers.py` image tags and
+  Dockerfile / action.yml tool-version refs; `check_version_refs.py` as the cross-file
+  consistency gate.
 
 ---
 
@@ -167,17 +168,12 @@ little protection that Dependabot's 7-day cooldown doesn't already give us. Thes
 items would add a *separate* deterministic build/test baseline for our own CI without
 changing what end users see.
 
-- **`requirements-frozen.txt` for CI.** Generate from a known-good install
-  (`pip-compile` or `pip freeze --exclude-editable`), commit alongside the loose
-  `requirements.txt`, use only in CI's lint / test jobs. Gives us a reproducible test
-  matrix so a transitive dep silently breaking on a fresh `pip install` is caught here
-  rather than by a user. Doesn't ship to PyPI; doesn't constrain consumers.
-- **Adopt `uv` + `uv.lock` for the dev/CI workflow.** Hash-verified, deterministic dev
-  environments with sub-second resolves. The published wheel still uses `>=` floors;
-  `uv.lock` is internal-only, like a `Cargo.lock` for a library crate. Replaces the
-  manual `requirements-frozen.txt` above with a more capable tool. Closes the
-  "compromised fresh release slips into our build" attack class for our own CI by
-  pinning hashes of every transitive dep. Out-of-scope until post-1.0.
+- ~~**`requirements-frozen.txt` for CI.**~~ Superseded by `uv.lock` below.
+- **Adopt `uv` + `uv.lock` for the dev/CI workflow.** Done (ADR-043). CI and the
+  devcontainer install with `uv sync --locked`; `requirements.txt` is gone. The published
+  wheel still uses `>=` floors; `uv.lock` is internal-only, like a `Cargo.lock` for a
+  library crate. Renovate's lockFileMaintenance refreshes it weekly under the 7-day
+  release-age window.
 
 ### External distribution
 

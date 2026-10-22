@@ -163,6 +163,57 @@ Repository = "https://github.com/huntridge-labs/argus"
 Issues = "https://github.com/huntridge-labs/argus/issues"
 Changelog = "https://github.com/huntridge-labs/argus/blob/main/CHANGELOG.md"
 
+# ── Development dependencies (PEP 735) ────────────────────────────
+#
+# Test and contributor tooling for this repo. Never shipped with the
+# argus-security wheel. Every version CI and contributors install is pinned
+# in uv.lock, which Renovate keeps fresh (lockFileMaintenance) under the
+# repo's 7-day release-age policy. The ranges above and below stay open on
+# purpose: argus-security is a published library and must not pin its users.
+# See ADR-043 in .ai/decisions.yaml.
+#
+#   uv sync --locked --all-extras        # dev group + every extra (what CI runs)
+#   uv lock                              # after editing any dependency range
+#
+# ``dev`` is uv's default group, so a plain ``uv sync`` includes it.
+[dependency-groups]
+dev = [
+    # Floors bumped past known-CVE versions and stale-floor noise.
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    # coverage arrives transitively via pytest-cov. Cap below 7.15.1: that
+    # release (2026-07-12) regressed HTML-report generation on Python 3.14 —
+    # its find_soft_key_lines runs ast.parse() over every reported source file
+    # and throws SyntaxError on the em-dash in the comment header of
+    # argus/viewers/browser/templates/_findings_table.html.j2, crashing the run
+    # with an INTERNALERROR after all tests pass. Lift the ceiling once
+    # coverage ships a fix for the html reporter parsing non-Python source.
+    # The ceiling has since been walked forward one verified release at a
+    # time; Renovate's pep621 manager widens it the same way when a release
+    # lands outside the range.
+    "coverage>=7.16.2,<7.16.3",
+    # Dead-fixture check in the Unit Tests workflow.
+    "pytest-deadfixtures>=3.1.0",
+    # Container name sanitization (parse-container-config action scripts and
+    # their tests).
+    "python-slugify>=9.1.3",
+]
+# Git hooks for contributors (.devcontainer/setup.sh installs this group).
+hooks = [
+    "pre-commit>=4.6.2",
+]
+
+[tool.uv]
+# Supply-chain policy: nothing younger than 7 days gets locked (same window as
+# Renovate's minimumReleaseAge and Dependabot's cooldown; see the Trivy attack,
+# GHSA-69fq-xp46-6x23). This is a RELATIVE window, recorded in uv.lock as
+# exclude-newer-span = "P7D", so it moves with the clock and never freezes the
+# lock. It matters because Renovate's lockFileMaintenance runs a plain
+# `uv lock --upgrade`, which minimumReleaseAge does not gate; without this,
+# weekly maintenance could pull a transitive release published minutes earlier.
+# Never replace it with an absolute timestamp (ADR-043).
+exclude-newer = "7 days"
+
 # ── Package contents (whitelist — only these files ship) ──────────
 
 [tool.setuptools.dynamic]

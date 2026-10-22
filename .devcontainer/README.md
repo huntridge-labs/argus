@@ -32,15 +32,15 @@ If you prefer not to use containers, install manually:
 
 ```bash
 # Install dependencies
-brew install node python ruby rbenv
+brew install node python uv ruby rbenv
 
 # Install packages
 corepack enable && pnpm install --frozen-lockfile
-pip install pytest pytest-cov pyyaml pre-commit
+uv sync --locked --all-extras --group hooks   # versions pinned in uv.lock
 gem install bashcov simplecov-cobertura
 
 # Setup pre-commit
-pre-commit install
+uv run pre-commit install
 ```
 
 ## Benefits

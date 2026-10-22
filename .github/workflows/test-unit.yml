@@ -30,20 +30,24 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: '0.13.1'
+
       - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          # Install the package itself with every optional extra so all
-          # test modules can actually run. Tests for optional features
-          # (argus view terminal / argus view browser / MCP server / AI classifier)
-          # guard their imports with pytest.importorskip or module-level
-          # stubs — without the extras those tests either skip or run
-          # against fake stubs, and codecov's patch metric flags the
-          # unexercised test bodies as missing coverage. Installing
-          # [all] runs the real tests against the real code paths.
-          pip install -e '.[all]'
-          pip install pytest-deadfixtures
+        # Installs exactly what uv.lock pins into the setup-python
+        # interpreter: the package itself (editable), the dev dependency
+        # group, and every optional extra so all test modules can actually
+        # run. Tests for optional features (argus view terminal / argus view
+        # browser / MCP server / AI classifier) guard their imports with
+        # pytest.importorskip or module-level stubs — without the extras
+        # those tests either skip or run against fake stubs, and codecov's
+        # patch metric flags the unexercised test bodies as missing
+        # coverage. --locked fails the job when pyproject.toml changed
+        # without a matching `uv lock` (ADR-043); --inexact leaves pip in
+        # place for later steps.
+        run: UV_PROJECT_ENVIRONMENT="$pythonLocation" uv sync --locked --all-extras --inexact
 
       - name: Build MUMPS tree-sitter grammar
         # Compiles janus-llm/tree-sitter-mumps at the pinned SHA into
@@ -102,9 +106,7 @@ jobs:
 
       - name: Check for dead fixtures
         if: always()
-        run: |
-          pip install pytest-deadfixtures
-          python -m pytest --dead-fixtures --no-cov -q 2>&1 || true
+        run: python -m pytest --dead-fixtures --no-cov -q 2>&1 || true
 
       - name: Coverage Report Summary
         if: always()

@@ -47,7 +47,7 @@ tests/
 ```bash
 # Install dependencies
 npm install
-pip install -r .devcontainer/requirements.txt
+uv sync --locked --all-extras   # Python deps pinned in uv.lock
 
 # Run all tests
 npm test

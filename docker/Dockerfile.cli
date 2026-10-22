@@ -58,6 +58,10 @@ LABEL org.opencontainers.image.source="https://github.com/huntridge-labs/argus"
 LABEL org.opencontainers.image.description="Argus CLI — all-in-one security scanning toolkit"
 LABEL org.opencontainers.image.licenses="AGPL-3.0"
 
+# pip vendors certifi, so this pin decides the image's CA bundle. Same value
+# in every Dockerfile (scripts/ci/check_tool_currency.py enforces it); Renovate
+# bumps it under the 7-day release-age policy (ADR-043).
+ARG PIP_VERSION=26.2.1
 ARG BANDIT_VERSION=1.9.4
 ARG PYYAML_VERSION=6.0.3
 ARG ZIZMOR_VERSION=1.31.0
@@ -80,7 +84,8 @@ COPY --from=builder /usr/local/bin/opengrep   /usr/local/bin/opengrep
 # Install Python-based scanning tools (exact pins)
 # Note: checkov excluded — requires Rust compilation on Alpine.
 # The engine falls back to the official bridgecrew/checkov container.
-RUN pip install --no-cache-dir \
+RUN pip install --no-cache-dir --upgrade "pip==${PIP_VERSION}" && \
+    pip install --no-cache-dir \
     "bandit[toml,sarif]==${BANDIT_VERSION}" \
     "zizmor==${ZIZMOR_VERSION}" \
     "pyyaml==${PYYAML_VERSION}"

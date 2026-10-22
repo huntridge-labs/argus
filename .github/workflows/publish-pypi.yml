@@ -12,7 +12,6 @@ on:
     paths:
       - 'argus/**'
       - 'pyproject.toml'
-      - 'requirements.txt'
 
 permissions:
   contents: read

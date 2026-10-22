@@ -9,8 +9,8 @@ This guide helps you add or modify tests when contributing to argus.
 ### Prerequisites
 
 ```bash
-# Install Python dependencies
-pip install -r requirements.txt
+# Install Python dependencies (pinned in uv.lock)
+uv sync --locked --all-extras
 
 # Verify setup
 pytest
