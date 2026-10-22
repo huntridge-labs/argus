@@ -440,6 +440,24 @@ class TestLoadInputs:
         assert loaded["config_schema"] == {}
         assert loaded["version"] == "0.0.0"
 
+    def test_decisions_merge_issue_keyed_records(self, architecture_module, tmp_path):
+        ai = tmp_path / ".ai"
+        (ai / "decisions").mkdir(parents=True)
+        (ai / "decisions.yaml").write_text(
+            "version: '2.0'\ndecisions:\n  ADR-001:\n    title: Legacy\n"
+        )
+        (ai / "decisions" / "ADR-483.yaml").write_text("id: ADR-483\ntitle: Keyed\n")
+        (ai / "decisions" / "ADR-500.yaml").write_text("")
+        loaded = architecture_module.load_inputs(tmp_path)
+        assert loaded["decisions"]["version"] == "2.0"
+        assert set(loaded["decisions"]["decisions"]) == {"ADR-001", "ADR-483"}
+
+    def test_decisions_records_without_legacy_file(self, architecture_module, tmp_path):
+        (tmp_path / ".ai" / "decisions").mkdir(parents=True)
+        (tmp_path / ".ai" / "decisions" / "ADR-483.yaml").write_text("title: Keyed\n")
+        loaded = architecture_module.load_inputs(tmp_path)
+        assert loaded["decisions"] == {"decisions": {"ADR-483": {"title": "Keyed"}}}
+
     def test_version_yaml_bare_string(self, architecture_module, tmp_path):
         (tmp_path / "version.yaml").write_text(
             "1.2.3 # x-release-it-version\n"
