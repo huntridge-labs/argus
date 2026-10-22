@@ -32,8 +32,14 @@ A missing file is logged and skipped rather than aborting the scan — silently
 
 from __future__ import annotations
 
+import json
 import logging
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from argus.core.models import Finding
 
 logger = logging.getLogger("argus")
 
@@ -94,3 +100,95 @@ def vex_cli_flags(config: dict | None, *, in_container: bool) -> list[str]:
         path = _VEX_CONTAINER_TEMPLATE.format(idx=idx) if in_container else str(src)
         flags += ["--vex", path]
     return flags
+
+
+#: Statuses that tell trivy / grype to drop a finding. Only these can "miss".
+_SUPPRESSING_STATUSES = frozenset({"not_affected", "fixed"})
+
+
+@dataclass(frozen=True)
+class UnappliedStatement:
+    """A VEX statement that names a reported finding but did not suppress it."""
+
+    vulnerability: str
+    statement_product: str
+    reported_purl: str
+    tool: str
+
+
+def _purl_key(purl: str) -> tuple[str, str]:
+    """``(type/namespace/name, version)`` with spelling noise removed.
+
+    Scanners disagree on how to spell the same package version. For the Go
+    toolchain trivy emits ``pkg:golang/stdlib@v1.24.11``, grype emits
+    ``pkg:golang/stdlib@1.24.11`` and govulncheck says ``go1.24.11``. The
+    tools match VEX products by exact PURL, so a statement in the "wrong"
+    spelling silently matches nothing. Normalising here lets us spot that.
+    """
+    base = purl.split("#", 1)[0].split("?", 1)[0]
+    # The version separator is the "@" in the last path segment; a scoped
+    # npm namespace (pkg:npm/@babel/core) carries an "@" that is not one.
+    namespace, slash, last = base.rpartition("/")
+    package, at, version = last.partition("@")
+    if not at:
+        return base, ""
+    name = f"{namespace}{slash}{package}"
+    for prefix in ("go", "v"):
+        if version.startswith(prefix) and version[len(prefix):][:1].isdigit():
+            version = version[len(prefix):]
+            break
+    return name, version
+
+
+def _suppressing_statements(config: dict | None) -> list[tuple[str, str]]:
+    """``(vulnerability, product @id)`` for every suppressing statement."""
+    pairs: list[tuple[str, str]] = []
+    for doc in resolve_vex_documents(config):
+        try:
+            data = json.loads(doc.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            logger.warning("Could not read VEX document %s: %s", doc, exc)
+            continue
+        for statement in data.get("statements") or []:
+            if statement.get("status") not in _SUPPRESSING_STATUSES:
+                continue
+            vuln = (statement.get("vulnerability") or {}).get("name", "")
+            for product in statement.get("products") or []:
+                ids = [product.get("@id", "")]
+                ids += [sub.get("@id", "") for sub in product.get("subcomponents") or []]
+                pairs.extend((vuln, pid) for pid in ids if pid)
+    return pairs
+
+
+def unapplied_statements(
+    findings: list[Finding], config: dict | None
+) -> list[UnappliedStatement]:
+    """Findings a suppressing VEX statement covers that the scanner still reported.
+
+    trivy and grype drop a finding only when a statement's product PURL is an
+    exact match, and say nothing when it is not. Any finding returned here is
+    one the operator already declared ``not_affected`` / ``fixed`` but that
+    still reaches the report, almost always because the statement spells the
+    PURL differently from the scanner. Purely diagnostic: nothing is hidden or
+    changed (ADR-035).
+    """
+    statements = _suppressing_statements(config)
+    if not statements:
+        return []
+    misses: list[UnappliedStatement] = []
+    for finding in findings:
+        purl = finding.metadata.get("purl") or ""
+        if not purl:
+            continue
+        key = _purl_key(purl)
+        misses.extend(
+            UnappliedStatement(
+                vulnerability=vuln,
+                statement_product=product,
+                reported_purl=purl,
+                tool=finding.metadata.get("tool", ""),
+            )
+            for vuln, product in statements
+            if vuln == finding.id and _purl_key(product) == key
+        )
+    return misses

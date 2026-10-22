@@ -10,6 +10,7 @@ from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, PhaseResult, ScanResult, Severity
+from argus.scanners._vuln_parsers import parse_grype_match, parse_trivy_vuln
 
 logger = logging.getLogger("argus")
 
@@ -1271,66 +1272,14 @@ class ContainerScanner:
             target.append(finding)
 
     def _parse_trivy_vuln(self, vuln: dict) -> Finding:
-        """Convert a single Trivy vulnerability to a Finding."""
-        severity = Severity.from_string(
-            vuln.get("Severity", "UNKNOWN")
-        )
+        """Convert a single Trivy vulnerability to a Finding.
 
-        cwe = None
-        cwe_ids = vuln.get("CweIDs") or []
-        if cwe_ids:
-            cwe = cwe_ids[0]
-
-        vuln_id = vuln.get("VulnerabilityID", "UNKNOWN")
-        pkg = vuln.get("PkgName", "")
-        installed = vuln.get("InstalledVersion", "")
-        fixed = vuln.get("FixedVersion", "")
-
-        return Finding(
-            id=vuln_id,
-            severity=severity,
-            title=vuln.get("Title", vuln_id),
-            description=vuln.get("Description", ""),
-            location=f"{pkg}@{installed}" if pkg else None,
-            cwe=cwe,
-            cve=vuln_id if vuln_id.startswith("CVE-") else None,
-            scanner=self.name,
-            metadata={
-                "tool": "trivy",
-                "package": pkg,
-                "installed_version": installed,
-                "fixed_version": fixed,
-            },
-        )
+        Delegates to the shared parser so container findings carry the same
+        metadata (including ``purl``, which the VEX miss guard keys on) as the
+        standalone trivy scanner.
+        """
+        return parse_trivy_vuln(vuln, scanner_name=self.name)
 
     def _parse_grype_match(self, match: dict) -> Finding:
-        """Convert a single Grype match to a Finding."""
-        vuln = match.get("vulnerability", {})
-        artifact = match.get("artifact", {})
-
-        vuln_id = vuln.get("id", "UNKNOWN")
-        severity = Severity.from_string(
-            vuln.get("severity", "Unknown")
-        )
-
-        pkg_name = artifact.get("name", "")
-        pkg_version = artifact.get("version", "")
-
-        fix_versions = vuln.get("fix", {}).get("versions", [])
-        fixed = ", ".join(fix_versions) if fix_versions else ""
-
-        return Finding(
-            id=vuln_id,
-            severity=severity,
-            title=vuln.get("description", vuln_id),
-            description=vuln.get("description", ""),
-            location=f"{pkg_name}@{pkg_version}" if pkg_name else None,
-            cve=vuln_id if vuln_id.startswith("CVE-") else None,
-            scanner=self.name,
-            metadata={
-                "tool": "grype",
-                "package": pkg_name,
-                "installed_version": pkg_version,
-                "fixed_version": fixed,
-            },
-        )
+        """Convert a single Grype match to a Finding (see ``_parse_trivy_vuln``)."""
+        return parse_grype_match(match, scanner_name=self.name)
