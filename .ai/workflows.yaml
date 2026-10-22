@@ -222,11 +222,12 @@ workflows:
   python_dependencies:
     description: Install, add or update this repo's Python dependencies (uv.lock, ADR-043)
     category: maintenance
-    install: uv sync --locked --all-extras
-    install_with_hooks: uv sync --locked --all-extras --group hooks
-    check_lock_is_current: uv lock --check
-    after_editing_pyproject: uv lock
-    upgrade_one_package: uv lock --upgrade-package <name>
+    command: uv sync --locked --all-extras
+    options:
+      install_with_hooks: uv sync --locked --all-extras --group hooks
+      check_lock_is_current: uv lock --check
+      after_editing_pyproject: uv lock
+      upgrade_one_package: uv lock --upgrade-package <name>
     notes:
     - Runtime ranges live in [project].dependencies / [project.optional-dependencies] and stay open
       (argus-security is a published library). Test and contributor tooling lives in
