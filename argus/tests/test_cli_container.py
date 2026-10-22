@@ -308,6 +308,17 @@ class TestPrintContainerTerminal:
 
         assert "BUILD FAILED" in captured.out
 
+    def test_reports_ignored_count(self, capsys):
+        result = _ContainerResult()
+        result.ignored_findings = [object(), object()]
+        _print_container_terminal(_ContainerSummary(results=[result]))
+
+        assert "Ignored findings:    2" in capsys.readouterr().out
+
+    def test_no_ignored_line_without_ignored_findings(self, capsys):
+        _print_container_terminal(_ContainerSummary())
+        assert "Ignored findings" not in capsys.readouterr().out
+
 
 # =====================================================================
 # _write_container_json

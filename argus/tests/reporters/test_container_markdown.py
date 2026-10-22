@@ -325,3 +325,13 @@ class TestIgnoredFindings:
 
     def test_no_section_without_ignored_findings(self):
         assert "Ignored (" not in self._render(_make_result())
+
+    def test_long_ignored_list_is_truncated(self):
+        from argus.reporters.container_markdown import _MAX_TABLE_ROWS
+
+        result = _make_result()
+        result.ignored_findings = [_ignored_finding(fid=f"CVE-2026-{n}") for n in range(_MAX_TABLE_ROWS + 5)]
+        md = self._render(result)
+
+        assert "_...and 5 more_" in md
+        assert f"CVE-2026-{_MAX_TABLE_ROWS + 4}" not in md

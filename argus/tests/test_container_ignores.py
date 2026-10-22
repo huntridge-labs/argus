@@ -501,6 +501,18 @@ class TestUnmatchedIgnoreRules:
     def test_no_files_configured(self):
         assert unmatched_ignore_rules([], {}) == []
 
+    def test_grype_finding_for_another_package_does_not_satisfy_rule(self, in_tmp_cwd):
+        _write(in_tmp_cwd / "grype.yaml", GRYPE_CONFIG)
+        ignored = [_ignored("grype", "GO-2026-4337", "grype.yaml", f"/{GITLEAKS}",
+                            package="golang.org/x/crypto")]
+        misses = unmatched_ignore_rules(ignored, {"grype_config_file": "grype.yaml"})
+        assert [m.vulnerability for m in misses] == ["GO-2026-4337"]
+
+    def test_unreadable_grype_config_has_no_rules(self, in_tmp_cwd, caplog):
+        _write(in_tmp_cwd / "grype.yaml", "ignore: [\n")
+        assert unmatched_ignore_rules([], {"grype_config_file": "grype.yaml"}) == []
+        assert "Could not read ignore file" in caplog.text
+
 
 # --------------------------------------------------------------------- #
 # Config + CLI surface                                                   #
@@ -592,3 +604,36 @@ def test_cli_warning_considers_every_image(in_tmp_cwd, capsys):
         ContainerScanSummary(results=[other, hit]), {"trivy_ignore_file": "ignore.yaml"},
     )
     assert capsys.readouterr().err == ""
+
+
+def test_container_scan_command_warns_on_unmatched_rule(in_tmp_cwd, monkeypatch, capsys):
+    """``argus scan container`` runs the guard after the scan, as a warning."""
+    import argparse
+
+    import argus.container as container_pkg
+    from argus.cli import EXIT_SUCCESS, _cmd_container_scan
+    from argus.container.scanner import ContainerScanSummary
+
+    _write(in_tmp_cwd / "ignore.yaml", TRIVY_IGNORE)
+
+    class _Engine:
+        def __init__(self, config, progress_callback=None):
+            pass
+
+        def run(self):
+            return ContainerScanSummary(results=[ContainerScanResult(name="cli", image_ref="cli:1")])
+
+    monkeypatch.setattr(container_pkg, "ContainerEngine", _Engine)
+    monkeypatch.setattr("argus.update_check.start_background_check", lambda *a, **k: None)
+    args = argparse.Namespace(
+        output_dir=str(in_tmp_cwd / "out"), formats=["json"], keep_raw=None,
+        verbose=False, quiet=True, debug=False, no_spinner=True, config=None,
+        severity_threshold=None, images=None, target=None, scan_type=None,
+        env_vars=None, port=None, startup_timeout=None,
+    )
+    config = {"images": [{"name": "cli", "image": "cli:1"}], "trivy_ignore_file": "ignore.yaml"}
+
+    assert _cmd_container_scan(args, config) == EXIT_SUCCESS
+    err = capsys.readouterr().err
+    assert "CVE-2025-68121" in err
+    assert "matched nothing" in err
