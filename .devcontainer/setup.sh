@@ -20,12 +20,13 @@ fi
 # Activate Python virtual environment
 source .dev.venv/bin/activate
 
-# Install Python dependencies
+# Install Python dependencies from uv.lock (ADR-043): the package itself
+# (editable), every optional extra, the dev group (tests) and the hooks group
+# (pre-commit). uv is bootstrapped into the venv; --active syncs into this
+# venv instead of .venv, and --inexact keeps uv itself installed.
 echo "Installing Python dependencies..."
-pip install --upgrade pip
-pip install -r requirements.txt
-pip install -e .
-pip install pre-commit
+pip install "uv==0.13.1"
+uv sync --locked --all-extras --group hooks --active --inexact
 
 # Setup pre-commit hooks (using absolute path)
 echo "Installing pre-commit hooks..."

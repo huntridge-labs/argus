@@ -427,7 +427,7 @@ Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 ```bash
 # Install dependencies
 corepack enable && pnpm install --frozen-lockfile
-pip install -r .devcontainer/requirements.txt
+uv sync --locked --all-extras   # Python deps pinned in uv.lock
 
 # Run tests
 npm test

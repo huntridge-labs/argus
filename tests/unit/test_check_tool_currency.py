@@ -105,6 +105,55 @@ class TestConsistency:
         assert ctc.check_consistency({"trivy": "0.72.0"}, {}) == []
 
 
+class TestCrossDockerfileConsistency:
+    def test_flags_pip_pins_that_disagree(self):
+        found = ctc.check_cross_dockerfile_consistency(
+            {
+                "Dockerfile.bandit": "ARG PIP_VERSION=26.2.1\n",
+                "Dockerfile.cli": "ARG PIP_VERSION=26.2.2\n",
+            }
+        )
+
+        assert len(found) == 1
+        assert found[0].tool == "PIP_VERSION"
+        assert "Dockerfile.bandit=26.2.1" in found[0].detail
+        assert "Dockerfile.cli=26.2.2" in found[0].detail
+
+    def test_agreeing_pins_pass(self):
+        assert (
+            ctc.check_cross_dockerfile_consistency(
+                {
+                    "Dockerfile.bandit": "ARG PIP_VERSION=26.2.1\n",
+                    "Dockerfile.cli": "ARG PIP_VERSION=26.2.1\n",
+                }
+            )
+            == []
+        )
+
+    def test_a_dockerfile_without_the_arg_is_not_a_mismatch(self):
+        assert (
+            ctc.check_cross_dockerfile_consistency(
+                {
+                    "Dockerfile.bandit": "ARG PIP_VERSION=26.2.1\n",
+                    "Dockerfile.node": "ARG TARGETARCH\n",
+                }
+            )
+            == []
+        )
+
+    def test_every_shipped_python_dockerfile_pins_pip(self):
+        dockerfiles = ctc.read_dockerfiles("docker")
+        python_based = {
+            name for name, source in dockerfiles.items() if "FROM python:" in source
+        }
+
+        assert python_based, "expected at least one python-based Dockerfile"
+        for name in python_based:
+            assert "PIP" in ctc.parse_args_versions(dockerfiles[name]), name
+            assert '"pip==${PIP_VERSION}"' in dockerfiles[name], name
+        assert ctc.check_cross_dockerfile_consistency(dockerfiles) == []
+
+
 class TestNewestEligible:
     def test_skips_releases_inside_the_cooling_window(self):
         releases = [_release("0.122.0", 0), _release("0.121.19", 21)]
@@ -346,6 +395,19 @@ class TestExitCodes:
             DOCKERFILE_SNIPPET,
         )
 
+        assert ctc.main(argv + ["--consistency-only"]) == 0
+
+    def test_pip_mismatch_across_dockerfiles_fails(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ctc, "UPSTREAM_REPOS", {})
+        argv = self._write(
+            tmp_path,
+            CONTAINERS_SNIPPET.replace("v1.49.0", "v1.50.0"),
+            DOCKERFILE_SNIPPET + "ARG PIP_VERSION=26.2.1\n",
+        )
+        (tmp_path / "Dockerfile.bandit").write_text("ARG PIP_VERSION=26.2.2\n")
+
+        assert ctc.main(argv + ["--consistency-only"]) == 1
+        (tmp_path / "Dockerfile.bandit").write_text("ARG PIP_VERSION=26.2.1\n")
         assert ctc.main(argv + ["--consistency-only"]) == 0
 
     def test_stale_only_fails_when_asked(self, tmp_path, monkeypatch):

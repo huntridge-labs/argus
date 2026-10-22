@@ -211,25 +211,44 @@ workflows:
   run_tests:
     description: Execute the full test suite
     command: pytest
+    prerequisite: uv sync --locked --all-extras
     breakdown:
       all: pytest
       fast: pytest --no-cov -q
       coverage: pytest --cov
+      without_activating_venv: uv run --locked pytest
     coverage_targets:
       overall: 80%
+  python_dependencies:
+    description: Install, add or update this repo's Python dependencies (uv.lock, ADR-043)
+    category: maintenance
+    install: uv sync --locked --all-extras
+    install_with_hooks: uv sync --locked --all-extras --group hooks
+    check_lock_is_current: uv lock --check
+    after_editing_pyproject: uv lock
+    upgrade_one_package: uv lock --upgrade-package <name>
+    notes:
+    - Runtime ranges live in [project].dependencies / [project.optional-dependencies] and stay open
+      (argus-security is a published library). Test and contributor tooling lives in
+      [dependency-groups] (dev is the default group; hooks adds pre-commit).
+    - uv.lock pins every version CI installs. CI runs `uv sync --locked`, so a pyproject.toml edit
+      without a matching `uv lock` fails the job.
+    - Renovate (pep621 manager) owns updates. lockFileMaintenance refreshes transitive pins weekly.
+      The 7-day window is enforced twice, by Renovate's minimumReleaseAge and by the relative
+      `[tool.uv] exclude-newer = "7 days"` in pyproject.toml (lockFileMaintenance's `uv lock --upgrade`
+      is not gated by minimumReleaseAge). Never swap it for an absolute timestamp; that freezes the lock.
+    - Don't raise a floor on a transitive dep to clear an advisory (ADR-040). If the parent's range
+      already allows the fix, `uv lock --upgrade-package <name>` is the whole change.
   local_development:
     description: Set up local development environment
     steps:
     - action: Clone repository
       command: git clone <repo-url> && cd argus
-    - action: Create virtual environment
-      command: python3 -m venv .venv
+    - action: Install Python dependencies (creates .venv, installs Argus editable plus every extra
+        and the dev group at the versions pinned in uv.lock)
+      command: uv sync --locked --all-extras --group hooks
     - action: Activate virtual environment
       command: source .venv/bin/activate
-    - action: Install Python dependencies
-      command: pip install -r requirements.txt
-    - action: Install Argus CLI in editable mode
-      command: pip install -e .
     - action: Build local scanner images (when branch images are not published yet)
       command: 'docker build -f docker/Dockerfile.bandit -t ghcr.io/huntridge-labs/argus/scanner-bandit:1.0.0
         .
@@ -416,6 +435,10 @@ workflows:
       \ don't ignore it."
     - "zsh does not word-split unquoted ``$VAR``, so ``pip install -U $PKGS`` passes one giant\
       \ argument and fails. Use ``-r file`` or ``${=PKGS}``."
+    - "Since ADR-043 the repo's own versions live in uv.lock. ``uv sync --locked --all-extras``\
+      \ resets .venv to exactly the locked tree, and ``osv-scanner scan source --lockfile uv.lock``\
+      \ audits what CI installs. A fix the parent's range already allows is ``uv lock --upgrade-package\
+      \ <name>``, never a new floor (ADR-040)."
 testing:
   unit_tests:
     command: pytest
@@ -428,7 +451,7 @@ testing:
   local_scanner_test:
     description: Test a scanner locally via the SDK before pushing
     steps:
-    - 'Install Argus in editable mode: pip install -e .'
+    - 'Install Argus in editable mode: uv sync --locked --all-extras'
     - Install scanner tool locally OR ensure Docker is available (SDK falls back to container backend)
     - 'Run via SDK: argus scan {name} --path tests/fixtures/test-apps/<lang>-app --severity-threshold
       none --format json'

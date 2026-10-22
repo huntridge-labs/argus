@@ -16,32 +16,13 @@ updates:
   # Renovate scans workflows + composite action.yml repo-wide in one pass.
   # See #196.
 
-  # Python (pip) dependencies
-  - package-ecosystem: "pip"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "America/New_York"
-
-    groups:
-      pip-all:
-        patterns:
-          - "*"
-
-    commit-message:
-      prefix: "chore(deps)"
-
-    labels:
-      - "dependencies"
-      - "python"
-      - "automated"
-
-    open-pull-requests-limit: 10
-    rebase-strategy: "auto"
-    cooldown:
-      default-days: 7
+  # Python dependencies are handled by Renovate (.github/renovate.json,
+  # pep621 manager over pyproject.toml + uv.lock), not Dependabot. Dependabot's
+  # pip ecosystem only bumps declared requirements, so transitive-only fixes
+  # (certifi via requests, python-multipart via mcp) never moved; Renovate's
+  # lockFileMaintenance refreshes uv.lock weekly, and its minimumReleaseAge
+  # offers the newest eligible version instead of skipping the dependency
+  # (dependabot-core #13691). See ADR-043.
 
   # Docker images (Argus custom Dockerfiles + devcontainer + test fixtures)
   - package-ecosystem: "docker"

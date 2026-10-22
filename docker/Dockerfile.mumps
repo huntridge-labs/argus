@@ -36,6 +36,10 @@ LABEL org.opencontainers.image.source="https://github.com/huntridge-labs/argus"
 LABEL org.opencontainers.image.description="Argus MUMPS / M language SAST scanner"
 LABEL org.opencontainers.image.licenses="AGPL-3.0"
 
+# pip vendors certifi, so this pin decides the image's CA bundle. Same value
+# in every Dockerfile (scripts/ci/check_tool_currency.py enforces it); Renovate
+# bumps it under the 7-day release-age policy (ADR-043).
+ARG PIP_VERSION=26.2.1
 ARG TREE_SITTER_VERSION=0.25.2
 
 # libstdc++ for the dlopened grammar .so. apk upgrade picks up OS CVEs.
@@ -48,7 +52,8 @@ RUN apk upgrade --no-cache && \
 # to import and run a scan. ``--virtual .ts-build-deps`` lets us drop
 # gcc / python-dev after the install layer so the runtime image stays
 # small (the grammar is already compiled in the previous stage).
-RUN apk add --no-cache --virtual .ts-build-deps gcc musl-dev python3-dev && \
+RUN pip install --no-cache-dir --upgrade "pip==${PIP_VERSION}" && \
+    apk add --no-cache --virtual .ts-build-deps gcc musl-dev python3-dev && \
     pip install --no-cache-dir \
         "tree-sitter==${TREE_SITTER_VERSION}" \
         "PyYAML>=6.0.2" \

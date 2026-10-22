@@ -3218,3 +3218,82 @@ decisions:
           now scan less. `argus init` used to write `path: "deploy"` for repos
           with Terraform elsewhere, so those configs should be re-checked with
           `argus scan --dry-run`, which lists each scanner path.'
+  ADR-043:
+    title: Python dependencies locked with uv and maintained by Renovate
+    date: '2026-10-22'
+    status: accepted
+    context: |-
+      requirements.txt declared the repo's own test and CI dependencies as open
+      `>=` ranges with no lockfile, and CI installed them alongside
+      `pip install -e ".[all]"`. Two things followed. Scanners that read
+      requirements.txt (OSV, and Argus Cloud grading this repo) resolve an open
+      range to the oldest version it allows, so certifi (GHSA-6q48-6c7w-9gw2,
+      via requests) and python-multipart (GHSA-59g5-xgcq-4qw3,
+      GHSA-5rvq-cxj2-64vf, GHSA-pp6c-gr5w-3c5g, GHSA-wp53-j4wj-2cfg, via mcp)
+      were flagged even though a fresh install picked up patched versions.
+      And nothing ever moved transitive deps forward on purpose: Dependabot's
+      pip ecosystem bumps only declared requirements and can't see transitives
+      without a lockfile, and Renovate's enabledManagers did not include a
+      Python manager. ADR-040 rules out the shortcut of adding floors for
+      transitive deps we don't use directly; the fix is a lockfile refresh.
+    decision: |-
+      Lock the repo's Python dependencies with uv and hand their maintenance to
+      Renovate, the same move ADR-029 made for GitHub Actions.
+
+      - pyproject.toml keeps open ranges in [project].dependencies and the
+        optional extras (argus-security is a published library; users are not
+        pinned). Test and contributor tooling moved from requirements.txt and
+        .devcontainer/requirements.txt into PEP 735 [dependency-groups]: `dev`
+        (pytest stack, uv's default group) and `hooks` (pre-commit). Both
+        requirements files are deleted.
+      - uv.lock is universal (requires-python >=3.11, no upper cap) and covers
+        the dev group plus every extra. The first lock was resolved with
+        nothing newer than 2026-10-15 (7 days before the PR).
+      - `[tool.uv] exclude-newer = "7 days"` keeps that window for every
+        later lock. It is relative (uv.lock records exclude-newer-span =
+        "P7D"), so it moves with the clock and never freezes updates. It is
+        needed because Renovate's lockFileMaintenance runs a plain
+        `uv lock --upgrade`, which minimumReleaseAge does not gate. An
+        absolute exclude-newer timestamp is never used; it would freeze the
+        lock.
+      - CI (Unit Tests, Container Smoke, Security Scan, both release.yml jobs)
+        and .devcontainer/setup.sh install with `uv sync --locked`, so a
+        pyproject.toml change without a matching `uv lock` fails the job.
+        astral-sh/setup-uv is SHA-pinned and its uv `version` is pinned too;
+        Renovate's github-actions manager updates both.
+      - Renovate's pep621 manager (pyproject.toml + uv.lock) is enabled with
+        rangeStrategy `update-lockfile`, one `python-deps` group, and weekly
+        lockFileMaintenance to refresh transitives. The global 7-day
+        minimumReleaseAge applies to all of it. Dependabot's pip block is
+        removed; docker and npm stay on Dependabot.
+      - pip itself is pinned in every Python-based image (`ARG PIP_VERSION`,
+        tracked by a Renovate custom.regex manager) because pip vendors
+        certifi. check_tool_currency.py fails when Dockerfiles disagree on it.
+    alternatives_considered:
+    - name: pip-compile (pip-tools) lock + Dependabot pip
+      rejected_because: Dependabot has no lock maintenance for transitive-only
+        updates, so a transitive fix still waits for a direct dep to move. Its
+        cooldown also skips a dependency whose newest release is inside the
+        window instead of offering the newest eligible one (dependabot-core
+        #13691), the same bug that moved GitHub Actions off it in ADR-029.
+    - name: Raise floors on certifi / python-multipart in pyproject.toml
+      rejected_because: ADR-040. Neither is a direct dependency, and the
+        parents' ranges already allow the fixed versions.
+    - name: Keep requirements.txt as a generated `uv export` artifact
+      rejected_because: Nothing external reads it. A second file that must
+        be regenerated in lockstep is drift waiting to happen, and osv-scanner
+        and GitHub's dependency graph both read uv.lock directly.
+    consequences:
+      positive:
+      - CI and contributors install the same reviewed versions; a fresh
+        release can't break CI between PRs.
+      - Transitive deps move weekly through lockFileMaintenance, under the
+        same 7-day gate as everything else.
+      - OSV and the GitHub dependency graph see the real resolved tree in
+        uv.lock instead of guessing from open ranges.
+      negative:
+      - Contributors need uv installed to reproduce CI's environment.
+      - The published wheel still resolves fresh for end users; the lock only
+        protects this repo's CI and dev environments.
+      - Python packages inside the scanner images (bandit's and zizmor's own
+        dependencies) are still unpinned apart from pip; follow-up.

@@ -12,6 +12,12 @@ Two independent checks:
     depending on which path it took. Offline and deterministic, so this one
     is a hard failure.
 
+    The same check covers ARGs that must agree across every Dockerfile in
+    ``docker/`` (``CROSS_DOCKERFILE_ARGS``, e.g. ``PIP_VERSION``). Renovate
+    rewrites those in one PR today, but a hand edit or a partial rebase can
+    leave one image on a different pip — and pip vendors certifi, so that
+    image would ship a different CA bundle.
+
 ``currency``
     Compares each pin against the newest upstream release that is already
     older than ``--min-age-days``, i.e. one we are allowed to adopt under the
@@ -42,7 +48,9 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import glob
 import json
+import os
 import re
 import subprocess
 import sys
@@ -60,6 +68,11 @@ DUAL_PINNED: dict[str, str] = {
     "syft": "SYFT",
     "gitleaks": "GITLEAKS",
 }
+
+# ARG prefixes that must carry the same value in every Dockerfile that
+# declares them. pip vendors certifi, so a stray PIP_VERSION means one image
+# ships a different CA bundle (ADR-043).
+CROSS_DOCKERFILE_ARGS: tuple[str, ...] = ("PIP",)
 
 # image key -> GitHub "owner/repo" whose releases define "latest".
 # Tools on a mutable tag (kics, gosec, shellcheck, eslint) are deliberately
@@ -185,6 +198,43 @@ def check_consistency(images: dict[str, str], args_versions: dict[str, str]) -> 
                     f"Dockerfile.cli pins ARG {arg_prefix}_VERSION={arg_version}",
                 )
             )
+    return out
+
+
+def check_cross_dockerfile_consistency(
+    dockerfiles: dict[str, str], arg_prefixes: tuple[str, ...] = CROSS_DOCKERFILE_ARGS
+) -> list[Finding]:
+    """Flag ARGs that differ between Dockerfiles.
+
+    ``dockerfiles`` maps a display name to the file's source. A Dockerfile
+    that does not declare the ARG is not a mismatch (not every image is
+    Python-based); two that declare it with different values are.
+    """
+    out: list[Finding] = []
+    for prefix in arg_prefixes:
+        pins = {
+            name: version
+            for name, source in sorted(dockerfiles.items())
+            if (version := parse_args_versions(source).get(prefix)) is not None
+        }
+        if len(set(pins.values())) > 1:
+            listing = ", ".join(f"{name}={version}" for name, version in pins.items())
+            out.append(
+                Finding(
+                    "mismatch",
+                    f"{prefix}_VERSION",
+                    f"Dockerfiles disagree on ARG {prefix}_VERSION: {listing}",
+                )
+            )
+    return out
+
+
+def read_dockerfiles(directory: str) -> dict[str, str]:
+    """Map basename -> source for every ``Dockerfile*`` in ``directory``."""
+    out: dict[str, str] = {}
+    for path in sorted(glob.glob(os.path.join(directory, "Dockerfile*"))):
+        with open(path) as fh:
+            out[os.path.basename(path)] = fh.read()
     return out
 
 
@@ -387,14 +437,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--format", choices=("text", "markdown"), default="text")
     parser.add_argument("--containers", default="argus/containers.py")
     parser.add_argument("--dockerfile", default="docker/Dockerfile.cli")
+    parser.add_argument(
+        "--dockerfile-dir",
+        default=None,
+        help="Directory whose Dockerfile* must agree on CROSS_DOCKERFILE_ARGS "
+        "(default: the directory holding --dockerfile)",
+    )
     args = parser.parse_args(argv)
 
     with open(args.containers) as fh:
         images = parse_images(fh.read())
     with open(args.dockerfile) as fh:
         args_versions = parse_args_versions(fh.read())
+    dockerfile_dir = args.dockerfile_dir or os.path.dirname(args.dockerfile) or "."
 
-    report = Report(mismatches=check_consistency(images, args_versions))
+    report = Report(
+        mismatches=check_consistency(images, args_versions)
+        + check_cross_dockerfile_consistency(read_dockerfiles(dockerfile_dir))
+    )
     if not args.consistency_only:
         now = dt.datetime.now(dt.timezone.utc)
         report.stale, report.unknown = check_currency(images, args.min_age_days, now)
