@@ -1,0 +1,38 @@
+id: ADR-485
+title: "Skip Bandit's subprocess audit rules"
+date: '2026-10-22'
+status: accepted
+context: |-
+  Bandit's subprocess audit rules fire on every subprocess call, however it is
+  made: B404 on `import subprocess`, B603 on any call without a shell, and B607
+  on a tool called by name and resolved on PATH. Argus runs its scanners by
+  calling CLI tools (git, docker, trivy, grype and the rest) with fixed argv
+  lists, so these rules were 160 of the repo's 186 Bandit findings, and every
+  new script that calls a tool adds more. They buried the findings that matter
+  and showed up as "introduced" on any PR that touched a subprocess call.
+decision: |-
+  Add B404, B603 and B607 to `skips` in `[tool.bandit]` in pyproject.toml, next
+  to B101 and B601. `argus.yml` already points the Bandit scan at that file, so
+  CI, the SDK scan and hosted scans all use it.
+
+  Keep the rules that detect risky subprocess use enabled: B602 (`shell=True`),
+  B605 (a shell-starting call such as `os.system`) and B606 (exec and spawn
+  calls).
+alternatives_considered:
+- name: Mark each call with `# nosec`
+  rejected_because: Hundreds of comments that say nothing, and every new call
+    needs another one.
+- name: Accept the findings in the hosted triage ledger
+  rejected_because: Local and CI scans would still report them, and new calls
+    would keep arriving as new findings.
+- name: Skip the rules only for scripts/ci/
+  rejected_because: Most of the findings are in the argus package itself, where
+    calling scanner CLIs is the core job.
+consequences:
+  positive:
+  - Bandit drops from 186 to 26 findings, all of them from rules that point at
+    something specific.
+  - PRs that add a tool call no longer show new low findings.
+  negative:
+  - A subprocess call that takes its argv from untrusted input no longer gets an
+    audit flag from Bandit. Review has to catch it.
