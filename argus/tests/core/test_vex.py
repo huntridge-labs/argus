@@ -194,3 +194,76 @@ def test_unapplied_tolerates_unreadable_document(tmp_path):
     findings = [_vuln("CVE-2025-68121", "pkg:golang/stdlib@1.24.11")]
 
     assert unapplied_statements(findings, {"vex": str(bad)}) == []
+
+
+# --------------------------------------------------------------------- #
+# Guard through the real container parse path                           #
+# --------------------------------------------------------------------- #
+
+# Trimmed trivy / grype JSON for the gitleaks Go stdlib hit, in each tool's
+# own PURL spelling. Run through the same parser instance ``scan_image``
+# uses, so the guard is exercised on findings shaped exactly like CI's.
+_TRIVY_GO_STDLIB = {
+    "Results": [{
+        "Target": "usr/bin/gitleaks",
+        "Class": "lang-pkgs",
+        "Type": "gobinary",
+        "Vulnerabilities": [{
+            "VulnerabilityID": "CVE-2025-68121",
+            "PkgName": "stdlib",
+            "PkgIdentifier": {"PURL": "pkg:golang/stdlib@v1.24.11"},
+            "InstalledVersion": "v1.24.11",
+            "FixedVersion": "1.24.12",
+            "Severity": "CRITICAL",
+        }],
+    }],
+}
+
+_GRYPE_GO_STDLIB = {
+    "matches": [{
+        "vulnerability": {
+            "id": "CVE-2025-68121",
+            "severity": "Critical",
+            "fix": {"versions": ["1.24.12"], "state": "fixed"},
+        },
+        "artifact": {
+            "name": "stdlib",
+            "version": "go1.24.11",
+            "type": "go-module",
+            "purl": "pkg:golang/stdlib@1.24.11",
+        },
+    }],
+}
+
+
+def _scan_image_findings(tmp_path: Path):
+    import json
+
+    from argus.container.scanner import _parser
+
+    trivy = tmp_path / "trivy.json"
+    grype = tmp_path / "grype.json"
+    trivy.write_text(json.dumps(_TRIVY_GO_STDLIB))
+    grype.write_text(json.dumps(_GRYPE_GO_STDLIB))
+    return _parser.parse_trivy_results(trivy) + _parser.parse_grype_results(grype)
+
+
+def test_scan_image_parse_path_carries_purl(tmp_path):
+    findings = _scan_image_findings(tmp_path)
+
+    assert [f.metadata["purl"] for f in findings] == [
+        "pkg:golang/stdlib@v1.24.11",
+        "pkg:golang/stdlib@1.24.11",
+    ]
+
+
+def test_unapplied_flags_old_spelling_on_scan_image_findings(tmp_path):
+    """The old ``go1.24.11`` statement matched neither tool, and the guard
+    must say so for findings coming out of the container parse path."""
+    from argus.core.vex import unapplied_statements
+
+    doc = _vex_doc(tmp_path, "pkg:golang/stdlib@go1.24.11")
+
+    misses = unapplied_statements(_scan_image_findings(tmp_path), {"vex": str(doc)})
+
+    assert sorted(m.tool for m in misses) == ["grype", "trivy"]
