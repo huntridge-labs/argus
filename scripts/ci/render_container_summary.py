@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Sequence
 
 from argus.container import ContainerTarget, scan_image
+from argus.container.ignores import unmatched_ignore_rules
 from argus.container.scanner import ContainerScanResult
 from argus.core.vex import unapplied_statements
 from argus.reporters import get_reporter
@@ -72,6 +73,9 @@ def build_count_summary(result: ContainerScanResult) -> dict:
         "low": result.low_count,
         "total": result.total_count,
         "unique": result.unique_count,
+        # Dropped by an ignore file or VEX; listed in the markdown
+        # section, never part of the counts above.
+        "ignored": len(result.ignored_findings),
     }
 
 
@@ -121,6 +125,8 @@ def run(
     out_dir: Path,
     sarif_dir: Path | None = None,
     vex: list[str] | None = None,
+    trivy_ignore_file: str | None = None,
+    grype_config_file: str | None = None,
 ) -> ContainerScanResult:
     """Scan ``image_ref`` via the SDK and write the CI artifacts.
 
@@ -129,9 +135,11 @@ def run(
     ``scan_image`` detects it as a local image and scans it through the
     docker-daemon source. ``vex`` (OpenVEX document paths) is forwarded to
     trivy and grype so not_affected / fixed findings are filtered.
+    ``trivy_ignore_file`` / ``grype_config_file`` are the tools' own ignore
+    files, which unlike VEX can scope a rule to one path in the image.
     """
     target = ContainerTarget(name=image_name, image_ref=image_ref)
-    config = {"vex": vex} if vex else None
+    config = _scan_config(vex, trivy_ignore_file, grype_config_file)
     result = scan_image(target, scanners=_SCANNERS, sbom=False, config=config)
 
     write_pr_comment_artifacts(result, out_dir)
@@ -155,6 +163,42 @@ def run(
         )
 
     return result
+
+
+def _scan_config(
+    vex: list[str] | None,
+    trivy_ignore_file: str | None,
+    grype_config_file: str | None,
+) -> dict | None:
+    """The ``scan_image`` config for these flags, or None when none are set."""
+    config = {
+        "vex": vex,
+        "trivy_ignore_file": trivy_ignore_file,
+        "grype_config_file": grype_config_file,
+    }
+    return {k: v for k, v in config.items() if v} or None
+
+
+def report_unmatched_ignore_rules(result: ContainerScanResult, config: dict | None) -> bool:
+    """Emit a CI error for each ignore rule that suppressed nothing.
+
+    Returns True when every rule matched. A rule that matched nothing is
+    stale (the finding is fixed, so the rule should go before it can hide
+    something else later) or wrong (a typo, so the finding it was written
+    for is still open). Rules for a sub-scanner that errored are skipped;
+    that error already fails the job.
+    """
+    ran = [tool for tool in _SCANNERS if tool not in result.scanner_errors]
+    misses = unmatched_ignore_rules(result.ignored_findings, config, tools=ran)
+    for miss in misses:
+        where = f" at {miss.path}" if miss.path else ""
+        print(
+            f"::error::{miss.tool} ignore rule for {miss.vulnerability}{where} "
+            f"in {miss.source} matched nothing in {result.name}. Delete it if "
+            "the finding is fixed, or correct the ID / path.",
+            file=sys.stderr,
+        )
+    return not misses
 
 
 def report_unapplied_vex(result: ContainerScanResult, vex: list[str] | None) -> bool:
@@ -204,6 +248,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         metavar="PATH",
         help="OpenVEX document to apply (repeatable); forwarded to trivy + grype.",
     )
+    parser.add_argument(
+        "--trivy-ignore-file",
+        default=None,
+        metavar="PATH",
+        help="trivy ignore file (--ignorefile). YAML rules may be path-scoped.",
+    )
+    parser.add_argument(
+        "--grype-config-file",
+        default=None,
+        metavar="PATH",
+        help="grype config (-c) whose ignore rules may be path-scoped.",
+    )
     args = parser.parse_args(argv)
 
     result = run(
@@ -212,13 +268,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         out_dir=Path(args.out_dir),
         sarif_dir=Path(args.sarif_dir) if args.sarif_dir else None,
         vex=args.vex,
+        trivy_ignore_file=args.trivy_ignore_file,
+        grype_config_file=args.grype_config_file,
     )
 
     # A sub-scanner failure means the summary is incomplete — exit
     # non-zero so the caller can gate rather than silently trusting a
     # partial result.
     vex_applied = report_unapplied_vex(result, args.vex)
-    return 1 if result.scanner_errors or not vex_applied else 0
+    rules_matched = report_unmatched_ignore_rules(
+        result, _scan_config(None, args.trivy_ignore_file, args.grype_config_file),
+    )
+    failed = result.scanner_errors or not vex_applied or not rules_matched
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":  # pragma: no cover

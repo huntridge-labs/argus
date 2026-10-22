@@ -18,6 +18,12 @@ from argus.scanners.container import (
 )
 
 from .discovery import ContainerTarget
+from .ignores import (
+    grype_config_args,
+    parse_grype_ignored,
+    parse_trivy_suppressed,
+    trivy_ignore_args,
+)
 from .resources import get_image_digest, is_image_local
 
 logger = logging.getLogger("argus.container")
@@ -434,6 +440,11 @@ class ContainerScanResult:
     exposure_findings: list[Finding] = field(default_factory=list)
     services_findings: list[Finding] = field(default_factory=list)
     combined_findings: list[Finding] = field(default_factory=list)
+    # Findings trivy / grype dropped because of an ignore file or VEX
+    # document, read back from the tools' own output. Reported so the
+    # reader sees what was suppressed and why; never part of
+    # ``combined_findings``, so never counted or gated on.
+    ignored_findings: list[Finding] = field(default_factory=list)
     build_success: bool = True
     scan_error: str = ""
     scanner_errors: dict[str, str] = field(default_factory=dict)
@@ -616,6 +627,7 @@ def scan_image(
     grype_findings: list[Finding] = []
     exposure_findings: list[Finding] = []
     services_findings: list[Finding] = []
+    ignored_findings: list[Finding] = []
     scanner_errors: dict[str, str] = {}
     degraded: dict[str, str] = {}
     # Sub-scanners that were actually dispatched, as opposed to
@@ -677,6 +689,9 @@ def scan_image(
                 trivy_findings = _run_trivy(
                     target.image_ref, tmp_path, local=is_local, config=cfg,
                 )
+                ignored_findings += parse_trivy_suppressed(
+                    tmp_path / "trivy-results.json", cfg,
+                )
             except RuntimeError as exc:
                 logger.error("trivy scan failed for %s: %s", target.image_ref, exc)
                 scanner_errors["trivy"] = str(exc)
@@ -686,6 +701,9 @@ def scan_image(
             try:
                 grype_findings = _run_grype(
                     target.image_ref, tmp_path, local=is_local, config=cfg,
+                )
+                ignored_findings += parse_grype_ignored(
+                    tmp_path / "grype-results.json", cfg,
                 )
             except RuntimeError as exc:
                 logger.error("grype scan failed for %s: %s", target.image_ref, exc)
@@ -869,6 +887,7 @@ def scan_image(
         exposure_findings=exposure_findings,
         services_findings=services_findings,
         combined_findings=combined,
+        ignored_findings=ignored_findings,
         scanner_errors=scanner_errors,
         degraded=degraded,
     )
@@ -1160,6 +1179,12 @@ def _run_trivy(
     # grype so ``not_affected`` / ``fixed`` findings are dropped at the
     # source with an auditable justification (config['vex']).
     vex_mounts, vex_flags = _vex_args(config, use_container)
+    # Path-scoped ignore file (containers.trivy_ignore_file). Always ask
+    # trivy to report what it suppressed, by ignore file or VEX, so the
+    # report can list it as ignored instead of it silently vanishing.
+    ignore_mounts, ignore_flags = trivy_ignore_args(config, use_container)
+    vex_mounts += ignore_mounts
+    vex_flags = [*vex_flags, *ignore_flags, "--show-suppressed"]
 
     if use_container:
         from argus import container_runtime
@@ -1321,6 +1346,11 @@ def _run_grype(
     # moves ``not_affected`` / ``fixed`` matches to the ignored set
     # (config['vex']).
     vex_mounts, vex_flags = _vex_args(config, use_container)
+    # Path-scoped ignore rules (containers.grype_config_file). grype lists
+    # what they matched under ``ignoredMatches`` without being asked.
+    config_mounts, config_flags = grype_config_args(config, use_container)
+    vex_mounts += config_mounts
+    vex_flags = [*vex_flags, *config_flags]
 
     if use_container:
         from argus import container_runtime

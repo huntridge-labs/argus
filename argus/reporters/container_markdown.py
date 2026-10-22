@@ -31,6 +31,11 @@ _DEFAULT_OUTPUT_DIR = Path("./argus-results")
 _MAX_TABLE_ROWS = 50
 
 
+def _cell(value: object) -> str:
+    """Make free text safe for one markdown table cell."""
+    return " ".join(str(value).split()).replace("|", "\\|")
+
+
 class ContainerMarkdownReporter:
     """Generate rich container vulnerability scan markdown."""
 
@@ -343,8 +348,47 @@ class ContainerMarkdownReporter:
                 )
             )
 
+        ignored = getattr(result, "ignored_findings", None)
+        if ignored:
+            lines.extend(self._build_ignored_section(ignored))
+
         lines.append("</details>")
         lines.append("")
+        return lines
+
+    def _build_ignored_section(self, findings: list[Finding]) -> list[str]:
+        """Findings an ignore file or VEX document dropped, with the reason.
+
+        Listed so a suppression is visible in the PR comment, not just
+        absent from it. They are not part of any count above.
+        """
+        noun = "finding" if len(findings) == 1 else "findings"
+        lines = [
+            "<details>",
+            f"<summary>\U0001f515 Ignored ({len(findings)} {noun}, not counted)"
+            "</summary>",
+            "",
+            "| ID | Severity | Tool | Package | Path | Reason | Source |",
+            "|----|----------|------|---------|------|--------|--------|",
+        ]
+        for f in findings[:_MAX_TABLE_ROWS]:
+            meta = f.metadata
+            pkg = meta.get("package", "")
+            version = meta.get("installed_version", "")
+            cells = (
+                f.id,
+                f.severity.value.upper(),
+                meta.get("tool", ""),
+                f"{pkg}@{version}" if version else pkg,
+                meta.get("ignore_path", ""),
+                meta.get("ignore_reason", ""),
+                meta.get("ignore_source", ""),
+            )
+            lines.append("| " + " | ".join(_cell(c) for c in cells) + " |")
+        remaining = len(findings) - _MAX_TABLE_ROWS
+        if remaining > 0:
+            lines += ["", f"_...and {remaining} more_"]
+        lines += ["", "</details>", ""]
         return lines
 
     # ------------------------------------------------------------------

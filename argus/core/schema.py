@@ -125,6 +125,9 @@ _EXECUTION_KEYS = {
 # Top-level containers block keys
 _CONTAINERS_KEYS = {
     "images", "discover", "search_paths", "scanners", "vex", "platform",
+    # Tool-native, path-scopable ignore files (argus.container.ignores):
+    # trivy --ignorefile and grype -c.
+    "trivy_ignore_file", "grype_config_file",
 }
 
 # Per-image entry keys (under containers.images[*])

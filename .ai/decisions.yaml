@@ -3297,3 +3297,62 @@ decisions:
         protects this repo's CI and dev environments.
       - Python packages inside the scanner images (bandit's and zizmor's own
         dependencies) are still unpinned apart from pip; follow-up.
+  ADR-044:
+    title: Path-scoped native ignores instead of OpenVEX for per-binary suppression
+    date: '2026-10-22'
+    status: accepted
+    context: |-
+      The CLI image bundles gitleaks v8.30.1 (Go 1.24.11, x/crypto v0.35.0).
+      .vex/argus-cli.openvex.json marked its stdlib and x/crypto CVEs
+      not_affected, with govulncheck evidence that covers gitleaks only. An
+      OpenVEX statement names a component PURL (pkg:golang/stdlib@1.24.11),
+      and CI passed the document to every image, so it would also hide those
+      CVEs in any other Go binary built with the same versions. Tested
+      2026-10-22 with trivy 0.76.0 and grype v0.120.1 against
+      ghcr.io/huntridge-labs/argus/cli:1.12.8: neither tool can scope an
+      OpenVEX statement to one binary (gitleaks module PURL as product with
+      stdlib as subcomponent leaves the CVE in both). An image-scoped product
+      (pkg:oci/...) works only when the image has a registry digest; trivy
+      ignores it on a saved tar. The container scan also never passed the
+      tools' own ignore files, despite the config help saying it honoured
+      .trivyignore / .grype.yaml (ADR-041 negative consequence).
+    decision: |-
+      Per-binary suppression uses the tools' native ignore formats, scoped by
+      path: trivy --ignorefile YAML with `paths: [usr/local/bin/gitleaks]` (no
+      leading slash) and a grype -c config with `package.location:
+      /usr/local/bin/gitleaks` (leading slash). The container scan takes them
+      as containers.trivy_ignore_file / containers.grype_config_file
+      (argus/container/ignores.py), mounted into the tool containers like VEX
+      documents and passed directly in local mode. Suppression stays visible:
+      trivy always runs with --show-suppressed and grype's ignoredMatches is
+      read, and both land in ContainerScanResult.ignored_findings with the
+      rule's reason and source file. They are shown in the markdown / PR
+      comment and argus-results.json but never counted or gated on. A rule
+      that matched nothing fails the CI container scan
+      (render_container_summary) and warns in `argus scan container`. The CLI
+      image's gitleaks statements moved to .vex/argus-cli.trivyignore.yaml and
+      .vex/argus-cli.grype.yaml; the OpenVEX document is deleted. OpenVEX
+      (containers.vex) stays the right tool for component-wide statements.
+    alternatives_considered:
+    - name: Keep OpenVEX with the gitleaks module PURL as product and stdlib as a subcomponent
+      rejected_because: Neither trivy nor grype honours it for a Go binary; the CVE stays visible in both.
+    - name: Image-scoped OpenVEX product (pkg:oci/cli?repository_url=...)
+      rejected_because: Works only when the image has a registry digest; trivy ignores it when scanning a
+        saved tar, and it would still cover every binary in the image.
+    - name: Keep the unscoped VEX and document the over-reach
+      rejected_because: Hides real findings in any future Go tool built on the same toolchain, with
+        evidence that does not cover it.
+    consequences:
+      positive:
+      - A suppression covers exactly the binary the evidence covers; other binaries keep their findings.
+      - Ignored findings, with reasons, appear in the PR comment instead of silently vanishing.
+      - The container scan finally honours trivy / grype ignore files, matching the config help text.
+      - A stale or misspelled rule fails CI instead of sitting there doing nothing.
+      negative:
+      - Two files per suppression, and each tool keys Go findings differently (trivy by CVE, grype by
+        GO-/GHSA- ID; a grype rule on the CVE ID does not match), so rules must be checked against what
+        each tool actually emits.
+      - The CI guard means a rule must be deleted as soon as the upstream fix lands, or the CLI container
+        scan fails.
+      - The ignore files are not yet wired into the scanners.container source-scan path or exported as
+        SARIF suppressions.
