@@ -606,6 +606,32 @@ def test_cli_warning_considers_every_image(in_tmp_cwd, capsys):
     assert capsys.readouterr().err == ""
 
 
+
+def test_cli_warning_skips_tools_not_selected(in_tmp_cwd, capsys):
+    # containers.scanners without trivy: its rules can't be judged.
+    from argus.cli import _warn_unmatched_ignore_rules
+    from argus.container.scanner import ContainerScanSummary
+
+    _write(in_tmp_cwd / "ignore.yaml", TRIVY_IGNORE)
+    summary = ContainerScanSummary(results=[ContainerScanResult(name="cli", image_ref="cli:1")])
+    _warn_unmatched_ignore_rules(
+        summary, {"trivy_ignore_file": "ignore.yaml", "scanners": ["grype", "exposure"]},
+    )
+    assert capsys.readouterr().err == ""
+
+
+def test_cli_warning_skips_degraded_tools(in_tmp_cwd, capsys):
+    # A default-set tool skipped for a missing precondition never scanned.
+    from argus.cli import _warn_unmatched_ignore_rules
+    from argus.container.scanner import ContainerScanSummary
+
+    _write(in_tmp_cwd / "ignore.yaml", TRIVY_IGNORE)
+    result = ContainerScanResult(name="cli", image_ref="cli:1", degraded={"trivy": "no daemon"})
+    _warn_unmatched_ignore_rules(
+        ContainerScanSummary(results=[result]), {"trivy_ignore_file": "ignore.yaml"},
+    )
+    assert capsys.readouterr().err == ""
+
 def test_container_scan_command_warns_on_unmatched_rule(in_tmp_cwd, monkeypatch, capsys):
     """``argus scan container`` runs the guard after the scan, as a warning."""
     import argparse

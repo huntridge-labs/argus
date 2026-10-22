@@ -200,11 +200,19 @@ def _warn_unmatched_ignore_rules(summary, config: dict) -> None:
     (``scripts/ci/render_container_summary.py``) is the strict one.
     """
     from argus.container.ignores import unmatched_ignore_rules
+    from argus.scanners.container import DEFAULT_SUB_SCANNERS
 
+    # Only judge rules for tools that actually scanned: selected, and
+    # neither errored nor skipped (degraded) on at least one image.
+    selected = set(config.get("scanners") or DEFAULT_SUB_SCANNERS)
     results = list(getattr(summary, "results", []))
     ran = {
         tool for tool in ("trivy", "grype")
-        if any(tool not in getattr(r, "scanner_errors", {}) for r in results)
+        if tool in selected and any(
+            tool not in getattr(r, "scanner_errors", {})
+            and tool not in getattr(r, "degraded", {})
+            for r in results
+        )
     }
     ignored = [f for r in results for f in getattr(r, "ignored_findings", [])]
     for miss in unmatched_ignore_rules(ignored, config, tools=ran):
