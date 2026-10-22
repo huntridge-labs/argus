@@ -54,6 +54,17 @@ gitleaks a remote URL or `--diagnostics`, these statements stop being true.
 - **Remove statements when gitleaks ships a rebuild.** A gitleaks release
   built with Go >= 1.24.13 and `x/crypto` >= 0.52.0 clears every finding here,
   and this document should then be deleted, not carried forward.
+- **These statements are not scoped to gitleaks.** CI passes this document
+  to every image it builds, and each statement names only the component
+  (`pkg:golang/stdlib@1.24.11`, `pkg:golang/golang.org/x/crypto@v0.35.0`).
+  Any Go binary built with those versions has the same findings hidden, even
+  though the evidence above covers gitleaks alone. As of 2026-10-22 gitleaks
+  is the only binary in the CLI image on either version (trivy, grype, syft
+  and actionlint are on Go 1.26).
+  Neither trivy nor grype can scope an OpenVEX statement to one binary, so
+  check that before bumping any bundled Go tool. Moving these to path-scoped
+  `.trivyignore.yaml` / `.grype.yaml` rules on `usr/local/bin/gitleaks` is
+  tracked as a follow-up.
 - **PURL spelling must match the scanners.** trivy and grype only drop a
   finding when the product PURL is an exact match, and say nothing when it is
   not. For the Go toolchain trivy reports `pkg:golang/stdlib@v1.24.11` and
