@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.13.0](https://github.com/huntridge-labs/argus/compare/1.12.8...1.13.0) (2026-10-22)
+
+### Features
+
+* **ci:** add issue-keyed ADR check, read-time index and scaffold ([81424cd](https://github.com/huntridge-labs/argus/commit/81424cd571781eeb163235943848a0ef06446485)), references [#483](https://github.com/huntridge-labs/argus/issues/483)
+* **docsite:** read issue-keyed ADRs alongside decisions.yaml ([8da1a98](https://github.com/huntridge-labs/argus/commit/8da1a9877d20f6050806e28707c7d465045921c3)), references [#483](https://github.com/huntridge-labs/argus/issues/483)
+
+### Bug Fixes
+
+* **containers:** re-pin moved zap/clamav digests, read manifests by digest ([#476](https://github.com/huntridge-labs/argus/issues/476)) ([f5feba2](https://github.com/huntridge-labs/argus/commit/f5feba21e0ddeba5fa27f39adfd9a961cef225b0))
+* **opengrep:** declare the scanner container entrypoint ([#454](https://github.com/huntridge-labs/argus/issues/454)) ([314a447](https://github.com/huntridge-labs/argus/commit/314a447bb35eaa4b34b8ebe817e61e1320128ac7))
+* **scn:** validate explicit classify configurations ([#455](https://github.com/huntridge-labs/argus/issues/455)) ([cbfc56b](https://github.com/huntridge-labs/argus/commit/cbfc56b0745a4f7d535c57cbdb87a073c2dd8c6b))
+* **vex:** match trivy/grype stdlib PURLs and fail CI when VEX misses ([#477](https://github.com/huntridge-labs/argus/issues/477)) ([87fc129](https://github.com/huntridge-labs/argus/commit/87fc129a9b2129070467e8665b25e37588d5210a))
+* **vex:** scope CLI gitleaks suppressions with path-scoped trivy/grype ignore files ([#481](https://github.com/huntridge-labs/argus/issues/481)) ([ce936eb](https://github.com/huntridge-labs/argus/commit/ce936eb6014b89c646e8ac20c89d32ef971bc3d4)), references [#482](https://github.com/huntridge-labs/argus/issues/482)
+
+### Security Tools
+
+* **deps:** Update dependency opengrep to v1.30.2 ([#470](https://github.com/huntridge-labs/argus/issues/470)) ([e5f58ff](https://github.com/huntridge-labs/argus/commit/e5f58ff235774e30f6cd1e10b70aea07bc7ef320))
+
+### Dependencies
+
+* **deps:** bump @octokit/plugin-paginate-rest ([#464](https://github.com/huntridge-labs/argus/issues/464)) ([44ed9b7](https://github.com/huntridge-labs/argus/commit/44ed9b761667895b18214130cdfc5bbf18ad8808))
+* **deps:** bump dateformat ([#474](https://github.com/huntridge-labs/argus/issues/474)) ([7c98254](https://github.com/huntridge-labs/argus/commit/7c982540ec9b2dc52a197b111f03fa9b7fab026a))
+* **deps:** bump python ([#467](https://github.com/huntridge-labs/argus/issues/467)) ([3da8745](https://github.com/huntridge-labs/argus/commit/3da8745fab62d629228d02efba66084985653037))
+* **deps:** bump the npm-minor-patch group across 1 directory with 2 updates ([#468](https://github.com/huntridge-labs/argus/issues/468)) ([eb15684](https://github.com/huntridge-labs/argus/commit/eb15684368ff89fdf0dbf5d83c06c8d7c79ce981))
+* **deps:** lock Python deps with uv and hand them to Renovate ([#482](https://github.com/huntridge-labs/argus/issues/482)) ([eb570ba](https://github.com/huntridge-labs/argus/commit/eb570ba367e22f970052cad91d6d08e6132da6de))
+* **deps:** update container images and tool versions ([#462](https://github.com/huntridge-labs/argus/issues/462)) ([8ecfdb1](https://github.com/huntridge-labs/argus/commit/8ecfdb14352058ce89fb623be330981404c6b419))
+* **deps:** update python-slugify requirement ([#475](https://github.com/huntridge-labs/argus/issues/475)) ([ae3c25a](https://github.com/huntridge-labs/argus/commit/ae3c25aec5a9f04be47aafc0c02e8e253304fd1c))
+* **deps:** Update tool-versions ([#479](https://github.com/huntridge-labs/argus/issues/479)) ([a0a9588](https://github.com/huntridge-labs/argus/commit/a0a9588d343c4f1d2495549444f266ba763aaef1)), references [#478](https://github.com/huntridge-labs/argus/issues/478)
+
+### Maintenance
+
+* **bandit:** skip subprocess audit rules B404, B603, B607 ([9dd6637](https://github.com/huntridge-labs/argus/commit/9dd66373d87b7de540c0722cc8b17eba5dafcc9b)), closes [#485](https://github.com/huntridge-labs/argus/issues/485)
+
+
+### Documentation
+
+* **adr:** record issue-keyed ADRs as ADR-483 ([7540c07](https://github.com/huntridge-labs/argus/commit/7540c07de38a1002b9fcc7544b5bd6fbb7e4eee1)), references [#483](https://github.com/huntridge-labs/argus/issues/483)
+* **adr:** record skipping Bandit's subprocess audit rules ([dbec159](https://github.com/huntridge-labs/argus/commit/dbec15997e7134dbad843e217ad2384b9a65a58b)), references [#485](https://github.com/huntridge-labs/argus/issues/485)
+* **agents:** make AGENTS.md the single entry point for coding agents ([aae7704](https://github.com/huntridge-labs/argus/commit/aae7704a208d259776a5d129292f2e02ace8d26b)), references [#483](https://github.com/huntridge-labs/argus/issues/483)
+* **ai:** close decisions.yaml to new entries and link the issue process ([02739eb](https://github.com/huntridge-labs/argus/commit/02739ebaf8cd80926b21ee57adfebfd62f1cbf04)), references [#483](https://github.com/huntridge-labs/argus/issues/483)
+* **contributing:** link AGENTS.md by URL so the docsite build resolves it ([2359ada](https://github.com/huntridge-labs/argus/commit/2359ada82aa48f7d8b0d6b7b7c36b6eba2388167)), references [#483](https://github.com/huntridge-labs/argus/issues/483)
+
+### Continuous Integration
+
+* **pypi:** skip TestPyPI publish on fork PRs ([#469](https://github.com/huntridge-labs/argus/issues/469)) ([e781a3b](https://github.com/huntridge-labs/argus/commit/e781a3b7f949af11a6f325305b75b59c170cab9f))
+* **test-actions:** skip E2E coverage PR comment on fork PRs ([#473](https://github.com/huntridge-labs/argus/issues/473)) ([0f2dec9](https://github.com/huntridge-labs/argus/commit/0f2dec98eed653671a045ebe40636a209eadbef9))
+
 ## [1.12.8](https://github.com/huntridge-labs/argus/compare/1.12.7...1.12.8) (2026-10-05)
 
 ### Bug Fixes
