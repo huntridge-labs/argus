@@ -439,6 +439,9 @@ Configuration for container image scanning via `argus scan container`. This sect
 | `images` | array of [image objects](#image-object) | | Explicit list of container images to scan. |
 | `scanners` | array of strings | `["trivy", "grype", "exposure", "services"]` | Sub-scanners to use. Values: `trivy`, `grype`, `syft`, `exposure`, `services`. An unrecognized or empty value is a hard error — see [Sub-scanner selection](#sub-scanner-selection). |
 | `platform` | string | | Image platform to scan, e.g. `linux/arm64`. Leave unset to resolve it from the registry manifest. See [Scanning a foreign architecture](#scanning-a-foreign-architecture). |
+| `vex` | string \| list[string] | | OpenVEX document(s) passed to Trivy and Grype (`--vex`). Same as `argus scan container --vex`. A statement covers a component (PURL) everywhere in the image; to cover one file only, use the two keys below. |
+| `trivy_ignore_file` | string | | Trivy ignore file, passed as `--ignorefile`. YAML rules can be scoped to a file in the image with `paths`. See [Ignoring findings in image scans](#ignoring-findings-in-image-scans). |
+| `grype_config_file` | string | | Grype config file, passed as `-c`. Its `ignore` rules can be scoped to a file with `package.location`. See [Ignoring findings in image scans](#ignoring-findings-in-image-scans). |
 | `output_dir` | string | `"./argus-results"` | Output directory for container scan results. |
 | `registry_username` | string | | Literal username applied to every image when no `registry_auth` entry matches. Prefer `registry_username_env`. |
 | `registry_username_env` | string | | **Name** of an environment variable holding the default registry username. |
@@ -488,6 +491,46 @@ A sub-scanner in the default set whose precondition is absent makes the scan thi
 That argument does not reach the second row. There the sub-scanner had everything it needed, tried, and never opened the image — so exiting `0` would be the same silent pass whether or not you had typed its name. Naming it yourself always fails, for the same reason.
 
 Degraded sub-scanners are always reported — a `Degraded scans:` line in the terminal summary, a `degraded` key on the result metadata in `argus-results.json`, and a `::notice::` annotation in GitHub Actions. To make them fatal, name them explicitly.
+
+### Ignoring findings in image scans
+
+An OpenVEX statement names a component, such as `pkg:golang/stdlib@1.24.11`. Neither Trivy nor Grype can tie it to one file, so a statement written for one bundled binary also hides that CVE in every other binary built with the same Go version. When the evidence covers one binary, use the tools' own ignore files instead. Both can scope a rule to a path:
+
+```yaml
+containers:
+  trivy_ignore_file: .vex/app.trivyignore.yaml
+  grype_config_file: .vex/app.grype.yaml
+```
+
+```yaml
+# .vex/app.trivyignore.yaml (trivy --ignorefile). Paths have NO leading slash.
+vulnerabilities:
+  - id: CVE-2025-68121
+    paths: ["usr/local/bin/gitleaks"]
+    statement: Why this does not apply.
+```
+
+```yaml
+# .vex/app.grype.yaml (grype -c). Locations HAVE a leading slash.
+ignore:
+  - vulnerability: GO-2026-4337
+    reason: Why this does not apply.
+    package:
+      name: stdlib
+      location: /usr/local/bin/gitleaks
+```
+
+Check which ID each tool reports before writing a rule. For Go modules Trivy uses the CVE ID, while Grype uses the `GO-` or `GHSA-` ID and lists the CVE only as related; a Grype rule on the CVE ID does not match. Both files are mounted into the tool containers, so they work with or without local `trivy` / `grype` binaries. A configured file that does not exist is logged and skipped, which leaves its findings visible.
+
+Ignored findings are reported, not dropped. Argus runs Trivy with `--show-suppressed` and reads Grype's `ignoredMatches`, then lists each ignored finding with its reason and source file:
+
+- the container markdown report and PR comment get an **Ignored (N findings, not counted)** table per image;
+- `argus-results.json` carries them under each image's `metadata.ignored_findings`;
+- `container-scan.json` has an `ignored` count per image.
+
+They never count toward severity totals, `--severity-threshold`, or the exit code. Findings dropped by a VEX document show up the same way.
+
+`argus scan container` prints a warning for any rule that matched nothing in any scanned image: either the finding is fixed and the rule should go, or the ID or path is wrong.
 
 ### Scanning a foreign architecture
 

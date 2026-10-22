@@ -276,3 +276,52 @@ class TestBuildFailure:
         content = filepath.read_text()
 
         assert "Build Failures:** 1" in content
+
+
+def _ignored_finding(fid="CVE-2025-68121", tool="trivy", reason="not reached | by argus"):
+    return Finding(
+        id=fid,
+        severity=Severity.CRITICAL,
+        title=fid,
+        cve=fid if fid.startswith("CVE-") else None,
+        scanner="container",
+        metadata={
+            "tool": tool,
+            "package": "stdlib",
+            "installed_version": "v1.24.11",
+            "ignored": True,
+            "ignore_status": "ignored",
+            "ignore_reason": reason,
+            "ignore_source": ".vex/argus-cli.trivyignore.yaml",
+            "ignore_path": "usr/local/bin/gitleaks",
+        },
+    )
+
+
+class TestIgnoredFindings:
+    """Findings an ignore file or VEX dropped are listed, never counted."""
+
+    def _render(self, result) -> str:
+        return "\n".join(ContainerMarkdownReporter()._build_container_detail(result))
+
+    def test_ignored_section_lists_reason_source_and_path(self):
+        result = _make_result()
+        result.ignored_findings = [_ignored_finding()]
+        md = self._render(result)
+
+        assert "Ignored (1 finding, not counted)" in md
+        assert "CVE-2025-68121" in md
+        assert "usr/local/bin/gitleaks" in md
+        assert ".vex/argus-cli.trivyignore.yaml" in md
+        # A pipe in the reason must not split the table cell.
+        assert "not reached \\| by argus" in md
+
+    def test_ignored_findings_do_not_change_counts(self):
+        result = _make_result()
+        result.ignored_findings = [_ignored_finding()]
+        md = self._render(result)
+        assert "0 vulnerabilities" in md
+        assert result.critical_count == 0
+
+    def test_no_section_without_ignored_findings(self):
+        assert "Ignored (" not in self._render(_make_result())

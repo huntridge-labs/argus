@@ -182,7 +182,39 @@ def _canonical_container_metadata(result) -> dict:
         metadata["degraded"] = dict(result.degraded)
     if getattr(result, "scan_error", None):
         metadata["scan_error"] = result.scan_error
+    ignored = getattr(result, "ignored_findings", None)
+    if ignored:
+        # Dropped by an ignore file or VEX document. Kept out of
+        # ``findings`` so nothing counts or gates on them, but listed
+        # with their reason and source so the suppression is auditable.
+        metadata["ignored_findings"] = [f.to_dict() for f in ignored]
     return metadata
+
+
+def _warn_unmatched_ignore_rules(summary, config: dict) -> None:
+    """Warn about container ignore rules that matched nothing in any image.
+
+    One ``containers.trivy_ignore_file`` / ``grype_config_file`` applies to
+    every image in the run, so a rule only has to match in one of them.
+    A warning, not a failure: a stale rule hides nothing. CI's own guard
+    (``scripts/ci/render_container_summary.py``) is the strict one.
+    """
+    from argus.container.ignores import unmatched_ignore_rules
+
+    results = list(getattr(summary, "results", []))
+    ran = {
+        tool for tool in ("trivy", "grype")
+        if any(tool not in getattr(r, "scanner_errors", {}) for r in results)
+    }
+    ignored = [f for r in results for f in getattr(r, "ignored_findings", [])]
+    for miss in unmatched_ignore_rules(ignored, config, tools=ran):
+        where = f" at {miss.path}" if miss.path else ""
+        print(
+            f"Warning: {miss.tool} ignore rule for {miss.vulnerability}{where} "
+            f"in {miss.source} matched nothing. Remove it if the finding is "
+            "fixed, or fix the ID / path.",
+            file=sys.stderr,
+        )
 
 
 def _configure_logger(args: argparse.Namespace, output_dir: str | None = None):
@@ -2716,6 +2748,8 @@ def _cmd_container_scan(
     from argus.reporters import get_reporter
     get_reporter("json").report(canonical_summary, output_dir)
 
+    _warn_unmatched_ignore_rules(summary, config)
+
     # Reports
     for fmt in formats:
         if fmt == "markdown":
@@ -2960,6 +2994,9 @@ def _print_container_terminal(summary) -> None:
         print(f"Degraded scans:      {degraded_scans}")
     print(f"Total findings:      {summary.total_count}")
     print(f"Unique findings:     {summary.unique_count}")
+    ignored_total = sum(len(getattr(r, "ignored_findings", [])) for r in summary.results)
+    if ignored_total:
+        print(f"Ignored findings:    {ignored_total} (ignore file / VEX, not counted)")
     print()
     for r in summary.results:
         if not r.build_success:
@@ -3004,6 +3041,9 @@ def _write_container_json(summary, output_dir) -> None:
                 "low": r.low_count,
                 "total": r.total_count,
                 "unique": r.unique_count,
+                # Suppressed by an ignore file or VEX; not in the
+                # counts above. Details are in argus-results.json.
+                "ignored": len(getattr(r, "ignored_findings", [])),
                 # Both reasons a row's counts may be thinner than the
                 # image really is. Without them a failed or degraded
                 # scan renders here as an ordinary clean row, which is

@@ -221,7 +221,13 @@ _NATIVE_IGNORE: dict[str, NativeIgnore] = {
     "trivy-iac": NativeIgnore(file=".trivyignore", comment="#trivy:ignore:AVD-AWS-0017"),
     "trivy": NativeIgnore(file=".trivyignore", help="Ignore CVE ids, one per line."),
     "grype": NativeIgnore(file=".grype.yaml (ignore rules)"),
-    "container": NativeIgnore(file=".trivyignore / .grype.yaml", help="Image-layer CVEs use the underlying tools' ignore files."),
+    "container": NativeIgnore(
+        file="containers.trivy_ignore_file / containers.grype_config_file",
+        help="Image-layer CVEs: pass a trivy ignore file (--ignorefile) and a grype "
+             "config (-c) via the containers block. Both can scope a rule to one "
+             "file in the image (trivy paths, grype package.location), which "
+             "OpenVEX cannot.",
+    ),
     "lint-yaml": NativeIgnore(file=".yamllint", comment="# yamllint disable-line rule:line-length"),
     "lint-python": NativeIgnore(file="ruff.toml / setup.cfg / .flake8", comment="# noqa: E501"),
 }

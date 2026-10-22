@@ -290,3 +290,118 @@ def test_main_exit_nonzero_when_vex_statement_did_not_apply(tmp_path: Path, monk
     err = capsys.readouterr().err
     assert "CVE-2025-68121" in err
     assert "pkg:golang/stdlib@go1.24.11" in err
+
+
+# --------------------------------------------------------------------- #
+# Native ignore files (path-scoped trivy / grype rules)                 #
+# --------------------------------------------------------------------- #
+
+
+def _ignored(tool: str, vuln: str, source: str, path: str) -> Finding:
+    return Finding(
+        id=vuln, severity=Severity.CRITICAL, title=vuln, scanner="container",
+        metadata={"tool": tool, "package": "stdlib", "ignored": True,
+                  "ignore_reason": "not reached", "ignore_source": source,
+                  "ignore_path": path},
+    )
+
+
+def test_count_summary_reports_ignored_separately():
+    result = _result_with_grype_only_critical()
+    result.ignored_findings = [_ignored("trivy", "CVE-2025-68121", "x", "y")]
+    summary = rcs.build_count_summary(result)
+    assert summary["ignored"] == 1
+    assert summary["critical"] == 1  # unchanged: ignored findings never count
+
+
+def test_main_forwards_ignore_files(tmp_path: Path, monkeypatch):
+    captured = {}
+
+    def fake_scan_image(target, scanners, sbom, config=None):
+        captured["config"] = config
+        return _result_with_grype_only_critical()
+
+    monkeypatch.setattr(rcs, "scan_image", fake_scan_image)
+    rcs.main([
+        "--image-name", "cli",
+        "--image-ref", "ghcr.io/huntridge-labs/argus/cli:sha",
+        "--out-dir", str(tmp_path / "out"),
+        "--trivy-ignore-file", "t.yaml",
+        "--grype-config-file", "g.yaml",
+    ])
+    assert captured["config"] == {
+        "trivy_ignore_file": "t.yaml", "grype_config_file": "g.yaml",
+    }
+
+
+def _write_rules(tmp_path: Path) -> tuple[Path, Path]:
+    trivy = tmp_path / "t.yaml"
+    trivy.write_text(
+        "vulnerabilities:\n"
+        "  - id: CVE-2025-68121\n"
+        "    paths: [usr/local/bin/gitleaks]\n"
+        "    statement: not reached\n"
+    )
+    grype = tmp_path / "g.yaml"
+    grype.write_text(
+        "ignore:\n"
+        "  - vulnerability: GO-2026-4337\n"
+        "    reason: not reached\n"
+        "    package: {name: stdlib, location: /usr/local/bin/gitleaks}\n"
+    )
+    return trivy, grype
+
+
+def test_main_exit_nonzero_when_ignore_rule_matched_nothing(
+    tmp_path: Path, monkeypatch, capsys,
+):
+    trivy, grype = _write_rules(tmp_path)
+    result = _result_with_grype_only_critical()
+    # The grype rule fired; the trivy rule did not.
+    result.ignored_findings = [
+        _ignored("grype", "GO-2026-4337", str(grype.resolve()), "/usr/local/bin/gitleaks"),
+    ]
+    monkeypatch.setattr(rcs, "scan_image", lambda *a, **k: result)
+
+    code = rcs.main([
+        "--image-name", "cli",
+        "--image-ref", "ghcr.io/huntridge-labs/argus/cli:sha",
+        "--out-dir", str(tmp_path / "out"),
+        "--trivy-ignore-file", str(trivy),
+        "--grype-config-file", str(grype),
+    ])
+
+    assert code == 1
+    err = capsys.readouterr().err
+    assert "::error::" in err
+    assert "CVE-2025-68121" in err
+    assert "usr/local/bin/gitleaks" in err
+    assert "GO-2026-4337" not in err
+
+
+def test_main_exit_zero_when_every_ignore_rule_matched(tmp_path: Path, monkeypatch):
+    trivy, grype = _write_rules(tmp_path)
+    result = _result_with_grype_only_critical()
+    result.ignored_findings = [
+        _ignored("trivy", "CVE-2025-68121", str(trivy.resolve()), "usr/local/bin/gitleaks"),
+        _ignored("grype", "GO-2026-4337", str(grype.resolve()), "/usr/local/bin/gitleaks"),
+    ]
+    monkeypatch.setattr(rcs, "scan_image", lambda *a, **k: result)
+
+    code = rcs.main([
+        "--image-name", "cli",
+        "--image-ref", "ghcr.io/huntridge-labs/argus/cli:sha",
+        "--out-dir", str(tmp_path / "out"),
+        "--trivy-ignore-file", str(trivy),
+        "--grype-config-file", str(grype),
+    ])
+    assert code == 0
+
+
+def test_ignore_rules_for_a_failed_tool_are_not_judged(tmp_path: Path, monkeypatch):
+    trivy, _ = _write_rules(tmp_path)
+    result = _result_with_grype_only_critical()
+    result.scanner_errors = {"trivy": "boom"}
+    assert rcs.report_unmatched_ignore_rules(
+        result, {"trivy_ignore_file": str(trivy)},
+    ) is True
