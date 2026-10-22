@@ -8,7 +8,7 @@
 # ---------------------------------------------------------------------------
 FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS builder
 
-ARG TRIVY_VERSION=0.75.0
+ARG TRIVY_VERSION=0.76.0
 ARG GRYPE_VERSION=0.120.1
 ARG SYFT_VERSION=1.54.1
 ARG GITLEAKS_VERSION=8.30.1
@@ -60,7 +60,7 @@ LABEL org.opencontainers.image.licenses="AGPL-3.0"
 
 ARG BANDIT_VERSION=1.9.4
 ARG PYYAML_VERSION=6.0.3
-ARG ZIZMOR_VERSION=1.30.1
+ARG ZIZMOR_VERSION=1.31.0
 
 # Install system packages and patch OS-level vulnerabilities
 RUN apk add --no-cache \
