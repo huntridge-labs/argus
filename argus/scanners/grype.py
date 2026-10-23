@@ -20,7 +20,7 @@ from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
 from argus.core.scanner_template import workspace_file
 
-from argus.scanners._vuln_parsers import parse_grype_match
+from argus.scanners._vuln_parsers import parse_grype_report
 
 
 class GrypeScanner:
@@ -169,7 +169,7 @@ class GrypeScanner:
                 "(source.target=unknown). 0 findings does not mean "
                 "clean — the SBOM likely lacks purl external refs."
             )
-        findings = [parse_grype_match(m, scanner_name=self.name) for m in matches]
+        findings = parse_grype_report(data, scanner_name=self.name)
         return (findings, extra) if extra else findings
 
 

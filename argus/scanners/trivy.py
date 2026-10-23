@@ -19,7 +19,7 @@ from argus.core.models import Finding, ScanResult, Severity
 from argus.core.scanner_template import workspace_file
 from argus.core.version import parse_tool_version
 
-from argus.scanners._vuln_parsers import parse_trivy_vuln
+from argus.scanners._vuln_parsers import parse_trivy_report, trivy_db_built
 
 
 class TrivyScanner:
@@ -132,11 +132,7 @@ class TrivyScanner:
             data = json.loads(Path(raw_output_path).read_text(encoding="utf-8", errors="replace"))
         except (json.JSONDecodeError, OSError):
             return []
-        findings: list[Finding] = []
-        for r in data.get("Results") or []:
-            for v in r.get("Vulnerabilities") or []:
-                findings.append(parse_trivy_vuln(v, scanner_name=self.name))
-        return findings
+        return parse_trivy_report(data, scanner_name=self.name, db_built=trivy_db_built())
 
 
 def _native_file_flags(config: dict, workspace: str) -> list[str]:
