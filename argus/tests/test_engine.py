@@ -2524,6 +2524,55 @@ class TestEngineSbomCoverageGuard:
         assert summary.complete is True
 
 
+class TestEngineSbomMatcherRouting:
+    """SBOM mode picks the matcher from the SBOM's generator (#493)."""
+
+    FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "sbom"
+
+    def _engine(self):
+        engine = ArgusEngine(ArgusConfig.from_dict({"execution": {"backend": "local"}}))
+        scanners = {}
+        for name in ("grype", "osv", "trivy"):
+            scanner = MockScanner(name)
+            scanner.supports_sbom = True
+            engine.register_scanner(scanner)
+            scanners[name] = scanner
+        return engine, scanners
+
+    def _ran(self, scanners):
+        return sorted(n for n, s in scanners.items() if s.scan_called_with is not None)
+
+    def test_syft_sbom_runs_grype_not_trivy(self, caplog):
+        engine, scanners = self._engine()
+        with caplog.at_level("INFO", logger="argus"):
+            engine.run(sbom_path=str(self.FIXTURES / "syft-amzn2023.spdx.json"), parallel=False)
+        assert self._ran(scanners) == ["grype", "osv"]
+        assert "skipping trivy" in caplog.text
+
+    def test_trivy_sbom_runs_trivy_not_grype(self):
+        engine, scanners = self._engine()
+        engine.run(sbom_path=str(self.FIXTURES / "trivy-amzn2023.cdx.json"), parallel=False)
+        assert self._ran(scanners) == ["osv", "trivy"]
+
+    def test_explicit_matcher_still_runs_with_a_warning(self, caplog):
+        engine, scanners = self._engine()
+        with caplog.at_level("WARNING", logger="argus"):
+            engine.run(
+                scanner_names=["trivy"],
+                sbom_path=str(self.FIXTURES / "syft-amzn2023.spdx.json"),
+                parallel=False,
+            )
+        assert self._ran(scanners) == ["trivy"]
+        assert "isn't the recommended matcher" in caplog.text
+
+    def test_undetectable_sbom_keeps_every_capable_scanner(self, tmp_path):
+        sbom = tmp_path / "sbom.json"
+        sbom.write_text("{}")
+        engine, scanners = self._engine()
+        engine.run(sbom_path=str(sbom), parallel=False)
+        assert self._ran(scanners) == ["grype", "osv", "trivy"]
+
+
 class TestToolVersionEnforcement:
     """Test local tool version verification against container-pinned versions."""
 

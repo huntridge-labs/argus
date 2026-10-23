@@ -1024,10 +1024,12 @@ def _build_scan_parser(subparsers: argparse._SubParsersAction, parent: argparse.
         help="Scan a pre-built SBOM or directory of SBOMs (CycloneDX "
              "JSON/XML, SPDX JSON/tag-value, or Syft JSON). When PATH is "
              "a directory, argus walks it recursively, sniffs each file, "
-             "and scans every SBOM it finds. Auto-enables all SBOM-capable "
-             "scanners (osv, grype, trivy) regardless of argus.yml. "
-             "Filesystem scanners (bandit, gitleaks, ...) are skipped "
-             "since they have nothing to scan.",
+             "and scans every SBOM it finds. Auto-enables the SBOM-capable "
+             "scanners regardless of argus.yml: osv plus the matcher that "
+             "reads the SBOM's generator (grype for syft and grype SBOMs, "
+             "trivy for trivy SBOMs, both for any other generator). Name a "
+             "scanner to run just that one. Filesystem scanners (bandit, "
+             "gitleaks, ...) are skipped since they have nothing to scan.",
     )
     scan_parser.add_argument(
         "--interface", "-i",
@@ -2245,15 +2247,18 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
     # Docker or the native tools installed. Point them at --check-tools
     # so they get actionable install suggestions instead of nothing.
     if sbom_path:
-        # In SBOM mode the engine auto-picks supports_sbom scanners;
-        # the requested set should mirror that logic so the nudge
-        # doesn't falsely report "bandit skipped" on an SBOM scan.
-        requested_for_nudge = [
-            name for name, scanner in engine._scanners.items()
-            if getattr(scanner, "supports_sbom", False)
-        ]
-        if args.scanner:
-            requested_for_nudge = [args.scanner] if args.scanner in requested_for_nudge else []
+        # In SBOM mode the engine picks the supports_sbom scanners and
+        # routes each SBOM to its matcher (ADR-493); the requested set
+        # mirrors that so the nudge doesn't report "bandit skipped" or
+        # "trivy produced no results" on an SBOM scan.
+        requested_for_nudge, _ = _sbom_planned_scanners(
+            sbom_files,
+            [
+                name for name, scanner in engine._scanners.items()
+                if getattr(scanner, "supports_sbom", False)
+            ],
+            args.scanner,
+        )
     else:
         requested_for_nudge = scanner_names or [
             name for name in engine._scanners
@@ -2454,10 +2459,11 @@ def _dry_run(engine, config, args) -> int:
             name for name, scanner in engine._scanners.items()
             if getattr(scanner, "supports_sbom", False)
         ]
-        scanner_names = [args.scanner] if args.scanner else sorted(capable)
-        # Filter a named request down to capable scanners so the dry-run
-        # plan matches what a real run would do.
-        scanner_names = [n for n in scanner_names if n in capable]
+        # Same per-SBOM matcher routing a real run does (ADR-493), so the
+        # plan matches what would execute.
+        scanner_names, sbom_notes = _sbom_planned_scanners(
+            sbom_files, capable, args.scanner,
+        )
     else:
         scanner_names = [args.scanner] if args.scanner else [
             name for name in engine._scanners
@@ -2473,6 +2479,8 @@ def _dry_run(engine, config, args) -> int:
             print(f"SBOM batch:  {len(sbom_files)} files under {sbom_path}")
             for info in sbom_files:
                 print(f"  - {info.path} ({info.display_format})")
+        for note in sbom_notes:
+            print(f"Matcher:     {note}")
     # --path overrides every scanner; otherwise each uses its own path:.
     root = args.path or "."
     scanner_paths = {
@@ -2543,6 +2551,26 @@ def _scan_targets(args: argparse.Namespace, config) -> list[str]:
         return [args.path]
     paths = {sc.path for sc in config.scanners.values() if sc.enabled}
     return sorted(paths) or ["."]
+
+
+def _sbom_planned_scanners(sbom_files, capable, requested_scanner):
+    """Scanners an SBOM-mode run executes across ``sbom_files``, plus notes.
+
+    Mirrors ``ArgusEngine._resolve_sbom_scanner_names``: each SBOM goes to
+    the matcher that reads its generator (``argus.core.sbom_routing``).
+    Returns the sorted union of every SBOM's plan and the de-duplicated
+    routing notes.
+    """
+    from argus.core.sbom_routing import plan_sbom_scanners
+
+    requested = [requested_scanner] if requested_scanner else None
+    names: set[str] = set()
+    notes: list[str] = []
+    for info in sbom_files:
+        planned, planned_notes = plan_sbom_scanners(info, capable, requested)
+        names.update(planned)
+        notes.extend(n for n in planned_notes if n not in notes)
+    return sorted(names), notes
 
 
 def _merge_sbom_summaries(per_file_summaries, severity_threshold):

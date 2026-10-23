@@ -85,11 +85,17 @@ workflows:
     command: python -m argus scan --sbom path/to/sbom.json
     notes: 'When --sbom is a directory, argus walks it recursively and scans every
 
-      recognized SBOM. Auto-enables osv, grype, and trivy (the three
+      recognized SBOM. Auto-enables osv plus the matcher that reads each SBOM''s
 
-      SBOM-capable scanners) regardless of argus.yml; filesystem-only
+      generator (grype for syft/grype SBOMs, trivy for trivy SBOMs, both for
 
-      scanners are skipped since they have nothing to scan.
+      anything else; ADR-493) regardless of argus.yml; filesystem-only scanners
+
+      are skipped since they have nothing to scan. `argus scan <scanner> --sbom`
+
+      runs just that scanner. `--dry-run` prints the matcher choice. A matcher
+
+      that skips the OS packages makes the scan incomplete, exit 2 (ADR-492).
 
       '
   interactive_triage:

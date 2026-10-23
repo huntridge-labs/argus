@@ -1,6 +1,6 @@
 # Argus CLI Reference (v1.13.0)
 
-> Auto-generated from argparse definitions on 2026-10-22.
+> Auto-generated from argparse definitions on 2026-10-23.
 > Do not edit manually — run `python -m scripts.ci.gen_cli_docs` to regenerate.
 
 Argus Security Scanner — comprehensive security scanning for your codebase
@@ -111,7 +111,7 @@ argus scan [-h] [--no-update-check] [--path PATH] [--config CONFIG]
 | `--exclude`, `-e` | Comma-separated paths or patterns to exclude from scanning. Added on top of .gitignore, .dockerignore, and built-in defaults. | `` |
 | `--no-default-excludes` | Drop built-in exclusions (node_modules, .git, ...) and .gitignore / .dockerignore patterns. Only --exclude and argus.yml exclude: take effect. Use when you explicitly want to scan what the defaults would normally skip. | `false` |
 | `--dry-run` | Resolve config and print the planned scanner invocations without executing them. Useful for verifying which per-scanner config files, paths, and excludes Argus will use. | `false` |
-| `--sbom` | Scan a pre-built SBOM or directory of SBOMs (CycloneDX JSON/XML, SPDX JSON/tag-value, or Syft JSON). When PATH is a directory, argus walks it recursively, sniffs each file, and scans every SBOM it finds. Auto-enables all SBOM-capable scanners (osv, grype, trivy) regardless of argus.yml. Filesystem scanners (bandit, gitleaks, ...) are skipped since they have nothing to scan. |  |
+| `--sbom` | Scan a pre-built SBOM or directory of SBOMs (CycloneDX JSON/XML, SPDX JSON/tag-value, or Syft JSON). When PATH is a directory, argus walks it recursively, sniffs each file, and scans every SBOM it finds. Auto-enables the SBOM-capable scanners regardless of argus.yml: osv plus the matcher that reads the SBOM's generator (grype for syft and grype SBOMs, trivy for trivy SBOMs, both for any other generator). Name a scanner to run just that one. Filesystem scanners (bandit, gitleaks, ...) are skipped since they have nothing to scan. |  |
 | `--interface`, `-i` | After the scan completes, open a viewer on the just-written results. 'terminal' launches the TUI (requires 'argus-security[terminal]'); 'browser' launches the local web UI (requires 'argus-security[browser]'). (terminal, browser) |  |
 | `--fail-fast` | Abort immediately if any scanner fails instead of continuing. | `false` |
 | `--fail-on-scanner-error` | Exit non-zero when any scanner produced no output (typically a uid-mismatch on /output, container crash, or wrong entrypoint). Default behavior treats these as warnings so partial scans still surface findings; opt in for hard CI gates that require every configured scanner to actually run. | `false` |

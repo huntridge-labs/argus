@@ -32,6 +32,12 @@ OS_PURL_TYPES = frozenset({"apk", "deb", "rpm", "alpm"})
 
 _XML_METADATA = re.compile(r"<metadata\b.*?</metadata>", re.DOTALL | re.IGNORECASE)
 _XML_PURL = re.compile(r"<purl>\s*([^<]+?)\s*</purl>", re.IGNORECASE)
+_XML_TOOLS = re.compile(r"<tools\b.*?</tools>", re.DOTALL | re.IGNORECASE)
+_XML_NAME = re.compile(r"<name>\s*([^<]+?)\s*</name>", re.IGNORECASE)
+_XML_VERSION = re.compile(r"<version>\s*([^<]+?)\s*</version>", re.IGNORECASE)
+# "syft-1.54.1" / "trivy-0.76.0": the version starts at the first hyphen
+# followed by a digit.
+_SPDX_TOOL = re.compile(r"^(?P<name>.+?)(?:-(?P<version>v?\d\S*))?$")
 
 
 @dataclass(frozen=True)
@@ -51,6 +57,17 @@ class Purl:
     @property
     def is_os_package(self) -> bool:
         return bool(self.distro) or self.type in OS_PURL_TYPES
+
+
+@dataclass(frozen=True)
+class Generator:
+    """The tool that wrote an SBOM, as the SBOM itself records it."""
+
+    name: str
+    version: str = ""
+
+    def __str__(self) -> str:
+        return f"{self.name} {self.version}".strip()
 
 
 def parse_purl(value: object) -> Purl | None:
@@ -171,3 +188,79 @@ def _tag_value_purls(path: Path) -> list[str]:
             if len(parts) >= 4 and parts[2].lower() == "purl":
                 purls.append(parts[3])
     return purls
+
+
+def read_generator(info: SbomInfo) -> Generator | None:
+    """Return the tool that generated the SBOM, or None if it doesn't say.
+
+    Reads CycloneDX ``metadata.tools`` (the 1.5+ object form and the
+    older list form), SPDX ``creationInfo.creators`` ``Tool: name-x.y.z``
+    entries, and the Syft JSON ``descriptor``. The name is lowercased so
+    callers can compare it.
+    """
+    try:
+        if info.format == "cyclonedx-xml":
+            return _xml_generator(Path(info.path).read_text(encoding="utf-8", errors="replace"))
+        if info.format == "spdx-tv":
+            return _tag_value_generator(info.path)
+        data = json.loads(Path(info.path).read_text(encoding="utf-8", errors="replace"))
+    except (OSError, ValueError) as exc:
+        logger.debug("Could not read the generator of %s: %s", info.path, exc)
+        return None
+    if not isinstance(data, dict):
+        return None
+    if info.format == "syft-json":
+        return _named(data.get("descriptor"))
+    if info.format == "spdx-json":
+        creators = (data.get("creationInfo") or {}).get("creators") or []
+        return _first_spdx_tool(creators)
+    return _cyclonedx_json_generator((data.get("metadata") or {}).get("tools"))
+
+
+def _named(entry: object) -> Generator | None:
+    if not isinstance(entry, dict) or not entry.get("name"):
+        return None
+    return Generator(str(entry["name"]).strip().lower(), str(entry.get("version") or "").strip())
+
+
+def _cyclonedx_json_generator(tools: object) -> Generator | None:
+    if isinstance(tools, dict):
+        tools = (tools.get("components") or []) + (tools.get("services") or [])
+    if not isinstance(tools, list):
+        return None
+    return next((g for g in map(_named, tools) if g is not None), None)
+
+
+def _first_spdx_tool(creators: object) -> Generator | None:
+    if not isinstance(creators, list):
+        return None
+    for creator in creators:
+        label, _, value = str(creator).partition(":")
+        if label.strip().lower() == "tool" and value.strip():
+            match = _SPDX_TOOL.match(value.strip())
+            return Generator(match["name"].lower(), match["version"] or "")
+    return None
+
+
+def _xml_generator(text: str) -> Generator | None:
+    tools = _XML_TOOLS.search(text)
+    if not tools:
+        return None
+    name = _XML_NAME.search(tools.group(0))
+    if not name:
+        return None
+    version = _XML_VERSION.search(tools.group(0))
+    return Generator(
+        html.unescape(name.group(1)).lower(),
+        html.unescape(version.group(1)) if version else "",
+    )
+
+
+def _tag_value_generator(path: Path) -> Generator | None:
+    creators: list[str] = []
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            key, _, value = line.strip().partition(":")
+            if key == "Creator":
+                creators.append(value.strip())
+    return _first_spdx_tool(creators)

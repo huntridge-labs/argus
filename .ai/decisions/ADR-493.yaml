@@ -1,0 +1,85 @@
+id: ADR-493
+title: "Pick the SBOM matcher from the SBOM's generator"
+date: '2026-10-23'
+status: accepted
+context: |-
+  `argus scan --sbom` ran every SBOM-capable scanner (osv, grype, trivy) on
+  every SBOM. trivy and grype each read only some generators' SBOMs
+  reliably. With the pinned tools (syft v1.54.1, trivy 0.76.0, grype
+  v0.120.1) on amazonlinux:2023.1.20230705.0:
+
+  | SBOM | trivy | grype |
+  |------|-------|-------|
+  | syft SPDX JSON | 0, OS read as `none` | 237 |
+  | syft CycloneDX JSON | 0, `amzn` unsupported | 237 |
+  | Syft JSON | fails, can't read the format | 237 |
+  | trivy CycloneDX JSON | 504 | 0, `amazon` not mapped |
+  | trivy SPDX JSON | 504 | 0, `amazon` not mapped |
+
+  ADR-492 marks the wrong pairing incomplete, so a default run on any of
+  these SBOMs exited 2 even though one of the two matchers covered it.
+decision: |-
+  Read the generator from the SBOM and send it to the matcher that reads
+  it. This is the accepted-generator policy:
+
+  | Generator | Formats | Matcher |
+  |-----------|---------|---------|
+  | syft | SPDX JSON / tag-value, CycloneDX JSON / XML, Syft JSON | grype |
+  | grype | CycloneDX JSON / XML | grype |
+  | trivy | SPDX JSON / tag-value, CycloneDX JSON / XML | trivy |
+  | anything else, or none recorded | any | grype and trivy |
+
+  - The generator comes from CycloneDX `metadata.tools`, the SPDX
+    `Tool: name-x.y.z` creator, or the Syft JSON `descriptor`.
+  - Syft JSON never goes to trivy, whoever wrote it.
+  - osv-scanner isn't a matcher in this sense and runs for every SBOM.
+  - Unknown generators are accepted, not rejected. Both matchers run and
+    ADR-492's coverage guard flags whichever skipped the OS packages.
+  - A scanner the user names (`argus scan trivy --sbom FILE`) always runs.
+    When it isn't the recommended matcher, Argus logs a warning, and the
+    coverage guard still applies.
+  - If the recommended matcher isn't registered, every SBOM-capable scanner
+    runs, as before.
+  - Routing is per SBOM, so a directory of mixed SBOMs gets the right
+    matcher for each file. `--dry-run` prints the choice.
+alternatives_considered:
+- name: Keep running both matchers and rely on the coverage guard
+  rejected_because: Every default scan of a syft or trivy SBOM of a
+    distro image would exit 2 for a gap the other matcher already covered,
+    and spend a second vulnerability DB download and run doing it.
+- name: Reject SBOMs from generators we haven't measured
+  rejected_because: Vendor-supplied SBOMs from arbitrary tools are the main
+    reason SBOM mode exists. Running both matchers plus the coverage guard
+    still gives a trustworthy result.
+- name: Convert the SBOM to the matcher's preferred format first
+  rejected_because: The problem is the generator's purl and distro
+    conventions, not the container format, so a format conversion carries
+    the same `amzn` / `amazon` names through. It would also add a tool to
+    every SBOM scan.
+- name: Pass the OS to the matcher explicitly (grype --distro, trivy has no equivalent for SBOMs)
+  rejected_because: Only fixes grype, and needs a distro-name translation
+    table per tool that has to track both upstreams.
+consequences:
+  positive:
+  - Default SBOM scans of syft and trivy SBOMs get the full OS-package result
+    instead of an incomplete one.
+  - One matcher DB pull and run per SBOM instead of two.
+  - The choice is visible in the log and in `--dry-run`.
+  negative:
+  - A default scan no longer shows findings from both matchers side by side
+    for syft and trivy SBOMs. Name the scanner to get the other one.
+  - The table reflects the pinned tool versions. When trivy or grype learns
+    the other generator's conventions, the table should be re-measured.
+implementation: |-
+  - argus/core/sbom_contents.py: read_generator() and the Generator type.
+  - argus/core/sbom_routing.py: GENERATOR_MATCHERS, choose_matchers(),
+    plan_sbom_scanners().
+  - argus/core/engine.py `_resolve_sbom_scanner_names`: routes when it can
+    sniff the SBOM, falls back to every capable scanner when it can't.
+  - argus/cli.py: `_sbom_planned_scanners` drives the dry-run plan and the
+    missing-scanner nudge; `--sbom` help updated (docs/cli-reference.md
+    regenerated).
+  - docs/sbom-scanning.md "Choosing the matcher" holds the user-facing
+    table.
+affects_components:
+- argus-sdk
