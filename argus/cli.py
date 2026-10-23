@@ -422,6 +422,7 @@ def build_parser() -> argparse.ArgumentParser:
     _build_mcp_parser(subparsers, common)
     _build_completion_parser(subparsers, common)
     _build_cache_parser(subparsers, common)
+    _build_sbom_parser(subparsers, common)
     _build_view_parser(subparsers, common)
 
     # Open-core seam: let an installed package (e.g. Argus Enterprise) contribute
@@ -1548,6 +1549,45 @@ def _build_cache_parser(subparsers: argparse._SubParsersAction, parent: argparse
     cache_sub.add_parser(
         "clean",
         help="Remove all cached scanner databases",
+    )
+
+
+def _build_sbom_parser(subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser) -> None:
+    """Add the 'sbom' subcommand (``argus sbom inspect``)."""
+    sbom_parser = subparsers.add_parser(
+        "sbom",
+        parents=[parent],
+        help="Inspect an SBOM before scanning it",
+        description=(
+            "Work with SBOM files. `argus sbom inspect FILE [--format json]` shows "
+            "what an SBOM describes (format, generator, subject, OS, package "
+            "counts) and which matcher `argus scan --sbom FILE` would use. See "
+            "docs/sbom-scanning.md."
+        ),
+    )
+    sbom_sub = sbom_parser.add_subparsers(dest="sbom_action")
+    inspect_parser = sbom_sub.add_parser(
+        "inspect",
+        help="Show an SBOM's format, generator, subject, OS, packages and matcher",
+        description=(
+            "Show what an SBOM describes: format and spec version, the tool that\n"
+            "generated it, the image or subject (name, digest when recorded), the\n"
+            "OS (from the packages' distro= purl qualifiers, else SBOM metadata),\n"
+            "package counts by purl type, and which matcher `argus scan --sbom`\n"
+            "would pick for it. Reads the file only; runs no scanner."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    inspect_parser.add_argument(
+        "file",
+        help="SBOM file (CycloneDX JSON/XML, SPDX JSON/tag-value, or Syft JSON)",
+    )
+    inspect_parser.add_argument(
+        "--format", "-f",
+        dest="sbom_format",
+        choices=["terminal", "json"],
+        default="terminal",
+        help="Output format (default: terminal)",
     )
 
 
@@ -3186,6 +3226,29 @@ def cmd_completion(args: argparse.Namespace) -> int:
     return EXIT_SUCCESS
 
 
+def cmd_sbom(args: argparse.Namespace) -> int:
+    """``argus sbom inspect FILE``: report what an SBOM describes."""
+    if getattr(args, "sbom_action", None) != "inspect":
+        print("Usage: argus sbom inspect FILE [--format terminal|json]", file=sys.stderr)
+        return EXIT_ERROR
+
+    import json
+
+    from argus.core.sbom import SbomDetectionError
+    from argus.core.sbom_inspect import format_terminal, inspect_sbom
+
+    try:
+        report = inspect_sbom(args.file)
+    except SbomDetectionError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    if args.sbom_format == "json":
+        print(json.dumps(report.to_dict(), indent=2))
+    else:
+        print(format_terminal(report))
+    return EXIT_SUCCESS
+
+
 def cmd_cache(args: argparse.Namespace) -> int:
     """Manage scanner database caches."""
     from argus.containers import CACHE_MOUNTS, _default_cache_root
@@ -3327,6 +3390,7 @@ _argus() {{
         'mcp:Start the MCP server for AI assistant integration'
         'completion:Generate shell completion script'
         'cache:Manage scanner database caches'
+        'sbom:Inspect an SBOM before scanning it'
         'view:Open a viewer (terminal UI or browser) on existing scan results'
     )
 
@@ -3422,6 +3486,12 @@ _argus() {{
                 completion)
                     _arguments '1:shell:(bash zsh)'
                     ;;
+                sbom)
+                    _arguments \\
+                        '1:action:(inspect)' \\
+                        '2:SBOM file:_files' \\
+                        '(-f --format)'{{-f,--format}}'[Output format]:format:(terminal json)'
+                    ;;
                 view)
                     _arguments \\
                         '1:interface:($interfaces)' \\
@@ -3448,7 +3518,7 @@ _argus_completions() {{
     cur="${{COMP_WORDS[COMP_CWORD]}}"
     prev="${{COMP_WORDS[COMP_CWORD-1]}}"
 
-    commands="init scan classify collect report validate mcp completion cache view"
+    commands="init scan classify collect report validate mcp completion cache sbom view"
     scanners="{scanners}"
     severity="critical high medium low none"
     formats="terminal markdown sarif json github gitlab junit"
@@ -3491,6 +3561,19 @@ _argus_completions() {{
             ;;
         collect) COMPREPLY=($(compgen -W "--output-dir --verbose" -- "$cur")) ;;
         completion) COMPREPLY=($(compgen -W "bash zsh" -- "$cur")) ;;
+        sbom)
+            if [ "$COMP_CWORD" -eq 2 ]; then
+                COMPREPLY=($(compgen -W "inspect" -- "$cur")); return
+            fi
+            case "$prev" in
+                --format|-f) COMPREPLY=($(compgen -W "terminal json" -- "$cur")); return ;;
+            esac
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "--format" -- "$cur"))
+            else
+                COMPREPLY=($(compgen -f -- "$cur"))
+            fi
+            ;;
         view)
             if [ "$COMP_CWORD" -eq 2 ] && [[ "$cur" != -* ]]; then
                 COMPREPLY=($(compgen -W "$interfaces --help" -- "$cur"))
@@ -4231,6 +4314,7 @@ def main(argv: list[str] | None = None) -> None:
         "mcp": cmd_mcp,
         "completion": cmd_completion,
         "cache": cmd_cache,
+        "sbom": cmd_sbom,
         "view": cmd_view,
     }
 

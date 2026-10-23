@@ -43,6 +43,7 @@ entrypoints:
   cli_completion: argus completion {bash,zsh,fish} — shell completion (dynamic from registry)
   cli_mcp: argus mcp — start the MCP server over stdio for AI-assistant integration
   cli_cache: argus cache info|clean — manage per-scanner DB cache volumes
+  cli_sbom: argus sbom inspect FILE [--format json] — what an SBOM describes (format, generator, subject, OS, package counts) and which matcher argus scan --sbom would pick
   cli_version_flag: argus --version (top-level flag, NOT a subcommand)
   mcp_server: argus mcp
   mcp_install: pip install argus-security[mcp]

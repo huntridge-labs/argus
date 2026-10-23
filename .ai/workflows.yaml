@@ -98,6 +98,18 @@ workflows:
       that skips the OS packages makes the scan incomplete, exit 2 (ADR-492).
 
       '
+  sbom_inspect:
+    description: See what an SBOM describes before scanning it
+    category: scanning
+    when_to_use: Checking a vendor SBOM's generator, subject image, OS and package mix, or which matcher argus scan --sbom will use
+    command: argus sbom inspect path/to/sbom.json
+    notes: '`--format json` for scripts. The OS comes from the packages'' distro= purl
+
+      qualifiers first, then SBOM metadata. Exits 2 when the file is not a
+
+      recognized SBOM. Reads the file only; runs no scanner.
+
+      '
   interactive_triage:
     description: Post-scan interactive findings browser (TUI)
     category: triage

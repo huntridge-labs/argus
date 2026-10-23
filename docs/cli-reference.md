@@ -329,6 +329,20 @@ argus cache [-h] [--no-update-check] {info,clean} ...
 |------|-------------|---------|
 | `--no-update-check` | Skip the once-per-day check for a newer argus release. The check runs in the background (zero latency cost) and prints a soft notice at the end of the command when an upgrade is available. Also disabled by setting the ARGUS_NO_UPDATE_CHECK environment variable, which is the right move for CI / air-gapped environments. Override the PyPI URL via ARGUS_UPDATE_CHECK_URL for TestPyPI or private mirrors. | `false` |
 
+### `argus sbom`
+
+Work with SBOM files. `argus sbom inspect FILE [--format json]` shows what an SBOM describes (format, generator, subject, OS, package counts) and which matcher `argus scan --sbom FILE` would use. See docs/sbom-scanning.md.
+
+```
+argus sbom [-h] [--no-update-check] {inspect} ...
+```
+
+**Options:**
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--no-update-check` | Skip the once-per-day check for a newer argus release. The check runs in the background (zero latency cost) and prints a soft notice at the end of the command when an upgrade is available. Also disabled by setting the ARGUS_NO_UPDATE_CHECK environment variable, which is the right move for CI / air-gapped environments. Override the PyPI URL via ARGUS_UPDATE_CHECK_URL for TestPyPI or private mirrors. | `false` |
+
 ### `argus view`
 
 Open a human-readable view of argus-results.json:

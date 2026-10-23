@@ -76,6 +76,9 @@ components:
       core/sbom_contents.py: Reads an SBOM's package purls (all five formats) and parses them; os_packages()
         returns the OS packages (``distro=`` qualifier, or apk/deb/rpm/alpm type); read_generator() returns
         the tool that wrote the SBOM (CycloneDX metadata.tools, SPDX creators, Syft descriptor)
+      core/sbom_inspect.py: '`argus sbom inspect FILE [--format json]` (cmd_sbom in cli.py): format + spec
+        version, generator, subject (name, digest), OS (distro= purl qualifiers first, then SBOM metadata),
+        package counts by purl type, and the matcher sbom_routing would pick. Read-only, runs no scanner.'
       core/sbom_routing.py: 'Picks the matcher per SBOM from its generator (ADR-493): syft/grype -> grype,
         trivy -> trivy, unknown -> both; Syft JSON never goes to trivy; osv always runs. plan_sbom_scanners()
         is called by ArgusEngine._resolve_sbom_scanner_names and the CLI dry-run / nudge. An explicitly
@@ -788,6 +791,9 @@ docsite:
       core/sbom_contents.py: Reads an SBOM's package purls (all five formats) and parses them; os_packages()
         returns the OS packages (``distro=`` qualifier, or apk/deb/rpm/alpm type); read_generator() returns
         the tool that wrote the SBOM (CycloneDX metadata.tools, SPDX creators, Syft descriptor)
+      core/sbom_inspect.py: '`argus sbom inspect FILE [--format json]` (cmd_sbom in cli.py): format + spec
+        version, generator, subject (name, digest), OS (distro= purl qualifiers first, then SBOM metadata),
+        package counts by purl type, and the matcher sbom_routing would pick. Read-only, runs no scanner.'
       core/sbom_routing.py: 'Picks the matcher per SBOM from its generator (ADR-493): syft/grype -> grype,
         trivy -> trivy, unknown -> both; Syft JSON never goes to trivy; osv always runs. plan_sbom_scanners()
         is called by ArgusEngine._resolve_sbom_scanner_names and the CLI dry-run / nudge. An explicitly
