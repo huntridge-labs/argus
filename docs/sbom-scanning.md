@@ -8,15 +8,37 @@ Scan a pre-built SBOM for known vulnerabilities with `argus scan --sbom`.
 
 ## Overview
 
-`argus scan --sbom PATH` hands an SBOM (or every SBOM in a directory) to the SBOM-capable scanners: osv-scanner, grype and trivy. Filesystem scanners are skipped, since there is no source tree to scan.
+`argus scan --sbom PATH` hands an SBOM (or every SBOM in a directory) to the SBOM-capable scanners: osv-scanner plus the vulnerability matcher that reads the SBOM's generator, grype or trivy (see [Choosing the matcher](#choosing-the-matcher)). Filesystem scanners are skipped, since there is no source tree to scan.
 
 ```bash
-argus scan --sbom image.spdx.json          # every SBOM-capable scanner
-argus scan grype --sbom image.spdx.json    # one scanner
+argus scan --sbom image.spdx.json          # osv + the matcher for this SBOM
+argus scan grype --sbom image.spdx.json    # one scanner, your choice
 argus scan --sbom vendor-sboms/            # every SBOM under a directory
+argus scan --sbom image.spdx.json --dry-run  # show which matcher each SBOM gets
 ```
 
 Supported formats: CycloneDX (JSON, XML), SPDX (JSON, tag-value) and Syft JSON. Argus sniffs the content, so file names don't matter.
+
+## Choosing the matcher
+
+trivy and grype each read only some generators' SBOMs reliably. Argus reads the generator from the SBOM itself and picks the matcher:
+
+| Generator | Formats | Matcher | Why |
+|-----------|---------|---------|-----|
+| syft | SPDX JSON / tag-value, CycloneDX JSON / XML, Syft JSON | grype | grype matches syft's OS packages; trivy reads the OS as `none` (SPDX) or as `amzn`, which it doesn't support (CycloneDX), and can't read Syft JSON |
+| grype | CycloneDX JSON / XML | grype | Same purl and distro conventions as syft |
+| trivy | SPDX JSON / tag-value, CycloneDX JSON / XML | trivy | grype can't map trivy's distro names (`amazon`) and skips the OS packages |
+| any other tool, or none recorded | any | grype and trivy | No measured behaviour to go on. Both run and the [coverage check](#incomplete-results) flags whichever skipped the OS packages |
+
+Syft JSON never goes to trivy, whoever wrote the file: trivy can't decode the format. osv-scanner runs for every SBOM either way.
+
+Where the generator comes from:
+
+- CycloneDX: `metadata.tools` (the 1.5+ `components` form and the older list form)
+- SPDX: the `Tool: name-x.y.z` entry in `creationInfo.creators` (`Creator:` lines in tag-value)
+- Syft JSON: the `descriptor` block
+
+Naming a scanner (`argus scan trivy --sbom FILE`) always runs it. When it isn't the recommended matcher for that SBOM, Argus logs a warning, and if it skips the OS packages the result is marked incomplete. `--dry-run` prints the choice for each SBOM.
 
 ## Incomplete results
 
@@ -48,4 +70,4 @@ Measured against `amazonlinux:2023.1.20230705.0` with syft v1.54.1, trivy 0.76.0
 | trivy CycloneDX JSON | 504 findings | incomplete (can't map `amazon`) |
 | trivy SPDX JSON | 504 findings | incomplete (can't map `amazon`) |
 
-The fix is to scan with the matcher that reads the SBOM's generator: grype for syft SBOMs, trivy for trivy SBOMs.
+These are the cases the matcher choice above avoids. You only hit them by naming the other matcher, or with an SBOM from a generator Argus doesn't recognize.

@@ -1352,8 +1352,9 @@ errors:
       mean they were never checked, so the coverage guard marks the result incomplete (ADR-492).
     solution:
       steps:
-      - Scan the SBOM with the matcher that reads its generator's output - grype for syft SBOMs,
-        trivy for trivy SBOMs (`argus scan grype --sbom FILE` / `argus scan trivy --sbom FILE`).
+      - Drop the scanner name (`argus scan --sbom FILE`) so Argus picks the matcher from the SBOM's
+        generator (ADR-493), or name the right one - grype for syft SBOMs, trivy for trivy SBOMs.
+        `argus scan --sbom FILE --dry-run` shows the choice.
       - Or regenerate the SBOM with the tool whose matcher you want to use.
       - The reason line names the OS the matcher read and the distro the SBOM's purls carry; a
         mismatch there is the cause.

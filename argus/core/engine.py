@@ -326,7 +326,7 @@ class ArgusEngine:
             )
 
         if sbom_path is not None:
-            names_to_run = self._resolve_sbom_scanner_names(scanner_names)
+            names_to_run = self._resolve_sbom_scanner_names(scanner_names, sbom_path)
         else:
             names_to_run = self._resolve_scanner_names(scanner_names)
         logger.debug(
@@ -1740,7 +1740,7 @@ class ArgusEngine:
         ]
 
     def _resolve_sbom_scanner_names(
-        self, requested: list[str] | None
+        self, requested: list[str] | None, sbom_path: str | None = None,
     ) -> list[str]:
         """Determine which scanners to run when an SBOM is supplied.
 
@@ -1750,31 +1750,46 @@ class ArgusEngine:
         - When the caller names a scanner explicitly and it doesn't
           support SBOMs, we log a warning and drop it rather than fail
           the whole run — preserves pipeline momentum on a mixed config.
-        - When no names are requested, we auto-enable every
-          SBOM-capable scanner in the registry, ignoring argus.yml's
-          ``enabled:`` flags. The user explicitly asked for full SBOM
-          coverage by passing ``--sbom``.
+        - When no names are requested, we auto-enable the SBOM-capable
+          scanners in the registry, ignoring argus.yml's ``enabled:``
+          flags. The user explicitly asked for SBOM coverage by passing
+          ``--sbom``. Of the two matchers, only the one that reads the
+          SBOM's generator runs (grype for syft/grype SBOMs, trivy for
+          trivy SBOMs, both otherwise; ADR-493).
+        - A matcher named explicitly always runs; a warning says when
+          it isn't the recommended one for this SBOM.
         """
         sbom_capable = {
             name
             for name, scanner in self._scanners.items()
             if getattr(scanner, "supports_sbom", False)
         }
-        if requested is None:
-            return sorted(sbom_capable)
-
-        resolved = []
-        for name in requested:
-            if name in sbom_capable:
-                resolved.append(name)
-            else:
+        for name in requested or []:
+            if name not in sbom_capable:
                 logger.warning(
                     "Scanner '%s' does not support SBOM input — skipping. "
                     "SBOM-capable scanners: %s",
                     name,
                     ", ".join(sorted(sbom_capable)) or "(none registered)",
                 )
-        return resolved
+        fallback = (
+            sorted(sbom_capable) if requested is None
+            else [n for n in requested if n in sbom_capable]
+        )
+        if not sbom_path:
+            return fallback
+
+        from .sbom import SbomDetectionError, detect_sbom
+        from .sbom_routing import plan_sbom_scanners
+        try:
+            info = detect_sbom(sbom_path)
+        except SbomDetectionError:
+            return fallback
+        names, notes = plan_sbom_scanners(info, sbom_capable, requested)
+        log = logger.info if requested is None else logger.warning
+        for note in notes:
+            log("SBOM %s: %s", Path(sbom_path).name, note)
+        return names
 
     @staticmethod
     def _build_scanner_config_dict(scanner_config) -> dict:
