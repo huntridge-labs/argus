@@ -10,6 +10,16 @@ from argus.core.scanner_template import ScanPaths, run_subprocess_scan, workspac
 from argus.core.version import parse_tool_version
 
 
+def _primary_rank(vuln: dict) -> tuple[bool, str]:
+    """Sort key that puts an advisory's GHSA record first, then by id.
+
+    GitHub's records carry the reviewed severity and CWE, and a GHSA id is what
+    findings for these packages were already keyed by, so triage keeps holding.
+    """
+    vid = str(vuln.get("id", ""))
+    return (not vid.startswith("GHSA-"), vid)
+
+
 class OsvScanner:
     """Wraps OSV-Scanner to detect vulnerable dependencies."""
 
@@ -119,42 +129,86 @@ class OsvScanner:
                 pkg_version = pkg_info.get("version", "")
                 pkg_ecosystem = pkg_info.get("ecosystem", "")
 
-                for vuln in package_entry.get("vulnerabilities", []):
+                for records in self._alias_groups(package_entry):
                     finding = self._parse_vulnerability(
-                        vuln, source_path, pkg_name, pkg_version, pkg_ecosystem
+                        records, source_path, pkg_name, pkg_version, pkg_ecosystem
                     )
                     findings.append(finding)
 
         return findings
 
+    @staticmethod
+    def _alias_groups(package_entry: dict) -> list[list[dict]]:
+        """The package's vulnerability records, one list per distinct advisory.
+
+        OSV keeps a record per database that published an advisory (a PyPI
+        package often has both a GHSA and a PYSEC record for one bug), and
+        osv-scanner reports every record but names the aliases in ``groups``.
+        Each list holds the reported records of one group, primary first; a
+        record no group names stands alone. Lists come in the order their
+        first record was reported.
+        """
+        vulns = package_entry.get("vulnerabilities", [])
+        by_id = {vuln.get("id"): vuln for vuln in vulns}
+        group_of: dict = {}
+        for group in package_entry.get("groups") or []:
+            members = [by_id[vid] for vid in group.get("ids", []) if vid in by_id]
+            for member in members:
+                group_of.setdefault(member.get("id"), members)
+
+        grouped: list[list[dict]] = []
+        emitted: set = set()
+        for vuln in vulns:
+            if vuln.get("id") in emitted:
+                continue
+            members = [m for m in group_of.get(vuln.get("id"), [vuln]) if m.get("id") not in emitted]
+            emitted.update(m.get("id") for m in members)
+            grouped.append(sorted(members, key=_primary_rank))
+        return grouped
+
     def _parse_vulnerability(
         self,
-        vuln: dict,
+        records: list[dict],
         source_path: str,
         pkg_name: str,
         pkg_version: str,
         pkg_ecosystem: str,
     ) -> Finding:
-        """Convert a single OSV vulnerability into a Finding."""
-        severity = self._extract_severity(vuln)
-        cve = self._extract_cve(vuln)
-        cwe = self._extract_cwe(vuln)
+        """Convert one advisory's OSV records (primary first) into a Finding.
+
+        The primary record names the finding. Severity is the highest any
+        record reports, so a PYSEC record with no severity never downgrades
+        its GHSA alias; CVE, CWE, summary and fix fall back to the aliases.
+        """
+        primary = records[0]
+        primary_id = primary.get("id", "UNKNOWN")
+        aliases = [
+            alias
+            for alias in dict.fromkeys(
+                [*primary.get("aliases", [])]
+                + [a for r in records[1:] for a in (r.get("id"), *r.get("aliases", []))]
+            )
+            if alias and alias != primary_id
+        ]
+        summary = next((r["summary"] for r in records if r.get("summary")), None)
 
         return Finding(
-            id=vuln.get("id", "UNKNOWN"),
-            severity=severity,
-            title=vuln.get("summary", "Unknown vulnerability"),
-            description=vuln.get("summary", ""),
+            id=primary_id,
+            severity=max(self._extract_severity(r) for r in records),
+            title=summary or "Unknown vulnerability",
+            description=summary or "",
             location=source_path or None,
-            cve=cve,
-            cwe=cwe,
+            cve=next((c for r in records if (c := self._extract_cve(r))), None),
+            cwe=next((c for r in records if (c := self._extract_cwe(r))), None),
             scanner=self.name,
             metadata={
                 "package_name": pkg_name,
                 "package_version": pkg_version,
                 "ecosystem": pkg_ecosystem,
-                "aliases": vuln.get("aliases", []),
-                "fixed_version": self._extract_fixed_version(vuln),
+                "aliases": aliases,
+                "fixed_version": next(
+                    (v for r in records if (v := self._extract_fixed_version(r))), None
+                ),
             },
         )
 
