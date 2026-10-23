@@ -33,6 +33,11 @@ components:
         Replaces an unconditional --platform linux/amd64 retry — see ADR-038.'
       core/models.py: Severity enum, Finding/ScanResult/ScanSummary dataclasses
       core/scanner.py: Scanner Protocol definition (capability flags supports_sbom / supports_vex)
+      scanners/_vuln_parsers.py: 'Shared trivy/grype finding parsers used by SBOM mode (trivy, grype scanners) and
+        container mode (container scanner, argus scan container). Finding metadata: package, installed_version,
+        fixed_version, purl, advisory_id, related_cves [{id, severity}], os_package, matcher (grype/<matcher> or
+        trivy), match_type, data_source, vulnerability_db_built (grype descriptor.db; trivy db/metadata.json
+        UpdatedAt from its cache, best effort). See docs/scanners.md#vulnerability-finding-fields.'
       core/vex.py: Shared OpenVEX resolution (resolve_vex_documents / vex_container_mounts / vex_cli_flags) consumed by every supports_vex scanner (grype, trivy, container) — add a VEX-capable scanner by setting supports_vex and calling these helpers, no engine change; unapplied_statements(findings, config) is a read-only diagnostic that reports findings a not_affected/fixed statement covers but the scanner still returned (PURL spelling mismatch), used by scripts/ci/render_container_summary.py to fail the container scan
       container/ignores.py: Tool-native, path-scopable ignore files for the container scan. containers.trivy_ignore_file → trivy --ignorefile, containers.grype_config_file → grype -c, mounted at /argus-ignore/<basename> in container mode (trivy picks YAML by extension). trivy always runs with --show-suppressed; parse_trivy_suppressed / parse_grype_ignored read ExperimentalModifiedFindings / ignoredMatches into ContainerScanResult.ignored_findings (metadata ignored/ignore_status/ignore_reason/ignore_source/ignore_path), never counted or gated on. unmatched_ignore_rules(ignored, config, tools) reports rules that matched nothing. CI fails on it (scripts/ci/render_container_summary.py), argus scan container warns (ADR-044)
       core/config.py: ArgusConfig loading from argus.yml
@@ -73,11 +78,6 @@ components:
         (.trivyignore for trivy / trivy-iac). Scanners pass each one via the tool's flag (ADR-041)
       core/sbom.py: SBOM format detection (CycloneDX JSON/XML, SPDX JSON/tag-value, Syft JSON) for ``argus
         scan --sbom``
-      scanners/_vuln_parsers.py: 'Shared trivy/grype finding parsers used by SBOM mode (trivy, grype scanners) and
-        container mode (container scanner, argus scan container). Finding metadata: package, installed_version,
-        fixed_version, purl, advisory_id, related_cves [{id, severity}], os_package, matcher (grype/<matcher> or
-        trivy), match_type, data_source, vulnerability_db_built (grype descriptor.db; trivy db/metadata.json
-        UpdatedAt from its cache, best effort). See docs/scanners.md#vulnerability-finding-fields.'
       core/secrets.py: 'Credential resolution for any scanner config field. resolve_secret(config, field,
         *, stdin_override=None) accepts three forms in precedence order: stdin_override (highest, populated
         by CLI --*-password-stdin flags via a module-level slot registry — set_stdin_override / get_stdin_override
@@ -739,6 +739,11 @@ docsite:
       cli.py: argparse CLI with scan and report subcommands
       core/models.py: Severity enum, Finding/ScanResult/ScanSummary dataclasses
       core/scanner.py: Scanner Protocol definition (capability flags supports_sbom / supports_vex)
+      scanners/_vuln_parsers.py: 'Shared trivy/grype finding parsers used by SBOM mode (trivy, grype scanners) and
+        container mode (container scanner, argus scan container). Finding metadata: package, installed_version,
+        fixed_version, purl, advisory_id, related_cves [{id, severity}], os_package, matcher (grype/<matcher> or
+        trivy), match_type, data_source, vulnerability_db_built (grype descriptor.db; trivy db/metadata.json
+        UpdatedAt from its cache, best effort). See docs/scanners.md#vulnerability-finding-fields.'
       core/vex.py: Shared OpenVEX resolution (resolve_vex_documents / vex_container_mounts / vex_cli_flags) consumed by every supports_vex scanner (grype, trivy, container) — add a VEX-capable scanner by setting supports_vex and calling these helpers, no engine change
       container/ignores.py: Tool-native, path-scopable ignore files for the container scan. containers.trivy_ignore_file → trivy --ignorefile, containers.grype_config_file → grype -c, mounted at /argus-ignore/<basename> in container mode (trivy picks YAML by extension). trivy always runs with --show-suppressed; parse_trivy_suppressed / parse_grype_ignored read ExperimentalModifiedFindings / ignoredMatches into ContainerScanResult.ignored_findings (metadata ignored/ignore_status/ignore_reason/ignore_source/ignore_path), never counted or gated on. unmatched_ignore_rules(ignored, config, tools) reports rules that matched nothing. CI fails on it (scripts/ci/render_container_summary.py), argus scan container warns (ADR-044)
       core/config.py: ArgusConfig loading from argus.yml
@@ -779,11 +784,6 @@ docsite:
         (.trivyignore for trivy / trivy-iac). Scanners pass each one via the tool's flag (ADR-041)
       core/sbom.py: SBOM format detection (CycloneDX JSON/XML, SPDX JSON/tag-value, Syft JSON) for ``argus
         scan --sbom``
-      scanners/_vuln_parsers.py: 'Shared trivy/grype finding parsers used by SBOM mode (trivy, grype scanners) and
-        container mode (container scanner, argus scan container). Finding metadata: package, installed_version,
-        fixed_version, purl, advisory_id, related_cves [{id, severity}], os_package, matcher (grype/<matcher> or
-        trivy), match_type, data_source, vulnerability_db_built (grype descriptor.db; trivy db/metadata.json
-        UpdatedAt from its cache, best effort). See docs/scanners.md#vulnerability-finding-fields.'
       core/secrets.py: 'Credential resolution for any scanner config field. resolve_secret(config, field,
         *, stdin_override=None) accepts three forms in precedence order: stdin_override (highest, populated
         by CLI --*-password-stdin flags via a module-level slot registry — set_stdin_override / get_stdin_override
