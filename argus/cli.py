@@ -2268,13 +2268,17 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
     #
     # Exit policy (in priority order):
     #   1. Findings over the severity threshold → EXIT_FINDINGS.
-    #   2. Otherwise, if any SBOM failed hard during a batch → EXIT_ERROR.
+    #   2. Otherwise, if any scanner's result is incomplete (an SBOM-mode
+    #      matcher skipped the SBOM's OS packages) → EXIT_ERROR. Always on:
+    #      a scan that didn't check part of its input is never a pass
+    #      (ADR-037, ADR-492).
+    #   3. Otherwise, if any SBOM failed hard during a batch → EXIT_ERROR.
     #      This always fires AFTER every SBOM in the batch was attempted;
     #      we never abort the loop on the first failure.
-    #   3. Otherwise, if --fail-on-scanner-error is set AND any scanner
+    #   4. Otherwise, if --fail-on-scanner-error is set AND any scanner
     #      produced no output → EXIT_ERROR. Opt-in so existing default
     #      "warn but pass" behavior stays unchanged.
-    #   4. Otherwise → EXIT_SUCCESS.
+    #   5. Otherwise → EXIT_SUCCESS.
     scanner_execution_failures = [
         r.scanner for r in summary.results
         if r.metadata.get("execution_failed")
@@ -2294,8 +2298,16 @@ def _cmd_source_scan(args: argparse.Namespace) -> int:
         r.scanner for r in summary.results
         if getattr(r, "partial_failure", False)
     ]
-    if not summary.passed:
+    if not summary.threshold_passed:
         exit_code = EXIT_FINDINGS
+    elif summary.incomplete_scanners:
+        log.error(
+            "Exiting non-zero: %d scanner(s) did not evaluate every package "
+            "in the SBOM (%s); their results are incomplete, not clean.",
+            len(summary.incomplete_scanners),
+            ", ".join(summary.incomplete_scanners),
+        )
+        exit_code = EXIT_ERROR
     elif sbom_batch_failures:
         exit_code = EXIT_ERROR
     elif (
@@ -2560,6 +2572,13 @@ def _merge_sbom_summaries(per_file_summaries, severity_threshold):
             # relies on; append the new SBOM source to a list.
             meta = metadata_by_scanner.setdefault(result.scanner, dict(result.metadata))
             meta.setdefault("sbom_sources", []).append(source)
+            # An incomplete result on any SBOM makes the merged result
+            # incomplete, with each SBOM's reason kept (#492).
+            if result.incomplete:
+                reasons = meta.setdefault("incomplete_reasons", [])
+                reasons.append(f"{source}: {result.metadata.get('incomplete_reason', '')}")
+                meta["incomplete"] = True
+                meta["incomplete_reason"] = "; ".join(reasons)
 
     merged_results = [
         ScanResult(

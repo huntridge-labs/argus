@@ -64,7 +64,7 @@ class TestGrypeParseResults:
         f = tmp_path / "results.json"
         f.write_text(json.dumps(raw))
 
-        findings = GrypeScanner().parse_results(f)
+        findings, _coverage = GrypeScanner().parse_results(f)
         assert len(findings) == 1
         assert findings[0].cve == "CVE-2026-12345"
         assert findings[0].severity == Severity.HIGH
@@ -74,7 +74,8 @@ class TestGrypeParseResults:
     def test_handles_empty_matches(self, tmp_path):
         f = tmp_path / "results.json"
         f.write_text(json.dumps({"matches": []}))
-        assert GrypeScanner().parse_results(f) == []
+        findings, _coverage = GrypeScanner().parse_results(f)
+        assert findings == []
 
     def test_malformed_json_returns_empty(self, tmp_path):
         f = tmp_path / "bad.json"
@@ -105,12 +106,13 @@ class TestGrypeUnknownSource:
             "descriptor": {"name": "grype"},
         }))
 
-    def test_returns_plain_list_when_source_is_known(self, tmp_path):
+    def test_no_warning_when_source_is_known(self, tmp_path):
         f = tmp_path / "r.json"
         self._write(f, [], source_target="container-a")
-        parsed = GrypeScanner().parse_results(f)
-        # Known source + no matches = clean list, no warning extras
-        assert parsed == []
+        findings, extra = GrypeScanner().parse_results(f)
+        # Known source + no matches = no warning; only the coverage keys
+        assert findings == []
+        assert "warning" not in extra
 
     def test_attaches_warning_when_source_unknown_and_empty(self, tmp_path):
         f = tmp_path / "r.json"
@@ -135,6 +137,50 @@ class TestGrypeUnknownSource:
             "artifact": {"name": "x", "version": "1.0"},
         }
         self._write(f, [match], source_target="unknown")
-        parsed = GrypeScanner().parse_results(f)
-        assert isinstance(parsed, list)  # plain list, no warning extras
-        assert len(parsed) == 1
+        findings, extra = GrypeScanner().parse_results(f)
+        assert "warning" not in extra
+        assert len(findings) == 1
+
+
+class TestGrypeCoverageMetadata:
+    """parse_results reports whether grype evaluated the OS packages (#492)."""
+
+    def test_recognized_distro(self, tmp_path):
+        f = tmp_path / "r.json"
+        f.write_text(json.dumps({
+            "matches": [],
+            "distro": {"name": "amazonlinux", "version": "2023"},
+        }))
+        _, extra = GrypeScanner().parse_results(f)
+        assert extra["os_packages_evaluated"] is True
+        assert extra["matcher_os"] == "amazonlinux 2023"
+
+    def test_unrecognized_distro(self, tmp_path):
+        f = tmp_path / "r.json"
+        f.write_text(json.dumps({
+            "matches": [],
+            "distro": {"name": "amazon", "version": "2023 (Amazon Linux)"},
+        }))
+        _, extra = GrypeScanner().parse_results(f)
+        assert extra["os_packages_evaluated"] is False
+
+
+class TestGrypeLocalScan:
+    def test_local_scan_unpacks_parse_results(self, tmp_path):
+        # Regression: scan() used to store parse_results' tuple as the
+        # findings list whenever grype flagged an unknown source.
+        sbom = tmp_path / "sbom.spdx.json"
+        sbom.write_text("{}")
+        report = {"matches": [], "source": {"target": "unknown"}}
+
+        def fake_run(cmd, capture_output, text):
+            out = cmd[cmd.index("--file") + 1]
+            with open(out, "w") as fh:
+                json.dump(report, fh)
+            return MagicMock(returncode=0, stderr="")
+
+        with patch("argus.scanners.grype.subprocess.run", side_effect=fake_run):
+            result = GrypeScanner().scan(".", {"sbom_path": str(sbom)})
+        assert result.findings == []
+        assert "source.target=unknown" in result.metadata["warning"]
+        assert result.metadata["os_packages_evaluated"] is False

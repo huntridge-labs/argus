@@ -127,7 +127,7 @@ For detailed scanner configuration, see [Scanner Reference](docs/scanners.md).
 - **[Unified interface](docs/scanners.md)** - One CLI or workflow for all scanners
 - **[Flexible scanner selection](docs/scanners.md)** - Use scanner groups or specific scanners
 - **[Interactive triage TUI](docs/view-terminal.md)** - `argus view terminal` — keyboard-driven findings explorer with executive dashboard
-- **[SBOM input](docs/cli-reference.md)** - `argus scan --sbom path/to/sbom.json` accepts CycloneDX / SPDX / Syft SBOMs (file or directory of SBOMs)
+- **[SBOM input](docs/sbom-scanning.md)** - `argus scan --sbom path/to/sbom.json` accepts CycloneDX / SPDX / Syft SBOMs (file or directory of SBOMs), and flags a matcher that skipped the SBOM's OS packages as incomplete
 - **[GitHub Security tab integration](.github/actions/scanner-codeql/README.md)** - Upload SARIF results to Code Scanning
 - **PR comments** - Inline feedback on pull requests
 - **[Severity-based failure control](docs/failure-control.md)** - Set thresholds for workflow failures

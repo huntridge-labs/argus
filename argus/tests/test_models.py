@@ -428,3 +428,61 @@ class TestPhaseResultAndPartialFailure:
         result = ScanResult.from_dict(payload)
         assert result.phase_results is None
         assert result.partial_failure is False
+
+
+class TestIncompleteResults:
+    """A matcher that skipped part of its input is never a pass (#492)."""
+
+    def _incomplete(self, findings=None):
+        return ScanResult(
+            scanner="trivy",
+            findings=findings or [],
+            metadata={
+                "incomplete": True,
+                "incomplete_reason": "trivy did not evaluate 3 OS package(s)",
+            },
+        )
+
+    def test_result_flag(self):
+        assert self._incomplete().incomplete is True
+        assert ScanResult(scanner="grype").incomplete is False
+
+    def test_incomplete_summary_does_not_pass(self):
+        summary = ScanSummary(results=[self._incomplete(), ScanResult(scanner="grype")])
+        assert summary.threshold_passed is True
+        assert summary.complete is False
+        assert summary.incomplete_scanners == ["trivy"]
+        assert summary.passed is False
+
+    def test_incomplete_with_findings_over_threshold(self):
+        finding = Finding(id="CVE-1", severity=Severity.HIGH, title="x")
+        summary = ScanSummary(
+            results=[self._incomplete([finding])],
+            severity_threshold=Severity.HIGH,
+        )
+        assert summary.threshold_passed is False
+        assert summary.passed is False
+
+    def test_complete_summary(self):
+        summary = ScanSummary(results=[ScanResult(scanner="grype")])
+        assert summary.complete is True
+        assert summary.incomplete_scanners == []
+        assert summary.passed is True
+
+    def test_to_dict_reports_completeness(self):
+        d = ScanSummary(results=[self._incomplete()]).to_dict()
+        assert d["passed"] is False
+        assert d["complete"] is False
+        assert d["incomplete_scanners"] == ["trivy"]
+        assert d["results"][0]["incomplete"] is True
+
+    def test_to_dict_complete_run_keeps_result_shape(self):
+        d = ScanSummary(results=[ScanResult(scanner="grype")]).to_dict()
+        assert d["complete"] is True
+        assert d["incomplete_scanners"] == []
+        assert "incomplete" not in d["results"][0]
+
+    def test_round_trip_keeps_incomplete(self):
+        restored = ScanSummary.from_dict(ScanSummary(results=[self._incomplete()]).to_dict())
+        assert restored.results[0].incomplete is True
+        assert restored.passed is False

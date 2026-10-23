@@ -1,0 +1,89 @@
+id: ADR-492
+title: "An SBOM scan whose matcher skipped the OS packages is incomplete, never clean"
+date: '2026-10-23'
+status: accepted
+context: |-
+  In SBOM mode a matcher can read the SBOM, fail to work out which OS its
+  packages belong to, drop every OS package, and report zero findings with
+  exit 0. Measured with the pinned tools (syft v1.54.1, trivy 0.76.0, grype
+  v0.120.1) on amazonlinux:2023.1.20230705.0:
+
+  - trivy on a syft SPDX JSON SBOM reads the OS as `none`: 0 findings
+    (grype finds 237 on the same file)
+  - trivy on a syft CycloneDX JSON SBOM reads the OS as `amzn`, logs
+    "Unsupported os": 0 findings
+  - grype on a trivy CycloneDX or SPDX SBOM can't map the `amazon` distro:
+    0 findings (trivy finds 504)
+
+  Every one of those runs printed `Status: PASS` and exited 0. The only
+  trace was a WARN line in the tool's stderr.
+decision: |-
+  When the SBOM has OS packages and the matcher's own report shows it
+  didn't evaluate them, mark that scanner's result `incomplete`. An
+  incomplete result is never a pass.
+
+  - OS packages are the purls with a `distro=` qualifier, or of a type that
+    only holds OS packages (apk, deb, rpm, alpm).
+  - trivy evaluated them when its JSON has an `os-pkgs` result (it writes
+    one even when the OS has no vulnerabilities). grype evaluated them when
+    it reports a distro type it supports, or matched an OS package.
+  - The engine runs the check on every SBOM-mode result. Scanners with no
+    coverage signal (osv-scanner) and results that already failed are left
+    alone.
+  - `ScanSummary.passed` is False when any result is incomplete;
+    `threshold_passed` keeps the threshold-only check. argus-results.json
+    gains `complete` and `incomplete_scanners`.
+  - `argus scan` exits 2 for an incomplete scan, with or without
+    `--fail-on-scanner-error`. Findings over the threshold still exit 1
+    first.
+  - Terminal and markdown show `Status: INCOMPLETE` and the reason, SARIF
+    adds an error-level tool execution notification, JUnit adds an error
+    testcase.
+alternatives_considered:
+- name: Gate the exit code behind --fail-on-scanner-error, like execution and parse failures
+  rejected_because: ADR-037 already rejected this for scans that didn't run. The
+    flag puts the safe behaviour behind an option most callers never set, and
+    the default run is exactly the one that passed green over unchecked
+    packages.
+- name: Keep `passed` as the threshold check and add only a `complete` field
+  rejected_because: Consumers that gate on `passed` (output vars, MCP, CI
+    scripts reading argus-results.json) would keep reading an incomplete scan
+    as a pass.
+- name: Parse the matchers' stderr for "Unsupported os" / "distro detection failed"
+  rejected_because: Log wording isn't a contract and changes between
+    releases. The JSON report structure (os-pkgs result, distro field) is what
+    the tools document.
+- name: Treat any SBOM where the matcher found zero OS vulnerabilities as suspect
+  rejected_because: A patched image genuinely has none. trivy's os-pkgs result
+    and grype's distro field separate "checked and clean" from "never checked".
+consequences:
+  positive:
+  - A matcher/SBOM mismatch can no longer pass as a clean scan.
+  - The reason names the OS the matcher read and the distro the SBOM carries,
+    which points straight at the fix.
+  negative:
+  - 'Until the scanner choice follows the SBOM''s generator (issue #493), a
+    default `argus scan --sbom` on a syft SBOM of an rpm-based image exits 2
+    because trivy runs alongside grype and skips the OS packages.'
+  - grype's supported distro types are pinned in GRYPE_DISTRO_TYPES and need
+    bumping with the grype pin. A missing type only matters when grype also
+    matched no OS package.
+  - osv-scanner reports no coverage signal, so it isn't checked.
+implementation: |-
+  - argus/core/sbom_contents.py: read_purls (CycloneDX JSON/XML, SPDX
+    JSON/tag-value, Syft JSON), parse_purl, os_packages.
+  - argus/core/sbom_coverage.py: trivy_coverage, grype_coverage,
+    apply_coverage_guard.
+  - argus/scanners/trivy.py, grype.py: parse_results returns the coverage
+    keys (os_packages_evaluated, matcher_os) with the findings.
+  - argus/core/engine.py `_run_one_scanner`: runs the guard in SBOM mode.
+  - argus/core/models.py: ScanResult.incomplete, ScanSummary.threshold_passed
+    / complete / incomplete_scanners; passed requires complete.
+  - argus/cli.py: exit 2 on incomplete; `_merge_sbom_summaries` keeps an
+    incomplete result from any SBOM in a batch.
+  - Reporters: terminal, markdown, SARIF, JUnit.
+  - Fixtures: tests/fixtures/sbom/ and
+    tests/fixtures/scanner-outputs/{trivy,grype}/sbom-*.json, trimmed real
+    output from the pinned tools.
+affects_components:
+- argus-sdk

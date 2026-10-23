@@ -78,6 +78,12 @@ components:
         (.trivyignore for trivy / trivy-iac). Scanners pass each one via the tool's flag (ADR-041)
       core/sbom.py: SBOM format detection (CycloneDX JSON/XML, SPDX JSON/tag-value, Syft JSON) for ``argus
         scan --sbom``
+      core/sbom_contents.py: Reads an SBOM's package purls (all five formats) and parses them; os_packages()
+        returns the OS packages (``distro=`` qualifier, or apk/deb/rpm/alpm type)
+      core/sbom_coverage.py: 'SBOM-mode coverage guard (ADR-492). trivy_coverage / grype_coverage read whether the
+        matcher evaluated the OS packages from its JSON; apply_coverage_guard (called by the engine on every
+        SBOM-mode result) marks a result incomplete when the SBOM has OS packages the matcher skipped. An
+        incomplete result is never a pass: ScanSummary.passed is False and argus scan exits 2.'
       core/secrets.py: 'Credential resolution for any scanner config field. resolve_secret(config, field,
         *, stdin_override=None) accepts three forms in precedence order: stdin_override (highest, populated
         by CLI --*-password-stdin flags via a module-level slot registry — set_stdin_override / get_stdin_override
@@ -784,6 +790,12 @@ docsite:
         (.trivyignore for trivy / trivy-iac). Scanners pass each one via the tool's flag (ADR-041)
       core/sbom.py: SBOM format detection (CycloneDX JSON/XML, SPDX JSON/tag-value, Syft JSON) for ``argus
         scan --sbom``
+      core/sbom_contents.py: Reads an SBOM's package purls (all five formats) and parses them; os_packages()
+        returns the OS packages (``distro=`` qualifier, or apk/deb/rpm/alpm type)
+      core/sbom_coverage.py: 'SBOM-mode coverage guard (ADR-492). trivy_coverage / grype_coverage read whether the
+        matcher evaluated the OS packages from its JSON; apply_coverage_guard (called by the engine on every
+        SBOM-mode result) marks a result incomplete when the SBOM has OS packages the matcher skipped. An
+        incomplete result is never a pass: ScanSummary.passed is False and argus scan exits 2.'
       core/secrets.py: 'Credential resolution for any scanner config field. resolve_secret(config, field,
         *, stdin_override=None) accepts three forms in precedence order: stdin_override (highest, populated
         by CLI --*-password-stdin flags via a module-level slot registry — set_stdin_override / get_stdin_override

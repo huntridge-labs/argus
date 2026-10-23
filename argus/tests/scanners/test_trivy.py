@@ -66,7 +66,7 @@ class TestTrivyParseResults:
         f = tmp_path / "results.json"
         f.write_text(json.dumps(raw))
 
-        findings = TrivyScanner().parse_results(f)
+        findings, _coverage = TrivyScanner().parse_results(f)
         assert len(findings) == 1
         assert findings[0].cve == "CVE-2026-9999"
         assert findings[0].severity == Severity.CRITICAL
@@ -76,7 +76,8 @@ class TestTrivyParseResults:
     def test_handles_no_vulnerabilities(self, tmp_path):
         f = tmp_path / "results.json"
         f.write_text(json.dumps({"Results": [{"Vulnerabilities": []}]}))
-        assert TrivyScanner().parse_results(f) == []
+        findings, _coverage = TrivyScanner().parse_results(f)
+        assert findings == []
 
     def test_malformed_json_returns_empty(self, tmp_path):
         f = tmp_path / "bad.json"
@@ -94,3 +95,52 @@ class TestTrivyScanNoSbom:
         from argus.core.engine import ScannerPreconditionError
         with pytest.raises(ScannerPreconditionError, match="sbom_path"):
             TrivyScanner().scan(path=".", config={})
+
+
+class TestTrivyCoverageMetadata:
+    """parse_results reports whether trivy evaluated the OS packages (#492)."""
+
+    def test_reports_os_not_evaluated(self, tmp_path):
+        f = tmp_path / "results.json"
+        f.write_text(json.dumps({
+            "Metadata": {"OS": {"Family": "none", "Name": ""}},
+            "Results": [{"Class": "lang-pkgs", "Vulnerabilities": None}],
+        }))
+        findings, extra = TrivyScanner().parse_results(f)
+        assert findings == []
+        assert extra == {"os_packages_evaluated": False, "matcher_os": "none"}
+
+    def test_reports_os_evaluated(self, tmp_path):
+        f = tmp_path / "results.json"
+        f.write_text(json.dumps({
+            "Metadata": {"OS": {"Family": "debian", "Name": "12.5"}},
+            "Results": [{"Class": "os-pkgs", "Vulnerabilities": None}],
+        }))
+        _, extra = TrivyScanner().parse_results(f)
+        assert extra == {"os_packages_evaluated": True, "matcher_os": "debian 12.5"}
+
+
+class TestTrivyLocalScan:
+    def test_local_scan_merges_coverage_into_metadata(self, tmp_path):
+        sbom = tmp_path / "sbom.cdx.json"
+        sbom.write_text("{}")
+        report = {
+            "Metadata": {"OS": {"Family": "amzn", "Name": "2023"}},
+            "Results": [{"Class": "lang-pkgs"}],
+        }
+
+        def fake_run(cmd, capture_output, text):
+            out = cmd[cmd.index("--output") + 1]
+            with open(out, "w") as fh:
+                json.dump(report, fh)
+
+            class Proc:
+                returncode = 0
+                stderr = ""
+            return Proc()
+
+        with patch("argus.scanners.trivy.subprocess.run", side_effect=fake_run):
+            result = TrivyScanner().scan(".", {"sbom_path": str(sbom)})
+        assert result.findings == []
+        assert result.metadata["os_packages_evaluated"] is False
+        assert result.metadata["matcher_os"] == "amzn 2023"

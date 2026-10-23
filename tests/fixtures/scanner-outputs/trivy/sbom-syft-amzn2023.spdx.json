@@ -1,0 +1,34 @@
+{
+  "SchemaVersion": 2,
+  "Trivy": {
+    "Version": "0.76.0"
+  },
+  "ReportID": "01a168e9-d8da-7464-a0c1-5bf62ac07958",
+  "CreatedAt": "2026-10-23T13:18:38.298288631Z",
+  "ArtifactName": "/f/syft-amzn2023.spdx.json",
+  "ArtifactType": "spdx",
+  "Metadata": {
+    "OS": {
+      "Family": "none",
+      "Name": ""
+    }
+  },
+  "Results": [
+    {
+      "Target": "Python",
+      "Class": "lang-pkgs",
+      "Type": "python-pkg",
+      "Packages": [
+        {
+          "ID": "rpm@4.16.1.3",
+          "Name": "rpm",
+          "Identifier": {
+            "PURL": "pkg:pypi/rpm@4.16.1.3",
+            "UID": "cb67de0882a153a6"
+          },
+          "Version": "4.16.1.3"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,510 @@
+{
+  "matches": [
+    {
+      "vulnerability": {
+        "id": "ALAS2023-2023-377",
+        "dataSource": "https://alas.aws.amazon.com/AL2023/ALAS2023-2023-377.html",
+        "namespace": "amazon:distro:amazonlinux:2023",
+        "severity": "High",
+        "urls": [],
+        "description": "An issue was found in curl that can cause a buffer overflow in its SOCKS5 proxy communications code.When curl is using a SOCKS5 proxy and it needs to resolve a hostname to an IP address, its default behavior is to pass the hostname to the proxy and allow it to perform the resolution. In cases where the hostname is greater than 255 characters in length, curl will instead attempt to perform the resolution locally and then pass the resolved IP to the proxy for its use. Due to an issue in the curl source code, the logic that determines whether curl should resolve the name locally or pass it to the proxy for resolution could make an incorrect decision when a slow SOCKS5 handshake occurs. If this occurs, curl may inadvertently copy an excessively long host name, rather than the resolved address, into the target buffer being prepared for transmission to the proxy, resulting in a buffer overflow. (CVE-2023-38545)An issue was found in libcurl which allows cookies to be inserted into a running program if specific conditions are met. The libcurl provided function, curl_easy_duphandle(), is used to duplicate the easy_handle associated with a transfer. If a duplicated transfer's easy_handle has cookies enabled when it is duplicated, the cookie-enabled state is cloned but the actual cookies are not. If the source easy_handle didn't read cookies from disk, the cloned easy_handle will attempt to read cookies from a file named 'none' in the local directory, potentially allowing arbitrary cookies to be loaded. (CVE-2023-38546)",
+        "epss": [
+          {
+            "cve": "CVE-2023-38545",
+            "epss": 0.78689,
+            "percentile": 0.99591,
+            "date": "2026-10-22"
+          },
+          {
+            "cve": "CVE-2023-38546",
+            "epss": 0.05956,
+            "percentile": 0.9326,
+            "date": "2026-10-22"
+          }
+        ],
+        "cwes": [
+          {
+            "cve": "CVE-2023-38545",
+            "cwe": "CWE-787",
+            "source": "nvd@nist.gov",
+            "type": "Primary"
+          },
+          {
+            "cve": "CVE-2023-38545",
+            "cwe": "CWE-787",
+            "source": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+            "type": "Secondary"
+          }
+        ],
+        "fix": {
+          "versions": [
+            "8.3.0-1.amzn2023.0.2"
+          ],
+          "state": "fixed",
+          "available": [
+            {
+              "version": "8.3.0-1.amzn2023.0.2",
+              "date": "2023-10-11",
+              "kind": "advisory"
+            }
+          ]
+        },
+        "advisories": [],
+        "risk": 59.016749999999995
+      },
+      "relatedVulnerabilities": [
+        {
+          "id": "CVE-2023-38545",
+          "dataSource": "https://nvd.nist.gov/vuln/detail/CVE-2023-38545",
+          "namespace": "nvd:cpe",
+          "severity": "Critical",
+          "urls": [
+            "http://seclists.org/fulldisclosure/2024/Jan/34"
+          ],
+          "description": "This flaw makes curl overflow a heap based buffer in the SOCKS5 proxy\nhandshake.\n\nWhen curl is asked to pass along the host name to the SOCKS5 proxy to allow\nthat to resolve the address instead of it getting done by curl itself, the\nmaximum length that host name can be is 255 bytes.\n\nIf the host name is detected to be longer, curl switches to local name\nresolving and instead passes on the resolved address only. Due to this bug,\nthe local variable that means \"let the host resolve the name\" could get the\nwrong value during a slow SOCKS5 handshake, and contrary to the intention,\ncopy the too long host name to the target buffer instead of copying just the\nresolved address there.\n\nThe target buffer being a heap based buffer, and the host name coming from the\nURL that curl has been told to operate with.",
+          "epss": [
+            {
+              "cve": "CVE-2023-38545",
+              "epss": 0.78689,
+              "percentile": 0.99591,
+              "date": "2026-10-22"
+            }
+          ],
+          "cwes": [
+            {
+              "cve": "CVE-2023-38545",
+              "cwe": "CWE-787",
+              "source": "nvd@nist.gov",
+              "type": "Primary"
+            },
+            {
+              "cve": "CVE-2023-38545",
+              "cwe": "CWE-787",
+              "source": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+              "type": "Secondary"
+            }
+          ]
+        },
+        {
+          "id": "CVE-2023-38546",
+          "dataSource": "https://nvd.nist.gov/vuln/detail/CVE-2023-38546",
+          "namespace": "nvd:cpe",
+          "severity": "Low",
+          "urls": [
+            "http://seclists.org/fulldisclosure/2024/Jan/34"
+          ],
+          "description": "This flaw allows an attacker to insert cookies at will into a running program\nusing libcurl, if the specific series of conditions are met.\n\nlibcurl performs transfers. In its API, an application creates \"easy handles\"\nthat are the individual handles for single transfers.\n\nlibcurl provides a function call that duplicates en easy handle called\n[curl_easy_duphandle](https://curl.se/libcurl/c/curl_easy_duphandle.html).\n\nIf a transfer has cookies enabled when the handle is duplicated, the\ncookie-enable state is also cloned - but without cloning the actual\ncookies. If the source handle did not read any cookies from a specific file on\ndisk, the cloned version of the handle would instead store the file name as\n`none` (using the four ASCII letters, no quotes).\n\nSubsequent use of the cloned handle that does not explicitly set a source to\nload cookies from would then inadvertently load cookies from a file named\n`none` - if such a file exists and is readable in the current directory of the\nprogram using libcurl. And if using the correct file format of course.",
+          "epss": [
+            {
+              "cve": "CVE-2023-38546",
+              "epss": 0.05956,
+              "percentile": 0.9326,
+              "date": "2026-10-22"
+            }
+          ]
+        }
+      ],
+      "matchDetails": [
+        {
+          "type": "exact-direct-match",
+          "matcher": "rpm-matcher",
+          "searchedBy": {
+            "distro": {
+              "type": "amazonlinux",
+              "version": "2023"
+            },
+            "package": {
+              "name": "curl-minimal",
+              "version": "0:8.0.1-1.amzn2023"
+            },
+            "namespace": "amazon:distro:amazonlinux:2023"
+          },
+          "found": {
+            "vulnerabilityID": "ALAS2023-2023-377",
+            "versionConstraint": "< 8.3.0-1.amzn2023.0.2 (rpm)"
+          },
+          "fix": {
+            "suggestedVersion": "8.3.0-1.amzn2023.0.2"
+          }
+        },
+        {
+          "type": "exact-indirect-match",
+          "matcher": "rpm-matcher",
+          "searchedBy": {
+            "distro": {
+              "type": "amazonlinux",
+              "version": "2023"
+            },
+            "package": {
+              "name": "curl",
+              "version": "8.0.1-1.amzn2023"
+            },
+            "namespace": "amazon:distro:amazonlinux:2023"
+          },
+          "found": {
+            "vulnerabilityID": "ALAS2023-2023-377",
+            "versionConstraint": "< 8.3.0-1.amzn2023.0.2 (rpm)"
+          },
+          "fix": {
+            "suggestedVersion": "8.3.0-1.amzn2023.0.2"
+          }
+        }
+      ],
+      "artifact": {
+        "id": "Package-rpm-curl-minimal-04f200fc5fa1dd86",
+        "name": "curl-minimal",
+        "version": "8.0.1-1.amzn2023",
+        "type": "rpm",
+        "language": "",
+        "purl": "pkg:rpm/amzn/curl-minimal@8.0.1-1.amzn2023?arch=x86_64&distro=amzn-2023&upstream=curl-8.0.1-1.amzn2023.src.rpm",
+        "upstreams": [
+          {
+            "name": "curl",
+            "version": "8.0.1-1.amzn2023"
+          }
+        ],
+        "metadataType": "RpmMetadata",
+        "metadata": {
+          "epoch": null,
+          "modularityLabel": null,
+          "architecture": "x86_64"
+        }
+      }
+    },
+    {
+      "vulnerability": {
+        "id": "ALAS2023-2023-368",
+        "dataSource": "https://alas.aws.amazon.com/AL2023/ALAS2023-2023-368.html",
+        "namespace": "amazon:distro:amazonlinux:2023",
+        "severity": "High",
+        "urls": [],
+        "description": "HTTP headers eat all memoryNOTE: https://www.openwall.com/lists/oss-security/2023/09/13/1NOTE: https://curl.se/docs/CVE-2023-38039.htmlNOTE: Introduced by: https://github.com/curl/curl/commit/7c8c723682d524ac9580b9ca3b71419163cb5660 (curl-7_83_0)NOTE: Experimental tag removed in: https://github.com/curl/curl/commit/4d94fac9f0d1dd02b8308291e4c47651142dc28b (curl-7_84_0)NOTE: Fixed by: https://github.com/curl/curl/commit/3ee79c1674fd6f99e8efca52cd7510e08b766770 (curl-8_3_0) (CVE-2023-38039)",
+        "epss": [
+          {
+            "cve": "CVE-2023-38039",
+            "epss": 0.56371,
+            "percentile": 0.99057,
+            "date": "2026-10-22"
+          }
+        ],
+        "cwes": [
+          {
+            "cve": "CVE-2023-38039",
+            "cwe": "CWE-770",
+            "source": "nvd@nist.gov",
+            "type": "Primary"
+          },
+          {
+            "cve": "CVE-2023-38039",
+            "cwe": "CWE-770",
+            "source": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+            "type": "Secondary"
+          }
+        ],
+        "fix": {
+          "versions": [
+            "8.3.0-1.amzn2023.0.1"
+          ],
+          "state": "fixed",
+          "available": [
+            {
+              "version": "8.3.0-1.amzn2023.0.1",
+              "date": "2023-10-03",
+              "kind": "advisory"
+            }
+          ]
+        },
+        "advisories": [],
+        "risk": 42.27825000000001
+      },
+      "relatedVulnerabilities": [
+        {
+          "id": "CVE-2023-38039",
+          "dataSource": "https://nvd.nist.gov/vuln/detail/CVE-2023-38039",
+          "namespace": "nvd:cpe",
+          "severity": "High",
+          "urls": [
+            "http://seclists.org/fulldisclosure/2023/Oct/17"
+          ],
+          "description": "When curl retrieves an HTTP response, it stores the incoming headers so that\nthey can be accessed later via the libcurl headers API.\n\nHowever, curl did not have a limit in how many or how large headers it would\naccept in a response, allowing a malicious server to stream an endless series\nof headers and eventually cause curl to run out of heap memory.",
+          "epss": [
+            {
+              "cve": "CVE-2023-38039",
+              "epss": 0.56371,
+              "percentile": 0.99057,
+              "date": "2026-10-22"
+            }
+          ],
+          "cwes": [
+            {
+              "cve": "CVE-2023-38039",
+              "cwe": "CWE-770",
+              "source": "nvd@nist.gov",
+              "type": "Primary"
+            },
+            {
+              "cve": "CVE-2023-38039",
+              "cwe": "CWE-770",
+              "source": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+              "type": "Secondary"
+            }
+          ]
+        }
+      ],
+      "matchDetails": [
+        {
+          "type": "exact-direct-match",
+          "matcher": "rpm-matcher",
+          "searchedBy": {
+            "distro": {
+              "type": "amazonlinux",
+              "version": "2023"
+            },
+            "package": {
+              "name": "curl-minimal",
+              "version": "0:8.0.1-1.amzn2023"
+            },
+            "namespace": "amazon:distro:amazonlinux:2023"
+          },
+          "found": {
+            "vulnerabilityID": "ALAS2023-2023-368",
+            "versionConstraint": "< 8.3.0-1.amzn2023.0.1 (rpm)"
+          },
+          "fix": {
+            "suggestedVersion": "8.3.0-1.amzn2023.0.1"
+          }
+        },
+        {
+          "type": "exact-indirect-match",
+          "matcher": "rpm-matcher",
+          "searchedBy": {
+            "distro": {
+              "type": "amazonlinux",
+              "version": "2023"
+            },
+            "package": {
+              "name": "curl",
+              "version": "8.0.1-1.amzn2023"
+            },
+            "namespace": "amazon:distro:amazonlinux:2023"
+          },
+          "found": {
+            "vulnerabilityID": "ALAS2023-2023-368",
+            "versionConstraint": "< 8.3.0-1.amzn2023.0.1 (rpm)"
+          },
+          "fix": {
+            "suggestedVersion": "8.3.0-1.amzn2023.0.1"
+          }
+        }
+      ],
+      "artifact": {
+        "id": "Package-rpm-curl-minimal-04f200fc5fa1dd86",
+        "name": "curl-minimal",
+        "version": "8.0.1-1.amzn2023",
+        "type": "rpm",
+        "language": "",
+        "purl": "pkg:rpm/amzn/curl-minimal@8.0.1-1.amzn2023?arch=x86_64&distro=amzn-2023&upstream=curl-8.0.1-1.amzn2023.src.rpm",
+        "upstreams": [
+          {
+            "name": "curl",
+            "version": "8.0.1-1.amzn2023"
+          }
+        ],
+        "metadataType": "RpmMetadata",
+        "metadata": {
+          "epoch": null,
+          "modularityLabel": null,
+          "architecture": "x86_64"
+        }
+      }
+    },
+    {
+      "vulnerability": {
+        "id": "ALAS2023-2026-1406",
+        "dataSource": "https://alas.aws.amazon.com/AL2023/ALAS2023-2026-1406.html",
+        "namespace": "amazon:distro:amazonlinux:2023",
+        "severity": "High",
+        "urls": [],
+        "description": "A flaw was found in OpenSSL. A remote attacker can exploit a stack buffer overflow vulnerability by supplying a crafted Cryptographic Message Syntax (CMS) message with an oversized Initialization Vector (IV) when parsing AuthEnvelopedData structures that use Authenticated Encryption with Associated Data (AEAD) ciphers such as AES-GCM. This can lead to a crash, causing a Denial of Service (DoS), or potentially allow for remote code execution. (CVE-2025-15467)",
+        "epss": [
+          {
+            "cve": "CVE-2025-15467",
+            "epss": 0.55853,
+            "percentile": 0.99044,
+            "date": "2026-10-22"
+          }
+        ],
+        "cwes": [
+          {
+            "cve": "CVE-2025-15467",
+            "cwe": "CWE-787",
+            "source": "openssl-security@openssl.org",
+            "type": "Secondary"
+          },
+          {
+            "cve": "CVE-2025-15467",
+            "cwe": "CWE-120",
+            "source": "0b0ca135-0b70-47e7-9f44-1890c2a1c46c",
+            "type": "Secondary"
+          }
+        ],
+        "fix": {
+          "versions": [
+            "3.2.2-1.amzn2023.0.4"
+          ],
+          "state": "fixed",
+          "available": [
+            {
+              "version": "3.2.2-1.amzn2023.0.4",
+              "date": "2026-02-05",
+              "kind": "advisory"
+            }
+          ]
+        },
+        "advisories": [],
+        "risk": 41.88975
+      },
+      "relatedVulnerabilities": [
+        {
+          "id": "CVE-2025-15467",
+          "dataSource": "https://nvd.nist.gov/vuln/detail/CVE-2025-15467",
+          "namespace": "nvd:cpe",
+          "severity": "Critical",
+          "urls": [
+            "https://github.com/openssl/openssl/commit/2c8f0e5fa9b6ee5508a0349e4572ddb74db5a703"
+          ],
+          "description": "Issue summary: Parsing CMS AuthEnvelopedData or EnvelopedData message with\nmaliciously crafted AEAD parameters can trigger a stack buffer overflow.\n\nImpact summary: A stack buffer overflow may lead to a crash, causing Denial\nof Service, or potentially remote code execution.\n\nWhen parsing CMS (Auth)EnvelopedData structures that use AEAD ciphers such as\nAES-GCM, the IV (Initialization Vector) encoded in the ASN.1 parameters is\ncopied into a fixed-size stack buffer without verifying that its length fits\nthe destination. An attacker can supply a crafted CMS message with an\noversized IV, causing a stack-based out-of-bounds write before any\nauthentication or tag verification occurs.\n\nApplications and services that parse untrusted CMS or PKCS#7 content using\nAEAD ciphers (e.g., S/MIME (Auth)EnvelopedData with AES-GCM) are vulnerable.\nBecause the overflow occurs prior to authentication, no valid key material\nis required to trigger it. While exploitability to remote code execution\ndepends on platform and toolchain mitigations, the stack-based write\nprimitive represents a severe risk.\n\nThe FIPS modules in 3.6, 3.5, 3.4, 3.3 and 3.0 are not affected by this\nissue, as the CMS implementation is outside the OpenSSL FIPS module\nboundary.\n\nOpenSSL 3.6, 3.5, 3.4, 3.3 and 3.0 are vulnerable to this issue.\n\nOpenSSL 1.1.1 and 1.0.2 are not affected by this issue.",
+          "epss": [
+            {
+              "cve": "CVE-2025-15467",
+              "epss": 0.55853,
+              "percentile": 0.99044,
+              "date": "2026-10-22"
+            }
+          ],
+          "cwes": [
+            {
+              "cve": "CVE-2025-15467",
+              "cwe": "CWE-787",
+              "source": "openssl-security@openssl.org",
+              "type": "Secondary"
+            },
+            {
+              "cve": "CVE-2025-15467",
+              "cwe": "CWE-120",
+              "source": "0b0ca135-0b70-47e7-9f44-1890c2a1c46c",
+              "type": "Secondary"
+            }
+          ]
+        }
+      ],
+      "matchDetails": [
+        {
+          "type": "exact-direct-match",
+          "matcher": "rpm-matcher",
+          "searchedBy": {
+            "distro": {
+              "type": "amazonlinux",
+              "version": "2023"
+            },
+            "package": {
+              "name": "openssl-libs",
+              "version": "1:3.0.8-1.amzn2023.0.3"
+            },
+            "namespace": "amazon:distro:amazonlinux:2023"
+          },
+          "found": {
+            "vulnerabilityID": "ALAS2023-2026-1406",
+            "versionConstraint": "< 3.2.2-1.amzn2023.0.4 (rpm)"
+          },
+          "fix": {
+            "suggestedVersion": "3.2.2-1.amzn2023.0.4"
+          }
+        },
+        {
+          "type": "exact-indirect-match",
+          "matcher": "rpm-matcher",
+          "searchedBy": {
+            "distro": {
+              "type": "amazonlinux",
+              "version": "2023"
+            },
+            "package": {
+              "name": "openssl",
+              "version": "3.0.8-1.amzn2023.0.3"
+            },
+            "namespace": "amazon:distro:amazonlinux:2023"
+          },
+          "found": {
+            "vulnerabilityID": "ALAS2023-2026-1406",
+            "versionConstraint": "< 3.2.2-1.amzn2023.0.4 (rpm)"
+          },
+          "fix": {
+            "suggestedVersion": "3.2.2-1.amzn2023.0.4"
+          }
+        }
+      ],
+      "artifact": {
+        "id": "Package-rpm-openssl-libs-10e1c21517e636ab",
+        "name": "openssl-libs",
+        "version": "1:3.0.8-1.amzn2023.0.3",
+        "type": "rpm",
+        "language": "",
+        "purl": "pkg:rpm/amzn/openssl-libs@3.0.8-1.amzn2023.0.3?arch=x86_64&distro=amzn-2023&epoch=1&upstream=openssl-3.0.8-1.amzn2023.0.3.src.rpm",
+        "upstreams": [
+          {
+            "name": "openssl",
+            "version": "3.0.8-1.amzn2023.0.3"
+          }
+        ],
+        "metadataType": "RpmMetadata",
+        "metadata": {
+          "epoch": 1,
+          "modularityLabel": null,
+          "architecture": "x86_64"
+        }
+      }
+    }
+  ],
+  "source": {
+    "type": "image",
+    "target": {
+      "userInput": "amazonlinux:2023.1.20230705.0",
+      "imageID": "DocumentRoot-Image-amazonlinux",
+      "manifestDigest": "sha256:a2fe6341cfe8bdd6c189eddb77a4173cb857a20e918a954937fe6e9e807ddeb5",
+      "tags": [],
+      "repoDigests": []
+    }
+  },
+  "distro": {
+    "name": "amazonlinux",
+    "version": "2023",
+    "idLike": [
+      "amazonlinux"
+    ]
+  },
+  "descriptor": {
+    "name": "grype",
+    "version": "0.120.1",
+    "timestamp": "2026-10-23T13:20:23.340180179Z",
+    "db": {
+      "status": {
+        "schemaVersion": "v6.1.10",
+        "from": "https://grype.anchore.io/databases/v6/vulnerability-db_v6.1.10_2026-10-23T00:30:52Z_1792737015.tar.zst?checksum=sha256%3A6e78c0f757fe96976b37b138e54e83fd75f2ad1f6c5feae2ecb008cefa8fcc0f",
+        "built": "2026-10-23T06:30:15Z",
+        "path": "/gc/6/vulnerability.db",
+        "valid": true
+      },
+      "providers": {
+        "amazon": {
+          "captured": "2026-10-23T00:31:16Z",
+          "input": "xxh64:b3a74559fb09e3cf"
+        },
+        "nvd": {
+          "captured": "2026-10-23T00:32:25Z",
+          "input": "xxh64:e4d5669cf7c8927d"
+        }
+      }
+    }
+  }
+}

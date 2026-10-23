@@ -1,0 +1,303 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "amazonlinux:2023.1.20230705.0",
+  "documentNamespace": "http://trivy.dev/container_image/amazonlinux:2023.1.20230705.0-e3eead36-7fe9-4b94-a8fc-420cf817b7c9",
+  "creationInfo": {
+    "creators": [
+      "Organization: aquasecurity",
+      "Tool: trivy-0.76.0"
+    ],
+    "created": "2026-10-23T13:05:10Z"
+  },
+  "packages": [
+    {
+      "name": "amazonlinux:2023.1.20230705.0",
+      "SPDXID": "SPDXRef-ContainerImage-7a44e2d77b2ee3e",
+      "downloadLocation": "NONE",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:oci/amazonlinux@sha256:2a1003479903aeb2dc92e4735b2994e1b7b5cbaefd275c97f467f82a0eb82cef?arch=amd64&repository_url=index.docker.io%2Flibrary%2Famazonlinux"
+        }
+      ],
+      "primaryPackagePurpose": "CONTAINER",
+      "annotations": [
+        {
+          "annotator": "Tool: trivy-0.76.0",
+          "annotationDate": "2026-10-23T13:05:10Z",
+          "annotationType": "OTHER",
+          "comment": "DiffID: sha256:ccaa10561e9863cf8b12e0042fd5e98ae8e8a8cbdf6f77fce4755b6ae968817f"
+        },
+        {
+          "annotator": "Tool: trivy-0.76.0",
+          "annotationDate": "2026-10-23T13:05:10Z",
+          "annotationType": "OTHER",
+          "comment": "ImageID: sha256:b0e848211f0204884a48d1c782ee0a7d6007849e355f0bc9b7608af5e437cce7"
+        },
+        {
+          "annotator": "Tool: trivy-0.76.0",
+          "annotationDate": "2026-10-23T13:05:10Z",
+          "annotationType": "OTHER",
+          "comment": "Reference: amazonlinux:2023.1.20230705.0"
+        },
+        {
+          "annotator": "Tool: trivy-0.76.0",
+          "annotationDate": "2026-10-23T13:05:10Z",
+          "annotationType": "OTHER",
+          "comment": "RepoDigest: amazonlinux@sha256:2a1003479903aeb2dc92e4735b2994e1b7b5cbaefd275c97f467f82a0eb82cef"
+        },
+        {
+          "annotator": "Tool: trivy-0.76.0",
+          "annotationDate": "2026-10-23T13:05:10Z",
+          "annotationType": "OTHER",
+          "comment": "RepoTag: amazonlinux:2023.1.20230705.0"
+        },
+        {
+          "annotator": "Tool: trivy-0.76.0",
+          "annotationDate": "2026-10-23T13:05:10Z",
+          "annotationType": "OTHER",
+          "comment": "SchemaVersion: 2"
+        },
+        {
+          "annotator": "Tool: trivy-0.76.0",
+          "annotationDate": "2026-10-23T13:05:10Z",
+          "annotationType": "OTHER",
+          "comment": "Size: 149262336"
+        }
+      ]
+    },
+    {
+      "name": "curl-minimal",
+      "SPDXID": "SPDXRef-Package-cb3c1b385cb648c8",
+      "versionInfo": "8.0.1-1.amzn2023",
+      "supplier": "Organization: Amazon Linux",
+      "downloadLocation": "NONE",
+      "filesAnalyzed": false,
+      "checksums": [
+        {
+          "algorithm": "MD5",
+          "checksumValue": "2b530ae28215a96de4ba0b871523b25d"
+        }
+      ],
+      "sourceInfo": "built package from: curl 8.0.1-1.amzn2023",
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:rpm/amazon/curl-minimal@8.0.1-1.amzn2023?arch=x86_64&distro=amazon-2023%20%28Amazon%20Linux%29"
+        }
+      ],
+      "primaryPackagePurpose": "LIBRARY",
+      "annotations": [
+        {
+          "annotator": "Tool: trivy-0.76.0",
+          "annotationDate": "2026-10-23T13:05:10Z",
+          "annotationType": "OTHER",
+          "comment": "LayerDiffID: sha256:ccaa10561e9863cf8b12e0042fd5e98ae8e8a8cbdf6f77fce4755b6ae968817f"
+        },
+        {
+          "annotator": "Tool: trivy-0.76.0",
+          "annotationDate": "2026-10-23T13:05:10Z",
+          "annotationType": "OTHER",
+          "comment": "LayerDigest: sha256:3b8efe8e8a66806c25259c3f18e066eaef344018f8fb28a90db73bb2c2379601"
+        },
+        {
+          "annotator": "Tool: trivy-0.76.0",
+          "annotationDate": "2026-10-23T13:05:10Z",
+          "annotationType": "OTHER",
+          "comment": "PkgID: curl-minimal@8.0.1-1.amzn2023.x86_64"
+        },
+        {
+          "annotator": "Tool: trivy-0.76.0",
+          "annotationDate": "2026-10-23T13:05:10Z",
+          "annotationType": "OTHER",
+          "comment": "PkgType: amazon"
+        }
+      ]
+    },
+    {
+      "name": "openssl-libs",
+      "SPDXID": "SPDXRef-Package-a2be23830f7bb9f4",
+      "versionInfo": "1:3.0.8-1.amzn2023.0.3",
+      "supplier": "Organization: Amazon Linux",
+      "downloadLocation": "NONE",
+      "filesAnalyzed": false,
+      "checksums": [
+        {
+          "algorithm": "MD5",
+          "checksumValue": "ade79286d462a4b791da34ebfdb529b7"
+        }
+      ],
+      "sourceInfo": "built package from: openssl 1:3.0.8-1.amzn2023.0.3",
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:rpm/amazon/openssl-libs@3.0.8-1.amzn2023.0.3?arch=x86_64&distro=amazon-2023%20%28Amazon%20Linux%29&epoch=1"
+        }
+      ],
+      "primaryPackagePurpose": "LIBRARY",
+      "annotations": [
+        {
+          "annotator": "Tool: trivy-0.76.0",
+          "annotationDate": "2026-10-23T13:05:10Z",
+          "annotationType": "OTHER",
+          "comment": "LayerDiffID: sha256:ccaa10561e9863cf8b12e0042fd5e98ae8e8a8cbdf6f77fce4755b6ae968817f"
+        },
+        {
+          "annotator": "Tool: trivy-0.76.0",
+          "annotationDate": "2026-10-23T13:05:10Z",
+          "annotationType": "OTHER",
+          "comment": "LayerDigest: sha256:3b8efe8e8a66806c25259c3f18e066eaef344018f8fb28a90db73bb2c2379601"
+        },
+        {
+          "annotator": "Tool: trivy-0.76.0",
+          "annotationDate": "2026-10-23T13:05:10Z",
+          "annotationType": "OTHER",
+          "comment": "PkgID: openssl-libs@3.0.8-1.amzn2023.0.3.x86_64"
+        },
+        {
+          "annotator": "Tool: trivy-0.76.0",
+          "annotationDate": "2026-10-23T13:05:10Z",
+          "annotationType": "OTHER",
+          "comment": "PkgType: amazon"
+        }
+      ]
+    },
+    {
+      "name": "rpm",
+      "SPDXID": "SPDXRef-Package-92781b34c15795a7",
+      "versionInfo": "4.16.1.3-12.amzn2023.0.6",
+      "supplier": "Organization: Amazon Linux",
+      "downloadLocation": "NONE",
+      "filesAnalyzed": false,
+      "checksums": [
+        {
+          "algorithm": "MD5",
+          "checksumValue": "af8c10a45dc0f6248e298810135b8f83"
+        }
+      ],
+      "sourceInfo": "built package from: rpm 4.16.1.3-12.amzn2023.0.6",
+      "licenseConcluded": "GPL-2.0-or-later",
+      "licenseDeclared": "GPL-2.0-or-later",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:rpm/amazon/rpm@4.16.1.3-12.amzn2023.0.6?arch=x86_64&distro=amazon-2023%20%28Amazon%20Linux%29"
+        }
+      ],
+      "primaryPackagePurpose": "LIBRARY",
+      "annotations": [
+        {
+          "annotator": "Tool: trivy-0.76.0",
+          "annotationDate": "2026-10-23T13:05:10Z",
+          "annotationType": "OTHER",
+          "comment": "LayerDiffID: sha256:ccaa10561e9863cf8b12e0042fd5e98ae8e8a8cbdf6f77fce4755b6ae968817f"
+        },
+        {
+          "annotator": "Tool: trivy-0.76.0",
+          "annotationDate": "2026-10-23T13:05:10Z",
+          "annotationType": "OTHER",
+          "comment": "LayerDigest: sha256:3b8efe8e8a66806c25259c3f18e066eaef344018f8fb28a90db73bb2c2379601"
+        },
+        {
+          "annotator": "Tool: trivy-0.76.0",
+          "annotationDate": "2026-10-23T13:05:10Z",
+          "annotationType": "OTHER",
+          "comment": "PkgID: rpm@4.16.1.3-12.amzn2023.0.6.x86_64"
+        },
+        {
+          "annotator": "Tool: trivy-0.76.0",
+          "annotationDate": "2026-10-23T13:05:10Z",
+          "annotationType": "OTHER",
+          "comment": "PkgType: amazon"
+        }
+      ]
+    },
+    {
+      "name": "amazon",
+      "SPDXID": "SPDXRef-OperatingSystem-d31e36ef6b2d5de2",
+      "versionInfo": "2023 (Amazon Linux)",
+      "downloadLocation": "NONE",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "primaryPackagePurpose": "OPERATING-SYSTEM",
+      "annotations": [
+        {
+          "annotator": "Tool: trivy-0.76.0",
+          "annotationDate": "2026-10-23T13:05:10Z",
+          "annotationType": "OTHER",
+          "comment": "Class: os-pkgs"
+        },
+        {
+          "annotator": "Tool: trivy-0.76.0",
+          "annotationDate": "2026-10-23T13:05:10Z",
+          "annotationType": "OTHER",
+          "comment": "Type: amazon"
+        }
+      ]
+    }
+  ],
+  "hasExtractedLicensingInfos": [
+    {
+      "licenseId": "LicenseRef-1ccb5c3ceeb27ca8",
+      "extractedText": "This component is licensed under \"Public-Domain\"",
+      "name": "Public-Domain"
+    },
+    {
+      "licenseId": "LicenseRef-7e2b641ed9584552",
+      "extractedText": "This component is licensed under \"pubkey\"",
+      "name": "pubkey"
+    },
+    {
+      "licenseId": "LicenseRef-8c2b708d48080562",
+      "extractedText": "This component is licensed under \"GPL-2.0-or-later WITH exceptions\"",
+      "name": "GPL-2.0-or-later WITH exceptions"
+    },
+    {
+      "licenseId": "LicenseRef-a74375edd854759f",
+      "extractedText": "This component is licensed under \"LGPL-2.0-or-later WITH exceptions\"",
+      "name": "LGPL-2.0-or-later WITH exceptions"
+    },
+    {
+      "licenseId": "LicenseRef-e81f367b8432b910",
+      "extractedText": "This component is licensed under \"Inner-Net\"",
+      "name": "Inner-Net"
+    },
+    {
+      "licenseId": "LicenseRef-f067ab258a603b56",
+      "extractedText": "This component is licensed under \"GPL-3.0-or-later WITH exceptions\"",
+      "name": "GPL-3.0-or-later WITH exceptions"
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-ContainerImage-7a44e2d77b2ee3e",
+      "relatedSpdxElement": "SPDXRef-OperatingSystem-d31e36ef6b2d5de2",
+      "relationshipType": "CONTAINS"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relatedSpdxElement": "SPDXRef-ContainerImage-7a44e2d77b2ee3e",
+      "relationshipType": "DESCRIBES"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-92781b34c15795a7",
+      "relatedSpdxElement": "SPDXRef-Package-cb3c1b385cb648c8",
+      "relationshipType": "DEPENDS_ON"
+    }
+  ],
+  "files": []
+}

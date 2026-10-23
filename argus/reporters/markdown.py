@@ -40,7 +40,13 @@ class MarkdownReporter:
         lines.append("# Argus Security Scan Results\n")
 
         # Status badge
-        status = "PASS \u2705" if summary.passed else "FAIL \u274c"
+        if not summary.threshold_passed:
+            status = "FAIL \u274c"
+        elif not summary.complete:
+            # A scanner skipped part of its input (#492): never a pass.
+            status = "INCOMPLETE \u26a0\ufe0f"
+        else:
+            status = "PASS \u2705"
         lines.append(f"**Status**: {status}\n")
 
         if summary.severity_threshold:
@@ -92,8 +98,18 @@ class MarkdownReporter:
             r for r in summary.results
             if getattr(r, "partial_failure", False)
         ]
-        if exec_failed or parse_failed or partial_failed:
+        incomplete = [r for r in summary.results if r.incomplete]
+        if exec_failed or parse_failed or partial_failed or incomplete:
             lines.append("## Scanner Health\n")
+            if incomplete:
+                lines.append(
+                    f"**{len(incomplete)} scanner(s) did not evaluate every "
+                    "package (incomplete, not clean):**\n"
+                )
+                for r in incomplete:
+                    reason = r.metadata.get("incomplete_reason", "no reason recorded")
+                    lines.append(f"- `{r.scanner}`: {reason}")
+                lines.append("")
             total = len(exec_failed) + len(partial_failed)
             if total:
                 lines.append(
