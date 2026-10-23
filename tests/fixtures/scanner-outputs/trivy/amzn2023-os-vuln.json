@@ -1,0 +1,69 @@
+{
+  "SchemaVersion": 2,
+  "Trivy": {
+    "Version": "0.76.0"
+  },
+  "CreatedAt": "2026-10-23T13:09:47.12277951Z",
+  "ArtifactName": "/w/old.trivy.cyclonedx.json",
+  "ArtifactType": "cyclonedx",
+  "Metadata": {
+    "OS": {
+      "Family": "amazon",
+      "Name": "2023 (Amazon Linux)"
+    }
+  },
+  "Results": [
+    {
+      "Target": "/w/old.trivy.cyclonedx.json (amazon 2023 (Amazon Linux))",
+      "Class": "os-pkgs",
+      "Type": "amazon",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2023-37920",
+          "PkgID": "ca-certificates@2023.2.60-1.0.amzn2023.0.2.noarch",
+          "PkgName": "ca-certificates",
+          "PkgIdentifier": {
+            "PURL": "pkg:rpm/amazon/ca-certificates@2023.2.60-1.0.amzn2023.0.2?arch=noarch&distro=amazon-2023%20%28Amazon%20Linux%29",
+            "UID": "81a13e276162229c",
+            "BOMRef": "pkg:rpm/amazon/ca-certificates@2023.2.60-1.0.amzn2023.0.2?arch=noarch&distro=amazon-2023%20%28Amazon%20Linux%29"
+          },
+          "InstalledVersion": "2023.2.60-1.0.amzn2023.0.2",
+          "FixedVersion": "2023.2.60-1.0.amzn2023.0.3",
+          "Status": "fixed",
+          "SeveritySource": "amazon",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2023-37920",
+          "DataSource": {
+            "ID": "amazon",
+            "Name": "Amazon Linux Security Center",
+            "URL": "https://alas.aws.amazon.com/"
+          },
+          "Fingerprint": "sha256:2dd94d200c83de729ed781542c84d75875aa0d215cc4f28c3942db0831145832",
+          "Title": "python-certifi: Removal of e-Tugra root certificate",
+          "Description": "Certifi is a curated collection of Root Certificates for validating the trustworthiness of SSL certificates while verifying the identity of TLS hosts. Certifi prior to version 2023.07.22 recognizes \"e-Tugra\" root certificates. e-Tugra's root certificates were subject to an investigation prompted by reporting of security issues in their systems. Certifi 2023.07.22 removes root certificates from \"e-Tugra\" from the root store.",
+          "Severity": "HIGH",
+          "CweIDs": [
+            "CWE-345"
+          ],
+          "VendorSeverity": {
+            "alma": 2,
+            "amazon": 3,
+            "azure": 4,
+            "ghsa": 3,
+            "nvd": 4,
+            "oracle-oval": 2,
+            "photon": 4,
+            "redhat": 1
+          },
+          "CVSS": {
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+              "V3Score": 9.8
+            }
+          },
+          "PublishedDate": "2023-07-25T21:15:10.827Z",
+          "LastModifiedDate": "2026-06-17T06:08:54.337Z"
+        }
+      ]
+    }
+  ]
+}

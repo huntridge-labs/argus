@@ -60,6 +60,7 @@ See [examples/github-enterprise/](../examples/github-enterprise/) for GHES templ
 - [Container Scanners](#container-scanners)
   - [Trivy Container](#trivy-container)
   - [Grype](#grype)
+  - [Vulnerability finding fields](#vulnerability-finding-fields)
   - [Syft (SBOM)](#syft-sbom)
 - [Infrastructure Scanners](#infrastructure-scanners)
   - [Trivy IaC](#trivy-iac)
@@ -481,6 +482,19 @@ secrets:
 ```
 
 </details>
+
+### Vulnerability finding fields
+
+Trivy and Grype findings carry the same metadata whether they come from `argus scan container`, the `container` scanner, or `argus scan --sbom` (they share one parser). Besides `package`, `installed_version`, `fixed_version` and `purl`:
+
+| Key | What it holds |
+|-----|---------------|
+| `advisory_id` | The distro or ecosystem advisory when the matcher reports one (`ALAS2023-2023-392`, `DSA-5514-1`, `GHSA-...`), else `""`. Grype reports Amazon Linux findings under the ALAS id, so `cve` is empty for those; the CVEs are in `related_cves`. |
+| `related_cves` | `[{"id": "CVE-...", "severity": "high"}]`: the CVEs behind the finding, each with its own severity (Grype's `relatedVulnerabilities`; for Trivy, the CVE with its NVD severity). |
+| `os_package` | `true` for an OS package: a `distro=` purl qualifier, an apk / deb / rpm / alpm package, or a Trivy `os-pkgs` result. |
+| `matcher` | `grype/<matcher>` (for example `grype/rpm-matcher`) or `trivy`. Grype findings also have `match_type` (`exact-direct-match`, `cpe-match`, ...). |
+| `data_source` | The advisory feed: Grype's namespace (`amazon:distro:amazonlinux:2023`) or Trivy's data source (`amazon`). |
+| `vulnerability_db_built` | When the matcher's vulnerability DB was built (ISO 8601). Grype records it in its report. Trivy doesn't, so Argus reads `UpdatedAt` from the Trivy DB cache it used (`$TRIVY_CACHE_DIR`, the Argus cache, or `~/.cache/trivy`); `""` when none is found. |
 
 ### Syft (SBOM)
 

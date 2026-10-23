@@ -73,6 +73,11 @@ components:
         (.trivyignore for trivy / trivy-iac). Scanners pass each one via the tool's flag (ADR-041)
       core/sbom.py: SBOM format detection (CycloneDX JSON/XML, SPDX JSON/tag-value, Syft JSON) for ``argus
         scan --sbom``
+      scanners/_vuln_parsers.py: 'Shared trivy/grype finding parsers used by SBOM mode (trivy, grype scanners) and
+        container mode (container scanner, argus scan container). Finding metadata: package, installed_version,
+        fixed_version, purl, advisory_id, related_cves [{id, severity}], os_package, matcher (grype/<matcher> or
+        trivy), match_type, data_source, vulnerability_db_built (grype descriptor.db; trivy db/metadata.json
+        UpdatedAt from its cache, best effort). See docs/scanners.md#vulnerability-finding-fields.'
       core/secrets.py: 'Credential resolution for any scanner config field. resolve_secret(config, field,
         *, stdin_override=None) accepts three forms in precedence order: stdin_override (highest, populated
         by CLI --*-password-stdin flags via a module-level slot registry — set_stdin_override / get_stdin_override
@@ -774,6 +779,11 @@ docsite:
         (.trivyignore for trivy / trivy-iac). Scanners pass each one via the tool's flag (ADR-041)
       core/sbom.py: SBOM format detection (CycloneDX JSON/XML, SPDX JSON/tag-value, Syft JSON) for ``argus
         scan --sbom``
+      scanners/_vuln_parsers.py: 'Shared trivy/grype finding parsers used by SBOM mode (trivy, grype scanners) and
+        container mode (container scanner, argus scan container). Finding metadata: package, installed_version,
+        fixed_version, purl, advisory_id, related_cves [{id, severity}], os_package, matcher (grype/<matcher> or
+        trivy), match_type, data_source, vulnerability_db_built (grype descriptor.db; trivy db/metadata.json
+        UpdatedAt from its cache, best effort). See docs/scanners.md#vulnerability-finding-fields.'
       core/secrets.py: 'Credential resolution for any scanner config field. resolve_secret(config, field,
         *, stdin_override=None) accepts three forms in precedence order: stdin_override (highest, populated
         by CLI --*-password-stdin flags via a module-level slot registry — set_stdin_override / get_stdin_override
