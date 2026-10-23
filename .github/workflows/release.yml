@@ -321,6 +321,8 @@ jobs:
         run: |
           set -euo pipefail
           SBOM_SHA12="${COMMIT_SHA:0:12}"
+          # Outside the checkout on purpose: release-it's before:release
+          # hook runs `git add .`, which would commit files left in it.
           SBOM_DIR="${RUNNER_TEMP}/image-sboms"
           echo "SBOM_SHA12=${SBOM_SHA12}" >> "$GITHUB_ENV"
           echo "SBOM_DIR=${SBOM_DIR}" >> "$GITHUB_ENV"
