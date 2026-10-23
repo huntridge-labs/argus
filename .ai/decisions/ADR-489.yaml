@@ -1,14 +1,129 @@
 id: ADR-489
 title: "Signed per-platform SBOMs for release images"
 date: '2026-10-23'
-status: proposed
+status: accepted
 context: |-
   The release job builds five multi-arch images (linux/amd64, linux/arm64)
   and cosign-signs them, but publishes no inventory of what is inside
   them. People who pull an image, and auditors who review it, need a
   verifiable list of exactly what each released image contains, tied to
   the digest they pull.
+
+  A multi-platform `docker buildx build --push` reports the image INDEX
+  digest as `containerimage.digest`. The index has no filesystem; it
+  points at one manifest per platform plus BuildKit's provenance
+  manifests. So "the SBOM for the image" has to say which digest it
+  describes. Checked against the released images with the pinned syft
+  (v1.54.1) and gh 2.97.0:
+
+  - `cli:1.13.0` is index sha256:0948805..., with linux/amd64
+    sha256:620cadd..., linux/arm64 sha256:94b8825..., and two
+    `unknown/unknown` attestation-manifest entries. The raw index bytes
+    hash to the index digest, and argus/containers.py pins that digest.
+  - syft on `registry:<image>@<index digest>`, with or without
+    `--platform linux/amd64`, records the INDEX digest as
+    `metadata.component.version` (scanner-bandit: sha256:cd6ae19...). An
+    amd64 and an arm64 SBOM made that way would both claim the index.
+  - syft on `registry:<image>@<platform manifest digest> --platform <p>`
+    records that manifest digest (scanner-bandit amd64 sha256:9a3ce76...,
+    arm64 sha256:8b34bfa...). The two inventories differ (1012 vs 1011
+    components), so one platform's SBOM can't stand in for the other. A
+    `--platform` that doesn't match the manifest makes syft exit 1.
+  - `gh attestation verify oci://ghcr.io/huntridge-labs/argus/cli:1.13.0`
+    looks up attestations for the index digest
+    (`/attestations/sha256:0948805...`), not a platform manifest. With
+    `@<amd64 digest>` it looks up that digest. Per-platform attestations
+    alone would not verify by tag or by the pinned digest.
 decision: |-
-  Work in progress. Generate CycloneDX SBOMs with the pinned syft image
-  right after the build/push loop, sign them as GitHub artifact
-  attestations, and publish them with every run and every release.
+  Each image gets three CycloneDX documents, each signed as a GitHub
+  artifact attestation (`actions/attest` v4, SBOM mode, predicate type
+  `https://cyclonedx.org/bom`), per-platform and keyed to the digest
+  people pull:
+
+  - `sbom-<image>-<sha12>-linux-amd64.cdx.json` and `-linux-arm64`: syft
+    (digest-pinned image from argus/containers.py, run with `docker run`)
+    scans the pushed platform manifest from the registry by digest with
+    the matching `--platform`. Subject: `ghcr.io/huntridge-labs/argus/<image>`
+    at that manifest digest. The SBOM records the same digest.
+  - `sbom-<image>-<sha12>-index.cdx.json`: a small BOM for the index,
+    listing its two platform manifests by digest (with the file name of
+    each one's SBOM). Subject: the index digest, which is what a tag
+    resolves to, what promotion keeps, and what argus/containers.py pins.
+    This is what makes `gh attestation verify oci://...:<tag>` work.
+
+  Placement and failure semantics: the steps run in the `release` job
+  right after the build/push loop and before release-it, with no
+  `continue-on-error`. scripts/ci/image_sboms.py `generate` checks the
+  raw index hashes to the build's digest, finds exactly one manifest per
+  platform, and checks each SBOM names the digest it was asked for.
+  `collect` checks each attestation bundle signs that subject with that
+  exact SBOM. Any failure stops the job before a version, tag, release or
+  PyPI upload exists, matching the job's rule for container build
+  failures.
+
+  Publishing: every run uploads the SBOMs, their bundles
+  (`<sbom>.sigstore.json`) and `image-sboms-<sha12>.json` as the
+  `image-sboms-<sha12>` artifact (30 days). When a release is cut, the
+  same files are attached to the GitHub release with `gh release upload`
+  after cosign signing and before the wheel is published.
+
+  Attestations live in GitHub's attestation store only
+  (`push-to-registry` off). The job gains `attestations: write`; it
+  already had `id-token: write`.
+rationale:
+- The attestation subject must be a digest someone actually pulls or
+  pins, and the SBOM's own recorded digest must match it. Scanning by
+  platform manifest digest is the only way syft records that digest.
+- Docker resolves a tag to the index, then the index to a platform
+  manifest. Attesting both levels lets people verify by tag and verify
+  the exact image they run.
+- syft from its digest pin follows the repo rule against ad-hoc tool
+  installs and keeps the generator version under Renovate.
+- Reading from the registry by digest scans the bytes that were pushed.
+  A daemon-loaded copy is identified by its config digest, not the
+  manifest digest.
+alternatives_considered:
+- name: One SBOM of the index digest (syft picks the host platform)
+  rejected_because: It covers one platform and records the index digest,
+    so it claims to describe both images while listing one.
+- name: Per-platform attestations only
+  rejected_because: gh attestation verify by tag or by the pinned digest
+    looks up the index digest and finds nothing.
+- name: One index BOM merging both platforms' full inventories
+  rejected_because: syft bom-refs repeat across platforms, and people
+    checking an image want the inventory of the platform they run.
+- name: BuildKit SBOM attestations (`docker buildx build --sbom=true`)
+  rejected_because: SPDX from BuildKit's bundled scanner (not the pinned
+    syft), stored inside the image index, and not in GitHub's attestation
+    store that gh attestation verify reads by default.
+- name: cosign attest --type cyclonedx to the registry
+  rejected_because: Adds registry artifacts the ghcr-prune workflow would
+    have to handle, and verification needs cosign plus identity flags.
+    GitHub attestations verify with one gh command scoped to the repo.
+- name: A separate matrix job for the attestations
+  rejected_because: The steps must finish before release-it, which means
+    splitting the single release job and its environment gate (ADR-027).
+consequences:
+  positive:
+  - Every released image has a signed, per-platform inventory verifiable
+    with gh attestation verify, by tag or by platform digest.
+  - SBOMs and bundles ship with each GitHub release and with every
+    release-job run as an artifact.
+  - A wrong digest, a missing platform or a mismatched bundle fails the
+    job before anything is published.
+  negative:
+  - actions/attest signs one predicate per call, so release.yml carries 15
+    static attest steps. tests/unit/test_image_sboms.py fails if they
+    drift from the IMAGES array.
+  - About 10 syft scans add a few minutes to the release job.
+  - Runs that cut no release still create attestations for their
+    build-<sha> images; the tags are pruned after 14 days but the
+    attestations stay in GitHub's store.
+  - The workflow path can't run from a PR; the first release run is its
+    first end-to-end test.
+implementation: |-
+  .github/workflows/release.yml (Generate image SBOMs, Attest SBOM steps,
+  Collect SBOM attestation bundles, Upload image SBOMs, Attach SBOMs to the
+  GitHub release; `attestations: write`), scripts/ci/image_sboms.py,
+  tests/unit/test_image_sboms.py, docs/security.md "Image SBOMs (signed,
+  per platform)", .ai/workflows.yaml (create_release, verify_image_sbom).

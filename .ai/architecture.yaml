@@ -982,6 +982,8 @@ directory_structure:
   .ai/decisions/: Issue-keyed ADRs, one file each (ADR-<issue>.yaml); ADR-001..ADR-044 stay in .ai/decisions.yaml
     (ADR-483)
   scripts/ci/adr_records.py: ADR check (CI job ADR Records), read-time ADR index (list) and scaffold (new)
+  scripts/ci/image_sboms.py: 'Release job: per-platform + index CycloneDX SBOMs for the built images
+    (pinned syft, by digest) and checks of their actions/attest bundles (ADR-489)'
   .github/actions/*/schemas/: JSON schemas co-located with each action
   .github/actions/*/.docsite.yml: Per-action docsite category declaration
   scripts/docsite/: Auto-generated documentation site package
