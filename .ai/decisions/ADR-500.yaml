@@ -1,16 +1,49 @@
 id: ADR-500
-title: "Prereleases keep :latest and are how big batches get test driven"
+title: "Prereleases don't move :latest, and they are how big batches get tried"
 date: '2026-10-23'
-status: proposed
+status: accepted
 context: |-
-  What problem made this decision necessary?
+  Big changes sometimes land as several related PRs, some stacked on each
+  other. We wanted a way to try such a batch before it ships, and asked whether
+  a long-lived beta branch was the answer.
+
+  Releases are already cut by hand from the Release workflow, so `main` is a
+  staging area: merging ships nothing. The workflow can already cut a
+  prerelease (`releaseType: prerelease`, `preReleaseId: rc`), and release-it
+  marks its GitHub release as a prerelease. But the promote step tagged every
+  release's images `:<version>` and `:latest`, so an rc would have moved
+  `:latest` to untested images.
 decision: |-
-  What we decided, in a few short paragraphs or bullets.
+  The promote step tags a prerelease (any version with a `-` part, such as
+  `1.14.0-rc.0`) only `:<version>`. `:latest` moves only on a final release.
+
+  Big batches merge to `main` as usual and are tried through a prerelease: cut
+  `X.Y.Z-rc.N`, install it with `pip install --pre` or pull the
+  `:X.Y.Z-rc.N` images, then cut `X.Y.Z`. Single PRs keep using their
+  TestPyPI dev builds. AGENTS.md ("Trying a big change before it ships")
+  describes the steps.
+
+  Prerelease image tags are kept like other version tags, since the rc wheel on
+  PyPI pins those image digests.
 alternatives_considered:
-- name: Another option
-  rejected_because: Why not.
+- name: A long-lived beta branch that big changes merge into first
+  rejected_because: |-
+    GitHub only runs "Closes #N" on merges into the default branch, so every
+    issue would stay open until a second beta-to-main PR. The rulesets,
+    required checks, ADR Records workflow, release-it and dependency bots are
+    all keyed to main and would each need a beta twin, and the two branches
+    drift. Stacked PRs would still conflict after squash merges.
+- name: Prune prerelease image tags after the final release
+  rejected_because: The rc wheel stays on PyPI for good and pins its image
+    digests, so pruning would break anyone who installed it. Public GHCR
+    storage costs nothing and rcs are rare.
 consequences:
   positive:
-  - What gets better.
+  - A prerelease can be cut without touching what `:latest` users run.
+  - One branch, one set of rules; issues still close when their PR merges.
   negative:
-  - What it costs.
+  - Untested work sits on `main` between the rc and the final release, so a
+    hotfix in that window either waits for the final or ships the batch with
+    it.
+  - Docs and examples on `main` that the release bumper rewrites point at the
+    rc version until the final release is cut.
