@@ -119,44 +119,100 @@ class OsvScanner:
                 pkg_version = pkg_info.get("version", "")
                 pkg_ecosystem = pkg_info.get("ecosystem", "")
 
-                for vuln in package_entry.get("vulnerabilities", []):
+                for records in self._alias_groups(package_entry):
                     finding = self._parse_vulnerability(
-                        vuln, source_path, pkg_name, pkg_version, pkg_ecosystem
+                        records, source_path, pkg_name, pkg_version, pkg_ecosystem
                     )
                     findings.append(finding)
 
         return findings
 
+    def _alias_groups(self, package_entry: dict) -> list[list[dict]]:
+        """The package's vulnerability records, one list per distinct advisory.
+
+        OSV keeps a record per database that published an advisory (a PyPI
+        package often has both a GHSA and a PYSEC record for one bug), and
+        osv-scanner reports every record but names the aliases in ``groups``.
+        Each list holds the reported records of one group, primary first; a
+        record no group names stands alone. Lists come in the order their
+        first record was reported.
+        """
+        vulns = package_entry.get("vulnerabilities", [])
+        by_id = {vuln.get("id"): vuln for vuln in vulns}
+        group_of: dict[str, list[dict]] = {}
+        for group in package_entry.get("groups") or []:
+            members = [by_id[vid] for vid in group.get("ids", []) if vid in by_id]
+            for member in members:
+                group_of.setdefault(member.get("id"), members)
+
+        grouped: list[list[dict]] = []
+        emitted: set[str] = set()
+        for vuln in vulns:
+            if vuln.get("id") in emitted:
+                continue
+            members = group_of.get(vuln.get("id"), [vuln])
+            members = [m for m in members if m.get("id") not in emitted]
+            emitted.update(m.get("id") for m in members)
+            grouped.append(sorted(members, key=self._primary_rank))
+        return grouped
+
+    def _primary_rank(self, vuln: dict) -> tuple[bool, str]:
+        """Sort key that puts an advisory's GHSA record first, then by id.
+
+        GitHub's records carry the reviewed severity and CWE, and a GHSA id is
+        what findings for these packages were already named by, so keys built
+        on the finding id do not move.
+        """
+        vid = str(vuln.get("id", ""))
+        return (not vid.startswith("GHSA-"), vid)
+
     def _parse_vulnerability(
         self,
-        vuln: dict,
+        records: list[dict],
         source_path: str,
         pkg_name: str,
         pkg_version: str,
         pkg_ecosystem: str,
     ) -> Finding:
-        """Convert a single OSV vulnerability into a Finding."""
-        severity = self._extract_severity(vuln)
-        cve = self._extract_cve(vuln)
-        cwe = self._extract_cwe(vuln)
+        """Convert one advisory's OSV records (primary first) into a Finding.
+
+        The primary record names the finding. Severity is the highest any
+        record reports, so a PYSEC record with no severity never downgrades
+        its GHSA alias; CVE, CWE, summary and fix fall back to the aliases.
+        """
+        primary_id = records[0].get("id", "UNKNOWN")
+        aliases = []
+        for record in records:
+            for alias in (record.get("id"), *record.get("aliases", [])):
+                if alias and alias != primary_id and alias not in aliases:
+                    aliases.append(alias)
+        summary = self._first(records, lambda record: record.get("summary"))
 
         return Finding(
-            id=vuln.get("id", "UNKNOWN"),
-            severity=severity,
-            title=vuln.get("summary", "Unknown vulnerability"),
-            description=vuln.get("summary", ""),
+            id=primary_id,
+            severity=max(self._extract_severity(record) for record in records),
+            title=summary or "Unknown vulnerability",
+            description=summary or "",
             location=source_path or None,
-            cve=cve,
-            cwe=cwe,
+            cve=self._first(records, self._extract_cve),
+            cwe=self._first(records, self._extract_cwe),
             scanner=self.name,
             metadata={
                 "package_name": pkg_name,
                 "package_version": pkg_version,
                 "ecosystem": pkg_ecosystem,
-                "aliases": vuln.get("aliases", []),
-                "fixed_version": self._extract_fixed_version(vuln),
+                "aliases": aliases,
+                "fixed_version": self._first(records, self._extract_fixed_version),
             },
         )
+
+    def _first(self, records: list[dict], extract) -> str | None:
+        """The first non-empty value ``extract`` returns across ``records``."""
+        for record in records:
+            value = extract(record)
+            if value:
+                return value
+        return None
 
     def _extract_fixed_version(self, vuln: dict) -> str | None:
         """The upstream-fixed version for this vuln, if OSV reports one.
