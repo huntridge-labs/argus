@@ -172,6 +172,17 @@ class ScanResult:
         return [p for p in (self.phase_results or []) if p.status == "failed"]
 
     @property
+    def incomplete(self) -> bool:
+        """True when the scanner ran but skipped part of its input.
+
+        Set by the SBOM-mode coverage guard (``argus.core.sbom_coverage``)
+        when a matcher didn't evaluate the SBOM's OS packages. Its zero
+        findings for those packages don't mean clean, so an incomplete
+        result is never a pass (issue #492, ADR-492).
+        """
+        return bool(self.metadata.get("incomplete"))
+
+    @property
     def critical_count(self) -> int:
         return self._count_severity(Severity.CRITICAL)
 
@@ -218,6 +229,9 @@ class ScanResult:
         if self.phase_results:
             out["phase_results"] = [p.to_dict() for p in self.phase_results]
             out["partial_failure"] = self.partial_failure
+        # Same idea: only incomplete results carry the top-level flag.
+        if self.incomplete:
+            out["incomplete"] = True
         return out
 
     @classmethod
@@ -427,7 +441,7 @@ class ScanSummary:
         return sum(r.total_count for r in self.results)
 
     @property
-    def passed(self) -> bool:
+    def threshold_passed(self) -> bool:
         """True if no findings meet or exceed the severity threshold."""
         if self.severity_threshold is None:
             return True
@@ -436,6 +450,23 @@ class ScanSummary:
             for r in self.results
             for f in r.findings
         )
+
+    @property
+    def incomplete_scanners(self) -> list[str]:
+        """Scanners that ran but skipped part of their input (#492)."""
+        return [r.scanner for r in self.results if r.incomplete]
+
+    @property
+    def complete(self) -> bool:
+        return not self.incomplete_scanners
+
+    @property
+    def passed(self) -> bool:
+        """True when nothing is over the threshold and every scanner
+        evaluated its whole input. An incomplete scan never passes,
+        whatever its findings (ADR-492). ``threshold_passed`` is the
+        threshold check alone."""
+        return self.threshold_passed and self.complete
 
     def to_dict(self) -> dict:
         """Serialize to a plain dictionary."""
@@ -453,6 +484,8 @@ class ScanSummary:
             "info_count": self.info_count,
             "total_count": self.total_count,
             "passed": self.passed,
+            "complete": self.complete,
+            "incomplete_scanners": self.incomplete_scanners,
         }
         if self.scan_context is not None:
             out["scan_context"] = self.scan_context.to_dict()

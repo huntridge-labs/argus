@@ -1,0 +1,82 @@
+{
+  "artifacts": [
+    {
+      "id": "04f200fc5fa1dd86",
+      "name": "curl-minimal",
+      "version": "8.0.1-1.amzn2023",
+      "type": "rpm",
+      "foundBy": "rpm-db-cataloger",
+      "language": "",
+      "purl": "pkg:rpm/amzn/curl-minimal@8.0.1-1.amzn2023?arch=x86_64&distro=amzn-2023&upstream=curl-8.0.1-1.amzn2023.src.rpm"
+    },
+    {
+      "id": "10e1c21517e636ab",
+      "name": "openssl-libs",
+      "version": "1:3.0.8-1.amzn2023.0.3",
+      "type": "rpm",
+      "foundBy": "rpm-db-cataloger",
+      "language": "",
+      "purl": "pkg:rpm/amzn/openssl-libs@3.0.8-1.amzn2023.0.3?arch=x86_64&distro=amzn-2023&epoch=1&upstream=openssl-3.0.8-1.amzn2023.0.3.src.rpm"
+    },
+    {
+      "id": "c25f876745d22522",
+      "name": "rpm",
+      "version": "4.16.1.3",
+      "type": "python",
+      "foundBy": "python-installed-package-cataloger",
+      "language": "python",
+      "purl": "pkg:pypi/rpm@4.16.1.3"
+    },
+    {
+      "id": "fbe2c5889def0cb2",
+      "name": "rpm",
+      "version": "4.16.1.3-12.amzn2023.0.6",
+      "type": "rpm",
+      "foundBy": "rpm-db-cataloger",
+      "language": "",
+      "purl": "pkg:rpm/amzn/rpm@4.16.1.3-12.amzn2023.0.6?arch=x86_64&distro=amzn-2023&upstream=rpm-4.16.1.3-12.amzn2023.0.6.src.rpm"
+    }
+  ],
+  "artifactRelationships": [],
+  "files": [],
+  "source": {
+    "id": "a2fe6341cfe8bdd6c189eddb77a4173cb857a20e918a954937fe6e9e807ddeb5",
+    "name": "amazonlinux",
+    "version": "2023.1.20230705.0",
+    "type": "image",
+    "metadata": {
+      "userInput": "amazonlinux:2023.1.20230705.0",
+      "imageID": "sha256:b0e848211f0204884a48d1c782ee0a7d6007849e355f0bc9b7608af5e437cce7",
+      "manifestDigest": "sha256:a2fe6341cfe8bdd6c189eddb77a4173cb857a20e918a954937fe6e9e807ddeb5",
+      "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+      "tags": [],
+      "repoDigests": [
+        "index.docker.io/library/amazonlinux@sha256:2a1003479903aeb2dc92e4735b2994e1b7b5cbaefd275c97f467f82a0eb82cef"
+      ],
+      "architecture": "amd64",
+      "os": "linux"
+    }
+  },
+  "distro": {
+    "prettyName": "Amazon Linux 2023",
+    "name": "Amazon Linux",
+    "id": "amzn",
+    "idLike": [
+      "fedora"
+    ],
+    "version": "2023",
+    "versionID": "2023",
+    "homeURL": "https://aws.amazon.com/linux/",
+    "bugReportURL": "https://github.com/amazonlinux/amazon-linux-2023",
+    "cpeName": "cpe:2.3:o:amazon:amazon_linux:2023",
+    "supportEnd": "2028-03-01"
+  },
+  "descriptor": {
+    "name": "syft",
+    "version": "1.54.1"
+  },
+  "schema": {
+    "version": "16.1.11",
+    "url": "https://raw.githubusercontent.com/anchore/syft/main/schema/json/schema-16.1.11.json"
+  }
+}

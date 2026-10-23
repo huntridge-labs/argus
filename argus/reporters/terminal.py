@@ -80,12 +80,14 @@ class TerminalReporter:
 
     def _print_scanner_results(self, summary: ScanSummary) -> None:
         for result in summary.results:
+            # An incomplete result's count only covers what it checked.
+            suffix = ", incomplete" if result.incomplete else ""
             if not result.findings:
-                print(f"Scanner: {result.scanner} (0 findings)")
+                print(f"Scanner: {result.scanner} (0 findings{suffix})")
                 print()
                 continue
 
-            print(f"Scanner: {result.scanner} ({result.total_count} findings)")
+            print(f"Scanner: {result.scanner} ({result.total_count} findings{suffix})")
 
             sorted_findings = sorted(
                 result.findings,
@@ -171,7 +173,32 @@ class TerminalReporter:
                 "report at https://github.com/huntridge-labs/argus/issues."
             )
 
-        if summary.passed:
+        # Incomplete results (#492): the scanner ran but skipped part of
+        # its input, e.g. a matcher that never evaluated the SBOM's OS
+        # packages. Never a pass, so it overrides PASS / PASS (degraded).
+        incomplete = [r for r in summary.results if r.incomplete]
+        if incomplete:
+            print(
+                f"Warning: {len(incomplete)} scanner(s) did not evaluate "
+                "every package:"
+            )
+            for r in incomplete:
+                reason = r.metadata.get("incomplete_reason", "no reason recorded")
+                print(f"  - {r.scanner}: {reason}")
+            print(
+                "  See https://github.com/huntridge-labs/argus/blob/main/"
+                "docs/sbom-scanning.md#incomplete-results"
+            )
+
+        if not summary.threshold_passed:
+            threshold = summary.severity_threshold.value if summary.severity_threshold else "none"
+            print(f"Status: FAIL (findings above threshold: {threshold})")
+        elif incomplete:
+            print(
+                f"Status: INCOMPLETE ({len(incomplete)} scanner(s) skipped "
+                "packages; this is not a clean result)"
+            )
+        elif summary.passed:
             if exec_failed or parse_failed or partial_failed:
                 parts = []
                 if exec_failed:
@@ -183,7 +210,4 @@ class TerminalReporter:
                 print(f"Status: PASS (degraded — {', '.join(parts)})")
             else:
                 print("Status: PASS")
-        else:
-            threshold = summary.severity_threshold.value if summary.severity_threshold else "none"
-            print(f"Status: FAIL (findings above threshold: {threshold})")
         print()

@@ -1341,3 +1341,23 @@ errors:
       verification: '`uv lock --check` exits 0'
     reference: pyproject.toml, uv.lock, .github/workflows/test-unit.yml, .ai/decisions.yaml ADR-043
     symptom: 'The lockfile at `uv.lock` needs to be updated, but `--locked` was provided|needs to be updated, but `--check` was provided'
+  SBOM_SCAN_INCOMPLETE:
+    category: sbom
+    context: '`argus scan --sbom` exits 2 and reports `Status: INCOMPLETE` with "did not evaluate
+      the SBOM''s N OS package(s)"'
+    root_cause: The matcher couldn't work out which OS the SBOM's packages belong to, so it skipped
+      every OS package. trivy does this with syft SPDX/CycloneDX SBOMs (it reads the OS as `none`,
+      or as `amzn`, which it doesn't support) and can't read Syft JSON at all; grype does it with
+      trivy SBOMs (it can't map the `amazon` distro name). Its zero findings for those packages
+      mean they were never checked, so the coverage guard marks the result incomplete (ADR-492).
+    solution:
+      steps:
+      - Scan the SBOM with the matcher that reads its generator's output - grype for syft SBOMs,
+        trivy for trivy SBOMs (`argus scan grype --sbom FILE` / `argus scan trivy --sbom FILE`).
+      - Or regenerate the SBOM with the tool whose matcher you want to use.
+      - The reason line names the OS the matcher read and the distro the SBOM's purls carry; a
+        mismatch there is the cause.
+      verification: '`argus scan <matcher> --sbom FILE` prints a plain PASS / FAIL status and the
+        result has no `incomplete` key in argus-results.json'
+    reference: docs/sbom-scanning.md#incomplete-results, argus/core/sbom_coverage.py, .ai/decisions/ADR-492.yaml
+    symptom: did not evaluate the SBOM's

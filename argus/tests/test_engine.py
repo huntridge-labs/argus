@@ -2472,6 +2472,58 @@ class TestEngineSbomMode:
         assert summary.results[0].total_count == 1
 
 
+class _CoverageScanner(MockScanner):
+    """SBOM-capable mock that reports a matcher coverage signal."""
+
+    supports_sbom = True
+
+    def __init__(self, name, evaluated):
+        super().__init__(name)
+        self._evaluated = evaluated
+
+    def scan(self, path, config=None):
+        self.scan_called_with = (path, config)
+        return ScanResult(
+            scanner=self.name,
+            metadata={"os_packages_evaluated": self._evaluated, "matcher_os": "none"},
+        )
+
+
+class TestEngineSbomCoverageGuard:
+    """The engine runs the coverage guard on every SBOM-mode result (#492)."""
+
+    FIXTURE = (
+        Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "sbom"
+        / "syft-amzn2023.spdx.json"
+    )
+
+    def _run(self, *scanners):
+        engine = ArgusEngine(ArgusConfig.from_dict({"execution": {"backend": "local"}}))
+        for scanner in scanners:
+            engine.register_scanner(scanner)
+        return engine.run(sbom_path=str(self.FIXTURE), parallel=False)
+
+    def test_matcher_that_skipped_os_packages_is_incomplete(self):
+        summary = self._run(_CoverageScanner("trivy", evaluated=False))
+        assert summary.incomplete_scanners == ["trivy"]
+        assert summary.passed is False
+        assert "3 OS package(s)" in summary.results[0].metadata["incomplete_reason"]
+
+    def test_matcher_that_evaluated_os_packages_is_complete(self):
+        summary = self._run(_CoverageScanner("grype", evaluated=True))
+        assert summary.complete is True
+        assert summary.passed is True
+
+    def test_guard_not_applied_outside_sbom_mode(self, tmp_path):
+        engine = ArgusEngine(ArgusConfig.from_dict({
+            "execution": {"backend": "local"},
+            "scanners": {"trivy": {"enabled": True}},
+        }))
+        engine.register_scanner(_CoverageScanner("trivy", evaluated=False))
+        summary = engine.run(path=str(tmp_path), parallel=False)
+        assert summary.complete is True
+
+
 class TestToolVersionEnforcement:
     """Test local tool version verification against container-pinned versions."""
 

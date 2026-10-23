@@ -1,0 +1,193 @@
+{
+  "SchemaVersion": 2,
+  "Trivy": {
+    "Version": "0.76.0"
+  },
+  "ReportID": "01a168e9-df4b-730c-856b-cf6d7baba778",
+  "CreatedAt": "2026-10-23T13:18:39.94720084Z",
+  "ArtifactName": "/f/trivy-amzn2023.spdx.json",
+  "ArtifactType": "spdx",
+  "Metadata": {
+    "OS": {
+      "Family": "amazon",
+      "Name": "2023 (Amazon Linux)"
+    },
+    "ImageID": "sha256:b0e848211f0204884a48d1c782ee0a7d6007849e355f0bc9b7608af5e437cce7",
+    "RepoTags": [
+      "amazonlinux:2023.1.20230705.0"
+    ],
+    "RepoDigests": [
+      "amazonlinux@sha256:2a1003479903aeb2dc92e4735b2994e1b7b5cbaefd275c97f467f82a0eb82cef"
+    ]
+  },
+  "Results": [
+    {
+      "Target": "/f/trivy-amzn2023.spdx.json (amazon 2023 (Amazon Linux))",
+      "Class": "os-pkgs",
+      "Type": "amazon",
+      "Packages": [
+        {
+          "ID": "curl-minimal@8.0.1-1.amzn2023.x86_64",
+          "Name": "curl-minimal",
+          "Identifier": {
+            "PURL": "pkg:rpm/amazon/curl-minimal@8.0.1-1.amzn2023?arch=x86_64&distro=amazon-2023%20%28Amazon%20Linux%29",
+            "UID": "184dbd19f70893f6"
+          },
+          "Version": "8.0.1",
+          "Release": "1.amzn2023",
+          "Arch": "x86_64",
+          "SrcName": "curl",
+          "SrcVersion": "8.0.1",
+          "SrcRelease": "1.amzn2023"
+        },
+        {
+          "ID": "openssl-libs@3.0.8-1.amzn2023.0.3.x86_64",
+          "Name": "openssl-libs",
+          "Identifier": {
+            "PURL": "pkg:rpm/amazon/openssl-libs@3.0.8-1.amzn2023.0.3?arch=x86_64&distro=amazon-2023%20%28Amazon%20Linux%29&epoch=1",
+            "UID": "372b50ce59772122"
+          },
+          "Version": "3.0.8",
+          "Release": "1.amzn2023.0.3",
+          "Arch": "x86_64",
+          "SrcName": "openssl",
+          "SrcVersion": "3.0.8",
+          "SrcRelease": "1.amzn2023.0.3"
+        },
+        {
+          "ID": "rpm@4.16.1.3-12.amzn2023.0.6.x86_64",
+          "Name": "rpm",
+          "Identifier": {
+            "PURL": "pkg:rpm/amazon/rpm@4.16.1.3-12.amzn2023.0.6?arch=x86_64&distro=amazon-2023%20%28Amazon%20Linux%29",
+            "UID": "e46ca84546ddd7e3"
+          },
+          "Version": "4.16.1.3",
+          "Release": "12.amzn2023.0.6",
+          "Arch": "x86_64",
+          "SrcName": "rpm",
+          "SrcVersion": "4.16.1.3",
+          "SrcRelease": "12.amzn2023.0.6"
+        }
+      ],
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2023-38039",
+          "PkgID": "curl-minimal@8.0.1-1.amzn2023.x86_64",
+          "PkgName": "curl-minimal",
+          "PkgIdentifier": {
+            "PURL": "pkg:rpm/amazon/curl-minimal@8.0.1-1.amzn2023?arch=x86_64&distro=amazon-2023%20%28Amazon%20Linux%29",
+            "UID": "184dbd19f70893f6"
+          },
+          "InstalledVersion": "8.0.1-1.amzn2023",
+          "FixedVersion": "8.3.0-1.amzn2023.0.1",
+          "Status": "fixed",
+          "SeveritySource": "amazon",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2023-38039",
+          "DataSource": {
+            "ID": "amazon",
+            "Name": "Amazon Linux Security Center",
+            "URL": "https://alas.aws.amazon.com/"
+          },
+          "Fingerprint": "sha256:151415640f08190388d920498dbfe30abb80e57d6205e7646047cb5954a4e31f",
+          "Title": "curl: out of heap memory issue due to missing limit on header quantity",
+          "Description": "When curl retrieves an HTTP response, it stores the incoming headers so that\nthey can be accessed later via the libcurl headers API.\n\nHowever, curl did not have a limit in how many or how large headers it would\naccept in a response, allowing a malicious server to stream an endless series\nof headers and eventually cause curl to run out of heap memory.",
+          "Severity": "HIGH",
+          "CweIDs": [
+            "CWE-770"
+          ],
+          "VendorSeverity": {
+            "amazon": 3,
+            "azure": 3,
+            "cbl-mariner": 3,
+            "julia": 3,
+            "nvd": 3,
+            "photon": 3,
+            "redhat": 2,
+            "ubuntu": 2
+          },
+          "PublishedDate": "2023-09-15T04:15:10.127Z",
+          "LastModifiedDate": "2026-06-17T06:09:17.45Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2023-38545",
+          "PkgID": "curl-minimal@8.0.1-1.amzn2023.x86_64",
+          "PkgName": "curl-minimal",
+          "PkgIdentifier": {
+            "PURL": "pkg:rpm/amazon/curl-minimal@8.0.1-1.amzn2023?arch=x86_64&distro=amazon-2023%20%28Amazon%20Linux%29",
+            "UID": "184dbd19f70893f6"
+          },
+          "InstalledVersion": "8.0.1-1.amzn2023",
+          "FixedVersion": "8.3.0-1.amzn2023.0.2",
+          "Status": "fixed",
+          "SeveritySource": "amazon",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2023-38545",
+          "DataSource": {
+            "ID": "amazon",
+            "Name": "Amazon Linux Security Center",
+            "URL": "https://alas.aws.amazon.com/"
+          },
+          "Fingerprint": "sha256:f202db8a442a8e7b0871adfe13edc61d2dc08c072b03640dc24c176fef4a1d47",
+          "Title": "curl: heap based buffer overflow in the SOCKS5 proxy handshake",
+          "Description": "This flaw makes curl overflow a heap based buffer in the SOCKS5 proxy\nhandshake.\n\nWhen curl is asked to pass along the host name to the SOCKS5 proxy to allow\nthat to resolve the address instead of it getting done by curl itself, the\nmaximum length that host name can be is 255 bytes.\n\nIf the host name is detected to be longer, curl switches to local name\nresolving and instead passes on the resolved address only. Due to this bug,\nthe local variable that means \"let the host resolve the name\" could get the\nwrong value during a slow SOCKS5 handshake, and contrary to the intention,\ncopy the too long host name to the target buffer instead of copying just the\nresolved address there.\n\nThe target buffer being a heap based buffer, and the host name coming from the\nURL that curl has been told to operate with.",
+          "Severity": "HIGH",
+          "CweIDs": [
+            "CWE-787"
+          ],
+          "VendorSeverity": {
+            "alma": 3,
+            "amazon": 3,
+            "azure": 4,
+            "cbl-mariner": 4,
+            "julia": 4,
+            "nvd": 4,
+            "oracle-oval": 3,
+            "photon": 4,
+            "redhat": 3,
+            "rocky": 3,
+            "ubuntu": 3
+          },
+          "PublishedDate": "2023-10-18T04:15:11.077Z",
+          "LastModifiedDate": "2026-06-17T06:10:41.627Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2023-38546",
+          "PkgID": "curl-minimal@8.0.1-1.amzn2023.x86_64",
+          "PkgName": "curl-minimal",
+          "PkgIdentifier": {
+            "PURL": "pkg:rpm/amazon/curl-minimal@8.0.1-1.amzn2023?arch=x86_64&distro=amazon-2023%20%28Amazon%20Linux%29",
+            "UID": "184dbd19f70893f6"
+          },
+          "InstalledVersion": "8.0.1-1.amzn2023",
+          "FixedVersion": "8.3.0-1.amzn2023.0.2",
+          "Status": "fixed",
+          "SeveritySource": "amazon",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2023-38546",
+          "DataSource": {
+            "ID": "amazon",
+            "Name": "Amazon Linux Security Center",
+            "URL": "https://alas.aws.amazon.com/"
+          },
+          "Fingerprint": "sha256:3ab177a84c11a9733d542c357511a8d0b0b31549e958989e9dcd27284ca7aa6f",
+          "Title": "curl: cookie injection with none file",
+          "Description": "This flaw allows an attacker to insert cookies at will into a running program\nusing libcurl, if the specific series of conditions are met.\n\nlibcurl performs transfers. In its API, an application creates \"easy handles\"\nthat are the individual handles for single transfers.\n\nlibcurl provides a function call that duplicates en easy handle called\n[curl_easy_duphandle](https://curl.se/libcurl/c/curl_easy_duphandle.html).\n\nIf a transfer has cookies enabled when the handle is duplicated, the\ncookie-enable state is also cloned - but without cloning the actual\ncookies. If the source handle did not read any cookies from a specific file on\ndisk, the cloned version of the handle would instead store the file name as\n`none` (using the four ASCII letters, no quotes).\n\nSubsequent use of the cloned handle that does not explicitly set a source to\nload cookies from would then inadvertently load cookies from a file named\n`none` - if such a file exists and is readable in the current directory of the\nprogram using libcurl. And if using the correct file format of course.",
+          "Severity": "HIGH",
+          "VendorSeverity": {
+            "alma": 3,
+            "amazon": 3,
+            "azure": 1,
+            "cbl-mariner": 1,
+            "julia": 1,
+            "nvd": 1,
+            "oracle-oval": 2,
+            "photon": 1,
+            "redhat": 1,
+            "rocky": 2,
+            "ubuntu": 1
+          },
+          "PublishedDate": "2023-10-18T04:15:11.137Z",
+          "LastModifiedDate": "2026-06-17T06:10:41.86Z"
+        }
+      ]
+    }
+  ]
+}

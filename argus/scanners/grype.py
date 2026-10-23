@@ -20,6 +20,7 @@ from argus.containers import get_image
 from argus.core.models import Finding, ScanResult, Severity
 from argus.core.scanner_template import workspace_file
 
+from argus.core.sbom_coverage import grype_coverage
 from argus.scanners._vuln_parsers import parse_grype_match
 
 
@@ -107,13 +108,15 @@ class GrypeScanner:
                         "returncode": result.returncode,
                     },
                 )
-            findings = self.parse_results(output_file)
+            parsed = self.parse_results(output_file)
+            findings, extra = parsed if isinstance(parsed, tuple) else (parsed, {})
             return ScanResult(
                 scanner=self.name,
                 findings=findings,
                 metadata={
                     "returncode": result.returncode,
                     "sbom_path": str(sbom_path),
+                    **extra,
                 },
             )
 
@@ -140,8 +143,8 @@ class GrypeScanner:
         except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, OSError):
             return None
 
-    def parse_results(self, raw_output_path: Path) -> list[Finding]:
-        """Parse Grype JSON output into Finding objects.
+    def parse_results(self, raw_output_path: Path) -> list[Finding] | tuple[list[Finding], dict]:
+        """Parse Grype JSON output into ``(findings, extra)``.
 
         When Grype can't identify the scan subject from the SBOM
         (e.g. SPDX tag-value without purl refs), it still emits a
@@ -157,12 +160,16 @@ class GrypeScanner:
             data = json.loads(Path(raw_output_path).read_text(encoding="utf-8", errors="replace"))
         except (json.JSONDecodeError, OSError):
             return []
+        if not isinstance(data, dict):
+            return []
         matches = data.get("matches") or []
         # Surface the "unknown source" signal via a module-level warning
         # plus the parse_results (list, extra) tuple convention the engine
-        # understands. The extra dict is merged into result.metadata.
-        target = data.get("source", {}).get("target", "")
-        extra: dict = {}
+        # understands. The extra dict is merged into result.metadata,
+        # along with whether grype evaluated the SBOM's OS packages
+        # (read by the coverage guard, argus.core.sbom_coverage).
+        target = (data.get("source") or {}).get("target", "")
+        extra: dict = grype_coverage(data)
         if isinstance(target, str) and target == "unknown" and not matches:
             extra["warning"] = (
                 "Grype could not identify the scan subject "
@@ -170,7 +177,7 @@ class GrypeScanner:
                 "clean — the SBOM likely lacks purl external refs."
             )
         findings = [parse_grype_match(m, scanner_name=self.name) for m in matches]
-        return (findings, extra) if extra else findings
+        return findings, extra
 
 
 def _config_flags(config: dict, workspace: str) -> list[str]:

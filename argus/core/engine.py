@@ -551,6 +551,12 @@ class ArgusEngine:
         # (bandit, checkov) already dropped these; this catches the rest.
         result = _drop_skipped_rules(scanner, result, config_dict)
 
+        # SBOM mode: a matcher that never evaluated the SBOM's OS packages
+        # gets marked incomplete instead of passing as clean (#492).
+        if config_dict.get("sbom_path"):
+            from .sbom_coverage import apply_coverage_guard
+            result = apply_coverage_guard(result, config_dict["sbom_path"])
+
         # A scanner with its own `path:` reports locations relative to that
         # subdir. Rebase them onto the run root so reports, excludes and
         # SARIF all see repo-relative paths.

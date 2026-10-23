@@ -1,0 +1,44 @@
+{
+  "matches": [],
+  "source": {
+    "type": "image",
+    "target": {
+      "userInput": "amazonlinux:2023.1.20230705.0",
+      "imageID": "ContainerImage-7a44e2d77b2ee3e",
+      "manifestDigest": "",
+      "tags": [],
+      "repoDigests": []
+    }
+  },
+  "distro": {
+    "name": "amazon",
+    "version": "2023 (Amazon Linux)",
+    "idLike": [
+      "amazon"
+    ]
+  },
+  "descriptor": {
+    "name": "grype",
+    "version": "0.120.1",
+    "timestamp": "2026-10-23T13:20:29.71837696Z",
+    "db": {
+      "status": {
+        "schemaVersion": "v6.1.10",
+        "from": "https://grype.anchore.io/databases/v6/vulnerability-db_v6.1.10_2026-10-23T00:30:52Z_1792737015.tar.zst?checksum=sha256%3A6e78c0f757fe96976b37b138e54e83fd75f2ad1f6c5feae2ecb008cefa8fcc0f",
+        "built": "2026-10-23T06:30:15Z",
+        "path": "/gc/6/vulnerability.db",
+        "valid": true
+      },
+      "providers": {
+        "amazon": {
+          "captured": "2026-10-23T00:31:16Z",
+          "input": "xxh64:b3a74559fb09e3cf"
+        },
+        "nvd": {
+          "captured": "2026-10-23T00:32:25Z",
+          "input": "xxh64:e4d5669cf7c8927d"
+        }
+      }
+    }
+  }
+}

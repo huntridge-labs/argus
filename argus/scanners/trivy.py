@@ -19,6 +19,7 @@ from argus.core.models import Finding, ScanResult, Severity
 from argus.core.scanner_template import workspace_file
 from argus.core.version import parse_tool_version
 
+from argus.core.sbom_coverage import trivy_coverage
 from argus.scanners._vuln_parsers import parse_trivy_vuln
 
 
@@ -102,13 +103,14 @@ class TrivyScanner:
                         "returncode": result.returncode,
                     },
                 )
-            findings = self.parse_results(output_file)
+            findings, extra = _split_parsed(self.parse_results(output_file))
             return ScanResult(
                 scanner=self.name,
                 findings=findings,
                 metadata={
                     "returncode": result.returncode,
                     "sbom_path": str(sbom_path),
+                    **extra,
                 },
             )
 
@@ -126,17 +128,32 @@ class TrivyScanner:
             return None
         return parse_tool_version(["trivy", "--version"], r"^Version: (\S+)")
 
-    def parse_results(self, raw_output_path: Path) -> list[Finding]:
-        """Parse Trivy JSON output into Finding objects."""
+    def parse_results(self, raw_output_path: Path) -> list[Finding] | tuple[list[Finding], dict]:
+        """Parse Trivy JSON output into ``(findings, coverage)``.
+
+        ``coverage`` says whether trivy evaluated the SBOM's OS packages
+        (see ``argus.core.sbom_coverage``); the engine merges it into
+        ``ScanResult.metadata`` for the coverage guard. Unreadable output
+        returns a plain empty list.
+        """
         try:
             data = json.loads(Path(raw_output_path).read_text(encoding="utf-8", errors="replace"))
         except (json.JSONDecodeError, OSError):
+            return []
+        if not isinstance(data, dict):
             return []
         findings: list[Finding] = []
         for r in data.get("Results") or []:
             for v in r.get("Vulnerabilities") or []:
                 findings.append(parse_trivy_vuln(v, scanner_name=self.name))
-        return findings
+        return findings, trivy_coverage(data)
+
+
+def _split_parsed(parsed) -> tuple[list[Finding], dict]:
+    """Unpack parse_results' ``list`` or ``(list, dict)`` return."""
+    if isinstance(parsed, tuple):
+        return parsed[0], parsed[1]
+    return parsed, {}
 
 
 def _native_file_flags(config: dict, workspace: str) -> list[str]:

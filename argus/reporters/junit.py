@@ -105,7 +105,7 @@ class JUnitReporter:
         # the engine sets on ScanResult.metadata.
         execution_failed = bool(result.metadata.get("execution_failed"))
 
-        if not result.findings and not execution_failed:
+        if not result.findings and not execution_failed and not result.incomplete:
             # Clean scanner — emit a passing testcase so the suite
             # isn't empty.
             ET.SubElement(
@@ -158,6 +158,21 @@ class JUnitReporter:
                 ),
             )
             err.text = str(result.metadata.get("error", "scanner execution failed"))
+            tests += 1
+            errors += 1
+
+        if result.incomplete:
+            # Ran, but skipped part of its input (#492): an error, so a CI
+            # dashboard never shows it as a clean pass.
+            reason = str(result.metadata.get("incomplete_reason", "scan incomplete"))
+            gap_case = ET.SubElement(
+                suite,
+                "testcase",
+                classname=result.scanner,
+                name=f"{result.scanner}: coverage",
+            )
+            gap = ET.SubElement(gap_case, "error", type="incomplete", message=reason)
+            gap.text = reason
             tests += 1
             errors += 1
 

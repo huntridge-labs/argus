@@ -1,0 +1,35 @@
+{
+  "SchemaVersion": 2,
+  "Trivy": {
+    "Version": "0.76.0"
+  },
+  "ReportID": "01a168e9-d3db-71e5-bb0e-63ccb07be6a8",
+  "CreatedAt": "2026-10-23T13:18:37.019126713Z",
+  "ArtifactName": "/f/syft-amzn2023.cdx.json",
+  "ArtifactType": "cyclonedx",
+  "Metadata": {
+    "OS": {
+      "Family": "amzn",
+      "Name": "2023"
+    }
+  },
+  "Results": [
+    {
+      "Target": "Python",
+      "Class": "lang-pkgs",
+      "Type": "python-pkg",
+      "Packages": [
+        {
+          "ID": "rpm@4.16.1.3",
+          "Name": "rpm",
+          "Identifier": {
+            "PURL": "pkg:pypi/rpm@4.16.1.3",
+            "UID": "650c09b1b350f9ee",
+            "BOMRef": "pkg:pypi/rpm@4.16.1.3?package-id=c25f876745d22522"
+          },
+          "Version": "4.16.1.3"
+        }
+      ]
+    }
+  ]
+}

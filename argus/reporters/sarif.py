@@ -68,7 +68,7 @@ class SarifReporter:
 
             sarif_results.append(self._build_result(finding))
 
-        return {
+        run: dict = {
             "tool": {
                 "driver": {
                     "name": f"argus/{result.scanner}",
@@ -77,6 +77,20 @@ class SarifReporter:
             },
             "results": sarif_results,
         }
+        if result.incomplete:
+            # The tool ran (executionSuccessful) but skipped part of its
+            # input, so its empty result list is not a clean bill (#492).
+            reason = result.metadata.get("incomplete_reason", "scan incomplete")
+            run["invocations"] = [{
+                "executionSuccessful": True,
+                "toolExecutionNotifications": [{
+                    "level": "error",
+                    "descriptor": {"id": "argus/incomplete-scan"},
+                    "message": {"text": reason},
+                }],
+            }]
+            run["properties"] = {"incomplete": True}
+        return run
 
     def _build_result(self, finding: Finding) -> dict:
         level = _SEVERITY_TO_SARIF_LEVEL.get(finding.severity, "none")
