@@ -1,5 +1,7 @@
 """Tests for argus.scanners.osv — OsvScanner."""
 
+import json
+
 import pytest
 
 from argus.core.models import Severity
@@ -9,6 +11,39 @@ from argus.scanners.osv import OsvScanner
 
 _LOCAL = ScanPaths(workspace=".", output="/tmp/out.json")
 _CONTAINER = ScanPaths(workspace="/workspace", output="/output/results.json")
+
+
+def _write_osv(tmp_path, packages):
+    f = tmp_path / "results.json"
+    f.write_text(
+        json.dumps({"results": [{"source": {"path": "/src/uv.lock"}, "packages": packages}]}),
+        encoding="utf-8",
+    )
+    return f
+
+
+def _certifi(vulnerabilities, groups):
+    return {
+        "package": {"name": "certifi", "version": "2026.2.25", "ecosystem": "PyPI"},
+        "vulnerabilities": vulnerabilities,
+        "groups": groups,
+    }
+
+
+_GHSA = {
+    "id": "GHSA-6q48-6c7w-9gw2",
+    "summary": "certifi bundles emSign root CAs with compromised intermediate CA keys",
+    "aliases": ["PYSEC-2026-4320"],
+    "database_specific": {"severity": "CRITICAL", "cwe_ids": ["CWE-295"]},
+    "affected": [{"ranges": [{"events": [{"introduced": "0"}, {"fixed": "2026.10.19"}]}]}],
+}
+# PYSEC records carry no database_specific severity and often no summary.
+_PYSEC = {
+    "id": "PYSEC-2026-4320",
+    "aliases": ["GHSA-6q48-6c7w-9gw2", "CVE-2026-61234"],
+    "affected": [{"ranges": [{"events": [{"introduced": "0"}, {"fixed": "2026.10.19"}]}]}],
+}
+_GROUP = {"ids": ["PYSEC-2026-4320", "GHSA-6q48-6c7w-9gw2"], "max_severity": "9.1"}
 
 
 class TestOsvFixedVersion:
@@ -251,40 +286,6 @@ class TestOsvSourceMode:
         assert "/workspace" in args
 
 
-def _write_osv(tmp_path, packages):
-    import json
-    f = tmp_path / "results.json"
-    f.write_text(
-        json.dumps({"results": [{"source": {"path": "/src/uv.lock"}, "packages": packages}]}),
-        encoding="utf-8",
-    )
-    return f
-
-
-def _certifi(vulnerabilities, groups):
-    return {
-        "package": {"name": "certifi", "version": "2026.2.25", "ecosystem": "PyPI"},
-        "vulnerabilities": vulnerabilities,
-        "groups": groups,
-    }
-
-
-_GHSA = {
-    "id": "GHSA-6q48-6c7w-9gw2",
-    "summary": "certifi bundles emSign root CAs with compromised intermediate CA keys",
-    "aliases": ["PYSEC-2026-4320"],
-    "database_specific": {"severity": "CRITICAL", "cwe_ids": ["CWE-295"]},
-    "affected": [{"ranges": [{"events": [{"introduced": "0"}, {"fixed": "2026.10.19"}]}]}],
-}
-# PYSEC records carry no database_specific severity and often no summary.
-_PYSEC = {
-    "id": "PYSEC-2026-4320",
-    "aliases": ["GHSA-6q48-6c7w-9gw2", "CVE-2026-61234"],
-    "affected": [{"ranges": [{"events": [{"introduced": "0"}, {"fixed": "2026.10.19"}]}]}],
-}
-_GROUP = {"ids": ["PYSEC-2026-4320", "GHSA-6q48-6c7w-9gw2"], "max_severity": "9.1"}
-
-
 class TestOsvAliasGroups:
     """One advisory published by several databases is one finding, not one per record."""
 
@@ -346,3 +347,51 @@ class TestOsvAliasGroups:
         findings = OsvScanner().parse_results(path)
 
         assert [f.id for f in findings] == ["PYSEC-2026-4320"]
+
+    def test_summary_comes_from_an_alias_when_the_primary_has_none(self, tmp_path):
+        """Older PYSEC records have no summary; the merged finding takes its alias's."""
+        bare_ghsa = {k: v for k, v in _GHSA.items() if k != "summary"}
+        titled_pysec = {**_PYSEC, "summary": "certifi trusts compromised emSign roots"}
+        path = _write_osv(tmp_path, [_certifi([titled_pysec, bare_ghsa], [_GROUP])])
+
+        f = OsvScanner().parse_results(path)[0]
+
+        assert f.id == "GHSA-6q48-6c7w-9gw2"
+        assert f.title == "certifi trusts compromised emSign roots"
+        assert f.description == "certifi trusts compromised emSign roots"
+
+    def test_cwe_and_fix_come_from_an_alias_when_the_primary_has_none(self, tmp_path):
+        bare_ghsa = {
+            "id": "GHSA-6q48-6c7w-9gw2",
+            "summary": _GHSA["summary"],
+            "database_specific": {"severity": "CRITICAL"},
+        }
+        rich_pysec = {**_PYSEC, "database_specific": {"cwe_ids": ["CWE-295"]}}
+        path = _write_osv(tmp_path, [_certifi([bare_ghsa, rich_pysec], [_GROUP])])
+
+        f = OsvScanner().parse_results(path)[0]
+
+        assert f.cwe == "CWE-295"
+        assert f.metadata["fixed_version"] == "2026.10.19"
+
+    def test_group_without_ghsa_is_named_by_its_lowest_id(self, tmp_path):
+        later = {**_PYSEC, "id": "PYSEC-2026-4321", "aliases": ["PYSEC-2026-4320"]}
+        earlier = {**_PYSEC, "aliases": ["PYSEC-2026-4321"]}
+        group = {"ids": ["PYSEC-2026-4321", "PYSEC-2026-4320"]}
+        path = _write_osv(tmp_path, [_certifi([later, earlier], [group])])
+
+        findings = OsvScanner().parse_results(path)
+
+        assert [f.id for f in findings] == ["PYSEC-2026-4320"]
+        assert findings[0].metadata["aliases"] == ["PYSEC-2026-4321"]
+
+    def test_highest_severity_wins_whichever_record_reports_it(self, tmp_path):
+        """The GHSA record names the finding, but a higher alias severity still counts."""
+        medium_ghsa = {**_GHSA, "database_specific": {"severity": "MEDIUM"}}
+        high_pysec = {**_PYSEC, "database_specific": {"severity": "HIGH"}}
+        path = _write_osv(tmp_path, [_certifi([medium_ghsa, high_pysec], [_GROUP])])
+
+        f = OsvScanner().parse_results(path)[0]
+
+        assert f.id == "GHSA-6q48-6c7w-9gw2"
+        assert f.severity == Severity.HIGH
