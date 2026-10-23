@@ -1,0 +1,14 @@
+id: ADR-489
+title: "Signed per-platform SBOMs for release images"
+date: '2026-10-23'
+status: proposed
+context: |-
+  The release job builds five multi-arch images (linux/amd64, linux/arm64)
+  and cosign-signs them, but publishes no inventory of what is inside
+  them. People who pull an image, and auditors who review it, need a
+  verifiable list of exactly what each released image contains, tied to
+  the digest they pull.
+decision: |-
+  Work in progress. Generate CycloneDX SBOMs with the pinned syft image
+  right after the build/push loop, sign them as GitHub artifact
+  attestations, and publish them with every run and every release.
