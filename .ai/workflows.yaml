@@ -412,6 +412,7 @@ workflows:
       minor: npm run release -- minor
       major: npm run release -- major
       prerelease_rc: 'npm run release -- major --preRelease=rc  # for 1.0.0-rc.0'
+      try_a_batch: 'Release workflow with releaseType=minor, preReleaseId=rc, then pip install --pre (AGENTS.md "Trying a big change before it ships")'
     ci_workflow: .github/workflows/release.yml
     prerequisites:
     - All tests passing
@@ -419,15 +420,33 @@ workflows:
     - Clean working directory
     what_happens:
     - Tests run inside the single `release` job
-    - 4 multi-arch containers built and pushed to GHCR under :build-<sha>-<run>
-    - 'sha256: digests captured as ARGUS_DIGEST_* env vars'
+    - 5 multi-arch containers built and pushed to GHCR under :build-<sha>-<run>
+    - 'sha256: index digests captured as ARGUS_DIGEST_* env vars'
+    - 'scripts/ci/image_sboms.py generate: pinned syft scans each pushed platform manifest by digest
+      (CycloneDX, linux/amd64 + linux/arm64) and writes an index BOM per image (ADR-489)'
+    - actions/attest signs each SBOM (subject = its platform manifest or index digest); image_sboms.py
+      collect checks every bundle and the set uploads as the image-sboms-<sha12> artifact. Any failure
+      stops the job before release-it
     - release-it bumps version.yaml, package.json, argus/__init__.py, argus/containers.py
     - after:bump hook (scripts/release_it/inject_image_digests.py) pins <version>@sha256:<digest>
     - 'release-it generates CHANGELOG, commits chore(release): X.Y.Z, tags, pushes'
-    - Container images re-tagged to :<VERSION> + :latest via docker buildx imagetools (no rebuild)
+    - Container images re-tagged to :<VERSION> + :latest via docker buildx imagetools (no rebuild);
+      a prerelease (X.Y.Z-rc.N) gets only :<VERSION>, never :latest (ADR-500)
     - Images cosign-signed by digest (Sigstore keyless, OIDC)
+    - SBOMs + .sigstore.json bundles attached to the GitHub release (gh release upload)
     - Wheel built from the bumped tree and published to PyPI via OIDC trusted publishing
     - Build-id (:build-<sha>) tags age out nightly via .github/workflows/ghcr-prune.yml
+  verify_image_sbom:
+    description: Verify the signed CycloneDX SBOM of a released argus image (ADR-489)
+    command: gh attestation verify oci://ghcr.io/huntridge-labs/argus/<image>:<version> --repo huntridge-labs/argus
+      --predicate-type https://cyclonedx.org/bom
+    notes:
+    - A tag or index digest checks the index BOM; it lists the linux/amd64 and linux/arm64 manifest digests
+    - For the image you run, pass oci://ghcr.io/huntridge-labs/argus/<image>@<platform-digest> (from docker
+      buildx imagetools inspect) to check that platform's SBOM
+    - --predicate-type is required; gh defaults to SLSA provenance
+    - Files (sbom-<image>-<sha12>-<linux-amd64|linux-arm64|index>.cdx.json + .sigstore.json) are release assets
+      and the image-sboms-<sha12> artifact of the release run
   run_single_action_test:
     description: Test a specific action locally
     command: pytest .github/actions/scanner-{name}/tests/

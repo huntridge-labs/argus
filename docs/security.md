@@ -50,10 +50,11 @@ runner's environment, never paste literals into VCS-tracked YAML.**
    redaction sits upstream of this safety net for known leak fields
    (gitleaks's `Match`, bandit's B105/106/107 hardcoded-credential
    `issue_text`, etc.).
-5. **Supply-chain attacks via tampered argus-owned images.** The 4
+5. **Supply-chain attacks via tampered argus-owned images.** The 5
    container images argus publishes (`scanner-bandit`,
-   `scanner-opengrep`, `scanner-supply-chain`, `cli`) are
-   cosign-signed at release with keyless Sigstore. Argus verifies
+   `scanner-opengrep`, `scanner-supply-chain`, `cli`, `scanner-mumps`)
+   are cosign-signed at release with keyless Sigstore, and each ships
+   a signed SBOM ([Image SBOMs](#image-sboms-signed-per-platform)). Argus verifies
    each pull against the publishing workflow's certificate identity
    and the GitHub Actions OIDC issuer. Verification failure aborts
    the scanner.
@@ -193,13 +194,14 @@ before the scanner is allowed to run.
 
 ### Argus-owned images (cosign verify, fail-on-failure)
 
-Four images are published from this repository to
+Five images are published from this repository to
 `ghcr.io/huntridge-labs/argus/*`:
 
 - `scanner-bandit`
 - `scanner-opengrep`
 - `scanner-supply-chain`
 - `cli`
+- `scanner-mumps`
 
 They are signed at release time via [keyless Sigstore][sigstore] —
 the publishing GitHub Actions workflow obtains a short-lived
@@ -221,6 +223,61 @@ that hasn't been re-signed, network access to Rekor blocked, etc.
 
 If the cosign binary is missing on PATH and verification is enabled,
 argus fails up front with an install hint.
+
+### Image SBOMs (signed, per platform)
+
+Every argus-owned image is multi-arch: a tag such as `cli:1.13.0`
+points at an image index, and the index points at one image per
+platform (`linux/amd64`, `linux/arm64`). The release workflow publishes
+a CycloneDX SBOM for each, keyed to the digest people pull, and signs
+each one as a [GitHub artifact attestation][gh-attest] (Sigstore,
+predicate type `https://cyclonedx.org/bom`). The decision record is
+[ADR-489](https://github.com/huntridge-labs/argus/blob/main/.ai/decisions/ADR-489.yaml).
+
+| File | Describes | Attestation subject |
+|---|---|---|
+| `sbom-<image>-<sha12>-linux-amd64.cdx.json` | Everything syft finds in the amd64 image | The amd64 manifest digest |
+| `sbom-<image>-<sha12>-linux-arm64.cdx.json` | Everything syft finds in the arm64 image | The arm64 manifest digest |
+| `sbom-<image>-<sha12>-index.cdx.json` | The index: its two platform manifests, by digest | The index digest (what the tag resolves to, and what `argus/containers.py` pins) |
+
+`<sha12>` is the first 12 characters of the commit the images were
+built from. Each SBOM records the same digest its attestation names
+(`metadata.component.version`). syft scans the pushed image straight
+from the registry, by digest. Next to each SBOM sits its Sigstore
+bundle, `<sbom>.sigstore.json`, plus `image-sboms-<sha12>.json`, which
+lists every subject and file.
+
+**Where to get them:** attached to each
+[GitHub release](https://github.com/huntridge-labs/argus/releases)
+from the first release that includes this change, and as the
+`image-sboms-<sha12>` artifact on every run of the release workflow
+(kept 30 days).
+
+**Verify by tag or index digest** (checks the index attestation):
+
+```
+gh attestation verify oci://ghcr.io/huntridge-labs/argus/cli:<version> \
+  --repo huntridge-labs/argus \
+  --predicate-type https://cyclonedx.org/bom
+```
+
+**Verify the image you actually run** (checks that platform's SBOM).
+Find the platform digest with
+`docker buildx imagetools inspect ghcr.io/huntridge-labs/argus/cli:<version>`,
+then:
+
+```
+gh attestation verify oci://ghcr.io/huntridge-labs/argus/cli@sha256:<platform-digest> \
+  --repo huntridge-labs/argus \
+  --predicate-type https://cyclonedx.org/bom
+```
+
+`--predicate-type` is required: without it `gh` looks for SLSA
+provenance and reports that no attestation exists. Add
+`--format json --jq '.[].verificationResult.statement.predicate'` to
+print the signed SBOM itself. To check against a bundle you downloaded
+from the release, instead of the one GitHub stores, add
+`--bundle sbom-cli-<sha12>-linux-amd64.cdx.json.sigstore.json`.
 
 ### Third-party images with `@sha256:` digest pin (trust-by-content)
 
@@ -457,4 +514,5 @@ For vulnerabilities in the scanners argus wraps (Trivy, Grype, ZAP,
 etc.), report upstream to the respective project.
 
 [sigstore]: https://docs.sigstore.dev/cosign/overview/
+[gh-attest]: https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds
 [gh-sa]: https://github.com/huntridge-labs/argus/security/advisories/new

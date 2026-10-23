@@ -534,6 +534,19 @@ refactor: simplify parse logic
 
 Users depend on you auto-releasing after dependency updates pass. The testing pipeline must be bulletproof for this trust.
 
+Releases are cut by hand from the **Release** workflow (Actions → Release → Run workflow), so merging to `main` ships nothing on its own. A push to `main` only runs the dry-run preview.
+
+### Trying a big change before it ships
+
+There is no long-lived beta branch. Big batches of related PRs merge to `main` like any other PR, and a prerelease is how they get tried before the final release (ADR-500):
+
+1. **One PR:** every same-repo PR that touches `argus/` or `pyproject.toml` publishes a `<version>.devN` build to TestPyPI.
+2. **A batch:** once the batch is on `main`, run the Release workflow with `releaseType: prerelease` (or `minor` / `major`) and `preReleaseId: rc`. That cuts `X.Y.Z-rc.N`: the GitHub release is marked as a prerelease, the wheel goes to PyPI as `X.Y.ZrcN`, and the images get an `:X.Y.Z-rc.N` tag. `:latest` does not move.
+3. **Try it:** `pip install --pre argus-security==X.Y.ZrcN`, or pull `ghcr.io/huntridge-labs/argus/<image>:X.Y.Z-rc.N`. pip and uv skip prereleases unless asked, so nobody gets one by accident.
+4. **Ship it:** run the Release workflow again with the matching `releaseType` and no `preReleaseId` to cut `X.Y.Z`. That one moves `:latest`.
+
+Prerelease tags are kept like any other version tag (the GHCR prune job only removes non-version tags), because the rc wheel on PyPI pins those image digests.
+
 ### Design Patterns
 
 **Hybrid Classification (Rules + AI Fallback)**

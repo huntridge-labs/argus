@@ -10,7 +10,13 @@ from pathlib import Path
 
 from argus.containers import get_image
 from argus.core.models import Finding, PhaseResult, ScanResult, Severity
-from argus.scanners._vuln_parsers import parse_grype_match, parse_trivy_vuln
+from argus.scanners._vuln_parsers import (
+    parse_grype_match,
+    parse_grype_report,
+    parse_trivy_report,
+    parse_trivy_vuln,
+    trivy_db_built,
+)
 
 logger = logging.getLogger("argus")
 
@@ -637,23 +643,12 @@ class ContainerScanner:
     def parse_trivy_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse Trivy container JSON output into findings."""
         data = json.loads(raw_output_path.read_text(encoding="utf-8", errors="replace"))
-        findings: list[Finding] = []
-
-        for target in data.get("Results", []):
-            for vuln in target.get("Vulnerabilities", []):
-                findings.append(self._parse_trivy_vuln(vuln))
-
-        return findings
+        return parse_trivy_report(data, scanner_name=self.name, db_built=trivy_db_built())
 
     def parse_grype_results(self, raw_output_path: Path) -> list[Finding]:
         """Parse Grype JSON output into findings."""
         data = json.loads(raw_output_path.read_text(encoding="utf-8", errors="replace"))
-        findings: list[Finding] = []
-
-        for match in data.get("matches", []):
-            findings.append(self._parse_grype_match(match))
-
-        return findings
+        return parse_grype_report(data, scanner_name=self.name)
 
     # ------------------------------------------------------------------
     # Private helpers

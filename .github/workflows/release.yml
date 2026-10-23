@@ -8,16 +8,20 @@
 # Step order inside ``release``:
 #
 #   1. Tests
-#   2. Build 4 multi-arch images, push to GHCR under ``build-<sha>-<run>``
-#      → capture ``sha256:`` digests in $GITHUB_ENV
-#   3. release-it bumps versions / regenerates changelog / commits / tags
+#   2. Build 5 multi-arch images, push to GHCR under ``build-<sha>-<run>``
+#      → capture ``sha256:`` index digests in $GITHUB_ENV
+#   3. syft SBOM per image per platform + an index BOM, each signed as a
+#      GitHub artifact attestation, uploaded as ``image-sboms-<sha12>``
+#      (ADR-489)
+#   4. release-it bumps versions / regenerates changelog / commits / tags
 #      → ``after:bump`` hook pins ``<version>@sha256:<digest>`` into
 #         ``argus/containers.py`` using the digests from step 2
-#   4. (if release cut) Re-tag images :``<version>`` + :latest (manifest-only)
-#   5. (if release cut) cosign-sign images by digest
-#   6. (if release cut) Build wheel from now-bumped state, smoke test,
+#   5. (if release cut) Re-tag images :``<version>`` + :latest (manifest-only)
+#   6. (if release cut) cosign-sign images by digest
+#   7. (if release cut) Attach the step 3 SBOMs + bundles to the release
+#   8. (if release cut) Build wheel from now-bumped state, smoke test,
 #      publish to PyPI via OIDC
-#   7. (if release cut) Write summary
+#   9. (if release cut) Write summary
 #
 # Order rationale: containers + signatures must exist before the wheel
 # lands on PyPI so a user running ``pip install`` never gets a wheel
@@ -158,7 +162,8 @@ jobs:
       issues: write         # release-it creates GitHub release
       pull-requests: write
       packages: write       # buildx push + imagetools create on GHCR
-      id-token: write       # cosign keyless signing + PyPI OIDC trusted publish
+      id-token: write       # cosign keyless signing + SBOM attestations + PyPI OIDC trusted publish
+      attestations: write   # actions/attest stores the SBOM attestations (ADR-489)
     # Manual-only. Pushes to main no longer auto-trigger a publishing
     # release (that queued a prod-gated run per merge that had to be
     # cancelled). Cut releases deliberately via the Actions "Run workflow"
@@ -298,6 +303,186 @@ jobs:
             echo "::endgroup::"
           done
 
+      # ── Image SBOMs (ADR-489) ────────────────────────────────────────
+      # Every image gets three signed CycloneDX documents: one syft SBOM
+      # per platform (subject = that platform's manifest digest) and a
+      # small index BOM (subject = the index digest, which is what a tag
+      # resolves to and what argus/containers.py pins). syft runs from its
+      # digest pin in argus/containers.py and reads the PUSHED image from
+      # the registry by digest, never a daemon copy. These steps sit before
+      # release-it with no continue-on-error: an SBOM or attestation
+      # failure stops the job before any version, tag or release exists.
+      - name: Generate image SBOMs
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+          SYFT_REGISTRY_AUTH_AUTHORITY: ghcr.io
+          SYFT_REGISTRY_AUTH_USERNAME: ${{ github.actor }}
+          SYFT_REGISTRY_AUTH_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          SBOM_SHA12="${COMMIT_SHA:0:12}"
+          # Outside the checkout on purpose: release-it's before:release
+          # hook runs `git add .`, which would commit files left in it.
+          SBOM_DIR="${RUNNER_TEMP}/image-sboms"
+          echo "SBOM_SHA12=${SBOM_SHA12}" >> "$GITHUB_ENV"
+          echo "SBOM_DIR=${SBOM_DIR}" >> "$GITHUB_ENV"
+          IMAGE_ARGS=()
+          for IMAGE in ${IMAGE_NAMES}; do
+            KEY=$(echo "${IMAGE}" | tr 'a-z-' 'A-Z_')
+            DIGEST_VAR="${KEY}_DIGEST"
+            IMAGE_ARGS+=(--image "${IMAGE}@${!DIGEST_VAR}")
+          done
+          # Writes the SBOMs plus image-sboms-<sha12>.json, and exports
+          # SBOM_<KEY>_<VARIANT>_DIGEST / _PATH for the attest steps below.
+          python -m scripts.ci.image_sboms generate \
+            --registry "${IMAGE_REGISTRY}" \
+            --sha12 "${SBOM_SHA12}" \
+            --out-dir "${SBOM_DIR}" \
+            "${IMAGE_ARGS[@]}"
+
+      # One actions/attest call per SBOM (the action signs one predicate
+      # per call). Step ids are attest-<image>-<variant>; the collect step
+      # finds the bundles by those ids, and
+      # tests/unit/test_image_sboms.py fails if this list drifts from
+      # the IMAGES array above.
+      - name: Attest SBOM (scanner-bandit, linux/amd64)
+        id: attest-scanner-bandit-linux-amd64
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_REGISTRY }}/scanner-bandit
+          subject-digest: ${{ env.SBOM_SCANNER_BANDIT_LINUX_AMD64_DIGEST }}
+          sbom-path: ${{ env.SBOM_SCANNER_BANDIT_LINUX_AMD64_PATH }}
+
+      - name: Attest SBOM (scanner-bandit, linux/arm64)
+        id: attest-scanner-bandit-linux-arm64
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_REGISTRY }}/scanner-bandit
+          subject-digest: ${{ env.SBOM_SCANNER_BANDIT_LINUX_ARM64_DIGEST }}
+          sbom-path: ${{ env.SBOM_SCANNER_BANDIT_LINUX_ARM64_PATH }}
+
+      - name: Attest SBOM (scanner-bandit, index)
+        id: attest-scanner-bandit-index
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_REGISTRY }}/scanner-bandit
+          subject-digest: ${{ env.SBOM_SCANNER_BANDIT_INDEX_DIGEST }}
+          sbom-path: ${{ env.SBOM_SCANNER_BANDIT_INDEX_PATH }}
+
+      - name: Attest SBOM (scanner-opengrep, linux/amd64)
+        id: attest-scanner-opengrep-linux-amd64
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_REGISTRY }}/scanner-opengrep
+          subject-digest: ${{ env.SBOM_SCANNER_OPENGREP_LINUX_AMD64_DIGEST }}
+          sbom-path: ${{ env.SBOM_SCANNER_OPENGREP_LINUX_AMD64_PATH }}
+
+      - name: Attest SBOM (scanner-opengrep, linux/arm64)
+        id: attest-scanner-opengrep-linux-arm64
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_REGISTRY }}/scanner-opengrep
+          subject-digest: ${{ env.SBOM_SCANNER_OPENGREP_LINUX_ARM64_DIGEST }}
+          sbom-path: ${{ env.SBOM_SCANNER_OPENGREP_LINUX_ARM64_PATH }}
+
+      - name: Attest SBOM (scanner-opengrep, index)
+        id: attest-scanner-opengrep-index
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_REGISTRY }}/scanner-opengrep
+          subject-digest: ${{ env.SBOM_SCANNER_OPENGREP_INDEX_DIGEST }}
+          sbom-path: ${{ env.SBOM_SCANNER_OPENGREP_INDEX_PATH }}
+
+      - name: Attest SBOM (scanner-supply-chain, linux/amd64)
+        id: attest-scanner-supply-chain-linux-amd64
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_REGISTRY }}/scanner-supply-chain
+          subject-digest: ${{ env.SBOM_SCANNER_SUPPLY_CHAIN_LINUX_AMD64_DIGEST }}
+          sbom-path: ${{ env.SBOM_SCANNER_SUPPLY_CHAIN_LINUX_AMD64_PATH }}
+
+      - name: Attest SBOM (scanner-supply-chain, linux/arm64)
+        id: attest-scanner-supply-chain-linux-arm64
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_REGISTRY }}/scanner-supply-chain
+          subject-digest: ${{ env.SBOM_SCANNER_SUPPLY_CHAIN_LINUX_ARM64_DIGEST }}
+          sbom-path: ${{ env.SBOM_SCANNER_SUPPLY_CHAIN_LINUX_ARM64_PATH }}
+
+      - name: Attest SBOM (scanner-supply-chain, index)
+        id: attest-scanner-supply-chain-index
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_REGISTRY }}/scanner-supply-chain
+          subject-digest: ${{ env.SBOM_SCANNER_SUPPLY_CHAIN_INDEX_DIGEST }}
+          sbom-path: ${{ env.SBOM_SCANNER_SUPPLY_CHAIN_INDEX_PATH }}
+
+      - name: Attest SBOM (cli, linux/amd64)
+        id: attest-cli-linux-amd64
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_REGISTRY }}/cli
+          subject-digest: ${{ env.SBOM_CLI_LINUX_AMD64_DIGEST }}
+          sbom-path: ${{ env.SBOM_CLI_LINUX_AMD64_PATH }}
+
+      - name: Attest SBOM (cli, linux/arm64)
+        id: attest-cli-linux-arm64
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_REGISTRY }}/cli
+          subject-digest: ${{ env.SBOM_CLI_LINUX_ARM64_DIGEST }}
+          sbom-path: ${{ env.SBOM_CLI_LINUX_ARM64_PATH }}
+
+      - name: Attest SBOM (cli, index)
+        id: attest-cli-index
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_REGISTRY }}/cli
+          subject-digest: ${{ env.SBOM_CLI_INDEX_DIGEST }}
+          sbom-path: ${{ env.SBOM_CLI_INDEX_PATH }}
+
+      - name: Attest SBOM (scanner-mumps, linux/amd64)
+        id: attest-scanner-mumps-linux-amd64
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_REGISTRY }}/scanner-mumps
+          subject-digest: ${{ env.SBOM_SCANNER_MUMPS_LINUX_AMD64_DIGEST }}
+          sbom-path: ${{ env.SBOM_SCANNER_MUMPS_LINUX_AMD64_PATH }}
+
+      - name: Attest SBOM (scanner-mumps, linux/arm64)
+        id: attest-scanner-mumps-linux-arm64
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_REGISTRY }}/scanner-mumps
+          subject-digest: ${{ env.SBOM_SCANNER_MUMPS_LINUX_ARM64_DIGEST }}
+          sbom-path: ${{ env.SBOM_SCANNER_MUMPS_LINUX_ARM64_PATH }}
+
+      - name: Attest SBOM (scanner-mumps, index)
+        id: attest-scanner-mumps-index
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_REGISTRY }}/scanner-mumps
+          subject-digest: ${{ env.SBOM_SCANNER_MUMPS_INDEX_DIGEST }}
+          sbom-path: ${{ env.SBOM_SCANNER_MUMPS_INDEX_PATH }}
+
+      - name: Collect SBOM attestation bundles
+        # Checks each bundle signs the expected subject digest with its
+        # own SBOM, then saves it as <sbom>.sigstore.json.
+        env:
+          ATTEST_STEPS: ${{ toJSON(steps) }}
+        run: python -m scripts.ci.image_sboms collect --sha12 "${SBOM_SHA12}" --out-dir "${SBOM_DIR}"
+
+      - name: Upload image SBOMs
+        # Every run, released or not. 30 days covers the 14-day grace on
+        # build-<sha> tags; released SBOMs also live on the GitHub release.
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: image-sboms-${{ env.SBOM_SHA12 }}
+          path: ${{ env.SBOM_DIR }}/
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
+
       - name: Capture version before release
         run: |
           VERSION_BEFORE=$(node -p "require('./package.json').version")
@@ -340,20 +525,25 @@ jobs:
           else
             echo "RELEASED=true" >> "$GITHUB_ENV"
             echo "VERSION=${VERSION_AFTER}" >> "$GITHUB_ENV"
-            echo "Released ${VERSION_AFTER}"
+            # A prerelease (X.Y.Z-rc.N) gets its own tag but never :latest (ADR-500).
+            case "$VERSION_AFTER" in
+              *-*) echo "PRERELEASE=true" >> "$GITHUB_ENV"; echo "Released prerelease ${VERSION_AFTER}" ;;
+              *)   echo "PRERELEASE=" >> "$GITHUB_ENV"; echo "Released ${VERSION_AFTER}" ;;
+            esac
           fi
 
-      - name: Promote containers (re-tag :VERSION + :latest)
+      - name: Promote containers (re-tag :VERSION, plus :latest unless a prerelease)
         if: env.RELEASED == 'true'
         run: |
           set -euo pipefail
           for IMAGE in ${IMAGE_NAMES}; do
             SRC="${IMAGE_REGISTRY}/${IMAGE}:${BUILD_TAG}"
-            docker buildx imagetools create \
-              --tag "${IMAGE_REGISTRY}/${IMAGE}:${VERSION}" \
-              --tag "${IMAGE_REGISTRY}/${IMAGE}:latest" \
-              "${SRC}"
-            echo "Promoted ${SRC} → :${VERSION}, :latest"
+            TAGS=(--tag "${IMAGE_REGISTRY}/${IMAGE}:${VERSION}")
+            if [ "${PRERELEASE}" != "true" ]; then
+              TAGS+=(--tag "${IMAGE_REGISTRY}/${IMAGE}:latest")
+            fi
+            docker buildx imagetools create "${TAGS[@]}" "${SRC}"
+            echo "Promoted ${SRC} → ${TAGS[*]}"
           done
 
       - name: Install cosign
@@ -379,6 +569,17 @@ jobs:
             echo "Signed ${IMAGE} @ ${!DIGEST_VAR}"
           done
           echo "All images signed by digest"
+
+      - name: Attach SBOMs to the GitHub release
+        # Same files as the image-sboms-<sha12> artifact. release-it has
+        # created the release by now (its tag is the bare version).
+        if: env.RELEASED == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "${VERSION}" "${SBOM_DIR}"/*.json \
+            --repo "${GITHUB_REPOSITORY}" --clobber
 
       - name: Verify pinned image manifests resolve
         # The chore(release): commit skips the Unit Tests workflow (and the
@@ -447,8 +648,18 @@ jobs:
             echo "| Image | Tags |"
             echo "|-------|------|"
             for IMAGE in ${IMAGE_NAMES}; do
-              echo "| ${IMAGE_REGISTRY}/${IMAGE} | ${VERSION}, latest |"
+              if [ "${PRERELEASE}" = "true" ]; then
+                echo "| ${IMAGE_REGISTRY}/${IMAGE} | ${VERSION} (prerelease, :latest unchanged) |"
+              else
+                echo "| ${IMAGE_REGISTRY}/${IMAGE} | ${VERSION}, latest |"
+              fi
             done
+            echo ""
+            echo "### SBOMs"
+            echo "Signed CycloneDX SBOMs (per platform + index) are attached to the release. Verify one with:"
+            echo "\`\`\`"
+            echo "gh attestation verify oci://${IMAGE_REGISTRY}/<image>:${VERSION} --repo ${GITHUB_REPOSITORY} --predicate-type https://cyclonedx.org/bom"
+            echo "\`\`\`"
             echo ""
             echo "### Build artifacts"
             echo "- Intermediate build tag: \`${BUILD_TAG}\` (will be pruned in 14 days)"
