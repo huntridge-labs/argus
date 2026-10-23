@@ -1,0 +1,16 @@
+id: ADR-500
+title: "Prereleases keep :latest and are how big batches get test driven"
+date: '2026-10-23'
+status: proposed
+context: |-
+  What problem made this decision necessary?
+decision: |-
+  What we decided, in a few short paragraphs or bullets.
+alternatives_considered:
+- name: Another option
+  rejected_because: Why not.
+consequences:
+  positive:
+  - What gets better.
+  negative:
+  - What it costs.
