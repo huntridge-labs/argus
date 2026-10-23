@@ -406,6 +406,7 @@ workflows:
       minor: npm run release -- minor
       major: npm run release -- major
       prerelease_rc: 'npm run release -- major --preRelease=rc  # for 1.0.0-rc.0'
+      try_a_batch: 'Release workflow with releaseType=minor, preReleaseId=rc, then pip install --pre (AGENTS.md "Trying a big change before it ships")'
     ci_workflow: .github/workflows/release.yml
     prerequisites:
     - All tests passing
@@ -418,7 +419,8 @@ workflows:
     - release-it bumps version.yaml, package.json, argus/__init__.py, argus/containers.py
     - after:bump hook (scripts/release_it/inject_image_digests.py) pins <version>@sha256:<digest>
     - 'release-it generates CHANGELOG, commits chore(release): X.Y.Z, tags, pushes'
-    - Container images re-tagged to :<VERSION> + :latest via docker buildx imagetools (no rebuild)
+    - Container images re-tagged to :<VERSION> + :latest via docker buildx imagetools (no rebuild);
+      a prerelease (X.Y.Z-rc.N) gets only :<VERSION>, never :latest (ADR-500)
     - Images cosign-signed by digest (Sigstore keyless, OIDC)
     - Wheel built from the bumped tree and published to PyPI via OIDC trusted publishing
     - Build-id (:build-<sha>) tags age out nightly via .github/workflows/ghcr-prune.yml
