@@ -20,7 +20,7 @@ from argus.core.scanner_template import workspace_file
 from argus.core.version import parse_tool_version
 
 from argus.core.sbom_coverage import trivy_coverage
-from argus.scanners._vuln_parsers import parse_trivy_vuln
+from argus.scanners._vuln_parsers import parse_trivy_report, trivy_db_built
 
 
 class TrivyScanner:
@@ -142,10 +142,7 @@ class TrivyScanner:
             return []
         if not isinstance(data, dict):
             return []
-        findings: list[Finding] = []
-        for r in data.get("Results") or []:
-            for v in r.get("Vulnerabilities") or []:
-                findings.append(parse_trivy_vuln(v, scanner_name=self.name))
+        findings = parse_trivy_report(data, scanner_name=self.name, db_built=trivy_db_built())
         return findings, trivy_coverage(data)
 
 

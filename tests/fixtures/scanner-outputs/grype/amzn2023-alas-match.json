@@ -1,0 +1,197 @@
+{
+  "matches": [
+    {
+      "vulnerability": {
+        "id": "ALAS2023-2023-377",
+        "dataSource": "https://alas.aws.amazon.com/AL2023/ALAS2023-2023-377.html",
+        "namespace": "amazon:distro:amazonlinux:2023",
+        "severity": "High",
+        "urls": [],
+        "description": "An issue was found in curl that can cause a buffer overflow in its SOCKS5 proxy communications code.When curl is using a SOCKS5 proxy and it needs to resolve a hostname to an IP address, its default behavior is to pass the hostname to the proxy and allow it to perform the resolution. In cases where the hostname is greater than 255 characters in length, curl will instead attempt to perform the resolution locally and then pass the resolved IP to the proxy for its use. Due to an issue in the curl source code, the logic that determines whether curl should resolve the name locally or pass it to the proxy for resolution could make an incorrect decision when a slow SOCKS5 handshake occurs. If this occurs, curl may inadvertently copy an excessively long host name, rather than the resolved address, into the target buffer being prepared for transmission to the proxy, resulting in a buffer overflow. (CVE-2023-38545)An issue was found in libcurl which allows cookies to be inserted into a running program if specific conditions are met. The libcurl provided function, curl_easy_duphandle(), is used to duplicate the easy_handle associated with a transfer. If a duplicated transfer's easy_handle has cookies enabled when it is duplicated, the cookie-enabled state is cloned but the actual cookies are not. If the source easy_handle didn't read cookies from disk, the cloned easy_handle will attempt to read cookies from a file named 'none' in the local directory, potentially allowing arbitrary cookies to be loaded. (CVE-2023-38546)",
+        "epss": [
+          {
+            "cve": "CVE-2023-38545",
+            "epss": 0.78689,
+            "percentile": 0.99591,
+            "date": "2026-10-22"
+          },
+          {
+            "cve": "CVE-2023-38546",
+            "epss": 0.05956,
+            "percentile": 0.9326,
+            "date": "2026-10-22"
+          }
+        ],
+        "cwes": [
+          {
+            "cve": "CVE-2023-38545",
+            "cwe": "CWE-787",
+            "source": "nvd@nist.gov",
+            "type": "Primary"
+          },
+          {
+            "cve": "CVE-2023-38545",
+            "cwe": "CWE-787",
+            "source": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+            "type": "Secondary"
+          }
+        ],
+        "fix": {
+          "versions": [
+            "8.3.0-1.amzn2023.0.2"
+          ],
+          "state": "fixed",
+          "available": [
+            {
+              "version": "8.3.0-1.amzn2023.0.2",
+              "date": "2023-10-11",
+              "kind": "advisory"
+            }
+          ]
+        },
+        "advisories": [],
+        "risk": 59.016749999999995
+      },
+      "relatedVulnerabilities": [
+        {
+          "id": "CVE-2023-38545",
+          "dataSource": "https://nvd.nist.gov/vuln/detail/CVE-2023-38545",
+          "namespace": "nvd:cpe",
+          "severity": "Critical",
+          "urls": [
+            "http://seclists.org/fulldisclosure/2024/Jan/34"
+          ],
+          "description": "This flaw makes curl overflow a heap based buffer in the SOCKS5 proxy\nhandshake.\n\nWhen curl is asked to pass along the host name to the SOCKS5 proxy to allow\nthat to resolve the address instead of it getting done by curl itself, the\nmaximum length that host name can be is 255 bytes.\n\nIf the host name is detected to be longer, curl switches to local name\nresolving and instead passes on the resolved address only. Due to this bug,\nthe local variable that means \"let the host resolve the name\" could get the\nwrong value during a slow SOCKS5 handshake, and contrary to the intention,\ncopy the too long host name to the target buffer instead of copying just the\nresolved address there.\n\nThe target buffer being a heap based buffer, and the host name coming from the\nURL that curl has been told to operate with.",
+          "epss": [
+            {
+              "cve": "CVE-2023-38545",
+              "epss": 0.78689,
+              "percentile": 0.99591,
+              "date": "2026-10-22"
+            }
+          ],
+          "cwes": [
+            {
+              "cve": "CVE-2023-38545",
+              "cwe": "CWE-787",
+              "source": "nvd@nist.gov",
+              "type": "Primary"
+            },
+            {
+              "cve": "CVE-2023-38545",
+              "cwe": "CWE-787",
+              "source": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+              "type": "Secondary"
+            }
+          ]
+        },
+        {
+          "id": "CVE-2023-38546",
+          "dataSource": "https://nvd.nist.gov/vuln/detail/CVE-2023-38546",
+          "namespace": "nvd:cpe",
+          "severity": "Low",
+          "urls": [
+            "http://seclists.org/fulldisclosure/2024/Jan/34"
+          ],
+          "description": "This flaw allows an attacker to insert cookies at will into a running program\nusing libcurl, if the specific series of conditions are met.\n\nlibcurl performs transfers. In its API, an application creates \"easy handles\"\nthat are the individual handles for single transfers.\n\nlibcurl provides a function call that duplicates en easy handle called\n[curl_easy_duphandle](https://curl.se/libcurl/c/curl_easy_duphandle.html).\n\nIf a transfer has cookies enabled when the handle is duplicated, the\ncookie-enable state is also cloned - but without cloning the actual\ncookies. If the source handle did not read any cookies from a specific file on\ndisk, the cloned version of the handle would instead store the file name as\n`none` (using the four ASCII letters, no quotes).\n\nSubsequent use of the cloned handle that does not explicitly set a source to\nload cookies from would then inadvertently load cookies from a file named\n`none` - if such a file exists and is readable in the current directory of the\nprogram using libcurl. And if using the correct file format of course.",
+          "epss": [
+            {
+              "cve": "CVE-2023-38546",
+              "epss": 0.05956,
+              "percentile": 0.9326,
+              "date": "2026-10-22"
+            }
+          ]
+        }
+      ],
+      "matchDetails": [
+        {
+          "type": "exact-direct-match",
+          "matcher": "rpm-matcher",
+          "searchedBy": {
+            "distro": {
+              "type": "amazonlinux",
+              "version": "2023"
+            },
+            "package": {
+              "name": "curl-minimal",
+              "version": "0:8.0.1-1.amzn2023"
+            },
+            "namespace": "amazon:distro:amazonlinux:2023"
+          },
+          "found": {
+            "vulnerabilityID": "ALAS2023-2023-377",
+            "versionConstraint": "< 8.3.0-1.amzn2023.0.2 (rpm)"
+          },
+          "fix": {
+            "suggestedVersion": "8.3.0-1.amzn2023.0.2"
+          }
+        },
+        {
+          "type": "exact-indirect-match",
+          "matcher": "rpm-matcher",
+          "searchedBy": {
+            "distro": {
+              "type": "amazonlinux",
+              "version": "2023"
+            },
+            "package": {
+              "name": "curl",
+              "version": "8.0.1-1.amzn2023"
+            },
+            "namespace": "amazon:distro:amazonlinux:2023"
+          },
+          "found": {
+            "vulnerabilityID": "ALAS2023-2023-377",
+            "versionConstraint": "< 8.3.0-1.amzn2023.0.2 (rpm)"
+          },
+          "fix": {
+            "suggestedVersion": "8.3.0-1.amzn2023.0.2"
+          }
+        }
+      ],
+      "artifact": {
+        "id": "Package-rpm-curl-minimal-04f200fc5fa1dd86",
+        "name": "curl-minimal",
+        "version": "8.0.1-1.amzn2023",
+        "type": "rpm",
+        "language": "",
+        "purl": "pkg:rpm/amzn/curl-minimal@8.0.1-1.amzn2023?arch=x86_64&distro=amzn-2023&upstream=curl-8.0.1-1.amzn2023.src.rpm",
+        "upstreams": [
+          {
+            "name": "curl",
+            "version": "8.0.1-1.amzn2023"
+          }
+        ],
+        "metadataType": "RpmMetadata"
+      }
+    }
+  ],
+  "source": {
+    "type": "image",
+    "target": {
+      "userInput": "amazonlinux:2023.1.20230705.0"
+    }
+  },
+  "distro": {
+    "name": "amazonlinux",
+    "version": "2023",
+    "idLike": [
+      "amazonlinux"
+    ]
+  },
+  "descriptor": {
+    "name": "grype",
+    "version": "0.120.1",
+    "timestamp": "2026-10-23T13:06:45.579727217Z",
+    "db": {
+      "status": {
+        "schemaVersion": "v6.1.10",
+        "from": "https://grype.anchore.io/databases/v6/vulnerability-db_v6.1.10_2026-10-23T00:30:52Z_1792737015.tar.zst?checksum=sha256%3A6e78c0f757fe96976b37b138e54e83fd75f2ad1f6c5feae2ecb008cefa8fcc0f",
+        "built": "2026-10-23T06:30:15Z",
+        "path": "/.cache/grype/db/6/vulnerability.db",
+        "valid": true
+      }
+    }
+  }
+}
