@@ -525,20 +525,25 @@ jobs:
           else
             echo "RELEASED=true" >> "$GITHUB_ENV"
             echo "VERSION=${VERSION_AFTER}" >> "$GITHUB_ENV"
-            echo "Released ${VERSION_AFTER}"
+            # A prerelease (X.Y.Z-rc.N) gets its own tag but never :latest (ADR-500).
+            case "$VERSION_AFTER" in
+              *-*) echo "PRERELEASE=true" >> "$GITHUB_ENV"; echo "Released prerelease ${VERSION_AFTER}" ;;
+              *)   echo "PRERELEASE=" >> "$GITHUB_ENV"; echo "Released ${VERSION_AFTER}" ;;
+            esac
           fi
 
-      - name: Promote containers (re-tag :VERSION + :latest)
+      - name: Promote containers (re-tag :VERSION, plus :latest unless a prerelease)
         if: env.RELEASED == 'true'
         run: |
           set -euo pipefail
           for IMAGE in ${IMAGE_NAMES}; do
             SRC="${IMAGE_REGISTRY}/${IMAGE}:${BUILD_TAG}"
-            docker buildx imagetools create \
-              --tag "${IMAGE_REGISTRY}/${IMAGE}:${VERSION}" \
-              --tag "${IMAGE_REGISTRY}/${IMAGE}:latest" \
-              "${SRC}"
-            echo "Promoted ${SRC} → :${VERSION}, :latest"
+            TAGS=(--tag "${IMAGE_REGISTRY}/${IMAGE}:${VERSION}")
+            if [ "${PRERELEASE}" != "true" ]; then
+              TAGS+=(--tag "${IMAGE_REGISTRY}/${IMAGE}:latest")
+            fi
+            docker buildx imagetools create "${TAGS[@]}" "${SRC}"
+            echo "Promoted ${SRC} → ${TAGS[*]}"
           done
 
       - name: Install cosign
@@ -643,7 +648,11 @@ jobs:
             echo "| Image | Tags |"
             echo "|-------|------|"
             for IMAGE in ${IMAGE_NAMES}; do
-              echo "| ${IMAGE_REGISTRY}/${IMAGE} | ${VERSION}, latest |"
+              if [ "${PRERELEASE}" = "true" ]; then
+                echo "| ${IMAGE_REGISTRY}/${IMAGE} | ${VERSION} (prerelease, :latest unchanged) |"
+              else
+                echo "| ${IMAGE_REGISTRY}/${IMAGE} | ${VERSION}, latest |"
+              fi
             done
             echo ""
             echo "### SBOMs"
