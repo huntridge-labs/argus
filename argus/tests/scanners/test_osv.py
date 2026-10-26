@@ -395,3 +395,56 @@ class TestOsvAliasGroups:
 
         assert f.id == "GHSA-6q48-6c7w-9gw2"
         assert f.severity == Severity.HIGH
+
+
+class TestOsvAdvisoryModified:
+    """metadata["advisory_modified"] says when osv.dev last changed the advisory (#508)."""
+
+    def test_records_the_advisory_modified_time_as_osv_wrote_it(self, tmp_path):
+        ghsa = {**_GHSA, "modified": "2026-10-20T22:00:02.600723204Z"}
+        path = _write_osv(tmp_path, [_certifi([ghsa], [{"ids": [ghsa["id"]]}])])
+
+        f = OsvScanner().parse_results(path)[0]
+
+        assert f.metadata["advisory_modified"] == "2026-10-20T22:00:02.600723204Z"
+
+    def test_newest_time_across_the_alias_group_wins(self, tmp_path):
+        """The PYSEC copy changed half a second after its GHSA twin, so it wins.
+
+        Compared as strings, "…50Z" sorts after "…50.5Z", so this also proves the
+        times are compared as times.
+        """
+        ghsa = {**_GHSA, "modified": "2026-10-20T21:41:50Z"}
+        pysec = {**_PYSEC, "modified": "2026-10-20T21:41:50.5Z"}
+        path = _write_osv(tmp_path, [_certifi([ghsa, pysec], [_GROUP])])
+
+        f = OsvScanner().parse_results(path)[0]
+
+        assert f.id == "GHSA-6q48-6c7w-9gw2"
+        assert f.metadata["advisory_modified"] == "2026-10-20T21:41:50.5Z"
+
+    def test_left_out_when_no_record_has_one(self, tmp_path):
+        path = _write_osv(tmp_path, [_certifi([_PYSEC, _GHSA], [_GROUP])])
+
+        f = OsvScanner().parse_results(path)[0]
+
+        assert "advisory_modified" not in f.metadata
+
+    def test_an_unparseable_time_is_skipped_not_fatal(self, tmp_path):
+        ghsa = {**_GHSA, "modified": "yesterday"}
+        pysec = {**_PYSEC, "modified": "2026-10-20T21:41:50Z"}
+        path = _write_osv(tmp_path, [_certifi([ghsa, pysec], [_GROUP])])
+
+        f = OsvScanner().parse_results(path)[0]
+
+        assert f.metadata["advisory_modified"] == "2026-10-20T21:41:50Z"
+
+    def test_a_time_without_a_zone_is_read_as_utc(self, tmp_path):
+        """OSV always writes UTC; a zoneless time must not crash the comparison."""
+        ghsa = {**_GHSA, "modified": "2026-10-20T21:41:51"}
+        pysec = {**_PYSEC, "modified": "2026-10-20T21:41:50Z"}
+        path = _write_osv(tmp_path, [_certifi([ghsa, pysec], [_GROUP])])
+
+        f = OsvScanner().parse_results(path)[0]
+
+        assert f.metadata["advisory_modified"] == "2026-10-20T21:41:51"

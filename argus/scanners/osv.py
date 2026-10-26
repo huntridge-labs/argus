@@ -2,6 +2,7 @@
 
 import json
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 
 from argus.containers import get_image
@@ -203,8 +204,33 @@ class OsvScanner:
                 "ecosystem": pkg_ecosystem,
                 "aliases": aliases,
                 "fixed_version": self._first(records, self._extract_fixed_version),
+                **self._advisory_modified(records),
             },
         )
+
+    def _advisory_modified(self, records: list[dict]) -> dict[str, str]:
+        """``{"advisory_modified": ...}``: the newest ``modified`` across the records.
+
+        osv-scanner asks osv.dev at scan time, so its results move whenever an
+        advisory is published or edited (OSV bumps ``modified`` on any change,
+        affected versions included). A consumer comparing two scans uses this to
+        tell an advisory that changed after its baseline ran from a dependency the
+        change added. Taken across the alias group, so a PYSEC copy edited after
+        its GHSA twin still counts. osv.dev's own string is kept; times are only
+        parsed to pick the newest. Empty when no record carries a usable one.
+        """
+        newest: tuple[datetime, str] | None = None
+        for record in records:
+            raw = record.get("modified")
+            try:
+                parsed = datetime.fromisoformat(raw)
+            except (TypeError, ValueError):
+                continue
+            if parsed.tzinfo is None:  # OSV writes UTC; never compare naive with aware
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            if newest is None or parsed > newest[0]:
+                newest = (parsed, raw)
+        return {"advisory_modified": newest[1]} if newest else {}
 
     def _first(self, records: list[dict], extract) -> str | None:
         """The first non-empty value ``extract`` returns across ``records``."""
