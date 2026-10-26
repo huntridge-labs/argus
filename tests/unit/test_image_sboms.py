@@ -380,3 +380,25 @@ class TestReleaseWorkflow:
         assert 'gh release upload "${VERSION}" "${SBOM_DIR}"/*.json' in attach["run"]
         names = [s.get("name") for s in job["steps"]]
         assert names.index("Attach SBOMs to the GitHub release") < names.index("Publish to PyPI")
+
+    def test_release_stays_a_draft_until_everything_else_ships(self):
+        """Immutable releases refuse assets once published (#512).
+
+        release-it must create a draft, and the job publishes it only after
+        the SBOMs and PyPI, with a token whose events still trigger docs.yml.
+        """
+        release_it = json.loads((RELEASE_YML.parents[2] / ".release-it.json").read_text())
+        assert release_it["github"]["draft"] is True
+
+        steps = release_steps()
+        names = [s.get("name") for s in steps]
+        publish_at = names.index("Publish the GitHub release")
+        assert names.index("Attach SBOMs to the GitHub release") < publish_at
+        assert names.index("Publish to PyPI") < publish_at
+        assert names[publish_at + 1:] == ["Summary"]
+
+        publish = steps[publish_at]
+        assert publish["if"] == "env.RELEASED == 'true'"
+        assert 'gh release edit "${VERSION}"' in publish["run"]
+        assert "--draft=false" in publish["run"]
+        assert publish["env"]["GH_TOKEN"].startswith("${{ secrets.RELEASE_BOT_TOKEN")

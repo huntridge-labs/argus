@@ -441,12 +441,15 @@ workflows:
       stops the job before release-it
     - release-it bumps version.yaml, package.json, argus/__init__.py, argus/containers.py
     - after:bump hook (scripts/release_it/inject_image_digests.py) pins <version>@sha256:<digest>
-    - 'release-it generates CHANGELOG, commits chore(release): X.Y.Z, tags, pushes'
+    - 'release-it generates CHANGELOG, commits chore(release): X.Y.Z, tags, pushes, and creates the GitHub
+      release as a draft'
     - Container images re-tagged to :<VERSION> + :latest via docker buildx imagetools (no rebuild);
       a prerelease (X.Y.Z-rc.N) gets only :<VERSION>, never :latest (ADR-500)
     - Images cosign-signed by digest (Sigstore keyless, OIDC)
-    - SBOMs + .sigstore.json bundles attached to the GitHub release (gh release upload)
+    - SBOMs + .sigstore.json bundles attached to the draft GitHub release (gh release upload)
     - Wheel built from the bumped tree and published to PyPI via OIDC trusted publishing
+    - The draft is published last (gh release edit --draft=false). The repo has immutable releases on, so a
+      published release refuses new assets; a failed run leaves a draft, never a locked half-finished release
     - Build-id (:build-<sha>) tags age out nightly via .github/workflows/ghcr-prune.yml
   verify_image_sbom:
     description: Verify the signed CycloneDX SBOM of a released argus image (ADR-489)
