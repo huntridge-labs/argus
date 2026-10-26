@@ -1,4 +1,4 @@
-# Argus CLI Reference (v1.14.0)
+# Argus CLI Reference (v1.14.1)
 
 > Auto-generated from argparse definitions on 2026-10-26.
 > Do not edit manually — run `python -m scripts.ci.gen_cli_docs` to regenerate.

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.14.1](https://github.com/huntridge-labs/argus/compare/1.14.0...1.14.1) (2026-10-26)
+
+### Continuous Integration
+
+* **release:** attach SBOMs while the release is still a draft ([#513](https://github.com/huntridge-labs/argus/issues/513)) ([71f438b](https://github.com/huntridge-labs/argus/commit/71f438b0bb0d0be312add6974a524181f547d030))
+
 ## [1.14.0](https://github.com/huntridge-labs/argus/compare/1.13.0...1.14.0) (2026-10-26)
 
 ### Features
