@@ -1,0 +1,49 @@
+id: ADR-502
+title: "Report one OSV finding per alias group, named by its GHSA record"
+date: '2026-10-23'
+status: proposed
+context: |-
+  OSV keeps a record for each database that published an advisory, so one
+  PyPI bug often has both a GHSA and a PYSEC record that list each other as
+  aliases. osv-scanner reports every record and says which ones are the same
+  advisory in each package's `groups`. The OSV parser ignored `groups` and made
+  a finding per record, so each such advisory was reported twice under two
+  finding ids. The PYSEC copy usually carries no `database_specific.severity`
+  (so it reads Unknown) and older ones no `summary`.
+
+  A finding's id feeds the keys that consumers use to track and triage it
+  across scans, so whichever record names a merged finding becomes its identity.
+decision: |-
+  The parser emits one finding per `groups` entry, built from that group's
+  reported records:
+
+  - The GHSA record names the finding when the group has one; otherwise the
+    lowest id does. GitHub's records carry the reviewed severity and CWE, and a
+    GHSA id is what these findings were already named by, so keys and triage
+    built on them do not move.
+  - Severity is the highest any record reports, so an alias without severity
+    never downgrades the finding.
+  - CVE, CWE, summary and fixed version come from the first record that has
+    them. Every other id and alias goes in `metadata["aliases"]`.
+  - Records that no group names are reported one each, as before, so output
+    without `groups` parses the same way.
+alternatives_considered:
+- name: Merge aliases downstream, in the consumers that key findings
+  rejected_because: |-
+    Every consumer (reporters, SARIF, severity thresholds, hosted triage) would
+    need the same merge, and the CLI would keep reporting duplicates.
+    osv-scanner already computes the groups at the source.
+- name: Name the merged finding by its CVE
+  rejected_because: Many advisories have no CVE, and the CVE is not a reported
+    record, so it carries no severity or fix of its own. Naming by CVE would
+    also change the id of every existing OSV finding.
+consequences:
+  positive:
+  - One finding per advisory, so severity counts and thresholds stop double
+    counting and nobody triages the same bug twice.
+  - The merged finding has the best severity, CWE and summary any record offers.
+  negative:
+  - The non-GHSA copies stop being reported, so a consumer that tracked or
+    triaged one of them sees it disappear, and may count it as resolved.
+  - An advisory with only a PYSEC record still reads Unknown severity; deriving
+    severity from its CVSS vector is separate work.
