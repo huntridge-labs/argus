@@ -15,7 +15,7 @@
     "releaseName": "Release ${version}",
     "releaseNotes": null,
     "autoGenerate": false,
-    "draft": false,
+    "draft": true,
     "preRelease": false,
     "assets": []
   },
@@ -37,7 +37,7 @@
       "git add ."
     ],
     "after:git:release": "echo 'Git tag ${tagName} created'",
-    "after:github:release": "echo 'GitHub release ${version} published'",
+    "after:github:release": "echo 'GitHub release ${version} created as a draft'",
     "after:release": "echo 'Release ${version} completed successfully!'"
   },
   "plugins": {

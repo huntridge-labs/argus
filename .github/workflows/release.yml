@@ -14,14 +14,21 @@
 #      GitHub artifact attestation, uploaded as ``image-sboms-<sha12>``
 #      (ADR-489)
 #   4. release-it bumps versions / regenerates changelog / commits / tags
+#      and creates the GitHub release as a DRAFT
 #      → ``after:bump`` hook pins ``<version>@sha256:<digest>`` into
 #         ``argus/containers.py`` using the digests from step 2
 #   5. (if release cut) Re-tag images :``<version>`` + :latest (manifest-only)
 #   6. (if release cut) cosign-sign images by digest
-#   7. (if release cut) Attach the step 3 SBOMs + bundles to the release
+#   7. (if release cut) Attach the step 3 SBOMs + bundles to the draft
 #   8. (if release cut) Build wheel from now-bumped state, smoke test,
 #      publish to PyPI via OIDC
-#   9. (if release cut) Write summary
+#   9. (if release cut) Publish the draft release
+#  10. (if release cut) Write summary
+#
+# The release is a draft until step 9 because the repo has immutable
+# releases on: once published, GitHub refuses new assets (HTTP 422), so
+# the SBOMs have to go up first. Publishing last also means a failed run
+# leaves a draft to fix, never a locked, half-finished release.
 #
 # Order rationale: containers + signatures must exist before the wheel
 # lands on PyPI so a user running ``pip install`` never gets a wheel
@@ -572,7 +579,9 @@ jobs:
 
       - name: Attach SBOMs to the GitHub release
         # Same files as the image-sboms-<sha12> artifact. release-it has
-        # created the release by now (its tag is the bare version).
+        # created the release by now as a draft (its tag is the bare
+        # version). It must still be a draft: an immutable release refuses
+        # new assets once published.
         if: env.RELEASED == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -632,6 +641,16 @@ jobs:
       - name: Publish to PyPI
         if: env.RELEASED == 'true'
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+
+      - name: Publish the GitHub release
+        # Last, so the release only becomes public (and immutable) once the
+        # images, signatures, SBOMs and PyPI wheel are all out. The release
+        # token, not GITHUB_TOKEN, so the `release: published` event still
+        # triggers docs.yml (events made with GITHUB_TOKEN start no runs).
+        if: env.RELEASED == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+        run: gh release edit "${VERSION}" --repo "${GITHUB_REPOSITORY}" --draft=false
 
       - name: Summary
         if: env.RELEASED == 'true'

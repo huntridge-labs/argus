@@ -1341,6 +1341,26 @@ errors:
       verification: '`uv lock --check` exits 0'
     reference: pyproject.toml, uv.lock, .github/workflows/test-unit.yml, .ai/decisions.yaml ADR-043
     symptom: 'The lockfile at `uv.lock` needs to be updated, but `--locked` was provided|needs to be updated, but `--check` was provided'
+  RELEASE_ASSET_UPLOAD_422_IMMUTABLE_RELEASE:
+    category: ci
+    context: 'The Release job fails at "Attach SBOMs to the GitHub release" with "HTTP 422: Cannot
+      upload assets to an immutable release". The tag, release, images and signatures already went
+      out; every later step, PyPI publish included, is skipped.'
+    root_cause: huntridge-labs/argus has GitHub immutable releases on. A release can take new assets
+      only while it is a draft; once published, its assets and tag are locked. 1.14.0 hit this
+      because release-it published the release (github.draft false) before the SBOM upload ran.
+    solution:
+      steps:
+      - release-it creates the release as a draft (.release-it.json github.draft true); the job uploads
+        the SBOMs to the draft and publishes it last with gh release edit --draft=false (#512)
+      - A run that fails before that step leaves a draft release, a pushed tag and the chore(release)
+        commit. Fix the cause, then finish by hand (upload, build + publish the wheel, publish the draft)
+        or delete the draft + tag and cut again
+      - An already-published release can never get the assets. Cut the next patch version instead
+      note: Anything else that uploads to a release after it is published (the Argus Cloud App's
+        attestation bundle, for one) hits the same 422 on repos with immutable releases on.
+      reference: .github/workflows/release.yml, .release-it.json, .ai/decisions/ADR-489.yaml
+    symptom: Cannot upload assets to an immutable release|HTTP 422.*immutable
   SBOM_SCAN_INCOMPLETE:
     category: sbom
     context: '`argus scan --sbom` exits 2 and reports `Status: INCOMPLETE` with "did not evaluate
