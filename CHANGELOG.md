@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.14.0](https://github.com/huntridge-labs/argus/compare/1.13.0...1.14.0) (2026-10-26)
+
+### Features
+
+* **cli:** add argus sbom inspect to show what an SBOM describes ([#498](https://github.com/huntridge-labs/argus/issues/498)) ([da7df3d](https://github.com/huntridge-labs/argus/commit/da7df3de038bb7b84830148de7e6fd4e8ca74aac)), closes [#492](https://github.com/huntridge-labs/argus/issues/492) [#493](https://github.com/huntridge-labs/argus/issues/493) [#494](https://github.com/huntridge-labs/argus/issues/494)
+* **osv:** record when each advisory was last modified ([26c8c10](https://github.com/huntridge-labs/argus/commit/26c8c10aebfd79b71279ef01620adbb18cd213b0)), references [#508](https://github.com/huntridge-labs/argus/issues/508)
+* **sbom:** pick trivy or grype from the SBOM's generator ([#497](https://github.com/huntridge-labs/argus/issues/497)) ([344b539](https://github.com/huntridge-labs/argus/commit/344b53941b1d4b81e98cd8fb0d077bd27d1a0810)), closes [#492](https://github.com/huntridge-labs/argus/issues/492) [#493](https://github.com/huntridge-labs/argus/issues/493)
+* **scanners:** add triage fields to trivy and grype findings ([#499](https://github.com/huntridge-labs/argus/issues/499)) ([f78b652](https://github.com/huntridge-labs/argus/commit/f78b6529b2a66abcc327346ae5081bafcaf6e52b)), closes [#495](https://github.com/huntridge-labs/argus/issues/495)
+
+### Bug Fixes
+
+* **containers:** re-pin clamav after Oct 26 upstream rebuild ([#506](https://github.com/huntridge-labs/argus/issues/506)) ([dd38eca](https://github.com/huntridge-labs/argus/commit/dd38ecac7e1acfd381ee43e1147a0e1ca287988b)), closes [#505](https://github.com/huntridge-labs/argus/issues/505)
+* **containers:** re-pin zap after Oct 26 upstream rebuild ([#511](https://github.com/huntridge-labs/argus/issues/511)) ([2fc7bcf](https://github.com/huntridge-labs/argus/commit/2fc7bcf575c6656db202a1cce12832a3bde76753)), closes [#510](https://github.com/huntridge-labs/argus/issues/510)
+* **osv:** report one finding per alias group, not one per database record ([#503](https://github.com/huntridge-labs/argus/issues/503)) ([c5723ee](https://github.com/huntridge-labs/argus/commit/c5723eeb6a56051a01b6a73dbc6036ec1979b03f)), references [#502](https://github.com/huntridge-labs/argus/issues/502)
+* **sbom:** mark a scan incomplete when the matcher skipped the OS packages ([#496](https://github.com/huntridge-labs/argus/issues/496)) ([0315c19](https://github.com/huntridge-labs/argus/commit/0315c194f9b37442b5c506ef041a317b7772dcc7)), closes [#492](https://github.com/huntridge-labs/argus/issues/492)
+
+### Dependencies
+
+* **deps:** bump the npm-minor-patch group with 2 updates ([#507](https://github.com/huntridge-labs/argus/issues/507)) ([8f226f7](https://github.com/huntridge-labs/argus/commit/8f226f7a780a6367b1402af2f9b3d1193e859e69))
+* **deps:** Update python-deps ([#487](https://github.com/huntridge-labs/argus/issues/487)) ([ad71d1d](https://github.com/huntridge-labs/argus/commit/ad71d1db73d8619278b8c38dbb9b725d790d3b34))
+* **deps:** Update tool-versions ([#488](https://github.com/huntridge-labs/argus/issues/488)) ([ed2dbc4](https://github.com/huntridge-labs/argus/commit/ed2dbc46587ad0b01679f787485cbdb453a5e055))
+
+
+### Continuous Integration
+
+* **release:** keep :latest off prerelease images ([#501](https://github.com/huntridge-labs/argus/issues/501)) ([bd0c115](https://github.com/huntridge-labs/argus/commit/bd0c115af6e3f74698c5721e9eeefa7b9ef5fae0)), closes [#500](https://github.com/huntridge-labs/argus/issues/500), references [#500](https://github.com/huntridge-labs/argus/issues/500)
+* **release:** publish signed per-platform SBOMs for release images ([#490](https://github.com/huntridge-labs/argus/issues/490)) ([8096f1d](https://github.com/huntridge-labs/argus/commit/8096f1dcc29d877d269fd7da410614c79dae3ec0)), closes [#489](https://github.com/huntridge-labs/argus/issues/489), references [#489](https://github.com/huntridge-labs/argus/issues/489) [#489](https://github.com/huntridge-labs/argus/issues/489) [#489](https://github.com/huntridge-labs/argus/issues/489)
+
 ## [1.13.0](https://github.com/huntridge-labs/argus/compare/1.12.8...1.13.0) (2026-10-22)
 
 ### Features

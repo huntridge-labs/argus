@@ -12,7 +12,7 @@ Python SDK and GitHub Actions toolkit for comprehensive security scanning. The *
 
 - **What it does**: Orchestrates 14 security scanners (SAST, secrets, containers, IaC, DAST) via the argus Python SDK or GitHub Actions composite actions
 - **Primary interface**: `python -m argus scan --config argus.yml`
-- **Current version**: 1.13.0
+- **Current version**: 1.14.0
 - **License**: AGPL-3.0
 
 ### One-Liner
@@ -280,7 +280,7 @@ python -m argus scan --config argus.yml
 **GitHub Actions (composite actions):**
 
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.13.0
+- uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.14.0
   with:
     enable_code_security: true
     fail_on_severity: high
@@ -851,14 +851,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.13.0
+      - uses: huntridge-labs/argus/.github/actions/scanner-gitleaks@1.14.0
         with:
           fail_on_severity: high
           enable_code_security: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.13.0
+      - uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.14.0
         with:
           fail_on_severity: high
           enable_code_security: true
@@ -880,7 +880,7 @@ See [Adding a New Scanner](#adding-a-new-scanner) and [Adding a New Linter](#add
 ```yaml
 - name: Post PR Comment
   if: github.event_name == 'pull_request'
-  uses: huntridge-labs/argus/.github/actions/comment-pr@1.13.0
+  uses: huntridge-labs/argus/.github/actions/comment-pr@1.14.0
   with:
     comment_file: summary.md
 ```
@@ -950,7 +950,7 @@ See `argus.example.yml` for a quick-start template, or [Configuration Reference]
 #### Individual Scanner
 ```yaml
 - name: Run Bandit Python Scanner
-  uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.13.0
+  uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.14.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   with:
@@ -968,12 +968,12 @@ See `examples/composite-actions-example.yml` for a full example with:
 
 #### Config-Driven Container Scanning
 ```yaml
-- uses: huntridge-labs/argus/.github/actions/parse-container-config@1.13.0
+- uses: huntridge-labs/argus/.github/actions/parse-container-config@1.14.0
   id: parse
   with:
     config_file: 'container-config.yml'
 
-- uses: huntridge-labs/argus/.github/actions/scanner-container@1.13.0
+- uses: huntridge-labs/argus/.github/actions/scanner-container@1.14.0
   strategy:
     matrix: ${{ fromJson(steps.parse.outputs.matrix) }}
   with:

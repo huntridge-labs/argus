@@ -542,7 +542,7 @@ execution:
 
 **All-in-one image** (for CI or users who want everything):
 ```
-ghcr.io/huntridge-labs/argus/cli:1.13.0
+ghcr.io/huntridge-labs/argus/cli:1.14.0
 ```
 Contains argus CLI + all scanner tools. Appropriate for CI where image size doesn't matter.
 
