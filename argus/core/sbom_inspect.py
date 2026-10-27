@@ -63,7 +63,7 @@ def inspect_sbom(path: str | Path) -> SbomReport:
         spec_version=_spec_version(info, data),
         generator={"name": generator.name, "version": generator.version} if generator else None,
         subject=subject,
-        os=_os_from_purls(parsed) or _os_from_metadata(info, data),
+        os=_os_from_purls(parsed, info, data) or _os_from_metadata(info, data),
         packages={
             "total": len(parsed),
             "os": sum(1 for p in parsed if p.is_os_package),
@@ -199,14 +199,29 @@ def _purl_digest(purl: str) -> str:
     return ""
 
 
-def _os_from_purls(parsed) -> dict | None:
+def _os_from_purls(parsed, info: SbomInfo, data: dict) -> dict | None:
     distros = Counter(p.distro for p in parsed if p.distro)
     if not distros:
         return None
     top = distros.most_common(1)[0][0]
     match = _DISTRO.match(top)
-    name, version = (match["name"], match["version"]) if match else (top, "")
+    if match:
+        name, version = match["name"], match["version"]
+    elif top[:1].isdigit():
+        name, version = _distro_family(parsed, top, info, data), top
+    else:
+        name, version = top, ""
     return {"name": name, "version": version, "source": "purl", "distros": sorted(distros)}
+
+
+def _distro_family(parsed, distro: str, info: SbomInfo, data: dict) -> str:
+    """The OS name for a bare ``distro=<version>`` qualifier, as trivy writes
+    for apk (#516): the purls' namespace (``pkg:apk/alpine/...``), else the
+    SBOM's own OS metadata, else unknown."""
+    namespaces = Counter(p.namespace for p in parsed if p.distro == distro and p.namespace)
+    if namespaces:
+        return namespaces.most_common(1)[0][0]
+    return (_os_from_metadata(info, data) or {}).get("name", "")
 
 
 def _os_from_metadata(info: SbomInfo, data: dict) -> dict | None:
