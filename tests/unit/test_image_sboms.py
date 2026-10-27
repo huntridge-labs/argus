@@ -326,13 +326,17 @@ def step_index(steps: list[dict], predicate) -> int:
     return next(i for i, s in enumerate(steps) if predicate(s))
 
 
+def is_sbom_attest(step: dict) -> bool:
+    return step.get("uses", "").startswith("actions/attest@") and "sbom-path" in step.get("with", {})
+
+
 class TestReleaseWorkflow:
     def test_every_built_image_has_an_attest_step_per_variant(self):
         images = built_images()
         assert len(images) >= 5
         variants = [sb.variant_of(p) for p in sb.PLATFORMS] + [sb.INDEX_VARIANT]
         expected = {sb.step_id(img, v): (img, v) for img in images for v in variants}
-        attest = {s["id"]: s for s in release_steps() if s.get("uses", "").startswith("actions/attest@")}
+        attest = {s["id"]: s for s in release_steps() if is_sbom_attest(s)}
         assert set(attest) == set(expected)
         for sid, (img, variant) in expected.items():
             inputs = attest[sid]["with"]
@@ -357,7 +361,7 @@ class TestReleaseWorkflow:
         collect_at = step_index(steps, lambda s: s.get("name") == "Collect SBOM attestation bundles")
         upload_at = step_index(steps, lambda s: s.get("name") == "Upload image SBOMs")
         release_it = step_index(steps, lambda s: s.get("name", "").startswith("Release ("))
-        attest_at = [i for i, s in enumerate(steps) if s.get("uses", "").startswith("actions/attest@")]
+        attest_at = [i for i, s in enumerate(steps) if is_sbom_attest(s)]
         assert build < generate_at < min(attest_at) and max(attest_at) < collect_at < upload_at < release_it
         for s in steps[generate_at:upload_at + 1]:
             assert "if" not in s and not s.get("continue-on-error")
@@ -377,9 +381,31 @@ class TestReleaseWorkflow:
         assert job["permissions"]["id-token"] == "write"
         attach = next(s for s in job["steps"] if s.get("name") == "Attach SBOMs to the GitHub release")
         assert attach["if"] == "env.RELEASED == 'true'"
-        assert 'gh release upload "${VERSION}" "${SBOM_DIR}"/*.json' in attach["run"]
+        assert 'gh release upload "${VERSION}" "${SBOM_ARCHIVE}" "${SBOM_ARCHIVE}.sha256"' in attach["run"]
         names = [s.get("name") for s in job["steps"]]
         assert names.index("Attach SBOMs to the GitHub release") < names.index("Publish to PyPI")
+
+    def test_release_gets_one_attested_sbom_archive(self):
+        """The release carries one archive plus its checksum, not ~30 files (#514)."""
+        steps = release_steps()
+        names = [s.get("name") for s in steps]
+        package_at = names.index("Package SBOMs for the GitHub release")
+        attest_at = names.index("Attest the SBOM archive")
+        attach_at = names.index("Attach SBOMs to the GitHub release")
+        assert names.index("Upload image SBOMs") < package_at < attest_at < attach_at
+
+        package = steps[package_at]
+        assert package["if"] == "env.RELEASED == 'true'"
+        assert 'NAME="argus-${VERSION}-image-sboms"' in package["run"]
+        assert "--sort=name" in package["run"] and "gzip -n" in package["run"]
+        assert 'sha256sum "${NAME}.tar.gz"' in package["run"]
+        assert 'echo "SBOM_ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"' in package["run"]
+
+        attest = steps[attest_at]
+        assert attest["if"] == "env.RELEASED == 'true'"
+        assert attest["uses"].startswith("actions/attest@")
+        assert attest["with"] == {"subject-path": "${{ env.SBOM_ARCHIVE }}"}
+        assert "*.json" not in steps[attach_at]["run"]
 
     def test_release_stays_a_draft_until_everything_else_ships(self):
         """Immutable releases refuse assets once published (#512).

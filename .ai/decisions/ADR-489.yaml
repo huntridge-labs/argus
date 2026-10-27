@@ -64,8 +64,11 @@ decision: |-
   Publishing: every run uploads the SBOMs, their bundles
   (`<sbom>.sigstore.json`) and `image-sboms-<sha12>.json` as the
   `image-sboms-<sha12>` artifact (30 days). When a release is cut, the
-  same files are attached to the GitHub release with `gh release upload`
-  after cosign signing and before the wheel is published. The release is
+  same files are packed into one `argus-<version>-image-sboms.tar.gz`
+  (plus a `.sha256`), the archive gets a build provenance attestation,
+  and both are attached to the GitHub release after cosign signing and
+  before the wheel is published (#514; 1.14.1 attached ~30 loose
+  files). The release is
   still a draft at that point and is published as the job's last step
   (#512): the repo has immutable releases on, and a published release
   refuses new assets, which is how 1.14.0 shipped without its SBOMs or a
@@ -127,8 +130,10 @@ consequences:
     first end-to-end test.
 implementation: |-
   .github/workflows/release.yml (Generate image SBOMs, Attest SBOM steps,
-  Collect SBOM attestation bundles, Upload image SBOMs, Attach SBOMs to the
-  GitHub release, Publish the GitHub release; `attestations: write`),
+  Collect SBOM attestation bundles, Upload image SBOMs,
+  Package SBOMs for the GitHub release, Attest the SBOM archive, Attach
+  SBOMs to the GitHub release, Publish the GitHub release;
+  `attestations: write`),
   .release-it.json (`github.draft: true`), scripts/ci/image_sboms.py,
   tests/unit/test_image_sboms.py, docs/security.md "Image SBOMs (signed,
   per platform)", .ai/workflows.yaml (create_release, verify_image_sbom).
