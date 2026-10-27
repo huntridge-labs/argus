@@ -89,6 +89,43 @@ class TestOsFallbacks:
         assert report["os"]["name"] == "alpine"
         assert report["os"]["source"] == "sbom-metadata"
 
+    def test_bare_distro_version_takes_the_name_from_the_purl_namespace(self, tmp_path):
+        # Trivy's apk purls carry distro=<version> with no family (#516).
+        path = _sbom(tmp_path, "bom.cdx.json", {
+            "bomFormat": "CycloneDX", "specVersion": "1.6",
+            "components": [
+                {"type": "library", "name": name,
+                 "purl": f"pkg:apk/alpine/{name}@1.0-r0?arch=x86_64&distro=3.24.2"}
+                for name in ("musl", "busybox")
+            ],
+        })
+        assert inspect_sbom(path).to_dict()["os"] == {
+            "name": "alpine", "version": "3.24.2", "source": "purl", "distros": ["3.24.2"],
+        }
+
+    def test_bare_distro_version_without_namespace_uses_the_os_component(self, tmp_path):
+        path = _sbom(tmp_path, "bom.cdx.json", {
+            "bomFormat": "CycloneDX", "specVersion": "1.6",
+            "components": [
+                {"type": "operating-system", "name": "alpine", "version": "3.24.2"},
+                {"type": "library", "name": "musl", "purl": "pkg:apk/musl@1.2.5-r9?distro=3.24.2"},
+            ],
+        })
+        report = inspect_sbom(path).to_dict()
+        assert report["os"] == {
+            "name": "alpine", "version": "3.24.2", "source": "purl", "distros": ["3.24.2"],
+        }
+        assert "OS:         alpine 3.24.2 (from package purls)" in format_terminal(inspect_sbom(path))
+
+    def test_bare_distro_version_with_no_name_anywhere_keeps_it_as_the_version(self, tmp_path):
+        path = _sbom(tmp_path, "bom.cdx.json", {
+            "bomFormat": "CycloneDX", "specVersion": "1.6",
+            "components": [{"name": "musl", "purl": "pkg:apk/musl@1.2.5-r9?distro=3.24.2"}],
+        })
+        assert inspect_sbom(path).to_dict()["os"] == {
+            "name": "", "version": "3.24.2", "source": "purl", "distros": ["3.24.2"],
+        }
+
     def test_no_os(self, tmp_path):
         path = _sbom(tmp_path, "bom.cdx.json", {
             "bomFormat": "CycloneDX", "specVersion": "1.5",
