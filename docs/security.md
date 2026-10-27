@@ -247,11 +247,21 @@ from the registry, by digest. Next to each SBOM sits its Sigstore
 bundle, `<sbom>.sigstore.json`, plus `image-sboms-<sha12>.json`, which
 lists every subject and file.
 
-**Where to get them:** attached to each
+**Where to get them:** each
 [GitHub release](https://github.com/huntridge-labs/argus/releases)
-from the first release that includes this change, and as the
-`image-sboms-<sha12>` artifact on every run of the release workflow
-(kept 30 days).
+carries all of them in one archive, `argus-<version>-image-sboms.tar.gz`,
+with its checksum in `argus-<version>-image-sboms.tar.gz.sha256`.
+1.14.1 attached them as separate files. Every run of the release
+workflow also keeps them as the `image-sboms-<sha12>` artifact (30
+days).
+
+The archive itself has a build provenance attestation, so a downloaded
+copy verifies with:
+
+```
+gh attestation verify argus-<version>-image-sboms.tar.gz \
+  --repo huntridge-labs/argus
+```
 
 **Verify by tag or index digest** (checks the index attestation):
 

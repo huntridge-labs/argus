@@ -577,17 +577,45 @@ jobs:
           done
           echo "All images signed by digest"
 
+      - name: Package SBOMs for the GitHub release
+        # One archive in place of ~30 loose assets (#514): the same files as
+        # the image-sboms-<sha12> artifact, under one top-level directory.
+        # Sorted names, fixed owner and mtime, and gzip -n keep the bytes
+        # stable for a given set of SBOMs.
+        if: env.RELEASED == 'true'
+        run: |
+          set -euo pipefail
+          NAME="argus-${VERSION}-image-sboms"
+          ARCHIVE="${RUNNER_TEMP}/${NAME}.tar.gz"
+          ( cd "${SBOM_DIR}" && ls -- *.json ) \
+            | tar -C "${SBOM_DIR}" --sort=name --owner=0 --group=0 --numeric-owner \
+                --mtime='1970-01-01 00:00:00Z' --transform "s,^,${NAME}/," \
+                -cf - --files-from=- \
+            | gzip -n > "${ARCHIVE}"
+          ( cd "${RUNNER_TEMP}" && sha256sum "${NAME}.tar.gz" > "${NAME}.tar.gz.sha256" )
+          tar -tzf "${ARCHIVE}"
+          echo "SBOM_ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
+
+      - name: Attest the SBOM archive
+        # Build provenance for the archive itself, so a downloaded copy
+        # verifies with gh attestation verify <file> --repo <repo>. Each
+        # SBOM inside also carries its own .sigstore.json bundle.
+        id: sbom-archive-attestation
+        if: env.RELEASED == 'true'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ env.SBOM_ARCHIVE }}
+
       - name: Attach SBOMs to the GitHub release
-        # Same files as the image-sboms-<sha12> artifact. release-it has
-        # created the release by now as a draft (its tag is the bare
-        # version). It must still be a draft: an immutable release refuses
-        # new assets once published.
+        # release-it has created the release by now as a draft (its tag is
+        # the bare version). It must still be a draft: an immutable release
+        # refuses new assets once published.
         if: env.RELEASED == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh release upload "${VERSION}" "${SBOM_DIR}"/*.json \
+          gh release upload "${VERSION}" "${SBOM_ARCHIVE}" "${SBOM_ARCHIVE}.sha256" \
             --repo "${GITHUB_REPOSITORY}" --clobber
 
       - name: Verify pinned image manifests resolve
