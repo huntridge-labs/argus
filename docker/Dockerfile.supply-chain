@@ -26,7 +26,7 @@ LABEL org.opencontainers.image.licenses="AGPL-3.0"
 # pip vendors certifi, so this pin decides the image's CA bundle. Same value
 # in every Dockerfile (scripts/ci/check_tool_currency.py enforces it); Renovate
 # bumps it under the 7-day release-age policy (ADR-043).
-ARG PIP_VERSION=26.2.1
+ARG PIP_VERSION=26.2.2
 ARG ZIZMOR_VERSION=1.31.1
 
 # Patch OS-level vulnerabilities before anything else
