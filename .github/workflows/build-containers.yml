@@ -116,7 +116,7 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
 
       - name: Upload image artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: image-${{ matrix.image }}
           path: /tmp/${{ matrix.image }}.tar.gz
@@ -136,7 +136,7 @@ jobs:
 
     steps:
       - name: Download image artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: image-${{ matrix.image }}
           path: /tmp
@@ -151,9 +151,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
-          python-version: '3.14'
+          python-version: '3.15'
 
       - name: Install Argus SDK
         run: |
@@ -197,7 +197,7 @@ jobs:
 
       - name: Upload SARIF to GitHub Security
         if: always() && github.actor != 'nektos/act' && hashFiles('sarif-out/argus-results.sarif') != ''
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           sarif_file: sarif-out/argus-results.sarif
           category: "container-${{ matrix.image }}"
@@ -205,7 +205,7 @@ jobs:
 
       - name: Upload scan artifacts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: scanner-summary-container-${{ matrix.image }}
           path: scanner-summaries/
@@ -226,9 +226,9 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
-          python-version: '3.14'
+          python-version: '3.15'
 
       - name: Build and install Argus wheel
         run: |
@@ -239,7 +239,7 @@ jobs:
 
       # Load all custom images built in step 1
       - name: Download all image artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: image-*
           merge-multiple: true
@@ -422,7 +422,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: argus-cli-test-results
           path: cli-test-results/
@@ -441,16 +441,16 @@ jobs:
 
       # Download the argus-generated markdown from each scan matrix job
       - name: Download scanner summaries
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: scanner-summary-container-*
           merge-multiple: true
           path: scanner-summaries
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
-          python-version: '3.14'
+          python-version: '3.15'
 
       - name: Install Argus SDK
         run: |

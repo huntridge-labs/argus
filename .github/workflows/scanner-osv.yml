@@ -68,9 +68,9 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
-          python-version: '3.14'
+          python-version: '3.15'
 
       - name: Install Argus
         uses: huntridge-labs/argus/.github/actions/setup-argus@1.14.1
@@ -91,7 +91,7 @@ jobs:
 
       - name: Upload artifacts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: osv-reports
           path: ./argus-results/
@@ -115,7 +115,7 @@ jobs:
 
       - name: Upload scanner summary
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: scanner-summary-osv
           path: scanner-summaries/
@@ -123,7 +123,7 @@ jobs:
 
       - name: Upload SARIF
         if: inputs.enable_code_security && always() && github.actor != 'nektos/act'
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           sarif_file: ./argus-results/argus-results.sarif
         continue-on-error: true
