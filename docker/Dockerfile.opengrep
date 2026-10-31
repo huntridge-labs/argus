@@ -1,6 +1,6 @@
 FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS builder
 
-ARG OPENGREP_VERSION=1.31.0
+ARG OPENGREP_VERSION=1.32.0
 ARG TARGETARCH
 
 # Fetch to a temp file with retries (transient GitHub 5xx/timeout/conn-reset are
@@ -33,7 +33,7 @@ RUN apk upgrade --no-cache
 # pip vendors certifi, so this pin decides the image's CA bundle. Same value
 # in every Dockerfile (scripts/ci/check_tool_currency.py enforces it); Renovate
 # bumps it under the 7-day release-age policy (ADR-043).
-ARG PIP_VERSION=26.2.1
+ARG PIP_VERSION=26.2.2
 RUN pip install --no-cache-dir --upgrade "pip==${PIP_VERSION}"
 
 COPY --from=builder /usr/local/bin/opengrep /usr/local/bin/opengrep
