@@ -54,17 +54,21 @@ dependencies = [
 
 [project.optional-dependencies]
 # AI classification for SCN detector (argus classify --enable-ai).
-# httpx[socks] is pulled in explicitly — anthropic + openai both
-# instantiate an httpx.Client during SDK construction, and httpx
-# only picks up a SOCKS proxy transport when the socksio package
-# is present. Developer environments with an ``ALL_PROXY``/``HTTPS_PROXY``
-# that uses ``socks5://`` would otherwise ImportError every test
-# that builds a provider object, even tests that never make an
-# actual HTTP call.
+# httpx[socks] is pulled in explicitly — openai builds an httpx.Client
+# and anthropic (1.x and later) an httpx2.Client during SDK
+# construction, and both only pick up a SOCKS proxy transport when
+# the socksio package is present. httpx[socks] is what installs
+# socksio for both. Developer environments with an
+# ``ALL_PROXY``/``HTTPS_PROXY`` that uses ``socks5://`` would otherwise
+# ImportError every test that builds a provider object, even tests
+# that never make an actual HTTP call.
 # Floors bumped past known-CVE versions across the network-facing
-# stack. anthropic + openai keep major versions (1.x SDK floor for
-# openai; anthropic stays in 0.x). httpx[socks] bumped to close the
-# CVE-2024-* line. requests is at 2.33.0 to clear CVE-2024-47081
+# stack. The anthropic floor stays at 0.45 because argus/scn/ai.py
+# only uses messages.create, which works the same from 0.45 through
+# 2.x; the lock is on 2.x (#522). openai keeps a 1.x floor. 2.x sends
+# the API key as ``Authorization: Bearer`` rather than ``X-Api-Key``.
+# httpx[socks] bumped to close the CVE-2024-* line. requests is at
+# 2.33.0 to clear CVE-2024-47081
 # (.netrc credential leak to a malicious URL, fixed 2.32.4) and
 # CVE-2026-25645 (insecure temp-file reuse in extract_zipped_paths,
 # fixed 2.33.0); the previous >=2.32.3 floor predated both. This is a
