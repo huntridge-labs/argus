@@ -35,10 +35,10 @@ importers:
         version: 21.2.4
       '@j-ulrich/release-it-regex-bumper':
         specifier: ^5.6.0
-        version: 5.6.0(release-it@21.1.1(@types/node@25.7.0))
+        version: 5.6.0(release-it@21.1.2(@types/node@25.7.0))
       '@release-it/conventional-changelog':
         specifier: ^12.0.2
-        version: 12.0.2(conventional-commits-filter@6.0.1)(conventional-commits-parser@7.1.2)(release-it@21.1.1(@types/node@25.7.0))
+        version: 12.0.2(conventional-commits-filter@6.0.1)(conventional-commits-parser@7.1.2)(release-it@21.1.2(@types/node@25.7.0))
       commitizen:
         specifier: ^4.3.2
         version: 4.3.2(@types/node@25.7.0)(typescript@6.0.3)
@@ -49,8 +49,8 @@ importers:
         specifier: ^4.1.0
         version: 4.1.0
       release-it:
-        specifier: ^21.1.1
-        version: 21.1.1(@types/node@25.7.0)
+        specifier: ^21.1.2
+        version: 21.1.2(@types/node@25.7.0)
 
 packages:
 
@@ -1336,8 +1336,8 @@ packages:
     resolution: {integrity: sha512-Kko+Y5XQ6fM+Ce3dq3m9YGxnacYZYl9cA1wZjaF3Vbry2L3i1qVg8+CAgNPsXRArPMUMCaOR7oa9Nqntc43JKA==}
     engines: {node: '>= 20.19.0'}
 
-  release-it@21.1.1:
-    resolution: {integrity: sha512-jOhoWMK3hm5UAYfxREcLW1BRlNzMhKfjN8m4sxjnOOPXDWk6b//mZIk2ABv9Cno/eH1M911iyGaCMtapnwS7Ng==}
+  release-it@21.1.2:
+    resolution: {integrity: sha512-5jy1qepCnvifzMjMV+Vj0redgjsK8uQF5VeUwP7xVJAadhxLLWAtzju+CUyEUUd/7Ru95LR+uuiQmScgl3l8BA==}
     engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
     hasBin: true
 
@@ -1510,8 +1510,8 @@ packages:
   undici-types@7.21.0:
     resolution: {integrity: sha512-w9IMgQrz4O0YN1LtB7K5P63vhlIOvC7opSmouCJ+ZywlPAlO9gIkJ+otk6LvGpAs2wg4econaCz3TvQ9xPoyuQ==}
 
-  undici@7.29.1:
-    resolution: {integrity: sha512-RYONW2MeafgYlkVOKYKkA/Ag7BmXqgIWCa8t1m0JcxrQg9pI9lEqRhAOruOBCbAohOa/gkCF+iPi9hrgvTzu6Q==}
+  undici@7.30.1:
+    resolution: {integrity: sha512-03KrMbjIFDWQR5RNPrSw3bd1r12JpyFQl9/yxjUbJtqkjmllqC5lFjZh6ujeuJCKr8EOQvRW872Oy/az+nLYxg==}
     engines: {node: '>=20.18.1'}
 
   universal-user-agent@7.0.3:
@@ -1911,13 +1911,13 @@ snapshots:
     optionalDependencies:
       '@types/node': 25.7.0
 
-  '@j-ulrich/release-it-regex-bumper@5.6.0(release-it@21.1.1(@types/node@25.7.0))':
+  '@j-ulrich/release-it-regex-bumper@5.6.0(release-it@21.1.2(@types/node@25.7.0))':
     dependencies:
       chalk: 5.6.2
       date-fns: 4.4.0
       fast-glob: 3.3.3
       lodash: 4.18.1
-      release-it: 21.1.1(@types/node@25.7.0)
+      release-it: 21.1.2(@types/node@25.7.0)
       semver: 7.8.5
       xregexp: 5.1.2
     optionalDependencies:
@@ -2011,7 +2011,7 @@ snapshots:
 
   '@phun-ky/typeof@2.0.3': {}
 
-  '@release-it/conventional-changelog@12.0.2(conventional-commits-filter@6.0.1)(conventional-commits-parser@7.1.2)(release-it@21.1.1(@types/node@25.7.0))':
+  '@release-it/conventional-changelog@12.0.2(conventional-commits-filter@6.0.1)(conventional-commits-parser@7.1.2)(release-it@21.1.2(@types/node@25.7.0))':
     dependencies:
       '@conventional-changelog/git-client': 3.1.2(conventional-commits-filter@6.0.1)(conventional-commits-parser@7.1.2)
       concat-stream: 2.0.0
@@ -2019,7 +2019,7 @@ snapshots:
       conventional-changelog-angular: 9.4.0
       conventional-changelog-conventionalcommits: 10.4.1
       conventional-recommended-bump: 12.1.0
-      release-it: 21.1.1(@types/node@25.7.0)
+      release-it: 21.1.2(@types/node@25.7.0)
       semver: 7.8.5
     transitivePeerDependencies:
       - conventional-commits-filter
@@ -2938,7 +2938,7 @@ snapshots:
 
   readdirp@5.1.1: {}
 
-  release-it@21.1.1(@types/node@25.7.0):
+  release-it@21.1.2(@types/node@25.7.0):
     dependencies:
       '@inquirer/prompts': 8.7.3(@types/node@25.7.0)
       '@octokit/rest': 22.0.1
@@ -2958,7 +2958,7 @@ snapshots:
       os-name: 7.0.1
       proxy-agent: 8.0.2
       tinyglobby: 0.2.17
-      undici: 7.29.1
+      undici: 7.30.1
       url-join: 5.0.0
       verkit: 0.5.0
       wildcard-match: 5.1.6
@@ -3107,7 +3107,7 @@ snapshots:
   undici-types@7.21.0:
     optional: true
 
-  undici@7.29.1: {}
+  undici@7.30.1: {}
 
   universal-user-agent@7.0.3: {}
 
