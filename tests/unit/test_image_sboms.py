@@ -322,6 +322,12 @@ def built_images() -> list[str]:
     return re.findall(r'^\s+"([\w-]+):docker/', build["run"], flags=re.M)
 
 
+def image_attest_steps(steps: list[dict]) -> list[dict]:
+    """Every actions/attest step except the wheel's (ADR-528, test_package_sbom.py)."""
+    return [s for s in steps if s.get("uses", "").startswith("actions/attest@")
+            and s["id"] != "attest-package"]
+
+
 def step_index(steps: list[dict], predicate) -> int:
     return next(i for i, s in enumerate(steps) if predicate(s))
 
@@ -332,7 +338,7 @@ class TestReleaseWorkflow:
         assert len(images) >= 5
         variants = [sb.variant_of(p) for p in sb.PLATFORMS] + [sb.INDEX_VARIANT]
         expected = {sb.step_id(img, v): (img, v) for img in images for v in variants}
-        attest = {s["id"]: s for s in release_steps() if s.get("uses", "").startswith("actions/attest@")}
+        attest = {s["id"]: s for s in image_attest_steps(release_steps())}
         assert set(attest) == set(expected)
         for sid, (img, variant) in expected.items():
             inputs = attest[sid]["with"]
@@ -357,7 +363,7 @@ class TestReleaseWorkflow:
         collect_at = step_index(steps, lambda s: s.get("name") == "Collect SBOM attestation bundles")
         upload_at = step_index(steps, lambda s: s.get("name") == "Upload image SBOMs")
         release_it = step_index(steps, lambda s: s.get("name", "").startswith("Release ("))
-        attest_at = [i for i, s in enumerate(steps) if s.get("uses", "").startswith("actions/attest@")]
+        attest_at = [i for i, s in enumerate(steps) if s in image_attest_steps(steps)]
         assert build < generate_at < min(attest_at) and max(attest_at) < collect_at < upload_at < release_it
         for s in steps[generate_at:upload_at + 1]:
             assert "if" not in s and not s.get("continue-on-error")

@@ -447,7 +447,11 @@ workflows:
       a prerelease (X.Y.Z-rc.N) gets only :<VERSION>, never :latest (ADR-500)
     - Images cosign-signed by digest (Sigstore keyless, OIDC)
     - SBOMs + .sigstore.json bundles attached to the draft GitHub release (gh release upload)
-    - Wheel built from the bumped tree and published to PyPI via OIDC trusted publishing
+    - Wheel built from the bumped tree and smoke-tested
+    - 'scripts/ci/package_sbom.py generate: runtime-only CycloneDX SBOM of the wheel from uv.lock (no dev
+      group, extras scope: optional); actions/attest signs it with the wheel as subject; collect checks
+      the bundle and both files go on the draft release before PyPI (ADR-528)'
+    - Wheel published to PyPI via OIDC trusted publishing
     - The draft is published last (gh release edit --draft=false). The repo has immutable releases on, so a
       published release refuses new assets; a failed run leaves a draft, never a locked half-finished release
     - Build-id (:build-<sha>) tags age out nightly via .github/workflows/ghcr-prune.yml
@@ -462,6 +466,14 @@ workflows:
     - --predicate-type is required; gh defaults to SLSA provenance
     - Files (sbom-<image>-<sha12>-<linux-amd64|linux-arm64|index>.cdx.json + .sigstore.json) are release assets
       and the image-sboms-<sha12> artifact of the release run
+  verify_package_sbom:
+    description: Verify the signed runtime-only CycloneDX SBOM of a released argus-security wheel (ADR-528)
+    command: gh attestation verify argus_security-<version>-py3-none-any.whl --repo huntridge-labs/argus
+      --predicate-type https://cyclonedx.org/bom
+    notes:
+    - Get the wheel with pip download argus-security==<version> --no-deps
+    - scope required = base install; scope optional = an extra brings it in (argus:extras names which)
+    - Files (sbom-argus-security-<version>.cdx.json + .sigstore.json) are release assets
   run_single_action_test:
     description: Test a specific action locally
     command: pytest .github/actions/scanner-{name}/tests/

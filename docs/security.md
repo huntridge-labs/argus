@@ -279,6 +279,38 @@ print the signed SBOM itself. To check against a bundle you downloaded
 from the release, instead of the one GitHub stores, add
 `--bundle sbom-cli-<sha12>-linux-amd64.cdx.json.sigstore.json`.
 
+### Package SBOM (signed, runtime only)
+
+Each release also publishes a CycloneDX SBOM for the PyPI wheel,
+`sbom-argus-security-<version>.cdx.json`, signed as a GitHub artifact
+attestation with the wheel file as its subject. It lists only what
+`pip install argus-security` can install, taken from `uv.lock` with the
+dev group left out, so build and release tooling never shows up in it.
+The decision record is
+[ADR-528](https://github.com/huntridge-labs/argus/blob/main/.ai/decisions/ADR-528.yaml).
+
+| Field | Meaning |
+|---|---|
+| `metadata.component` | `argus-security` at the release version, with the wheel's sha256 |
+| `scope: required` | In every install |
+| `scope: optional` | Only installed with an extra; the `argus:extras` property names which ones |
+
+The versions are the ones `uv.lock` pinned at release. The wheel itself
+declares ranges, so a later `pip install` can resolve newer ones.
+
+**Where to get it:** attached to each
+[GitHub release](https://github.com/huntridge-labs/argus/releases),
+with its Sigstore bundle `<sbom>.sigstore.json`.
+
+**Verify it against the wheel you downloaded:**
+
+```
+pip download argus-security==<version> --no-deps -d .
+gh attestation verify argus_security-<version>-py3-none-any.whl \
+  --repo huntridge-labs/argus \
+  --predicate-type https://cyclonedx.org/bom
+```
+
 ### Third-party images with `@sha256:` digest pin (trust-by-content)
 
 ```yaml
