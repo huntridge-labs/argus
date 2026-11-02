@@ -21,8 +21,8 @@ importers:
         specifier: ^1.3.0
         version: 1.3.0(@types/node@25.7.0)
       dateformat:
-        specifier: ^5.0.4
-        version: 5.0.4
+        specifier: ^5.0.5
+        version: 5.0.5
       husky:
         specifier: ^9.1.7
         version: 9.1.7
@@ -34,8 +34,8 @@ importers:
         specifier: ^21.2.4
         version: 21.2.4
       '@j-ulrich/release-it-regex-bumper':
-        specifier: ^5.6.0
-        version: 5.6.0(release-it@21.1.2(@types/node@25.7.0))
+        specifier: ^5.7.0
+        version: 5.7.0(release-it@21.1.2(@types/node@25.7.0))
       '@release-it/conventional-changelog':
         specifier: ^12.0.2
         version: 12.0.2(conventional-commits-filter@6.0.1)(conventional-commits-parser@7.1.2)(release-it@21.1.2(@types/node@25.7.0))
@@ -62,8 +62,8 @@ packages:
     resolution: {integrity: sha512-qehxGkRj55h/ff8EMaJ+cYhyaKlHIxqYDn682wQD7RNp9UujOQsHog2uS0r2vzr4pW+sXf90NeeayjcNaX3fFg==}
     engines: {node: '>=6.9.0'}
 
-  '@babel/runtime-corejs3@7.29.7':
-    resolution: {integrity: sha512-ppj9ouYku+RX0ljtgZd+KMO5mkM2bCqg8H2PYAFWnLsHEIKIdRojqbJ2i3eVHrisuxy7nOFCmngTDdWtUCdXUQ==}
+  '@babel/runtime-corejs3@7.29.10':
+    resolution: {integrity: sha512-R4FKrg4Vy0hB7PfAxf9LOorEPd5/36SCIXPXAvjlQaQmPvtrjwoDXV15jsSm2ecsqBW1Iewwb7mEnG83xIEApg==}
     engines: {node: '>=6.9.0'}
 
   '@commitlint/cli@21.2.4':
@@ -322,8 +322,8 @@ packages:
       '@types/node':
         optional: true
 
-  '@j-ulrich/release-it-regex-bumper@5.6.0':
-    resolution: {integrity: sha512-AbkLJ72DqoTOBNtouT7mPUG/HA0n2DhFNwXpm8RdkEGlg2LQihfDQZDegzyL570+nW92ZkwcCLwGJOsTWZaKUQ==}
+  '@j-ulrich/release-it-regex-bumper@5.7.0':
+    resolution: {integrity: sha512-r+3T/Xne1Xmn4snBaTkPcHE8CllnbdQLbzw3dx9aCtJ5PsQOOV/4Cfrlt5FytZVhhaLFRuay1k2q51CqJFOFMQ==}
     engines: {node: '>=16'}
     peerDependencies:
       release-it: 16 || 17 || 18 || 19 || 20 || 21
@@ -684,8 +684,8 @@ packages:
     engines: {node: '>=22'}
     hasBin: true
 
-  core-js-pure@3.49.0:
-    resolution: {integrity: sha512-XM4RFka59xATyJv/cS3O3Kml72hQXUeGRuuTmMYFxwzc9/7C8OYTaIR/Ji+Yt8DXzsFLNhat15cE/JP15HrCgw==}
+  core-js-pure@3.51.0:
+    resolution: {integrity: sha512-NE4SFDJ+qzQeqHG2vVSNwopzS6zZNPYJ5kinIqs+OofTqGzOmICgT89E/yvS9XY7rwb3eU1utWXTJ9nVFqv74A==}
 
   cosmiconfig-typescript-loader@6.3.0:
     resolution: {integrity: sha512-Akr82WH1Wfqatyiqpj8HDkO2o2KmJRu1FhKfSNJP3K4IdXwHfEyL7MOb62i1AGQVLtIQM+iCE9CGOtrfhR+mmA==}
@@ -728,8 +728,8 @@ packages:
   date-fns@4.4.0:
     resolution: {integrity: sha512-+1UMbeh68lH1SegH83CGWwpb6OHHbpSgr3+s5Eww5M4CAgswBpoWS0AjTOfEJ33HiYKz1hdj/KTFprzXHmq/6w==}
 
-  dateformat@5.0.4:
-    resolution: {integrity: sha512-DnMqBsxDYMXnJ1c6TY8AgalunEVV5LBm1INpkod2A60Ldw/bopC/MGH0bEoK0S+I66Juezz36snGuWrEp9FmNg==}
+  dateformat@5.0.5:
+    resolution: {integrity: sha512-Co60BtcjsM5XBBbzKHdjH86rz9JCGOib8K1Vw22JQxuPhlWXI6vczIuHJo0SZEAJx27oXnd7lZR64KqyQs0GNQ==}
     engines: {node: '>=12.20'}
 
   debug@4.4.3:
@@ -862,8 +862,8 @@ packages:
   fast-wrap-ansi@0.2.2:
     resolution: {integrity: sha512-7F2Fl+TjRSenLqlU3UjSH0iyqopqoZIu7eZVpEirP2g1GtWa2G/ecEmBdgz31+Mxr+ELclgg6sokpSFIQiZ02Q==}
 
-  fastq@1.20.1:
-    resolution: {integrity: sha512-GGToxJ/w1x32s/D2EKND7kTil4n8OVk/9mycTc4VDza13lOvpUZTGX3mFSCtV9ksdGBVzvsyAVLM6mHFThxXxw==}
+  fastq@1.20.3:
+    resolution: {integrity: sha512-XKv5nnLs6nLF71NgiKJLIZFLkPyIEuOselLG7ujZnGrRfQK8HpvY+WqKhAJUAdLomwVHErVS4LfxFlPq0/FTAw==}
 
   fd-package-json@2.0.0:
     resolution: {integrity: sha512-jKmm9YtsNXN789RS/0mSzOC1NUq9mkVd65vbSSVsKdjGvYXBuE4oWe2QOEoFeRmJg+lPuZxpmrfFclNhoRMneQ==}
@@ -1577,8 +1577,8 @@ packages:
     resolution: {integrity: sha512-c16PKLIRxBYpR3jSWsdS7SFp0COm5SOQdiFjY818dYFHJbMGuLBszpF07LBWmOS1uzrHa9VGdynsEgoeKy0oOQ==}
     engines: {node: '>=20'}
 
-  xregexp@5.1.2:
-    resolution: {integrity: sha512-6hGgEMCGhqCTFEJbqmWrNIPqfpdirdGWkqshu7fFZddmTSfgv5Sn9D2SaKloR79s5VUiUlpwzg3CM3G6D3VIlw==}
+  xregexp@5.1.3:
+    resolution: {integrity: sha512-7uOg8BVk9kt6HnkeBdyW3VEq7KXzs4un/Efge4AN1FsAMzM6fYexggbWWkQcfHExQpQEoNkWXnr4wSWpqtx49Q==}
 
   y18n@5.0.8:
     resolution: {integrity: sha512-0pfFzegeDWJHJIAmTLRP2DwHjdF5s7jo9tuztdQxAhINCdvS+3nGINqPd00AphqJR/0LhANUS6/+7SCb98YOfA==}
@@ -1606,9 +1606,9 @@ snapshots:
 
   '@babel/helper-validator-identifier@7.29.7': {}
 
-  '@babel/runtime-corejs3@7.29.7':
+  '@babel/runtime-corejs3@7.29.10':
     dependencies:
-      core-js-pure: 3.49.0
+      core-js-pure: 3.51.0
 
   '@commitlint/cli@21.2.4(conventional-commits-filter@6.0.1)(conventional-commits-parser@7.1.2)(typescript@6.0.3)':
     dependencies:
@@ -1911,7 +1911,7 @@ snapshots:
     optionalDependencies:
       '@types/node': 25.7.0
 
-  '@j-ulrich/release-it-regex-bumper@5.6.0(release-it@21.1.2(@types/node@25.7.0))':
+  '@j-ulrich/release-it-regex-bumper@5.7.0(release-it@21.1.2(@types/node@25.7.0))':
     dependencies:
       chalk: 5.6.2
       date-fns: 4.4.0
@@ -1919,7 +1919,7 @@ snapshots:
       lodash: 4.18.1
       release-it: 21.1.2(@types/node@25.7.0)
       semver: 7.8.5
-      xregexp: 5.1.2
+      xregexp: 5.1.3
     optionalDependencies:
       diff: 8.0.4
 
@@ -1933,7 +1933,7 @@ snapshots:
   '@nodelib/fs.walk@1.2.8':
     dependencies:
       '@nodelib/fs.scandir': 2.1.5
-      fastq: 1.20.1
+      fastq: 1.20.3
 
   '@octokit/auth-token@6.0.0': {}
 
@@ -2304,7 +2304,7 @@ snapshots:
       conventional-commits-filter: 6.0.1
       conventional-commits-parser: 7.1.2
 
-  core-js-pure@3.49.0: {}
+  core-js-pure@3.51.0: {}
 
   cosmiconfig-typescript-loader@6.3.0(@types/node@25.7.0)(cosmiconfig@9.0.1(typescript@6.0.3))(typescript@6.0.3):
     dependencies:
@@ -2359,7 +2359,7 @@ snapshots:
 
   date-fns@4.4.0: {}
 
-  dateformat@5.0.4: {}
+  dateformat@5.0.5: {}
 
   debug@4.4.3:
     dependencies:
@@ -2463,7 +2463,7 @@ snapshots:
     dependencies:
       fast-string-width: 3.0.2
 
-  fastq@1.20.1:
+  fastq@1.20.3:
     dependencies:
       reusify: 1.1.0
 
@@ -3166,9 +3166,9 @@ snapshots:
       is-wsl: 3.1.1
       powershell-utils: 0.2.1
 
-  xregexp@5.1.2:
+  xregexp@5.1.3:
     dependencies:
-      '@babel/runtime-corejs3': 7.29.7
+      '@babel/runtime-corejs3': 7.29.10
 
   y18n@5.0.8: {}
 
