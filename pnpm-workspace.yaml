@@ -13,3 +13,8 @@ allowBuilds:
 # fix, refresh the lockfile (`pnpm update <pkg> --depth Infinity
 # --lockfile-only`). If it doesn't, risk-accept the finding with an expiry
 # and wait for the parent to move.
+
+# Fail the install on a Node.js release outside package.json engines.node.
+# The floor tracks security fixes (CVE-2026-111497, Node2Shell), so a
+# warning is not enough. pnpm 11 reads this here, not from .npmrc.
+engineStrict: true
