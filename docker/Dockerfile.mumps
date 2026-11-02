@@ -6,7 +6,7 @@
 # ---------------------------------------------------------------------------
 # Stage 1: Compile the tree-sitter-mumps shared library
 # ---------------------------------------------------------------------------
-FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS grammar-builder
+FROM alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS grammar-builder
 
 # Pinned to MITRE Public Release 23-4084 (janus-llm/tree-sitter-mumps).
 # Update in lockstep with .ai/architecture.yaml.
@@ -30,7 +30,7 @@ RUN git clone https://github.com/janus-llm/tree-sitter-mumps.git . && \
 # ---------------------------------------------------------------------------
 # Stage 2: Runtime image
 # ---------------------------------------------------------------------------
-FROM python:3.14.8-alpine@sha256:f6a589d43c42b9e7f7dc67a12d37132491f362859a5d750607710cc56da3bc72
+FROM python:3.14.9-alpine@sha256:dbeb11d16bb95c3a7e3c25c842cb9f20cbc8c18f8be0461a4a0dcc861ad386a0
 
 LABEL org.opencontainers.image.source="https://github.com/huntridge-labs/argus"
 LABEL org.opencontainers.image.description="Argus MUMPS / M language SAST scanner"
