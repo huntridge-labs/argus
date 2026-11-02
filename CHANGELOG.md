@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.14.2](https://github.com/huntridge-labs/argus/compare/1.14.1...1.14.2) (2026-11-02)
+
+### Bug Fixes
+
+* **clamav:** re-pin clamav/clamav:1.5.4 after Cisco's bot re-pushed the tag ([daa1995](https://github.com/huntridge-labs/argus/commit/daa19954c83f95b7eca4e943157211a2990e2456)), references [#530](https://github.com/huntridge-labs/argus/issues/530)
+* **deps:** bump undici, certifi, virtualenv and filelock past open advisories ([#527](https://github.com/huntridge-labs/argus/issues/527)) ([830c01d](https://github.com/huntridge-labs/argus/commit/830c01d4f170788532eee61dd306f0e0459cb29d)), closes [#526](https://github.com/huntridge-labs/argus/issues/526)
+* **deps:** require a Node.js release patched for CVE-2026-111497 ([58e2e4d](https://github.com/huntridge-labs/argus/commit/58e2e4dd6ec613ac410ed43662cd70a18ea22d7b)), closes [#530](https://github.com/huntridge-labs/argus/issues/530)
+
+### Dependencies
+
+* **deps:** bump the docker-all group across 1 directory with 2 updates ([#534](https://github.com/huntridge-labs/argus/issues/534)) ([da093c1](https://github.com/huntridge-labs/argus/commit/da093c11c5aa814d45f397f20c4c3d018d284db9))
+* **deps:** bump the npm-minor-patch group across 1 directory with 2 updates ([#533](https://github.com/huntridge-labs/argus/issues/533)) ([9b30184](https://github.com/huntridge-labs/argus/commit/9b3018438196a3503d1140061852d988de4abba7))
+* **deps:** move anthropic SDK to v2; it sends the API key as Authorization: Bearer ([#522](https://github.com/huntridge-labs/argus/issues/522)) ([7bc1220](https://github.com/huntridge-labs/argus/commit/7bc122083b2aec925c7774b4bac385bd0c78758d)), references [#519](https://github.com/huntridge-labs/argus/issues/519)
+* **deps:** Update dependency node to v26 ([#523](https://github.com/huntridge-labs/argus/issues/523)) ([f298a00](https://github.com/huntridge-labs/argus/commit/f298a0082a5852b657cbc19642461009168211c5))
+* **deps:** Update dependency pip to v26.2.2 ([#520](https://github.com/huntridge-labs/argus/issues/520)) ([a3e6660](https://github.com/huntridge-labs/argus/commit/a3e666090ce1fa4fcb8a83446a0dd33feeb0271e))
+* **deps:** Update python-deps ([#519](https://github.com/huntridge-labs/argus/issues/519)) ([d885695](https://github.com/huntridge-labs/argus/commit/d885695a5451554d66705373782fc397eaef66c7))
+* **deps:** Update tool-versions ([#521](https://github.com/huntridge-labs/argus/issues/521)) ([d6bbb77](https://github.com/huntridge-labs/argus/commit/d6bbb778d61ae39a7df6e5dd65174b32c1f04141)), references [#518](https://github.com/huntridge-labs/argus/issues/518)
+
+
+### Documentation
+
+* **pyproject:** update ai extra comment for anthropic v2 ([#525](https://github.com/huntridge-labs/argus/issues/525)) ([c66fbf0](https://github.com/huntridge-labs/argus/commit/c66fbf08241600d5f2e1f63c0a308de95d7709d9)), closes [#524](https://github.com/huntridge-labs/argus/issues/524)
+
 ## [1.14.1](https://github.com/huntridge-labs/argus/compare/1.14.0...1.14.1) (2026-10-26)
 
 ### Continuous Integration
