@@ -25,7 +25,7 @@ All of the above happens inside a **single** `release` job — the container bui
 ## Configuration
 
 ### Prerequisites
-- **Node.js 22+** (required for release-it v19 and latest tooling)
+- **Node.js 22.23.4+, 24.22.1+ or 26.12.1+** (release-it 21 needs 22.21+; the higher floor is the CVE-2026-111497 fix. pnpm refuses older releases)
 - **npm 10.8+**
 - **Release Bot Token** (required for automated releases)
 
