@@ -4,8 +4,9 @@ Reports the format and spec version, the generator, the subject (image
 name and digest), the OS, package counts by purl type, and which matcher
 ``argus scan --sbom`` would pick (``argus.core.sbom_routing``). The OS
 comes from the packages' ``distro=`` purl qualifiers first, since that
-is what the matchers key on, and from SBOM-level metadata only when no
-package carries one.
+is what the matchers key on, and from SBOM-level metadata when no
+package carries one. When the qualifier is a bare version (trivy's apk
+purls), the name comes from the purl namespace, then from that metadata.
 """
 
 from __future__ import annotations
@@ -205,7 +206,7 @@ def _os_from_purls(parsed, info: SbomInfo, data: dict) -> dict | None:
         return None
     top = distros.most_common(1)[0][0]
     match = _DISTRO.match(top)
-    if match:
+    if match and not match["name"][:1].isdigit():
         name, version = match["name"], match["version"]
     elif top[:1].isdigit():
         name, version = _distro_family(parsed, top, info, data), top

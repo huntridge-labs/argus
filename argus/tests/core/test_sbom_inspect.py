@@ -117,6 +117,26 @@ class TestOsFallbacks:
         }
         assert "OS:         alpine 3.24.2 (from package purls)" in format_terminal(inspect_sbom(path))
 
+    def test_bare_distro_version_prefers_the_namespace_over_the_os_component(self, tmp_path):
+        path = _sbom(tmp_path, "bom.cdx.json", {
+            "bomFormat": "CycloneDX", "specVersion": "1.6",
+            "components": [
+                {"type": "operating-system", "name": "wolfi", "version": "3.24.2"},
+                {"type": "library", "name": "musl",
+                 "purl": "pkg:apk/alpine/musl@1.2.5-r9?distro=3.24.2"},
+            ],
+        })
+        assert inspect_sbom(path).to_dict()["os"]["name"] == "alpine"
+
+    def test_bare_distro_version_with_a_dash_stays_whole(self, tmp_path):
+        path = _sbom(tmp_path, "bom.cdx.json", {
+            "bomFormat": "CycloneDX", "specVersion": "1.6",
+            "components": [{"name": "musl", "purl": "pkg:apk/alpine/musl@1.2.5-r9?distro=20240101-2"}],
+        })
+        assert inspect_sbom(path).to_dict()["os"] == {
+            "name": "alpine", "version": "20240101-2", "source": "purl", "distros": ["20240101-2"],
+        }
+
     def test_bare_distro_version_with_no_name_anywhere_keeps_it_as_the_version(self, tmp_path):
         path = _sbom(tmp_path, "bom.cdx.json", {
             "bomFormat": "CycloneDX", "specVersion": "1.6",
