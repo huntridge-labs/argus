@@ -44,7 +44,7 @@ OFFICIAL_IMAGES = {
     # go through `container_runtime.manifest_ref` and ask about the digest
     # alone. Re-pinned 2026-10-19 to the 2026-10-16 "Release Main Docker"
     # rebuild (dispatched by maintainer thc202; same amd64/arm64 set).
-    "zap": "ghcr.io/zaproxy/zaproxy:2.17.0@sha256:030d3df57735dacbb83464854758e674dd9ad01d79d12a129a8e58b1fd384238",
+    "zap": "ghcr.io/zaproxy/zaproxy:2.17.0@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af",
     # promptfoo LLM red-team / eval. Opt-in scanner; requires provider
     # API keys + network at scan time. Pinned to an immutable version tag
     # + digest (Renovate-managed), like every other image here — the
