@@ -26,16 +26,16 @@ from pathlib import Path
 # release, Renovate rewrites BOTH the version segment and the digest
 # segment in a single PR.
 OFFICIAL_IMAGES = {
-    "trivy": "aquasec/trivy:0.76.0@sha256:2416d1f74045b57274df1a340eee6b510cacd73c66a6ccb8da092b117eb7d222",
-    "grype": "anchore/grype:v0.120.1@sha256:e4a44ef45d285b829ce6efe2642980329661bd2d18eab5fc539138d4adaebbbe",
-    "syft": "anchore/syft:v1.54.1@sha256:3eb5379ba7b409c3f4069b686110527af0c47df993fa5c10d13e7cf34f49b1aa",
+    "trivy": "aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c",
+    "grype": "anchore/grype:v0.121.0@sha256:621d56d1d68106b787022c81546f7e0a36202a25d1239f0c20195fab8c16f7ea",
+    "syft": "anchore/syft:v1.55.0@sha256:4cc92b64ca74ffca4c94d4c8fcc01f217731375300be14d0b6eeb2e82eaa110a",
     "gitleaks": "zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f",
-    "clamav": "clamav/clamav:1.5.4@sha256:bda39705e291105049c3936e2803ac90b955172af8030f94f05dce1252df6c6d",
-    "checkov": "bridgecrew/checkov:3.3.29@sha256:3cc125b5337717b7303dbddd4e79374c120687b5ff6a24f9abdad56b562469f3",
+    "clamav": "clamav/clamav:1.5.4@sha256:6d87c712e3391e13c1ba6e05dfb074d4b1ddb5a6834b23bb9da990d2a4ef042a",
+    "checkov": "bridgecrew/checkov:3.3.30@sha256:4b65e89f1fde292249fc0aa0d0db43302c036dfe39f7370b2d3517571082b894",
     # KICS (Checkmarx) multi-format IaC scanner. Pinned to a semver tag:
     # ``:latest`` moves on every upstream push (2026-10-21), which breaks
     # the tag@digest manifest check even when the digest is unchanged.
-    "kics": "checkmarx/kics:v2.1.20@sha256:3e5a268eb8adda2e5a483c9359ddfc4cd520ab856a7076dc0b1d8784a37e2602",
+    "kics": "checkmarx/kics:v2.2.0@sha256:ef29dbac14b046b1ef65f3280646112e927a61781c5f01bca1aeb723e0b96003",
     "osv-scanner": "ghcr.io/google/osv-scanner:v2.5.1@sha256:8108ae94eadea5a02c9bec6e646909d5b790b44bd62d7f5b7f0b1d6d0ffc7734",
     # Upstream re-pushes the 2.17.0 tag on rebuilds (2026-08, 2026-10 twice),
     # so `manifest inspect` of tag@digest stops verifying even though the
@@ -44,7 +44,7 @@ OFFICIAL_IMAGES = {
     # go through `container_runtime.manifest_ref` and ask about the digest
     # alone. Re-pinned 2026-10-19 to the 2026-10-16 "Release Main Docker"
     # rebuild (dispatched by maintainer thc202; same amd64/arm64 set).
-    "zap": "ghcr.io/zaproxy/zaproxy:2.17.0@sha256:030d3df57735dacbb83464854758e674dd9ad01d79d12a129a8e58b1fd384238",
+    "zap": "ghcr.io/zaproxy/zaproxy:2.17.0@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af",
     # promptfoo LLM red-team / eval. Opt-in scanner; requires provider
     # API keys + network at scan time. Pinned to an immutable version tag
     # + digest (Renovate-managed), like every other image here — the
@@ -61,7 +61,7 @@ OFFICIAL_IMAGES = {
     "gosec": "securego/gosec:latest@sha256:2cf71ea78210c496c65e3a987576a9c8317b68e20f2960520b3f6f8f9f539be5",
     # lint-terraform docker fallbacks. terraform fmt/validate run via
     # the official Hashicorp image; tflint via its official image.
-    "terraform": "hashicorp/terraform:1.16.6@sha256:bfffc1ded5fbf0a17beaaf22eb4793980abdb19d0761ff6a3a0efb2ab4d9b316",
+    "terraform": "hashicorp/terraform:1.17.0@sha256:4d1b496a256f2989bccdb04b9104a4ede97234b10fba90259e173e905ec4fb58",
     "tflint": "ghcr.io/terraform-linters/tflint:v0.64.0@sha256:1c595f42d794c32c45a6ea8b58655fd66433d4ca3b1bc631c574a48d120bd19f",
     # lint-javascript via eslint. pipelinecomponents/eslint is the most
     # widely-used multi-arch eslint image. The upstream tags by commit
@@ -74,10 +74,10 @@ OFFICIAL_IMAGES = {
 # Custom images built and published by Argus to ghcr.io/huntridge-labs/argus/
 # Versions managed by release-it regex bumper
 CUSTOM_IMAGES = {
-    "bandit": "ghcr.io/huntridge-labs/argus/scanner-bandit:1.14.1@sha256:f5c963e3e7154b1ee7aa848b44ee2e994f3bc5ec0d03a75e9d362ee6f00b4881",
-    "semgrep": "ghcr.io/huntridge-labs/argus/scanner-opengrep:1.14.1@sha256:e1126f354e3b67d11d7290b3fb54243a5234cf713c98f5dc8c94a9291892cb19",
-    "supply-chain": "ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.14.1@sha256:9a7094f8cefb8b1719279ab0cd3a94edbcab116d836dd59cf96b965729e06392",
-    "cli": "ghcr.io/huntridge-labs/argus/cli:1.14.1@sha256:03f917046a0b8f34b960506caa9a1dd25ccdc3a983981f0790bf16972042e16b",
+    "bandit": "ghcr.io/huntridge-labs/argus/scanner-bandit:1.14.2@sha256:264a3f8569715f50a3029ae2f80dfdb8038e7a824e227ef5e05f0210b5891cef",
+    "semgrep": "ghcr.io/huntridge-labs/argus/scanner-opengrep:1.14.2@sha256:b0aa4b56466cf324a0c15897653eab8c060fa0e2a4550198f3d0e12fd4700786",
+    "supply-chain": "ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.14.2@sha256:9f2a2678168ffac6f395e52fd689c00980c1d4f37304b63720861091731bc84d",
+    "cli": "ghcr.io/huntridge-labs/argus/cli:1.14.2@sha256:8b3665ef0ae95d3f3eafb82b4cf29be9ab412ce1afea4f2fc04a2e32bea9b4b7",
     # PRE-MERGE PREVIEW. The MUMPS scanner image is published from the
     # feat/scanner-m-mumps branch under the mutable ``mumps-preview`` tag
     # so testers can run ``argus scan mumps`` with zero local toolchain
@@ -87,7 +87,7 @@ CUSTOM_IMAGES = {
     # rewrites this line to the versioned ``scanner-mumps:<version>`` tag
     # + release digest. The digest pin below is still the content-hash
     # gate the manifest check verifies.
-    "mumps": "ghcr.io/huntridge-labs/argus/scanner-mumps:1.14.1@sha256:ecba7f33160ef2525ab53a8d456029293655d2823bfd7926b7d34e40d430f3b6",
+    "mumps": "ghcr.io/huntridge-labs/argus/scanner-mumps:1.14.2@sha256:b0135b3657ce83ac3f8434fe0f3cf6d7c5ce5d1a0a47de2342562f321e09da29",
 }
 
 

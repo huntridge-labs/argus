@@ -1,4 +1,4 @@
-FROM python:3.14.8-alpine@sha256:f6a589d43c42b9e7f7dc67a12d37132491f362859a5d750607710cc56da3bc72 AS base
+FROM python:3.14.9-alpine@sha256:dbeb11d16bb95c3a7e3c25c842cb9f20cbc8c18f8be0461a4a0dcc861ad386a0 AS base
 
 LABEL org.opencontainers.image.source="https://github.com/huntridge-labs/argus"
 LABEL org.opencontainers.image.description="Argus Bandit Python SAST Scanner"
@@ -10,7 +10,7 @@ RUN apk upgrade --no-cache
 # pip vendors certifi, so this pin decides the image's CA bundle. Same value
 # in every Dockerfile (scripts/ci/check_tool_currency.py enforces it); Renovate
 # bumps it under the 7-day release-age policy (ADR-043).
-ARG PIP_VERSION=26.2.1
+ARG PIP_VERSION=26.2.2
 ARG BANDIT_VERSION=1.9.4
 
 RUN adduser -D -u 1000 argus
