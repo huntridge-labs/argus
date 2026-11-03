@@ -67,7 +67,7 @@ decision: |-
   same files are packed into one `argus-<version>-image-sboms.tar.gz`
   (plus a `.sha256`), the archive gets a build provenance attestation,
   and both are attached to the GitHub release after cosign signing and
-  before the wheel is published (#514; 1.14.1 attached ~30 loose
+  before the wheel is published (#514; 1.14.2 and earlier attached ~30 loose
   files). The release is
   still a draft at that point and is published as the job's last step
   (#512): the repo has immutable releases on, and a published release

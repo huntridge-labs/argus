@@ -397,7 +397,8 @@ class TestReleaseWorkflow:
         package = steps[package_at]
         assert package["if"] == "env.RELEASED == 'true'"
         assert 'NAME="argus-${VERSION}-image-sboms"' in package["run"]
-        assert "--sort=name" in package["run"] and "gzip -n" in package["run"]
+        assert "LC_ALL=C sort" in package["run"] and "--sort=name" not in package["run"]
+        assert "--mode=go-w" in package["run"] and "gzip -n" in package["run"]
         assert 'sha256sum "${NAME}.tar.gz"' in package["run"]
         assert 'echo "SBOM_ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"' in package["run"]
 
