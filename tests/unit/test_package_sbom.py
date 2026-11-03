@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import subprocess
 import zipfile
 from pathlib import Path
@@ -148,7 +149,7 @@ class TestGenerate:
 
     def test_against_the_real_lock(self, tmp_path):
         """The checked-in uv.lock covers every runtime dependency in pyproject.toml."""
-        if subprocess.run(["uv", "--version"], capture_output=True, check=False).returncode:
+        if shutil.which("uv") is None:
             pytest.skip("uv not installed")
         base = ps.component_names(ps.export([]))
         everything = ps.component_names(ps.export(["--all-extras"]))
