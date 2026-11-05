@@ -670,6 +670,39 @@ jobs:
           argus --version
           scripts/ci/argus_smoke.sh
 
+      # ── Package SBOM (ADR-528) ───────────────────────────────────────
+      # The wheel's runtime dependencies from uv.lock, dev group left out,
+      # so the SBOM lists only what `pip install argus-security` can bring
+      # in (extras marked optional). Signed with the wheel as its subject
+      # and attached to the still-draft release before PyPI publish. Any
+      # failure stops the job before the wheel ships.
+      - name: Generate package SBOM
+        if: env.RELEASED == 'true'
+        run: python -m scripts.ci.package_sbom generate --wheel dist/*.whl --out-dir "${SBOM_DIR}"
+
+      - name: Attest SBOM (package)
+        id: attest-package
+        if: env.RELEASED == 'true'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ env.PACKAGE_WHEEL }}
+          sbom-path: ${{ env.PACKAGE_SBOM_PATH }}
+
+      - name: Attach package SBOM to the GitHub release
+        # Checks the bundle signs this wheel with this SBOM, then uploads
+        # both while the release is still a draft.
+        if: env.RELEASED == 'true'
+        env:
+          ATTEST_STEPS: ${{ toJSON(steps) }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python -m scripts.ci.package_sbom collect \
+            --wheel "${PACKAGE_WHEEL}" --sbom "${PACKAGE_SBOM_PATH}"
+          gh release upload "${VERSION}" \
+            "${PACKAGE_SBOM_PATH}" "${PACKAGE_SBOM_PATH}.sigstore.json" \
+            --repo "${GITHUB_REPOSITORY}" --clobber
+
       - name: Publish to PyPI
         if: env.RELEASED == 'true'
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
@@ -714,6 +747,10 @@ jobs:
             echo "Verify an image's SBOM with:"
             echo "\`\`\`"
             echo "gh attestation verify oci://${IMAGE_REGISTRY}/<image>:${VERSION} --repo ${GITHUB_REPOSITORY} --predicate-type https://cyclonedx.org/bom"
+            echo "\`\`\`"
+            echo "The PyPI wheel has its own signed SBOM (runtime dependencies only):"
+            echo "\`\`\`"
+            echo "gh attestation verify $(basename "${PACKAGE_WHEEL}") --repo ${GITHUB_REPOSITORY} --predicate-type https://cyclonedx.org/bom"
             echo "\`\`\`"
             echo ""
             echo "### Build artifacts"

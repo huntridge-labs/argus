@@ -1,0 +1,85 @@
+id: ADR-528
+title: "Signed runtime-only SBOM for the PyPI wheel"
+date: '2026-11-01'
+status: proposed
+context: |-
+  Releases ship signed SBOMs for the five images (ADR-489), but nothing
+  for the wheel people get from `pip install argus-security`. The only
+  inventory a scanner can grade for the package is the repo's lockfiles,
+  and those mix in tools that never reach a user: release-it and undici
+  (pnpm, release tooling) and virtualenv and filelock (uv dev group).
+
+  #526 is the example. It was 10 high/critical findings across
+  pnpm-lock.yaml and uv.lock. Only certifi ships, and only with the
+  optional `ai` extra. A user who runs `pip install argus-security` gets
+  8 packages; `[all]` adds 61 more.
+decision: |-
+  Each release publishes one CycloneDX SBOM for the wheel,
+  `sbom-argus-security-<version>.cdx.json`, made by
+  scripts/ci/package_sbom.py:
+
+  - Inventory: `uv export --format cyclonedx1.5 --frozen --no-dev
+    --all-extras`. The dev group never appears. uv.lock is the same lock
+    the release job installs from and the cli image is built from.
+  - Root component: the wheel's name, version, `pkg:pypi` purl and
+    sha256, so the SBOM names the file its attestation signs.
+  - Scope: packages in the base install (`uv export --no-dev`) get
+    `scope: required`. Packages only an extra brings in get
+    `scope: optional` and an `argus:extras` property listing those
+    extras, from one `uv export --extra <name>` per Provides-Extra.
+  - Check: every Requires-Dist in the wheel must appear as a component,
+    and every component must have a scope.
+
+  The SBOM is signed with `actions/attest` (SBOM mode), subject = the
+  wheel file, and the bundle is checked the same way as the image
+  bundles (image_sboms.check_bundle). Both files go on the GitHub release
+  while it is still a draft, after the smoke test and before PyPI
+  publish. The steps only run when a release is cut, with no
+  continue-on-error, so a failure stops the job before the wheel ships.
+  The SBOM is written to $RUNNER_TEMP, never dist/, which
+  gh-action-pypi-publish uploads in full.
+rationale:
+- A scanner grading what a user installs needs an inventory of exactly
+  that, separate from build and release tooling.
+- The `scope` field is CycloneDX's own field for "required vs optional", so tools
+  that read it can filter without knowing anything about argus.
+- uv already writes CycloneDX from the lock, so there is no new tool to
+  pin or install.
+- Signing with the wheel as subject lets anyone check the SBOM against
+  the file they downloaded with one `gh attestation verify` call.
+alternatives_considered:
+- name: syft on a venv with the wheel installed
+  rejected_because: It inventories one platform's resolution and picks up
+    pip and setuptools from the venv. The lock export covers every
+    marker and nothing else.
+- name: Base install only, extras left out
+  rejected_because: The `ai`, `mcp`, `terminal` and `browser` extras are
+    documented install paths. Leaving them out would hide real exposure
+    for people who use them.
+- name: Attest the sdist too
+  rejected_because: pip installs the pure-Python wheel on every
+    platform. One subject keeps the bundle check the same as the images'.
+- name: Rely on PyPI's PEP 740 publish attestations
+  rejected_because: Those are provenance (who built it), not an inventory.
+consequences:
+  positive:
+  - Each release carries a signed inventory of what pip can install,
+    with optional extras marked, verifiable with gh attestation verify.
+  - Dev and release tooling findings can be weighed separately from what
+    ships.
+  negative:
+  - The SBOM lists the versions uv.lock pinned at release. The wheel
+    declares ranges, so a later `pip install` can resolve newer versions
+    than the SBOM shows.
+  - The uv `--format cyclonedx1.5` export is a preview feature; its output
+    shape can change on a uv bump. The Requires-Dist check catches a
+    missing package, not a renamed field.
+  - Like ADR-489, the path only runs when a release is cut, so the first
+    release is its first end-to-end test.
+implementation: |-
+  scripts/ci/package_sbom.py, .github/workflows/release.yml (Generate
+  package SBOM, Attest SBOM (package), Attach package SBOM to the GitHub
+  release, Summary), tests/unit/test_package_sbom.py,
+  tests/unit/test_image_sboms.py (skips the package attest step),
+  docs/security.md "Package SBOM (signed, runtime only)",
+  .ai/architecture.yaml, .ai/workflows.yaml.

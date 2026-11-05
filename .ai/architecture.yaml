@@ -1022,6 +1022,8 @@ directory_structure:
   scripts/ci/adr_records.py: ADR check (CI job ADR Records), read-time ADR index (list) and scaffold (new)
   scripts/ci/image_sboms.py: 'Release job: per-platform + index CycloneDX SBOMs for the built images
     (pinned syft, by digest) and checks of their actions/attest bundles (ADR-489)'
+  scripts/ci/package_sbom.py: 'Release job: runtime-only CycloneDX SBOM for the PyPI wheel (uv export, no dev group,
+    extras scoped optional) and the check of its actions/attest bundle (ADR-528)'
   .github/actions/*/schemas/: JSON schemas co-located with each action
   .github/actions/*/.docsite.yml: Per-action docsite category declaration
   scripts/docsite/: Auto-generated documentation site package

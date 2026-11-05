@@ -327,7 +327,9 @@ def step_index(steps: list[dict], predicate) -> int:
 
 
 def is_sbom_attest(step: dict) -> bool:
-    return step.get("uses", "").startswith("actions/attest@") and "sbom-path" in step.get("with", {})
+    """An image SBOM attest step. The wheel's has its own tests (ADR-528, test_package_sbom.py)."""
+    return (step.get("uses", "").startswith("actions/attest@") and "sbom-path" in step.get("with", {})
+            and step.get("id") != "attest-package")
 
 
 class TestReleaseWorkflow:
