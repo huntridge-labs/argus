@@ -446,7 +446,8 @@ workflows:
     - Container images re-tagged to :<VERSION> + :latest via docker buildx imagetools (no rebuild);
       a prerelease (X.Y.Z-rc.N) gets only :<VERSION>, never :latest (ADR-500)
     - Images cosign-signed by digest (Sigstore keyless, OIDC)
-    - SBOMs + .sigstore.json bundles attached to the draft GitHub release (gh release upload)
+    - SBOMs + .sigstore.json bundles packed into argus-<version>-image-sboms.tar.gz (+ .sha256), the archive
+      attested with build provenance (actions/attest), and both attached to the draft GitHub release
     - Wheel built from the bumped tree and smoke-tested
     - 'scripts/ci/package_sbom.py generate: runtime-only CycloneDX SBOM of the wheel from uv.lock (no dev
       group, extras scope: optional); actions/attest signs it with the wheel as subject; collect checks
@@ -464,8 +465,9 @@ workflows:
     - For the image you run, pass oci://ghcr.io/huntridge-labs/argus/<image>@<platform-digest> (from docker
       buildx imagetools inspect) to check that platform's SBOM
     - --predicate-type is required; gh defaults to SLSA provenance
-    - Files (sbom-<image>-<sha12>-<linux-amd64|linux-arm64|index>.cdx.json + .sigstore.json) are release assets
-      and the image-sboms-<sha12> artifact of the release run
+    - Files (sbom-<image>-<sha12>-<linux-amd64|linux-arm64|index>.cdx.json + .sigstore.json) ship in the release's
+      argus-<version>-image-sboms.tar.gz and in the image-sboms-<sha12> artifact of the release run
+    - The archive verifies with gh attestation verify argus-<version>-image-sboms.tar.gz --repo huntridge-labs/argus
   verify_package_sbom:
     description: Verify the signed runtime-only CycloneDX SBOM of a released argus-security wheel (ADR-528)
     command: gh attestation verify argus_security-<version>-py3-none-any.whl --repo huntridge-labs/argus
