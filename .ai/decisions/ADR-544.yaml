@@ -1,0 +1,57 @@
+id: ADR-544
+title: "Python version adoption routine"
+date: '2026-11-10'
+status: proposed
+context: |-
+  Python 3.15.0 shipped on 2026-10-10 and 3.15.2 was out by 2026-10-26,
+  but the test and install matrices still stopped at 3.14. Renovate's
+  github-actions manager treats setup-python's `python-version` as a
+  dependency, so #466 tried to move 42 single-version spots from 3.13
+  and 3.14 straight to 3.15 inside the routine actions group, with
+  nothing testing 3.15 first. It also kept that group from merging.
+
+  A new CPython minor is not a semver minor. It removes deprecated
+  stdlib modules and changes defaults (3.15 turns on UTF-8 mode, PEP
+  686), and compiled deps need new wheels. That makes it a platform
+  choice, not a routine bump.
+decision: |-
+  Python versions move on a yearly routine, by hand:
+
+  - Patch releases float. Workflows pin a minor (`'3.14'`), so
+    setup-python picks up the latest patch on its own.
+  - New minor (each October): within a few weeks of X.Y.0, add it to
+    the `test-unit.yml` and `publish-pypi.yml` matrices and the PyPI
+    classifiers, then cut a release. The existing suite is the test;
+    no version-specific tests.
+  - Default minor (single-version jobs, composite actions, images):
+    move it once X.Y has a .1 or .2 patch and the suite is green on it,
+    in its own issue and PR.
+  - Floor: raise `requires-python` only when CPython ends support for
+    the oldest version (3.11 reaches EOL in October 2027), in a minor
+    release with a changelog note. It stays an uncapped floor.
+
+  Renovate never bumps `python` in setup-python. That rule sits next
+  to the existing one that leaves `requires-python` alone.
+rationale:
+- Running the whole suite on the new version catches stdlib and
+  default changes with no new test code.
+- Adding the version to tests early means users on the newest Python
+  can install argus soon after it ships.
+- Moving the default as its own change keeps a platform choice out of
+  a grouped PR that also has to pass the 7-day release-age gate.
+alternatives_considered:
+- name: Let Renovate bump python-version in the actions group
+  rejected_because: It moves the default before anything tests the new
+    version, and it ties a deliberate choice to unrelated action bumps.
+- name: Wait for a new minor's .1 before adding it to tests
+  rejected_because: Users on the new version get no supported install
+    for weeks longer, and the tests are what tell us the .1 is safe.
+consequences:
+  positive:
+  - New Python versions get tested and supported within weeks.
+  - The github-actions-minor-patch group no longer carries runtime
+    jumps.
+  negative:
+  - Someone has to open the add-to-matrix and move-the-default issues
+    each year; nothing reminds us.
+  - One more matrix leg per workflow until the floor rises.
