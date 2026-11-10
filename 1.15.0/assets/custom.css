@@ -1,0 +1,225 @@
+/* Argus theme for the MkDocs Material docs site.
+ *
+ * Mirrors the palette / type stack used by argus.huntridgelabs.com
+ * and the SDK's local viewers (argus view browser, the architecture
+ * map) so the whole product line feels like one surface. Brand tokens
+ * (``--argus-*``) match those in ``argus/viewers/browser/static/argus.css``;
+ * Material's own variables (``--md-*``) point at them so all built-in
+ * chrome — header, nav, links, code blocks, admonitions, footer —
+ * picks up the theme without bespoke selectors per component.
+ */
+
+/* ─── Argus brand tokens ─────────────────────────────────────────────── */
+
+:root {
+  --argus-deep-bg:       #0b0f0d;
+  --argus-dark-surface:  #111916;
+  --argus-subtle-panel:  #16211c;
+  --argus-primary-green: #84b852;
+  --argus-accent-lime:   #dbe64c;
+  --argus-light-text:    #eaf2ea;
+  --argus-muted-text:    #9fb09f;
+  --argus-border:        #1f2a22;
+  --argus-on-accent:     #0b0f0d;
+}
+
+/* Light-theme overrides — kick in when Material's default scheme is
+ * active (``[data-md-color-scheme="default"]``). Same hex pairs the
+ * SDK's argus.css uses so the brand reads the same whichever scheme
+ * the user is in. */
+[data-md-color-scheme="default"] {
+  --argus-deep-bg:       #f5f7f0;
+  --argus-dark-surface:  #ffffff;
+  --argus-subtle-panel:  #eef1e8;
+  --argus-primary-green: #4a7a2e;
+  --argus-accent-lime:   #c4d421;
+  --argus-light-text:    #1a2118;
+  --argus-muted-text:    #5d6b58;
+  --argus-border:        #c8d1ba;
+  --argus-on-accent:     #0b0f0d;
+
+  /* Text accent — used for links and inline ``code`` in body copy.
+   * The light-theme lime (``#c4d421``) is too pale for body text;
+   * the darker forest green (``--argus-primary-green``) reads cleanly
+   * against the cream background while keeping the brand feel. Lime
+   * stays in play for solid-colour CTAs (buttons, badges) where
+   * white-on-lime has good contrast. */
+  --argus-text-accent:   var(--argus-primary-green);
+}
+
+/* In dark mode, the bright lime IS the text accent — there's no
+ * contrast issue against the deep background. Default the variable
+ * to the lime so the rules below stay scheme-agnostic. */
+[data-md-color-scheme="slate"] {
+  --argus-text-accent:   var(--argus-accent-lime);
+}
+
+/* Short aliases — the SDK's ``argus.css`` defines these as shortcuts
+ * over the brand tokens (``--surface``, ``--fg``, ``--accent``, …)
+ * and the architecture page's CSS uses them by name (e.g.
+ * ``background: var(--surface)``). The docs site no longer loads
+ * ``argus.css``, so without these aliases the architecture chrome
+ * renders without a background — the floating panel reads as
+ * see-through. Provide the aliases here so the architecture CSS
+ * resolves to the right tokens in both schemes. */
+[data-md-color-scheme="slate"],
+[data-md-color-scheme="default"] {
+  --bg:          var(--argus-deep-bg);
+  --surface:     var(--argus-dark-surface);
+  --surface-alt: var(--argus-subtle-panel);
+  --border:      var(--argus-border);
+  --fg:          var(--argus-light-text);
+  --fg-muted:    var(--argus-muted-text);
+  --accent:      var(--argus-accent-lime);
+  --accent-dim:  var(--argus-primary-green);
+}
+
+/* ─── Map Argus tokens onto Material's variables ─────────────────────── */
+
+[data-md-color-scheme="slate"],
+[data-md-color-scheme="default"] {
+  /* Page chrome */
+  --md-default-bg-color:           var(--argus-deep-bg);
+  --md-default-fg-color:           var(--argus-light-text);
+  --md-default-fg-color--light:    var(--argus-muted-text);
+  --md-default-fg-color--lighter:  rgba(159, 176, 159, 0.5);
+  --md-default-fg-color--lightest: rgba(159, 176, 159, 0.2);
+
+  /* Header / footer / primary surfaces */
+  --md-primary-fg-color:           var(--argus-dark-surface);
+  --md-primary-fg-color--light:    var(--argus-subtle-panel);
+  --md-primary-fg-color--dark:     var(--argus-deep-bg);
+  --md-primary-bg-color:           var(--argus-light-text);
+  --md-primary-bg-color--light:    var(--argus-muted-text);
+
+  /* Accents — links, focus rings, the search-icon highlight. Lime
+   * for solid-colour UI surfaces (focus rings stay punchy); link /
+   * inline text uses ``--argus-text-accent`` for readable contrast
+   * in both schemes. */
+  --md-accent-fg-color:            var(--argus-accent-lime);
+  --md-accent-fg-color--transparent: rgba(219, 230, 76, 0.12);
+  --md-accent-bg-color:            var(--argus-on-accent);
+
+  /* Content typography */
+  --md-typeset-color:              var(--argus-light-text);
+  --md-typeset-a-color:            var(--argus-text-accent);
+
+  /* Code blocks */
+  --md-code-bg-color:              var(--argus-subtle-panel);
+  --md-code-fg-color:              var(--argus-light-text);
+  --md-code-hl-color:              rgba(219, 230, 76, 0.18);
+
+  /* Tables */
+  --md-table-row-border-color:     var(--argus-border);
+
+  /* Admonitions inherit accent, so this is enough */
+  --md-admonition-bg-color:        var(--argus-subtle-panel);
+  --md-admonition-fg-color:        var(--argus-light-text);
+}
+
+/* ─── Header tweaks ──────────────────────────────────────────────────── */
+
+.md-header {
+  background: var(--argus-dark-surface);
+  border-bottom: 1px solid var(--argus-border);
+  box-shadow: none;
+}
+
+.md-header__topic {
+  height: 48px;
+  display: flex;
+  align-items: center;
+}
+
+.md-header__topic:first-child .md-ellipsis {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.md-header__topic:first-child .md-ellipsis::after {
+  content: "Perception is Protection";
+  font-size: 0.55em;
+  opacity: 0.6;
+  font-weight: 400;
+  letter-spacing: 0.05em;
+}
+
+.md-tabs {
+  background: var(--argus-deep-bg);
+  border-bottom: 1px solid var(--argus-border);
+}
+
+.md-tabs__link {
+  opacity: 0.8;
+}
+
+.md-tabs__link--active,
+.md-tabs__link:hover {
+  opacity: 1;
+  color: var(--argus-text-accent);
+}
+
+/* ─── Body / typography ──────────────────────────────────────────────── */
+
+body, .md-typeset {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont,
+               "Segoe UI", "SF Pro Text", sans-serif;
+}
+
+.md-typeset h1, .md-typeset h2, .md-typeset h3,
+.md-typeset h4, .md-typeset h5, .md-typeset h6 {
+  font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont,
+               "Segoe UI", "Inter", sans-serif;
+  color: var(--argus-light-text);
+}
+
+.md-typeset a {
+  color: var(--argus-text-accent);
+}
+
+.md-typeset a:hover {
+  text-decoration: underline;
+  filter: brightness(1.15);
+}
+
+.md-typeset code {
+  background: var(--argus-subtle-panel);
+  color: var(--argus-text-accent);
+  border-radius: 4px;
+  padding: 0.1em 0.4em;
+}
+
+/* ─── Sidebar ────────────────────────────────────────────────────────── */
+
+.md-nav__item .md-nav__link--active,
+.md-nav__link[for]:focus {
+  color: var(--argus-text-accent);
+}
+
+.md-nav__title {
+  background: transparent;
+  color: var(--argus-muted-text);
+}
+
+/* ─── Search ─────────────────────────────────────────────────────────── */
+
+.md-search__form {
+  background: var(--argus-subtle-panel);
+}
+
+.md-search__form:hover,
+[data-md-toggle="search"]:checked ~ .md-header .md-search__form {
+  background: var(--argus-dark-surface);
+}
+
+/* ─── Footer ─────────────────────────────────────────────────────────── */
+
+.md-footer {
+  background: var(--argus-dark-surface);
+  border-top: 1px solid var(--argus-border);
+}
+
+.md-footer-meta {
+  background: var(--argus-deep-bg);
+}
