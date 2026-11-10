@@ -131,7 +131,7 @@ runs:
     - name: Generate SBOM (Path)
       id: sbom-path
       if: steps.setup.outputs.type == 'path'
-      uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+      uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
       with:
         path: ${{ steps.setup.outputs.target }}
         format: ${{ inputs.output_format }}
@@ -143,7 +143,7 @@ runs:
     - name: Generate SBOM (Image)
       id: sbom-image
       if: steps.setup.outputs.type == 'image'
-      uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+      uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
       with:
         image: ${{ steps.setup.outputs.target }}
         format: ${{ inputs.output_format }}
@@ -228,7 +228,7 @@ runs:
         echo "Found $COMPONENT_COUNT components/packages"
 
     - name: Upload SBOM artifacts
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
       with:
         name: sbom-${{ steps.setup.outputs.prefix }}
         path: ${{ steps.setup.outputs.output_dir }}/
@@ -237,7 +237,7 @@ runs:
 
     - name: Upload to GitHub Dependency Graph
       if: inputs.enable_code_security == 'true' && steps.setup.outputs.type == 'path'
-      uses: anchore/sbom-action/publish-sbom@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+      uses: anchore/sbom-action/publish-sbom@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
       with:
         sbom-artifact-match: sbom-${{ steps.setup.outputs.prefix }}
       continue-on-error: true
@@ -340,7 +340,7 @@ runs:
 
     - name: Upload summary artifact
       if: always()
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
       with:
         name: scanner-summary-syft-${{ steps.setup.outputs.prefix }}
         path: scanner-summaries/syft-${{ steps.setup.outputs.prefix }}.md
