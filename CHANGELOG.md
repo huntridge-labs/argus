@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.15.0](https://github.com/huntridge-labs/argus/compare/1.14.2...1.15.0) (2026-11-10)
+
+### Features
+
+* **release:** publish a signed runtime-only SBOM for the PyPI wheel ([#529](https://github.com/huntridge-labs/argus/issues/529)) ([c5f93a1](https://github.com/huntridge-labs/argus/commit/c5f93a17eda5065fa12483e0d37f533dcb44c02e)), closes [#528](https://github.com/huntridge-labs/argus/issues/528), references [#528](https://github.com/huntridge-labs/argus/issues/528)
+
+### Bug Fixes
+
+* **containers:** re-pin clamav/clamav:1.5.4 after Nov 9 upstream rebuild ([#543](https://github.com/huntridge-labs/argus/issues/543)) ([be87cd3](https://github.com/huntridge-labs/argus/commit/be87cd3779a29a098add4588488446e255d2c352)), closes [#542](https://github.com/huntridge-labs/argus/issues/542)
+* **sbom:** name the OS when a purl's distro is a bare version ([#517](https://github.com/huntridge-labs/argus/issues/517)) ([f90f5a4](https://github.com/huntridge-labs/argus/commit/f90f5a40271b589fdf1fd449fcc25d02068d88d1)), closes [#516](https://github.com/huntridge-labs/argus/issues/516), references [#516](https://github.com/huntridge-labs/argus/issues/516)
+* **zap:** re-pin zaproxy:2.17.0 after upstream re-pushed the tag ([#537](https://github.com/huntridge-labs/argus/issues/537)) ([0a63190](https://github.com/huntridge-labs/argus/commit/0a63190347c0d03dfc0d3235f14d1f0ac7acdc98)), closes [#536](https://github.com/huntridge-labs/argus/issues/536)
+
+### Dependencies
+
+* **deps:** refresh pnpm lockfile for fast-uri 3.1.9 ([#539](https://github.com/huntridge-labs/argus/issues/539)) ([882b4d8](https://github.com/huntridge-labs/argus/commit/882b4d8622f1efdf3c3d2081733a4309a8f2b608)), closes [#538](https://github.com/huntridge-labs/argus/issues/538), references [128-#131](https://github.com/128-/issues/131)
+* **deps:** Refresh Python lockfile (uv.lock) ([#504](https://github.com/huntridge-labs/argus/issues/504)) ([83f2428](https://github.com/huntridge-labs/argus/commit/83f242854a38791409700fc89c5ea1e01b7f8f95))
+* **deps:** Update github-actions-minor-patch ([#466](https://github.com/huntridge-labs/argus/issues/466)) ([f15020d](https://github.com/huntridge-labs/argus/commit/f15020dcd21df994783dc3ee3785d9acacfc0a53))
+* **deps:** Update python-deps ([#535](https://github.com/huntridge-labs/argus/issues/535)) ([585d5e4](https://github.com/huntridge-labs/argus/commit/585d5e40c1b2770edba64d93eaa2ce81bc17bede))
+* **deps:** Update tool-versions ([#541](https://github.com/huntridge-labs/argus/issues/541)) ([61b3310](https://github.com/huntridge-labs/argus/commit/61b3310d9f0181a00bc77eb156aedc401721deef)), references [#540](https://github.com/huntridge-labs/argus/issues/540)
+
+
+### Continuous Integration
+
+* **python:** test on Python 3.15 and stop Renovate bumping the runtime ([#545](https://github.com/huntridge-labs/argus/issues/545)) ([3c6f251](https://github.com/huntridge-labs/argus/commit/3c6f2510f168d28ec53bbd1d228ee4c71939f908)), closes [#544](https://github.com/huntridge-labs/argus/issues/544)
+* **release:** ship image SBOMs as one attested archive ([#515](https://github.com/huntridge-labs/argus/issues/515)) ([9316414](https://github.com/huntridge-labs/argus/commit/9316414f1738a711cbb8f3dfe7afb0597cc6782c)), closes [#514](https://github.com/huntridge-labs/argus/issues/514), references [#514](https://github.com/huntridge-labs/argus/issues/514)
+* **renovate:** clear minimumReleaseAge for lockFileMaintenance ([#547](https://github.com/huntridge-labs/argus/issues/547)) ([efca91c](https://github.com/huntridge-labs/argus/commit/efca91c5ed255699174935d316f5667f7d686d41)), closes [#546](https://github.com/huntridge-labs/argus/issues/546)
+
 ## [1.14.2](https://github.com/huntridge-labs/argus/compare/1.14.1...1.14.2) (2026-11-02)
 
 ### Bug Fixes
