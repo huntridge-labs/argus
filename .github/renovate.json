@@ -294,6 +294,16 @@
       "automerge": false
     },
     {
+      "description": "Never bump the Python runtime in setup-python's python-version. Our workflows pin a minor (e.g. '3.14'), so patches already float; moving the default minor is a deliberate PR under the routine in ADR-544, never a ride-along in the actions group.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchDepNames": [
+        "python"
+      ],
+      "enabled": false
+    },
+    {
       "description": "Never bump our own composite actions (comment-pr, setup-argus); release-it version-bumps those on tag.",
       "matchManagers": [
         "github-actions"
