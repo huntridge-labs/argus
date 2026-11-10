@@ -21,8 +21,9 @@
   "timezone": "America/New_York",
   "minimumReleaseAge": "7 days",
   "lockFileMaintenance": {
-    "description": "Weekly uv.lock refresh (uv lock --upgrade) so transitive Python deps move forward even when no direct dep changes. minimumReleaseAge does not gate this run; the relative [tool.uv] exclude-newer = \"7 days\" in pyproject.toml enforces the same 7-day window inside uv itself (ADR-043).",
+    "description": "Weekly uv.lock refresh (uv lock --upgrade) so transitive Python deps move forward even when no direct dep changes. The relative [tool.uv] exclude-newer = \"7 days\" in pyproject.toml enforces the 7-day window inside uv itself (ADR-043). minimumReleaseAge is cleared here because a lockfile refresh has no release date, so the top-level gate would leave renovate/stability-days pending forever (#546).",
     "enabled": true,
+    "minimumReleaseAge": null,
     "schedule": [
       "after 6am and before 9am on monday"
     ],
