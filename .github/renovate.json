@@ -249,6 +249,23 @@
       "automerge": false
     },
     {
+      "description": "trivy, grype and syft are pinned twice: as container-fallback images in argus/containers.py (docker datasource) and as ARGs in docker/Dockerfile.cli (github-releases). check_tool_currency.py --consistency-only fails when the two disagree, so both halves must land in one PR. Without this rule they split across container-images and tool-versions and main goes red (#561). strict keeps a half that is still inside its 7-day window from shipping without its pair.",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDepNames": [
+        "trivy",
+        "grype",
+        "syft",
+        "aquasec/trivy",
+        "anchore/grype",
+        "anchore/syft"
+      ],
+      "groupName": "cli-scanners",
+      "internalChecksFilter": "strict",
+      "automerge": false
+    },
+    {
       "description": "Python dependencies (pyproject.toml + uv.lock, ADR-043). update-lockfile moves the locked version and leaves the published ranges alone (argus-security must not pin its users); a release outside a range falls back to a range bump. One grouped PR, like the other groups.",
       "matchManagers": [
         "pep621"
