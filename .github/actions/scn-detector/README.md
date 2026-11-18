@@ -428,11 +428,19 @@ Increase `max_diff_chars` to provide more context in AI prompts, or lower `confi
 
 ## Contributing
 
-See [CONTRIBUTING.md](../../../../CONTRIBUTING.md) for development guidelines.
+See [CONTRIBUTING.md](../../../CONTRIBUTING.md) for development guidelines. The classification logic lives in the SDK (`argus/scn/`, run as `argus classify`); this action wraps it and files the GitHub issue (`scripts/create_scn_issue.py`).
+
+### Design notes
+
+- **Rules first, AI as fallback.** Rules are fast, deterministic and free, so they run first. AI only sees changes no rule matched, and only when `enable_ai_fallback` is on and a key is set. If the AI call fails, or its confidence is below `confidence_threshold`, the change is flagged `MANUAL_REVIEW` rather than guessed.
+- **Generic attributes over cloud-specific resources.** Prefer rules on attributes that mean the same thing everywhere (`encryption`, `region`, `capacity`, `authentication`) over resource types tied to one provider (`aws_bedrock.*`), so a profile works across AWS, Azure, GCP and custom platforms.
+- **Rule order is precedence.** Within a category, put specific patterns before generic ones; categories are checked in order of precedence, and the first match wins. A generic rule like `attribute: description` under `routine` would match almost anything, so it goes last.
+- **Deadlines count business days.** Notification timelines skip weekends and assume UTC.
+- **Never call a real AI API in tests.** Mock the provider client and keep canned responses (high confidence, low confidence, error) as fixtures.
 
 ## License
 
-GNU Affero General Public License v3.0 (AGPL-3.0) - see [LICENSE.md](../../../../LICENSE.md)
+GNU Affero General Public License v3.0 (AGPL-3.0) - see [LICENSE.md](../../../LICENSE.md)
 
 ## Support
 
