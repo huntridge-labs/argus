@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,7 @@ import yaml
 
 from docsite import config
 from docsite.builder import build
+from docsite.pipelines import PipelineDataError
 
 
 @pytest.fixture(autouse=True)
@@ -110,6 +112,37 @@ class TestBuild:
         mkdocs_content = (out / "mkdocs.yml").read_text()
         assert "Home" in mkdocs_content
         assert "Actions" in mkdocs_content
+
+    def test_architecture_overview_in_nav(self, tmp_repo: Path, tmp_path: Path):
+        """With .ai/architecture.yaml present, the overview page is built
+        and leads the Architecture section."""
+        real = Path(__file__).resolve().parents[3] / ".ai" / "architecture.yaml"
+        (tmp_repo / ".ai").mkdir(exist_ok=True)
+        shutil.copy(real, tmp_repo / ".ai" / "architecture.yaml")
+        out = tmp_path / "output"
+        build(tmp_repo, out)
+        assert (out / "docs" / "architecture.md").exists()
+        # nav is the last key; the rest of mkdocs.yml has a
+        # !!python/name tag safe_load can't read.
+        nav_yaml = (out / "mkdocs.yml").read_text().split("\nnav:\n", 1)[1]
+        nav = yaml.safe_load("nav:\n" + nav_yaml)["nav"]
+        section = next(item["Architecture"] for item in nav
+                       if isinstance(item, dict) and "Architecture" in item)
+        assert section[0] == {"Overview": "architecture.md"}
+
+    def test_architecture_overview_skipped_without_yaml(
+        self, tmp_repo: Path, tmp_path: Path,
+    ):
+        out = tmp_path / "output"
+        build(tmp_repo, out)
+        assert not (out / "docs" / "architecture.md").exists()
+        assert "Overview: architecture.md" not in (out / "mkdocs.yml").read_text()
+
+    def test_malformed_data_flow_fails_build(self, tmp_repo: Path, tmp_path: Path):
+        (tmp_repo / ".ai").mkdir(exist_ok=True)
+        (tmp_repo / ".ai" / "architecture.yaml").write_text("data_flow: {}\n")
+        with pytest.raises(PipelineDataError):
+            build(tmp_repo, tmp_path / "output")
 
     def test_generates_ci_platform_pages(
         self, tmp_repo: Path, tmp_path: Path,
