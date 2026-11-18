@@ -31,7 +31,7 @@ OFFICIAL_IMAGES = {
     "syft": "anchore/syft:v1.57.1@sha256:03215d0e98b661d0ecbc8575dbc14d65be1743b5de5df6410aecb7e80f95b060",
     "gitleaks": "zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f",
     "clamav": "clamav/clamav:1.5.4@sha256:7054e3f34308c384ea43cd786ea17abf899bd44af40af9f1b099853d7a5c214e",
-    "checkov": "bridgecrew/checkov:3.4.3@sha256:bfe9d70bb7f044aba49bd99675813445f106dee6072da583f51008cb667f3a63",
+    "checkov": "bridgecrew/checkov:3.4.4@sha256:ddf34d41033624e86f7578537cf23ad6880faf5aff4cf98aca657fae315b4195",
     # KICS (Checkmarx) multi-format IaC scanner. Pinned to a semver tag:
     # ``:latest`` moves on every upstream push (2026-10-21), which breaks
     # the tag@digest manifest check even when the digest is unchanged.
@@ -61,7 +61,7 @@ OFFICIAL_IMAGES = {
     "gosec": "securego/gosec:latest@sha256:2cf71ea78210c496c65e3a987576a9c8317b68e20f2960520b3f6f8f9f539be5",
     # lint-terraform docker fallbacks. terraform fmt/validate run via
     # the official Hashicorp image; tflint via its official image.
-    "terraform": "hashicorp/terraform:1.17.1@sha256:a5d5a5a892c98f60fcbfa81eac2a40fc19e7b3fa7719bccae10ff6111d22524a",
+    "terraform": "hashicorp/terraform:1.17.2@sha256:6e9c1e647c31a960dc9b59e13272f9111d90010c10b717f77ffb324767660475",
     "tflint": "ghcr.io/terraform-linters/tflint:v0.64.0@sha256:1c595f42d794c32c45a6ea8b58655fd66433d4ca3b1bc631c574a48d120bd19f",
     # lint-javascript via eslint. pipelinecomponents/eslint is the most
     # widely-used multi-arch eslint image. The upstream tags by commit
