@@ -18,6 +18,7 @@ from .indexes import make_actions_index, make_home, make_workflows_index
 from .mkdocs_config import build_mkdocs_config
 from .pages import make_action_page, make_workflow_page
 from .parsers import parse_workflow_meta
+from .pipelines import MAP_PAGE, render_overview_from_repo
 
 
 # Acronyms that ``.title()`` mangles ("Cli Reference", "Mcp"). The
@@ -576,23 +577,42 @@ def build(repo_root: Path, output_dir: Path, *, ref: str | None = None) -> None:
     # nav entry pointing at a missing file (the SDK introspection
     # this page depends on can fail in environments without the
     # ``argus`` package installed).
+    #
+    # The section has two pages: the overview (one diagram per pipeline,
+    # generated from ``data_flow`` in ``.ai/architecture.yaml`` by
+    # ``pipelines.py``) and the interactive map. The overview only needs
+    # the YAML, so a broken ``data_flow`` fails the build; the map needs
+    # the SDK and is still skipped when it can't be imported.
+    architecture_nav: list[dict] = []
+    map_page: str | None = None
     try:
         from .architecture import (
             build_view_model_from_repo,
             render_inline_markdown,
         )
         view_model = build_view_model_from_repo(repo_root)
-        render_inline_markdown(view_model, docs_out)
-        nav.append({"Architecture": "architecture.md"})
+        render_inline_markdown(view_model, docs_out, filename=MAP_PAGE)
+        map_page = MAP_PAGE
         print(
-            f"   ✅ Architecture page generated "
+            f"   ✅ Architecture map generated "
             f"({len(view_model.get('nodes', []))} nodes, "
             f"{len(view_model.get('flows', []))} flows)"
         )
     except Exception as exc:
         # Don't fail the whole docsite build on a missing SDK import.
-        # The page is a nice-to-have; the rest of the docs ship without it.
-        print(f"   ⚠️  Architecture page skipped: {exc}")
+        # The map is a nice-to-have; the rest of the docs ship without it.
+        print(f"   ⚠️  Architecture map skipped: {exc}")
+
+    if (repo_root / ".ai" / "architecture.yaml").exists():
+        render_overview_from_repo(repo_root, docs_out, map_page=map_page)
+        architecture_nav.append({"Overview": "architecture.md"})
+        print("   ✅ Architecture overview generated")
+    else:
+        print("   ⚠️  Architecture overview skipped: .ai/architecture.yaml not found")
+    if map_page:
+        architecture_nav.append({"Interactive map": map_page})
+    if architecture_nav:
+        nav.append({"Architecture": architecture_nav})
 
     write(output_dir / "mkdocs.yml", build_mkdocs_config(version, nav))
     print("   ✅ mkdocs.yml written")
