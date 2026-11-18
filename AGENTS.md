@@ -115,7 +115,7 @@ Read what the task needs, not everything. The `.ai/` files are large (`decisions
 - **Python and pytest only.** The SDK, every action script and every test are Python; no Bash or Node.js action logic. One test framework (pytest) and one coverage tool (pytest-cov).
 - **Coverage stays at 80% or above.** `pytest.ini` enforces it (`--cov-fail-under=80`).
 - **Some scanners stay composite-only.** If a tool's main signal comes from the GitHub API (it needs `GITHUB_TOKEN` and a `pull_request` context), or its licence stops off-platform users from running its CLI, it lives only under `.github/actions/scanner-<name>/` with no SDK port. `scanner-codeql` and `scanner-dependency-review` are the two cases. The full test is ADR-021 in `.ai/decisions.yaml`.
-- **Never commit to `main`.** Work on an issue branch and open a draft PR (see below).
+- **Never commit to `main`.** Work on an issue branch and open a draft PR (see [Issues, branches, and records](#issues-branches-and-records)).
 - **No secrets in the repo.** Registry credentials and tokens go in GitHub Secrets, never in config files. In examples and docs, pin actions to a release tag, not a branch.
 
 ### Secret-leak audit
