@@ -6,6 +6,10 @@ Finds all version-like references in the repo (action @refs, workflow @refs,
 schema URLs, HRL_REF fallbacks) and verifies each is covered by a release-it
 regex-bumper rule. Reports any gaps that would leave stale version references
 after a release.
+
+Also fails on a rule whose pattern matches none of its files. release-it
+skips such a rule without an error, so the file it was meant to bump goes
+stale unnoticed (#557).
 """
 
 import json
@@ -83,9 +87,44 @@ def load_release_it_rules(repo_root: Path) -> list:
             rules.append({
                 'covered_files': covered,
                 'pattern': pattern,
+                'flags': search.get('flags', ''),
             })
 
     return rules
+
+
+# JavaScript regex flags that change what a pattern matches. ``g`` only
+# means "replace every match", so it has no Python equivalent here.
+_JS_FLAGS = {'i': re.IGNORECASE, 'm': re.MULTILINE, 's': re.DOTALL}
+
+
+def find_dead_rules(repo_root: Path, rules: list) -> list:
+    """Return the rules whose pattern matches none of their files.
+
+    Each entry is ``{'pattern': str, 'files': list[str]}``. Rules with no
+    pattern bump the whole file, so they can't be dead.
+    """
+    dead = []
+    for rule in rules:
+        pattern = rule['pattern']
+        if pattern is None:
+            continue
+        flags = 0
+        for flag in rule.get('flags') or '':
+            flags |= _JS_FLAGS.get(flag, 0)
+        try:
+            compiled = re.compile(pattern, flags)
+        except re.error:
+            # A pattern Python can't compile may still be valid JS;
+            # don't report it as dead on that basis.
+            continue
+        files = sorted(rule['covered_files'])
+        if not any(
+            compiled.search((repo_root / f).read_text(encoding='utf-8', errors='replace'))
+            for f in files
+        ):
+            dead.append({'pattern': pattern, 'files': files})
+    return dead
 
 
 def is_ref_covered(file_rel: str, ref_text: str, full_line: str, rules: list) -> bool:
@@ -159,9 +198,19 @@ def main():
     rules = load_release_it_rules(repo_root)
     refs = find_version_refs(repo_root)
 
+    dead = find_dead_rules(repo_root, rules)
+    if dead:
+        print(f'DEAD RULES ({len(dead)}): these .release-it.json patterns match none '
+              'of their files, so release-it skips them and the files go stale:')
+        for rule in dead:
+            files = ', '.join(rule['files']) or '(no files match the glob)'
+            print(f"  {rule['pattern']}")
+            print(f"    in: {files}")
+        print()
+
     if not refs:
         print('No version references found.')
-        return 0
+        return 1 if dead else 0
 
     uncovered = []
     for ref in refs:
@@ -173,7 +222,7 @@ def main():
 
     if not uncovered:
         print('All covered by release-it config.')
-        return 0
+        return 1 if dead else 0
 
     uncovered_files = len({r['file'] for r in uncovered})
     print(f'\nUNCOVERED ({len(uncovered)} refs in {uncovered_files} files):')
