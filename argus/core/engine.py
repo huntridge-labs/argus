@@ -1364,6 +1364,14 @@ class ArgusEngine:
                 + list(output_path.glob("*.sarif"))
             )
 
+            if not result_files and not proc.stdout.strip():
+                empty_result = getattr(scanner, "empty_result", None)
+                if empty_result is not None:
+                    classified = empty_result(proc.returncode, config or {})
+                    if classified is not None:
+                        classified.metadata.update({"execution": "container", "image": image, "digest": digest})
+                        return classified
+
             # Capture stdout if no output files
             if not result_files and proc.stdout.strip():
                 stdout_file = output_path / "stdout.txt"
