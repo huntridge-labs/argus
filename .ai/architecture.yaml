@@ -639,29 +639,155 @@ dependencies:
       required_by:
       - coverage reporting
 data_flow:
-  diagram:
-  - note: "SDK source-scan pipeline (argus scan):\n  argus scan [--config argus.yml | scanner ...]\n \
-      \   → ArgusEngine loads config + computes exclusions\n    → For each enabled scanner (parallel by\
-      \ default):\n      → is_available()? → run locally; else fall back to docker run (ADR-014)\n   \
-      \   → Parse tool output → list[Finding]\n      → Aggregate into ScanResult(scanner=<name>, findings=...,\
-      \ metadata=...)\n      → If reporting.keep_raw: copy raw scanner files to <output_dir>/raw/<scanner>/\n\
-      \    → Build ScanSummary\n    → Reporters consume ScanSummary:\n        JsonReporter writes canonical\
-      \ argus-results.json (always)\n        terminal/markdown/sarif emit alongside per reporting.formats\n\
-      \nSDK container-scan pipeline (argus scan container):\n  argus scan container [--image REF | --discover\
-      \ PATH]\n    → ContainerEngine resolves image targets (CLI flags > containers: config)\n    → For\
-      \ each target: scan_image(trivy + grype + syft + exposure + services)\n      → VEX filter: containers.vex / --vex passes OpenVEX doc(s) to trivy + grype (--vex); not_affected/fixed dropped at source\n      → Native ignores: containers.trivy_ignore_file (--ignorefile) / containers.grype_config_file (-c), rules path-scopable to one file in the image; what either tool dropped (ignore file or VEX) lands in ContainerScanResult.ignored_findings, reported but never counted (ADR-044)\n      → If reporting.keep_raw:\
-      \ copy trivy/grype/syft raw outputs and write\n        exposure-findings.json / services-findings.json\
-      \ to <output_dir>/raw/<image>/\n        (the exposure / services helpers have no upstream JSON output,\
-      \ so the\n        lifecycle path synthesizes one when they produce findings)\n    → Bind to content: scan_image resolves the image's digest (RepoDigest when pulled/pushed, config Id for never-pushed local builds; best-effort, \"\" if unknown) onto ContainerScanResult.digest and each finding's metadata (image_digest + image_ref) — so results attest what was scanned, not just a mutable tag (#237). Surfaced in per-image markdown and argus-results.json/SARIF.\n    → Map ContainerScanResult\
-      \ → ScanResult(scanner=\"container/<name>\", findings=combined)\n    → Same JsonReporter / SARIF\
-      \ reporter pipeline as source scans —\n      argus view consumes the canonical argus-results.json\
-      \ without\n      container-specific code (PR #116, ADR-018).\n\nComposite action pipeline (GitHub\
-      \ Actions — thin SDK wrappers per ADR-013):\n  User workflow step\n    → scanner-{name} composite\
-      \ action\n      → pip install argus-security\n      → argus scan {scanner}  (SDK handles scanning\
-      \ + reporting)\n      → Parse JSON output for severity counts → GITHUB_OUTPUT\n      → Upload artifacts,\
-      \ SARIF, summary\n      → [Optional] Post individual PR comment\n\nMCP pipeline (argus mcp):\n \
-      \ AI assistant connects via stdio\n    → MCP tools dispatch to the same SDK entry points (argus_scan,\
-      \ argus_validate, etc.)\n    → Returns structured JSON; resources expose argus://config and argus://results/latest\n"
+  # The architecture overview page (scripts/docsite/pipelines.py) renders
+  # ``stages`` as the one overview diagram and each entry in ``pipelines``
+  # as its own generated diagram. Steps that share a ``per`` value are
+  # drawn inside one "for each <per>" box.
+  stages:
+  - id: config
+    label: Config
+    detail: argus.yml, CLI flags, or composite-action inputs. argus/core/config.py loads it and argus/core/schema.py
+      validates it.
+  - id: engine
+    label: Engine
+    detail: ArgusEngine (source scans) or ContainerEngine (image scans) picks the scanners, computes exclusions and runs
+      them, in parallel by default.
+  - id: scanners
+    label: Scanners
+    detail: One module per tool under argus/scanners/ and argus/linters/. Each runs its tool locally, or in Docker when
+      the tool isn't installed (ADR-014).
+  - id: findings
+    label: Findings
+    detail: Each scanner parses its tool's output into Finding objects, grouped into a ScanResult per scanner and a
+      ScanSummary per run (argus/core/models.py).
+  - id: reporters
+    label: Reporters
+    detail: Reporters registered in the argus.reporters entry-point group turn the ScanSummary into output formats.
+      JsonReporter always runs.
+  - id: results
+    label: argus-results.json
+    detail: The canonical artifact (ADR-018). Every other surface reads this file rather than the scanners' raw output.
+  - id: consumers
+    label: Consumers
+    detail: argus view (terminal and browser), argus report, the MCP server, GitHub code scanning (SARIF) and PR
+      comments.
+  pipelines:
+  - id: source-scan
+    name: Source scan
+    entrypoint: argus scan [--config argus.yml | <scanner> ...]
+    adrs:
+    - ADR-013
+    - ADR-014
+    - ADR-018
+    steps:
+    - id: load
+      label: Load config
+      detail: ArgusEngine loads the config and computes exclusions.
+    - id: available
+      label: Run the tool
+      per: enabled scanner
+      detail: If is_available(), run the tool locally; otherwise fall back to docker run (ADR-014). Scanners run in
+        parallel by default.
+    - id: parse
+      label: Parse output
+      per: enabled scanner
+      detail: Parse the tool's output into list[Finding] and wrap it in ScanResult(scanner=<name>, findings, metadata).
+    - id: keep-raw
+      label: Keep raw output
+      per: enabled scanner
+      detail: If reporting.keep_raw is set, copy the tool's raw files to <output_dir>/raw/<scanner>/.
+    - id: summary
+      label: Build ScanSummary
+      detail: All ScanResults are collected into one ScanSummary.
+    - id: report
+      label: Report
+      detail: JsonReporter always writes argus-results.json; terminal, markdown, sarif and the other reporters run
+        per reporting.formats.
+  - id: container-scan
+    name: Container scan
+    entrypoint: argus scan container [--image REF | --discover PATH]
+    adrs:
+    - ADR-018
+    - ADR-044
+    steps:
+    - id: targets
+      label: Resolve targets
+      detail: ContainerEngine resolves the images to scan. CLI flags win over the containers section of argus.yml.
+    - id: scan-image
+      label: scan_image
+      per: image
+      detail: Runs trivy, grype, syft, exposure and services against the image.
+    - id: vex
+      label: VEX filter
+      per: image
+      detail: containers.vex or --vex passes OpenVEX documents to trivy and grype (--vex). not_affected and fixed
+        findings are dropped at the source.
+    - id: ignores
+      label: Native ignores
+      per: image
+      detail: containers.trivy_ignore_file (--ignorefile) and containers.grype_config_file (-c); rules can be scoped
+        to one file in the image. Anything either tool dropped (ignore file or VEX) lands in
+        ContainerScanResult.ignored_findings, reported but never counted (ADR-044).
+    - id: keep-raw
+      label: Keep raw output
+      per: image
+      detail: If reporting.keep_raw is set, copy the trivy, grype and syft raw outputs and write
+        exposure-findings.json and services-findings.json to <output_dir>/raw/<image>/. The exposure and services
+        helpers have no upstream JSON, so one is synthesized when they produce findings.
+    - id: digest
+      label: Bind to digest
+      per: image
+      detail: Resolve the image digest (RepoDigest when pulled or pushed, the config Id for local builds that were
+        never pushed; "" if unknown) onto ContainerScanResult.digest and each finding's image_digest and image_ref
+        metadata, so results record what was scanned, not a mutable tag (#237).
+    - id: map
+      label: Map to ScanResult
+      detail: Each ContainerScanResult becomes ScanResult(scanner="container/<name>"), so viewers need no
+        container-specific code.
+    - id: report
+      label: Report
+      detail: Same reporter pipeline as source scans, ending in argus-results.json.
+  - id: composite-action
+    name: Composite action
+    entrypoint: 'uses: huntridge-labs/argus/.github/actions/scanner-<name>@<tag>'
+    adrs:
+    - ADR-013
+    - ADR-021
+    steps:
+    - id: install
+      label: Install the SDK
+      detail: pip install from the action's own checkout ($GITHUB_ACTION_PATH/../../..), so the SDK version always
+        matches the action tag.
+    - id: scan
+      label: argus scan <name>
+      detail: Runs the SDK with --format sarif --format json --format markdown and --output-vars counts.env.
+    - id: outputs
+      label: Severity counts
+      detail: counts.env is appended to $GITHUB_OUTPUT; the markdown summary goes to the step summary.
+    - id: upload
+      label: Upload
+      detail: Uploads the reports as artifacts and the SARIF file to GitHub code scanning.
+    - id: comment
+      label: PR comment
+      detail: Optional. When post_pr_comment is true on a pull_request event, comment-pr posts or updates the
+        scanner's comment.
+  - id: mcp
+    name: MCP server
+    entrypoint: argus mcp
+    adrs:
+    - ADR-018
+    steps:
+    - id: connect
+      label: Connect
+      detail: An AI assistant connects over stdio.
+    - id: dispatch
+      label: Dispatch tools
+      detail: Tools (argus_scan, argus_validate, argus_detect, argus_init, argus_classify and others) call the same
+        SDK entry points as the CLI.
+    - id: respond
+      label: Return results
+      detail: Tools return structured JSON. Resources expose argus://config, argus://config/schema,
+        argus://results/latest and argus://architecture.
   canonical_artifact:
   - file: argus-results.json
     written_by: argus.reporters.json_report.JsonReporter
@@ -692,27 +818,6 @@ data_flow:
       deduplication: Uses HTML comment markers (e.g., opengrep-comment-marker)
       update_behavior: Updates existing comment if marker found, creates new otherwise
       default: post_pr_comment defaults to 'false' in all scanner actions
-  stages:
-  - name: configure
-    from: user
-    to: argus-sdk-or-action
-    data: argus.yml config or action inputs
-  - name: scan
-    from: argus-engine
-    to: scanner-modules
-    data: scanner config, scan path
-  - name: parse
-    from: scanner-binary
-    to: parse-script
-    data: raw scanner output
-  - name: report
-    from: scan-results
-    to: reporter
-    data: structured findings
-  - name: upload
-    from: composite-action
-    to: github-security-tab
-    data: SARIF file (GitHub Actions only)
 docsite:
   name: docsite
   location: scripts/docsite/
@@ -729,6 +834,7 @@ docsite:
     indexes.py: Index pages (actions, workflows, home)
     mkdocs_config.py: MkDocs Material theme configuration
     diagrams.py: Mermaid workflow diagrams with pan/zoom
+    pipelines.py: Architecture overview page (Mermaid diagrams generated from data_flow)
     parsers.py: action.yml and workflow YAML parsers
     helpers.py: File I/O and link rewriting utilities
     validator.py: Config completeness validator for CI

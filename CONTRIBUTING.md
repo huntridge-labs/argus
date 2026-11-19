@@ -436,7 +436,7 @@ class TestMyLinter:
 ### Step 4: Update Documentation
 
 1. Update `.ai/architecture.yaml` (linters list)
-2. Update `AGENTS.md` if the linter introduces a new category
+2. Run `python -m scripts.ci.check_architecture_sync` to confirm the linter is listed
 
 ### Validation Checklist (Linters)
 
@@ -1030,7 +1030,7 @@ Brief description of the scanner.
 
 - 📋 See `argus/scanners/bandit.py` for the SDK reference implementation
 - 📋 Check existing composite actions for action-level patterns
-- 📖 Review `AGENTS.md` for architecture
+- 📖 Read the architecture page in the docs site (or `.ai/architecture.yaml`) for how the pieces fit
 - 📝 See `tests/TODO.md` for testing
 - 💬 Open a [Discussion](https://github.com/huntridge-labs/argus/discussions)
 - 🐛 Report via [Issues](https://github.com/huntridge-labs/argus/issues)

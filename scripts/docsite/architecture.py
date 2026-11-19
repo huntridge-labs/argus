@@ -5,8 +5,8 @@ This module is the **only** place that maps ``.ai/architecture.yaml``
 architecture page renders. Three consumers feed off the same
 transformer output:
 
-  - The MkDocs docsite build (writes
-    ``architecture/index.html`` with the view model inlined as a
+  - The MkDocs docsite build (writes the interactive map page,
+    ``architecture-map.md``, with the view model inlined as a
     ``<script type="application/json">`` block).
   - The ``argus view browser`` FastAPI app (renders the
     ``/architecture`` route from the same view model).
@@ -1612,10 +1612,11 @@ def render_inline_markdown(
     view_model: dict[str, Any],
     docs_root: Path,
     static_source_dir: Path | None = None,
+    filename: str = "architecture-map.md",
 ) -> Path:
-    """Render the architecture page as a Markdown file inside MkDocs.
+    """Render the interactive map as a Markdown file inside MkDocs.
 
-    Writes ``docs_root/architecture.md`` with the ``.arch-page``
+    Writes ``docs_root/<filename>`` with the ``.arch-page``
     markup inlined inside Material's content area, and copies
     ``architecture.css`` + ``architecture.js`` to ``docs_root/assets/``
     so the page's stylesheet and behaviour are loaded alongside
@@ -1627,14 +1628,16 @@ def render_inline_markdown(
     Args:
         view_model: Output of ``build_view_model`` — JSON-serializable.
         docs_root: The ``docs/`` directory the MkDocs source tree
-            lives in. We write ``architecture.md`` at its root and
+            lives in. We write ``<filename>`` at its root and
             ``assets/architecture.{css,js}`` underneath.
         static_source_dir: Where to copy CSS/JS from. Defaults to
             ``argus/viewers/browser/static`` resolved via the argus
             package path.
+        filename: The page's file name. ``architecture.md`` is the
+            overview page (``pipelines.py``), so the map sits beside it.
 
     Returns:
-        The path to the written ``architecture.md``.
+        The path to the written page.
     """
     import json
     import shutil
@@ -1670,7 +1673,7 @@ def render_inline_markdown(
 
     md = (
         "---\n"
-        "title: Architecture\n"
+        "title: Interactive map\n"
         "hide:\n"
         "  - navigation\n"
         "  - toc\n"
@@ -1727,6 +1730,6 @@ def render_inline_markdown(
         f"{view_model_json}</script>\n"
         '<script src="../assets/architecture.js" defer></script>\n'
     )
-    out = docs_root / "architecture.md"
+    out = docs_root / filename
     out.write_text(md, encoding="utf-8")
     return out
