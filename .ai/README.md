@@ -21,7 +21,7 @@ This directory contains structured, machine-optimized documentation for AI codin
 ## For AI Assistants
 
 **IMPORTANT**: After making changes to this project, update the relevant `.ai/` files.
-See the mapping in `AGENTS.md` for what to update and when. New ADRs follow "Issues, branches, and records" in `AGENTS.md`.
+See the mapping in `AGENTS.md` for what to update and when. New ADRs follow `docs/developer/adr-records.md`.
 
 **Reading order:**
 1. `context.yaml` - Understand what this project is

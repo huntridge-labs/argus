@@ -20,8 +20,8 @@ decision: |-
   Big batches merge to `main` as usual and are tried through a prerelease: cut
   `X.Y.Z-rc.N`, install it with `pip install --pre` or pull the
   `:X.Y.Z-rc.N` images, then cut `X.Y.Z`. Single PRs keep using their
-  TestPyPI dev builds. AGENTS.md ("Trying a big change before it ships")
-  describes the steps.
+  TestPyPI dev builds. docs/developer/release-management.md ("Trying a
+  big change before it ships") describes the steps.
 
   Prerelease image tags are kept like other version tags, since the rc wheel on
   PyPI pins those image digests.

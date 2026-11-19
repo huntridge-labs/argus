@@ -40,8 +40,9 @@ decision: |-
     requires. A branch with no issue number that adds no ADR only gets a
     warning, so Dependabot, Renovate and fork PRs still merge.
   - AGENTS.md is the single entry point for coding agents and holds the
-    how-to under "Issues, branches, and records". CLAUDE.md imports it and
-    .github/copilot-instructions.md links to it.
+    rules under "Issues, branches, and records". CLAUDE.md imports it and
+    .github/copilot-instructions.md links to it. The ADR how-to (fields,
+    check failures and fixes) is in docs/developer/adr-records.md (#558).
 rationale:
 - An issue number is already a unique, shared allocator; reusing it removes
   the race instead of detecting it after the fact.
