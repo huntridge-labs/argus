@@ -207,6 +207,11 @@ def run_subprocess_scan(
             if stdout:
                 output_file.write_text(stdout)
             else:
+                empty_result = getattr(scanner, "empty_result", None)
+                if empty_result is not None:
+                    classified = empty_result(result.returncode, config)
+                    if classified is not None:
+                        return classified
                 return ScanResult(
                     scanner=scanner.name,
                     metadata={

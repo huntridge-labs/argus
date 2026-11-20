@@ -1,15 +1,20 @@
 """Tests for scripts/ci/check_version_refs.py.
 
 Covers the core utility functions: _expand_braces, find_version_refs,
-is_ref_covered, and the release-it-ignore marker behaviour.
+is_ref_covered, find_dead_rules, and the release-it-ignore marker behaviour.
 """
+
+import json
+from pathlib import Path
 
 import pytest
 
 from scripts.ci.check_version_refs import (
     _expand_braces,
+    find_dead_rules,
     find_version_refs,
     is_ref_covered,
+    load_release_it_rules,
     IGNORE_MARKER,
 )
 
@@ -259,3 +264,112 @@ class TestReleaseItIgnoreMarker:
 
     def test_ignore_marker_value(self):
         assert IGNORE_MARKER == 'release-it-ignore'
+
+
+# The .ai/context.yaml rule from .release-it.json, which matched nothing
+# while the file held an unquoted version (#557).
+CONTEXT_PATTERN = r'(^  version: ")\d+\.\d+\.\d+(?:[-+][\w.-]+)?(")'
+
+
+def _write_release_it(root, out):
+    config = {'plugins': {'@j-ulrich/release-it-regex-bumper': {'out': out}}}
+    (root / '.release-it.json').write_text(json.dumps(config), encoding='utf-8')
+
+
+class TestFindDeadRules:
+    """Tests for find_dead_rules() catching patterns that match nothing."""
+
+    def test_unquoted_version_is_dead(self, tmp_path):
+        """The #557 bug: the rule expects a quoted version, the file has none."""
+        (tmp_path / 'context.yaml').write_text('project:\n  version: 1.4.1\n')
+        rules = [{'covered_files': {'context.yaml'}, 'pattern': CONTEXT_PATTERN, 'flags': 'm'}]
+        dead = find_dead_rules(tmp_path, rules)
+        assert dead == [{'pattern': CONTEXT_PATTERN, 'files': ['context.yaml']}]
+
+    def test_quoted_version_is_live(self, tmp_path):
+        (tmp_path / 'context.yaml').write_text('project:\n  version: "1.15.0"\n')
+        rules = [{'covered_files': {'context.yaml'}, 'pattern': CONTEXT_PATTERN, 'flags': 'm'}]
+        assert find_dead_rules(tmp_path, rules) == []
+
+    def test_multiline_flag_is_honoured(self, tmp_path):
+        """Without the m flag, ^ only matches at the start of the file."""
+        (tmp_path / 'context.yaml').write_text('project:\n  version: "1.15.0"\n')
+        rules = [{'covered_files': {'context.yaml'}, 'pattern': CONTEXT_PATTERN, 'flags': ''}]
+        assert len(find_dead_rules(tmp_path, rules)) == 1
+
+    def test_live_if_any_file_matches(self, tmp_path):
+        (tmp_path / 'a.yml').write_text('nothing here\n')
+        (tmp_path / 'b.yml').write_text('uses: huntridge-labs/argus/.github/actions/x@1.0.0\n')
+        rules = [{
+            'covered_files': {'a.yml', 'b.yml'},
+            'pattern': r'(huntridge-labs/argus/\.github/actions/[^@]+)@[^\s]+',
+            'flags': 'g',
+        }]
+        assert find_dead_rules(tmp_path, rules) == []
+
+    def test_rule_with_no_files_is_dead(self, tmp_path):
+        rules = [{'covered_files': set(), 'pattern': 'x', 'flags': 'g'}]
+        assert find_dead_rules(tmp_path, rules) == [{'pattern': 'x', 'files': []}]
+
+    def test_whole_file_rule_is_never_dead(self, tmp_path):
+        rules = [{'covered_files': {'version.yaml'}, 'pattern': None}]
+        assert find_dead_rules(tmp_path, rules) == []
+
+    def test_pattern_python_cannot_compile_is_skipped(self, tmp_path):
+        (tmp_path / 'f.txt').write_text('text\n')
+        rules = [{'covered_files': {'f.txt'}, 'pattern': '(unclosed', 'flags': ''}]
+        assert find_dead_rules(tmp_path, rules) == []
+
+    def test_load_keeps_flags(self, tmp_path):
+        (tmp_path / 'context.yaml').write_text('  version: "1.0.0"\n')
+        _write_release_it(tmp_path, [
+            'version.yaml',
+            {'files': ['context.yaml'], 'search': {'pattern': CONTEXT_PATTERN, 'flags': 'm'}},
+        ])
+        rules = load_release_it_rules(tmp_path)
+        assert rules[1]['flags'] == 'm'
+        assert find_dead_rules(tmp_path, rules) == []
+
+
+class TestRepoReleaseItConfig:
+    """Every rule in the real .release-it.json must match something."""
+
+    def test_no_dead_rules(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        rules = load_release_it_rules(repo_root)
+        assert find_dead_rules(repo_root, rules) == []
+
+
+class TestMainDeadRules:
+    """main() fails on a dead rule even when every ref is covered."""
+
+    @pytest.fixture
+    def patched(self, monkeypatch):
+        from scripts.ci import check_version_refs as mod
+        monkeypatch.setattr(mod, 'load_release_it_rules', lambda root: [])
+        return mod
+
+    def test_dead_rule_fails(self, patched, monkeypatch, capsys):
+        monkeypatch.setattr(patched, 'find_version_refs', lambda root: [])
+        monkeypatch.setattr(patched, 'find_dead_rules', lambda root, rules: [
+            {'pattern': 'p', 'files': []},
+        ])
+        assert patched.main() == 1
+        out = capsys.readouterr().out
+        assert 'DEAD RULES (1)' in out
+        assert '(no files match the glob)' in out
+
+    def test_dead_rule_fails_with_covered_refs(self, patched, monkeypatch):
+        monkeypatch.setattr(patched, 'find_version_refs', lambda root: [
+            {'file': 'a.yml', 'text': 't', 'full_line': 't', 'line': 1},
+        ])
+        monkeypatch.setattr(patched, 'is_ref_covered', lambda *a: True)
+        monkeypatch.setattr(patched, 'find_dead_rules', lambda root, rules: [
+            {'pattern': 'p', 'files': ['a.yml']},
+        ])
+        assert patched.main() == 1
+
+    def test_no_dead_rules_passes(self, patched, monkeypatch):
+        monkeypatch.setattr(patched, 'find_version_refs', lambda root: [])
+        monkeypatch.setattr(patched, 'find_dead_rules', lambda root, rules: [])
+        assert patched.main() == 0

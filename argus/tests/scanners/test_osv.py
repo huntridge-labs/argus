@@ -448,3 +448,35 @@ class TestOsvAdvisoryModified:
         f = OsvScanner().parse_results(path)[0]
 
         assert f.metadata["advisory_modified"] == "2026-10-20T21:41:51"
+
+
+@pytest.mark.parametrize("backend", ["local", "container"])
+@pytest.mark.parametrize("returncode,config,not_applicable", [
+    (128, {}, True),
+    (127, {}, False),
+    (129, {}, False),
+    (128, {"lockfile": "missing.lock"}, False),
+    (128, {"sbom_path": "missing.cdx.json"}, False),
+    (128, {"sbom_mount_path": "/sbom/input.json"}, False),
+])
+def test_empty_source_classification(monkeypatch, tmp_path, backend, returncode, config, not_applicable):
+    """No packages is benign only for automatic discovery; errors and explicit inputs remain failures."""
+    import subprocess
+    from argus.core.config import ArgusConfig
+    from argus.core.engine import ArgusEngine
+
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: subprocess.CompletedProcess(cmd, returncode, "", "No package sources found"))
+    scanner = OsvScanner()
+    if backend == "local":
+        result = scanner.scan(str(tmp_path), config)
+    else:
+        engine = ArgusEngine(ArgusConfig.from_dict({"execution": {"backend": "docker"}}))
+        monkeypatch.setattr(engine, "_pull_image", lambda image: True)
+        monkeypatch.setattr(engine, "_get_image_digest", lambda image: "sha256:test")
+        result = engine._run_in_container(scanner, str(tmp_path), config)
+        assert result.metadata["execution"] == "container"
+    assert not result.findings
+    assert bool(result.metadata.get("not_applicable")) is not_applicable
+    assert bool(result.metadata.get("execution_failed")) is not not_applicable
+    if not_applicable:
+        assert result.metadata["reason"] == "No package sources found."
