@@ -104,3 +104,26 @@ def test_prerelease_never_moves_latest(version, tmp_path):
 def test_no_release_cut_sets_nothing_to_promote(tmp_path):
     captured = _captured_env("1.13.0", "1.13.0", tmp_path)
     assert captured == {"RELEASED": ""}
+
+
+@pytest.mark.parametrize("step,release_type,pre_id,expected", [
+    ("Release (Auto)", "auto", "", []),
+    ("Release (Auto)", "auto", "rc", ["--preRelease=rc"]),
+    ("Release (Specific Type)", "patch", "", ["patch"]),
+    ("Release (Specific Type)", "patch", "rc", ["patch", "--preRelease=rc"]),
+])
+def test_release_flags_reach_the_script_without_a_literal_separator(tmp_path, step, release_type, pre_id, expected):
+    """pnpm forwards script arguments verbatim, including a literal option separator."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    pnpm = bin_dir / "pnpm"
+    pnpm.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$ARGV_LOG"\n')
+    pnpm.chmod(0o755)
+    log = tmp_path / "args.log"
+    _run(_step(step), {
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "ARGV_LOG": str(log),
+        "RELEASE_TYPE": release_type,
+        "PRE_RELEASE_ID": pre_id,
+    }, tmp_path)
+    assert log.read_text().splitlines() == ["run", "release:ci", *expected]

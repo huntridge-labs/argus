@@ -507,7 +507,7 @@ jobs:
           PRE_RELEASE_ID: ${{ github.event.inputs.preReleaseId || '' }}
         run: |
           if [ -n "$PRE_RELEASE_ID" ]; then
-            pnpm run release:ci -- --preRelease="$PRE_RELEASE_ID"
+            pnpm run release:ci --preRelease="$PRE_RELEASE_ID"
           else
             pnpm run release:ci
           fi
@@ -521,9 +521,9 @@ jobs:
           PRE_RELEASE_ID: ${{ github.event.inputs.preReleaseId || '' }}
         run: |
           if [ -n "$PRE_RELEASE_ID" ]; then
-            pnpm run release:ci -- "$RELEASE_TYPE" --preRelease="$PRE_RELEASE_ID"
+            pnpm run release:ci "$RELEASE_TYPE" --preRelease="$PRE_RELEASE_ID"
           else
-            pnpm run release:ci -- "$RELEASE_TYPE"
+            pnpm run release:ci "$RELEASE_TYPE"
           fi
 
       - name: Capture released version
