@@ -32,6 +32,12 @@ class OsvScanner:
         """Run OSV-Scanner against the given path and return results."""
         return run_subprocess_scan(self, path, config)
 
+    def empty_result(self, returncode: int, config: dict) -> ScanResult | None:
+        """Treat OSV's no-packages exit as not applicable only for automatic source discovery."""
+        if returncode == 128 and not any(config.get(key) for key in ("lockfile", "sbom_path", "sbom_mount_path")):
+            return ScanResult(scanner=self.name, metadata={"not_applicable": True, "reason": "No package sources found."})
+        return None
+
     def build_args(self, paths: ScanPaths, config: dict) -> list[str]:
         """Build the full argv (including the binary name).
 
