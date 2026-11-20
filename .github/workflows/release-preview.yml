@@ -134,7 +134,8 @@ jobs:
               echo ""
             } >> preview.md
 
-            if python3 -m scripts.ci.check_version_refs > version_check.txt 2>&1; then
+            # Warnings go to stderr so they can't displace the headline line
+            if python3 -m scripts.ci.check_version_refs > version_check.txt 2> version_warn.txt; then
               {
                 echo "✅ $(head -1 version_check.txt)"
                 echo ""
@@ -145,10 +146,10 @@ jobs:
                 echo "⚠️ $(head -1 version_check.txt)"
                 echo ""
                 echo "<details>"
-                echo "<summary>Uncovered references (click to expand)</summary>"
+                echo "<summary>Dead rules or uncovered references (click to expand)</summary>"
                 echo ""
                 echo "\`\`\`"
-                tail -n +3 version_check.txt
+                tail -n +2 version_check.txt
                 echo "\`\`\`"
                 echo ""
                 echo "> **Tip:** Add a \`# release-it-ignore\` comment to any line to suppress false positives (e.g. template variables, test fixtures)."
