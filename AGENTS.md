@@ -31,7 +31,7 @@ These rules apply to people and coding agents alike. An issue number is unique, 
    ```
    If all come back empty, push your first commit and open a draft PR (`gh pr create --draft`) so everyone can see the issue is taken.
 4. **Link the issue.** Put `Closes #<issue>` in the PR body when the PR finishes the issue, or `Refs #<issue>` when it's partial work. The PR template has the line.
-5. **Record decisions under the issue number.** A new ADR is one file, `.ai/decisions/ADR-<issue>.yaml`, created with `python -m scripts.ci.adr_records new --title "..."`. Never add entries to `.ai/decisions.yaml` (closed at ADR-044) and never renumber an ADR.
+5. **Record decisions under the issue number.** A new ADR is one file, `.ai/decisions/ADR-<issue>.yaml`, created with `python -m scripts.ci.adr_records new --title "..."`. Never add entries to `.ai/decisions.yaml` (closed at ADR-044) and never renumber an ADR. One ADR per PR: a PR with two decisions records both in its one ADR or gets split into two issues.
 6. **Never rename a PR's head branch on GitHub.** It closes the PR. Push a new, correctly named branch and open a new PR instead.
 
 Nobody edits an ADR index by hand: `python -m scripts.ci.adr_records list` builds it from both stores, and the **ADR Records** workflow checks every PR. The ADR fields, the check's error messages and their fixes, and how to move a PR to a new branch are in [`docs/developer/adr-records.md`](docs/developer/adr-records.md).
@@ -66,7 +66,7 @@ Read what the task needs, not everything. The `.ai/` files are large (`decisions
 
 ### Secret-leak audit
 
-Do this for every new or changed scanner. If the tool's raw output can carry literals from source code (passwords, API keys, the `code` excerpt behind a finding), redact them with `argus.core.redact` before building the `Finding`, and add a test asserting the literal never appears in `Finding.to_dict()` JSON. The pattern-based pass in `Finding.__post_init__` is only a backstop for known token prefixes. Checklist: [`docs/mcp.md`, "Secrets handling"](docs/mcp.md#secrets-handling).
+Do this for every new or changed scanner. If the tool's raw output can contain literals matched in source code (passwords, API keys, the `code` excerpt behind a finding), drop or redact those fields before building the `Finding`: `argus.core.redact.redact_secret(value)` for fields holding the raw value, `redact_secret_in_message(msg, value)` for descriptions that interpolate it. Add a test asserting the original literal never appears in `Finding.to_dict()` JSON. `Finding.__post_init__` runs a pattern-based second pass for known token prefixes (GitHub PATs, AWS keys, Slack tokens, JWTs, PEM keys), but that's a backstop: anything without a recognisable prefix relies on the first pass. Full checklist: [`docs/mcp.md`, "Secrets handling"](docs/mcp.md#secrets-handling).
 
 ## Develop and test
 
