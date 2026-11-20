@@ -67,11 +67,12 @@ primary_users:
 - Platform teams supporting multiple repositories
 platforms:
   supported:
-  - any host with Python 3.11+ (the SDK: laptops, GitLab CI, other CI)
+  - any-host-with-python-3.11
   - github-actions
   - github-enterprise-server
   constraints:
   - Composite actions work on any GHES with github.com access
+  - The SDK runs anywhere Python 3.11+ does (laptops, GitLab CI, other CI); the composite actions need GitHub Actions
   - Must support air-gapped environments
 context_modules:
   architecture: architecture.yaml
