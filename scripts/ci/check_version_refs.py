@@ -114,9 +114,11 @@ def find_dead_rules(repo_root: Path, rules: list) -> list:
             flags |= _JS_FLAGS.get(flag, 0)
         try:
             compiled = re.compile(pattern, flags)
-        except re.error:
-            # A pattern Python can't compile may still be valid JS;
-            # don't report it as dead on that basis.
+        except re.error as exc:
+            # A pattern Python can't compile may still be valid JS, so it
+            # isn't reported as dead. Warn, since it also goes unchecked.
+            print(f'WARNING: could not check rule {pattern!r} for dead matches '
+                  f'(Python regex error: {exc})', file=sys.stderr)
             continue
         files = sorted(rule['covered_files'])
         if not any(

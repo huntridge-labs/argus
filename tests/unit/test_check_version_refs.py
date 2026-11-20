@@ -315,10 +315,13 @@ class TestFindDeadRules:
         rules = [{'covered_files': {'version.yaml'}, 'pattern': None}]
         assert find_dead_rules(tmp_path, rules) == []
 
-    def test_pattern_python_cannot_compile_is_skipped(self, tmp_path):
+    def test_pattern_python_cannot_compile_is_skipped(self, tmp_path, capsys):
         (tmp_path / 'f.txt').write_text('text\n')
         rules = [{'covered_files': {'f.txt'}, 'pattern': '(unclosed', 'flags': ''}]
         assert find_dead_rules(tmp_path, rules) == []
+        captured = capsys.readouterr()
+        assert "WARNING: could not check rule '(unclosed'" in captured.err
+        assert captured.out == ''
 
     def test_load_keeps_flags(self, tmp_path):
         (tmp_path / 'context.yaml').write_text('  version: "1.0.0"\n')
