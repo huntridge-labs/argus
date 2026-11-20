@@ -1,7 +1,7 @@
 # ADR-001 to ADR-044. Closed to new entries: a new ADR is its own file,
 # .ai/decisions/ADR-<issue>.yaml, keyed to its GitHub issue (ADR-483).
 # Existing entries keep their numbers and can still be edited.
-# See AGENTS.md, "Issues, branches, and records".
+# See docs/developer/adr-records.md.
 version: '2.0'
 decisions:
   ADR-001:

@@ -58,7 +58,7 @@ BRANCH_FORMAT = "<prefix>/<issue>-<description>"
 
 REQUIRED_TEXT = {"title": 3, "context": 10, "decision": 5}
 STATUSES = ("proposed", "accepted", "rejected", "deprecated", "superseded")
-DOCS_POINTER = "see AGENTS.md, 'Issues, branches, and records'"
+DOCS_POINTER = "see docs/developer/adr-records.md"
 
 
 class DuplicateKeyError(ValueError):

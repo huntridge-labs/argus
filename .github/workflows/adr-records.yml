@@ -1,7 +1,7 @@
 name: ADR Records
 
-# Checks issue-keyed ADRs (ADR-483). See AGENTS.md, "Issues, branches, and
-# records". No paths: filter on purpose: the job gates itself with a job-level
+# Checks issue-keyed ADRs (ADR-483). See docs/developer/adr-records.md.
+# No paths: filter on purpose: the job gates itself with a job-level
 # `if`, so it always reports a status and can be a required check (a skipped
 # job counts as passing; a check that never starts stays pending).
 #

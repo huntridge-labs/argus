@@ -259,7 +259,7 @@ workflows:
     notes:
     - Never add entries to .ai/decisions.yaml (closed at ADR-044) and never renumber an ADR
     - Never rename a PR's head branch on GitHub (it closes the PR); push a new branch and open a new PR
-    reference: AGENTS.md "Issues, branches, and records", .ai/decisions/ADR-483.yaml
+    reference: AGENTS.md "Issues, branches, and records", docs/developer/adr-records.md, .ai/decisions/ADR-483.yaml
   python_dependencies:
     description: Install, add or update this repo's Python dependencies (uv.lock, ADR-043)
     category: maintenance
@@ -424,7 +424,7 @@ workflows:
       minor: npm run release -- minor
       major: npm run release -- major
       prerelease_rc: 'npm run release -- major --preRelease=rc  # for 1.0.0-rc.0'
-      try_a_batch: 'Release workflow with releaseType=minor, preReleaseId=rc, then pip install --pre (AGENTS.md "Trying a big change before it ships")'
+      try_a_batch: 'Release workflow with releaseType=minor, preReleaseId=rc, then pip install --pre (docs/developer/release-management.md "Trying a big change before it ships")'
     ci_workflow: .github/workflows/release.yml
     prerequisites:
     - All tests passing
