@@ -104,6 +104,14 @@ jobs:
         if: matrix.python-version == '3.13'
         run: python -m scripts.ci.check_architecture_sync
 
+      - name: Check .ai/index.yaml is up to date
+        if: matrix.python-version == '3.13'
+        run: python -m scripts.ci.check_ai_index
+
+      - name: Check version references match version.yaml
+        if: matrix.python-version == '3.13'
+        run: python -m scripts.ci.check_version_drift
+
       - name: Check for dead fixtures
         if: always()
         run: python -m pytest --dead-fixtures --no-cov -q 2>&1 || true
