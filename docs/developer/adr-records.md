@@ -7,12 +7,13 @@ There are two stores:
 - `.ai/decisions.yaml` holds the legacy ADRs, ADR-001 to ADR-044. It is closed to new entries.
 - `.ai/decisions/ADR-<issue>.yaml` holds one file per new ADR, keyed to its GitHub issue.
 
-Nobody edits an ADR index by hand. `python -m scripts.ci.adr_records list` builds it at read time from both stores. The **ADR Records** workflow (`.github/workflows/adr-records.yml`) checks every PR and every push to `main`.
+Nobody edits an ADR index by hand. `python -m scripts.ci.adr_records list` builds it at read time from both stores. `.ai/index.yaml` also lists every ADR; `check_ai_index --fix` regenerates it and CI fails if it's stale (ADR-555). The **ADR Records** workflow (`.github/workflows/adr-records.yml`) checks every PR and every push to `main`.
 
 ## Adding an ADR
 
 ```bash
 python -m scripts.ci.adr_records new --title "Short decision title"   # issue number comes from the branch
+python -m scripts.ci.check_ai_index --fix                            # add it to .ai/index.yaml
 ```
 
 That writes `.ai/decisions/ADR-<issue>.yaml`. Fill it in:

@@ -1,0 +1,52 @@
+id: ADR-555
+title: "Generate .ai/index.yaml in this repo and fail CI on stale context"
+date: '2026-11-20'
+status: accepted
+context: |-
+  .ai/index.yaml came from the AICaC action's index step. That step
+  commits and pushes, and its commits are unsigned, so the signed-commits
+  ruleset on main rejected them (GH013). aicac.yml turned
+  `regenerate-index` off to keep the job green, and nothing else rebuilt
+  the index. By 1.15.0 it stopped at ADR-030 of the 44 legacy ADRs,
+  ignored .ai/decisions/ entirely and was missing several workflows and
+  errors.
+
+  The version in .ai/context.yaml had the same problem from a different
+  cause: check_version_refs proves every version reference has a
+  release-it rule, but not that the files hold the current version, so
+  context.yaml sat at 1.4.1 for eleven releases (#557).
+decision: |-
+  - scripts/ci/check_ai_index.py builds .ai/index.yaml from the .ai/
+    files and both ADR stores. CI fails when the committed index differs;
+    `--fix` regenerates it. The index lists legacy ADRs under
+    `keys.decisions` and issue-keyed ones under `keys.decision_records`.
+  - scripts/ci/check_version_drift.py fails CI when any text matched by a
+    release-it rule that writes `{{version}}` holds a version other than
+    the one in version.yaml.
+  - The AICaC action keeps validating the schema, with
+    `regenerate-index` still off. An AICaC change so its index step only
+    validates is tracked upstream and doesn't block this.
+rationale:
+- Same pattern as check_cli_docs and check_architecture_sync, so there is
+  no new kind of tooling to learn.
+- Generating in CI-checked code means the index can't drift without a
+  red build, and needs no push from a workflow.
+- Splitting legacy and issue-keyed ADRs in the index tells a reader which
+  file each ID lives in.
+alternatives_considered:
+- name: Fix index generation upstream in AICaC (signed commits) and turn it back on
+  rejected_because: Blocks on another repo, and a workflow that pushes to main still bypasses review.
+- name: Hand-maintain the index
+  rejected_because: That is how it went stale.
+- name: Add the drift check to check_version_refs
+  rejected_because: That script answers a different question (is every ref covered by a rule); a separate check keeps each failure message specific.
+consequences:
+  positive:
+  - Every ADR in both stores is in the index, and adding one without `--fix` fails CI.
+  - A version reference that misses a release, or is edited by hand, fails CI.
+  negative:
+  - Contributors who add an ADR, workflow or error must run `check_ai_index --fix`.
+  - >-
+    Two open PRs that each add an ADR both touch index.yaml, which ADR-483
+    set out to avoid. The conflict is mechanical: rerun `--fix` after
+    rebasing.
