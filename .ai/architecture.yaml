@@ -749,7 +749,7 @@ data_flow:
       detail: Same reporter pipeline as source scans, ending in argus-results.json.
   - id: composite-action
     name: Composite action
-    entrypoint: 'uses: huntridge-labs/argus/.github/actions/scanner-<name>@<tag>'
+    entrypoint: 'uses: huntridge-labs/argus/.github/actions/scanner-<name>@1.15.1-rc.0
     adrs:
     - ADR-013
     - ADR-021
@@ -811,7 +811,7 @@ data_flow:
       behavior: Each scanner can post its own PR comment
       control: 'Set post_pr_comment: true in action inputs'
       use_case: Single scanner workflows, focused scanning
-      example: "- uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.15.0  with:\n    post_pr_comment:\
+      example: "- uses: huntridge-labs/argus/.github/actions/scanner-bandit@1.15.1-rc.0  with:\n    post_pr_comment:\
         \ true  # Posts individual Bandit PR comment\n"
     implementation:
       comment_action: .github/actions/comment-pr/action.yml

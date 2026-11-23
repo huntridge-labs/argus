@@ -4,7 +4,7 @@
 
 **argus** is Huntridge Labs' security scanning framework: a Python SDK and CLI (`argus scan`, package `argus-security`) plus composite GitHub Actions under `.github/actions/`. The SDK is the primary interface. Composite actions are for GitHub Actions users, including GitHub Enterprise Server with github.com access.
 
-- **Current version**: 1.15.0
+- **Current version**: 1.15.1-rc.0
 - **License**: AGPL-3.0
 
 **Quick reference:** every change starts with a GitHub issue, one PR per issue. Branch `<prefix>/<issue>-<description>` (for example `feat/483-issue-keyed-records`), open a draft PR as soon as work starts, and record a new ADR as `.ai/decisions/ADR-<issue>.yaml`. Details in [Issues, branches, and records](#issues-branches-and-records).

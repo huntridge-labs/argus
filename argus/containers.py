@@ -74,10 +74,10 @@ OFFICIAL_IMAGES = {
 # Custom images built and published by Argus to ghcr.io/huntridge-labs/argus/
 # Versions managed by release-it regex bumper
 CUSTOM_IMAGES = {
-    "bandit": "ghcr.io/huntridge-labs/argus/scanner-bandit:1.15.0@sha256:efe9b6c592dbc0fff3afa44b91561e229ea9dba75707c3fcc2624dc8ce4cdff8",
-    "semgrep": "ghcr.io/huntridge-labs/argus/scanner-opengrep:1.15.0@sha256:14092bdd0fbe8afa3c11a91a864436c812728190bf28a70151d8155c4bf923cb",
-    "supply-chain": "ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.15.0@sha256:6d213b8407a0d96d10bbe064edd6cf39841220125e58589810936733f16b7654",
-    "cli": "ghcr.io/huntridge-labs/argus/cli:1.15.0@sha256:aa49af169da8d2cca7f3b131f70814122f089235d3c412937fd3f720315c747d",
+    "bandit": "ghcr.io/huntridge-labs/argus/scanner-bandit:1.15.1-rc.0@sha256:75bcf75e82a7bae2d830b6b7cb5ffbabea38b7001f105dfaad2048c8775d99b1",
+    "semgrep": "ghcr.io/huntridge-labs/argus/scanner-opengrep:1.15.1-rc.0@sha256:4c539bd06f191292eeb517d77df078dc39e6551237eaba7f67d821ae49b656df",
+    "supply-chain": "ghcr.io/huntridge-labs/argus/scanner-supply-chain:1.15.1-rc.0@sha256:463ac4f166c0e52b2dcca18164750c8e50f94f4ae73d02d11dddeda39969f3dd",
+    "cli": "ghcr.io/huntridge-labs/argus/cli:1.15.1-rc.0@sha256:bef09c9cb914fb4c326d070cb8e9a0a7f325acd6864acce3c3df110b4944d40a",
     # PRE-MERGE PREVIEW. The MUMPS scanner image is published from the
     # feat/scanner-m-mumps branch under the mutable ``mumps-preview`` tag
     # so testers can run ``argus scan mumps`` with zero local toolchain
@@ -87,7 +87,7 @@ CUSTOM_IMAGES = {
     # rewrites this line to the versioned ``scanner-mumps:<version>`` tag
     # + release digest. The digest pin below is still the content-hash
     # gate the manifest check verifies.
-    "mumps": "ghcr.io/huntridge-labs/argus/scanner-mumps:1.15.0@sha256:62835cf66da158529ccc91574445366840eda7bf8ff3129e132db3b3fdb3bd83",
+    "mumps": "ghcr.io/huntridge-labs/argus/scanner-mumps:1.15.1-rc.0@sha256:98cc5a6d14f02f5467f19447e0b865af03222e4c7ebcfcc0bf61d95ec2a33f5f",
 }
 
 

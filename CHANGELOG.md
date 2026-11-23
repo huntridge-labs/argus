@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.15.1-rc.0](https://github.com/huntridge-labs/argus/compare/1.15.0...1.15.1-rc.0) (2026-11-23)
+
+### Bug Fixes
+
+* **cli:** sync trivy/grype/syft pins and group them in Renovate ([#562](https://github.com/huntridge-labs/argus/issues/562)) ([2674ce4](https://github.com/huntridge-labs/argus/commit/2674ce4affe9a389c3751537aea0918023ffd0e7)), closes [#561](https://github.com/huntridge-labs/argus/issues/561), references [#550](https://github.com/huntridge-labs/argus/issues/550) [#561](https://github.com/huntridge-labs/argus/issues/561)
+* **containers:** re-pin clamav/clamav:1.5.4 after Nov 16 upstream rebuild ([#560](https://github.com/huntridge-labs/argus/issues/560)) ([d9df5ac](https://github.com/huntridge-labs/argus/commit/d9df5ac9366eb995ee1bf1e599e1796996afc78a))
+* **osv:** classify automatic scans without packages consistently ([aefa608](https://github.com/huntridge-labs/argus/commit/aefa6084b5386369b896a9bf5d698688150fbaeb))
+* release-it never bumps the version in .ai/context.yaml ([#566](https://github.com/huntridge-labs/argus/issues/566)) ([fb24dc0](https://github.com/huntridge-labs/argus/commit/fb24dc03ed041a1ea961897811270ec20a5d3a7b)), closes [#557](https://github.com/huntridge-labs/argus/issues/557), references [#548](https://github.com/huntridge-labs/argus/issues/548)
+* **release:** forward prerelease arguments through pnpm ([#574](https://github.com/huntridge-labs/argus/issues/574)) ([7d61952](https://github.com/huntridge-labs/argus/commit/7d61952d99636fe4fc33be06d0aa21c36db675e9))
+
+### Dependencies
+
+* **deps:** bump alpine ([#551](https://github.com/huntridge-labs/argus/issues/551)) ([199ce2e](https://github.com/huntridge-labs/argus/commit/199ce2e938289f914611d56002de6633a1454979))
+* **deps:** Update container-images ([bed6624](https://github.com/huntridge-labs/argus/commit/bed6624f8a9ff09eb8251c195ecaf3e542949a39))
+* **deps:** Update container-images ([#563](https://github.com/huntridge-labs/argus/issues/563)) ([d3ced8c](https://github.com/huntridge-labs/argus/commit/d3ced8c04a8d9b4ba73932f2e84d4e37803a8e61))
+* **deps:** Update dependency pip to v26.3 ([#564](https://github.com/huntridge-labs/argus/issues/564)) ([33cf6ab](https://github.com/huntridge-labs/argus/commit/33cf6ab51fca3709174d7d447434e7ba2c8e8ff1))
+* **deps:** Update github-actions-minor-patch ([9950d64](https://github.com/huntridge-labs/argus/commit/9950d640a7a239e9e7d10df5fe1b270f827cc22c))
+
+
+### Documentation
+
+* layered architecture page with generated pipeline diagrams ([#565](https://github.com/huntridge-labs/argus/issues/565)) ([4fe8454](https://github.com/huntridge-labs/argus/commit/4fe8454a59b9437702af1980f8f4549f30a25e25)), closes [#554](https://github.com/huntridge-labs/argus/issues/554), references [#548](https://github.com/huntridge-labs/argus/issues/548)
+* move the ADR how-to out of AGENTS.md ([#569](https://github.com/huntridge-labs/argus/issues/569)) ([402d937](https://github.com/huntridge-labs/argus/commit/402d937fe1192341b89eb6ece04275878b2a9808)), closes [#558](https://github.com/huntridge-labs/argus/issues/558), references [#548](https://github.com/huntridge-labs/argus/issues/548) [#558](https://github.com/huntridge-labs/argus/issues/558)
+* slim AGENTS.md to rules, invariants and a routing table ([#553](https://github.com/huntridge-labs/argus/issues/553)) ([d6d1704](https://github.com/huntridge-labs/argus/commit/d6d1704b6e9d7db8fa6530bd4e2f9be83cfa4a1c)), references [#548](https://github.com/huntridge-labs/argus/issues/548) [#552](https://github.com/huntridge-labs/argus/issues/552)
+
 ## [1.15.0](https://github.com/huntridge-labs/argus/compare/1.14.2...1.15.0) (2026-11-10)
 
 ### Features
