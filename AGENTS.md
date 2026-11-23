@@ -80,7 +80,7 @@ pytest --no-cov -q        # fast
 pre-commit run --all-files
 ```
 
-CI also runs `python -m scripts.ci.check_version_refs`, `check_cli_docs` and `check_architecture_sync`. Run the relevant one if you touch versions, the CLI, or the scanner, linter and reporter registries.
+CI also runs `python -m scripts.ci.check_version_refs`, `check_version_drift`, `check_cli_docs`, `check_architecture_sync` and `check_ai_index`. Run the relevant one if you touch versions, the CLI, the scanner, linter and reporter registries, or anything under `.ai/`.
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat(scanner-bandit): ...`, `fix: ...`, `docs: ...`). PRs use `.github/PULL_REQUEST_TEMPLATE.md`; keep its `Closes #<issue>` line at the top.
 
@@ -101,6 +101,8 @@ There is no long-lived beta branch. To try a batch of merged changes before the 
 | Add a component or change how components connect | `.ai/architecture.yaml` |
 | Add a common task or command | `.ai/workflows.yaml` |
 | Fix an error others will hit | `.ai/errors.yaml` |
+
+Then run `python -m scripts.ci.check_ai_index --fix` to regenerate `.ai/index.yaml`; CI fails if it's stale.
 
 ## Why things are this way
 

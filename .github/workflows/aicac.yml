@@ -49,5 +49,7 @@ jobs:
           # suggestion surfaces as an issue, not a push. This is the #225 guard,
           # retained on the 0.6.0 bump now that .ai/ is v2 (so the validation
           # itself passes). A PR run won't hit this; push-to-main would.
+          # .ai/index.yaml is generated in this repo instead
+          # (scripts/ci/check_ai_index.py, checked in test-unit.yml; ADR-555).
           auto-migrate: 'false'
           regenerate-index: 'false'

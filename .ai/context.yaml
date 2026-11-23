@@ -13,11 +13,8 @@ project:
   version: "1.15.1-rc.0"
   license: AGPL-3.0
   repository: huntridge-labs/argus
-  one_liner: 'Python SDK and CLI that orchestrate 18+ security scanners and linters with a unified config,
-    canonical argus-results.json output, MCP server integration, and optional composite GitHub Actions
-    wrappers for GHA consumers.
-
-    '
+  one_liner: Python SDK and CLI that run security scanners and linters behind one config, write a canonical
+    argus-results.json, serve it over MCP, and ship optional composite GitHub Actions wrappers.
   solves:
   - Running multiple security scanners from a single CLI command, config file, or CI workflow
   - Unified severity thresholds and canonical JSON output across heterogeneous scanner formats
@@ -26,8 +23,8 @@ project:
   - PR feedback with inline code annotations (via composite-action wrappers)
   does_not_solve:
   - Remediation of found vulnerabilities (reporting only)
-  - Custom scanner development (uses existing tools)
-  - Security policy enforcement (provides data, not gates)
+  - Writing its own detection engines (it wraps existing tools; new ones plug in through the Scanner protocol)
+  - Central policy management across repos (severity_threshold gates one scan, nothing more)
 entrypoints:
   sdk: argus/
   sdk_install: pip install argus-security
@@ -35,8 +32,8 @@ entrypoints:
   sdk_cli_alt: python -m argus scan --config argus.yml
   cli_scan: argus scan [scanner ...] — primary entry; supports source, container, lint flows
   cli_init: argus init — generate a tailored argus.yml from project auto-detection
-  cli_classify: argus classify — classify findings by category
-  cli_collect: argus collect — collect scanner outputs
+  cli_classify: argus classify — classify IaC changes for compliance reporting (FedRAMP SCN)
+  cli_collect: argus collect — merge results from parallel CI scanner jobs
   cli_validate: argus validate — typecheck argus.yml against the JSON Schema
   cli_view: argus view [terminal|browser] — interactive triage of argus-results.json
   cli_report: argus report <format> — re-emit results in another format without re-scanning
@@ -70,10 +67,12 @@ primary_users:
 - Platform teams supporting multiple repositories
 platforms:
   supported:
+  - any-host-with-python-3.11
   - github-actions
   - github-enterprise-server
   constraints:
   - Composite actions work on any GHES with github.com access
+  - The SDK runs anywhere Python 3.11+ does (laptops, GitLab CI, other CI); the composite actions need GitHub Actions
   - Must support air-gapped environments
 context_modules:
   architecture: architecture.yaml
@@ -95,8 +94,8 @@ glossary:
     install_command(); the contract every scanner module implements
   SCANNER_REGISTRY: argus/scanners/__init__.py registry mapping scanner-name → class. Auto-merges LINTER_REGISTRY
     at import time. Single source of truth consumed by CLI, MCP, viewers, reporters, and shell completions
-  Reporter: Output plugin in argus/reporters/ that converts ScanSummary → terminal/markdown/SARIF/JSON;
-    argus-results.json is always written by JsonReporter as the canonical artifact
+  Reporter: Output plugin registered in the argus.reporters entry-point group that renders a ScanSummary
+    in one format; argus-results.json is always written by JsonReporter as the canonical artifact
   ScanSummary: Top-level result dataclass (argus/core/models.py) — list of ScanResult, each with scanner
     name, findings, and metadata; consumed by viewers, reporters, and the MCP layer
   MCP: Model Context Protocol — stdio-transported tool/resource interface for AI assistants; argus mcp
