@@ -1,6 +1,6 @@
 FROM alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS builder
 
-ARG OPENGREP_VERSION=1.33.1
+ARG OPENGREP_VERSION=2.0.0
 ARG TARGETARCH
 
 # Fetch to a temp file with retries (transient GitHub 5xx/timeout/conn-reset are
