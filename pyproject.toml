@@ -196,7 +196,7 @@ dev = [
     # The ceiling has since been walked forward one verified release at a
     # time; Renovate's pep621 manager widens it the same way when a release
     # lands outside the range.
-    "coverage>=7.17.0,<7.17.1",
+    "coverage>=7.17.4,<7.17.5",
     # Dead-fixture check in the Unit Tests workflow.
     "pytest-deadfixtures>=3.1.0",
     # Container name sanitization (parse-container-config action scripts and
